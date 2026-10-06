@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d0c0b">
+<title>游戏大厅 · GAME HUB</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #0d0c0b; --ink: #14110d; --ink2: #1c1813;
+    --paper: #ece6da; --paper-dim: #8d8378; --line: #2a251d;
+    --gold: #d6ab58; --flux: #a89ae6; --live: #4caf6e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(120% 90% at 50% -10%, #1a1611 0%, var(--bg) 60%);
+    color: var(--paper);
+    font-family: "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 14px 30px;
+  }
+  .hub-head { text-align: center; margin-bottom: 26px; }
+  .hub-title { font-size: 30px; letter-spacing: .22em; margin: 0; font-weight: 600; }
+  .hub-sub { font-size: 12px; letter-spacing: .3em; color: var(--gold); margin: 8px 0 0; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    align-items: start;
+    gap: 16px; width: min(94%, 760px);
+  }
+  .card {
+    position: relative; border: 1px solid var(--line); border-radius: 16px;
+    background: linear-gradient(180deg, var(--ink2), var(--ink));
+    display: flex; flex-direction: column; overflow: hidden;
+    text-decoration: none; color: inherit;
+    transition: border-color .18s, transform .18s;
+  }
+  .card:hover { border-color: var(--gold); transform: translateY(-3px); }
+  .card.coming { opacity: .6; cursor: default; }
+  .card.coming:hover { border-color: var(--line); transform: none; }
+
+  /* 封面整张按原图比例显示：竖屏游戏给全图、横屏游戏也是全图，一律不裁切。
+     混排时卡片高度因此天然不同 —— 由 .grid 的 align-items:start 让每张卡各自收紧。 */
+  .card-cover { position: relative; background: #0a0908; }
+  .card-cover img {
+    width: 100%; height: auto; display: block;
+  }
+  .card-status {
+    position: absolute; top: 8px; right: 8px;
+    font-size: 10px; letter-spacing: .12em; line-height: 1;
+    padding: 5px 8px; border-radius: 999px;
+    background: rgba(10,9,8,.72); backdrop-filter: blur(4px);
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  /* 朝向角标：只给横屏游戏挂（竖屏是网页默认预期，不必提示） */
+  .card-orient {
+    position: absolute; top: 8px; left: 8px;
+    font-size: 10px; letter-spacing: .12em; line-height: 1;
+    padding: 5px 8px; border-radius: 999px;
+    color: var(--gold); background: rgba(10,9,8,.72); backdrop-filter: blur(4px);
+  }
+  .card-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
+  .card-status.live { color: var(--live); }
+  .card-status.live::before { background: var(--live); box-shadow: 0 0 8px var(--live); }
+  .card-status.dev { color: var(--paper-dim); }
+  .card-status.dev::before { background: var(--paper-dim); }
+
+  .card-body { display: flex; flex-direction: column; gap: 8px; padding: 14px 14px 16px; flex: 1; }
+  .card-name { font-size: 18px; letter-spacing: .06em; font-weight: 600; line-height: 1.25; }
+  .card-desc { font-size: 12px; line-height: 1.6; color: var(--paper-dim); margin: 0; }
+  .card-enter {
+    margin-top: auto; min-height: 44px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    border: 1px solid rgba(214,171,88,.45); border-radius: 10px;
+    color: var(--gold); font-size: 14px; letter-spacing: .08em;
+    transition: background .15s;
+  }
+  .card:hover .card-enter { background: rgba(214,171,88,.12); }
+  .card.coming .card-enter { color: var(--paper-dim); border-color: var(--line); }
+
+  .hub-foot { margin-top: 26px; font-size: 11px; line-height: 1.8; letter-spacing: .04em; color: var(--paper-dim); text-align: center; max-width: 560px; }
+  .hub-foot b { color: var(--paper); font-weight: 500; }
+</style>
+</head>
+<body>
+  <header class="hub-head">
+    <h1 class="hub-title">游戏大厅</h1>
+    <p class="hub-sub">GAME HUB</p>
+  </header>
+
+  <main class="grid" id="grid"></main>
+
+  <footer class="hub-foot">
+    <b>存档说明</b>：各游戏存档保存在各自浏览器的本地（localStorage），<b>不同域名之间不互通</b> ——
+    例如荒野的旧档在 ming-game-0714 有效，其他游戏从第一次进入开始累积。全部纯单机离线可玩。
+  </footer>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   游戏总目录（数据驱动）：加新游戏 / 下线游戏 = 增删下面一条数据，
+   然后把对应游戏部署到它的域名、把封面图放进 covers/ 即可。
+   大厅的结构与样式完全不用动。
+   order 越小越靠前；status: 'live' 已上线 / 'dev' 开发中。
+   orientation: 'portrait' 竖屏 / 'landscape' 横屏 —— 封面整张按原图比例显示、
+   绝不裁切，所以混排时卡片高度天然不同（对齐方式见 .grid 的 align-items）；
+   横屏游戏额外在封面左上角挂一枚「横屏」角标，提示玩家转屏。
+   ══════════════════════════════════════════════════════════════ */
+const GAMES = [
+  {
+    id: 'wild',
+    name: '荒野 WILD',
+    desc: '十分钟单局生存割草。四把武器、三系职业、剑气进化、长期成长与转生。',
+    cover: 'covers/wild.png',
+    url: '../wild/',
+    status: 'live',
+    order: 1,
+    orientation: 'portrait',
+  },
+  {
+    id: 'raid',
+    name: '搜打撤',
+    desc: '3D 第一人称撤离射击。搜刮物资 → 交火突围 → 活着撤离，带出去的才算你的。',
+    cover: 'covers/raid.png',
+    url: '../soudache/',
+    status: 'live',
+    order: 2,
+    orientation: 'landscape',
+  },
+  {
+    id: 'card',
+    name: '一世一牌',
+    desc: '每一世只带回一张牌的卡牌肉鸽。你是死在第九层的无名者，轮回不止。',
+    cover: 'covers/card.png',
+    url: '../one-card/',
+    status: 'live',
+    order: 3,
+    orientation: 'portrait',
+  },
+  {
+    id: 'gym',
+    name: '脑力训练场',
+    desc: '53 款脑力小游戏：记忆 / 反应 / 视觉 / 数学 / 益智，九大类每日开练。',
+    cover: 'covers/gym.png',
+    url: '../brain-gym/',
+    status: 'live',
+    order: 4,
+    orientation: 'landscape',
+  },
+  {
+    id: 'sim',
+    name: '夜班便利店',
+    desc: '深夜营业的 3D 模拟经营。补货、收银、应付奇奇怪怪的夜客，撑过七个夜班。',
+    cover: 'covers/sim.png',
+    url: '../night-shift/',
+    status: 'live',
+    order: 5,
+    orientation: 'landscape',
+  },
+];
+
+const grid = document.getElementById('grid');
+const STATUS_TEXT = { live: '已上线', dev: '开发中' };
+
+[...GAMES]
+  .sort((a, b) => (a.order ?? 99) - (b.order ?? 99))
+  .forEach((g) => {
+    const live = g.status !== 'dev';
+    const landscape = g.orientation === 'landscape';
+    const card = document.createElement('a');
+    card.className = 'card' + (live ? '' : ' coming');
+    card.dataset.orientation = g.orientation || 'portrait';
+    card.href = live ? g.url : 'javascript:void(0)';
+    if (live) { card.target = '_blank'; card.rel = 'noopener'; }
+    card.innerHTML = `
+      <div class="card-cover">
+        <img src="${g.cover}" alt="${g.name} 封面" loading="lazy">
+        ${landscape ? '<span class="card-orient">横屏</span>' : ''}
+        <span class="card-status ${live ? 'live' : 'dev'}">${STATUS_TEXT[g.status] || g.status}</span>
+      </div>
+      <div class="card-body">
+        <span class="card-name">${g.name}</span>
+        <p class="card-desc">${g.desc}</p>
+        <span class="card-enter">${live ? '进入游戏 ▸' : '敬请期待'}</span>
+      </div>`;
+    grid.appendChild(card);
+  });
+</script>
+</body>
+</html>

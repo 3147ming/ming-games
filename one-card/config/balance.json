@@ -1,0 +1,441 @@
+{
+  "meta": {
+    "purpose": "数值口径真源。所有常数标注来源与状态；阶段 2 起重由 tools/balance.mjs 与 tools/audit.mjs 实测校准后回填。",
+    "version": "0.4",
+    "date": "2026-09-22",
+    "prevVersion": "0.3",
+    "versionNote": "v0.4 = 阶段 4「试玩就绪 + 遗迹事件加深」。授权改动三条：① G7 验收带重新基线化（只改判据口径，零数值改动）；② 新增只读埋点层 src/logger.js（默认关，不改玩法）；③ 遗迹事件 6→12（T3）。★冻结项（遗物扩 48 / 商店 / 卡牌升级 / 分支地图）一律未动；除新事件定价外未改任何卡/敌人/遗物数值。凡由 v0.3 改来的字段，均保留 `superseded_v0_3`。★重要口径：T3 改变了 rng.shuffled(EVENTS) 的随机流长度，地图内容整体位移 ⟹ 本阶段所有对局数值是**全新抽样**，不得与 v0.3 直接相减归因。",
+    "calibratedBy": {
+      "tools/audit.mjs": "概率 / 生成不变量 / 反刷压力测试 / 解锁节奏 四项口径审计（本阶段样本 60000）。★阶段 3 增强：流派命中率新增「精确解析」列（加权不放回三重有序和），与实测同表并列",
+      "tools/balance.mjs": "难度模拟（本阶段每流派 6000 局，合计 24000 局）",
+      "node --test tests/*.test.mjs": "回归（阶段 4 收尾 184 条全绿；阶段 3 收尾 152；v0.2 时为 149）",
+      "tools/probe-onecard.mjs": "真实浏览器端到端探针（阶段 4 复跑：exit=0，未捕获异常 0 条）",
+      "tools/probe-log.mjs": "阶段 4 新增：埋点层专用浏览器探针（?log=1 面板渲染 / 真实点击 amend 不新增行 / 默认关闭零感知 / 同种子开+关终局指纹一致），收尾复跑 exit=0、断言 0 失败",
+      "docs/06-真人试玩手册.md": "阶段 4 新增：3 人 × 4 流派 × 5 局协议、拉丁方排程、埋点开关、自报字段口径、JSONL 回收，以及阶段 5 的判定准则（**判据先定死，不许事后挑**）",
+      "tests/logger-invariance.test.mjs": "阶段 4 新增（夜间自动化产出）：埋点层 7 处补漏分支，9 条断言全绿",
+      "docs/03-构筑与生成.md": "构筑与生成规则规格（阶段 2）",
+      "docs/04-成长与经济.md": "成长与经济规格（阶段 2）",
+      "docs/05-数值校准与UI.md": "阶段 3 数值校准 / UI 提示 / 候选系统三问 / 待校准数据盘点"
+    },
+    "statusLegend": {
+      "derived": "已推导得出，可直接使用",
+      "design_target": "设计目标值，需实现后校验",
+      "calibrated": "已由实测校准，与实现一致",
+      "superseded": "已被后续实测推翻，保留供追溯",
+      "placeholder": "占位值，待内容预算锁定后替换",
+      "not_implemented": "设计目标，确认未实现",
+      "calc": "由其他实测值计算得出",
+      "tbd": "【待补充】缺少数据，见 needs_data"
+    }
+  },
+
+  "run_structure": {
+    "D_min_decision_points": { "value": 12, "status": "calibrated", "note": "阶段 3 复核：均匀假设下 12，真实加权下仍 12（最坏 = 蚀 解析 52.78% / 实测 52.59%，两条路径都 = 12）" },
+    "floors": { "value": 3, "status": "derived" },
+    "nodes_per_floor": { "value": 4, "status": "derived" },
+    "card_reward_nodes": { "value": 9, "status": "calibrated", "note": "7 战斗 + 2 精英；遗迹不产出取牌三选一" },
+    "deck_size_start": { "value": 10, "status": "calibrated", "formula": "4 打击 + 4 防御 + 2 张流派入门牌" },
+    "deck_size_end_all_runs": {
+      "value": 17, "range": [16.0, 18.1], "status": "calibrated",
+      "total": "全量平均（含死亡局）", "note": "衡量「一个普通玩家死的时候手上有多厚的牌组」"
+    },
+    "deck_size_end_clear_run": {
+      "value": 20.0, "range": [19.9, 20.0], "status": "calibrated",
+      "total": "通关局终局值", "note": "★与阶段 0 的推导目标（10 张起始 → 20 张终局）严格一致，是一次正向验证"
+    },
+    "hand_size": { "value": 5, "status": "design_target" },
+    "relics_gained_per_run_all_runs": {
+      "value": 2.33, "range": [2.04, 2.73], "status": "calibrated",
+      "total": "全量平均（含死亡局）"
+    },
+    "relics_gained_per_run_clear_run": {
+      "value": 3.22, "range": [3.20, 3.24], "status": "calibrated",
+      "total": "通关局终局值",
+      "note": "修正自阶段 0 的估算 4~5。开局 1 + 精英 2 + 遗迹（6 事件里 4 个可给遗物）"
+    }
+  },
+
+  "card_pool": {
+    "P": { "value": 60, "status": "derived", "note": "4 流派 x 15 张；作为 D_min 的代数解而非拍脑袋，见 docs/03 §1.4" },
+    "archetypes": { "value": 4, "status": "derived" },
+    "r_archetype_share": {
+      "value": 0.25, "status": "derived",
+      "note": "名义均分。★实测因稀有度加权而失衡：初始池命中率 蚀 52.78%（解析）/52.59%（实测） ~ 熵 62.11%（解析）/62.42%（实测），见 archetype_hit_rate"
+    },
+    "k_choices_per_reward": { "value": 3, "status": "design_target" },
+    "initial_pool_size": {
+      "value": 37, "status": "calibrated", "total_weight": 1680,
+      "superseded_v0_2": { "value": 36, "total_weight": 1650, "reason": "G1 解封 x.overload 使初始池 +1 张（阶段 3 / T1）" }
+    },
+    "rarity_composition": {
+      "status": "calibrated",
+      "R1": { "count": 19, "weight": 60 },
+      "R2": { "count": 30, "weight": 30 },
+      "R3": { "count": 11, "weight": 10 },
+      "note": "R3 全部为封印卡（11/11）。封印数：刃/霜/蚀 各 6、熵 5（阶段 3 / G1 后由 6 改来，解封 x.overload）"
+    },
+    "rarity_probability": {
+      "status": "calibrated",
+      "pool_initial_37": {
+        "cards": 37, "total_weight": 1680, "total": "初始解锁池",
+        "single_draw": { "R1": 0.6786, "R2": 0.3214, "R3": 0.0 },
+        "single_draw_measured": { "R1": 0.6790, "R2": 0.3210, "R3": 0.0 },
+        "triple_has_at_least_one": { "R1": 0.9697, "R2": 0.7065, "R3": 0.0 },
+        "triple_all_R1": 0.2935
+      },
+      "pool_initial_36_superseded": {
+        "cards": 36, "total_weight": 1650, "status": "superseded",
+        "single_draw": { "R1": 0.6909, "R2": 0.3091, "R3": 0.0 },
+        "triple_has_at_least_one": { "R1": 0.9736, "R2": 0.6869, "R3": 0.0 },
+        "triple_all_R1": 0.3131,
+        "note": "v0.2 值，由 37 张版本取代（G1 解封）"
+      },
+      "pool_full_60": {
+        "cards": 60, "total_weight": 2150, "total": "全解锁池（与封印无关，阶段 3 未变）",
+        "single_draw": { "R1": 0.5302, "R2": 0.4186, "R3": 0.0512 },
+        "single_draw_measured": { "R1": 0.5304, "R2": 0.4182, "R3": 0.0515 },
+        "triple_has_at_least_one": { "R1": 0.9010, "R2": 0.8149, "R3": 0.1458 },
+        "triple_all_R1": 0.1372,
+        "run_9_rewards_ever_see_R3": 0.7579
+      }
+    },
+    "archetype_hit_rate": {
+      "status": "calibrated",
+      "metric": "三选一里至少出现 1 张该流派卡（累计事件次数口径）",
+      "initial_pool": { "blade": 0.6186, "frost": 0.5912, "rot": 0.5259, "flux": 0.6242 },
+      "initial_pool_superseded_v0_2": { "blade": 0.6264, "frost": 0.5992, "rot": 0.5322, "flux": 0.6018, "reason": "分母效应：初始池 36→37，各派占比被摊薄" },
+      "full_pool": { "blade": 0.6117, "frost": 0.6072, "rot": 0.5413, "flux": 0.5879 },
+      "analytic": {
+        "note": "★阶段 3 新增。精确解析：加权、不放回抽 3 张，对非该流派权重做三重有序和（无 MC 噪声）。与实测偏差 <= 0.0030。",
+        "initial_pool": { "blade": 0.6207, "frost": 0.5913, "rot": 0.5278, "flux": 0.6211 },
+        "full_pool": { "blade": 0.6121, "frost": 0.6047, "rot": 0.5404, "flux": 0.5891 }
+      },
+      "reproduce": { "command": "node tools/audit.mjs 60000", "measured_N": 60000, "seed": "固定种子 audit:triple:*，结果确定" },
+      "dmin_check": {
+        "worst_archetype": "rot @ 0.5278 (analytic) / 0.5259 (measured)",
+        "formula": "analytic ceil(3 / 0.5278 x 2) = ceil(11.37) = 12 ; measured ceil(3 / 0.5259 x 2) = ceil(11.41) = 12",
+        "conclusion": "D_min = 12 在真实加权下依然成立 —— 解析与实测两条路径都收敛到 12，推导健壮。★注：瓶颈一直是蚀流（R1 卡仅 3 张），与熵流是否解封无关"
+      }
+    },
+    "combo_ring_achievability": {
+      "status": "calibrated",
+      "metric": "一局 9 次三选一里见到的本流派 keyCards 数量",
+      "full_pool": {
+        "all_three": { "blade": 0.0204, "frost": 0.0309, "rot": 0.0114, "flux": 0.0118 },
+        "exactly_two": { "blade": 0.2139, "frost": 0.2107, "rot": 0.1404, "flux": 0.1395 },
+        "zero": { "blade": 0.2686, "frost": 0.3064, "rot": 0.4008, "flux": 0.4010 }
+      },
+      "initial_pool": {
+        "all_three": { "blade": 0.0, "frost": 0.0, "rot": 0.0, "flux": 0.0 },
+        "exactly_two": { "blade": 0.2516, "frost": 0.1516, "rot": 0.1514, "flux": 0.1536 },
+        "zero": { "blade": 0.2179, "frost": 0.3654, "rot": 0.3637, "flux": 0.3616 },
+        "note": "★G1 效果：熵流 zero 由 59.36% → 36.16%，落回其余流派区间 [21.79%, 36.54%]"
+      },
+      "conclusion": "combo 环是上限形态（全解锁池 1.14%~3.09%）；单局常规目标是「1 增幅 + 1 载体」的双卡配合（exactly_two 13.95%~21.39%）。见 docs/05 §T2"
+    }
+  },
+
+  "battle": {
+    "n_turn_common": { "value": 4, "status": "design_target", "formula": "n_turn = ceil(HP_enemy / DPT_player)" },
+    "n_turn_elite": { "value": 7, "status": "design_target" },
+    "n_turn_boss": { "value": 12, "status": "design_target" },
+    "T_turn_sec": { "value": 10, "status": "tbd", "breakdown": { "draw_anim": 1, "decision": 6, "resolve": 3 }, "note": "设计目标值，非实测。真人校准协议见 docs/05 §T4.4（3 人 x 每流派 5 局）。数据未到前保持 tbd" },
+    "clear_rate": {
+      "total": "全量平均（含死亡局）· 贪心 AI 口径",
+      "global": 0.221, "status": "calibrated",
+      "by_archetype": { "blade": 0.143, "frost": 0.385, "rot": 0.118, "flux": 0.238 },
+      "win_hp_ratio_avg": 0.223,
+      "win_hp_ratio_by_archetype_clear_run": { "blade": 0.193, "frost": 0.259, "rot": 0.202, "flux": 0.238, "total": "通关局终局值" },
+      "avg_nodes_cleared": 9.045,
+      "reproduce": "node tools/balance.mjs 6000",
+      "superseded_v0_3": { "global": 0.233, "by_archetype": { "blade": 0.148, "frost": 0.406, "rot": 0.121, "flux": 0.256 }, "win_hp_ratio_avg": 0.227, "win_hp_ratio_by_archetype_clear_run": { "blade": 0.204, "frost": 0.263, "rot": 0.196, "flux": 0.244 }, "avg_nodes_cleared": 9.155, "reason": "★阶段 4 / T3 遗迹事件 6→12。警告：rng.shuffled(EVENTS) 池子变大改变了随机流长度，后续地图内容整体位移（200 seed 实测：100% 终态变更、39.5% 胜负翻转）⟹ 这是一次全新抽样，两阶段差值**不可直接归因**给某个事件" },
+      "superseded_v0_2": { "global": 0.237, "by_archetype": { "blade": 0.149, "frost": 0.410, "rot": 0.131, "flux": 0.256 }, "win_hp_ratio_avg": 0.229, "reason": "G1 改变共享奖励池后的重测" },
+      "caveat": "贪心 AI 口径，只统计直接伤害，系统性低估中毒（蚀）/ 格挡（霜）/ 循环（熵）。★流派间差异含 AI 偏见，不可作为强度结论；个别流派值（蚀/熵）尤其不可用。逐字段去偏裁决见 docs/05 §T4.2"
+    },
+    "lethality": {
+      "status": "calibrated",
+      "total": "遭遇次数口径",
+      "by_tier": { "normal": [0.027, 0.050], "elite": [0.226, 0.273], "boss": 0.493 },
+      "by_tier_detail": { "elite": { "e.chain": 0.273, "e.frostbone": 0.245, "e.rotmother": 0.226 } },
+      "normal_mean": 0.0342,
+      "multiple_vs_normal": { "elite": 7.3, "boss": 14.4 },
+      "by_floor": { "1": 0.000042, "2": 0.502, "3": 0.556 },
+      "by_floor_arrivals": { "1": 24000, "2": 23999, "3": 11959 },
+      "superseded_v0_3": { "by_tier": { "normal": [0.027, 0.050], "elite": [0.211, 0.258], "boss": 0.485 }, "by_tier_detail": { "elite": { "e.chain": 0.258, "e.frostbone": 0.227, "e.rotmother": 0.211 } }, "normal_mean": 0.0348, "multiple_vs_normal": { "elite": 6.7, "boss": 13.9 }, "by_floor": { "1": 0.000042, "2": 0.484, "3": 0.548 }, "by_floor_arrivals": { "1": 24000, "2": 23999, "3": 12373 }, "reason": "阶段 4 / T3 全新抽样后的重测；Boss 仍是唯一卡点（49.3%，约普通均值的 14.4 倍），结构性结论未变" },
+      "superseded_v0_2": { "by_tier": { "normal": [0.026, 0.048], "elite": [0.209, 0.261], "boss": 0.479 }, "by_floor": { "1": 0.0, "2": 0.485, "3": 0.540 } },
+      "note": "层间落差 1.13x（48.4% → 54.8%），有意为之：难度阶梯由「敌人类别」实现（6.7~13.9x）。★第 1 层致死率由 v0.2 的 0/24000 变为 1/24000 —— 见 findings_stage3 G8，措辞已降级为「≈0」"
+    }
+  },
+
+  "timing": {
+    "T_battle_sec": { "value": 40, "status": "derived", "formula": "n_turn_common * T_turn_sec" },
+    "T_reward_sec": { "value": 10, "status": "design_target" },
+    "T_map_sec": { "value": 5, "status": "design_target" },
+    "T_decision_sec": { "value": 55, "status": "derived", "formula": "T_battle + T_reward + T_map" },
+    "delta_boss_sec": { "value": 80, "status": "derived", "formula": "(n_turn_boss - n_turn_common) * T_turn_sec" },
+    "T_settle_sec": { "value": 30, "status": "design_target" },
+    "T_run_sec": { "value": 770, "status": "derived", "formula": "D_min * T_decision + delta_boss + T_settle" },
+    "T_run_min": { "value": 12.8, "status": "derived" },
+    "ui_interactions_per_clear_run": { "value": 208, "status": "calibrated", "note": "真实浏览器探针实测（推导预期约 200）。阶段 3 重跑，G3 提示改动后数值未变" }
+  },
+
+  "probability": {
+    "p_archetype_hit": {
+      "value": 0.5853,
+      "status": "superseded",
+      "formula": "1 - C(P*(1-r), k) / C(P, k)",
+      "work": "1 - C(45,3)/C(60,3) = 1 - 14190/34220 = 0.5853",
+      "note": "★阶段 2/3 实测修正：因稀有度加权，真实初始池值为解析 0.5278(rot)~0.6211(flux) / 实测 0.5259(rot)~0.6242(flux)。见 card_pool.archetype_hit_rate。D_min 结论不变"
+    },
+    "kappa_redundancy": { "value": 2, "status": "derived", "note": "已提取进 config/constants.js 的 KAPPA_REDUNDANCY_ASSUMED" },
+    "D_min_formula": "ceil(3 / p_archetype_hit * kappa) = ceil(5.13 * 2) = 11 -> 向上取 12 以对齐 3 层 x 4 节点"
+  },
+
+  "damage": {
+    "player_dpt": { "value": 10.8, "status": "derived", "formula": "3 能量 x 6 伤/能量 x 0.6 进攻占比", "note": "无 AI 偏见：纯配置解析值" },
+    "block_per_turn": { "value": 6, "status": "derived", "formula": "3 x 5 x (1 - 0.6)" },
+    "formula_order": "(基础 + 力量) x 虚弱 x 易伤，向下取整。先加后乘，顺序不可换",
+    "synergy_check": {
+      "status": "derived",
+      "case": "b.dualblade(3伤x3) 同时吃 +2 力量 与 易伤",
+      "d_str": 6, "d_vuln": 3, "d_both": 12,
+      "verdict": "12 > 6 + 3 = 9 -> 超可加，结构性协同成立"
+    },
+    "growth_required": { "value": 1.6, "status": "derived" },
+    "expected_with_crit": {
+      "formula": "E = d_base * (1 + p_crit * (m_crit - 1))",
+      "p_crit_cap": 0.75,
+      "m_crit_v1": 2.0,
+      "overflow_rule": "超过 p_crit_cap 的暴击率溢出转为其他属性",
+      "status": "not_implemented",
+      "note": "阶段 0 的设计目标，现役输出模型是「力量/虚弱/易伤」三者乘算，无暴击维度。保留在案，若引入需走三问"
+    }
+  },
+
+  "economy": {
+    "status": "derived",
+    "note": "一切折算成 HP。完整推导见 docs/04 §4",
+    "income": { "start_hp": 70, "rest_heal": 32, "total": 102 },
+    "spend_static": { "normal": 42.0, "elite": 70.0, "boss": 48.0, "total": 160.0 },
+    "static_gap_ratio": { "value": 1.57, "status": "derived", "formula": "160 / 102" },
+    "spend_after_growth": { "normal": 26.25, "elite": 43.75, "boss": 30.0, "total": 100.0 },
+    "closure_check": "成长后支出 100 <= 收入 102 -> 闭合（理论余量 2.9%，实测余量 22.7%，由 v0.2 的 22.9% 改来）",
+    "measured_surplus_clear_run": { "value": 0.223, "status": "calibrated", "total": "通关局终局值", "ideal_band": [0.10, 0.35], "superseded_v0_3": { "value": 0.227, "reason": "阶段 4 / T3 全新抽样后的重测；仍落在理想区间 [10%,35%] 内" } },
+    "price_list_hp": {
+      "one_common_card": 6, "one_rare_card": 5, "one_relic": 8,
+      "one_rest_heal": 31.5, "one_card_removal": "31.5（机会成本，与回血互斥）"
+    },
+    "overheal_waste_guard": {
+      "status": "implemented",
+      "api": "Run.restHealPreview() -> { heal, overflow }",
+      "ui": "src/ui.js renderRest() 在 overflow > 0 时显示「将浪费 X 点治疗量」",
+      "rule": "overflow = max(0, floor(hp + heal - maxHp))；上限用 run.maxHp 而非 CONST.HP_PLAYER（与结算同源）",
+      "regressions": 3,
+      "note": "阶段 3 / G3。只改提示层，resolveRest('heal') 的结算数值未动。见 docs/05 §T3"
+    },
+    "currency_types": { "value": 1, "status": "derived", "note": "只有「带回的牌」一种。无金币、无经验、无局内可携带货币。见 docs/04 §1" }
+  },
+
+  "meta_unlock": {
+    "status": "calibrated",
+    "sealed_cards": 23,
+    "sealed_cards_superseded_v0_2": { "value": 24, "reason": "阶段 3 / G1 解封 x.overload（封印数 24 → 23）" },
+    "sealed_relics": 12,
+    "per_run": { "cards": 1, "relics": 1 },
+    "runs_to_full_unlock": { "value": 23, "status": "calc", "note": "实测 200 条玩家线，四流派均为 23.0 局（v0.2 为 24.0）" },
+    "relic_pool_done_at_run": { "value": 12, "status": "calc", "note": "★第 13~23 局只有卡在解锁，遗物维度进度条已满（v0.2 为第 13~24 局）" },
+    "full_unlock_hours": {
+      "upper": 4.92,
+      "measured_greedy_ai": 3.71,
+      "target_band": [4.0, 5.0],
+      "superseded_v0_3": { "measured_greedy_ai": 3.75, "reason": "派生值连带更新：平均过节点 9.155 → 9.045（阶段 4 / T3 重测），这是派生变化不是新的测量结论" },
+      "superseded_v0_2": { "upper": 5.13, "measured_greedy_ai": 3.91 },
+      "note": "上限口径 = 23 局 x 12.83 分钟；实测口径 = 23 局 x 9.67 分钟（贪心 AI 平均过节点 9.045/12，★阶段 4 重测）"
+    },
+    "unlock_sampling": {
+      "method": "rng.sample() 均匀抽样（刻意不用稀有度加权）",
+      "measured_triple_has_R3_uniform": 0.8741,
+      "measured_triple_has_R3_weighted": 0.5771,
+      "delta_pp": 29.7,
+      "superseded_v0_2": { "uniform": 0.8598, "weighted": 0.5498, "delta_pp": 31.0 },
+      "reason": "解锁池的目标函数是「内容发现速度」，与局内奖励的「稀缺性控制」不同，因此必须用不同分布。见 docs/04 §2.4"
+    }
+  },
+
+  "event_pool": {
+    "status": "calibrated",
+    "count": 12,
+    "superseded_v0_3": { "count": 6 },
+    "ids": ["ev.lamp", "ev.bones", "ev.nameless", "ev.well", "ev.carving", "ev.wormhole", "ev.anvil", "ev.vein", "ev.thirst", "ev.kiln", "ev.gallows", "ev.marrow"],
+    "stage4_added": ["ev.anvil", "ev.vein", "ev.thirst", "ev.kiln", "ev.gallows", "ev.marrow"],
+    "nodes_per_run": 1,
+    "note": "骨架里遗迹恰好 1 个节点（I7：遗迹恒在第 1 层），扩池**只增加单局多样性，不改 12 节点结构**。★副作用：rng.shuffled(EVENTS) 的候选由 6 变 12，随机流长度改变 ⟹ 地图内容整体位移。",
+    "pricing_authority": "docs/04 §3.2 既有价目表：随机牌 4~6 HP / 稀有牌 5~6 HP / 遗物 8 HP / 生命上限 +1 为 0。★本批新事件刻意不使用 maxHp —— 既有 ev.carving 是免费给上限，若新事件收费给上限会与价目表自相矛盾（该矛盾属于 G5，本阶段不扩大它）",
+    "constraints": {
+      "no_new_both_gain_event": { "rule": "不许新增「两选项都纯收益」的事件", "current_count": 2, "allowed_legacy": ["ev.carving", "ev.nameless"], "added_by_stage4": 0, "guarded_by": "tests/content.test.mjs" },
+      "each_new_event_has_cost": { "rule": "每个新事件至少一个选项带代价", "status": "6/6 满足", "guarded_by": "tests/content.test.mjs" },
+      "no_free_goods_in_new_events": { "rule": "新事件不允许白拿资源（不付 HP 就得到牌/遗物）的选项", "added_by_stage4": 0, "guarded_by": "tests/content.test.mjs" },
+      "pricing_within_table": { "rule": "新事件的资源定价必须落在既有价目表内", "guarded_by": "tests/content.test.mjs" }
+    }
+  },
+
+  "generation": {
+    "status": "calibrated",
+    "layout": "线性骨架（FLOOR_SKELETON 硬编码），仅内容由种子随机",
+    "node_quota": { "battle": 7, "elite": 2, "event": 1, "rest": 1, "boss": 1, "total": 12 },
+    "invariants_checked_60000_runs": {
+      "total_eq_12": 0, "boss_count_eq_1": 0, "boss_is_last": 0,
+      "no_duplicate_enemy_in_run": 0, "first_node_is_battle": 0,
+      "rest_after_elite": 0, "event_on_floor_1": 0,
+      "verdict": "7 条不变量全部 0 违反（★阶段 4 重跑：遗迹池已扩到 12，7 条仍各 0 违反，结论未变）"
+    },
+    "structural_immunity": "无钥匙/无解锁物机制 -> 「关键物资缺失导致卡关」整类风险在设计层不存在"
+  },
+
+  "anti_grind": {
+    "status": "calibrated",
+    "in_run_unicity": { "relics": true, "enemies": true, "per_triple": true },
+    "copy_stacking_stress_test": {
+      "greedy_max_copies": 4,
+      "dedicated_target_max_copies": 4,
+      "dedicated_target_avg_copies": 0.37,
+      "dedicated_target_zero_hit_rate": 0.683,
+      "verdict": "池子自然稀释已是反刷机制，不需要份数硬上限",
+      "monitor_threshold": 5,
+      "note": "阶段 3 重跑，上限仍为 4，未触及阈值 5"
+    },
+    "deck_never_empty": "代码级保证（Run.completeRemove 在牌组为 0 时补 1 张打击）",
+    "hand_cap": 10
+  },
+
+  "relic_diversity": {
+    "formula": "C(24, 3)",
+    "value": 2024,
+    "status": "calibrated",
+    "note": "修正自阶段 0 的 C(24,5)=42504 —— 实测单局遗物为 2~4 件而非 4~5，见 run_structure.relics_gained_per_run_*"
+  },
+
+  "deferred_mode_fps3d": {
+    "status": "frozen",
+    "reason": "复用 SOUDACHE 的 Three.js 渲染栈与输入系统，作为卡牌肉鸽的二期特殊模式",
+    "unfreeze_gate": ["解决什么问题", "占多少工作量", "替换掉什么"]
+  },
+
+  "candidate_systems_stage3": {
+    "status": "proposal_only_not_implemented",
+    "workload_unit": "docs/01 §8.2 的相对工时占比（工程经验估计，非实测）",
+    "items": [
+      { "id": "upgrade", "name": "卡牌升级（+ 版本）", "workload_pct": 16, "must_replace_node": "删牌或遗迹", "verdict": "不做 -> 二期", "reason": "净增益出口会把通关余量 22.7% 推过 35% 的「后期太软」区间" },
+      { "id": "shop", "name": "商店 + 金币", "workload_pct": 18, "must_replace_node": "遗迹", "verdict": "不做 -> 二期", "reason": "与遗迹功能重叠 / 稀释资源张力 / 与核心幻想冲突" },
+      { "id": "branch_map", "name": "分支地图", "workload_pct": 21, "must_replace_node": "固定 12 节点", "verdict": "否决", "reason": "重新引入 T_run 方差，与「每回合可算清楚」直接冲突" },
+      { "id": "relic_48", "name": "遗物扩到 48 件", "workload_pct": 12, "must_replace_node": "无", "verdict": "二期（优先级最高）", "reason": "唯一无结构性代价的选项；组合空间 2024 -> 17296（8.5x）。触发条件：真人通关率 > 40%，或「3.2 件」上限被感知为重复" },
+      { "id": "event_12", "name": "遗迹事件 6 -> 12（替代路径）", "workload_pct": 3, "must_replace_node": "无", "verdict": "建议优先做", "reason": "复用现有遗迹节点，仅加 6 条数据；但必须同时给新事件引入代价" }
+    ],
+    "detail_doc": "docs/05 §T5"
+  },
+
+  "findings_stage2": [
+    { "id": "G1", "severity": "medium", "item": "熵流初始可得关键卡只有 1/3（x.overload 与 x.perpetual 均被封印），59.36% 的局摸不到任何关键卡；其余流派为 21%~36%", "proposal": "把 x.overload 改为初始解锁（封印卡 24→23）", "status": "待用户裁决，未执行" },
+    { "id": "G2", "severity": "low", "item": "combo 环三张全齐概率仅 1.14%~3.09%（全解锁池）", "proposal": "修正口径表述：combo 环是上限形态，单局常规目标是双卡配合", "status": "已在 docs/03 §1.6 记录，未改代码" },
+    { "id": "G3", "severity": "low", "item": "灯下位于满血时，回血选项会静默浪费约 29 点治疗量，无 UI 提示", "proposal": "阶段 3 加提示（本阶段不改 UI）", "status": "记录" },
+    { "id": "G4", "severity": "low", "item": "遗物池在第 12 局即解锁完毕，第 13~24 局该维度无新增内容", "proposal": "扩遗物至 48 件（走三问），不建议改解锁节奏", "status": "记录" },
+    { "id": "G5", "severity": "info", "item": "6 个遗迹事件中有 2 个（ev.carving / ev.nameless）两个选项均为纯收益", "proposal": "若未来扩遗迹数量，必须同时引入代价", "status": "记录" }
+  ],
+
+  "findings_stage3": [
+    { "id": "G1", "severity": "medium", "item": "熵流关键卡封印（承接 findings_stage2.G1）", "proposal": "解封 x.overload（方案 A）", "status": "已执行（阶段 3 / T1）。封印卡 24->23；熵流 0 张关键卡 59.36%->36.16%；D_min 仍 12；全解锁 24->23 局。★文件位置修正：sealed 字段在 config/cards.js，不在 config/archetypes.js" },
+    { "id": "G2", "severity": "low", "item": "combo 环口径（承接 findings_stage2.G2）", "proposal": "只改口径不改代码：combo 环 = 上限形态（1.14%~3.09%）；单局常规目标 = 1 增幅 + 1 载体（13.95%~21.39%）", "status": "已执行（阶段 3 / T2）。docs/01 §3.2 + docs/03 §1.6 已落账；代码零改动" },
+    { "id": "G3", "severity": "low", "item": "满血灯下回血静默浪费（承接 findings_stage2.G3）", "proposal": "在回血选项显示「将浪费 X 点治疗量」", "status": "已执行（阶段 3 / T3）。新增只读 API Run.restHealPreview() + UI 提示 + 3 条回归。★口径修正：上限用 run.maxHp 而非 HP_PLAYER（与结算同源）" },
+    { "id": "G4", "severity": "low", "item": "遗物第 12 局解锁完（承接 findings_stage2.G4）", "proposal": "不动解锁节奏，不扩遗物到 48", "status": "已按你的裁决执行：**不动**。docs/05 §T5.4 给出「二期、优先级最高」的建议与触发条件" },
+    { "id": "G5", "severity": "info", "item": "2/6 遗迹事件为纯收益", "proposal": "扩遗迹时同步引入代价", "status": "记录（未执行）" },
+    { "id": "G6", "severity": "info", "item": "陈旧 UI 标签：灯下回血写「30% 上限」，而 REST_HEAL_RATIO = 0.45（文案与配置漂移）", "proposal": "改为由常量动态生成 `${Math.round(CONST.REST_HEAL_RATIO*100)}%`", "status": "已执行（阶段 3 / T3 附带修正）。此后不会再漂移" },
+    { "id": "G7", "severity": "low", "item": "T1 第 3 条验收的边界：熵流「0 张关键卡」实测 36.16%，比验收带字面上界 36% 高 0.16pp（其余三派同时上浮 0.38~0.78pp，因初始池 36->37）", "proposal": "把验收带重新基线化为「落在其余流派实测区间内」（当前实际区间 [21.79%, 36.54%]）", "status": "阶段 4 已裁决并落账：采纳方案一 —— 验收带重新基线化为「落在其余流派实测区间内」（当前 [21.79%, 36.54%]，随奖励池变化每次重算）。只改判据口径，零数值改动" },
+    { "id": "G8", "severity": "info", "item": "第 1 层致死率由 0/24000 变为 1/24000（0.004%）——G1 改变共享奖励池后某条刃流种子死亡（blade-103）", "proposal": "把「恒为 0」措辞降级为「≈0」；数值不改（1 例不影响教学层设计）", "status": "措辞已降级（docs/02 §3.3 / docs/03 §2.2 / docs/05 §0.3 已同步），数值未动" },
+    { "id": "G9", "severity": "low", "item": "battle.clear_rate 的流派通关率含贪心 AI 偏见（只算直接伤害），蚀 12.1% / 熵 25.6% 不可作为强度结论", "proposal": "按 docs/05 §T4.4 的协议跑真人试玩（3 人 x 4 流派 x 5 局 = 60 局），数据回来后以 human_* 新字段回填，不覆盖 AI 值", "status": "待真人数据【待真人试玩】，协议已就绪" },
+    { "id": "G10", "severity": "info", "item": "四项候选系统（卡牌升级 / 商店金币 / 分支地图 / 遗物扩 48）的三问裁决", "proposal": "见 candidate_systems_stage3 与 docs/05 §T5", "status": "建议已出，一律未实现（本阶段明确不做）" },
+    { "id": "G11", "severity": "info", "item": "流派命中率表只有实测值、未声明样本量 N，违反口径守则 #1（单命令可复跑 + 解析与实测同表）", "proposal": "tools/audit.mjs 增「精确解析」列并打印 复跑命令+N；文档表格补解析列与 node tools/audit.mjs 60000", "status": "已修复（不碰运行时）。解析最坏 rot 52.78% 反推 D_min 仍 = 12" }
+  ],
+
+  "findings_stage4": [
+    { "id": "S4-1", "severity": "high", "item": "T3 遗迹 6→12 改变了 RNG 消费：200 个 seed 中 **100% 终态变更、39.5% 胜负翻转**（夜间自动化只读实测）。「同一 seed 可复现」只在**同版本内**成立，跨内容版本的历史 seed 基线全部作废", "proposal": "二选一：(a) 接受为有意的行为变更，把写死 seed 结果的断言全部改成语义断言（本阶段已按此执行，见 S4-6）；(b) 回滚到 6 事件。★关联 docs/NIGHT-REPORT.md 的 G-N1", "status": "⚠️ 待你裁决。本阶段已按 (a) 执行并修复了 2 个红灯；若你选 (b)，需回滚 config/events.js 并把本文件 event_pool 退回 6" },
+    { "id": "S4-2", "severity": "low", "item": "新事件里带 heal 的选项（ev.thirst A / ev.kiln A）在满血时静默空转 —— 与 G3（灯下满血回血）是同一类产品问题，事件层暂无提示", "proposal": "阶段 5 把 restHealPreview 的思路推广到事件选项（显示「本次将浪费 X 点治疗」）", "status": "📝 记录未做 —— 本阶段授权范围只到灯下提示" },
+    { "id": "S4-3", "severity": "info", "item": "派生链路连带更新：平均过节点 9.155 → 9.045 ⇒ 单局 9.79 → 9.67 分钟 ⇒ 全解锁实测 3.75h → 3.71h", "proposal": "已回填，旧值保留 superseded_v0_3", "status": "✅ 已回填" },
+    { "id": "S4-4", "severity": "medium", "item": "60 局真人样本下每流派仅 15 局，通关率标准误约 10.7pp ⟹ **用真人通关率做强度结论必然失败**", "proposal": "★判据先定死（docs/06 §7）：主判据改用连续量 selfDifficulty（分流派均值差 > 1.0 ≈ 3.5σ）；通关率只作辅助提示（差值 > 15pp 才怀疑，不作显著性）", "status": "✅ 判据已在 docs/06 §7 写死，阶段 5 只能照执行，不许事后挑阈值" },
+    { "id": "S4-5", "severity": "high", "item": "夜间自动化（00:18:57 启动）与人工会话并发写入同一批文件，险些覆盖对方新建的 tests/logger.test.mjs", "proposal": "把夜间自动化推迟到人工会话结束后，或在项目根加互斥锁文件（会话活跃时跳过并报告）。★关联 docs/NIGHT-REPORT.md 的 G-N2", "status": "⚠️ 待你裁决（需改调度配置）" },
+    { "id": "S4-6", "severity": "info", "item": "T3 后 tests/run.test.mjs 出现 2 个红灯：断言写死了「seed count 必须输」和「seed ev 抽到的事件选项必须有可见效果」——两者都把断言挂在了抽样结果上", "proposal": "改为语义断言（wins 与 outcome 挂钩；事件测试直接指定 ev.anvil，不再依赖抽样）。**这是把 gate 变强，不是放宽**", "status": "✅ 已修复（当时回归 172/172；阶段 4 收尾重跑 184/184 全绿）" },
+    { "id": "S4-7", "severity": "info", "item": "夜间自动化只读诊断：buildRunLog 在 run.startedAt 缺失时把 durationSec 落成 NaN → JSON null（静默不可信）", "proposal": "显式判空并写 null", "status": "✅ 已修复（src/logger.js）" },
+    { "id": "S4-8", "severity": "low", "item": "项目仍不是 git 仓库，本轮可回滚性靠 .night-backup/ 快照兜底 —— 不可持续", "proposal": "git init 并立分支约定", "status": "⚠️ 待你裁决（涉及是否把 .night-backup/ 入库）" },
+    { "id": "S4-9", "severity": "info", "item": "G7 已按你的裁决落账：验收带由字面 21%~36% 重新基线化为「落在其余流派实测区间内」（当前 [21.79%, 36.54%]，随奖励池变化每次重算）", "proposal": "只改判据口径，零数值改动；x.perpetual 维持封印", "status": "✅ 已落账（docs/03 §1.6、docs/05 §T1.3、findings_stage3.G7）" },
+    { "id": "S4-10", "severity": "info", "item": "夜间自动化遗留任务池 #2~#10（文档↔配置漂移扫描 / 边界用例 / 探针清扫 / 时长分布 / 置信区间 / 死代码 / 可访问性 / 交叉引用 / findings 复核）全部未执行", "proposal": "确认并发写入收敛后，下一轮从 #2（文档↔配置漂移扫描）开始 —— 本阶段已出现「内容先改、文档后补」的苗头，该项边际价值变高", "status": "📝 未执行，待你排期" },
+    { "id": "S4-11", "severity": "medium", "item": "埋点字段 keyCardsGot（终局牌组里本流派核心牌张数）在贪心 AI 下有 73% 的局为 0（240 局实测：0 张 175 局 / 1 张 60 / 2 张 4 / 3 张 1）——原因是 AI 固定取 rewardCards[0]，从不围绕核心牌构筑。这不是字段 bug（字段实现已验证正确），是 AI 策略产物", "proposal": "docs/06 §7 增列口径警告：**不得用真人 keyCardsGot 与 AI 基准直接相减作结论**，因为 AI 侧该量恒偏 0；真人间比较有效，人机比较无效。字段保留（真人侧有区分度）", "status": "⚠️ 待你裁决（口径警告已写入 docs/06 §7.6，是否同时把该字段降为「仅真人横向比较」）" }
+  ],
+
+  "findings_stage6": [
+    { "id": "S6-1", "severity": "info", "item": "阶段 6 终版：实时割草关「荒野遭遇」（wild）——全新独立模块 src/arena.js（ArenaCore 纯逻辑 + Arena DOM 包装），不改动 combat/effects/run 任何一行。终版口径：75 秒倒计时（初版 30s）、环形冲击波主动技能（空格/技能按钮，18 伤/半径 120/冷却 2s）、『可选分支』（进实时关 or 退化为普通卡牌战）、荒野牌按割草数据三选一（猎手/壁垒/疾风，R2 非封印，进奖励池）。进入方式：run.advance() 对未知 wild 类型回落 default→phase=MAP，于是 main.js 在 renderPhase 的 MAP 分支里以 currentNode.type==='wild' 为钩子弹 showWildChoice()（不污染回合制）；startWildAsBattle() 只改 node.enemyId/node.type + run.phase，仍不碰 run.js。", "proposal": "RNG 隔离铁律：ArenaCore 只用 run.rng.sub('wild') 子流，绝不调用主 run.rng 的 next() ⟹ 离开荒野关后主 rng 状态确定。★同 seed 终态指纹（seed-fingerprint --check）只在『离开荒野关后的 run 状态』层面可复现——荒野关**实时过程本身不进入** seed 复现断言（刷怪/掉宝序列无确定性要求，见 docs/07 §5）。基线侧必须与真实通关逐次对齐：rollWildReward = 1 张荒野牌（纯函数、不耗 rng）+ rollRewardCards(...,2) 两抽；基线写成 3 抽会使后续奖励种子整体漂移。五道门全绿（新基线 baselines/seed-fingerprint-20260922-2040.json）：seed-fingerprint 0/800 变化（digest 0b099cd375550461）、node --test 184/184、audit 60000 全部不变量 0 违反（新增『荒野节点恰好 1 个且必在第 2 层』）、tools/arena-smoke.mjs exit=0、tools/probe-onecard.mjs 端到端 exit=0（两局 cleared 12/12，两条可选分支路径均被真实触发）。", "status": "✅ 已落账（src/arena.js / src/mapgen.js F2[0] battle→wild / src/rng.js sub() / src/main.js 分支与结算接线 / config/cards.js 3 张荒野牌 / tools/* 配套 gate；docs/07-荒野模式.md 已按终版重写）" },
+    { "id": "S6-2", "severity": "info", "item": "敌人类型的扩展位已预留但终版只做 1 种：ArenaCore.spawnEnemy() 产出的敌人对象是逐字段可配置的（{x,y,r,speed,hp,contact}），而非读全局常量；后续要加快/肉/远程三种敌人，只需把这一处换成『按类型查表』的工厂，不影响碰撞/投射物/伤害任何逻辑。终版明确不做多敌人/boss/武器切换/升级树/音效/荒野关存档统计。", "proposal": "保持现状（架构留口，内容不做）。若下一阶段要做多敌人，建议先在 arena-smoke 加『每种类型的击杀耗时与掉落口径』回归护栏，再动 spawnEnemy()。", "status": "✅ 已落账（src/arena.js §2.2 注释 + docs/07 §2.2）" },
+    { "id": "S6-3", "severity": "low", "item": "荒野牌进池曾打破「4 流派 × 15」的内容对称（阶段 6：池 60→63，R2 30→33；刃/霜/蚀 各 16、熵仍 15）。阶段 6.1 / 裁决 2C 已**恢复对称**：新增第 4 张熵系荒野牌 wild.purgatory（荒野·寂灭，R2 / 1 费 / 造成 4 伤害 ×2 + 能量 1，过载向，与其余三张的数值体量对齐）⟹ 池 64（= 4 × 16），R2 34，四流派各 16、各封印 6。tests/content.test.mjs 与 tests/balance-math.test.mjs 已同步改为『四流派各 16』与 64 / 34，不再保留『63 = 4×15 + 3』的不对称写法。", "proposal": "不再需要裁决：已按方案 ② 严格对称落账，且采用『补牌』而非『运行时注入』——前者对 rollRewardCards 零改动，并让四流派在奖励池口径上真正等价。后续若再往池里加跨流派内容，请沿用同一原则：要么四流派同时加，要么走运行时注入。", "status": "✅ 已落账（config/cards.js 第 4 张荒野牌 + 对称性断言 + docs/07 §4.2/§4.3）" },
+    { "id": "S6-4", "severity": "medium", "item": "通关率口径已被阶段 6.1 / 裁决 1B 修正。三条口径必须分开读：① 阶段 5 基线（无荒野关）25.1%；② 阶段 6 旧口径（基线把 wild 节点当『免费存活』跳过、还白拿奖励）36.5% —— **这是乐观上界，已废弃**；③ **阶段 6.2 真实口径（基线用 tools/wild-ai.mjs 真实模拟 75 秒荒野掉血 + 4 张荒野牌）29.9%（6000 局）** ⟹ 旧口径虚高约 6.6pp。荒野关观测：进入 5999 次 / 死于荒野 29 次（0.5%）；掉血均值 7.0/70（中位 5，P10 0 / P90 15，最大 40）。", "proposal": "不回滚任何数值（这是纯口径修正，游戏数值一行未动）。① 新口径已写进 tools/balance.mjs 的【五】荒野关口径段与 docs/07 §9；② 补做了**配对检验**（tools/wild-net-cost.mjs，两口径跑同一批 seed、只数翻转局）：荒野关这个可选节点的净代价 = **−0.87pp，95% CI [−2.09, +0.36]，McNemar p = 0.17** ⟹ 与『净中性』不可区分（掉血代价 ≈ 额外荒野牌收益）；③ **口径红线**：掉血数字是风格敏感的（careful 0 / normal ~8 / greedy ~39 且 75% 死在荒野），故 7.0 只对『普通走位』成立，**不得当作人类平均掉血引用**；真人风险对标仍待 docs/06 的 D4 真人数据。", "status": "✅ 已落账（tools/wild-ai.mjs + tools/balance.mjs 真实结算 + tools/wild-net-cost.mjs；docs/07 §8 / §9）" },
+    { "id": "S6-5", "severity": "high", "item": "试玩反馈「端游割草卡顿 + 不能左右移动」的定位结果（全部先实测再改，探针读 runtime 状态）：① **不能左右移动** 的真凶是输入『相加』——原实现 input = 摇杆 + 键盘，任一路残留（失焦丢 keyup / 丢 pointerup）时残留的左 + 按下的右 = -1+1 = 0，屏幕表现与『没收到按键』完全一致；同时摇杆原点用视口坐标 clientX 当画布坐标绘制，圆圈比手指低 86px（HUD 高度）→ 逻辑正常但视觉错位，极易被判定为『摇杆坏了』。② **卡顿**的可复现来源是升级弹窗：暂停态仍每帧重绘 + 全屏 backdrop-filter，实测掉到 49.9fps、最长单帧间隔 70ms。", "proposal": "修法已落：键盘优先于摇杆（两路互斥）、blur/visibilitychange 清空 keys+joy、摇杆分存视口/画布两套坐标、暂停时不重绘（实测弹窗期间 _render 调用 0 次且 fps 回到 60）、去掉两处 backdrop-filter 改底色 .9。渲染侧顺带：宝石/投射物单路径合批一次 fill（宝石是最贵单项 60 颗 0.597ms/帧）、ctx.font 与技能按钮 textContent 仅在变化时写。★反例留档：『敌人剪影改离屏 canvas + drawImage』实测更慢（0.803ms vs Path2D fill 0.092ms），已放弃——先量再优化。新增排查开关 ?dbg=1 在画布左下角实时绘制 input/keys/joy/pos/fps。", "status": "✅ 已落账（src/arena.js / styles.css / src/main.js 的 __ONECARD.arena 只读出口；docs/07 §2.5 + §3）" },
+    { "id": "S6-6", "severity": "medium", "item": "同一轮补丁顺带修正两处割草玩法口径（**新增数值，待你裁决**）：① 自动攻击原为**射程无限**，敌人常在屏幕外刚露头就被点掉 ⟹ 既不接触玩家（§1.4『共用 HP 的高风险』是假的）又让宝石掉在玩家不会去的四边角落，且荒野牌三柱里『存活』恒满使映射退化为恒定 bastion；故加 ARENA.ATTACK_RANGE=340（略小于竖屏短边）。② 宝石半径仅 4px 而玩家单帧位移 2.5px，要求精确踩中手感差（触屏尤甚），故加 ARENA.GEM_MAGNET=70 吸附。", "proposal": "已定稿：阶段 6.2 spec 明确『保留射程上限、磁吸提到 ~80px』，故 GEM_MAGNET 70→80 并新增 GEM_PULL=420（密度提高后吸附速度要跟得上）；射程 340 保留不变。荒野关不参与 seed 指纹，五项门禁全程保持全绿。⚠ 注意：这两个值会同时影响『荒野牌四柱映射』的分布，故常态值 KILLS/GEMS/CASTS/HP_RATIO_TYPICAL 已按新密度重标定（见 S6-10）。", "status": "✅ 已定稿（src/arena.js ARENA.ATTACK_RANGE / GEM_MAGNET / GEM_PULL；docs/07 §2.1 / §2.5 ④）" },
+    { "id": "S6-7", "severity": "medium", "item": "阶段 6.1 / 裁决 1B：**基线口径必须真实模拟荒野掉血**。原 tools/balance.mjs 遇到 wild 节点直接 run.advance() 跳过 ⟹ 荒野关被当成『免费存活的替代节点』（不模拟 75 秒割草掉血），通关率 36.5% 是**乐观上界**。新实现：共用 tools/wild-ai.mjs（走位 AI + runWildSim，单一真源，arena-smoke 与 balance 共用同一份世界），wild 节点真打 75 秒 → 真实掉血 / 可能死 → 活着才 rollWildReward、死了走 run.finish('dead')。同时补齐口径工具链：--decline-wild（全部拒绝，取下界）/ --coarse（步长 1/20，仅供快速迭代）/ --wild-policy=（careful|normal|greedy）/ --dump=（逐局导出，供配对检验）。", "proposal": "两点必须一起用，否则数字会互相误读：① 报掉血一律连风格一起报 —— 同一套关卡只换走位风格，掉血均值差 5 倍以上（careful 0 / normal ~8 / greedy ~39 且 75% 死在荒野），故 7.0 只对『普通走位』成立；② 报步长一律 FINE_DT=1/60（COARSE_DT 会低 30~50%，混用即失去可比性）。另外 AI 必须有决策延迟 AI_REACTION_S=0.25 —— 第一版每帧重规划的『全知 bot』实测 12/12 局零掉血，会让『高风险』变成假命题。", "status": "✅ 已落账（tools/wild-ai.mjs 新增；tools/balance.mjs 真实结算 + 四项 CLI + 【五】口径段；docs/07 §9）" },
+    { "id": "S6-8", "severity": "high", "item": "阶段 6.1 用**新基线**跑出来的真 bug：**wild 节点可被反复进入**。run.advance() 在『选中』节点时就把 n.done = true，而 cursor 会一直停在该节点直到下一次 advance()；取完奖励回地图时 currentNode 仍指向它，于是只判 type === 'wild' 的选择框会**再弹一次**，玩家能反复进荒野、反复掉血。基线里的显影是**一局进了 1022 次荒野关**（120 局里 1022 次进入），真实游戏里表现为『取完奖励又被问一次要不要进荒野』。", "proposal": "修法：src/arena.js 新增并导出 isWildPending(run)（= type==='wild' && !n.wildDone）与 markWildHandled(run)，四个入口共用同一口径 —— src/main.js（startArena / startWildAsBattle 进入前先标记）、tools/balance.mjs（resolveWildNode）、tools/seed-fingerprint.mjs、tools/probe-onecard.mjs。修后校验：6000 局 → 5999 次进入（唯一 1 次是第 1 层就死、根本没走到该节点），不再放大。回归护栏：tools/arena-smoke.mjs 第 8 节（抵达时待处理 → 消费后不再待处理 → 取牌回地图后不再触发）。", "status": "✅ 已落账（src/arena.js isWildPending / markWildHandled + 4 个入口 + arena-smoke 第 8 节；docs/07 §1.2）" },
+    { "id": "S6-9", "severity": "low", "item": "荒野牌映射口径的第二处退化（与 S6-6 同批发现、阶段 6.1 修）：原判据是『值 / 上限』（kills/40、gems/40、hp/maxHp），在低密度版本可用；阶段 6.2 密度提高后四柱**全部打满**，实测 24/25 局恒定输出 wild.hunter，『按割草数据选牌』这个设计**退化成常量**。", "proposal": "改成『值 ÷ 本档常态值』的相对判据：kills/KILLS_TYPICAL、gems/GEMS_TYPICAL、shockCasts/CASTS_TYPICAL、(hp/maxHp)/HP_RATIO_TYPICAL，取超出常态最多的一柱，单柱得分上限 WILD_CARD_SCORE_CAP=1.5 防一柱爆表。判据含义从『你打赢了多少』变成『**你这一局在哪根柱上超常**』——既可解释又有区分度，实测四柱均可被触发（arena-smoke 第 2 节断言）。★代价已写进 docs/07 §8.6 口径红线：*_TYPICAL 是**标定值**，改密度/时长/血量后必须重跑 tools/wild-ai.mjs 的 normal 口径 24 局重标定，否则映射会静默退化。", "status": "✅ 已落账（src/arena.js pickWildCardId + ARENA.*_TYPICAL；tools/arena-smoke.mjs 第 2 节四柱断言；docs/07 §4.2）" },
+    { "id": "S6-10", "severity": "info", "item": "阶段 6.2『荒野关爽感强化』（只动手感层，不改已定规则：75 秒 / 共用 HP / 三选一 / 荒野牌结算 / 卡牌战一行未动）。① 密度：SPAWN_START 2.2→1.5、SPAWN_END 0.55→0.22 线性加密，最后 15 秒 ×0.6 且每次刷 2 个（原口径 75 秒只出 ~190 怪、同屏长期个位数）；② 变脆：新增独立常量 ENEMY_HP=9（不再复用 BASE_DMG，9/6 = 2 发打死、伤害升到 9+ 变 1 发，『伤害 +1』这条升级终于有意义）；③ 冲击波：半径 120→216（×1.8）、伤害 18→30（≥ 敌人血，保证一波清同屏）、新增击退 90px + 白闪 0.08s + 多环扩散 + 粒子外爆；④ 磁吸：GEM_MAGNET 70→80 + GEM_PULL=420；⑤ 反馈：击杀飘字（MAX_FLOATERS=20 封顶）+ 角落 HUD『击杀 N』；⑥ burst() 满载改 FIFO 淘汰，保证最新特效一定可见。", "proposal": "★本次最关键的一条连带改动：**XP_PER_LEVEL 必须跟着密度一起重标定（6 → 24）**。原值 6 是在『75 秒 ~40 杀』下标定的；密度提高后一局拾取 ~130 颗，若仍按 6 颗一级会弹 22 次升级窗（每 3.4 秒打断一次、伤害叠到 +22）——那是故障不是爽。按密度等比上调到 24 后升级 5 次，保持『约每 12 秒一次三选一』的原手感。实测（normal 口径 FINE_DT）：击杀 ~174 / 拾取 ~131 / 升级 5 / 冲击波 ~19 / 掉血 ~7；后 15 秒同屏峰值 40（= 硬上限）、前 20 秒峰值 3（密度真的从疏到密）。满负载渲染（headless Edge + SwiftShader，绝对值不代表真机）：40 敌 + 140 粒子 + 20 飘字 → 1.44ms/帧（16.7ms 预算的 8.6%）、实跑 60.2fps、maxGap 19.2ms ⟹ 密度抬 4 倍但渲染未失控。", "status": "✅ 已落账（src/arena.js ARENA 常量全量 + 四柱映射 + 飘字/FIFO；tools/arena-smoke.mjs 重写为 8 节含撞怪掉血/磁吸/击退/重复进入回归；docs/07 §2.6 / §6）" },
+    { "id": "S6-11", "severity": "info", "item": "『6000 局 ±1.2pp』的样本量红线被踩到：tools/audit-ci.mjs 的样本量表给出 6000 局下通关率的抽样半宽约 ±1.2pp，而『荒野关净代价』的效应量本身就是 1pp 量级 ⟹ 直接比两个独立比例**得不出结论**（噪声比信号大）。", "proposal": "改用**配对检验**（新增 tools/wild-net-cost.mjs）：两口径跑**同一批 seed**，且荒野节点在 F2[0]（节点序列第 5 个）⟹ 抵达它之前两条轨迹逐字节相同，于是只统计『翻转局』做 McNemar。6000 局结果：翻转局 1412（仅进入通关 680 / 仅拒绝通关 732），配对差值 −0.87pp，95% CI [−2.09, +0.36]，精确检验 p = 0.17 ⟹ 与『净中性』不可区分。结论：荒野关是『高风险高回报但净中性』的可选节点（掉血 ~7/70 ≈ 额外荒野牌的收益），不是难度拖累。工具已做成可复跑（内部自动跑两次 balance 并清理临时 dump），并明确**只在 p<0.05 时才给『相对变化』换算**，避免对噪声过度解读。", "status": "✅ 已落账（tools/wild-net-cost.mjs 新增；tools/balance.mjs --dump=；docs/07 §9.3）" }
+  ],
+
+  "findings_stage8": [
+    {
+      "id": "S8-1",
+      "severity": "info",
+      "item": "阶段 8 动画手感（玩家反馈「动画不行」）：根因不是缺动画而是**缺缓动** —— 位置每帧按输入直接赋值（线性瞬移）、敌人死亡直接 filter 掉（瞬切）、冲击波按下即炸（无过程）、投射物是孤立的点在飞。统一做法：先把『过渡』存成可插值的量，再用 ease-out 走完。逐项：①玩家移动改速度插值（vx/vy 成为真状态，输入只给目标速度）；②玩家剪影以脚底为支点做侧倾 + 沿运动方向 squash&stretch；③敌人死亡改 0.15s 爆裂放大→缩小 + 闪白（新增 this.deaths 纯视觉替身数组）；④冲击波拆成『起手/蓄力 0.15s』与『爆发结算』两拍；⑤投射物加 22px 双层描边拖尾；⑥全部非瞬移动画统一 ease-out 且单段 ≤300ms（ANIM_MAX）。",
+      "proposal": "两个缓动入口：easeOut(p)=1-(1-p)^3（进度型）与 approach(v,target,sec,dt)（速度型）。★approach 必须用 exp 而不是定系数 lerp：后者在 dt 变化时（掉帧/后台恢复/COARSE_DT）收敛速度跟着变 ⟹『同一套输入、不同帧率走位不同』，会让平衡口径无法复现。★逻辑与视觉解耦：死亡动画单独存 this.deaths，不给敌人打 dying 标记 —— 否则『正在爆裂的怪』仍会被锁定、仍会扣血、仍占 MAX_ENEMIES，等于『加个动画顺手改了玩法』。★计时顺序：step() 里必须先推旧计时再开新计时，否则本帧刚触发的爆发会被同一帧再 +dt 推进一次（爆发环第一帧被跳过，且 shockwaveCastT===0 的精确断言失败）。★惯性实现陷阱：松手那一帧 input 已是 0，若沿用 `if (mag>0.001) {...}` 整段跳过，减速永远不会被算，人物会变成永动『滑冰』。",
+      "status": "✅ 已落账（src/arena.js 的 ARENA 阶段 8 常量块 + easeOut/approach + deaths/killEnemy/addDeath + shockwave/detonateShockwave + 渲染层四处；docs/07 §11）"
+    },
+    {
+      "id": "S8-2",
+      "severity": "major",
+      "item": "★手感改动也改平衡（本阶段最重要的副作用）：荒野关从『净中性』变成『净负』。配对检验 6000 局：净代价 -0.87pp（CI[-2.09,+0.36]，p=0.17，阶段 6.2）→ -3.28pp（CI[-4.51,-2.06]，p<0.0001，阶段 8）。关内掉血均值 7.0 → 8.6/70，全局通关率 29.9% → 27.5%。消融实验（把 SHOCKWAVE_CHARGE 设≈0、保留惯性）仍为 -2.57pp（p=0.0001）⟹ 主因是**移动惯性**：走位 AI 与人一样被剥夺了『瞬时反向』，逃逸要多花 ~0.12s 换向，擦身变多；蓄力那 ~0.7pp 落在 6000 局的 ±1.2pp 分辨率内，**不能声称显著**（掉血均值 8.7 vs 8.6 互相印证：蓄力几乎不影响掉血）。",
+      "proposal": "★待裁决，三条路：①接受（荒野关成为真正的高风险节点；AI 不会走位、人类走位水平远高于它，这条负值对真人很可能偏悲观）；②补偿（荒野关奖励加一点，如通关额外回血 X）；③回调手感（缩短 MOVE_DECEL 少滑一点，或把蓄力改成『按下即结算、蓄力只做表现』）。本次**不改数值** —— 阶段 8 的 spec 是手感补丁，越权改平衡会让复盘更难；等 docs/06 的 D4 真人试玩数据再定。",
+      "status": "⚠️ 待你裁决（当前按 ① 落账：保留手感，不动平衡数值；docs/07 §8 第 3 条 + §11.4）"
+    },
+    {
+      "id": "S8-3",
+      "severity": "major",
+      "item": "★常态值口径陷阱（重标定时发现的历史错误，实际错了三遍）：ARENA.HP_RATIO_TYPICAL 原为 0.88 = 『1 − 掉血/满血』（隐含满血进关），而 pickWildCardId() 的存活柱分子却是**绝对值** run.hp/run.maxHp。两者口径不一致 ⟹ 这一柱实际度量的是『荒野关**之前**那 4 个卡牌节点掉了多少血』，而另三柱（击杀/拾宝/释放）都只统计**关内**行为。实测后果：同批样本下**壁垒只占 1%（n=394）**——四条映射里有一条等于死的。之所以长期未暴露：arena-smoke 第 2 节只用『满血 70/70』验这条柱，而满血恰好是唯一能让错口径也返回正确结果的输入（极端输入永远验不出映射退化）。",
+      "proposal": "分三步修正 + 把流程与约束全部机器化：①**分子**改成真正的关内生存率 hp出关/hp进关（构造时记 this.hpIn）；②**分母**必须等于『判据那个量的样本均值』——先误填 1−掉血/满血 = 0.89（同一个错误换了个位置），再按 N=24 的均值填 0.83（样本量不足，扫描显示壁垒会吃到 54%），最终定 **0.77**（N=200 实测均值 0.766，±SE 0.013，需 ≥144 局才钉得住）；③**结构约束**：存活柱判据上界恰为 1.0 而单柱得分上限 1.5，所以分母必须 > 1/1.5 = 0.667，否则一格血没掉就打满到 CAP、与『击杀/冲击波 999』打平并按 order 让壁垒胜出（0.53 那版的真正死因，也是 arena-smoke §2 炸掉的原因）。约束已写成断言（smoke §0），不再靠人记得。工具侧：tools/wild-calibrate.mjs 从『报均值』升级为五段输出（四档血量口径 → 样本量够不够 → 现状四柱分布 → 分布形状 → 分母扫描+回填建议），因为该常数**不只做标定，还唯一地决定四柱相对权重**。同时按阶段 8 的新手感重标：KILLS 174→173、GEMS 131→129、CASTS 19→18。",
+      "status": "✅ 已落账（src/arena.js ARENA.*_TYPICAL + 长篇口径注释；tools/wild-calibrate.mjs 五段化；arena-smoke §0 两条结构断言；docs/07 §4.2 + §8 第 6~7 条）。附带实测：三个分母取值下 6000 局全部平衡指标**逐位相同**（全局 27.5%、配对 −3.28pp），即该修正**零平衡代价**，只把『拿哪张荒野牌』从壁垒 1% 改成 46% —— 奖励手感的改变另立 S8-6 待裁决。"
+    },
+    {
+      "id": "S8-4",
+      "severity": "info",
+      "item": "验收口径：阶段 8 的改动**大头在渲染层**（倾斜/挤压、死亡爆裂、蓄力圈、拖尾），而 arena-smoke 只跑 ArenaCore（纯逻辑）—— 光有无头绿说明不了任何事。因此本阶段补了两层：①probe-onecard 荒野分支新增真实浏览器动画验证（统计 Canvas2D.rotate 调用数作为『倾斜/挤压真的每帧在画』的硬证据——rotate 是阶段 8 独有的调用，旧版本整个 _render 里一次都没有；再注入 1 血敌人 + 释放冲击波点亮三条新渲染路径；期间任何 rAF 回调异常都会被捕获）；②新增 tools/perf-render.mjs 把『满负载一帧』固化成可复跑测量，取代阶段 6.2 那个用完即删的临时脚本。",
+      "proposal": "渲染成本实测（无头 Edge + SwiftShader 软件渲染，绝对值不代表真机）：40 敌 + 140 粒子 + 20 飘字 + **24 死亡动画** + 8 投射物 ⟹ step 0.03ms + _render 0.12ms = JS 每帧 ≈0.14ms（16.7ms 预算的 0.8%），实跑 60.8fps、P50 帧间隔 16.6ms、maxGap 18.0ms。密度比阶段 5 高约 4 倍又叠加了每实体独立变换，成本仍未失控。六道门全绿：单测 184/184、指纹 0/800、audit 60000 零违反、arena-smoke exit=0（9 节）、probe exit=0（含 5 条动画断言、零未捕获异常）、perf-render exit=0。",
+      "status": "✅ 已落账（tools/arena-smoke.mjs 第 9 节 / tools/probe-onecard.mjs 动画步骤 / tools/perf-render.mjs 新增；docs/07 §6 + §11.5）"
+    },
+    {
+      "id": "S8-5",
+      "severity": "info",
+      "item": "走位口径带随惯性整体上移一档（重标而非『给尺子开口子』，AI 的 reactionS 一个字没改）：careful 关内掉血 0 → **0.7/70**（惯性让『瞬时反向』消失后连谨慎走位也会擦到）、normal **8.75/70**（200 局；关内生存率 0.766）、greedy 死亡 75% → **80%（160/200 死在关内）**。另：同一脚本 N=24 与 N=200 对『生存率』均值给出 0.833 vs 0.766 —— 该柱分布左偏，24 局（±0.039）根本钉不住它，故推荐 N=200。",
+      "proposal": "报数时必须连口径一起报：8.75/70 只对『普通走位』成立，不得当作『人类平均掉血』引用（真人风险对标走 docs/06 的 D4 协议）。步长口径仍是 FINE_DT=1/60，COARSE_DT 只用于快速迭代。工具两条护栏：有效样本 <8 局**直接 exit 1 拒绝出数**；±SE 超过扫描步长时**明确告警『局数不够』**（greedy 40 局幸存即触发）——一个『看起来能用的错数字』比一个报错更难发现。",
+      "status": "✅ 已落账（tools/wild-calibrate.mjs 四档口径 + 样本量段；docs/07 §9.2）"
+    },
+    {
+      "id": "S8-6",
+      "severity": "major",
+      "item": "★待裁决：修掉 S8-3 那处口径 bug 之后，玩家**拿到哪张荒野牌**变了 —— 猎手/疾风/**壁垒**/寂灭 由 43%/39%/**1%**/18% 变成 12%/17%/**46%**/24%（n=394）。原因：pickWildCardId() 判据是『取最大比值』，天然被**相对离散度最大**的那柱主导，而生存率离散度远大于另三柱（p10~p90 横跨 0.52~1.00，另三柱只差 ±6%，因为荒野关是 75 秒自动攻击、几乎确定）。所以修好口径的同时也把壁垒从『几乎不出现』推到『约一半的局』。",
+      "proposal": "平衡代价实测为**零**（0.53 / 0.77 / 0.83 三个分母下，6000 局的四流派通关率、全局 27.5%、配对净代价 −3.28pp 全部**逐位相同**）——荒野关的代价由掉血决定、不由拿到哪张牌决定（20+ 张牌组里多一张一费 R2 近似无差别）。所以这是『零代价的设计修正』，但它确实改了**奖励手感**。三条路：①接受（这条柱本就该有份）；②把 HP_RATIO_TYPICAL 取在健康区间上沿 0.85 → 壁垒 30%/寂灭 31%/疾风 22%/猎手 16%（分布最均匀）；③改判据（分位数 / 秩比较，让四柱离散度可比）。本次取**实测均值 0.77**，因为它是『常态值』的定义值、可复现，且落在健康区间 0.73~0.97 内。",
+      "status": "⚠ 待裁决（当前实现 = 0.77；三条路线已写入 docs/07 §8 第 7 条，裁决后改一个常量即可）"
+    }
+  ],
+  "needs_data": [
+    { "id": "D1", "item": "每周可投入工时", "unblocks": ["card_pool.P", "meta.team.total_workdays"], "status": "tbd" },
+    { "id": "D2", "item": "目标机型 / 浏览器下限", "unblocks": ["art_style 动效实现方式", "CSS 特性下限"], "status": "tbd" },
+    { "id": "D3", "item": "是否接受竖屏优先", "unblocks": ["view_control", "PC 端适配策略"], "status": "resolved", "resolution": "已采纳竖屏 9:16（阶段 0）" },
+    { "id": "D4", "item": "单局时长玩家侧验证（3 人 x 每流派 5 局计时）", "unblocks": ["battle.T_turn_sec", "流派真实强度（分离 AI 偏见）"], "status": "tbd", "note": "协议已就绪（docs/05 §T4.4），数据未到。T_turn_sec 保持 tbd" },
+    { "id": "D5", "item": "卡池与流派数最终锁定", "unblocks": ["card_pool.P", "content_budget_v1"], "status": "tbd", "note": "P0 维持 60/4；最终锁定依赖 D1" },
+    { "id": "D6", "item": "音频需求级别", "unblocks": ["audio 实现路径"], "status": "tbd" },
+    { "id": "D7", "item": "是否需要发布到公网", "unblocks": ["部署与压测范围"], "status": "tbd" },
+    { "id": "D8", "item": "G1 裁决：是否把 x.overload 改为初始解锁", "unblocks": ["熵流前期体验", "meta_unlock.runs_to_full_unlock"], "status": "resolved", "resolution": "你已裁决 = 采纳方案 A；阶段 3 / T1 已落账" }
+  ]
+}

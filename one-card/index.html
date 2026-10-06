@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no,maximum-scale=1">
+<meta name="theme-color" content="#12100e">
+<title>一世一牌 · ONE-CARD</title>
+<!-- 空 favicon：消除 /favicon.ico 的 404（夜间自动化 · 探针清扫）。
+     刻意在浏览器里声明"没有图标"，而不是设计一个图标 —— 图标属产品决策，留给白天。
+     价值：console error 保持零容忍，将来真实的资源加载失败不会被这条噪音淹没。 -->
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="frame">
+  <div id="device">
+
+    <header id="hud">
+      <div class="hud-row">
+        <div class="hud-hp">
+          <span class="hud-label">生命</span>
+          <div class="bar"><div id="hud-hp-fill" class="bar-fill bar-hp"></div><span id="hud-hp-text" class="bar-text">70 / 70</span></div>
+        </div>
+        <div class="hud-right">
+          <div id="hud-progress" class="hud-progress">第 1 层 · 1/4</div>
+          <div id="hud-seed" class="hud-seed">种子 ——</div>
+        </div>
+      </div>
+      <div id="hud-relics" class="hud-relics"></div>
+    </header>
+
+    <main id="stage">
+      <section id="screen-title" class="screen">
+        <div class="title-wrap">
+          <h1 class="game-title">一世一牌</h1>
+          <p class="game-sub">ONE&nbsp;CARD&nbsp;PER&nbsp;LIFE</p>
+          <p class="game-line">你是死在第九层的无名者。<br>每一世，你只带回一张牌。</p>
+          <div class="title-actions">
+            <button id="btn-new-run" class="big">开始一世</button>
+            <button id="btn-codex">牌谱</button>
+          </div>
+          <p id="title-stats" class="title-stats"></p>
+        </div>
+      </section>
+
+      <section id="screen-map" class="screen">
+        <div class="pane-head"><span id="map-title">第九层 · 路线</span></div>
+        <div id="map-body" class="map-body"></div>
+      </section>
+
+      <section id="screen-combat" class="screen">
+        <div id="enemy-zone" class="enemy-zone"></div>
+        <div id="log-zone" class="log-zone"></div>
+        <div id="hand-zone" class="hand-zone"><div id="hand-track" class="hand-track"></div></div>
+        <div id="action-zone" class="action-zone">
+          <div id="pile-draw" class="pile">抽牌<span class="pile-n">0</span></div>
+          <button id="btn-end-turn" class="end-turn">结束回合</button>
+          <div id="pile-discard" class="pile">弃牌<span class="pile-n">0</span></div>
+        </div>
+        <!-- 玩家剪影 zone（阶段 5 / T1）：与敌人对称，置于战斗区下半屏。
+             纯表现层，单色 + 剪影美术口径，无任何脸/立绘。 -->
+        <div id="player-zone" class="player-zone" aria-hidden="true">
+          <div class="player-figure">
+            <svg viewBox="0 0 100 150" class="pa-svg" xmlns="http://www.w3.org/2000/svg">
+              <circle class="pa-head" cx="50" cy="22" r="13"/>
+              <path class="pa-body" d="M50 35 C36 35 30 46 30 62 L27 106 L40 106 L43 74 L57 74 L60 106 L73 106 L70 62 C70 46 64 35 50 35 Z"/>
+              <path class="pa-arm pa-arm-l" d="M31 58 L12 80 L19 86 L36 66 Z"/>
+              <path class="pa-arm pa-arm-r" d="M69 58 L88 80 L81 86 L64 66 Z"/>
+            </svg>
+            <div class="player-shield"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-reward" class="screen">
+        <div class="pane-head"><span id="reward-title">选择你的收获</span></div>
+        <div id="reward-body" class="card-row-wrap"></div>
+      </section>
+
+      <section id="screen-event" class="screen">
+        <div class="pane-head"><span id="event-title">遗迹</span></div>
+        <div id="event-body" class="event-body"></div>
+      </section>
+
+      <section id="screen-rest" class="screen">
+        <div class="pane-head"><span>灯下</span></div>
+        <div id="rest-body" class="event-body"></div>
+      </section>
+
+      <section id="screen-meta" class="screen">
+        <div class="pane-head"><span id="meta-title">带回来的那一张</span></div>
+        <div id="meta-body" class="card-row-wrap"></div>
+      </section>
+
+      <section id="screen-over" class="screen">
+        <div class="over-wrap">
+          <h2 id="over-title">这一世，到此为止</h2>
+          <p id="over-sub" class="over-sub"></p>
+          <button id="btn-over-next" class="big">带回一张牌</button>
+        </div>
+      </section>
+
+      <canvas id="fx" aria-hidden="true"></canvas>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </div>
+</div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

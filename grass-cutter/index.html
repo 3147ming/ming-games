@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>传统割草游戏 · 战场原型</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23161c24'/%3E%3Cpath d='M9 23 L16 7 L23 23' stroke='%23d8a13a' stroke-width='2.4' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <canvas id="stage"></canvas>
+
+  <div id="boot" class="boot">
+    <div class="boot-inner">
+      <h1>传统割草游戏</h1>
+      <p class="boot-sub">3D 战场原型 · 模块 1-4</p>
+      <p class="boot-line">正在生成战场地形、光照、摄像机、战斗系统与敌人分层 AI…</p>
+    </div>
+  </div>
+
+  <div class="hint" id="hint">
+    <span class="hint-key">点击画面</span> 锁定鼠标 ·
+    <span class="hint-key">WASD</span> 移动 ·
+    <span class="hint-key">空格</span> 跳跃 ·
+    <span class="hint-key">Shift</span> 闪避 ·
+    <span class="hint-key">N/左键</span> 轻攻击 ·
+    <span class="hint-key">C/右键</span> 重攻击（按住蓄力）·
+    <span class="hint-key">F2</span> 招式表 ·
+    <span class="hint-key">F3</span> 面板 ·
+    <span class="hint-key">F5</span> 敌人状态环
+  </div>
+
+  <div class="reticle" aria-hidden="true"></div>
+
+  <!-- 模块 12：允许第三方加载器（如 vendor/three/jsm 下的 GLTFLoader）用裸 'three' 解析到同一份 three.module.js。
+       相对路径导入不受影响；浏览器按解析后的 URL 去重，仍是单一 THREE 实例，零风险。 -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three/three.module.js",
+      "three/": "./vendor/three/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

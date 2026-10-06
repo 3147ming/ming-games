@@ -1,0 +1,1608 @@
+/* ========================================================================
+   搜打撤 —— 军事战术风 UI
+   深色底 + 琥珀 / 青色高亮，数值统一使用等宽字体
+   ===================================================================== */
+
+:root {
+  --bg: #080b10;
+  --bg-2: #0d1219;
+  --panel: rgba(13, 18, 25, 0.96);
+  --panel-soft: rgba(18, 24, 33, 0.86);
+  --line: #1d2632;
+  --line-2: #28323f;
+  --text: #d7dee8;
+  --dim: #7c8899;
+  --amber: #ffb020;
+  --cyan: #35e0d0;
+  --ok: #5ddc7a;
+  --danger: #ff4d4d;
+  --rare: #4fa3ff;
+  --epic: #b45cff;
+  --legendary: #ffb020;
+  --common: #9aa7b8;
+  --cell: 46px;
+  --radius: 10px;
+  --sans: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  --mono: "Consolas", "SFMono-Regular", "JetBrains Mono", "Courier New", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* 背景：细网格 + 顶部光晕 */
+#app::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(1200px 520px at 50% -10%, rgba(255, 176, 32, 0.08), transparent 70%),
+    linear-gradient(to right, rgba(255, 255, 255, 0.022) 1px, transparent 1px) 0 0 / 40px 40px,
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.022) 1px, transparent 1px) 0 0 / 40px 40px;
+  pointer-events: none;
+}
+
+#game-canvas {
+  position: absolute;
+  inset: 0;
+  display: none;
+  background: #0a0e13;
+}
+
+#game-canvas.active {
+  display: block;
+  cursor: none;
+}
+
+#ui-root {
+  position: absolute;
+  inset: 0;
+}
+
+/* 指针锁定丢失时的恢复提示：居中偏下，不拦截点击（点击要能传到画布） */
+.lock-hint {
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  transform: translate(-50%, -50%);
+  padding: 10px 18px;
+  border-radius: 8px;
+  background: rgba(10, 14, 19, 0.82);
+  border: 1px solid rgba(255, 176, 32, 0.45);
+  color: #ffb020;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  pointer-events: none;
+  animation: lock-hint-pulse 1.6s ease-in-out infinite;
+}
+
+.lock-hint.hidden {
+  display: none;
+}
+
+@keyframes lock-hint-pulse {
+  0%, 100% { opacity: 0.65; }
+  50% { opacity: 1; }
+}
+
+/* 3D 战斗的 2D HUD 覆盖层：覆盖在游戏画布之上，但不拦截鼠标（保证指针锁定可用） */
+.hud-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+#ui-root.in-battle {
+  pointer-events: none;
+}
+
+#ui-root.in-battle .battle-panel {
+  pointer-events: auto;
+}
+
+/* ============================ 屏幕 ============================ */
+
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+}
+
+.screen.hidden {
+  display: none;
+}
+
+.screen.overlay {
+  background: rgba(5, 8, 12, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+/* ============================ 主菜单 ============================ */
+
+.menu {
+  width: min(680px, 100%);
+  text-align: center;
+  padding: 40px 32px 28px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(16, 22, 31, 0.94), rgba(10, 14, 20, 0.94));
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.logo {
+  font-size: 60px;
+  font-weight: 800;
+  letter-spacing: 12px;
+  color: var(--amber);
+  text-shadow: 0 0 34px rgba(255, 176, 32, 0.35);
+  line-height: 1.1;
+}
+
+.tagline {
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 5px;
+  color: var(--cyan);
+}
+
+.menu-sub {
+  margin-top: 16px;
+  color: var(--dim);
+  font-size: 14px;
+}
+
+.menu-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 26px 0 22px;
+}
+
+.stat {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(8, 11, 16, 0.6);
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat .k {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.stat .v {
+  font-family: var(--mono);
+  font-size: 15px;
+  color: var(--text);
+}
+
+.stat.big .v {
+  font-size: 20px;
+  color: var(--amber);
+}
+
+.menu-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.menu-foot {
+  margin-top: 18px;
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+}
+
+.link {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px;
+  text-decoration: underline dotted;
+}
+
+.link:hover {
+  color: var(--cyan);
+}
+
+.link.danger:hover {
+  color: var(--danger);
+}
+
+/* ============================ 按钮 ============================ */
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--line-2);
+  background: linear-gradient(180deg, rgba(30, 39, 51, 0.9), rgba(19, 25, 34, 0.9));
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 11px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.08s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--amber);
+  transform: translateY(-1px);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: linear-gradient(180deg, rgba(255, 176, 32, 0.92), rgba(198, 128, 12, 0.92));
+  border-color: rgba(255, 200, 120, 0.5);
+  color: #1a1205;
+}
+
+.btn.ghost {
+  background: transparent;
+  color: var(--dim);
+}
+
+.btn.danger {
+  border-color: rgba(255, 77, 77, 0.5);
+  color: #ffb3b3;
+  background: linear-gradient(180deg, rgba(70, 22, 22, 0.9), rgba(40, 14, 14, 0.9));
+}
+
+.btn.small {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.btn.tiny {
+  padding: 4px 9px;
+  font-size: 11px;
+  border-radius: 6px;
+}
+
+.btn.big {
+  padding: 14px 18px;
+  font-size: 16px;
+  width: 100%;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.icon-btn:hover {
+  color: var(--danger);
+}
+
+/* ============================ 面板 ============================ */
+
+.panel {
+  width: min(760px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+}
+
+.panel.wide {
+  width: min(1080px, 100%);
+}
+
+.panel.narrow {
+  width: min(420px, 100%);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 176, 32, 0.06), transparent);
+}
+
+.panel-head h2 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: 2px;
+}
+
+.head-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.coin {
+  font-family: var(--mono);
+  color: var(--amber);
+  font-size: 14px;
+}
+
+.panel-body {
+  padding: 18px;
+  overflow: auto;
+}
+
+.panel-foot {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
+  background: rgba(8, 11, 16, 0.5);
+}
+
+.hint {
+  color: var(--dim);
+  font-size: 12px;
+  margin: 8px 0 0;
+  line-height: 1.6;
+}
+
+.desc {
+  color: var(--dim);
+  font-size: 12px;
+  margin: 6px 0 10px;
+  line-height: 1.6;
+}
+
+.warn-text {
+  color: #ffb3b3;
+  font-size: 12px;
+  margin: 3px 0;
+}
+
+/* ============================ 战前配置 ============================ */
+
+.loadout-grid {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 18px;
+}
+
+.loadout-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.opt-block h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--dim);
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.opt-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.opt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: rgba(10, 14, 20, 0.7);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: var(--sans);
+}
+
+.opt:hover {
+  border-color: var(--amber);
+}
+
+.opt.active {
+  border-color: var(--amber);
+  background: rgba(255, 176, 32, 0.14);
+  color: #ffe1a8;
+}
+
+.opt.missing {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.opt-row.counter {
+  align-items: center;
+}
+
+.step {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--line-2);
+  background: rgba(10, 14, 20, 0.8);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.step:hover:not(:disabled) {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.step:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.counter-value {
+  font-family: var(--mono);
+  font-size: 13px;
+  min-width: 150px;
+  text-align: center;
+  color: var(--text);
+}
+
+.loadout-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.side-block {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(8, 11, 16, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.side-block h3 {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--amber);
+}
+
+.side-block.warn-block {
+  border-color: transparent;
+  background: transparent;
+  padding: 0;
+}
+
+.side-block.warn-block.active {
+  border-color: rgba(255, 77, 77, 0.35);
+  background: rgba(60, 16, 16, 0.35);
+  padding: 10px 12px;
+}
+
+.kv {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.kv .k {
+  color: var(--dim);
+}
+
+.kv .v {
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.weight-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.weight-bar .fill {
+  height: 100%;
+  background: var(--ok);
+  transition: width 0.2s ease;
+}
+
+.weight-bar .fill.over {
+  background: var(--danger);
+}
+
+.seed-input {
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--line-2);
+  background: rgba(6, 9, 13, 0.9);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.seed-input:focus {
+  outline: none;
+  border-color: var(--amber);
+}
+
+/* ============================ 网格背包 ============================ */
+
+.stash-body {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 18px;
+}
+
+.grid-wrap {
+  overflow: auto;
+  padding: 4px;
+}
+
+.grid {
+  --cell: 46px;
+  display: grid;
+  grid-template-columns: repeat(var(--cols), var(--cell));
+  grid-template-rows: repeat(var(--rows), var(--cell));
+  width: calc(var(--cols) * var(--cell));
+  height: calc(var(--rows) * var(--cell));
+  background-image:
+    linear-gradient(to right, var(--line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+  background-size: var(--cell) var(--cell);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background-color: rgba(8, 11, 16, 0.5);
+}
+
+.grid.small {
+  --cell: 42px;
+}
+
+.grid-item {
+  position: relative;
+  margin: 2px;
+  padding: 3px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(160deg, rgba(38, 48, 62, 0.95), rgba(20, 26, 35, 0.95));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.grid-item:hover {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 1px rgba(255, 176, 32, 0.35) inset;
+}
+
+.grid-item.selected {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 1px rgba(53, 224, 208, 0.45) inset;
+}
+
+.grid-item .gi-name {
+  font-size: 10px;
+  color: var(--text);
+  text-align: center;
+  line-height: 1.15;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grid-item .gi-qty {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--amber);
+}
+
+.grid-item.rar-common {
+  box-shadow: inset 0 0 0 1px rgba(154, 167, 184, 0.35);
+}
+.grid-item.rar-rare {
+  box-shadow: inset 0 0 0 1px rgba(79, 163, 255, 0.5);
+  background: linear-gradient(160deg, rgba(30, 52, 78, 0.95), rgba(18, 26, 38, 0.95));
+}
+.grid-item.rar-epic {
+  box-shadow: inset 0 0 0 1px rgba(180, 92, 255, 0.55);
+  background: linear-gradient(160deg, rgba(55, 34, 78, 0.95), rgba(24, 20, 38, 0.95));
+}
+.grid-item.rar-legendary {
+  box-shadow: inset 0 0 0 1px rgba(255, 176, 32, 0.7);
+  background: linear-gradient(160deg, rgba(78, 55, 18, 0.95), rgba(32, 24, 12, 0.95));
+}
+
+.icon {
+  display: block;
+  /* 关键：图标是纯装饰画布，绝不能吃掉落在它上面的点击/触摸。
+     缺失这一条时，物品格子里的图标会把「点选物品」整个拦下
+     （表现：背包/商店里怎么点都没反应，elementFromPoint 命中的是 canvas.icon）。 */
+  pointer-events: none;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* ============================ 列表行 ============================ */
+
+.shop-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.shop-col h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--amber);
+}
+
+.shop-list,
+.loot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 52vh;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(10, 14, 20, 0.65);
+}
+
+.item-row.selected {
+  border-color: rgba(255, 176, 32, 0.85);
+  background: rgba(255, 176, 32, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 176, 32, 0.4);
+}
+
+.item-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-name {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+  margin-top: 2px;
+}
+
+.item-value {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--amber);
+}
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+}
+
+/* ============================ 玩法说明 ============================ */
+
+.howto-body section {
+  margin-bottom: 18px;
+}
+
+.howto-body h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--amber);
+  letter-spacing: 1px;
+}
+
+.howto-body p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--text);
+}
+
+.howto-body p.danger {
+  color: #ffb3b3;
+}
+
+.howto-body ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.9;
+}
+
+.howto-body .keys {
+  list-style: none;
+  padding: 0;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 2px 6px;
+  margin-right: 4px;
+  border: 1px solid var(--line-2);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: rgba(20, 26, 35, 0.9);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--cyan);
+}
+
+/* ============================ 结算 ============================ */
+
+.result-head {
+  position: relative;
+  padding: 22px 22px 18px;
+  text-align: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.result-head.ok {
+  background: linear-gradient(180deg, rgba(93, 220, 122, 0.14), transparent);
+}
+
+.result-head.bad {
+  background: linear-gradient(180deg, rgba(255, 77, 77, 0.16), transparent);
+}
+
+.result-title {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 6px;
+}
+
+.result-head.ok .result-title {
+  color: var(--ok);
+}
+
+.result-head.bad .result-title {
+  color: var(--danger);
+}
+
+.result-sub {
+  margin-top: 6px;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+.result-grade {
+  position: absolute;
+  right: 24px;
+  top: 18px;
+  font-family: var(--mono);
+  font-size: 54px;
+  font-weight: 800;
+  color: var(--amber);
+  text-shadow: 0 0 26px rgba(255, 176, 32, 0.4);
+  line-height: 1;
+}
+
+.result-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.result-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  align-content: start;
+}
+
+.result-loot h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--amber);
+  letter-spacing: 1px;
+}
+
+/* ============================ 战斗内面板 ============================ */
+
+.battle-panel {
+  position: absolute;
+  right: 18px;
+  bottom: 186px;
+  width: 330px;
+  max-height: 46vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 14, 20, 0.96);
+  border: 1px solid rgba(255, 176, 32, 0.35);
+  border-radius: 10px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+}
+
+.battle-panel.hidden {
+  display: none;
+}
+
+.battle-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--amber);
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 176, 32, 0.08);
+}
+
+.battle-panel footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.battle-panel .loot-list,
+.battle-panel .grid {
+  margin: 10px 12px;
+  max-height: 30vh;
+  overflow: auto;
+}
+
+.battle-panel .grid {
+  --cell: 40px;
+}
+
+/* 背包页资产信息条（第三层：随身估值 / 负重 / 占用格数）。
+   这三项原先常驻战斗 HUD，把它们搬进弹窗后需要一个足够醒目的落点 ——
+   玩家打开背包的第一眼就该看到"我这趟值多少"。 */
+.bp-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  margin: 10px 12px 0;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.bp-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 7px 4px;
+  background: rgba(14, 19, 26, 0.96);
+}
+
+.bp-stat .k {
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: 0.04em;
+}
+
+.bp-stat .v {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  font-family: var(--mono);
+}
+
+.bp-stat.value .v {
+  color: var(--amber);
+  font-size: 15px;
+}
+
+.bp-stat.over .v {
+  color: var(--danger);
+}
+
+/* 触屏：背包是全屏弹窗，三列并排正好铺满 */
+body.touch-mode .bp-stat .v {
+  font-size: 14px;
+}
+
+/* ============================ Toast ============================ */
+
+.toasts {
+  position: absolute;
+  left: 50%;
+  bottom: 128px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.toast {
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: rgba(10, 14, 20, 0.94);
+  border: 1px solid var(--line-2);
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  animation: toast-in 0.18s ease-out;
+}
+
+.toast.ok {
+  border-color: rgba(93, 220, 122, 0.6);
+  color: #b9f5c6;
+}
+
+.toast.warn {
+  border-color: rgba(255, 176, 32, 0.6);
+  color: #ffdca3;
+}
+
+.toast.danger {
+  border-color: rgba(255, 77, 77, 0.6);
+  color: #ffb3b3;
+}
+
+.toast.out {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.28s ease, transform 0.28s ease;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================ 滚动条 ============================ */
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #26303e;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #35424f;
+}
+
+/* ============================ 窄屏适配 ============================ */
+
+@media (max-width: 900px) {
+  .loadout-grid,
+  .stash-body,
+  .shop-body,
+  .result-body {
+    grid-template-columns: 1fr;
+  }
+  .menu-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .logo {
+    font-size: 44px;
+    letter-spacing: 8px;
+  }
+}
+
+/* =====================================================================
+   触屏控制（仅手机端）
+
+   布局原则（玩家反馈后改版）：
+   - 所有按钮贴边，中心视野完全留给战斗；不再有常驻按钮扎堆。
+   - 三级尺寸：--tc-core > --tc-combat > --tc-minor。
+   - 分区摆放，靠 CSS 变量定位，**几何上不可能自相重叠**：
+       右下 = 开火(core) + 换弹/治疗(combat) + 上下文交互键
+       左下 = 移动摇杆；其上方一列次要钮（蹲/冲/速降/载具）
+       顶部 = 背包 / 暂停 / 灵敏（系统类，远离两个拇指作业区）
+   - 开火键不参与 flex 文档流，位置由 --tc-fire-size + --tc-gap 推导，
+     次要钮从它上方开始排 —— 修掉旧版「切枪按钮被开火键完全盖住」的 bug。
+   ===================================================================== */
+
+.touch-controls {
+  --tc-scale: 1;     /* 按钮大小可调倍率（0.8~1.3），由暂停面板滑块写入 */
+  --tc-core: calc(84px * var(--tc-scale));   /* 核心：移动摇杆 / 开火 */
+  --tc-combat: calc(60px * var(--tc-scale)); /* 刚需：换弹 / 治疗 / 上下文交互 */
+  --tc-minor: calc(46px * var(--tc-scale));  /* 次要：其余 */
+  --tc-gap: 8px;
+  --tc-edge: 10px;
+
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none; /* 只有摇杆与按钮本体接收触摸，中间区域穿透给画布 */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  font-family: var(--sans);
+}
+
+.touch-controls.hidden {
+  display: none;
+}
+
+/* --- 摇杆 --- */
+
+.tc-stick {
+  position: absolute;
+  pointer-events: none; /* 摇杆可触区由 window 级 touch 处理，视觉层不参与命中 */
+}
+
+.tc-stick-base {
+  position: fixed;
+  width: 118px;
+  height: 118px;
+  margin: 0;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid rgba(255, 176, 32, 0.32);
+  background: radial-gradient(circle, rgba(20, 28, 38, 0.4), rgba(10, 14, 20, 0.18));
+  opacity: 0.3;
+  transition: opacity 0.12s ease;
+}
+
+/* 手指落下（拖动中）才提亮，作为"这里正在被控"的反馈 */
+.tc-stick-base.tc-live {
+  opacity: 0.95;
+}
+
+.tc-stick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52px;
+  height: 52px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid rgba(255, 176, 32, 0.7);
+  background: radial-gradient(circle at 35% 30%, rgba(255, 200, 120, 0.45), rgba(255, 176, 32, 0.2));
+  box-shadow: 0 0 12px rgba(255, 176, 32, 0.24);
+}
+
+/* 左摇杆固定在左下角（手游惯例）。
+   手机端横屏时血条文字占 (0.02~0.33vw, 0.70~0.93vh)，
+   而 bottom:26% 的圆心正好落在 0.74vh → 压住血条。
+   因此手机端把圆心压到 0.62vh（血条下方、屏幕最底部一带）。 */
+body.touch-mode .tc-stick-left {
+  bottom: 10%;
+}
+
+/* 左摇杆固定在左下角（手游惯例）；右摇杆浮动，left/top 由触摸起点写入 */
+.tc-stick-left {
+  left: 16%;
+  bottom: 26%;
+  width: 0;
+  height: 0;
+}
+
+.tc-stick-right {
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+
+.tc-stick-right .tc-stick-base {
+  opacity: 0; /* 右摇杆平时完全隐形，只在按下时出现，不占视野 */
+}
+
+.tc-stick-right .tc-stick-base.tc-live {
+  opacity: 0.8;
+}
+
+/* --- 分区容器：只做定位，命中测试穿透 --- */
+
+.tc-zone {
+  position: absolute;
+  pointer-events: none;
+  display: flex;
+}
+
+/* 右下火力区：从右下角向内，纵向排列 */
+.tc-zone-fire {
+  right: var(--tc-edge);
+  bottom: var(--tc-edge);
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: var(--tc-gap);
+  /* 为脱离文档流的开火键预留高度。
+     必须 > --tc-core，且留足 gap：开火键是 position:absolute，不参与 flex 排布，
+     预留少了会被第一个按钮压上去（体检实测曾差 2px）。 */
+  padding-bottom: calc(var(--tc-core) + var(--tc-gap) * 2);
+  /* 再为顶部的背包/暂停区预留一行高度（--tc-minor + gap），
+     否则换弹/治疗会爬上去和它们互压。 */
+  padding-top: calc(var(--tc-minor) + var(--tc-gap));
+}
+
+/* 左下机动区：摇杆上方一列（摇杆占位靠 padding-bottom 让开） */
+.tc-zone-move {
+  left: var(--tc-edge);
+  bottom: var(--tc-edge);
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  gap: var(--tc-gap);
+  padding-bottom: calc(var(--tc-core) * 1.55);
+}
+
+/* 顶部系统区：贴屏幕上边缘居中偏右，避开刘海与状态栏常用区域 */
+.tc-zone-top {
+  right: var(--tc-edge);
+  top: var(--tc-edge);
+  flex-direction: row;
+  gap: var(--tc-gap);
+}
+
+/* --- 按钮本体 --- */
+
+.tc-btn {
+  pointer-events: auto;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  padding: 2px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 176, 32, 0.4);
+  background: linear-gradient(180deg, rgba(30, 39, 51, 0.7), rgba(14, 19, 27, 0.7));
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.08s ease, background 0.12s ease;
+}
+
+.tc-label {
+  pointer-events: none; /* 文案不参与命中，保证 elementFromPoint 始终返回按钮本身 */
+}
+
+/* 三级尺寸：core 最大最醒目，combat 次之，minor 收敛到触控下限附近 */
+.tc-btn-core {
+  width: var(--tc-core);
+  height: var(--tc-core);
+  border-radius: 50%;
+  font-size: 15px;
+}
+
+.tc-btn-combat {
+  width: var(--tc-combat);
+  height: var(--tc-combat);
+  border-radius: 14px;
+  font-size: 13px;
+}
+
+.tc-btn-minor {
+  width: var(--tc-minor);
+  height: var(--tc-minor);
+  border-radius: 11px;
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+/* 开火：最大最醒目，钉在右下角；脱离文档流以免推挤其他按钮 */
+.tc-fire {
+  position: absolute;
+  right: var(--tc-edge);
+  bottom: var(--tc-edge);
+  border: 2px solid rgba(255, 77, 77, 0.6);
+  background: radial-gradient(circle at 35% 30%, rgba(255, 120, 120, 0.34), rgba(120, 22, 22, 0.5));
+  box-shadow: 0 0 16px rgba(255, 77, 77, 0.22);
+}
+
+.tc-btn.tc-on {
+  border-color: var(--amber);
+  background: rgba(255, 176, 32, 0.28);
+  color: #ffe1a8;
+}
+
+.tc-btn.tc-pressed {
+  transform: scale(0.95);
+  border-color: var(--danger);
+  background: rgba(255, 77, 77, 0.34);
+  color: #ffd9d9;
+}
+
+/* 瞬态按钮（换弹 / 治疗 / 交互…）点一下给个短促反馈 */
+.tc-btn.tc-tapped {
+  transform: scale(0.93);
+  border-color: var(--amber);
+  background: rgba(255, 176, 32, 0.3);
+}
+
+/* --- 上下文交互键 --- */
+
+/* 平时隐藏（靠近可交互目标时由 main.js 调 setContext 弹出） */
+.tc-btn.tc-ctx.hidden {
+  display: none;
+}
+
+.tc-btn.tc-ctx {
+  border-color: rgba(90, 220, 150, 0.6);
+  background: linear-gradient(180deg, rgba(26, 60, 44, 0.82), rgba(12, 30, 22, 0.82));
+  color: #b8f5d0;
+  /* 复用 combat 尺寸档，但按文案长短可横向撑开 */
+  width: auto;
+  min-width: var(--tc-combat);
+  max-width: 132px;
+  padding: 0 10px;
+}
+
+.tc-btn.tc-ctx.tc-disabled {
+  opacity: 0.45;
+}
+
+/* --- 布局编辑态（暂停面板“编辑布局”进入）--- */
+/* 编辑时仅允许拖拽按钮，屏蔽游戏输入：.tc-editing 让按钮可触摸拖拽，
+   且 onTouchStart 已在 JS 端被 editing 标志短路，不会触发移动/开火。 */
+.tc-editing .tc-btn {
+  outline: 2px dashed var(--amber);
+  outline-offset: 2px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.tc-btn.tc-dragging {
+  z-index: 50;
+  outline-color: var(--danger);
+  cursor: grabbing;
+  box-shadow: 0 0 16px rgba(255, 77, 77, 0.5);
+}
+
+/* 完成/重置工具条：编辑态浮在最上层居中 */
+.tc-edit-bar {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 60;
+  pointer-events: auto;
+}
+
+.tc-edit-bar.hidden {
+  display: none;
+}
+
+/* --- 竖屏旋转提示 --- */
+
+.rotate-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 8, 12, 0.88);
+  backdrop-filter: blur(3px);
+  padding: 24px;
+}
+
+.rotate-overlay.hidden {
+  display: none;
+}
+
+.rotate-card {
+  width: min(420px, 100%);
+  text-align: center;
+  padding: 28px 24px;
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+}
+
+.rotate-icon {
+  font-size: 52px;
+  line-height: 1;
+  color: var(--amber);
+  animation: rotate-nudge 1.8s ease-in-out infinite;
+}
+
+@keyframes rotate-nudge {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(90deg); }
+}
+
+.rotate-title {
+  margin-top: 12px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: var(--amber);
+}
+
+.rotate-text {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--dim);
+}
+
+.rotate-dismiss {
+  margin-top: 18px;
+  min-height: 44px;
+}
+
+/* 手机端：禁掉页面滚动 / 双击缩放 / 长按选中，避免和游戏手势打架 */
+body.touch-mode {
+  touch-action: none;
+  overscroll-behavior: none;
+}
+/* =======================================================================
+   手机端第三轮：右半屏去轮盘 / 面板可点 / 格子放大 / 滑动提示
+   ===================================================================== */
+
+/* 左侧机动按钮：横排，贴在**摇杆右侧同一行**。
+   旧版竖排会一路往上堆到任务面板上；改成竖排又想放在摇杆正上方，
+   但那样就压到武器槽（快捷栏）。最终布局（配合 ui.js hudLayout 的触屏分支）：
+
+     y 顶  ┌ 摇杆 118px ┐  [蹲][冲][速降][载具][切枪] 5×46 横排   ← 同一行 y≈H-92
+     y 底  └            ┘  武器槽 2×88（在按钮行上方 y≈H-112）
+
+   血条组已由 hudLayout 上移到左上（底缘 y=254），所以左下角整块空给拇指。 */
+body.touch-mode .tc-zone-move {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 6px;
+  padding-bottom: 0;
+  left: auto;
+  right: auto;
+  /* 紧贴摇杆右缘：摇杆圆心 11.5vw、半径 59px，右缘 ≈ 11.5vw + 59 */
+  left: calc(11.5vw + 66px);
+  bottom: calc(10px + 8px);
+}
+
+/* 摇杆：贴左下角（圆心），血条上移后此处已无 HUD。
+   base 直径 118px，圆心 (11.5vw, 10px+59px)，顶缘 ≈ H-128。 */
+body.touch-mode .tc-stick-left {
+  left: 11.5vw;
+  bottom: 69px;
+}
+
+/* 顶部系统区（背包/暂停）：放**移动按钮行的右侧**，与按钮行同一水平带。
+   试过的位置与为什么不选：
+     · 顶部正中（计时与武器卡之间的空档）—— 窄屏实测（844/740）空档只剩
+       几十 px，两个 46px 按钮直接压进武器卡；该空档宽度随 W 变化，不可依赖。
+     · 左上角 —— 任务面板/合约/血条从上到下排到 y=246，占满。
+     · 右下 —— 开火键区（x ≥ W-104）上方全是换弹/治疗/交互键。
+   最终选 11.5vw + 328px：它跟着摇杆圆心一起平移，因此在任何分辨率下
+   都落在"按钮行右端再往右 8px"这条恒定空闲的带子上。 */
+body.touch-mode .tc-zone-top {
+  right: auto;
+  top: auto;
+  bottom: 18px;
+  left: calc(11.5vw + 328px);
+}
+
+/* 右侧「滑动转视角」提示：首次用掉右半屏后加 .tc-hint-off 永久隐藏 */
+.tc-look-hint {
+  position: absolute;
+  right: 10px;
+  top: 46%;
+  transform: translateY(-50%);
+  width: 76px;
+  padding: 10px 4px;
+  border: 1px dashed rgba(53, 224, 208, 0.4);
+  border-radius: 14px;
+  background: rgba(10, 16, 22, 0.4);
+  color: var(--cyan);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+  pointer-events: none; /* 纯提示，绝不吃触摸 */
+  opacity: 0.72;
+  transition: opacity 0.25s;
+}
+
+.tc-look-hint.tc-hint-off {
+  opacity: 0;
+}
+
+/* 右侧摇杆容器彻底不可见（保留节点仅为逻辑统一） */
+.tc-stick.tc-invisible {
+  display: none;
+}
+
+/* --- 暂停面板里的「仅手机端」行 --- */
+.touch-only {
+  display: none;
+}
+
+body.touch-mode .touch-only {
+  display: flex;
+}
+
+body.touch-mode .hint.touch-only {
+  display: block;
+}
+
+/* =======================================================================
+   手机端战利品 / 背包面板：能点、能滚、格子够大
+   （玩家反馈"鼠标点不出来"——40px 格子 + 固定 330px 宽在 390px 屏上既溢出又难点）
+   ===================================================================== */
+
+body.touch-mode .battle-panel {
+  right: 8px;
+  left: 8px;
+  bottom: 168px;
+  width: auto;
+  max-height: 52vh;
+  /* 面板整体接管触摸：内部列表可滚动、格子可点 */
+  touch-action: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+body.touch-mode .battle-panel .loot-list,
+body.touch-mode .battle-panel .grid {
+  max-height: 38vh;
+  overflow-y: auto;
+  /* 关键：允许面板内纵向滑动，否则 touch-action:none 会让列表划不动 */
+  touch-action: pan-y;
+}
+
+body.touch-mode .battle-panel .grid {
+  --cell: 62px; /* 40 → 62：物资名能读、格子能点 */
+}
+
+body.touch-mode .grid-item {
+  margin: 3px;
+  padding: 4px;
+}
+
+body.touch-mode .grid-item .gi-name {
+  font-size: 11px;
+  white-space: normal; /* 允许换行，别再被 ellipsis 截成看不清 */
+  line-height: 1.2;
+  word-break: break-all;
+}
+
+body.touch-mode .item-row {
+  /* 战利品行：整行可点，按钮加大到 ≥44px */
+  min-height: 52px;
+}
+
+body.touch-mode .item-row .btn.tiny {
+  min-width: 64px;
+  min-height: 44px;
+  font-size: 13px;
+}
+
+body.touch-mode .battle-panel .btn,
+body.touch-mode .battle-panel .icon-btn {
+  min-height: 44px;
+}
+
+body.touch-mode .battle-panel .icon-btn {
+  min-width: 44px;
+}
+
+/* =======================================================================
+   手机端暂停/结算面板：滑块要能拖（range 在 touch-action:none 下会失效）
+   ===================================================================== */
+
+body.touch-mode .setting-row input[type='range'] {
+  /* range 需要显式的 pan-x 权限才能用手指拖动 */
+  touch-action: pan-x;
+  min-height: 44px;
+  flex: 1;
+}
+
+body.touch-mode .setting-row {
+  min-height: 48px;
+}
+
+body.touch-mode .setting-row label {
+  min-width: 92px;
+  font-size: 13px;
+}
+
+body.touch-mode .setting-val {
+  min-width: 56px;
+  text-align: right;
+  font-size: 13px;
+}
+
+/* 面板打开时，摇杆层必须让出触摸：.touch-controls 已由 JS 加 hidden，
+   这里再兜一层 —— 面板上的滚动/点击绝不能被 .touch-controls 截走 */
+body.touch-mode .screen:not(.hidden),
+body.touch-mode .battle-panel:not(.hidden) {
+  touch-action: auto;
+}
+
+

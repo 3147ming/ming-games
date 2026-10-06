@@ -1,0 +1,743 @@
+/* WILD 荒野 样式
+   美术口径：极简剪影 + 单色高对比 + 程序化动效，色板沿用 ONE-CARD 的那 12 色（见 :root）。
+   布局口径：竖屏 9:16 为基准画布；宽屏只把设备框居中，不重排结构。
+   —— 与 ONE-CARD 的差异只在"没有卡牌 UI"，实时关那一块（.arena-*）是从那边搬过来的。 */
+
+:root {
+  --ink: #0d0c0b;
+  --ink2: #161412;
+  --ink3: #221f1c;
+  --line: #3a3531;
+  --paper: #e8e3da;
+  --paper-dim: #9a938a;
+  --blade: #d1544a;
+  --frost: #5b93d6;
+  --rot: #7ba64a;
+  --flux: #a89ae6;
+  --gold: #d9a94a;
+  --danger: #b3402f;
+
+  --radius: 10px;
+  --pad: 12px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font);
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#frame {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 0%, #1a1714 0%, var(--ink) 62%);
+}
+
+#device {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink);
+  overflow: hidden;
+}
+
+/* #stage 必须是定位上下文：实时关的 .arena-root 用 absolute inset:0 覆盖整屏 */
+#stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.screen { display: none; flex: 1 1 auto; min-height: 0; }
+.screen.active { display: flex; flex-direction: column; }
+/* 实时关这一屏本身不需要高度 —— 真正可见的是 arena.js 塞进来的绝对定位覆盖层 */
+#arena.active { display: block; flex: 0 0 auto; }
+
+/* ───────── 标题页 ───────── */
+/* 阶段 4-6：标题页可滚动。手机屏高不够时（选角色 + 纪录 + 解锁列表叠一起会超屏），
+   #screen-title 自己成为滚动容器，超出部分上下滚，别把底部内容截断到够不着。
+   ★ 用 display:block + overflow-y:auto 覆盖 .screen.active 的 flex 居中——
+   block 容器 scrollTop 永远从 0 起，不会出现「内容顶部被切、往上滚不动」的坑。 */
+#screen-title.screen.active {
+  display: block;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.title-wrap {
+  margin: 0 auto;
+  min-height: 100%;            /* 内容矮也撑满一屏，配合下方 flex 居中 */
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;     /* 内容矮时垂直居中；内容高时 min-height 撑开、可滚动 */
+  text-align: center;
+  padding: 24px 16px;
+}
+.game-title {
+  margin: 0;
+  font-size: 46px;
+  letter-spacing: .30em;
+  font-weight: 600;
+  text-indent: .30em; /* 补掉末字后的字距，让标题视觉居中 */
+}
+.game-sub {
+  margin: 8px 0 0;
+  font-size: 10px;
+  letter-spacing: .38em;
+  color: var(--paper-dim);
+}
+.game-line {
+  margin: 26px 0 0;
+  font-size: 13px;
+  line-height: 2;
+  color: var(--paper-dim);
+}
+.title-actions {
+  margin-top: 34px; display: flex; justify-content: center;
+  gap: 12px; flex-wrap: wrap; padding: 0 16px;
+}
+/* 游戏总入口 · 大厅按钮（与 .big 并排的副按钮，金色区分主次；触控热区 ≥44px） */
+.hub-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 200px; min-height: 48px; padding: 14px 26px;
+  font-size: 15px; letter-spacing: .10em;
+  border-radius: var(--radius); border: 1px solid var(--gold);
+  color: var(--gold); background: #241d12; text-decoration: none;
+  transition: background .15s ease-out, border-color .15s ease-out;
+}
+.hub-btn:hover { background: #2f2617; border-color: var(--gold); }
+.title-meta {
+  margin: 18px 0 0;
+  font-size: 11px;
+  color: var(--paper-dim);
+  line-height: 1.9;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--ink3);
+  color: var(--paper);
+  padding: 10px 18px;
+  font-size: 13px;
+  transition: background .15s ease-out, border-color .15s ease-out;
+}
+button:hover { background: var(--ink2); border-color: var(--paper-dim); }
+button.big {
+  min-width: 200px;
+  padding: 14px 26px;
+  font-size: 15px;
+  letter-spacing: .10em;
+  border-color: var(--flux);
+  color: var(--flux);
+  background: #1b1726;
+}
+button.big:hover { background: #251f33; }
+
+/* ───────── 结算页 ───────── */
+.over-wrap {
+  margin: auto;
+  text-align: center;
+  padding: 0 26px;
+  width: 100%;
+}
+.over-wrap h2 {
+  margin: 0;
+  font-size: 24px;
+  letter-spacing: .16em;
+  font-weight: 600;
+}
+.over-sub {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.9;
+  color: var(--paper-dim);
+}
+.res-stats { margin: 30px 0 34px; display: flex; flex-direction: column; gap: 12px; }
+.rs-row {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+.rs-cell {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ink2);
+}
+.rs-k { font-size: 10px; letter-spacing: .14em; color: var(--paper-dim); }
+.rs-v {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  color: var(--paper);
+  letter-spacing: .04em;
+}
+.rs-main .rs-v { font-size: 34px; color: var(--flux); }
+.rs-v.sm { font-size: 17px; color: var(--paper-dim); }
+
+/* ───────── 实时关（搬自 ONE-CARD 的 .arena-* 段） ───────── */
+/* 全屏覆盖层：竖屏暗场，独占 #stage 顶层 */
+.arena-root {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: var(--ink);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+}
+.arena-canvas { display: block; width: 100%; height: 100%; }
+/* 阶段 3：音效静音开关（右上角，覆盖在画面之上） */
+.arena-mute {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 56;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: rgba(13,12,11,.55);
+  color: var(--paper);
+  font-family: var(--font);
+  font-size: 14px;
+  letter-spacing: .04em;
+  cursor: pointer;
+  backdrop-filter: blur(2px);
+}
+.arena-mute.muted { color: var(--paper-dim); border-color: #3a3531; opacity: .7; }
+.arena-hint {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  font-size: 11px;
+  letter-spacing: .04em;
+  color: var(--paper-dim);
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0,0,0,.6);
+}
+
+/* 阶段 3：持有物图标栏（武器/技能/被动，被动带 ×n） */
+.arena-inventory {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 76px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  justify-content: center;
+  padding: 0 12px;
+  z-index: 54;
+  pointer-events: none;
+}
+.inv-chip {
+  font-size: 10px;
+  letter-spacing: .02em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: rgba(13,12,11,.55);
+  color: var(--paper-dim);
+  white-space: nowrap;
+}
+.inv-w { color: var(--flux); }
+.inv-s { color: var(--frost); }
+.inv-p { color: var(--gold); }
+
+/* 升级三选一弹窗（暂停游戏） */
+.arena-levelup {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(13,12,11,.9);
+  /* 刻意不用 backdrop-filter: blur()：全屏模糊要每帧对底下的画布做一次降采样+卷积，
+     实测弹窗开启时会掉帧（弱 GPU/软渲染更差）。把底色加深到 .9 就足够挡住背景。 */
+  z-index: 60;
+}
+.arena-levelup[hidden] { display: none; }
+.alu-title { font-size: 18px; letter-spacing: .12em; color: var(--flux); }
+.alu-choices { display: flex; flex-direction: column; gap: 12px; width: min(82%, 320px); }
+.alu-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 16px;
+  text-align: left;
+  border-color: var(--flux);
+  background: #1b1726;
+}
+.alu-choice:hover { background: #251f33; }
+
+/* 阶段 6-4：魂火商栈（局内商店，暂停游戏）—— 布局与三选一一致，只是货物带价格。 */
+.arena-shop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgba(13,12,11,.9);
+  z-index: 60;
+}
+.arena-shop[hidden] { display: none; }
+.shop-title { font-size: 18px; letter-spacing: .14em; color: var(--gold); }
+.shop-balance { font-size: 12px; letter-spacing: .1em; color: var(--flux); }
+.shop-choices { display: flex; flex-direction: column; gap: 12px; width: min(82%, 320px); }
+.shop-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 16px;
+  text-align: left;
+  border-color: var(--gold);
+  background: #1b1726;
+}
+.shop-choice:hover { background: #251f33; }
+.shop-choice.cant { opacity: .45; }
+.shop-name { font-size: 15px; color: var(--paper); }
+.shop-desc { font-size: 12px; color: var(--ink, #8d8677); }
+.shop-cost { font-size: 11px; letter-spacing: .08em; color: var(--flux); }
+.shop-skip {
+  padding: 9px 20px;
+  font-size: 13px;
+  letter-spacing: .1em;
+  color: var(--ink, #8d8677);
+  background: transparent;
+  border-color: rgba(232,227,218,.18);
+}
+.shop-skip:hover { background: rgba(232,227,218,.06); }
+/* 阶段 2：三选一里混了武器/技能/被动三类，标签是唯一的"这是什么"的读数 */
+.alu-tag {
+  align-self: flex-start;
+  font-size: 10px;
+  letter-spacing: .14em;
+  padding: 1px 7px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: var(--paper-dim);
+  opacity: .8;
+}
+.alu-name { font-size: 15px; color: var(--flux); letter-spacing: .04em; }
+.alu-desc { font-size: 11px; color: var(--paper-dim); }
+
+/* 主动技能槽（阶段 3：空格/Q/E 三槽，各自独立释放一个技能） */
+.arena-skillbar {
+  position: absolute;
+  right: 14px;
+  bottom: 16px;
+  display: flex;
+  gap: 8px;
+  z-index: 55;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.skill-slot {
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
+  border: 2px solid var(--flux);
+  background: #1b1726;
+  color: var(--flux);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1.1;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .15s ease-out, border-color .15s ease-out, opacity .15s ease-out;
+}
+.skill-slot b {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--paper-dim);
+  opacity: .85;
+}
+.skill-slot span {
+  font-size: 17px;
+  letter-spacing: .04em;
+  color: var(--flux);
+}
+.skill-slot.ready { background: #251f33; box-shadow: 0 0 10px rgba(168,154,230,.35); }
+.skill-slot.cd { border-color: #4a4458; color: #6b6478; background: #16131e; opacity: .7; }
+.skill-slot.cd span { color: #6b6478; }
+.skill-slot.locked { border-color: #3a3531; background: #161412; opacity: .55; }
+.skill-slot.locked b { color: #5a554e; }
+.skill-slot.locked span { color: #5a554e; }
+
+/* ── 标题页元进度面板（解锁 / 启用）── */
+.meta-panel {
+  width: min(92%, 360px);
+  margin: 18px auto 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+.meta-head {
+  font-size: 13px;
+  color: var(--paper-dim);
+  letter-spacing: .03em;
+  padding: 0 2px;
+}
+.meta-head b { color: var(--gold); }
+.meta-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ink2);
+}
+.meta-row.owned { border-color: #4a4458; }
+.meta-row.on { box-shadow: 0 0 8px rgba(168,154,230,.22); }
+.meta-info { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.meta-info b { font-size: 14px; color: var(--paper); }
+.meta-info span { font-size: 12px; color: var(--paper-dim); }
+.meta-buy, .meta-toggle {
+  flex: none;
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 7px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--gold);
+  background: transparent;
+  color: var(--gold);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.meta-buy:disabled { border-color: var(--line); color: #5a554e; cursor: default; opacity: .7; }
+.meta-toggle.on { border-color: var(--flux); color: var(--flux); }
+.meta-toggle.off { border-color: var(--line); color: var(--paper-dim); }
+.meta-empty { font-size: 12px; color: var(--paper-dim); text-align: center; padding: 8px; }
+
+/* 阶段 5 · 首页重构：成长面板进度条（距转生） */
+.g-bar {
+  width: 100%; height: 7px; border-radius: 5px;
+  background: rgba(255,255,255,.06); border: 1px solid var(--line);
+  overflow: hidden; margin: 2px 0 4px;
+}
+.g-bar-fill {
+  height: 100%; border-radius: 5px;
+  background: linear-gradient(90deg, var(--flux), var(--gold));
+  transition: width .25s ease;
+}
+.g-group { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.g-group-h {
+  font-size: 11px; letter-spacing: .12em; color: var(--paper-dim);
+  margin-top: 6px; padding-left: 2px;
+}
+.g-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 11px; border: 1px solid var(--line);
+  border-radius: var(--radius); background: var(--ink2);
+}
+.g-info { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.g-info b { font-size: 14px; color: var(--paper); }
+.g-info span { font-size: 11px; color: var(--paper-dim); }
+.g-tag {
+  font-size: 9px; letter-spacing: .1em; color: var(--flux);
+  border: 1px solid rgba(168,154,230,.3); border-radius: 8px; padding: 0 6px; margin-left: 4px;
+}
+.g-buy {
+  flex: none; font-family: var(--font); font-size: 12px; padding: 7px 11px;
+  border-radius: 8px; border: 1px solid var(--gold); background: transparent;
+  color: var(--gold); cursor: pointer; white-space: nowrap;
+}
+.g-buy:disabled { border-color: var(--line); color: #5a554e; cursor: default; opacity: .7; }
+.g-rebirth {
+  margin-top: 8px; width: 100%; font-family: var(--font); font-size: 13px; padding: 10px;
+  border-radius: 10px; border: 1px solid var(--flux); background: rgba(168,154,230,.12);
+  color: var(--flux); cursor: pointer; letter-spacing: .04em;
+}
+.g-rebirth-lock {
+  margin-top: 8px; font-size: 11px; line-height: 1.5; color: var(--paper-dim);
+  border: 1px dashed var(--line); border-radius: 10px; padding: 8px 10px; text-align: center;
+}
+/* 阶段 5 · 首页底部的「更多游戏」入口（指向游戏大厅） */
+.more-games {
+  display: block; margin: 16px auto 4px; width: fit-content;
+  font-size: 11px; letter-spacing: .06em; color: var(--paper-dim);
+  text-decoration: none; border-bottom: 1px solid transparent;
+}
+.more-games:hover { color: var(--gold); border-bottom-color: var(--gold); }
+
+/* ★ 广告位预留（阶段 5.3 体检）：高度由 min-height 锁死，广告异步插入时不会把
+   下方内容顶走（布局跳动 / CLS）。空着时完全不可见、不占位感；将来挂广告只需
+   往 #ad-slot 里塞节点，页面高度不变。广告被拦截/加载失败同理。 */
+.ad-slot {
+  min-height: 60px;
+  margin: 10px auto 0;
+  width: 100%;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+/* 窄屏（标题页本身可滚动）适当压一点，避免白占一屏 */
+@media (max-height: 700px) { .ad-slot { min-height: 50px; } }
+
+/* 结算页灵魂发放 */
+.over-souls {
+  margin: 10px 0 2px;
+  font-size: 14px;
+  color: var(--gold);
+  letter-spacing: .03em;
+}
+
+/* ── 阶段 4-3 目标感 ── */
+/* 标题页左上角：玩家名 + 称号 + 「本地存档」标注 */
+.acct-badge {
+  position: absolute; top: 14px; left: 16px;
+  display: flex; flex-direction: column; gap: 2px;
+  pointer-events: none;
+}
+.acct-name { font-size: 14px; letter-spacing: .06em; color: var(--paper); }
+.acct-title { font-size: 11px; letter-spacing: .12em; color: var(--gold); }
+.acct-local { font-size: 9px; letter-spacing: .1em; color: #5a554e; margin-top: 2px; }
+
+/* 标题页三条纪录（大字） */
+.best-panel {
+  margin-top: 18px;
+  display: flex; align-items: flex-end; justify-content: center; gap: 18px;
+  width: 100%;
+}
+.best-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.best-k { font-size: 10px; letter-spacing: .14em; color: var(--paper-dim); }
+.best-v { font-size: 26px; font-weight: 600; color: var(--flux); line-height: 1; }
+.best-foot { display: none; }
+
+/* 阶段 7：每日任务 / 成就面板（标题页局外进度可视） */
+.prog-panel {
+  margin-top: 14px;
+  width: 100%;
+  max-width: 460px;
+  background: rgba(20,18,15,.5);
+  border: 1px solid rgba(214,171,88,.16);
+  border-radius: 12px;
+  padding: 10px 12px;
+  box-sizing: border-box;
+}
+.prog-head {
+  font-size: 12px; letter-spacing: .14em; color: var(--gold);
+  margin-bottom: 8px; font-weight: 600;
+}
+.prog-cell {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name rew" "desc rew";
+  align-items: center;
+  gap: 1px 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  margin-bottom: 5px;
+  background: rgba(255,255,255,.03);
+}
+.prog-cell:last-child { margin-bottom: 0; }
+.prog-cell .pc-name { grid-area: name; font-size: 13px; font-weight: 600; color: var(--paper); }
+.prog-cell .pc-desc { grid-area: desc; font-size: 11px; color: var(--paper-dim); letter-spacing: .02em; }
+.prog-cell .pc-rew { grid-area: rew; font-size: 11px; color: var(--paper-dim); white-space: nowrap; text-align: right; }
+.prog-cell.ready { background: rgba(214,171,88,.14); }
+.prog-cell.ready .pc-rew { color: var(--gold); }
+.prog-cell.done { opacity: .62; }
+.prog-cell.done .pc-name { color: var(--flux); }
+
+/* 结算页评级大字 */
+.res-grade {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  margin: 6px 0 2px;
+}
+.res-grade[hidden] { display: none; }
+.res-grade b {
+  font-size: 64px; line-height: 1; letter-spacing: .04em;
+  color: var(--gold);
+  text-shadow: 0 0 24px rgba(214,171,88,.35);
+}
+.res-grade[data-g="C"] b { color: var(--paper-dim); text-shadow: none; }
+.res-grade[data-g="B"] b { color: #8d8378; text-shadow: none; }
+.res-grade[data-g="A"] b { color: #e8d46a; }
+.res-grade span { font-size: 12px; color: var(--paper-dim); letter-spacing: .06em; }
+.res-record {
+  margin: 6px 0 0; font-size: 15px; letter-spacing: .1em;
+  color: var(--gold);
+  animation: rec-pop .3s ease-out;
+}
+.res-record[hidden] { display: none; }
+@keyframes rec-pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.over-next { margin: 4px 0 0; font-size: 12px; color: var(--paper-dim); letter-spacing: .04em; }
+
+/* 标题页元进度：下一个待解锁 + 已解锁列表 */
+.meta-next {
+  font-size: 12px; color: var(--paper-dim); text-align: center;
+  padding: 6px 8px; border-bottom: 1px solid var(--line);
+}
+.meta-next b { color: var(--paper); }
+.meta-ready { color: var(--flux); }
+.meta-owned {
+  font-size: 11px; color: #5a554e; text-align: center; padding: 6px 8px 0;
+  line-height: 1.5;
+}
+
+/* 桌面端：设备框加边线，画面不被拉宽变形 */
+@media (min-width: 520px) {
+  #device {
+    height: min(92vh, 900px);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+  }
+}
+
+/* ── 阶段 4-5：标题页玩家名（可编辑）+ 英雄选择 ── */
+/* 徽章整体不拦截点击，但名字输入框要能点进去编辑 */
+.acct-name {
+  font-size: 14px; letter-spacing: .06em; color: var(--paper);
+  background: transparent; border: none; outline: none;
+  font-family: inherit; padding: 0; margin: 0; width: 9em; max-width: 100%;
+  pointer-events: auto; cursor: text;
+}
+.acct-name::placeholder { color: #5a554e; }
+.acct-name:focus { color: var(--flux); }
+
+.hero-select {
+  margin-top: 20px; width: 100%;
+  display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+}
+.hero-card {
+  flex: 1 1 30%; min-width: 92px; max-width: 130px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--line);
+  border-radius: 12px; padding: 12px 10px;
+  display: flex; flex-direction: column; gap: 6px; align-items: center;
+  text-align: center; transition: border-color .15s, transform .15s;
+}
+.hero-card.tag-重装 { border-left: 3px solid #b3402f; }
+.hero-card.tag-敏捷 { border-left: 3px solid #5b93d6; }
+.hero-card.tag-均衡 { border-left: 3px solid var(--flux); }
+.hero-card.sel { border-color: var(--gold); background: rgba(214,171,88,.08); transform: translateY(-2px); }
+.hero-card.locked { opacity: .62; }
+
+/* 阶段 6-2：皮肤选择（镜像英雄卡，但更窄、一排四个） */
+.skin-select {
+  margin-top: 14px; width: 100%;
+  display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;
+}
+.skin-card {
+  flex: 1 1 22%; min-width: 72px; max-width: 104px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 8px;
+  display: flex; flex-direction: column; gap: 5px; align-items: center;
+  text-align: center; transition: border-color .15s, transform .15s;
+}
+.skin-card.sel { border-color: var(--gold); background: rgba(214,171,88,.08); transform: translateY(-2px); }
+.skin-swatch {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.25);
+  box-shadow: 0 0 8px rgba(0,0,0,.4) inset;
+}
+.skin-swatch-default {
+  background:
+    conic-gradient(from 0deg, #d8d2c8, #8c857a, #d8d2c8, #8c857a, #d8d2c8);
+}
+.skin-label { font-size: 13px; color: var(--paper); letter-spacing: .04em; }
+.skin-desc { font-size: 9px; color: #8a847a; line-height: 1.3; margin: 0; }
+.skin-state { font-size: 11px; color: var(--gold); }
+.skin-pick {
+  font-size: 12px; padding: 4px 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--paper);
+  cursor: pointer;
+}
+.skin-pick:hover { border-color: var(--gold); }
+
+/* 阶段 6-3：装备选择区（3 槽各一行，按钮像小药丸） */
+.loadout-select {
+  margin-top: 14px; width: 100%;
+  display: flex; flex-direction: column; gap: 8px; align-items: center;
+}
+.lo-row {
+  display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap;
+  width: 100%;
+}
+.lo-slot-name {
+  font-size: 12px; color: #8a847a; letter-spacing: .1em; min-width: 28px; text-align: right;
+}
+.lo-pick {
+  font-size: 11px; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--paper);
+  cursor: pointer; white-space: nowrap;
+}
+.lo-pick.sel { border-color: var(--gold); background: rgba(214,171,88,.10); color: var(--gold); }
+.lo-pick:hover { border-color: var(--gold); }
+.hero-label { font-size: 15px; color: var(--paper); letter-spacing: .04em; }
+.hero-tag {
+  font-size: 9px; letter-spacing: .14em; color: #5a554e;
+  border: 1px solid var(--line); border-radius: 8px; padding: 1px 7px;
+}
+.hero-desc { font-size: 10px; line-height: 1.45; color: var(--paper-dim); margin: 0; }
+.hero-stat { font-size: 10px; color: #8d8378; letter-spacing: .02em; margin: 0; }
+/* 阶段 5 · 首页重构：职业卡机制标签（剑意 / 磐石 / 猎风） */
+.hero-mech {
+  font-size: 10px; letter-spacing: .08em; color: var(--flux);
+  background: rgba(168,154,230,.10); border: 1px solid rgba(168,154,230,.28);
+  border-radius: 8px; padding: 1px 8px;
+}
+.hero-state { font-size: 11px; color: var(--gold); letter-spacing: .08em; }
+.hero-pick, .hero-buy {
+  margin-top: 2px; font-size: 11px; letter-spacing: .06em;
+  background: var(--flux); color: #0d0c0b; border: none; border-radius: 8px;
+  padding: 5px 12px; cursor: pointer;
+}
+.hero-buy { background: rgba(255,255,255,.1); color: var(--paper); }
+.hero-buy:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ── 阶段 4-5：结算页账号档案 ── */
+.res-account {
+  margin: 12px auto 0; width: 100%; max-width: 320px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.ra-head { font-size: 13px; color: var(--paper); letter-spacing: .04em; }
+.ra-head b { color: var(--gold); }
+.ra-rec { color: var(--flux); font-size: 11px; margin-left: 4px; }
+.ra-row { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--paper-dim); }
+.ra-next { font-size: 12px; color: var(--paper-dim); }
+.ra-next b { color: var(--flux); }
+.ra-local { font-size: 9px; color: #5a554e; letter-spacing: .1em; text-align: right; }

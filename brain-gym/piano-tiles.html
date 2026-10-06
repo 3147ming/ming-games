@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>别踩白块 · Piano Tiles</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+  :root{
+    --bg0:#0b1020; --bg1:#141b34; --panel:#1a2240; --line:#2a3358;
+    --txt:#e8ecff; --sub:#9aa6d6; --acc:#ffd166; --good:#36d399; --bad:#ff5c7a;
+    --tile:#11162b; --tileEdge:#2a3358;
+  }
+  html,body{height:100%}
+  body{
+    font-family:"PingFang SC","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+    background:radial-gradient(1200px 800px at 50% -10%,#1b2547,#0b1020 60%);
+    color:var(--txt); display:flex; align-items:center; justify-content:center;
+    min-height:100%; padding:14px; overflow:hidden;
+  }
+  #app{
+    width:min(460px,100%); height:min(820px,94vh);
+    background:linear-gradient(180deg,var(--bg1),var(--bg0));
+    border:1px solid var(--line); border-radius:18px; overflow:hidden;
+    position:relative; display:flex; flex-direction:column;
+    box-shadow:0 30px 80px rgba(0,0,0,.45);
+  }
+  .screen{position:absolute; inset:0; display:flex; flex-direction:column; padding:18px; gap:14px;
+    transform:translateX(0); transition:opacity .25s ease; opacity:1;}
+  .screen.hidden{opacity:0; pointer-events:none}
+  h1{font-size:26px; letter-spacing:2px; text-align:center; margin-top:6px;
+     background:linear-gradient(90deg,#ffd166,#ff8fab,#7afcff); -webkit-background-clip:text; background-clip:text; color:transparent}
+  .tag{text-align:center; color:var(--sub); font-size:13px; line-height:1.7}
+  .levels{flex:1; overflow:auto; display:flex; flex-direction:column; gap:12px; padding:4px 2px}
+  .lv{
+    display:flex; align-items:center; gap:14px; padding:14px 16px; border-radius:14px;
+    background:var(--panel); border:1px solid var(--line); cursor:pointer; transition:.15s;
+  }
+  .lv:hover{border-color:var(--acc); transform:translateY(-1px)}
+  .lv .no{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+    background:#0e1430; color:var(--acc); font-weight:700; font-size:15px; border:1px solid var(--line)}
+  .lv .meta{flex:1}
+  .lv .nm{font-size:16px; font-weight:600}
+  .lv .ds{font-size:12px; color:var(--sub); margin-top:3px}
+  .lv .sc{font-size:12px; color:var(--good); text-align:right; min-width:54px}
+  .lv.locked{opacity:.45; cursor:not-allowed; filter:grayscale(.5)}
+  .lv.locked:hover{transform:none; border-color:var(--line)}
+  .btn{appearance:none; border:none; border-radius:12px; padding:13px 18px; font-size:15px; font-weight:600;
+    cursor:pointer; color:#10162e; background:linear-gradient(90deg,#ffd166,#ffb454); transition:.15s}
+  .btn:active{transform:scale(.97)}
+  .btn.ghost{background:transparent; color:var(--txt); border:1px solid var(--line)}
+  .row{display:flex; gap:10px}
+  .row>*{flex:1}
+
+  /* 游戏画面 */
+  #game{display:none; inset:0; padding:0}
+  #hud{display:flex; align-items:center; gap:10px; padding:10px 14px; background:rgba(10,16,32,.7);
+    border-bottom:1px solid var(--line); backdrop-filter:blur(4px); z-index:5}
+  #hud .nm{font-weight:700; font-size:15px}
+  #hud .sp{flex:1; height:6px; border-radius:6px; background:#0e1430; overflow:hidden; border:1px solid var(--line)}
+  #hud .sp>i{display:block; height:100%; width:0%; background:linear-gradient(90deg,#36d399,#7afcff); transition:width .1s}
+  #hud .s{font-variant-numeric:tabular-nums; font-weight:700; color:var(--acc); min-width:46px; text-align:right}
+  #hud .bk{appearance:none; border:1px solid var(--line); background:transparent; color:var(--sub);
+    border-radius:9px; padding:6px 10px; font-size:13px; cursor:pointer}
+  #wrap{position:relative; flex:1; overflow:hidden}
+  canvas{display:block; width:100%; height:100%; touch-action:none}
+  #hint{position:absolute; left:0; right:0; bottom:14px; text-align:center; color:var(--sub);
+    font-size:12px; pointer-events:none; opacity:.8}
+
+  .overlay{position:absolute; inset:0; background:rgba(7,11,24,.82); backdrop-filter:blur(6px);
+    display:none; align-items:center; justify-content:center; flex-direction:column; gap:16px; padding:24px; z-index:10}
+  .overlay.show{display:flex}
+  .overlay .big{font-size:34px; font-weight:800; letter-spacing:2px}
+  .overlay .big.win{color:var(--good)} .overlay .big.lose{color:var(--bad)}
+  .overlay .sub2{color:var(--sub); font-size:14px; text-align:center; line-height:1.8}
+  .overlay .stat{display:flex; gap:22px; margin:4px 0}
+  .overlay .stat div{text-align:center}
+  .overlay .stat b{display:block; font-size:24px; color:var(--acc)}
+  .overlay .stat span{font-size:12px; color:var(--sub)}
+  .foot{position:absolute; bottom:10px; left:0; right:0; text-align:center; color:var(--sub); font-size:11px; opacity:.6}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- 选关菜单 -->
+  <section id="menu" class="screen">
+    <h1>别踩白块</h1>
+    <div class="tag">水柱如溪流般缓缓下落 · 点击其底端发光圆环所在列奏出旋律<br>漏点或误触白块即失败 · 每关一首钢琴曲，越往后越密</div>
+    <div id="levels" class="levels"></div>
+    <div class="foot">提示：点亮的金色边框是下一个该点的黑块</div>
+  </section>
+
+  <!-- 游戏 -->
+  <section id="game" class="screen">
+    <div id="hud">
+      <button class="bk" id="back">‹ 返回</button>
+      <span class="nm" id="hudName">小星星</span>
+      <span class="sp"><i id="progBar"></i></span>
+      <span class="s" id="hudScore">0</span>
+    </div>
+    <div id="wrap">
+      <canvas id="cv"></canvas>
+      <div id="hint">点击最下方水柱底端的发光圆环所在列</div>
+      <div class="overlay" id="ov">
+        <div class="big" id="ovBig">通关！</div>
+        <div class="sub2" id="ovSub"></div>
+        <div class="stat" id="ovStat"></div>
+        <div class="row">
+          <button class="btn ghost" id="ovRetry">重玩</button>
+          <button class="btn" id="ovNext">下一关</button>
+        </div>
+        <button class="btn ghost" id="ovMenu" style="width:100%">回到选关</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  /* ===================== 音频引擎（Web Audio 合成钢琴音色，零依赖） ===================== */
+  var AC=null;
+  function audio(){ if(!AC){ var C=window.AudioContext||window.webkitAudioContext; AC=new C(); } if(AC.state==="suspended") AC.resume(); return AC; }
+  // 钢琴感：基频 + 几个泛音，快速起音 + 指数衰减包络
+  function piano(freq,when,dur){
+    var c=audio(), t0=when||c.currentTime, d=dur||0.55, bus=c.createGain();
+    bus.connect(c.destination); bus.gain.setValueAtTime(0.0001,t0);
+    bus.gain.exponentialRampToValueAtTime(0.5,t0+0.006);
+    bus.gain.exponentialRampToValueAtTime(0.0006,t0+d);
+    var lp=c.createBiquadFilter(); lp.type="lowpass"; lp.frequency.value=4200; lp.connect(bus);
+    var parts=[[1,1.0],[2,0.45],[3,0.22],[4,0.10],[5,0.05]];
+    for(var i=0;i<parts.length;i++){
+      var o=c.createOscillator(); o.type="triangle"; o.frequency.value=freq*parts[i][0];
+      var g=c.createGain(); g.gain.value=parts[i][1]; o.connect(g); g.connect(lp);
+      o.start(t0); o.stop(t0+d+0.06);
+    }
+  }
+  function buzz(){
+    var c=audio(), t0=c.currentTime, o=c.createOscillator(), g=c.createGain();
+    o.type="sawtooth"; o.frequency.setValueAtTime(220,t0); o.frequency.exponentialRampToValueAtTime(70,t0+0.5);
+    g.gain.setValueAtTime(0.0001,t0); g.gain.exponentialRampToValueAtTime(0.28,t0+0.01); g.gain.exponentialRampToValueAtTime(0.0006,t0+0.55);
+    o.connect(g); g.connect(c.destination); o.start(t0); o.stop(t0+0.6);
+  }
+
+  /* ===================== 音名 → 频率 ===================== */
+  var SEMI={C:0,"C#":1,D:2,"D#":3,E:4,F:5,"F#":6,G:7,"G#":8,A:9,"A#":10,B:11};
+  function freqOf(n){ // 形如 "C4" / "F#5"
+    var m=n.match(/^([A-G]#?)(\d)$/); if(!m) return 440;
+    var s=SEMI[m[1]], oct=parseInt(m[2],10);
+    var midi=(oct+1)*12+s; // C4=60
+    return 440*Math.pow(2,(midi-69)/12);
+  }
+  // 列：按音级 mod 4 分布（低→高，左→右），旋律自然铺开且便于点按
+  function colOf(n){ var m=n.match(/^([A-G]#?)(\d)$/); if(!m) return 0; var s=SEMI[m[1]], oct=parseInt(m[2],10); return ((oct*12+s)%4+4)%4; }
+
+  /* ===================== 曲目数据（公共领域旋律） ===================== */
+  var SONGS={
+    twinkle:{name:"小星星", notes:["C4","C4","G4","G4","A4","A4","G4","F4","F4","E4","E4","D4","D4","C4",
+      "G4","G4","F4","F4","E4","E4","D4","G4","G4","F4","F4","E4","E4","D4",
+      "C4","C4","G4","G4","A4","A4","G4","F4","F4","E4","E4","D4","D4","C4"]},
+    joy:{name:"欢乐颂", notes:["E4","E4","F4","G4","G4","F4","E4","D4","C4","C4","D4","E4","E4","D4","D4",
+      "E4","E4","F4","G4","G4","F4","E4","D4","C4","C4","D4","E4","D4","C4","C4"]},
+    elise:{name:"致爱丽丝", notes:["E5","D#5","E5","D#5","E5","B4","D5","C5","A4","C4","E4","A4","B4",
+      "E4","G#4","B4","C5","E4","E5","D#5","E5","D#5","E5","B4","D5","C5","A4","C4","E4","A4","B4"]},
+    canon:{name:"卡农", notes:["F#4","E4","D4","C#4","B3","A3","B3","C#4","D4","C#4","B3","A3","G3","F#3","G3","A3",
+      "E4","D4","C4","B3","A3","G3","A3","B3","C4","B3","A3","G3","F#3","E3","F#3","G3"]},
+    merry:{name:"多年以前", notes:["C4","E4","G4","E4","C4","E4","G4","C5","B4","G4","A4","F4","G4","E4","C4","E4",
+      "G4","E4","C4","D4","E4","F4","G4","E4","C4","G4","C5","G4"]}
+  };
+  // 每关一首曲；speed 为像素/秒（逐关加快 → 音符更密）；vis 为同屏可见行数（越大越密）
+  var LEVELS=[
+    {song:"twinkle", speed:62,  vis:3.0},
+    {song:"joy",     speed:76,  vis:3.2},
+    {song:"merry",   speed:90,  vis:3.4},
+    {song:"elise",   speed:104, vis:3.6},
+    {song:"canon",   speed:118, vis:3.8}
+  ];
+
+  /* ===================== 进度持久化 ===================== */
+  var KEY="pt_progress_v1";
+  function load(){ try{return JSON.parse(localStorage.getItem(KEY)||'{"unlocked":1,"best":{}}');}catch(e){return {unlocked:1,best:{}};} }
+  function save(p){ try{localStorage.setItem(KEY,JSON.stringify(p));}catch(e){} }
+  var PROG=load();
+
+  /* ===================== DOM ===================== */
+  var $=function(id){return document.getElementById(id);};
+  var menu=$("menu"), game=$("game"), levelsEl=$("levels");
+  var cv=$("cv"), ctx=cv.getContext("2d");
+  var hudName=$("hudName"), hudScore=$("hudScore"), progBar=$("progBar"), hint=$("hint");
+  var ov=$("ov"), ovBig=$("ovBig"), ovSub=$("ovSub"), ovStat=$("ovStat");
+
+  /* ===================== 游戏状态 ===================== */
+  var S=null;          // 当前对局
+  var playW=0,playH=0,colW=0,dpr=1;
+  var raf=0,lastT=0;
+
+  function resize(){
+    var rect=cv.getBoundingClientRect();
+    dpr=Math.min(2,window.devicePixelRatio||1);
+    cv.width=Math.max(1,Math.round(rect.width*dpr));
+    cv.height=Math.max(1,Math.round(rect.height*dpr));
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    playW=rect.width; playH=rect.height; colW=playW/4;
+  }
+  window.addEventListener("resize",function(){ if(S) resize(); });
+
+  function buildNotes(songKey){
+    var arr=SONGS[songKey].notes, out=[];
+    for(var i=0;i<arr.length;i++){ out.push({col:colOf(arr[i]), freq:freqOf(arr[i]), tapped:false}); }
+    return out;
+  }
+
+  function startLevel(idx){
+    audio(); // 用户手势内解锁音频
+    var L=LEVELS[idx];
+    resize();
+    var notes=buildNotes(L.song);
+    var tileH=playH/L.vis;
+    S={
+      idx:idx, songKey:L.song, songName:SONGS[L.song].name,
+      notes:notes, total:notes.length, tileH:tileH, speed:L.speed,
+      scrollY:0, startY:playH - tileH*1.6,    // row0 起始贴近底部，逐行向上堆叠待降（先落的先点）
+      score:0, combo:0, maxCombo:0, running:true, done:false, fail:false, failWhy:"",
+      lastT:performance.now(), t:0, pulse:0, pops:[]
+    };
+    menu.classList.add("hidden"); game.style.display="block"; game.classList.remove("hidden");
+    hudName.textContent=S.songName; hudScore.textContent="0"; progBar.style.width="0%";
+    ov.classList.remove("show"); hint.style.opacity=".8";
+    if(raf) cancelAnimationFrame(raf);
+    raf=requestAnimationFrame(frame);
+  }
+
+  // row0 在最下方（最先触底、最先点），序号越大越往上堆叠
+  function yOf(r){ return S.startY - r*S.tileH + S.scrollY; }
+  // 下一个该点的块 = 最小未点 row（最低、最先触底）
+  function activeRow(){
+    for(var r=0;r<S.notes.length;r++){ if(!S.notes[r].tapped) return r; }
+    return -1;
+  }
+
+  function tap(col){
+    if(!S||!S.running) return;
+    var r=activeRow();
+    if(r<0) return;
+    if(S.notes[r].col===col){
+      S.notes[r].tapped=true; S.notes[r].tappedAt=S.t;
+      S.pops.push({x:S.notes[r].col*colW+colW/2, y:yOf(r)+S.tileH*0.6, t0:S.t, txt:'+1'});
+      S.score++; S.combo++; if(S.combo>S.maxCombo)S.maxCombo=S.combo;
+      piano(S.notes[r].freq, 0, 0.5);
+      S.pulse=1;
+      hudScore.textContent=S.score; progBar.style.width=(100*S.score/S.total).toFixed(1)+"%";
+      if(S.score>=S.total){ win(); }
+    }else{
+      // 点到别的列 = 误触白块
+      lose("误触白块");
+    }
+  }
+
+  function lose(why){
+    if(!S.running) return;
+    S.running=false; S.fail=true; S.failWhy=why; buzz();
+    showOver(false, why);
+  }
+  function win(){
+    S.running=false; S.done=true;
+    if(S.idx+1>PROG.unlocked) PROG.unlocked=Math.min(LEVELS.length,S.idx+2);
+    var prev=PROG.best[S.idx]||0; if(S.score>prev) PROG.best[S.idx]=S.score; save(PROG);
+    showOver(true, "");
+  }
+
+  /* ===================== 主循环（逐帧匀速缓降） ===================== */
+  function frame(ts){
+    if(!S||!S.running){ return; }
+    var dt=Math.min(0.05,(ts-S.lastT)/1000); if(!isFinite(dt)||dt<0)dt=0; S.lastT=ts;
+    S.t += dt;
+    S.scrollY += S.speed*dt;
+    if(S.pulse>0) S.pulse=Math.max(0,S.pulse-dt*3.5);
+    // 漏点判定：当前该点的块整体越过底部仍未点
+    var r=activeRow();
+    if(r>=0 && yOf(r) > playH+2){ lose("漏点"); return; }
+    draw();
+    raf=requestAnimationFrame(frame);
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,playW,playH);
+    // 背景：柔和粉紫水彩
+    var bgrad=ctx.createLinearGradient(0,0,playW,playH);
+    bgrad.addColorStop(0,"#d8d4f2"); bgrad.addColorStop(0.5,"#e3e6f8"); bgrad.addColorStop(1,"#eef1fa");
+    ctx.fillStyle=bgrad; ctx.fillRect(0,0,playW,playH);
+    // 列分隔线（极淡白线）
+    ctx.strokeStyle="rgba(255,255,255,.55)"; ctx.lineWidth=1;
+    for(var c2=1;c2<4;c2++){ ctx.beginPath(); ctx.moveTo(c2*colW,0); ctx.lineTo(c2*colW,playH); ctx.stroke(); }
+    // 下一个该点的块（最低未点行）
+    var rA=activeRow();
+    // 绘制长条水柱（同列连续未点块合并为一条，渐变贯穿整条）
+    for(var i=0;i<S.notes.length;i++){
+      var n=S.notes[i];
+      if(n.tapped){
+        // 点过的块：淡出水色残影
+        var age=S.t-(n.tappedAt||0);
+        if(age>=0 && age<0.45){
+          var yG=yOf(i);
+          if(yG<playH+tileH() && yG>-tileH()){
+            ctx.fillStyle="rgba(140,215,240,"+(0.38*(1-age/0.45)).toFixed(2)+")";
+            ctx.fillRect(n.col*colW+2,yG+1,colW-4,S.tileH-2);
+          }
+        }
+        continue;
+      }
+      if(i>0 && !S.notes[i-1].tapped && S.notes[i-1].col===n.col) continue; // 由长条底行统一绘制
+      var j=i;
+      while(j+1<S.notes.length && !S.notes[j+1].tapped && S.notes[j+1].col===n.col) j++;
+      var yBot=yOf(i), yTop=yOf(j);
+      if(yTop>playH || yBot+S.tileH<0) continue;
+      var x=n.col*colW, hAll=yBot+S.tileH-yTop;
+      var g=ctx.createLinearGradient(0,yTop,0,yBot+S.tileH);
+      g.addColorStop(0,"#59c8e8");      // 顶部亮青（水面反光）
+      g.addColorStop(0.55,"#1e6f9e");   // 中段深青
+      g.addColorStop(1,"#071426");      // 底端深水近黑
+      ctx.fillStyle=g; ctx.fillRect(x,yTop,colW,hAll);
+      // 中线水流光带
+      ctx.strokeStyle="rgba(190,240,255,0.55)"; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(x+colW/2,yTop+6); ctx.lineTo(x+colW/2,yBot+S.tileH-8); ctx.stroke();
+      // 当前该点：底端发光圆环
+      if(i<=rA && rA<=j){
+        var ry=yBot+S.tileH-6, rx=x+colW/2, rr2=Math.min(colW*0.22,20);
+        ctx.save();
+        if(ctx.shadowBlur!==undefined){ctx.shadowColor="rgba(120,255,190,0.9)";ctx.shadowBlur=14;}
+        ctx.strokeStyle="rgba(140,255,200,0.95)"; ctx.lineWidth=4;
+        ctx.beginPath(); ctx.arc(rx,ry,rr2,0,7); ctx.stroke();
+        ctx.restore();
+        ctx.lineWidth=2; ctx.strokeStyle="rgba(255,255,255,0.7)";
+        ctx.beginPath(); ctx.arc(rx,ry,rr2,0,7); ctx.stroke();
+      }
+    }
+    // 浮动 +1
+    for(var f=S.pops.length-1;f>=0;f--){
+      var p=S.pops[f], pa=S.t-p.t0;
+      if(pa>0.7){S.pops.splice(f,1);continue;}
+      ctx.fillStyle="rgba(70,130,240,"+(1-pa/0.7).toFixed(2)+")";
+      ctx.font="bold 22px sans-serif"; ctx.textAlign="center";
+      ctx.fillText(p.txt,p.x,p.y-pa*46);
+    }
+    // 底部"死亡线"
+    ctx.fillStyle="rgba(255,92,122,.0)";
+  }
+  function tileH(){ return S?S.tileH:120; }
+  function roundRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+  }
+
+  /* ===================== 结束面板 ===================== */
+  function showOver(isWin, why){
+    ov.classList.add("show");
+    if(isWin){
+      ovBig.textContent="🎉 通关！"; ovBig.className="big win";
+      ovSub.innerHTML="《"+S.songName+"》全 "+S.total+" 个音符精准点完<br>最佳连击 "+S.maxCombo;
+      ovStat.innerHTML='<div><b>'+S.score+'</b><span>得分</span></div>'+
+                       '<div><b>'+S.maxCombo+'</b><span>最佳连击</span></div>'+
+                       '<div><b>'+(S.idx+1)+'/'+LEVELS.length+'</b><span>关卡</span></div>';
+    }else{
+      ovBig.textContent="💥 失败"; ovBig.className="big lose";
+      var idxNext=Math.min(S.total, activeRow()+1);
+      ovSub.innerHTML="原因："+why+"<br>已完成 "+S.score+" / "+S.total+" 个音符";
+      ovStat.innerHTML='<div><b>'+S.score+'</b><span>得分</span></div>'+
+                       '<div><b>'+S.maxCombo+'</b><span>最佳连击</span></div>';
+    }
+    var nextBtn=$("ovNext");
+    if(isWin && S.idx+1<LEVELS.length){ nextBtn.style.display=""; nextBtn.textContent="下一关 ›"; }
+    else if(isWin){ nextBtn.style.display="none"; }
+    else { nextBtn.style.display=""; nextBtn.textContent="重试"; }
+  }
+
+  /* ===================== 输入 ===================== */
+  cv.addEventListener("pointerdown",function(e){
+    e.preventDefault();
+    if(!S||!S.running) return;
+    var rect=cv.getBoundingClientRect();
+    var x=e.clientX-rect.left;
+    var col=Math.max(0,Math.min(3,Math.floor(x/colW)));
+    tap(col);
+  });
+
+  /* ===================== 菜单渲染 ===================== */
+  function renderMenu(){
+    levelsEl.innerHTML="";
+    for(var i=0;i<LEVELS.length;i++){
+      (function(i){
+        var L=LEVELS[i], locked=(i+1)>PROG.unlocked;
+        var div=document.createElement("div");
+        div.className="lv"+(locked?" locked":"");
+        var best=PROG.best[i]?("最佳 "+PROG.best[i]):"未通关";
+        div.innerHTML='<div class="no">'+(i+1)+'</div>'+
+          '<div class="meta"><div class="nm">'+L.songName+'</div>'+
+          '<div class="ds">速度 '+L.speed+' · 音符 '+SONGS[L.song].notes.length+' 个'+(locked?' · 🔒 未解锁':'')+'</div></div>'+
+          '<div class="sc">'+best+'</div>';
+        if(!locked) div.addEventListener("click",function(){ startLevel(i); });
+        levelsEl.appendChild(div);
+      })(i);
+    }
+  }
+
+  /* ===================== 按钮 ===================== */
+  function toMenu(){
+    if(raf) cancelAnimationFrame(raf);
+    if(S) S.running=false;
+    ov.classList.remove("show"); game.classList.add("hidden"); game.style.display="none"; menu.classList.remove("hidden");
+    renderMenu();
+  }
+  $("back").addEventListener("click",toMenu);
+  $("ovMenu").addEventListener("click",toMenu);
+  $("ovRetry").addEventListener("click",function(){ if(S) startLevel(S.idx); });
+  $("ovNext").addEventListener("click",function(){
+    if(!S) return;
+    if(S.fail){ startLevel(S.idx); }
+    else if(S.idx+1<LEVELS.length){ startLevel(S.idx+1); }
+  });
+
+  // 初始
+  renderMenu();
+})();
+</script>
+</body>
+</html>

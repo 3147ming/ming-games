@@ -1,0 +1,165 @@
+{
+  "meta": {
+    "codename": "ONE-CARD",
+    "titleCn": "一世一牌",
+    "titleEn": "One Card Per Life",
+    "docVersion": "0.1",
+    "stage": "concept",
+    "date": "2026-09-21",
+    "author": "producer + lead designer + lead programmer",
+    "status": "pending_user_input",
+    "blockers": ["D1_weekly_hours", "D2_target_device", "D3_portrait_first"]
+  },
+
+  "pillars": {
+    "genre": {
+      "branch": "card_battler_roguelike",
+      "decision": "卡牌构筑肉鸽（回合制、纯状态机、无实时物理）",
+      "rejected": ["topdown_action", "fps3d", "dice_grid"],
+      "deferred": [
+        { "id": "fps3d_mode", "reason": "复用 SOUDACHE 的 Three.js 栈做二期扩展包", "status": "frozen" }
+      ],
+      "scoring": {
+        "criteria": [
+          { "id": "C1", "name": "单人可完成度", "weight": 30 },
+          { "id": "C2", "name": "复用既有工程资产", "weight": 20 },
+          { "id": "C3", "name": "网页手机双端适配成本", "weight": 15 },
+          { "id": "C4", "name": "数值可控性与可推导性", "weight": 20 },
+          { "id": "C5", "name": "内容扩展性", "weight": 15 }
+        ],
+        "scale": "1-5, 满分 500",
+        "results": [
+          { "id": "A", "name": "卡牌构筑肉鸽", "scores": [5, 3, 5, 5, 5], "weighted": 460, "normalized": 92.0, "selected": true },
+          { "id": "B", "name": "俯视角实时动作肉鸽", "scores": [2, 3, 2, 3, 3], "weighted": 255, "normalized": 51.0, "selected": false },
+          { "id": "C", "name": "3D 第一人称肉鸽", "scores": [2, 5, 1, 2, 3], "weighted": 260, "normalized": 52.0, "selected": false },
+          { "id": "D", "name": "桌游式骰子网格肉鸽", "scores": [4, 3, 4, 4, 4], "weighted": 380, "normalized": 76.0, "selected": false }
+        ],
+        "note": "评分为基于本项目约束的主观工作量评分，非行业数据，需阶段 2 纸面原型校准"
+      }
+    },
+
+    "run_length": {
+      "decision_minutes_min": 12,
+      "decision_minutes_max": 15,
+      "hard_cap_minutes": 20,
+      "derived_minutes": 12.8,
+      "formula": "T_run = D_min * (T_battle + T_reward + T_map) + delta_boss + T_settle",
+      "status": "derived_with_tbd"
+    },
+
+    "view_control": {
+      "orientation": "portrait_first",
+      "baseline_viewport": "9:16",
+      "primary_input": "tap",
+      "secondary_input": "drag",
+      "pc_adaptation": "side_panels_no_relayout",
+      "layout_bands_top_to_bottom": [
+        { "band": "enemy", "percent": 30 },
+        { "band": "log_status", "percent": 20 },
+        { "band": "hand", "percent": 30 },
+        { "band": "resource_and_end_turn", "percent": 20 }
+      ],
+      "status": "derived"
+    },
+
+    "art_style": {
+      "decision": "极简剪影 + 单色高对比 + 程序化动效",
+      "palette_max_colors": 12,
+      "bitmap_assets": false,
+      "frame_by_frame_animation": false,
+      "symbols": "hand-authored SVG paths, target ~40 paths",
+      "rarity_encoding": ["stroke_layers", "background_luminance"],
+      "rarity_color_only": false,
+      "cost_per_symbol_minutes": { "min": 15, "max": 30, "status": "tbd" },
+      "status": "derived"
+    },
+
+    "stack": {
+      "decision": "原生 HTML + ES Modules，零依赖、零构建",
+      "bundler": null,
+      "dependencies": [],
+      "render_primary": "dom_css",
+      "render_secondary": "canvas2d_effects_only",
+      "threejs": "frozen",
+      "port": 5173,
+      "reuse": [
+        { "item": "目录范式 index.html/styles.css/server.mjs/src/tests/tools/vendor", "source": "SOUDACHE" },
+        { "item": "src/config.js 配置表（数值全外置）", "source": "SOUDACHE" },
+        { "item": "src/rng.js 确定性随机（种子可复现）", "source": "SOUDACHE" },
+        { "item": "node --test tests/*.test.mjs 回归测试", "source": "SOUDACHE" },
+        { "item": "tools/balance.mjs 批量对局模拟器", "source": "SOUDACHE" },
+        { "item": "server.mjs 本地服务", "source": "SOUDACHE / NIGHT-SHIFT" }
+      ],
+      "status": "derived"
+    },
+
+    "core_fantasy": {
+      "one_liner": "你是死在第九层的无名者。每一世，你只带回一张牌。",
+      "identity": "无数个死在半路的挑战者之一，无名字、无背景",
+      "thrill": ["把上一世的死亡直接兑换成本世的强度", "凑出上不封顶的 combo 的瞬间"],
+      "loop_alignment": "death_is_reward_not_cost",
+      "alternate_skin": "守灯人：你死一次，灯亮一分。",
+      "status": "derived"
+    },
+
+    "team": {
+      "size": 1,
+      "relative_effort_percent": {
+        "core_battle_loop": 22,
+        "card_relic_data_and_effect_dsl": 18,
+        "enemy_ai_intent": 12,
+        "ui_ux": 15,
+        "map_generation": 10,
+        "tests_and_balance_simulator": 9,
+        "meta_progression_save": 6,
+        "audio_procedural": 4,
+        "tooling_and_docs": 4
+      },
+      "effort_basis": "按独立可测试单元分类，占比为首次实现+维护工时的工程经验估计",
+      "rework_factor": 1.3,
+      "weekly_hours": null,
+      "total_workdays": null,
+      "status": "tbd"
+    },
+
+    "pitch": {
+      "one_liner": "一局 12 分钟，用死亡攒出唯一那套牌。"
+    }
+  },
+
+  "content_budget_v1": {
+    "cards": 60,
+    "archetypes": 4,
+    "cards_per_archetype": 15,
+    "relics": 24,
+    "enemy_prototypes": { "normal": 9, "elite": 3, "boss": 1, "total": 13 },
+    "floors": 3,
+    "nodes_per_floor": 4,
+    "status": "placeholder_pending_D1"
+  },
+
+  "frozen_systems": [
+    { "id": "F1", "name": "联机 / 排行榜 / 云存档", "reason": "需要后端与账号体系，与单机核心循环无因果关系" },
+    { "id": "F2", "name": "3D 视角 / Three.js 渲染", "reason": "降级为二期扩展包" },
+    { "id": "F3", "name": "剧情关卡 / 分支叙事", "reason": "纯内容消耗，不提升核心循环" },
+    { "id": "F4", "name": "真实音频素材", "reason": "程序化合成已足够" },
+    { "id": "F5", "name": "成就系统", "reason": "依附于元进度，元进度未验证前不做" },
+    { "id": "F6", "name": "多语言", "reason": "无发行需求前纯成本" }
+  ],
+
+  "unfreeze_gate": [
+    "它解决什么具体问题",
+    "占多少工作量（用 relative_effort_percent 口径）",
+    "替换掉现有范围里的什么"
+  ],
+
+  "tbd": [
+    { "id": "D1", "item": "每周可投入工时", "blocking": true, "affects": "总工期与首版内容量" },
+    { "id": "D2", "item": "目标机型 / 浏览器下限", "blocking": true, "affects": "动效实现方式" },
+    { "id": "D3", "item": "是否接受竖屏优先", "blocking": true, "affects": "UI 布局基线与 PC 适配策略" },
+    { "id": "D4", "item": "单局时长的玩家侧验证数据", "blocking": false, "affects": "T_turn 与 n_turn 校准" },
+    { "id": "D5", "item": "卡池规模与流派数最终锁定", "blocking": false, "affects": "内容工时" },
+    { "id": "D6", "item": "音频需求级别", "blocking": false, "affects": "是否引入外部素材" },
+    { "id": "D7", "item": "是否需要发布到公网", "blocking": false, "affects": "HTTPS 与性能压测" }
+  ]
+}

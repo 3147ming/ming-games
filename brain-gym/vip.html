@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>脑力训练场 · 会员专享篇</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: linear-gradient(160deg, #f4f0ff 0%, #f7f9fc 55%, #fff7ec 100%);
+    min-height: 100vh; color: #1f2937;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 28px 20px 60px; }
+  header { text-align: center; margin-bottom: 26px; }
+  header h1 { font-size: 28px; letter-spacing: 2px; color: #2a1e4a; }
+  header h1 .vip {
+    background: linear-gradient(90deg,#e6b53a,#e0872e); color:#fff; font-size: 13px;
+    padding: 3px 12px; border-radius: 999px; vertical-align: middle; margin-left: 10px; letter-spacing: 1px;
+  }
+  header p { color: #6b7280; margin-top: 8px; font-size: 14px; }
+  .stats-bar { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; margin-top: 16px; }
+  .stat-chip {
+    background: #fff; border: 1px solid #e9e4f5; border-radius: 999px;
+    padding: 6px 16px; font-size: 13px; color: #4b5563; box-shadow: 0 2px 6px rgba(42,30,74,.05);
+  }
+  .stat-chip b { color: #b3801a; }
+
+  .menu { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+  .card {
+    background: #fff; border-radius: 16px; padding: 22px 20px;
+    border: 1px solid #ece6f8; cursor: pointer; position: relative; overflow: hidden;
+    transition: transform .18s, box-shadow .18s; box-shadow: 0 3px 10px rgba(42,30,74,.06);
+  }
+  .card:hover { transform: translateY(-4px); box-shadow: 0 10px 24px rgba(42,30,74,.13); }
+  .card .icon { font-size: 34px; }
+  .card h3 { margin: 10px 0 6px; font-size: 17px; color: #2a1e4a; }
+  .card p { font-size: 13px; color: #6b7280; line-height: 1.55; }
+  .card .best { margin-top: 12px; font-size: 12px; color: #b3801a; font-weight: 600; }
+  .card .tag {
+    position: absolute; top: 14px; right: -34px; transform: rotate(38deg);
+    background: linear-gradient(90deg,#e6b53a,#e0872e); color: #fff; font-size: 11px;
+    padding: 3px 40px; letter-spacing: 2px;
+  }
+
+  .game-panel { display: none; }
+  .game-panel.active { display: block; }
+  .game-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+    background: #fff; border: 1px solid #ece6f8; border-radius: 14px;
+    padding: 12px 18px; margin-bottom: 18px; box-shadow: 0 3px 10px rgba(42,30,74,.05);
+  }
+  .game-head .title { font-size: 17px; font-weight: 700; color: #2a1e4a; }
+  .game-head .hud { display: flex; gap: 12px; font-size: 14px; color: #4b5563; align-items: center; flex-wrap: wrap; }
+  .game-head .hud b { color: #c05621; }
+  .btn {
+    border: none; border-radius: 10px; padding: 9px 18px; font-size: 14px; cursor: pointer;
+    background: #2a1e4a; color: #fff; transition: opacity .15s, transform .1s; font-family: inherit;
+  }
+  .btn:hover { opacity: .88; }
+  .btn:active { transform: scale(.96); }
+  .btn.ghost { background: #fff; color: #2a1e4a; border: 1px solid #ddd4ee; }
+  .btn.big { padding: 14px 34px; font-size: 17px; border-radius: 12px; }
+  .board {
+    background: #fff; border: 1px solid #ece6f8; border-radius: 18px;
+    padding: 28px 22px; min-height: 380px; box-shadow: 0 3px 10px rgba(42,30,74,.05);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .hint { color: #6b7280; font-size: 14px; line-height: 1.7; text-align: center; }
+  .overlay {
+    position: fixed; inset: 0; background: rgba(28,20,48,.55); display: none;
+    align-items: center; justify-content: center; z-index: 50; padding: 20px;
+  }
+  .overlay.active { display: flex; }
+  .dialog {
+    background: #fff; border-radius: 18px; padding: 34px 32px; max-width: 420px; width: 100%;
+    text-align: center; animation: pop .25s ease;
+  }
+  @keyframes pop { from { transform: scale(.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .dialog h2 { color: #2a1e4a; margin-bottom: 10px; font-size: 22px; }
+  .dialog .score-big { font-size: 44px; font-weight: 800; color: #c05621; margin: 14px 0 4px; }
+  .dialog .sub { color: #6b7280; font-size: 14px; margin-bottom: 22px; line-height: 1.7; }
+  .dialog .row { display: flex; gap: 12px; justify-content: center; }
+  .feedback { font-size: 15px; min-height: 22px; margin-top: 12px; font-weight: 600; }
+  .feedback.good { color: #16a085; }
+  .feedback.bad { color: #e0554e; }
+
+  /* 舒尔特 */
+  .schulte-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 8px; width: 100%; max-width: 460px; }
+  .schulte-grid button {
+    aspect-ratio: 1; font-size: 24px; font-weight: 700; color: #2a1e4a;
+    background: #f5f2fc; border: 1px solid #e2dbf2; border-radius: 10px; cursor: pointer; transition: .12s;
+    font-family: monospace;
+  }
+  .schulte-grid button:hover { background: #ece5fa; }
+  .schulte-grid button.ok { background: #d9f5e7; border-color: #9adbb8; color: #16a085; }
+  .schulte-grid button.bad { background: #fdeaea; border-color: #f0b9b6; animation: shake .3s; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-5px)} 75%{transform:translateX(5px)} }
+
+  /* 科尔西 & 记忆路径 */
+  .block-grid { display: grid; gap: 10px; }
+  .block-grid button {
+    border-radius: 12px; border: 1px solid #e2dbf2; background: #f5f2fc; cursor: pointer;
+    transition: .1s; font-size: 20px; color: transparent;
+  }
+  .block-grid button.lit { background: #7c5cd6; border-color: #7c5cd6; box-shadow: 0 0 14px rgba(124,92,214,.5); }
+  .block-grid button.hit { background: #b9a3ec; border-color: #b9a3ec; }
+  .block-grid button.miss { background: #fdeaea; border-color: #f0b9b6; }
+
+  /* 找不同 */
+  .search-grid { display: grid; gap: 6px; }
+  .search-grid button {
+    border: none; background: #f7f4fd; border-radius: 8px; cursor: pointer;
+    font-size: 20px; display: flex; align-items: center; justify-content: center; transition: .1s;
+  }
+  .search-grid button:hover { background: #ece5fa; }
+  .search-grid button.bad { background: #fdeaea; animation: shake .3s; }
+
+  /* 倒序数字 */
+  .digits {
+    font-size: 48px; font-weight: 800; letter-spacing: 12px; color: #2a1e4a;
+    font-family: "Consolas", monospace; margin: 20px 0;
+  }
+  .digits.shake { animation: shake .35s; color: #e0554e; }
+  .input-row { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; justify-content: center; }
+  .input-row input {
+    font-size: 24px; text-align: center; letter-spacing: 6px; padding: 10px 14px; width: 240px;
+    border: 2px solid #ddd4ee; border-radius: 10px; outline: none; font-family: monospace; background:#fff;
+  }
+  .input-row input:focus { border-color: #7c5cd6; }
+
+  /* 心算天平 */
+  .scale-wrap { display: flex; gap: 14px; width: 100%; max-width: 480px; margin-top: 16px; }
+  .scale-wrap button {
+    flex: 1; padding: 26px 8px; font-size: 24px; font-weight: 700; font-family: monospace;
+    border-radius: 14px; border: 2px solid #e2dbf2; background: #f8f5fe; color: #2a1e4a; cursor: pointer; transition: .12s;
+  }
+  .scale-wrap button:hover { transform: translateY(-3px); border-color: #b9a3ec; }
+  .scale-wrap button.ok { background: #d9f5e7; border-color: #9adbb8; }
+  .scale-wrap button.bad { background: #fdeaea; border-color: #f0b9b6; }
+  .scale-vs { align-self: center; font-size: 20px; font-weight: 800; color: #b3801a; }
+
+  .back-link { margin-top: 26px; text-align: center; }
+  footer { text-align: center; margin-top: 40px; color: #9aa3b5; font-size: 12px; line-height: 1.8; }
+  @media (max-width: 520px) {
+    header h1 { font-size: 22px; }
+    .digits { font-size: 36px; letter-spacing: 8px; }
+    .schulte-grid button { font-size: 18px; }
+    .scale-wrap button { font-size: 18px; padding: 20px 4px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🧠 会员专享训练馆<span class="vip">VIP</span></h1>
+    <p>5 款进阶玩法 · 玩法参考「未来之光」的会员关卡 · 成绩本地保存</p>
+    <div class="stats-bar">
+      <div class="stat-chip">今日训练 <b id="todayCount">0</b> 次</div>
+      <div class="stat-chip">累计训练 <b id="totalCount">0</b> 次</div>
+      <div class="stat-chip">当前称号：<b id="rankName">新手上路</b></div>
+    </div>
+  </header>
+
+  <!-- ============ 主菜单 ============ -->
+  <div class="game-panel active" id="panel-menu">
+    <div class="menu">
+      <div class="card" onclick="startGame('schulte')">
+        <div class="tag">VIP</div>
+        <div class="icon">1️⃣</div>
+        <h3>舒尔特方格</h3>
+        <p>按 1→25 的顺序点击打乱的数字，训练视觉注意力与扫读速度。</p>
+        <div class="best" id="best-schulte"></div>
+      </div>
+      <div class="card" onclick="startGame('corsi')">
+        <div class="tag">VIP</div>
+        <div class="icon">🟪</div>
+        <h3>科尔西方块</h3>
+        <p>记住方块亮起的顺序并复现，序列会越来越长，考验空间记忆。</p>
+        <div class="best" id="best-corsi"></div>
+      </div>
+      <div class="card" onclick="startGame('search')">
+        <div class="tag">VIP</div>
+        <div class="icon">🔍</div>
+        <h3>火眼金睛</h3>
+        <p>在一片图案中找出唯一不同的那个，60 秒内越多越强。</p>
+        <div class="best" id="best-search"></div>
+      </div>
+      <div class="card" onclick="startGame('rev')">
+        <div class="tag">VIP</div>
+        <div class="icon">🔄</div>
+        <h3>倒序数字</h3>
+        <p>记住数字串后倒着输出来，挑战工作记忆的极限。</p>
+        <div class="best" id="best-rev"></div>
+      </div>
+      <div class="card" onclick="startGame('scale')">
+        <div class="tag">VIP</div>
+        <div class="icon">⚖️</div>
+        <h3>心算天平</h3>
+        <p>两边算式哪个大？快速比较并选择，练推理与计算。</p>
+        <div class="best" id="best-scale"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 舒尔特方格 ============ -->
+  <div class="game-panel" id="panel-schulte">
+    <div class="game-head">
+      <div class="title">1️⃣ 舒尔特方格</div>
+      <div class="hud">
+        <span>用时 <b id="schulteTime">0.0</b>s</span>
+        <span>下一个 <b id="schulteNext">1</b></span>
+        <span>失误 <b id="schulteErr">0</b></span>
+        <button class="btn ghost" onclick="schulteRestart()">重开</button>
+        <button class="btn ghost" onclick="backMenu()">返回</button>
+      </div>
+    </div>
+    <div class="board"><div class="schulte-grid" id="schulteGrid"></div>
+      <div class="hint" style="margin-top:16px">按顺序点击 1 → 25，点错会计失误并加 1 秒罚时</div>
+    </div>
+  </div>
+
+  <!-- ============ 科尔西方块 ============ -->
+  <div class="game-panel" id="panel-corsi">
+    <div class="game-head">
+      <div class="title">🟪 科尔西方块</div>
+      <div class="hud">
+        <span>当前长度 <b id="corsiLevel">3</b></span>
+        <span>最佳成绩 <b id="corsiBestInline">--</b></span>
+        <button class="btn ghost" onclick="corsiRestart()">重开</button>
+        <button class="btn ghost" onclick="backMenu()">返回</button>
+      </div>
+    </div>
+    <div class="board">
+      <div class="hint" id="corsiHint">记住方块亮起的顺序</div>
+      <div class="block-grid" id="corsiGrid" style="grid-template-columns:repeat(3,86px); margin-top:22px;"></div>
+    </div>
+  </div>
+
+  <!-- ============ 火眼金睛 ============ -->
+  <div class="game-panel" id="panel-search">
+    <div class="game-head">
+      <div class="title">🔍 火眼金睛</div>
+      <div class="hud">
+        <span>剩余 <b id="searchTime">60</b>s</span>
+        <span>找到 <b id="searchFound">0</b></span>
+        <span>连对 <b id="searchStreak">0</b></span>
+        <button class="btn ghost" onclick="searchRestart()">重开</button>
+        <button class="btn ghost" onclick="backMenu()">返回</button>
+      </div>
+    </div>
+    <div class="board">
+      <div class="hint" id="searchHint">点击开始后，找出网格中唯一不同的图案</div>
+      <div class="search-grid" id="searchGrid" style="margin-top:22px"></div>
+      <div class="feedback" id="searchFb"></div>
+      <div style="margin-top:20px"><button class="btn big" id="searchStartBtn" onclick="searchStart()">开始挑战</button></div>
+    </div>
+  </div>
+
+  <!-- ============ 倒序数字 ============ -->
+  <div class="game-panel" id="panel-rev">
+    <div class="game-head">
+      <div class="title">🔄 倒序数字</div>
+      <div class="hud">
+        <span>当前位数 <b id="revLevel">3</b></span>
+        <span>成绩 <b id="revScore">0</b></span>
+        <button class="btn ghost" onclick="revRestart()">重开</button>
+        <button class="btn ghost" onclick="backMenu()">返回</button>
+      </div>
+    </div>
+    <div class="board">
+      <div class="hint" id="revHint">记住下面的数字串，稍后<b>倒序</b>输入</div>
+      <div class="digits" id="revShow"></div>
+      <div class="input-row" id="revInputRow" style="display:none">
+        <input id="revInput" inputmode="numeric" maxlength="20" placeholder="倒着输入数字">
+        <button class="btn" onclick="revSubmit()">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 心算天平 ============ -->
+  <div class="game-panel" id="panel-scale">
+    <div class="game-head">
+      <div class="title">⚖️ 心算天平</div>
+      <div class="hud">
+        <span>剩余 <b id="scaleTime">60</b>s</span>
+        <span>正确 <b id="scaleRight">0</b></span>
+        <span>连对 <b id="scaleStreak">0</b></span>
+        <button class="btn ghost" onclick="scaleRestart()">重开</button>
+        <button class="btn ghost" onclick="backMenu()">返回</button>
+      </div>
+    </div>
+    <div class="board">
+      <div class="hint">哪边的算式结果更大？点击相应的一侧</div>
+      <div class="scale-wrap">
+        <button id="scaleLeft"></button>
+        <div class="scale-vs">VS</div>
+        <button id="scaleRight"></button>
+      </div>
+      <div class="feedback" id="scaleFb"></div>
+      <div style="margin-top:22px"><button class="btn big" id="scaleStartBtn" onclick="scaleStart()">开始挑战</button></div>
+    </div>
+  </div>
+
+  <footer>
+    本页为玩法复刻练习版，与「未来之光」官方无关，未使用其任何素材<br>
+    数据仅保存在你的浏览器本地（localStorage） 🧠
+  </footer>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="dialog">
+    <h2 id="dlgTitle">训练完成</h2>
+    <div class="score-big" id="dlgScore">0</div>
+    <div class="sub" id="dlgSub"></div>
+    <div class="row">
+      <button class="btn big" id="dlgAgain">再来一次</button>
+      <button class="btn big ghost" onclick="closeDialog();backMenu()">返回菜单</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= 通用框架 ================= */
+const LS_KEY = "brainGymVipData";
+let store = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+function saveStore(){ localStorage.setItem(LS_KEY, JSON.stringify(store)); refreshStats(); }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function bumpCount(){
+  store.count = (store.count||0) + 1;
+  store.days = store.days || {};
+  store.days[todayStr()] = (store.days[todayStr()]||0) + 1;
+  saveStore();
+}
+const RANKS = [[0,"新手上路"],[10,"热身完毕"],[30,"小有所成"],[60,"脑力健将"],[100,"思维大师"],[200,"最强大脑"]];
+function rankName(){
+  const c = store.count||0; let n = RANKS[0][1];
+  for(const [t,name] of RANKS){ if(c>=t) n = name; }
+  return n;
+}
+function refreshStats(){
+  document.getElementById("todayCount").textContent = (store.days&&store.days[todayStr()])||0;
+  document.getElementById("totalCount").textContent = store.count||0;
+  document.getElementById("rankName").textContent = rankName();
+  const label = {
+    schulte: g => g ? "最佳 "+g+" s" : "暂无记录",
+    corsi: g => g ? "最佳 "+g+" 步序列" : "暂无记录",
+    search: g => g ? "最佳 "+g+" 个" : "暂无记录",
+    rev: g => g ? "最佳 "+g+" 位" : "暂无记录",
+    scale: g => g ? "最佳 "+g+" 题" : "暂无记录"
+  };
+  for(const k of ["schulte","corsi","search","rev","scale"]){
+    const el = document.getElementById("best-"+k);
+    if(el) el.textContent = label[k](store["best_"+k]);
+  }
+}
+function startGame(name){
+  document.querySelectorAll(".game-panel").forEach(p=>p.classList.remove("active"));
+  document.getElementById("panel-"+name).classList.add("active");
+  window.scrollTo({top:0});
+  ({schulte:schulteRestart, corsi:corsiRestart, search:searchRestart, rev:revRestart, scale:scaleRestart})[name]();
+}
+function backMenu(){
+  document.querySelectorAll(".game-panel").forEach(p=>p.classList.remove("active"));
+  document.getElementById("panel-menu").classList.add("active");
+  clearTimers();
+}
+let timers = [];
+function later(fn, ms){ const t = setTimeout(fn, ms); timers.push(t); return t; }
+function clearTimers(){ timers.forEach(clearTimeout); timers = []; }
+function showDialog(title, score, sub, againFn){
+  document.getElementById("dlgTitle").textContent = title;
+  document.getElementById("dlgScore").textContent = score;
+  document.getElementById("dlgSub").innerHTML = sub;
+  document.getElementById("dlgAgain").onclick = againFn;
+  document.getElementById("overlay").classList.add("active");
+}
+function closeDialog(){ document.getElementById("overlay").classList.remove("active"); }
+function tryBest(key, value, lowerBetter){
+  const cur = store["best_"+key];
+  let isBest = false;
+  if(cur===undefined || (lowerBetter ? value<cur : value>cur)){ store["best_"+key]=value; isBest=true; }
+  bumpCount(); saveStore(); return isBest;
+}
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+  return a;
+}
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function rnd(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+
+/* ================= 1. 舒尔特方格 ================= */
+let schState = null, schTimer = null;
+function schulteStop(){ if(schTimer){ clearInterval(schTimer); schTimer=null; } }
+function schulteRestart(){
+  clearTimers(); schulteStop();
+  schState = { next:1, errors:0, start:null, penalty:0, done:false };
+  document.getElementById("schulteTime").textContent = "0.0";
+  document.getElementById("schulteNext").textContent = 1;
+  document.getElementById("schulteErr").textContent = 0;
+  const grid = document.getElementById("schulteGrid");
+  grid.innerHTML = "";
+  shuffle(Array.from({length:25},(_,i)=>i+1)).forEach(n=>{
+    const b = document.createElement("button");
+    b.textContent = n;
+    b.onclick = ()=>schClick(b, n);
+    grid.appendChild(b);
+  });
+}
+function schClick(btn, n){
+  const s = schState;
+  if(s.done || btn.classList.contains("ok")) return;
+  if(n === s.next){
+    btn.classList.add("ok");
+    if(!s.start){
+      s.start = performance.now();
+      schTimer = setInterval(()=>{
+        const sec = ((performance.now()-s.start)/1000 + schState.penalty).toFixed(1);
+        document.getElementById("schulteTime").textContent = sec;
+      }, 100);
+    }
+    s.next++;
+    document.getElementById("schulteNext").textContent = s.next<=25 ? s.next : "✅";
+    if(s.next > 25){
+      s.done = true; schulteStop();
+      const total = +( ((performance.now()-s.start)/1000 + s.penalty).toFixed(1) );
+      const grade = total<20 ? "🏆 注意力超群" : total<30 ? "⭐ 优秀" : total<45 ? "👍 良好" : "💪 继续练习";
+      const isBest = tryBest("schulte", total, true);
+      later(()=>showDialog("全部完成！", total+" s",
+        `失误 ${s.errors} 次（罚时 +${s.penalty}s）<br>评价：${grade}${isBest?"<br>🏆 刷新最佳纪录！":""}`, schulteRestart), 400);
+    }
+  } else {
+    s.errors++; s.penalty += 1;
+    btn.classList.add("bad");
+    setTimeout(()=>btn.classList.remove("bad"), 350);
+    document.getElementById("schulteErr").textContent = s.errors;
+  }
+}
+
+/* ================= 2. 科尔西方块 ================= */
+let corsiState = null;
+function corsiRestart(){
+  clearTimers();
+  corsiState = { level:3, seq:[], inputIdx:0, showing:false, alive:true };
+  document.getElementById("corsiLevel").textContent = 3;
+  document.getElementById("corsiBestInline").textContent = store.best_corsi ? store.best_corsi+" 步" : "--";
+  document.getElementById("corsiHint").textContent = "记住方块亮起的顺序";
+  const grid = document.getElementById("corsiGrid");
+  grid.innerHTML = "";
+  for(let i=0;i<9;i++){
+    const b = document.createElement("button");
+    b.style.width = "86px"; b.style.height = "86px";
+    b.onclick = ()=>corsiClick(b, i);
+    grid.appendChild(b);
+  }
+  later(corsiShowSeq, 600);
+}
+function corsiShowSeq(){
+  const s = corsiState;
+  s.showing = true; s.inputIdx = 0;
+  s.seq = shuffle(Array.from({length:9},(_,i)=>i)).slice(0, s.level);
+  const cells = document.querySelectorAll("#corsiGrid button");
+  cells.forEach(c=>c.className = "");
+  document.getElementById("corsiHint").textContent = "仔细看…";
+  s.seq.forEach((idx, k)=>{
+    later(()=>{ cells[idx].classList.add("lit"); }, 500 + k*650);
+    later(()=>{ cells[idx].classList.remove("lit"); }, 500 + k*650 + 450);
+  });
+  later(()=>{
+    s.showing = false;
+    document.getElementById("corsiHint").textContent = `请按顺序点击 ${s.level} 个方块`;
+  }, 500 + s.seq.length*650 + 200);
+}
+function corsiClick(btn, i){
+  const s = corsiState;
+  if(!s.alive || s.showing) return;
+  if(s.seq[s.inputIdx] === i){
+    btn.classList.add("hit");
+    s.inputIdx++;
+    if(s.inputIdx >= s.seq.length){
+      s.level++;
+      document.getElementById("corsiLevel").textContent = s.level;
+      document.getElementById("corsiHint").textContent = "✅ 正确！下一轮…";
+      later(()=>{
+        document.querySelectorAll("#corsiGrid button").forEach(c=>c.className="");
+        corsiShowSeq();
+      }, 800);
+    }
+  } else {
+    s.alive = false;
+    btn.classList.add("miss");
+    const cells = document.querySelectorAll("#corsiGrid button");
+    s.seq.forEach(idx=>cells[idx].classList.add("lit"));
+    const reached = s.level - 1;
+    const isBest = tryBest("corsi", reached, false);
+    later(()=>showDialog("训练结束", reached+" 步",
+      `成功复现 ${reached} 步序列${isBest?"<br>🏆 刷新最佳纪录！":""}<br>一般人可以到 5~7 步`, corsiRestart), 900);
+  }
+}
+
+/* ================= 3. 火眼金睛（找不同） ================= */
+const SIMILAR_PAIRS = [
+  ["😄","😃"],["🍎","🍏"],["🌙","🌜"],["🐶","🐺"],
+  ["⭐","🌟"],["😀","🙂"],["🥔","🍠"],["🌺","🌸"],["🔵","🔷"]
+];
+let searchState = null, searchTimer = null;
+function searchStop(){ if(searchTimer){ clearInterval(searchTimer); searchTimer=null; } }
+function searchRestart(){
+  clearTimers(); searchStop();
+  searchState = { running:false, found:0, streak:0, time:60 };
+  document.getElementById("searchTime").textContent = 60;
+  document.getElementById("searchFound").textContent = 0;
+  document.getElementById("searchStreak").textContent = 0;
+  document.getElementById("searchFb").textContent = "";
+  document.getElementById("searchHint").textContent = "点击开始后，找出网格中唯一不同的图案";
+  document.getElementById("searchGrid").innerHTML = "";
+  document.getElementById("searchStartBtn").style.display = "";
+}
+function searchStart(){
+  searchState.running = true;
+  document.getElementById("searchStartBtn").style.display = "none";
+  searchNext();
+  searchTimer = setInterval(()=>{
+    searchState.time--;
+    document.getElementById("searchTime").textContent = searchState.time;
+    if(searchState.time<=0){
+      searchStop();
+      const isBest = tryBest("search", searchState.found, false);
+      showDialog("时间到！", searchState.found+" 个",
+        `最长连对：${searchState.streak}${isBest?"<br>🏆 刷新最佳纪录！":""}`, searchRestart);
+    }
+  }, 1000);
+}
+function searchNext(){
+  const s = searchState;
+  const [base, odd] = pick(SIMILAR_PAIRS);
+  const size = s.streak < 3 ? 4 : s.streak < 6 ? 5 : s.streak < 10 ? 6 : 7;
+  const total = size*size;
+  const oddIdx = rnd(0, total-1);
+  const grid = document.getElementById("searchGrid");
+  grid.style.gridTemplateColumns = `repeat(${size},1fr)`;
+  const cell = size>=6 ? "48px" : size===5 ? "56px" : "64px";
+  grid.innerHTML = "";
+  for(let i=0;i<total;i++){
+    const b = document.createElement("button");
+    b.textContent = i===oddIdx ? odd : base;
+    b.style.width = cell; b.style.height = cell;
+    b.onclick = ()=>{
+      if(!searchState.running) return;
+      if(i===oddIdx){
+        s.found++; s.streak++;
+        document.getElementById("searchFound").textContent = s.found;
+        document.getElementById("searchStreak").textContent = s.streak;
+        searchNext();
+      } else {
+        s.streak = 0;
+        s.time = Math.max(1, s.time-2);
+        document.getElementById("searchStreak").textContent = 0;
+        document.getElementById("searchTime").textContent = s.time;
+        b.classList.add("bad");
+        setTimeout(()=>b.classList.remove("bad"), 350);
+      }
+    };
+    grid.appendChild(b);
+  }
+}
+
+/* ================= 4. 倒序数字 ================= */
+let revState = null;
+function revRestart(){
+  clearTimers();
+  revState = { level:3, score:0, target:"" };
+  document.getElementById("revLevel").textContent = 3;
+  document.getElementById("revScore").textContent = 0;
+  document.getElementById("revHint").innerHTML = "记住下面的数字串，稍后<b>倒序</b>输入";
+  document.getElementById("revInputRow").style.display = "none";
+  revShowSeq();
+}
+function revShowSeq(){
+  const s = revState;
+  s.target = Array.from({length:s.level}, ()=>Math.floor(Math.random()*10)).join("");
+  const show = document.getElementById("revShow");
+  show.classList.remove("shake");
+  show.textContent = s.target;
+  document.getElementById("revHint").textContent = "记住它…";
+  document.getElementById("revInputRow").style.display = "none";
+  const dur = Math.max(1000, s.level*650);
+  later(()=>{
+    show.textContent = "";
+    document.getElementById("revHint").innerHTML = `请<b>倒序</b>输入刚才的 ${s.level} 位数字`;
+    document.getElementById("revInputRow").style.display = "flex";
+    const inp = document.getElementById("revInput");
+    inp.value = ""; inp.focus();
+  }, dur);
+}
+function revSubmit(){
+  const s = revState;
+  const val = document.getElementById("revInput").value.trim();
+  if(!val) return;
+  const answer = s.target.split("").reverse().join("");
+  const show = document.getElementById("revShow");
+  if(val === answer){
+    s.score = s.level;
+    document.getElementById("revScore").textContent = s.score;
+    s.level++;
+    document.getElementById("revLevel").textContent = s.level;
+    document.getElementById("revInputRow").style.display = "none";
+    show.textContent = "✅"; show.classList.remove("shake");
+    later(revShowSeq, 900);
+  } else {
+    const isBest = tryBest("rev", Math.max(s.score, s.level-1), false);
+    const reached = Math.max(s.score, s.level-1);
+    show.textContent = answer; show.classList.add("shake");
+    document.getElementById("revHint").innerHTML = `正确答案是 <b>${answer}</b>（${s.target} 的倒序）`;
+    document.getElementById("revInputRow").style.display = "none";
+    later(()=>showDialog("训练结束", reached+" 位",
+      `倒序记忆达到 ${reached} 位${isBest?"<br>🏆 刷新最佳纪录！":""}<br>倒序比正序难，能到 5 位就很棒了`, revRestart), 1300);
+  }
+}
+document.getElementById("revInput").addEventListener("keydown", e=>{ if(e.key==="Enter") revSubmit(); });
+
+/* ================= 5. 心算天平 ================= */
+let scaleState = null, scaleTimer = null;
+function scaleStop(){ if(scaleTimer){ clearInterval(scaleTimer); scaleTimer=null; } }
+function scaleRestart(){
+  clearTimers(); scaleStop();
+  scaleState = { running:false, right:0, streak:0, time:60 };
+  document.getElementById("scaleTime").textContent = 60;
+  document.getElementById("scaleRight").textContent = 0;
+  document.getElementById("scaleStreak").textContent = 0;
+  document.getElementById("scaleFb").textContent = "";
+  document.getElementById("scaleLeft").textContent = "?";
+  document.getElementById("scaleRight").textContent = "?";
+  document.getElementById("scaleStartBtn").style.display = "";
+}
+function genExpr(streak){
+  const hard = streak >= 5;
+  const ops = hard ? ["+","-","×"] : ["+","-"];
+  const op = pick(ops);
+  let a,b;
+  if(op==="×"){ a=rnd(3, hard?15:9); b=rnd(3, hard?12:9); return {text:`${a}×${b}`, val:a*b}; }
+  if(op==="+"){ a=rnd(10, hard?80:40); b=rnd(10, hard?80:40); return {text:`${a}+${b}`, val:a+b}; }
+  a=rnd(25, hard?99:60); b=rnd(5, a-1); return {text:`${a}-${b}`, val:a-b};
+}
+function scaleNext(){
+  const s = scaleState;
+  let L, R, tries = 0;
+  do { L = genExpr(s.streak); R = genExpr(s.streak); tries++; }
+  while(Math.abs(L.val - R.val) < 1 && tries < 50); // 保证有大小之分
+  if(L.val === R.val){ R.val += 3; R.text = R.text; }
+  s.answer = L.val > R.val ? "L" : "R";
+  s.values = [L.val, R.val];
+  const bl = document.getElementById("scaleLeft"), br = document.getElementById("scaleRight");
+  bl.textContent = L.text; br.textContent = R.text;
+  bl.className = ""; br.className = "";
+}
+function scaleStart(){
+  scaleState.running = true;
+  document.getElementById("scaleStartBtn").style.display = "none";
+  scaleNext();
+  scaleTimer = setInterval(()=>{
+    scaleState.time--;
+    document.getElementById("scaleTime").textContent = scaleState.time;
+    if(scaleState.time<=0){
+      scaleStop();
+      const isBest = tryBest("scale", scaleState.right, false);
+      showDialog("时间到！", scaleState.right+" 题",
+        `最长连对：${scaleState.streak}${isBest?"<br>🏆 刷新最佳纪录！":""}`, scaleRestart);
+    }
+  }, 1000);
+}
+function scaleAnswer(side){
+  const s = scaleState;
+  if(!s.running) return;
+  const bl = document.getElementById("scaleLeft"), br = document.getElementById("scaleRight");
+  const fb = document.getElementById("scaleFb");
+  const btn = side==="L" ? bl : br;
+  if(side === s.answer){
+    s.right++; s.streak++;
+    btn.classList.add("ok");
+    fb.textContent = "✅"; fb.className = "feedback good";
+  } else {
+    s.streak = 0;
+    btn.classList.add("bad");
+    fb.textContent = `❌ 左 ${s.values[0]} / 右 ${s.values[1]}`; fb.className = "feedback bad";
+  }
+  document.getElementById("scaleRight").textContent = s.right;
+  document.getElementById("scaleStreak").textContent = s.streak;
+  s.running = false;
+  setTimeout(()=>{
+    if(scaleState.time > 0){ scaleState.running = true; scaleNext(); }
+  }, 500);
+}
+document.getElementById("scaleLeft").onclick = ()=>scaleAnswer("L");
+document.getElementById("scaleRight").onclick = ()=>scaleAnswer("R");
+
+refreshStats();
+</script>
+</body>
+</html>
