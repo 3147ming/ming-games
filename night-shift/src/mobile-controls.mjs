@@ -34,6 +34,12 @@ function isCoarsePointer() {
 export function createMobileControls({ player, interaction, panels = {} } = {}) {
   if (!isCoarsePointer()) return null; // 桌面端：不挂载任何东西
 
+  /** 触屏轻震动反馈。iOS Safari 不支持 navigator.vibrate，调用即无副作用；
+   * 仅在粗指针（触屏）设备触发，桌面端（鼠标/键盘）一律不震动。 */
+  function haptic(pattern = 12) {
+    try { if (navigator.vibrate) navigator.vibrate(pattern); } catch { /* 不支持就忽略 */ }
+  }
+
   const root = document.createElement('div');
   root.id = 'ns-mc-root';
   root.innerHTML = `
@@ -51,6 +57,7 @@ export function createMobileControls({ player, interaction, panels = {} } = {}) 
       <button type="button" data-act="leaderboard">🏆 排行榜</button>
       <button type="button" data-act="save">💾 存档</button>
       <button type="button" data-act="load">📂 读档</button>
+      <button type="button" data-act="settings">⚙ 设置</button>
       <button type="button" data-act="pause">⏸ 暂停</button>
       <button type="button" data-act="close" class="ns-menu-close">✕ 关闭</button>
     </div>
@@ -133,6 +140,7 @@ export function createMobileControls({ player, interaction, panels = {} } = {}) 
         } else if (t.identifier === lookId) {
           const dt = Date.now() - t0;
           if (moved < 14 && dt < 250 && interaction && typeof interaction.tryInteract === 'function') {
+            haptic(); // 轻触交互给一点震动反馈
             interaction.tryInteract(); // 右半屏轻触 = 交互（等价 E 键）
           }
           lookId = null;
@@ -148,13 +156,16 @@ export function createMobileControls({ player, interaction, panels = {} } = {}) 
 
   /* ---------------- 右下按钮 ---------------- */
   root.querySelector('#ns-act-interact').addEventListener('click', () => {
+    haptic();
     if (interaction && typeof interaction.tryInteract === 'function') interaction.tryInteract();
   });
   sprintBtn.addEventListener('click', () => {
+    haptic();
     const on = sprintBtn.classList.toggle('on');
     player.setTouchSprint(on);
   });
   root.querySelector('#ns-act-menu').addEventListener('click', () => {
+    haptic();
     menu.classList.toggle('ns-hidden');
   });
 
@@ -163,6 +174,7 @@ export function createMobileControls({ player, interaction, panels = {} } = {}) 
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
     const act = btn.getAttribute('data-act');
+    haptic();
     menu.classList.add('ns-hidden');
     const fn = panels[act];
     if (typeof fn === 'function') fn();

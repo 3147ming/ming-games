@@ -25,7 +25,7 @@
  *  货箱模型与提示由 scene/main 表现层读这里的状态渲染。
  */
 
-import { DELIVERY, SKU_BY_ID } from './config.mjs';
+import { DELIVERY, SKU_BY_ID, GARBAGE } from './config.mjs';
 
 const numOr = (v, d) => (Number.isFinite(v) ? v : d);
 
@@ -165,6 +165,14 @@ export function createDelivery(opts = {}) {
     }
     d.held = (totalLeft > 0) ? { items: left, pickedAt: 0 } : null;
     onEvent('putaway', { put, left, totalPut, totalLeft });
+    /* 块6：每彻底拆完 1 个货箱 → 1 件垃圾（空箱）。
+     * 用 totalLeft===0 守卫：货箱可能分两次入仓（首次满仓只放一部分），
+     * 只有"这次把箱子彻底清空"才计 1 件，避免重复计数；totalPut>0 防"啥也没放"的空操作。 */
+    if (totalLeft === 0 && totalPut > 0) {
+      state.garbage = Math.min(GARBAGE.cap, (state.garbage | 0) + 1);
+      // 垃圾堆积扣口碑（与清理加分对称；reputation 钳在 0~100）
+      state.reputation = Math.max(0, Math.min(100, state.reputation - GARBAGE.repPenaltyPerItem));
+    }
     if (totalPut === 0) return { ok: false, reason: '仓库已满', put, left };
     return { ok: true, put, left, totalPut, totalLeft };
   }

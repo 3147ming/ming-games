@@ -7,7 +7,7 @@
  * 表现为"明明站在货架前却提示要靠近"。锥选只需大致对着即可。
  */
 import * as THREE from 'three';
-import { REACH, ACTION_DURATIONS, SKU_BY_ID, SLOT_CAP, PICK_BATCH, PICK, SNACK, CLERK, EVENTS } from './config.mjs';
+import { REACH, ACTION_DURATIONS, SKU_BY_ID, SLOT_CAP, PICK_BATCH, PICK, SNACK, CLERK, EVENTS, GARBAGE } from './config.mjs';
 import { state, notify } from './state.mjs';
 import { take, place, checkout, purchaseSnack, returnHeld, clearanceSell } from './economy.mjs';
 import { FACILITY_BY_ID, facilityCost } from './facilities.mjs';
@@ -35,9 +35,13 @@ export function createInteraction({
   ambientHint, onAmbient,
   deliveryHint,   // 块5：() => delivery.panel()（由 main 注入）
   onDelivery,     // 块5：(action, arg) => {ok,...}（由 main 落地到 delivery 模块）
+  /* 块6：垃圾桶清空（对准垃圾桶按 E → 一次清空所有垃圾，由 main 结算回收金/口碑） */
+  onTrashcan,
 }) {
   const targets = [
     ...anchors.slots, anchors.counter, anchors.crate,
+    /* 块6：垃圾桶命中盒（收银台旁），有就加入锥选 */
+    ...(anchors.trashcan ? [anchors.trashcan] : []),
     ...(anchors.facilities ?? []), ...(anchors.stalls ?? []),
     /* 门口货箱（块5）：空数组也没关系（老存档/未到货时是空的）。
      * 货箱的 Group 本身是 visible=false 时，锥选靠 mesh 的可见性过滤，
@@ -63,6 +67,7 @@ export function createInteraction({
     if (ud.interact === 'delivery') return '货箱';   // 块5
     if (ud.interact === 'facility') return `设施#${ud.facilityId}`;
     if (ud.interact === 'litter') return `垃圾#${ud.litterId}`;
+    if (ud.interact === 'trashcan') return '垃圾桶';
     if (ud.interact === 'ambient') return `环境#${ud.ambientId}`;
     return '?';
   }
@@ -365,6 +370,18 @@ export function createInteraction({
       }
       return { type: 'litter', ok: true, litterId: ud.litterId, prompt: '🧹 清理垃圾', ref: ud };
     }
+
+    /* 块6：垃圾桶 —— 对准按 E 一次清空所有垃圾（每件 +回收金，由 main 结算） */
+    if (ud.interact === 'trashcan') {
+      const n = state.garbage | 0;
+      if (state.held) {
+        return { type: 'trashcan', ok: false, prompt: '先放下手中的货物', ref: ud };
+      }
+      if (n <= 0) {
+        return { type: 'trashcan', ok: false, prompt: '🗑 垃圾桶是空的', ref: ud };
+      }
+      return { type: 'trashcan', ok: true, prompt: `🗑 清空垃圾 ${n} 件`, ref: ud };
+    }
     if (ud.interact === 'buySnack') {
       if (state.held) {
         return { type: 'buySnack', ok: false, prompt: '先放下手中的货物', ref: ud };
@@ -503,6 +520,12 @@ export function createInteraction({
       result = onClean(h.litterId);
       if (result?.ok) duration = withPenalty(0.8);
       state.busyLabel = 'clean';
+    } else if (h.type === 'trashcan' && h.ok) {
+      // 块6：清空所有垃圾（回收金 + 口碑由 main 落地，交互层只转发）
+      if (typeof onTrashcan !== 'function') return { ok: false, reason: '垃圾桶未接入' };
+      result = onTrashcan();
+      if (result?.ok) duration = withPenalty(0.6);
+      state.busyLabel = 'trashcan';
     } else if (h.type === 'buySnack' && h.ok) {
       // R2：买宵夜 → 现金漏出换饱食度（economy.purchaseSnack 已改 clerk.satiety）
       result = purchaseSnack();

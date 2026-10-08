@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import {
   SKU_BY_ID, ROOM, STORE, ZONES, PROPS, PROP_SIZE,
-  EYE_HEIGHT, FOV, SLOT_COUNT, SLOT_CAP, INTERACT_BOX, POS, SHELF_ROWS,
+  EYE_HEIGHT, FOV, SLOT_COUNT, SLOT_CAP, INTERACT_BOX, POS, SHELF_ROWS, GARBAGE,
   FACILITIES, POND, SNACK_STALL, EXPANSIONS, EXPANSION_BY_ID, DEVICE_UPGRADE,
   PRODUCT_VARIANTS, productVariant, CLAW_CABINET, DELIVERY,
 } from './config.mjs';
@@ -680,6 +680,80 @@ export function createWorld(canvas) {
   crateHit.userData = { interact: 'take' };
   crateGroup.add(crateHit);
   world.add(crateGroup);
+
+  /* ---------- 块6：垃圾桶 + 垃圾堆（收银台旁，不挡动线、不穿货架） ----------
+   * 收银台在 (3.6,3.4)，货架在 x≤-1.4（左侧），这里把垃圾桶放到收银台右前方
+   * (5.1,3.4)，处于开阔地面（STORE 范围 x∈[-7,7]、z∈[-5,5]），与任何货架/设备都不相交。
+   * 垃圾桶是交互锚点（userData.interact='trashcan'）；垃圾堆是纯视觉（动态池，不进 targets）。 */
+  const trashcanPos = new THREE.Vector3(COUNTER_POS.x + 1.5, 0, COUNTER_POS.z); // (5.1, 0, 3.4)
+  const trashcanGroup = new THREE.Group();
+  trashcanGroup.position.copy(trashcanPos);
+  // 白色桶身（圆柱）
+  const canBody = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.34, 0.3, 0.66, 18),
+    new THREE.MeshStandardMaterial({ color: 0xF2F2F2, roughness: 0.6, metalness: 0.05 }),
+  );
+  canBody.position.y = 0.33;
+  canBody.castShadow = true; canBody.receiveShadow = true;
+  trashcanGroup.add(canBody);
+  // 桶盖
+  const canLid = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.4, 0.38, 0.1, 18),
+    new THREE.MeshStandardMaterial({ color: 0xD8D8D8, roughness: 0.5, metalness: 0.1 }),
+  );
+  canLid.position.y = 0.72;
+  canLid.castShadow = true;
+  trashcanGroup.add(canLid);
+  // 交互命中盒（不可见）
+  const trashcanHit = new THREE.Mesh(
+    new THREE.BoxGeometry(0.9, 1.2, 0.9),
+    new THREE.MeshBasicMaterial({ visible: false }),
+  );
+  trashcanHit.position.y = 0.6;
+  trashcanHit.userData = { interact: 'trashcan' };
+  trashcanGroup.add(trashcanHit);
+  world.add(trashcanGroup);
+
+  /* 垃圾堆（动态池，最多 GARBAGE.cap 件，堆在垃圾桶前方一点）。
+   * 只在 state.garbage>0 时显示，是"垃圾堆积"的视觉出口；清空后全部隐藏。 */
+  const garbagePileGroup = new THREE.Group();
+  garbagePileGroup.position.set(trashcanPos.x, 0, trashcanPos.z + 0.95);
+  const garbagePool = [];
+  const garbageColors = [0xE8C99B, 0xC9B79B, 0xD8C0A0, 0xBFB39A]; // 牛皮纸/纸箱色系
+  for (let i = 0; i < GARBAGE.cap; i++) {
+    const g = new THREE.Mesh(
+      new THREE.BoxGeometry(0.28, 0.18, 0.22),
+      new THREE.MeshStandardMaterial({ color: garbageColors[i % garbageColors.length], roughness: 0.95, metalness: 0 }),
+    );
+    g.castShadow = true; g.receiveShadow = true;
+    g.visible = false;
+    garbagePileGroup.add(g);
+    garbagePool.push(g);
+  }
+  world.add(garbagePileGroup);
+
+  /**
+   * 同步垃圾堆网格到 state.garbage（块6）。
+   * @param n 当前垃圾件数（0~cap）
+   */
+  function setGarbage(n) {
+    const cnt = Math.max(0, Math.min(GARBAGE.cap, n | 0));
+    for (let i = 0; i < garbagePool.length; i++) {
+      const m = garbagePool[i];
+      if (i < cnt) {
+        // 在垃圾桶前方错落铺一小堆（螺旋排列，避免重叠穿模）
+        const ring = Math.floor(i / 4);
+        const ang = (i % 4) * (Math.PI / 2) + ring * 0.6;
+        const r = 0.22 + ring * 0.2;
+        m.position.set(Math.cos(ang) * r, 0.1 + (i % 3) * 0.16, Math.sin(ang) * r);
+        m.rotation.set(0, ang, (i % 2) ? 0.2 : -0.2);
+        m.visible = true;
+      } else {
+        m.visible = false;
+      }
+    }
+  }
+  setGarbage(0); // 开局无垃圾
 
   /* ---------- 门口货箱（2026-10-06 块5：进货运输闭环） ----------
    * 与"库存箱"是两件东西：
@@ -2789,6 +2863,8 @@ export function createWorld(canvas) {
       ambient: ambientHits,
       /** 垃圾网格池（动态增删；交互系统每帧读它参与锥选） */
       litter: litterPool,
+      /** 块6：垃圾桶命中盒（收银台旁），交互层靠 interact:'trashcan' 认它 */
+      trashcan: trashcanHit,
     },
     updateSlotVisual, updateHands, updateSnack, updatePond, resize,
     /** 上货放置动画：让第 i 格商品做一次落位弹跳（配合 sfx.done('stock')） */
@@ -2807,6 +2883,8 @@ export function createWorld(canvas) {
     updateLabels, setGuideVisible,
     /** 环境系统（需求G ③④⑤⑥）的表现出口 */
     setLitter, updateDeviceVisuals, applyDayNight,
+    /** 块6：垃圾堆同步（state.garbage → 垃圾桶前的纸箱堆） */
+    setGarbage,
     /** 门口货箱显隐（块5） */
     setDeliveryCrates,
     /** 娃娃机玻璃柜的娃娃数（P0-4：有货摆满 / 见底挂补货提示，绝不空柜） */

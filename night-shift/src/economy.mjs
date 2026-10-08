@@ -6,7 +6,7 @@
 import {
   SKUS, SKU_BY_ID, SLOT_CAP, PICK_BATCH, RENT_PER_NIGHT,
   STAR_THRESHOLDS, UPGRADES, COFFEE_BONUS, NIGHTS_PER_WEEK,
-  REP_SERVE, REP_LOST, CLERK, EVENTS, SNACK, WAREHOUSE,
+  REP_SERVE, REP_LOST, CLERK, EVENTS, SNACK, WAREHOUSE, GARBAGE,
   FIRST_NIGHT_SPEND_MUL,
 } from './config.mjs';
 import { state, expandSlots, notify } from './state.mjs';
@@ -309,6 +309,10 @@ export function clearanceSell(slotIndex) {
   slot.qty = 0;
   slot.skuId = null;          // 清空成空货架（视觉同步走 updateSlotVisual 脏检查）
   notify();
+  /* 块6：临期清仓每清 1 格 → 1 件垃圾（清仓半价的回收金已算"略回血"补偿）。
+   * rep 扣减与拆箱一致（堆积扣分）。 */
+  state.garbage = Math.min(GARBAGE.cap, (state.garbage | 0) + 1);
+  state.reputation = clamp(state.reputation - GARBAGE.repPenaltyPerItem, 0, 100);
   /* slotIndex 一并返回（2026-10-06 块3）：表现层要靠它给"被清的那一格"播
    * 变暗→清空动画。逻辑层不该知道有动画，但"是哪一格"是纯逻辑事实，
    * 所以在这里给出、由 main 转给 scene —— 与 sku/qty/amount 同一性质。 */
@@ -388,7 +392,10 @@ export function checkout() {
   const adj = checkoutHook?.(customer.skuId, customer) ?? { mul: 1, repDelta: 0 };
   const tipBase = customer.isRegular ? EVENTS.REGULAR.tip : 1;
   const tipMul = adj.tipMul ?? 1;
-  const tip = 1 + (tipBase - 1) * tipMul;   // 雨夜等主题只放大"小费那部分"，不动本金
+  /* 块6：店内垃圾 ≥ tipThreshold 件 → 小费减半（顾客嫌脏，懒得给小费）。
+   * 只压"小费那部分"，不动本金（与主题/常客折扣同一处理层级）。 */
+  const tipPenalty = state.garbage >= GARBAGE.tipThreshold ? 0.5 : 1;
+  const tip = 1 + (tipBase - 1) * tipMul * tipPenalty;   // 雨夜等主题只放大"小费那部分"，不动本金
   const amount = got * unit * (adj.mul ?? 1) * tip * nightMul;
   /* 小费单独累计（打烊结算要单列"其中小费"一行）。
    * 口径：实际收款 − 不含小费的应收。促销/主题折扣压低的是本金，不该算成小费变少。 */

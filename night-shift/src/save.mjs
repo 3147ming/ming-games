@@ -60,7 +60,7 @@ const STATE_FIELDS = [
   /* 时间 / 流程 */
   'night', 'gameHour', 'wallElapsed', 'phase', 'paused',
   /* 统计 */
-  'reputation', 'served', 'lostSales', 'revenue', 'earned', 'purchaseCost', 'loss',
+  'reputation', 'served', 'lostSales', 'revenue', 'earned', 'purchaseCost', 'loss', 'garbage',
   /* 顾客 / 事件 */
   'spawnedTonight', 'arrivalsTarget', 'blackoutUntil', 'rushUntil', 'rushActive',
   /* 店员状态（R1） */

@@ -4,7 +4,7 @@
  */
 import {
   SKU_BY_ID, OPEN_HOUR, NIGHTS_PER_WEEK, CLERK, MODULE_MAX_PER_DEVICE, MODULE_REFUND,
-  STAFF, WAREHOUSE, SECONDHAND, MONITOR, DELIVERY,
+  STAFF, WAREHOUSE, SECONDHAND, MONITOR, DELIVERY, GARBAGE,
 } from './config.mjs';
 import { state, NIGHT_SECONDS } from './state.mjs';
 import { RESET_SCOPE } from './reset.mjs';
@@ -206,6 +206,8 @@ export function renderHud(env) {
       if (env.posterLeft > 0) events += `<span class="ev ev-ice">📣 海报 ${Math.ceil(env.posterLeft)}s</span>`;
       /* 2026-10-05 促销可视化：促销进行中顶部常驻倒计时（醒目红色） */
       if (env.promoLeft > 0) events += `<span class="ev ev-hot">🔥 促销 9折 ${Math.ceil(env.promoLeft)}s</span>`;
+      /* 块6：垃圾堆积警告（≥warnThreshold 件，橙红，复用促销倒计时样式） */
+      if (env.garbageCount >= GARBAGE.warnThreshold) events += `<span class="ev ev-hot">🗑 垃圾堆积 ${env.garbageCount}/${GARBAGE.cap}</span>`;
 
       els.envline.style.display = '';
       els.envline.innerHTML =
@@ -388,7 +390,7 @@ export function saveToast(msg, kind = 'ok', duration = 2000) {
 }
 
 /* ---------- 模态 ---------- */
-function closeModal() {
+export function closeModal() {
   const mask = els.modal.querySelector('.modal-mask');
   if (mask) {
     // 手感 4：关闭也走 0.15s 淡出，不硬切。

@@ -21,6 +21,7 @@ import {
   openLeaderboard, openInventory, showIncident, isModalOpen,
   openSettings, showTutorial, hideTutorial, flashQuestDone,
   openAchievements, openChoice, showThemeBanner, showPromoBanner, setSatBonus, openPhone, openMonitor,
+  closeModal,
 } from './hud.mjs';
 import { createAuthService, createNetBridge } from './account.mjs';
 import { submitLocal, readBoard, scoreOf, clearForAccount } from './leaderboard.mjs';
@@ -57,7 +58,7 @@ import { createDayNight } from './daynight.mjs';
 import { createBloom, createPassThrough } from './postfx.mjs';
 import { createSaveManager, AUTOSAVE_SEC, saveKeyFor } from './save.mjs';
 import { createCharacter } from './character.mjs';
-import { ZONES, STORE, POND, POS, TASKBOARD, DELIVERY } from './config.mjs';
+import { ZONES, STORE, POND, POS, TASKBOARD, DELIVERY, GARBAGE } from './config.mjs';
 import { NPC, DAYNIGHT } from './art.mjs';
 /* 需求J：店员系统（采购员 / 上货员 + 维修员 / 保洁员）+ 仓库面板 API */
 import { createStaff } from './staff.mjs';
@@ -446,6 +447,13 @@ setCheckoutDoneHook((info) => {
       POS.counter.x, POS.counter.z, n,
     );
   }
+  /* 块6：店内垃圾堆积 → 顾客皱眉离店（复用 upset 音效 + 表情）。
+   * 只影响"本次结账的顾客"的离店情绪，不动全局满意度；与 economy.checkout 里的小费减半配套。 */
+  if (state.garbage >= GARBAGE.tipThreshold) {
+    sfx.upset();
+    if (info.customer) info.customer.mood = 'upset';
+  }
+
   /* 任务板指标（块4）：卖出的便当份数 / 促销期卖出的饮料件数。
    * 放在 checkoutDoneHook 是因为这里已经有完整的 skuId + qty，
    * 而"卖出便当"这种子集计数没法从总数做差分得到（见 state 字段注释）。 */
@@ -985,6 +993,26 @@ function openRestockQte(slotIndex) {
   });
 }
 
+/* 块6：对准垃圾桶按 E → 一次清空所有垃圾。
+ * 每件 +recyclePerItem 回收金（入 cash/revenue），清一堆加 repPerClear×n 口碑；
+ * 同步隐藏垃圾堆网格（world.setGarbage(0)），并给一个正向反馈音 + 提示。
+ * reputation 钳在 0~100（与堆积扣分对称）。 */
+function clearGarbage() {
+  const n = state.garbage | 0;
+  if (n <= 0) return { ok: false, reason: '垃圾桶是空的' };
+  const gain = n * GARBAGE.recyclePerItem;
+  state.cash += gain;
+  state.revenue += gain;
+  const repGain = n * GARBAGE.repPerClear;
+  state.reputation = Math.max(0, Math.min(100, state.reputation + repGain));
+  state.garbage = 0;
+  world.setGarbage(0);
+  notify();
+  sfx.coin();
+  toast(`🗑 清空垃圾 ${n} 件 · 回收金 ${fmtYuan(gain)} · 口碑 +${repGain.toFixed(1)}`, 'ok');
+  return { ok: true, cleared: n, gain };
+}
+
 const interaction = createInteraction({
   camera: world.camera,
   anchors: world.anchors,
@@ -1040,6 +1068,8 @@ const interaction = createInteraction({
   /* 块5：进货运输 —— 提示只读状态，执行落到 delivery 模块 */
   deliveryHint: () => delivery.panel(),
   onDelivery: (action, arg) => (action === 'pickup' ? delivery.pickup(arg) : delivery.putaway()),
+  /* 块6：垃圾桶清空（结算回收金 + 口碑，逻辑全在 main 的 clearGarbage） */
+  onTrashcan: clearGarbage,
 
   ambientHint: (id) => {
     if (id === 'cat') {
@@ -1377,6 +1407,13 @@ const mobileControls = createMobileControls({
     save: () => { const r = save.save(); if (!r.ok) sfx.bad(); },
     load: () => loadGame(),
     pause: () => togglePause(),
+    // 移动端直达「设置」：与桌面 Esc→暂停→设置 同口径（含账号重开入口）。
+    // 关掉后停在游戏内（relock），重开成功后回到第一夜。
+    settings: () => openSettings(() => relock(), reset, () => {
+      if (document.exitPointerLock) document.exitPointerLock();
+      toast('重开完成 · 从第一夜重新开始', 'ok', 3200);
+      player.requestLock();
+    }),
   },
 });
 
@@ -1503,11 +1540,21 @@ function envSnapshot() {
     fatigue: state.playerFatigue,
     fatigueLevel: fatigue.level(),
     dozing: fatigue.isDozing(),
+    /** 块6：当夜垃圾件数（HUD 顶部「垃圾堆积」警告用它判断 ≥warnThreshold） */
+    garbageCount: state.garbage | 0,
   };
 }
 
 /** F9：读档。读完必须刷新场景表现，否则会出现"数据回来了但画面没变" */
 function loadGame() {
+  /* 读档边界收口：先收掉任何开着的"脏 UI"（模态 / 小游戏 / 暂停态），
+   * 避免"读进一个还开着的面板"导致两层 UI 叠加、或读档后卡在暂停。
+   * 桌面 F9 已在 keydown 里对 isModalOpen/isMinigameOpen/isQteOpen 早退拦截，
+   * 这里主要兜住移动端菜单触发读档、以及任何漏网路径。 */
+  try { if (isModalOpen()) closeModal(); } catch { /* ignore */ }
+  try { if (isMinigameOpen()) closeMinigame(); } catch { /* ignore */ }
+  if (state.paused) { state.paused = false; try { if (document.exitPointerLock) document.exitPointerLock(); } catch { /* ignore */ } }
+
   const res = save.load();
   if (!res.ok) {
     saveToast(res.reason === 'no-save' ? '没有可读取的存档' : '存档已损坏 · 无法读取', 'bad', 2600);
@@ -2388,6 +2435,7 @@ function step(now) {
 
   /* --- 表现同步：垃圾 / 设备状态灯 / 光照 --- */
   world.setLitter(worldState.litter);
+  world.setGarbage(state.garbage);   // 块6：垃圾堆随 state.garbage 增减（含清理后归零）
   syncDevices();
   world.applyDayNight(dn);
   if (post.uniforms?.composite) {

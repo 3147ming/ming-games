@@ -62,6 +62,9 @@ function baseState() {
     soldDrinkPromo: 0,     // 促销期间卖出的饮料件数
     placed: 0,             // 从库存箱上架的件数
     cleared: 0,            // 清仓卖出的格数
+    /** 块6：当夜垃圾/空箱件数（拆箱 + 临期清仓产生，最多叠 GARBAGE.cap 件）；
+     * 堆满后不再增加，靠对准垃圾桶按 E 清空。属于"某一夜里"的维护职责，跨夜清零。 */
+    garbage: 0,
     taskboardIncome: 0,    // 本夜任务板现金收入（结算时算占比后清零）
     /* 进货运输（块5）：在途单跨夜保留（读档仍知道有货在路上），
      * 门口货箱与手持箱在 startNight 重置 —— 夜店里没人在门口等货。 */
@@ -261,6 +264,7 @@ export function resetForNewNight() {
   state.soldDrinkPromo = 0;
   state.placed = 0;
   state.cleared = 0;
+  state.garbage = 0;       // 块6：当夜垃圾件数（跨夜清零，与 cleared 同口径）
   state.purchaseCost = 0;
   state.loss = 0;
   state.blackoutUntil = null;
