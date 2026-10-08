@@ -43,9 +43,12 @@ export function createRegulars(opts = {}) {
   /**
    * 顾客进店时调用：登记这张脸今夜到店，并判定是否已是熟客。
    * @param faceId   稳定的脸谱标识（由 customers 生成并传入）
-   * @returns { regular:boolean, name:string, emoji:string, tag:string|null, nights:number }
+   * @param identityId  本夜为这张脸抽到的身份 id（块7：夜猫子/学生/…）；
+   *   **首次入场固化**：写入 entry.identityId 后跨夜不变，与忠诚度同生命周期。
+   *   老存档 entry 没有该字段时，以本次传入值补全（固化从此刻起）。
+   * @returns { regular:boolean, name:string, emoji:string, tag:string|null, nights:number, identityId:string|null }
    */
-  function judge(faceId) {
+  function judge(faceId, identityId = null) {
     const faces = ensure();
     const night = state.night;
     let entry = faces[faceId];
@@ -59,9 +62,14 @@ export function createRegulars(opts = {}) {
          * 常客抱着"想买节日礼盒"的执念却永远买不到，那不是ident感，是挫败）。 */
         prefer: REGULARS.loyalty.preferPool[Math.floor(rng() * REGULARS.loyalty.preferPool.length)],
         loyalty: 0,
+        /* 块7：身份固化（首次入场即定，与忠诚度共存） */
+        identityId: identityId ?? null,
       };
       faces[faceId] = entry;
     }
+    /* 固化：已有身份则保持（跨夜不变）；老存档缺字段则本次补全 */
+    if (entry.identityId == null && identityId != null) entry.identityId = identityId;
+    const finalIdentity = entry.identityId ?? identityId ?? null;
     // 同一夜多次到店只记一次（去重），避免"刷脸刷出熟客"
     if (!entry.nights.includes(night)) entry.nights.push(night);
     const nights = entry.nights.length;
@@ -76,6 +84,7 @@ export function createRegulars(opts = {}) {
       emoji: entry.emoji,
       tag: regular ? REGULARS.tag : null,
       nights,
+      identityId: finalIdentity,
       /* 块2 扩展字段 */
       prefer: entry.prefer ?? null,
       loyalty: entry.loyalty ?? 0,
@@ -183,6 +192,7 @@ export function createRegulars(opts = {}) {
         regular: e.nights.length >= REGULARS.nightsToRegular,
         prefer: e.prefer ?? null,
         loyalty: e.loyalty ?? 0,
+        identityId: e.identityId ?? null,
       })),
     };
   }

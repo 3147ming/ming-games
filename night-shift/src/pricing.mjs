@@ -34,6 +34,9 @@ export const PRICING = {
     wave: 10,
     /** 促销期间购物顾客额外生成倍率（customers.mjs 读 state.promoUntil 判定） */
     trafficMul: 2.2,
+    /** 块7：促销期间，组合购买的 SKU 抽取权重抬升倍率（"促销品进组合权重提升"）。
+     *  仅作用于身份组合篮的主/搭配件抽取，不改动单件定价与促销 mul。 */
+    comboBoost: 1.6,
     /** 促销让利记在账本上的 key */
     ledgerKey: 'promo.discount',
   },

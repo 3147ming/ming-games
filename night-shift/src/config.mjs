@@ -29,6 +29,16 @@ export const SKUS = [
   { id: 'gum',      name: '口香糖',   emoji: '🄿', cost: 1.5, price: 3,  shelfLife: 30, moq: 6,  color: 0x3AA0D8, locked: 'grocery' },
   { id: 'battery',  name: '电池',     emoji: '🔋', cost: 4,   price: 9,  shelfLife: 60, moq: 4,  color: 0x4A5A8C, locked: 'grocery' },
   { id: 'magazine', name: '杂志',     emoji: '📖', cost: 6,   price: 14, shelfLife: 20, moq: 3,  color: 0xC0392B, locked: 'grocery' },
+  /* ---------- 块7：深夜刚需 ×3（对标「商品太少」的体验缺口） ----------
+   * 关东煮 / 热咖啡：开局即售（夜班便利店招牌深夜品类，零门槛立刻丰富货架）；
+   * 啤酒：跟杂货一起解锁（locked:'grocery'，与口香糖/电池/杂志同一把钥匙）。
+   * 三者都带变体池（见 PRODUCT_VARIANTS），复用既有 shape：
+   *   oden→noodlecup（杯装关东煮）/ hotcoffee→cup（纸杯）/ beer→bottle（瓶装），
+   *   所以**无需新增任何 3D 几何**，货架模型自然就有区分度。
+   * SEGMENTS 偏好的时段时间分布见下方 SEGMENTS 表（已同步归一化到含新 SKU）。 */
+  { id: 'oden',      name: '关东煮', emoji: '🍢', cost: 3,  price: 9,  shelfLife: 1, moq: 6,  color: 0xC8672E },
+  { id: 'hotcoffee', name: '热咖啡', emoji: '☕', cost: 2,  price: 7,  shelfLife: 1, moq: 8,  color: 0x6F4A2E },
+  { id: 'beer',      name: '啤酒',   emoji: '🍺', cost: 5,  price: 12, shelfLife: 30, moq: 4, color: 0xD9A441, locked: 'grocery' },
 ];
 export const SKU_BY_ID = Object.fromEntries(SKUS.map((s) => [s.id, s]));
 
@@ -102,6 +112,24 @@ export const PRODUCT_VARIANTS = {
     { name: '游戏志',   shape: 'magazine',     color: 0x2F6FB5, accent: 0xEAF2FA },
     { name: '夜谈',     shape: 'magazine',     color: 0x4A3020, accent: 0xE8A94E },
   ],
+  /* 块7：深夜刚需三样的变体池（复用既有 shape，不新增几何）。
+   * oden→noodlecup（杯装关东煮）/ hotcoffee→cup（纸杯热饮）/ beer→bottle（瓶装啤酒）。
+   * 错位取模（productVariant 步长 2）保证相邻格位摆到不同款，整排有超市感。 */
+  oden: [
+    { name: '萝卜',   shape: 'noodlecup', color: 0xE8C36B, accent: 0xF2E3C5 },
+    { name: '鸡蛋',   shape: 'noodlecup', color: 0xF0D98C, accent: 0xFFF0D0 },
+    { name: '魔芋',   shape: 'noodlecup', color: 0x9BD08A, accent: 0xE8F5E9 },
+  ],
+  hotcoffee: [
+    { name: '美式',   shape: 'cup', color: 0x4A3020, accent: 0xE8D9A0 },
+    { name: '拿铁',   shape: 'cup', color: 0x6F4A2E, accent: 0xF3E3D0 },
+    { name: '卡布',   shape: 'cup', color: 0x8C6A4A, accent: 0xFFF0F6 },
+  ],
+  beer: [
+    { name: '淡啤',   shape: 'bottle', color: 0xE8B23A, accent: 0xF7C948 },
+    { name: '黑啤',   shape: 'bottle', color: 0x3A2A1A, accent: 0xC0392B },
+    { name: '无醇',   shape: 'bottle', color: 0xC9A24B, accent: 0xE8F5E9 },
+  ],
 };
 
 /**
@@ -155,11 +183,51 @@ export const START_REPUTATION = 50;
 export const REP_SERVE = 0.5;    // 成交 +0.5
 export const REP_LOST = -1;      // 失销 -1
 export const SEGMENTS = [
-  { id: 'S1', label: '晚间', from: 0, to: 2, weight: 1.00, bias: { drink: 0.35, noodle: 0.30, bento: 0.35 } },
-  { id: 'S2', label: '深夜', from: 2, to: 4, weight: 0.60, bias: { drink: 0.40, noodle: 0.35, bento: 0.25 } },
-  { id: 'S3', label: '凌晨', from: 4, to: 6, weight: 0.35, bias: { drink: 0.45, noodle: 0.35, bento: 0.20 } },
-  { id: 'S4', label: '清晨', from: 6, to: 8, weight: 0.80, bias: { drink: 0.30, noodle: 0.30, bento: 0.40 } },
+  /* bias 已同步归一化到「含 6 个基础 SKU」：不可售的 oden/hotcoffee/beer 权重在
+   * pickSku 里被 availableSkus() 过滤掉（啤酒需解锁杂货），所以实际抽样只看当夜在售的。
+   * 时段倾向：深夜/凌晨偏关东煮·啤酒·热咖啡，清晨偏便当·热咖啡（打工族提神）。 */
+  { id: 'S1', label: '晚间', from: 0, to: 2, weight: 1.00,
+    bias: { drink: 0.22, noodle: 0.20, bento: 0.22, oden: 0.14, hotcoffee: 0.12, beer: 0.10 },
+    /* idWeights：各身份的「相对出现权重」，深夜醉汉/夜猫子多、清晨上班族/司机多（块7） */
+    idWeights: { nightowl: 0.25, student: 0.20, office: 0.20, drunk: 0.20, driver: 0.15 } },
+  { id: 'S2', label: '深夜', from: 2, to: 4, weight: 0.60,
+    bias: { drink: 0.22, noodle: 0.16, bento: 0.14, oden: 0.18, hotcoffee: 0.12, beer: 0.18 },
+    idWeights: { nightowl: 0.30, student: 0.15, office: 0.10, drunk: 0.30, driver: 0.15 } },
+  { id: 'S3', label: '凌晨', from: 4, to: 6, weight: 0.35,
+    bias: { drink: 0.24, noodle: 0.16, bento: 0.12, oden: 0.18, hotcoffee: 0.14, beer: 0.16 },
+    idWeights: { nightowl: 0.28, student: 0.17, office: 0.12, drunk: 0.28, driver: 0.15 } },
+  { id: 'S4', label: '清晨', from: 6, to: 8, weight: 0.80,
+    bias: { drink: 0.18, noodle: 0.18, bento: 0.26, oden: 0.10, hotcoffee: 0.18, beer: 0.10 },
+    idWeights: { nightowl: 0.10, student: 0.15, office: 0.35, drunk: 0.10, driver: 0.30 } },
 ];
+
+/* ---------- 块7：顾客身份（5 种，带时段分布 + 独立外观 + 组合率） ----------
+ * 设计口径（与既有 SYS-03 解耦）：每个顾客先按所在夜段的 idWeights 抽一个身份，
+ * 再从其 prefer 池里抽「主件 +（按 comboRate 概率）搭配件」组成购物篮。
+ *
+ *  · spendMul：该身份整笔结账的消费倍率（年轻人爱逛、酒鬼肯花、学生抠门）—— 只乘总额，
+ *    不动定价（避免与促销/弹性叠加失控）。
+ *  · patienceMul：相对基础耐心 PATIENCE_SEC 的系数 —— 高耐心(夜猫子)从容、低耐心(上班族等)
+ *    更容易因排队失去耐心离场，给玩家"先服务急客"的策略感。
+ *  · comboRate：触发组合购买（搭配件）的概率。
+ *  · prefer：偏好 SKU 池（抽主件/搭配件都从这抽；promo 期间权重抬升，见 customers.mjs）。
+ *  · look：传给 character.mjs 的外观修饰（醉汉脸红 / 司机帽子 / 夜猫子黑眼圈 / 学生书包 / 上班族公文包）。
+ *  · 常客首次入场固化身份：identityId 在 regulars.judge 里写一次，跨夜不变（见 regulars.mjs）。
+ */
+export const IDENTITIES = {
+  nightowl:  { id: 'nightowl',  name: '夜猫子', emoji: '🦉', spendMul: 1.1, patienceMul: 1.6, comboRate: 0.35,
+               prefer: ['drink', 'oden', 'beer'],            look: { eyes: 'tired' } },
+  student:   { id: 'student',   name: '学生',   emoji: '🎒', spendMul: 0.85, patienceMul: 1.0, comboRate: 0.30,
+               prefer: ['noodle', 'drink', 'gum'],          look: { backpack: true } },
+  office:    { id: 'office',    name: '上班族', emoji: '💼', spendMul: 1.3, patienceMul: 0.6, comboRate: 0.25,
+               prefer: ['bento', 'hotcoffee', 'magazine'],  look: { briefcase: true } },
+  drunk:     { id: 'drunk',     name: '醉汉',   emoji: '🍻', spendMul: 1.2, patienceMul: 0.6, comboRate: 0.40,
+               prefer: ['beer', 'gum', 'magazine'],         look: { flush: true } },
+  driver:    { id: 'driver',    name: '司机',   emoji: '🚕', spendMul: 1.0, patienceMul: 0.6, comboRate: 0.30,
+               prefer: ['hotcoffee', 'gum', 'battery'],      look: { hat: true } },
+};
+export const IDENTITY_IDS = Object.keys(IDENTITIES);
+
 /** 价格弹性：售价每高于建议价 10%，需求 -15%（SYS-03 §2） */
 export const ELASTICITY_K = 1.5;
 export const DEMAND_MUL_MIN = 0.3;

@@ -52,8 +52,9 @@ function std(color, opts = {}) {
 
 /* ---------- 脸部贴图（透明 canvas） ---------- */
 const faceTexCache = new Map();
-function faceTexture(variant = 0) {
-  if (faceTexCache.has(variant)) return faceTexCache.get(variant);
+function faceTexture(variant = 0, tired = false) {
+  const cacheKey = `${variant}|${tired ? 1 : 0}`;
+  if (faceTexCache.has(cacheKey)) return faceTexCache.get(cacheKey);
   const size = 128;
   const c = document.createElement('canvas');
   c.width = size;
@@ -107,6 +108,16 @@ function faceTexture(variant = 0) {
     g.stroke();
   }
 
+  // 黑眼圈（块7：夜猫子专用，eyes:'tired'）—— 眼下两团淡紫灰，强调"熬夜脸"
+  if (tired) {
+    for (const sx of [-1, 1]) {
+      g.fillStyle = 'rgba(70,55,80,0.32)';
+      g.beginPath();
+      g.ellipse(cx + sx * eyeDx, eyeY + size * 0.07, size * 0.052, size * 0.03, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+
   // 嘴（小小的弧）
   g.strokeStyle = '#B4655F';
   g.lineWidth = size * 0.014;
@@ -121,7 +132,7 @@ function faceTexture(variant = 0) {
 
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
-  faceTexCache.set(variant, t);
+  faceTexCache.set(cacheKey, t);
   return t;
 }
 
@@ -172,6 +183,7 @@ function clothTexture(colorHex) {
 /* ---------- 组装 ---------- */
 /**
  * @param {object} opt { seed, skin, hair, cloth, pants, face }
+ *   块7 身份外观（从 customers 透传）：hat / eyes:'tired' / flush / backpack / briefcase
  *   需求I 第⑤条新增：
  *   @param {number} opt.scale     整体体型缩放（儿童 0.72 / 老年 0.93）
  *   @param {number[]} opt.hairPool  发色候选（覆盖默认池；老年给灰白发）
@@ -192,6 +204,12 @@ export function createCharacter(opt = {}) {
   const pantsColor = opt.pants ?? pick(PANTS);
   const faceVariant = opt.face ?? Math.floor(r * 3) % 3;
   const scale = Number.isFinite(opt.scale) && opt.scale > 0 ? opt.scale : 1;
+  /* 块7：身份专属外观修饰（由 customers 透过 opt 透传，缺省全 false = 普通顾客） */
+  const eyesTired = opt.eyes === 'tired';
+  const flush = opt.flush === true;
+  const withHat = opt.hat === true;
+  const withBackpack = opt.backpack === true;
+  const withBriefcase = opt.briefcase === true;
 
   const group = new THREE.Group();
   // 体型差（儿童矮、青年标准、老年略矮）—— 缩放挂在 group 上，动作逻辑完全不用改
@@ -229,13 +247,19 @@ export function createCharacter(opt = {}) {
   }
   body.add(head);
 
-  const headMesh = new THREE.Mesh(G.head, std(skin, { roughness: 0.78 }));
+  const headMesh = new THREE.Mesh(
+    G.head,
+    /* 块7：醉汉脸红 —— 把肤色往红里 lerp 一档（单独材质，不污染共享皮肤色缓存） */
+    flush
+      ? new THREE.MeshStandardMaterial({ color: new THREE.Color(skin).lerp(new THREE.Color(0xC85A5A), 0.38), roughness: 0.78, metalness: 0.02 })
+      : std(skin, { roughness: 0.78 }),
+  );
   headMesh.scale.set(1, 1.06, 0.96);
   head.add(headMesh);
 
   // 脸（贴在头前方）
   const faceMat = new THREE.MeshBasicMaterial({
-    map: faceTexture(faceVariant), transparent: true, depthWrite: false,
+    map: faceTexture(faceVariant, eyesTired), transparent: true, depthWrite: false,
   });
   const face = new THREE.Mesh(G.face, faceMat);
   face.position.set(0, -0.008, 0.118);
@@ -254,6 +278,34 @@ export function createCharacter(opt = {}) {
   bang.position.set(0, 0.078, 0.112);
   bang.rotation.x = -0.12;
   head.add(bang);
+
+  /* 块7：司机帽子（鸭舌帽：半球顶 + 前檐）。加在头发之上才显眼。 */
+  if (withHat) {
+    const capColor = 0x2B3A55;
+    const cap = new THREE.Mesh(
+      new THREE.SphereGeometry(0.158, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.5),
+      std(capColor, { roughness: 0.7 }),
+    );
+    cap.position.y = 0.04;
+    head.add(cap);
+    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.025, 0.13), std(capColor, { roughness: 0.7 }));
+    brim.position.set(0, 0.02, 0.14);
+    head.add(brim);
+  }
+
+  /* 块7：身份配饰（身体层，不随头部转动）。
+   *  · 学生书包：背后双肩包（方块）
+   *  · 上班族公文包：手侧手提箱（扁方块） */
+  if (withBackpack) {
+    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.12), std(0x8C4A5E, { roughness: 0.9 }));
+    pack.position.set(0, 1.02, -0.17);
+    body.add(pack);
+  }
+  if (withBriefcase) {
+    const caseMesh = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.13, 0.07), std(0x2F3646, { roughness: 0.55, metalness: 0.1 }));
+    caseMesh.position.set(0.21, 0.96, 0.1);
+    body.add(caseMesh);
+  }
 
   /* 手臂（肩枢轴） */
   const arms = [];

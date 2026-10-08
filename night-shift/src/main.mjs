@@ -8,7 +8,7 @@ import {
 import { state, NIGHT_SECONDS, notify, resetForNewNight, resetGame } from './state.mjs';
 import { createWorld } from './scene.mjs';
 import { createPlayer } from './player.mjs';
-import { createCustomers, currentSegment } from './customers.mjs';
+import { createCustomers, currentSegment, comboLabel } from './customers.mjs';
 import { createInteraction } from './interaction.mjs';
 import { createMobileControls } from './mobile-controls.mjs';
 import { openMinigame, closeMinigame, isMinigameOpen } from './minigames.mjs';
@@ -43,6 +43,8 @@ import {
   restockShelfIfPossible, backroomTotal, place, sellable,
   setCheckoutHook, setCheckoutDoneHook, setSettleExtras,
 } from './economy.mjs';
+/* 命名空间导出（探针走真实结账入口做端到端验收，触发 checkoutDoneHook 的组合结账飘字） */
+import * as economy from './economy.mjs';
 /* 成长线扩展：六个纯逻辑模块（各自只读写自己的 state 字段） */
 import { createLedger } from './ledger.mjs';
 import { createThemes, INTEL_COST } from './themes.mjs';
@@ -58,7 +60,7 @@ import { createDayNight } from './daynight.mjs';
 import { createBloom, createPassThrough } from './postfx.mjs';
 import { createSaveManager, AUTOSAVE_SEC, saveKeyFor } from './save.mjs';
 import { createCharacter } from './character.mjs';
-import { ZONES, STORE, POND, POS, TASKBOARD, DELIVERY, GARBAGE } from './config.mjs';
+import { ZONES, STORE, POND, POS, TASKBOARD, DELIVERY, GARBAGE, IDENTITIES } from './config.mjs';
 import { NPC, DAYNIGHT } from './art.mjs';
 /* 需求J：店员系统（采购员 / 上货员 + 维修员 / 保洁员）+ 仓库面板 API */
 import { createStaff } from './staff.mjs';
@@ -140,7 +142,8 @@ const regulars = createRegulars({
 });
 
 const customers = createCustomers(world.scene, {
-  regularJudge: (faceId) => regulars.judge(faceId),
+  /* 块7：把本夜抽到的身份透传给 regulars.judge —— 常客首次入场即固化该身份（与忠诚度共存） */
+  regularJudge: (faceId, identityId) => regulars.judge(faceId, identityId),
 });
 
 /* ==================================================================
@@ -454,18 +457,28 @@ setCheckoutDoneHook((info) => {
     if (info.customer) info.customer.mood = 'upset';
   }
 
-  /* 任务板指标（块4）：卖出的便当份数 / 促销期卖出的饮料件数。
-   * 放在 checkoutDoneHook 是因为这里已经有完整的 skuId + qty，
-   * 而"卖出便当"这种子集计数没法从总数做差分得到（见 state 字段注释）。 */
-  if (info.skuId === 'bento') state.servedBento += info.qty || 0;
-  if (info.skuId === 'drink' && pricing.promoActive()) state.soldDrinkPromo += info.qty || 0;
+  /* 块7：组合结账提示「身份・主件 + 搭配件・¥NN」（验收项：组合结账截图）。
+   * 金额一律走 fmtYuan（Bug⑤ 守卫：模板串直接插金额会漏出浮点尾数，如 24.5000001）。 */
+  {
+    const idName = info.identityId ? (IDENTITIES?.[info.identityId]?.name ?? '') : '';
+    const label = (info.items || [{ skuId: info.skuId, qty: info.qty }])
+      .map((it) => `${SKU_BY_ID[it.skuId]?.name ?? it.skuId} ×${it.qty}`).join(' + ');
+    toast(`${idName ? idName + '·' : ''}${label}・${fmtYuan(info.amount)}`, 'ok', 1800);
+  }
 
-  /* 售罄音：顾客买走的是该 SKU 在货架上的最后一件。
-   * 判定用 sellable()（只算未过期的在架货），不是单格 qty —— 同一个 SKU 可能在两格都有货，
-   * 只清了一格不算售罄，要让玩家听到"这个品彻底卖空了"才有意义。 */
-  if (sellable(info.skuId) === 0) {
+  /* 任务板指标（块4）+ 售罄判定：逐件处理购物篮（块7 组合购买可能含多 SKU） */
+  const soldOut = new Set();
+  for (const it of (info.items || [{ skuId: info.skuId, qty: info.qty }])) {
+    if (it.skuId === 'bento') state.servedBento += it.qty || 0;
+    if (it.skuId === 'drink' && pricing.promoActive()) state.soldDrinkPromo += it.qty || 0;
+    /* 售罄音：顾客买走的是该 SKU 在货架上的最后一件。
+     * 判定用 sellable()（只算未过期的在架货），不是单格 qty —— 同一个 SKU 可能在两格都有货，
+     * 只清了一格不算售罄，要让玩家听到"这个品彻底卖空了"才有意义。 */
+    if (sellable(it.skuId) === 0) soldOut.add(it.skuId);
+  }
+  for (const sid of soldOut) {
     sfx.soldOut();
-    const sku = SKU_BY_ID[info.skuId];
+    const sku = SKU_BY_ID[sid];
     toast(`${sku?.emoji ?? ''}${sku?.name ?? '该商品'} 售罄 · 记得补货`, 'info', 2000);
   }
   if (!info.faceId) return;
@@ -1387,6 +1400,10 @@ function togglePause() {
   if (state.paused) { if (document.exitPointerLock) document.exitPointerLock(); }
   else player.requestLock();
 }
+/* 块7 探针：把真实进货面板入口收口成一个常量，既给移动端 panels 用，也暴露给
+ * __NS.hud.openPurchase 做端到端验收（截图「进货页」）。保持单行是为了让
+ * tests/boons.test.mjs 的接线断言仍能抽到 openPurchase 的单行调用点。 */
+const openPurchasePanel = () => openPurchase(() => relock(), purchase, shopApi(), staffApi(), warehouseApi(), growthApi(), secondhandApi, boonsApi(), deliveryUiApi);
 const mobileControls = createMobileControls({
   player,
   interaction,
@@ -1399,7 +1416,7 @@ const mobileControls = createMobileControls({
     // 块5：末位 deliveryApi 让玩家手动下单走运输闭环；采购员仍用 purchase（即时到仓）。
     // ⚠ 这一行**必须保持单行**：tests/boons.test.mjs 用 /openPurchase\(…\)\s*=>\s*relock\(\),\s*([^\n]*)/ 抽参数尾部做断言，
     // 跨行会被正则截断（实测抽出来不完整 → 误报"没传 boonsApi"）。
-    purchase: () => openPurchase(() => relock(), purchase, shopApi(), staffApi(), warehouseApi(), growthApi(), secondhandApi, boonsApi(), deliveryUiApi),
+    purchase: openPurchasePanel,
     inventory: () => openInventory(inventory, () => relock()),
     phone: () => openPhone(() => relock(), phoneApi),
     monitor: () => openMonitor(() => relock(), monitor),
@@ -1877,7 +1894,7 @@ function triggerEvent(type) {
     toast('⚡ 停电！约 25 秒内无法结账', 'bad');
   } else if (type === 'REGULAR') {
     const c = customers.spawnRegular();
-    if (c) toast(`⭐ 常客来了（要 ${c.skuId} ×${c.qty}）`, 'ok');
+    if (c) toast(`⭐ 常客来了（要 ${comboLabel(c.items)}）`, 'ok');
   }
   notify();
 }
@@ -2653,6 +2670,8 @@ window.__NS = {
   /* 成长线扩展：探针要能直接驱动它们做端到端验收
    * （升级星级 → 场景补建机器；结算 → 看扩展段；抉择 → 弹窗）。 */
   themes, stars, achievements, choices, pricing, ambient, ledger, growthApi,
+  /** 经济逻辑命名空间（探针直接驱动真实结账 / 查库存，触发组合结账飘字做端到端验收） */
+  economy,
   /* 代币出口：兑换 / 扭蛋 / 限时券 / 主题情报（探针要能驱动做端到端验收） */
   boonsApi,
   /* 疲劳系统：探针驱动它做端到端验收 */
@@ -2669,6 +2688,8 @@ window.__NS = {
   hud: {
     openSettings, showTutorial, hideTutorial, flashQuestDone, isModalOpen,
     openAchievements, openChoice, showThemeBanner, showPromoBanner,
+    /** 块7 探针：走真实入口打开经营面板（默认落在「进货」分页），截图验收新 SKU 出现 */
+    openPurchase: openPurchasePanel,
   },
   /* 探针要走**真实入口**开机器，而不是自己 new 一个小游戏实例：
    * 那样会绕过投币、成就上报、排行榜这一整条链路，验收就没有意义了。 */

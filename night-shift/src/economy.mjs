@@ -7,7 +7,7 @@ import {
   SKUS, SKU_BY_ID, SLOT_CAP, PICK_BATCH, RENT_PER_NIGHT,
   STAR_THRESHOLDS, UPGRADES, COFFEE_BONUS, NIGHTS_PER_WEEK,
   REP_SERVE, REP_LOST, CLERK, EVENTS, SNACK, WAREHOUSE, GARBAGE,
-  FIRST_NIGHT_SPEND_MUL,
+  FIRST_NIGHT_SPEND_MUL, IDENTITIES,
 } from './config.mjs';
 import { state, expandSlots, notify } from './state.mjs';
 import { isFestival } from './themes.mjs';
@@ -365,11 +365,35 @@ export function checkout() {
   const customer = state.customers.find((c) => c.id === headId);
   if (!customer) return { ok: false, reason: '没有等待结账的顾客' };
 
-  const sku = SKU_BY_ID[customer.skuId];
-  const unit = state.prices[customer.skuId] ?? sku.price;
-  const got = fifoDeduct(customer.skuId, customer.qty);
-  if (got <= 0) {
-    // 货没了 → 失销
+  /* 块7：组合购买 —— 顾客可能带着「主件 + 搭配件」的购物篮。
+   * 逐件 FIFO 扣减；只要有一件能买到就视为成交，按「合计 × 身份消费倍率」收款。
+   * 兼容旧路径：无 items 时退回单件（{skuId, qty}）。 */
+  const cart = (customer.items && customer.items.length)
+    ? customer.items
+    : [{ skuId: customer.skuId, qty: customer.qty }];
+  let subtotalUnit = 0;   // 不含小费/夜首/身份的本金合计（∑ got_i * unit_i * adjMul_i）
+  let totalGot = 0;
+  let repDeltaSum = 0;
+  let tipMul = 1;
+  const fulfilled = [];   // 实际卖出的明细（传给 checkoutDoneHook 供任务板/忠诚度逐件判定）
+  for (const item of cart) {
+    const sku = SKU_BY_ID[item.skuId];
+    if (!sku) continue;
+    const unit = state.prices[item.skuId] ?? sku.price;
+    const got = fifoDeduct(item.skuId, item.qty);
+    if (got <= 0) continue;  // 该件缺货：跳过（不强制整单失销）
+    /* 临时折扣（促销 / 主题 / 常客忠诚度）与"售价高于建议价"的满意度微调。
+     * 只在这里乘，不改 state.prices —— 否则过期后要记着恢复，中途存档会留下脏价格。
+     * 2026-10-06：hook 第二个参数传整个 customer（常客忠诚度需知 faceId）。 */
+    const adj = checkoutHook?.(item.skuId, customer) ?? { mul: 1, repDelta: 0 };
+    subtotalUnit += got * unit * (adj.mul ?? 1);
+    repDeltaSum += adj.repDelta ?? 0;
+    if ((adj.tipMul ?? 1) > tipMul) tipMul = adj.tipMul ?? 1;
+    totalGot += got;
+    fulfilled.push({ skuId: item.skuId, qty: got });
+  }
+  if (totalGot <= 0) {
+    // 一件都卖不出 → 失销
     removeFromQueue(customer.id);
     customer.phase = 'leaving';
     state.lostSales += 1;
@@ -381,31 +405,23 @@ export function checkout() {
    * 目的很具体 —— 让第一夜买得起货和道具，而不是全局抬营收；
    * 若做成全局倍率，整套经济曲线都要重新标定，前面调好的平衡会全废。 */
   const nightMul = state.night === 1 ? FIRST_NIGHT_SPEND_MUL : 1;
-  /* 临时折扣（促销 / 主题 / 常客忠诚度）与"售价高于建议价"的满意度微调。
-   * 只在这里乘，不改 state.prices —— 否则过期后要记着恢复，中途存档会留下脏价格。
-   *
-   * 2026-10-06：hook 第二个参数传整个 customer（原先只传 skuId）。
-   * 常客忠诚度折扣必须知道**是谁在买**（faceId → 忠诚度等级），
-   * 只给 skuId 的话 hook 只能按"这个 SKU 有没有折扣"来判断，
-   * 那就退化成全 SKU 通折 —— 正好击穿促销回本线。
-   * 既有 hook 实现只声明 (skuId) 时不受影响（多余实参被忽略）。 */
-  const adj = checkoutHook?.(customer.skuId, customer) ?? { mul: 1, repDelta: 0 };
+  /* 块7：身份消费倍率（只乘总额，不动定价 —— 见 config.IDENTITIES 注释） */
+  const identityMul = IDENTITIES[customer.identityId]?.spendMul ?? 1;
   const tipBase = customer.isRegular ? EVENTS.REGULAR.tip : 1;
-  const tipMul = adj.tipMul ?? 1;
   /* 块6：店内垃圾 ≥ tipThreshold 件 → 小费减半（顾客嫌脏，懒得给小费）。
    * 只压"小费那部分"，不动本金（与主题/常客折扣同一处理层级）。 */
   const tipPenalty = state.garbage >= GARBAGE.tipThreshold ? 0.5 : 1;
   const tip = 1 + (tipBase - 1) * tipMul * tipPenalty;   // 雨夜等主题只放大"小费那部分"，不动本金
-  const amount = got * unit * (adj.mul ?? 1) * tip * nightMul;
+  const amount = subtotalUnit * tip * nightMul * identityMul;
   /* 小费单独累计（打烊结算要单列"其中小费"一行）。
    * 口径：实际收款 − 不含小费的应收。促销/主题折扣压低的是本金，不该算成小费变少。 */
-  const noTip = got * unit * (adj.mul ?? 1) * nightMul;
+  const noTip = subtotalUnit * nightMul * identityMul;
   state.tips = (Number.isFinite(state.tips) ? state.tips : 0) + Math.max(0, amount - noTip);
   state.cash += amount;
   state.revenue += amount;
   state.served += 1;
   let repGain = customer.isRegular ? EVENTS.REGULAR.repGain : REP_SERVE;
-  repGain += adj.repDelta ?? 0;
+  repGain += repDeltaSum;
   // 软惩罚（§1.3）：心理 <30 时标准结账声誉增益减半；常客专属奖励不受影响
   if (!customer.isRegular && state.clerk && state.clerk.mental < CLERK.thr.mental) repGain *= 0.5;
   state.reputation = clamp(state.reputation + repGain, 0, 100);
@@ -418,16 +434,18 @@ export function checkout() {
   /* 2026-10-06 块2：结账成功的旁路回调（常客复购记忠诚度等）。
    * 用注入而不是直接 import regulars：与 checkoutHook 同一个理由（依赖方向），
    * economy 不该认识"常客"这个扩展层概念。
-   * 回调拿得到 faceId / skuId / 最终收款，够上层算忠诚度与飘字了。 */
+   * 回调拿得到 faceId / 明细 items / 最终收款，够上层算忠诚度与飘字了。 */
   if (checkoutDoneHook) {
     try {
       checkoutDoneHook({
         faceId: customer.faceId ?? null,
-        skuId: customer.skuId,
-        qty: got,
+        skuId: fulfilled[0]?.skuId ?? customer.skuId,
+        qty: totalGot,
         amount,
         isRegular: !!customer.isRegular,
         customer,
+        items: fulfilled,
+        identityId: customer.identityId ?? null,
       });
     } catch (e) {
       // 回调是"锦上添花"（记个忠诚度），绝不能因为它抛错而让玩家这笔账结不成
@@ -435,7 +453,15 @@ export function checkout() {
     }
   }
   notify();
-  return { ok: true, amount, sku, qty: got, isRegular: !!customer.isRegular };
+  return {
+    ok: true,
+    amount,
+    sku: SKU_BY_ID[fulfilled[0]?.skuId ?? customer.skuId],
+    qty: totalGot,
+    items: fulfilled,
+    isRegular: !!customer.isRegular,
+    identityId: customer.identityId ?? null,
+  };
 }
 
 export function removeFromQueue(id) {

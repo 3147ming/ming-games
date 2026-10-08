@@ -294,12 +294,18 @@ export function renderHud(env) {
     els.qlen.textContent = String(state.queue.length);
     els.qmax.textContent = String(5);
     const head = state.customers.find((c) => c.id === state.queue[0]);
-    const sku = head ? SKU_BY_ID[head.skuId] : null;
     const blackout = state.blackoutUntil !== null && state.wallElapsed < state.blackoutUntil;
     els.qbody.className = blackout ? 'alert' : '';
-    els.qbody.textContent = blackout
-      ? '⚡ 停电中，无法结账'
-      : `队首：${sku?.emoji ?? ''}${sku?.name ?? ''} ×${head?.qty ?? 0}（耐心 ${Math.ceil(head?.patience ?? 0)}s）`;
+    if (blackout) {
+      els.qbody.textContent = '⚡ 停电中，无法结账';
+    } else if (head && Array.isArray(head.items) && head.items.length) {
+      /* 块7：队首显示组合购物篮（主件 + 搭配件） */
+      const label = head.items.map((it) => `${SKU_BY_ID[it.skuId]?.name ?? it.skuId} ×${it.qty}`).join(' + ');
+      els.qbody.textContent = `队首：${label}（耐心 ${Math.ceil(head.patience ?? 0)}s）`;
+    } else {
+      const sku = head ? SKU_BY_ID[head.skuId] : null;
+      els.qbody.textContent = `队首：${sku?.emoji ?? ''}${sku?.name ?? ''} ×${head?.qty ?? 0}（耐心 ${Math.ceil(head?.patience ?? 0)}s）`;
+    }
   }
 
   // 店员四状态条（R1）：体力/疲惫/饱食/心理，按阈值上色
