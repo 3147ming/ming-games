@@ -1023,6 +1023,7 @@ function openRestockQte(slotIndex) {
         if (r.ok) {
           applyActionCost(state, 'PLACE');   // 与旧路径一致：上货消耗体力
           setQteBusy(QTE.restock.busySec);
+          world.pulseSlot?.(out.result.slotIndex, r.put);  // 上货放置动画（与正常路径一致）
           sfx.done('stock');
           toast(`已上架 ${r.sku?.emoji ?? ''}×${r.put}`, 'ok');
           notify();

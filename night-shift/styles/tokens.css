@@ -515,7 +515,9 @@ html, body {
   padding: 7px 2px;
   border-bottom: 1px dashed var(--border);
   font-size: 14px;
+  white-space: nowrap;   /* 任务5#3：打烊清场等明细行在移动端不换行/截断 */
 }
+.report .line > span { min-width: 0; }
 .report .line.total {
   border-bottom: none;
   border-top: 2px solid var(--border-strong);

@@ -2139,12 +2139,44 @@ export function createWorld(canvas) {
    * 推进放 updateFeedback（每帧有 dt 才跑）；动画结束清 slotCache 强制一次真实重绘。 */
   const placeAnims = [];   // { i, cur, target, t, lastStep }
   const PULSE_DURATION = 0.6;
+  // 上货「从手中移到货架」飞行：{ mesh, from, to, t, dur, pa, slot }
+  const flyAnims = [];
+  const flyingSlots = new Set();
+  const FLY_DURATION = 0.3;
+
+  /* 上货动画升级（任务5 #2）：商品从手中（carryGroup 世界坐标）飞到货架格
+   * （slotItems[i] 世界坐标），0.3s 过渡 + 落地微缩放（easeOutBack 轻微回弹）。
+   * 飞行期间该格货架保持"放前"件数可见，新件由飞行网格带过去；落地后由 tickPlacePulses
+   * 的逐件弹跳接管，形成「飞过去 → 落位」的连贯手感。不改动交互路径：仅由 pulseSlot 触发。 */
+  function spawnPlaceFlight(i, pa) {
+    const items = slotItems[i];
+    if (!items) { flyingSlots.delete(i); return; }
+    const skuId = state?.slots?.[i]?.skuId;
+    if (!skuId) { flyingSlots.delete(i); return; }
+    const from = new THREE.Vector3(); carryGroup.getWorldPosition(from);
+    const to = new THREE.Vector3(); items.group.getWorldPosition(to);
+    to.y += 0.22;            // 大致落在层板上方
+    const variant = productVariant(skuId, i, 0);
+    const mesh = variant ? buildProduct(variant).group : null;
+    if (!mesh) { flyingSlots.delete(i); return; }
+    /* 不去动 carryGroup.visible —— 它由 updateHands 按 st.held 驱动，且带
+     * "key 未变就早退"的脏检查；这里强行置 false 可能被那次早退吞掉，导致
+     * 玩家手上还有货却看不见（永久隐藏）。放满时 updateHands 自会隐藏，无需代劳。 */
+    mesh.scale.setScalar(0.6);
+    mesh.position.copy(from);
+    scene.add(mesh);
+    flyingSlots.add(i);
+    flyAnims.push({ mesh, from, to, t: 0, dur: FLY_DURATION, pa, slot: i });
+  }
+
   function pulseSlot(i, putQty = 1) {
     const items = slotItems[i];
     if (!items) return;
     const cur = items.slots.filter((h) => h.visible).length;      // 放前视觉件数
     const inc = Math.max(1, Math.round(8 * (putQty | 0) / SLOT_CAP)); // 视觉增量
-    placeAnims.push({ i, cur, target: cur + inc, t: 0, lastStep: cur });
+    const pa = { i, cur, target: cur + inc, t: 0, lastStep: cur };
+    placeAnims.push(pa);
+    spawnPlaceFlight(i, pa);   // 触发「手中→货架」飞行
   }
   /* ---------- 清仓：格子变暗再清空（2026-10-06 块3） ----------
    * 需求：清仓不该"瞬间消失"。做法分两段：
@@ -2232,6 +2264,12 @@ export function createWorld(canvas) {
   function tickPlacePulses(dt) {
     for (let p = placeAnims.length - 1; p >= 0; p--) {
       const a = placeAnims[p];
+      if (flyingSlots.has(a.i)) {
+        // 飞行期间冻结逐件弹跳，但保持"放前"件数可见（新件由飞行网格带过去），落地后再弹
+        const holders = slotItems[a.i]?.slots ?? [];
+        holders.forEach((h, idx) => { h.visible = idx < a.cur; });
+        continue;
+      }
       a.t = Math.min(1, a.t + dt / PULSE_DURATION);
       const holders = slotItems[a.i]?.slots ?? [];
       const cur = a.cur + Math.round(a.t * (a.target - a.cur));
@@ -2256,9 +2294,28 @@ export function createWorld(canvas) {
     }
   }
 
+  function tickFlyAnims(dt) {
+    for (let p = flyAnims.length - 1; p >= 0; p--) {
+      const a = flyAnims[p];
+      a.t = Math.min(1, a.t + dt / a.dur);
+      const k = a.t;
+      a.mesh.position.lerpVectors(a.from, a.to, k);
+      // 起飞微缩(0.6) → 落地回弹放大（easeOutBack 在 1 附近轻微过冲，clamp 避免过大）
+      const s = 0.6 + 0.4 * easeOutBack(Math.min(k, 1));
+      a.mesh.scale.setScalar(Math.min(s, 1.12));
+      if (a.t >= 1) {
+        scene.remove(a.mesh);
+        flyingSlots.delete(a.slot);
+        if (a.pa) { a.pa.t = 0; a.pa.lastStep = a.pa.cur; }  // 落地：重置逐件弹跳，从落位开始播
+        flyAnims.splice(p, 1);
+      }
+    }
+  }
+
   function updateFeedback(dt) {
     if (!(dt > 0)) return;
     fbTime += dt;
+    tickFlyAnims(dt);
     tickPlacePulses(dt);
     tickClearFades(dt);
     tickCoinFlights(dt);
