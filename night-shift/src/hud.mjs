@@ -18,6 +18,8 @@ let els = {};
 let modalOpen = false;
 /** #hud-root 引用：弹窗期间要给它挂 has-modal 类（见 syncModalLayer） */
 let hudRoot = null;
+/** 任务2：首次进扭蛋 tab 提示"概率表在下方"，只弹一次（页面级） */
+let gachaHintShown = false;
 
 /** 任务完成时"绿色打勾一闪"的截止时间戳（performance.now 坐标系；0 = 不在闪） */
 let questDoneUntil = 0;
@@ -868,22 +870,47 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
     const snap = boonsApi.snapshot();
     const g = snap.gacha;
     const can = snap.tokens >= g.cost;
+    /* 任务2：奖品概率表原先藏在"抽一次"按钮下方，首屏看不到 → 玩家不知道奖品是啥。
+     * 现在把概率表**上移置顶**（打开扭蛋 tab 第一屏即见），并首次进入弹一次提示。 */
+    if (!gachaHintShown) { gachaHintShown = true; toast('🎰 奖品与概率见下方概率表', 'info', 2500); }
+
+    /** 每种奖品的"效果说明"（限时券/现金/永久增益/员工位各一句） */
+    const effectOf = (i) => (i.kind === 'cash' ? '即时入账'
+      : i.kind === 'card' ? '当夜生效、下夜作废'
+      : i.kind === 'boon' ? (i.boon === 'staffSlot' ? '永久解锁店员位' : '永久叠加')
+      : '');
+
     // 概率表直接来自 boons.mjs 的 gachaTable() —— 与 rollPrize 同源，
     // 所以"公示 = 实际"是结构保证，不靠人工同步两份数字。
     const table = g.tiers.map((t) => `
       <div class="sh-row">
         <div>
           <div class="sh-name">${t.emoji} ${t.name} <span class="on">${t.pct}%</span></div>
-          <div class="sh-meta">${t.items.map((i) => i.label).join(' / ')}</div>
+          <div class="sh-meta">
+            ${t.items.map((i) => `<div>· ${i.label} <span class="warn">（${effectOf(i)}）</span></div>`).join('')}
+          </div>
         </div>
         <span class="mod-slots">${t.pct}%</span>
       </div>`).join('');
+
+    /* 抽奖按钮上方的一行总览：按**奖品类型**（非稀有度档）汇总概率，数值从
+     * gachaTable() 的 weight 现算，杜绝人工抄错（公示必须 = 实际）。 */
+    const allItems = g.tiers.flatMap((t) => t.items);
+    const kindSum = (pred) => allItems.filter(pred).reduce((a, i) => a + i.weight, 0);
+    const overview = `本机奖品：限时券 ${kindSum((i) => i.kind === 'card')}% · 现金 ${kindSum((i) => i.kind === 'cash')}%`
+      + ` · 永久增益 ${kindSum((i) => i.kind === 'boon' && i.boon !== 'staffSlot')}%`
+      + ` · 员工位 ${kindSum((i) => i.kind === 'boon' && i.boon === 'staffSlot')}%`;
 
     return `
       <div class="sub">持有代币 <b>🪙 ${snap.tokens}</b> · 抽奖 🪙 ${g.cost} / 次 · 不限次数</div>
       <div class="shop-list">
         <div class="shop-sec">
+          <div class="sec-head">📊 奖品概率表（公示 = 实际）</div>
+          ${table}
+        </div>
+        <div class="shop-sec">
           <div class="sec-head">🎰 扭蛋机</div>
+          <div class="sec-sub">${overview}</div>
           <div class="sh-row">
             <div><div class="sh-name">🎰 扭一次</div>
             <div class="sh-meta">现金与永久增益即时入账；限时券进背包，下夜生效</div></div>
@@ -891,10 +918,6 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
               ${can ? `抽 · 🪙 ${g.cost}` : `🪙 代币不足`}
             </button>
           </div>
-        </div>
-        <div class="shop-sec">
-          <div class="sec-head">📊 奖品概率表（公示 = 实际）</div>
-          ${table}
         </div>
       </div>`;
   }
@@ -1595,6 +1618,7 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn) {
           ${report.coffee ? line('咖啡机增益', fmtMoney(report.coffee), 'pos') : ''}
           ${line('本夜净利', fmtMoney(report.netProfit), report.netProfit >= 0 ? 'pos' : 'neg')}
           ${line('服务 / 失销', `${report.served} 人 / ${report.lostSales} 人`)}
+          ${report.cleared ? `<div class="line"><span>打烊清场</span><span style="color:#E6C75A;font-weight:600">${report.cleared} 位顾客未结账</span></div>` : ''}
           ${line('成交率', `${Math.round(report.rate * 100)}%`)}
           ${line('顾客满意度', String(report.reputation))}
           ${report.wom ? line('口碑影响', `${report.wom.emoji} ${report.wom.label} · 明日客流 \u00d7${report.wom.mul}`) : ''}

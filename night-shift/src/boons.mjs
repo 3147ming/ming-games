@@ -36,6 +36,12 @@ export const BOON_SHOP = [
     key: 'startCash', name: '每夜启动资金 +¥100', emoji: '💵', cost: 80, once: true,
     desc: '每开新一夜，现金额外 +¥100（永久）',
   },
+  {
+    /* 任务3（长期线）：可重复购买、效果累计、有上限的永久售价升级。
+     * once:false 复用 staffSlot 同款可重复路径（state.boons.priceUp 每买 +1，HUD 显示"已兑换 N 次"）。 */
+    key: 'priceUp', name: '全店售价 +5%', emoji: '🏷️', cost: 100, once: false,
+    desc: '结账计价永久 ×1.05/级（可重复购买，上限 +50% = 10 级）',
+  },
 ];
 
 /** 限时券种类 → 生效倍率字段。取最高不叠加。 */
@@ -84,7 +90,7 @@ const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 /** 惰性补齐 boons / buffCards / intel —— 老存档没有这些字段时要兜住（不能崩） */
 export function ensureBoons(state) {
-  if (!isObj(state.boons)) state.boons = { tipUp: 0, fatigueLess: 0, staffSlot: 0, startCash: 0 };
+  if (!isObj(state.boons)) state.boons = { tipUp: 0, fatigueLess: 0, staffSlot: 0, startCash: 0, priceUp: 0 };
   for (const b of BOON_SHOP) {
     if (!Number.isFinite(state.boons[b.key])) state.boons[b.key] = 0;
   }
@@ -137,6 +143,19 @@ export function staffSlotBonus(state) {
 /** 每夜启动现金 */
 export function startCashBonus(state) {
   return Math.max(0, Math.floor(ensureBoons(state).boons.startCash ?? 0)) * 100;
+}
+
+/**
+ * 永久售价倍率（任务3，长期线）：每级 +5%，封顶 +50%（10 级）。
+ *
+ * ⚠ 与 tipMul / fatigueRateMul 不同，priceUp **不是混合单位** —— 只有兑换一条来源
+ * （扭蛋不产出 priceUp），所以直接按整数级数算即可，无需拆整数/小数。
+ * 该因子在 main.mjs 的 checkoutHook 里与 调价 × 主题 × 限时券 叠乘，
+ * 各司其职（永久成长 × 当夜增益）。平衡：+50% 封顶 × 促销 9 折 = 1.35×，促销夜仍盈利。
+ */
+export function priceUpMul(state) {
+  const v = Math.max(0, ensureBoons(state).boons.priceUp ?? 0);
+  return 1 + Math.min(10, v) * 0.05; // 每级 +5%，封顶 +50%（10 级）
 }
 
 /* ==================== 限时券 ==================== */
@@ -308,7 +327,7 @@ export function consumeLock(state) {
 export default {
   BOON_SHOP, GACHA_PRIZES, GACHA_TIERS, GACHA_COST, BUFF_KINDS,
   INTEL_VIEW_COST, INTEL_LOCK_COST,
-  ensureBoons, fatigueRateMul, tipMul, staffSlotBonus, startCashBonus,
+  ensureBoons, fatigueRateMul, tipMul, staffSlotBonus, startCashBonus, priceUpMul,
   buffMul, addBuffCard, pruneBuffCards,
   buyBoon, shopSnapshot, rollPrize, gachaTable, pullGacha,
   viewNextTheme, lockNextTheme, consumeLock,

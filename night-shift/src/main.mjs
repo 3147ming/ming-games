@@ -5,7 +5,7 @@ import {
   GAME_HOURS, UPGRADES, CLERK, EVENTS, LEADERBOARD, MINIGAME, RANDOM_EVENTS,
   CONSUMABLE_BY_ID, WAREHOUSE, SKU_BY_ID, STAFF, FATIGUE, QTE, PHONE, SLOT_CAP,
 } from './config.mjs';
-import { state, NIGHT_SECONDS, notify, resetForNewNight, resetGame } from './state.mjs';
+import { state, NIGHT_SECONDS, notify, resetForNewNight, resetGame, clearPromoOnClose } from './state.mjs';
 import { createWorld } from './scene.mjs';
 import { createPlayer } from './player.mjs';
 import { createCustomers, currentSegment, comboLabel } from './customers.mjs';
@@ -80,7 +80,7 @@ import { isFestival, THEME_BY_ID } from './themes.mjs';
 import { fmtYuan, fmtYuanSigned, safeText } from './fmt.mjs';
 import {
   BOON_SHOP, GACHA_COST, ensureBoons, buyBoon, shopSnapshot, pullGacha, gachaTable,
-  buffMul, tipMul, pruneBuffCards, startCashBonus, staffSlotBonus, BUFF_KINDS, INTEL_VIEW_COST, INTEL_LOCK_COST,
+  buffMul, tipMul, pruneBuffCards, startCashBonus, staffSlotBonus, priceUpMul, BUFF_KINDS, INTEL_VIEW_COST, INTEL_LOCK_COST,
 } from './boons.mjs';
 
 const canvas = document.getElementById('scene-canvas');
@@ -417,9 +417,11 @@ setCheckoutHook((skuId, customer) => {
     // 只有"当前买的正好是他偏好的东西"才给折 —— 否则忠诚度就成了全店通用券
     if (lv && lv.prefer === skuId) loyalMul = lv.discount;
   }
-  const priceMul = adj.mul * (e.priceMul ?? 1) * buffMul(state, 'price');
+  /* 任务3：永久售价因子 × 调价 × 主题 × 限时券 全部叠乘，各司其职（永久成长 × 当夜增益）。
+   * priceUpMul 来自 boons.mjs（兑换「全店售价 +5%」每级 +5%，封顶 +50%）。 */
+  const priceMul = adj.mul * (e.priceMul ?? 1) * buffMul(state, 'price') * priceUpMul(state);
   return {
-    // 限时券「一晚全店售价 +10%」乘在这里（永久增益不作用于售价，售价由 pricing 管）
+    // 限时券「一晚全店售价 +10%」乘在这里；永久售价因子（priceUpMul）也在此叠乘
     mul: Math.max(priceMul, loyalMul),
     repDelta: adj.repDelta,
     // 小费倍率 = 主题小费 × 永久「小费 +5%/级」× 限时券「一晚小费 +10%」
@@ -2017,6 +2019,14 @@ function startNight() {
 }
 
 function endNight() {
+  /* 0) 打烊清场（A 方案，零惩罚）：移除店内未结账顾客 mesh，记一笔账本 + 结算面板金行。
+   * ⚠ 必须在临期货报废之前 —— 清场读的是 state.customers 当前快照；且要让滞留顾客
+   *    在结算面板弹出前就从场景消失（原 bug：他们卡在店里直到点"开始下一夜"才被 resetForNight 移除）。 */
+  const cleared = customers.clearRemaining();
+  if (cleared > 0) {
+    ledger.set('close.cleared', `打烊清场 · ${cleared} 位顾客未结账`, 0, 'close');
+  }
+
   /* 1) 临期货：打烊时未售完的部分报废（必须在 settleNight 之前 —— 它会改库存与账本） */
   const expiring = choices.settleExpiring((id) => state.backroom[id] ?? 0);
   if (expiring && expiring.left > 0) {
@@ -2033,6 +2043,7 @@ function endNight() {
   report.litter = worldState.litter?.length ?? 0;
   report.incidents = incidentCount;
   report.expiring = expiring && expiring.left > 0 ? expiring : null;
+  report.cleared = cleared;          // 打烊清场人数（A 方案零惩罚，仅展示用）
   report.ledger = ledger.entries();
   /* 2026-10-06 块2：口碑档位 + 忠诚度榜单。
    * ⚠ 必须在这里也赋一遍 —— 上面 endNight 是**手工**把 settleExtras 的字段
@@ -2085,6 +2096,8 @@ function endNight() {
 
   state.paused = true;
   if (document.exitPointerLock) document.exitPointerLock();
+  /* 促销收尾（防御）：打烊即止，防跨夜残留拉客（resetForNewNight 也已清，双保险） */
+  clearPromoOnClose(state);
   /* 2026-10-06 块3：结算入账的累积音。
    * 步数按**本夜净利**分档（不是总资产 —— 总资产是累计值，第一夜和第七夜都很大，
    * 那样"这夜赚得多"就听不出来了）。分档而非线性：
@@ -2682,6 +2695,8 @@ window.__NS = {
    * customers 也一并暴露：常客"熟"标必须走 customers.spawn() 的真实到店路径，
    * 直接往 state.customers 塞假对象会被 customers.update 的 c.mesh.position 打爆。 */
   monitor, secondhand, regulars, customers,
+  /* 打烊清场（块8 任务1）：探针走真实 endNight 链路验收结算面板"打烊清场"金行 */
+  endNight,
   /* 账号重开（重置）：探针要能验"冷却 / 每日上限 / 密码校验 / 清档范围"整条链路 */
   reset, auth,
   // HUD 的几个"瞬间反馈"入口：验收探针要能真的触发一次绿勾/字幕，而不是只看节点在不在

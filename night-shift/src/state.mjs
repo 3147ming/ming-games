@@ -361,6 +361,12 @@ export function resetGame() {
   state.arrivalsTarget = ARRIVALS_PER_NIGHT;
 }
 
+/** 打烊收尾：促销拉客时间窗随打烊结束（防跨夜残留拉客）。
+ * endNight 与 resetForNewNight 都确保 promoUntil 归零，双保险。 */
+export function clearPromoOnClose(state) {
+  if (state.promoUntil !== null) state.promoUntil = null;
+}
+
 /** 扩容货架（升级「加货架格」） */
 export function expandSlots(by = 4) {
   for (let i = 0; i < by; i++) {

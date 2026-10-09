@@ -209,9 +209,12 @@ export function createCustomers(scene, opts = {}) {
   let rushSpawnAcc = 0; // RUSH 期间额外到店的累计计时
   let promoAcc = 0;     // 限时促销期间额外到店的累计计时
 
+  /** 把单个顾客的 mesh 从场景摘掉（resetForNight / clearRemaining 共用，避免重复） */
+  function detachMesh(c) { if (c && c.mesh) scene.remove(c.mesh); }
+
   function resetForNight() {
-    for (const c of state.customers) if (c.mesh) scene.remove(c.mesh);
-    if (activeDrunk && activeDrunk.mesh) scene.remove(activeDrunk.mesh);
+    for (const c of state.customers) detachMesh(c);
+    detachMesh(activeDrunk);
     activeDrunk = null;
     rushSpawnAcc = 0;
     promoAcc = 0;
@@ -221,6 +224,25 @@ export function createCustomers(scene, opts = {}) {
     schedule = buildSchedule(state.arrivalsTarget);
     schedIdx = 0;
     notify();
+  }
+
+  /** 打烊清场（A 方案，零惩罚）：移除店内"尚未离店"的顾客 mesh 并出列。
+   * 判据：已离店且走到门口的（phase==='leaving' 且 reachedDoor）由 update 自行移除，不清；
+   *      其余未结账滞留顾客一律移除。返回被清人数。
+   * 注意：只动 scene + state.customers，不扣营收 / 口碑 / 心理（A 方案零惩罚）。 */
+  function clearRemaining() {
+    let n = 0;
+    for (let i = state.customers.length - 1; i >= 0; i--) {
+      const c = state.customers[i];
+      const alreadyLeft = c.phase === 'leaving' && c.mesh && reachedDoor(c.mesh.position);
+      if (alreadyLeft) continue;             // 正在离店且已到门口，update 会处理
+      detachMesh(c);
+      state.customers.splice(i, 1);
+      n++;
+    }
+    if (activeDrunk) { detachMesh(activeDrunk); activeDrunk = null; n++; }
+    notify();
+    return n;
   }
 
   /** 造一个顾客（普通 / 常客共用），进店站位与动线一致
@@ -528,5 +550,5 @@ export function createCustomers(scene, opts = {}) {
     }
   }
 
-  return { update, resetForNight, currentSegment, spawn, spawnDrunk, spawnRegular, spawnAs, removeDrunk };
+  return { update, resetForNight, clearRemaining, currentSegment, spawn, spawnDrunk, spawnRegular, spawnAs, removeDrunk };
 }
