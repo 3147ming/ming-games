@@ -21,6 +21,7 @@ import { hitBox, facilityCost } from './facilities.mjs';
 import { createCharacter } from './character.mjs';
 import { NEON } from './art.mjs';
 import { fmtYuan } from './fmt.mjs';
+import { state } from './state.mjs';
 
 let MATS = null;
 /** 钓鱼池塘逐帧动画引用（水面顶点起伏 + 鱼浮动），由 buildFacility 赋值 */
@@ -569,19 +570,15 @@ export function createWorld(canvas) {
   /** 层板顶面高度（与下方 shelf 的 y 保持一致） */
   const BOARD_TOP = [0.53, 1.13];
 
-  for (let i = 0; i < SLOT_COUNT; i++) {
+  /** 单格货架构建（开放货架：背板 + 顶盖 + 四柱 + 两层板 + 交互体 + 商品占位 + 标签）。
+   * 抽成函数：起始 8 格在下面循环里建；「新货架排」扩张项解锁后 applyShelfRow 对 slots 8,9 复用，
+   * 这样两格的几何/交互/标签与起始货架完全一致，不会出现"新货架点不动"的坑。 */
+  function buildShelf(i) {
     const p = slotWorldPos(i);
     const g = new THREE.Group();
     g.position.copy(p);
 
-    /* 开放货架（P0-2 的真正修法）。
-     * 线上问题："货架没有商品模型，只有深色方块"。
-     * 根因不是没建商品模型，而是**原来这里的 frame 是一整块 1.5×1.5×0.55 的实心方块**，
-     * 商品模型落在 z=+0.06、y=0.53/1.13，被实心块从正面整个包住 —— 从外面看永远是
-     * 一块深色板，商品一个都看不见。
-     * 改成四面透空的框架：一块薄背板（-Z）+ 顶盖 + 四根立柱 + 两层木层板，
-     * 正面（+Z，也就是玩家出生后正对的那一面）完全敞开，层板上的商品才露得出来。
-     * 层板顶面仍严格对齐 BOARD_TOP = [0.53, 1.13]，商品落位公式不用改。 */
+    // 开放货架：四面透空框架（正面 +Z 敞开），层板顶面严格对齐 BOARD_TOP，商品才露得出来
     const backPanel = box(1.5, 1.5, 0.05, 'metal', 1);
     backPanel.position.set(0, 0.75, -0.25);
     g.add(backPanel);
@@ -608,28 +605,16 @@ export function createWorld(canvas) {
     g.add(hit);
     slotMeshes.push(hit);
 
-    /* 商品模型（P0-1）：每格 8 个位置（2 层 × 4 列），按库存数量显隐。
-     * 每个位置是一个**占位 Group**，摆什么由 applyShelfItems 按变体池决定
-     * （同一格是同一种 SKU，但相邻格位错位取值 → 同排不同商品、多色混排）。
-     * 用独立 Group 而不是 InstancedMesh：不同变体的形状与配色都不同，实例化要先按变体分组，
-     * 而单格一次只会是**一种** SKU，8 格 × 8 个低模且大多隐藏，普通 Group 更直接也够快。 */
+    // 商品模型：每格 8 个位置（2 层 × 4 列），按库存显隐；命名 shelf-items-${i} 供探针定位
     const itemsGroup = new THREE.Group();
-    /* 给商品占位组起名：场景图里能按 name 直接定位到"第 i 格的商品根节点"。
-     * 用途有二 —— ① 探针要能把每个占位投影到屏幕坐标，断言"同格 4 列横向拉开"
-     * （抓摆放错落里"丢掉列基准位导致挤成一坨"的坑）；② 出问题时在控制台
-     * `__NS.world.scene.getObjectByName('shelf-items-0')` 就能直接摸到这棵树。
-     * 代价只有一行字符串，不影响渲染。 */
     itemsGroup.name = `shelf-items-${i}`;
     const itemSlots = [];
     for (let k = 0; k < 8; k++) {
       const holder = new THREE.Group();
       holder.userData.board = Math.floor(k / 4);
       holder.userData.col = k % 4;
-      holder.userData.variantKey = '';   // 脏检查：变体没换就不重建零件
+      holder.userData.variantKey = '';
       holder.userData.h = 0.1;
-      // x 由列决定；y 在 applyShelfItems 里按"层板顶面 + 该形状半高"逐件算
-      // 这行的初始值只是"上架前的占位"，首次 applyShelfItems 会整体覆盖（含 JITTER 错落），
-      // 所以**不必**在这里也调 JITTER —— holder.visible=false 时根本看不见。
       holder.position.set(-0.5 + (k % 4) * 0.33, BOARD_TOP[Math.floor(k / 4)], 0);
       holder.rotation.y = 0;
       holder.visible = false;
@@ -642,15 +627,16 @@ export function createWorld(canvas) {
 
     const lab = makeLabelSprite();
     lab.sprite.position.set(0, 2.05, 0);
-    lab.index = i;               // 供 updateLabels 按 slotIndex 定位
-    /* 记下基准缩放：促销标签闪动画（块3）要在 0.9s 内做脉冲再精确复位，
-     * 没有基准值就只能靠猜一个数去乘 —— 猜错就永久偏移。 */
+    lab.index = i;
     lab.baseScale = lab.sprite.scale.x;
     g.add(lab.sprite);
     slotLabels.push(lab);
 
     world.add(g);
+    return g;
   }
+
+  for (let i = 0; i < SLOT_COUNT; i++) buildShelf(i);
 
   /* ---------- 收银台 ---------- */
   const counterGroup = new THREE.Group();
@@ -2842,6 +2828,75 @@ export function createWorld(canvas) {
     return unlocked;
   }
 
+  /* ============ 店铺成长线（B）：扩张投资表现 ============
+   * 三个 applyXxx 都是「幂等 + 依 state.expansion 判定」：读档 syncExpansions 只对已购项调用，
+   * 运行时 onBuy 在 buyExpansion 置位后立即调用。appliedGrowth 防止重复建模型。 */
+  const appliedGrowth = new Set();
+
+  /** 新货架排：在第 3 行 SHELF_ROWS[2] 建 slots 8,9 两格 + 碰撞 + 接触阴影。 */
+  function applyShelfRow() {
+    if (appliedGrowth.has('shelfRow') || !state.expansion.shelfRow) return;
+    appliedGrowth.add('shelfRow');
+    for (const i of [SLOT_COUNT, SLOT_COUNT + 1]) buildShelf(i);
+    const row = SHELF_ROWS[2];
+    for (const z of row.zs) {
+      // 碰撞体与 layout.buildColliders 的货架占位同形（halfW 0.78 / halfD 0.32）
+      colliders.push({
+        min: { x: row.x - 0.78, z: z - 0.32 },
+        max: { x: row.x + 0.78, z: z + 0.32 },
+      });
+      addContactShadow(row.x, z, 1.9);
+    }
+  }
+
+  /** 店外夜市摊：门口广场摆一个带条纹遮阳棚的摊位（纯表现，无碰撞——广场本就不在走动边界内）。 */
+  function applyNightStall() {
+    if (appliedGrowth.has('nightStall') || !state.expansion.nightStall) return;
+    appliedGrowth.add('nightStall');
+    const g = new THREE.Group();
+    g.position.set(3.2, 0, STORE.maxZ + 3.0);
+    const counter = box(2.0, 0.9, 0.9, 'wood', 1);
+    counter.position.y = 0.45;
+    g.add(counter);
+    for (const px of [-0.9, 0.9]) for (const pz of [-0.35, 0.35]) {
+      const post = box(0.08, 2.0, 0.08, 'metal', 1);
+      post.position.set(px, 1.0, pz);
+      g.add(post);
+    }
+    // 条纹遮阳棚（程序化交替色）
+    const stripeA = 0xE8A94E, stripeB = 0xF4E4C1;
+    for (let s = 0; s < 4; s++) {
+      const seg = box(0.5, 0.08, 0.9, 'metal', 1);
+      seg.material = new THREE.MeshStandardMaterial({ color: s % 2 ? stripeA : stripeB, roughness: 0.8 });
+      seg.position.set(-0.75 + s * 0.5, 2.0, 0);
+      g.add(seg);
+    }
+    const lamp = new THREE.PointLight(0xF2C879, 1.0, 8);
+    lamp.position.set(0, 2.2, 0);
+    g.add(lamp);
+    world.add(g);
+    addContactShadow(g.position.x, g.position.z, 2.2);
+  }
+
+  /** 装修升级：地板换色（clone 材质避免污染复用 MATS.floor 的区域）+ 灯光增亮 + 招牌换色。纯视觉。 */
+  function applyRenovation() {
+    if (appliedGrowth.has('renovation') || !state.expansion.renovation) return;
+    appliedGrowth.add('renovation');
+    if (floor.material === MATS.floor) floor.material = MATS.floor.clone();
+    floor.material.color?.set(0x8C6A4A);
+    floor.material.needsUpdate = true;
+    // 改 baseIntensity，昼夜插值在它之上做倍率，装修后亮度始终生效
+    for (const l of lights) {
+      l.userData.baseIntensity = (l.userData.baseIntensity ?? l.intensity) * 1.3;
+      l.intensity = l.userData.baseIntensity;
+    }
+    if (sign?.material) {
+      sign.material.color?.set(0x7CE0C0);
+      sign.material.emissive?.set(0x7CE0C0);
+      sign.material.needsUpdate = true;
+    }
+  }
+
   function resize() {
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -2893,6 +2948,8 @@ export function createWorld(canvas) {
     setEmotions, setBeacons, burst, updateFeedback,
     /** 需求I 第⑦条：店铺扩建的表现出口 */
     applyExpansion, rebuildShell,
+    /** 店铺成长线（B）：扩张投资的表现出口 */
+    applyShelfRow, applyNightStall, applyRenovation,
     /** 成长线：星级解锁（运行时补建机器 + 装修） */
     addFacilities, applyStarUnlock,
     /** 环境互动：猫 / 外卖员 显隐；电视换节目 */

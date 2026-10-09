@@ -4,6 +4,7 @@
 import {
   GAME_HOURS, UPGRADES, CLERK, EVENTS, LEADERBOARD, MINIGAME, RANDOM_EVENTS,
   CONSUMABLE_BY_ID, WAREHOUSE, SKU_BY_ID, STAFF, FATIGUE, QTE, PHONE, SLOT_CAP,
+  GROWTH_EXPANSIONS,
 } from './config.mjs';
 import { state, NIGHT_SECONDS, notify, resetForNewNight, resetGame, clearPromoOnClose } from './state.mjs';
 import { createWorld } from './scene.mjs';
@@ -50,6 +51,8 @@ import { createLedger } from './ledger.mjs';
 import { createThemes, INTEL_COST } from './themes.mjs';
 import { createStars, unlocksAt, unlocksUpTo } from './stars.mjs';
 import { createAchievements } from './achievements.mjs';
+/* 店铺成长线（B）：现金 + 星级门槛的扩张投资（纯逻辑层；场景副作用经 onBuy 注入） */
+import { createExpansion } from './expansion.mjs';
 import { createChoices } from './choices.mjs';
 import { createPricing } from './pricing.mjs';
 import { createAmbient } from './ambient.mjs';
@@ -508,8 +511,32 @@ setSettleExtras(() => {
      * "这个分对应什么档、明天客流会怎么变"—— 玩家需要看到因果而不只是数字。 */
     wom: regulars.wordOfMouthOf(),
     loyalty: regulars.snapshot().loyal,
+    /* 店铺成长线（B）：夜市摊被动收入（40 + round(rep/100*20)，停电为 0），并入结算报告 */
+    stall: expansion.stallIncome(),
   };
 });
+
+/* 店铺成长线（B）：扩张投资。onBuy 把场景副作用交给 world 的三个 applyXxx 做，
+ * 模块本身不认识 scene，避免循环依赖。getStarLevel 注入 stars.level() 做星级门槛校验。 */
+const expansion = createExpansion({
+  getStarLevel: () => stars.level(),
+  onBuy: (id) => {
+    if (id === 'shelfRow') world.applyShelfRow();
+    else if (id === 'nightStall') world.applyNightStall();
+    else if (id === 'renovation') world.applyRenovation();
+  },
+});
+
+/** 扩张投资页 API（HUD 🏗️ 扩张 tab 用） */
+function expansionApi() {
+  return {
+    list: GROWTH_EXPANSIONS,
+    buy: (id) => expansion.buyExpansion(id),
+    owned: () => ({ ...state.expansion }),
+    stall: () => expansion.stallIncome(),
+    starLevel: () => stars.level(),
+  };
+}
 
 /** Tab 商店的"定价与情报"分页 API */
 function growthApi() {
@@ -1354,6 +1381,12 @@ function syncExpansions() {
     const ids = facs.map((f) => f.id);
     if (ids.length) worldState.registerDevices(ids);
   }
+  /* 店铺成长线（B）：已购扩张项也按存档把场景补回来。
+   * ⚠ 必须在 applyLayout 之后调用：applyLayout 会清空并重建 colliders 数组，
+   * 新货架排的碰撞盒若在它之前 push 会被清掉。 */
+  if (state.expansion?.shelfRow) world.applyShelfRow();
+  if (state.expansion?.nightStall) world.applyNightStall();
+  if (state.expansion?.renovation) world.applyRenovation();
   applyLayout(world.colliders, { owned });
   player.setBounds(computeBounds(owned));
 }
@@ -1405,7 +1438,7 @@ function togglePause() {
 /* 块7 探针：把真实进货面板入口收口成一个常量，既给移动端 panels 用，也暴露给
  * __NS.hud.openPurchase 做端到端验收（截图「进货页」）。保持单行是为了让
  * tests/boons.test.mjs 的接线断言仍能抽到 openPurchase 的单行调用点。 */
-const openPurchasePanel = () => openPurchase(() => relock(), purchase, shopApi(), staffApi(), warehouseApi(), growthApi(), secondhandApi, boonsApi(), deliveryUiApi);
+const openPurchasePanel = () => openPurchase(() => relock(), purchase, shopApi(), staffApi(), warehouseApi(), growthApi(), secondhandApi, boonsApi(), deliveryUiApi, expansionApi());
 const mobileControls = createMobileControls({
   player,
   interaction,
@@ -1768,7 +1801,7 @@ window.addEventListener('keydown', (e) => {
         state.paused = false;
         player.requestLock();
       }
-    }, purchase, shopApi(), staffApi(), warehouseApi(), growthApi(), secondhandApi, boonsApi(), deliveryUiApi);   // 块5
+    }, purchase, shopApi(), staffApi(), warehouseApi(), growthApi(), secondhandApi, boonsApi(), deliveryUiApi, expansionApi());   // 块5
   }
 
   /* --- 需求J：R 打开仓库面板（与 Tab 的「仓库」分页同源） --- */
@@ -1786,7 +1819,7 @@ window.addEventListener('keydown', (e) => {
         state.paused = false;
         player.requestLock();
       }
-    }, purchase, shopApi(), staffApi(), warehouseApi(), growthApi(), secondhandApi, boonsApi(), deliveryUiApi);
+    }, purchase, shopApi(), staffApi(), warehouseApi(), growthApi(), secondhandApi, boonsApi(), deliveryUiApi, expansionApi());
     return;
   }
 

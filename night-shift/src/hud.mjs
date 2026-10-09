@@ -448,7 +448,7 @@ export function openStart(onStart) {
  * @param warehouseApi 可选 · 仓库管理 API（决定"仓库"分页）
  * 四个 API 都有时 Tab 键会展开全部四页；只传 warehouseApi 时（R 键）只显示"仓库"一页。
  */
-export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi = null, warehouseApi = null, growthApi = null, secondhandApi = null, boonsApi = null, deliveryApi = null) {
+export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi = null, warehouseApi = null, growthApi = null, secondhandApi = null, boonsApi = null, deliveryApi = null, expansionApi = null) {
   /** 改装分区当前选中的设备（纯 HUD 本地状态，面板一关就没意义，不进 state） */
   let modTarget = null;
   /** 仓库低库存提示每开一次面板只弹一次（切回仓库分页不重复弹） */
@@ -466,6 +466,7 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
    * 兑换是"看清楚再决定"，扭蛋是"点一下就有反馈"，混在一页会互相干扰。 */
   if (boonsApi) tabs.push({ id: 'boons', label: '🪙 代币兑换' });
   if (boonsApi) tabs.push({ id: 'gacha', label: '🎰 代币扭蛋' });
+  if (expansionApi) tabs.push({ id: 'growth', label: '🏗️ 扩张' });
   if (tabs.length === 0) tabs.push({ id: 'buy', label: '🛒 进货' });
   let current = tabs[0].id;
 
@@ -473,6 +474,7 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
     buy: '进货面板', shop: '门店投资', staff: '店员管理', wh: '仓库管理',
     price: '定价与情报', second: '♻ 二手市场',
     boons: '🪙 代币兑换', gacha: '🎰 代币扭蛋',
+    growth: '扩张投资',
   };
 
   /* ---------- 需求I ①③④⑦ 三个新分区（商店页） ---------- */
@@ -922,6 +924,43 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
       </div>`;
   }
 
+  /* ---------- 扩张投资页（店铺成长线 B） ---------- */
+  function expContent() {
+    if (!expansionApi) return '';
+    const owned = expansionApi.owned();
+    const lv = expansionApi.starLevel();
+    const rows = expansionApi.list.map((e) => {
+      const isOwned = !!owned[e.id];
+      const starOk = lv >= e.star;
+      const cashOk = state.cash >= e.cost;
+      const can = !isOwned && starOk && cashOk;
+      let btn, why = '';
+      if (isOwned) {
+        btn = '<span class="e-owned">✓ 已购</span>';
+      } else {
+        const reason = !starOk ? `需要 ★${e.star}` : (!cashOk ? '现金不足' : '');
+        if (reason) why = ` · <span class="warn">${reason}</span>`;
+        btn = `<button class="mini-btn" data-act="exp-buy" data-id="${e.id}" ${can ? '' : 'disabled'}>${fmtYuan(e.cost)}</button>`;
+      }
+      return `<div class="exp-row">
+        <div>
+          <div class="e-name">${e.name} · <span class="star-req">★${e.star}</span></div>
+          <div class="e-desc">${e.desc}${why}</div>
+        </div>
+        ${btn}
+      </div>`;
+    }).join('');
+    const stallLine = owned.nightStall
+      ? `<div class="growth-note">今夜夜市摊被动收入预计 <b style="color:#E6C75A">+${fmtYuan(expansionApi.stall())}</b></div>`
+      : '';
+    return `
+      <div class="shop-sec">
+        <div class="sec-head">🏗️ 扩张投资 <span class="sec-sub">现金 + 星级门槛 · 永久生效</span></div>
+        ${rows}
+        ${stallLine}
+      </div>`;
+  }
+
   function render() {
     const tabbar = `<div class="tabbar">${tabs.map((t) =>
       `<div class="tab ${t.id === current ? 'active' : ''}" data-act="tab" data-id="${t.id}">${t.label}</div>`).join('')}</div>`;
@@ -932,6 +971,7 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
       : current === 'second' ? secondContent()
       : current === 'boons' ? boonsContent()
       : current === 'gacha' ? gachaContent()
+      : current === 'growth' ? expContent()
       : warehouseContent();
     const buyBtn = current === 'buy' ? '<button class="btn primary" data-act="buy">确认采购</button>' : '';
     els.modal.innerHTML = `
@@ -1056,6 +1096,15 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
       if (current === 'gacha') {
         if (act === 'gacha-pull') {
           boonsApi.pull();
+          render(); return;
+        }
+        return;
+      }
+
+      if (current === 'growth') {
+        if (act === 'exp-buy') {
+          const r = expansionApi.buy(el.dataset.id);
+          toast(r?.ok ? `🏗️ ${r.item.name} 已购 · 场景已更新` : (r?.reason ?? '购买失败'), r?.ok ? 'ok' : 'bad', 3200);
           render(); return;
         }
         return;
@@ -1616,6 +1665,7 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn) {
           ${report.expiring?.loss ? line('　临期货报废', `-${fmtMoney(report.expiring.loss)}`, 'neg') : ''}
           ${line('租金', `-${fmtMoney(report.rent)}`, 'neg')}
           ${report.coffee ? line('咖啡机增益', fmtMoney(report.coffee), 'pos') : ''}
+          ${report.stall ? line('夜市摊收入', `+${fmtMoney(report.stall)}`, 'pos') : ''}
           ${line('本夜净利', fmtMoney(report.netProfit), report.netProfit >= 0 ? 'pos' : 'neg')}
           ${line('服务 / 失销', `${report.served} 人 / ${report.lostSales} 人`)}
           ${report.cleared ? `<div class="line"><span>打烊清场</span><span style="color:#E6C75A;font-weight:600">${report.cleared} 位顾客未结账</span></div>` : ''}

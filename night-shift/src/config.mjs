@@ -776,10 +776,25 @@ export const POS = {
   doorOut: { x: 0, z: STORE.maxZ + 2.2 },  // 顾客离场终点（广场上）
 };
 
-/** 货架排布：2 排 × 4 格 = 8 格 */
+/** 货架排布：2 排 × 4 格 = 8 格（起始）。
+ * 第 3 行是「新货架排」扩张项解锁后落位 slots 8,9 用的 —— 只放 2 个 z，
+ * 配合 state.slots 扩容 +2（expandSlots(2)），与既有 4 格/排的语义不冲突。
+ * ⚠ 不要把 SLOT_COUNT 改成 12：它仍是起始 8 格，第 3 行由 applyShelfRow 单独建。 */
 export const SHELF_ROWS = [
   { x: -4.2, zs: [-3, -1, 1, 3] },
   { x: -1.4, zs: [-3, -1, 1, 3] },
+  // 新货架排：收银台(x=3.6)左侧留出行走通道，故 x=1.4、只取中间两格
+  { x: 1.4, zs: [-1, 1] },
+];
+
+/* ---------- 店铺成长线（B）：现金 + 星级门槛的扩张投资 ----------
+ * 与需求I 第⑦条的「区域扩建」(EXPANSIONS / state.expansions) 完全独立：
+ * 那边是分区解锁 + 场景外扩，这边是「花钱 + 够星」买 3 个永久投资项。
+ * 命名刻意错开（GROWTH_EXPANSIONS / state.expansion 单数）避免读档/渲染混淆。 */
+export const GROWTH_EXPANSIONS = [
+  { id: 'shelfRow',   name: '新货架排',   cost: 800,  star: 2, desc: '解锁 2 个新商品位（场景新增一排货架）' },
+  { id: 'nightStall', name: '店外夜市摊', cost: 1200, star: 3, desc: '每夜被动收入 ¥40+（随口碑浮动，停电不产出）' },
+  { id: 'renovation', name: '装修升级',   cost: 2000, star: 4, desc: '地板 / 灯光 / 招牌焕新（纯视觉）' },
 ];
 
 /* ==================================================================

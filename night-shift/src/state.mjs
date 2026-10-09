@@ -107,6 +107,9 @@ function baseState() {
     quest: null,
     /** 已解锁的店铺扩建：{ exp1: true, exp2: true } */
     expansions: {},
+    /** 店铺成长线（B）：现金 + 星级门槛的扩张投资（永久，0/1 已购标志）。
+     * 与上面复数 expansions（区域扩建）完全独立。 */
+    expansion: { shelfRow: 0, nightStall: 0, renovation: 0 },
     /** 停电事件到期（wallElapsed 秒）· 期间全部设备暂停工作 */
     powerOutUntil: null,
     /** 客流高峰到期 */

@@ -68,7 +68,7 @@ const STATE_FIELDS = [
   /* 小游戏 */
   'minigamePlays', 'minigameSpend', 'minigameEarn', 'facilityPlays',
   /* 需求I 玩法叠加（全是纯数据，无 mesh 引用，可安全 JSON 化） */
-  'deviceLevels', 'deviceMods', 'inventory', 'selectedItem', 'quest', 'expansions',
+  'deviceLevels', 'deviceMods', 'inventory', 'selectedItem', 'quest', 'expansions', 'expansion',
   /* 2026-10-06 块4：任务板（纯数据：卡面 + 进行中的任务 + 弃单冷却）。
    * 跨夜要保留 —— 玩家接了单就该接着做完，读档丢掉等于"接单是个陷阱"。 */
   'taskboard',
