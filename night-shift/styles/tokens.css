@@ -1130,6 +1130,109 @@ html, body {
 .choice-opt .c-label { font-size: 14.5px; font-weight: 700; }
 .choice-opt .c-hint { margin-top: 3px; font-size: 11.5px; color: var(--text-muted); }
 
+/* ============================================================
+ * 任务6：CG 覆盖层（A 批事件卡 / B 批序章 / C 批里程碑）
+ * 色板沿用暗夜蓝紫霓虹（--neon-purple / --neon-ice / --brand），与 HUD 同一套令牌。
+ * ========================================================== */
+.cg-mask {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: auto;
+  padding: 16px;
+  /* 比普通弹窗更沉的底：CG 是全屏沉浸时刻，不该看见后面的货架与顾客 */
+  background:
+    radial-gradient(120% 90% at 50% 40%, rgba(43, 26, 66, .55) 0%, rgba(8, 10, 16, .94) 70%),
+    rgba(8, 10, 16, .9);
+  animation: overlay-in .2s ease;
+}
+.cg-mask.skippable { cursor: pointer; }
+.cg-mask.closing { animation: overlay-out .15s ease forwards; pointer-events: none; }
+
+.cg-card {
+  display: flex; gap: 14px;
+  width: min(940px, 94vw); max-height: 88vh;
+  padding: 14px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-sunken) 100%);
+  /* 像素风双描边：外层霓虹紫实边 + 内层冰蓝高光，暗色底上能压住大面积插画 */
+  border: 2px solid #33254C;
+  box-shadow:
+    inset 0 0 0 1px var(--neon-ice-a18),
+    0 0 34px var(--neon-purple-a18),
+    0 18px 60px rgba(0, 0, 0, .62);
+  animation: panel-in .2s ease;
+  overflow: hidden;
+}
+
+/* ---------- 插画区 ---------- */
+.cg-figure {
+  flex: 1 1 62%; min-width: 0;
+  position: relative;
+  aspect-ratio: 16 / 9;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--border-strong);
+  background: linear-gradient(160deg, #151C2B 0%, #0B0E15 100%);
+}
+.cg-img {
+  width: 100%; height: 100%;
+  object-fit: contain;              /* 不裁切：16:9 原图整张进框 */
+  display: block;
+  opacity: 0; transition: opacity .25s ease;
+  image-rendering: pixelated;       /* 像素复古风：缩放不许糊成一团 */
+  image-rendering: crisp-edges;
+}
+.cg-img.ready { opacity: 1; }
+.cg-ph {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-subtle); font-size: 12px; letter-spacing: .08em;
+}
+.cg-figure.loaded .cg-ph { display: none; }
+/* 图挂了（线上白名单漏文件就是这症状）→ 整块插画区消失，退化成纯文字卡，
+ * 而不是留一个裂图图标让玩家以为游戏坏了 */
+.cg-figure.failed { display: none; }
+
+/* ---------- 文字区 ---------- */
+.cg-text {
+  flex: 1 1 38%; min-width: 0;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 6px 8px 8px; overflow-y: auto;
+}
+.cg-caption { font-size: 11.5px; color: var(--brand); letter-spacing: .06em; }
+.cg-title { margin: 0; font-size: 18px; letter-spacing: .04em; color: var(--text); }
+.cg-lines { display: flex; flex-direction: column; gap: 7px; }
+.cg-line {
+  margin: 0;
+  font-size: 13.5px; line-height: 1.75; color: var(--text-muted);
+  word-break: break-word;      /* 390px 窄屏长句不许横向溢出 */
+  opacity: 0;
+  animation: cg-line-in .5s ease forwards;
+}
+@keyframes cg-line-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.cg-opts { display: flex; flex-direction: column; gap: 10px; margin-top: 2px; }
+.cg-go { margin-top: auto; align-self: flex-start; padding: 10px 20px; }
+.cg-tip { margin-top: 6px; }
+
+/* 抉择弹窗里的内联插画（A 批：插画在上、事件文字在下） */
+.modal.choice.has-cg { max-width: 560px; }
+.cg-figure.inline { flex: none; width: 100%; margin-bottom: 12px; }
+
+/* 竖屏 / 窄屏：上下分栏（图在上、文字 + 选项在下） */
+@media (orientation: portrait), (max-width: 720px) {
+  .cg-card { flex-direction: column; width: min(560px, 94vw); max-height: 92vh; gap: 10px; }
+  .cg-figure { flex: 0 0 auto; width: 100%; }
+  .cg-text { flex: 0 1 auto; }
+}
+/* 390px 级窄屏：卡片留白收紧，标题/正文降一号，保证不溢出 */
+@media (max-width: 430px) {
+  .cg-mask { padding: 8px; }
+  .cg-card { padding: 9px; border-radius: 12px; }
+  .cg-title { font-size: 16px; }
+  .cg-line { font-size: 12.5px; line-height: 1.65; }
+  .cg-go { align-self: stretch; text-align: center; }
+}
+
 /* 顶部横幅：主题（常驻） / 促销（醒目） */
 .theme-banner, .promo-banner {
   padding: 8px 18px; border-radius: 999px;
@@ -1365,6 +1468,9 @@ html, body {
   .tutorial { animation: none !important; }
   .promo-banner { animation: none !important; }
   .doze { animation: none !important; }
+  /* 任务6：序章/里程碑的逐句浮现改为直接显示（不靠它传达信息，去掉也不损失） */
+  .cg-line { animation: none !important; opacity: 1 !important; }
+  .cg-img { transition: none !important; }
 }
 
 /* ---------- 监控室（模块 4 子功能①） ---------- */

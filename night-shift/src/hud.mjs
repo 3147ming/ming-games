@@ -13,6 +13,9 @@ import {
   settings, RANGES, DEFAULTS, setSettings, resetSettings,
 } from './settings.mjs';
 import { fmtYuan, fmtYuanSigned } from './fmt.mjs';
+/* 任务6 CG：只取清单与判定（纯逻辑模块，无 DOM 依赖），展示在这里拼。
+ * 为什么不把 CG 表直接写进 hud：那会让"里程碑只弹一次"这类规则无法在 Node 里单测。 */
+import { CG_BY_ID, PROLOGUE_LINES, cgUrl } from './cgs.mjs';
 
 let els = {};
 let modalOpen = false;
@@ -161,9 +164,32 @@ function statColor(v, lowBad, thr) {
  *
  * 为什么收敛在每帧的 renderHud 里：modalOpen 有十几处赋值点，
  * 逐个改造漏一处就是一处新 bug；在一处做"最终一致"更可靠（代价只是每帧一次 class 比对）。
+ *
+ * ③ 任务6 追加的自愈：`modalOpen` 是模块内私有标志，而 `els.modal / els.start` 的
+ *    innerHTML 是**可以被旁路直接清空**的（`innerHTML = ''` 一行就把面板"关"了）。
+ *    只清 DOM 不改标志 → 标志卡在 true → 症状是**屏幕上没有任何弹窗，但所有按键都不
+ *    响应**（main 的 keydown 开头 `if (isModalOpen()) return`，指针锁定也被一直交出去），
+ *    现场极难定位。2026-10-10 实测就在这条路上卡死了 probe-uifix 的 B5→C1/D1。
+ *    修法只做**单向**自愈：
+ *
+ *      `modalOpen === true` 但两个容器里已经没有活遮罩 → 判定为失同步，改回 false。
+ *
+ *    ⚠ 绝不反向推断（false→true）：淡出中的 `.closing` 遮罩、以及"先赋标志后异步渲染"
+ *      的写法都会让 DOM 短暂为空，反向推断会把正在开的面板判成"没开"。
+ *    ⚠ 必须排除 `.closing`：closeModal 是先加 .closing 再 setTimeout 清空，
+ *      不排除的话它会一直被当成"还开着"，自愈就永远不生效。
+ *    安全性：14 处 `modalOpen = true` 全部**同步**写 els.modal 或 els.start
+ *      （openStart/openLogin 写 els.start，其余 12 处写 els.modal），
+ *      所以本帧读到的 DOM 一定反映真实意图。
  */
+function hasLiveModalDom() {
+  const live = (root) => !!root?.querySelector('.modal-mask:not(.closing), .start-mask, .login-mask');
+  return live(els.modal) || live(els.start);
+}
+
 function syncModalLayer() {
   if (!hudRoot) return;
+  if (modalOpen && !hasLiveModalDom()) modalOpen = false;
   if (hudRoot.classList.contains('has-modal') !== modalOpen) {
     hudRoot.classList.toggle('has-modal', modalOpen);
   }
@@ -409,6 +435,8 @@ export function closeModal() {
     els.modal.innerHTML = '';
   }
   modalOpen = false;
+  // 任务6：任何路径关掉弹窗都要摘掉 CG 的 Esc 监听（closeAll 等旁路也会走到这里）
+  releaseCgEsc();
   // 立即摘掉 has-modal（不等下一帧的 syncModalLayer），关窗瞬间底层 HUD 就恢复可交互
   if (hudRoot) hudRoot.classList.remove('has-modal');
 }
@@ -2191,15 +2219,163 @@ export function openAchievements(api, onClose) {
   render();
 }
 
+/* ---------- 任务6：CG 覆盖层 ---------- */
+
+/** 覆盖层期间的 Esc 句柄（同一时刻只会有一张 CG，关掉就摘，避免监听器堆积） */
+let cgEscHandler = null;
+function releaseCgEsc() {
+  if (cgEscHandler) {
+    document.removeEventListener('keydown', cgEscHandler, true);
+    cgEscHandler = null;
+  }
+}
+
+/**
+ * 懒加载一张 CG 进 figure 容器。
+ * 为什么不用 <img src> 直接写进 innerHTML：首包里 7 张图合计 ~2.7MB，
+ * 全塞进 HTML 会在**每次弹窗**都触发一次解码（即便这张图一辈子只弹一次）。
+ * 先给暗色占位 + "载入中"，onload 再淡入；onerror 就把 figure 整块隐藏 ——
+ * 图挂了退化成纯文字卡，而不是留一个裂图图标（白名单漏文件的线上症状正是这个）。
+ */
+function attachCgImage(figure, file, altText) {
+  if (!figure || !file) return;
+  const img = new Image();
+  img.className = 'cg-img';
+  img.alt = altText || '';
+  img.decoding = 'async';
+  img.draggable = false;
+  img.onload = () => {
+    img.classList.add('ready');
+    figure.classList.add('loaded');
+  };
+  img.onerror = () => {
+    figure.classList.add('failed');
+    img.remove();
+  };
+  img.src = file;
+  figure.appendChild(img);
+}
+
+/**
+ * 全屏 CG 覆盖层。
+ *
+ * @param {object} o
+ * @param {string} o.file        图片相对路径（走 cgs.mjs 的 CG 记录）
+ * @param {string} o.title       标题
+ * @param {string} [o.text]      正文（单段）
+ * @param {string[]} [o.lines]   正文（多段，逐句浮现；与 text 二选一）
+ * @param {string} [o.caption]   右上角小标（如"首次达成 ★5"）
+ * @param {Array}  [o.options]   [{id,label,hint}]；非空 = 必须抉择，禁止点背景/Esc 关
+ * @param {boolean}[o.skippable] 是否可跳过（缺省：无选项即可跳过）
+ * @param {string} [o.confirmLabel] 跳过按钮文案（缺省"点击任意处继续"）
+ * @param {(id:string)=>void} [o.onPick]
+ * @param {()=>void} [o.onClose]
+ */
+export function openCg(o = {}) {
+  const file = o.file || '';
+  const options = Array.isArray(o.options) ? o.options : [];
+  const skippable = o.skippable ?? options.length === 0;
+  const lines = Array.isArray(o.lines) && o.lines.length ? o.lines : (o.text ? [o.text] : []);
+
+  releaseCgEsc();
+  let closed = false;
+  function finish(optId) {
+    if (closed) return;         // 淡出的 0.15s 里可能连点两下，第二次不该再跑一遍后果
+    closed = true;
+    releaseCgEsc();
+    closeModal();
+    if (optId) o.onPick?.(optId);
+    else o.onClose?.();
+  }
+
+  els.modal.innerHTML = `
+    <div class="modal-mask cg-mask${skippable ? ' skippable' : ''}">
+      <div class="cg-card" data-el="cg-card">
+        <div class="cg-figure" data-el="cg-figure">
+          <div class="cg-ph">载入中…</div>
+        </div>
+        <div class="cg-text">
+          ${o.caption ? `<div class="cg-caption">${o.caption}</div>` : ''}
+          <h2 class="cg-title">${o.title ?? ''}</h2>
+          <div class="cg-lines">
+            ${lines.map((t, i) => `<p class="cg-line" style="animation-delay:${0.15 + i * 0.35}s">${t}</p>`).join('')}
+          </div>
+          ${options.length ? `<div class="cg-opts">
+            ${options.map((b) => `
+              <button class="choice-opt cg-opt" data-act="cg-option" data-opt="${b.id}">
+                <div class="c-label">${b.label}</div>
+                <div class="c-hint">${b.hint ?? ''}</div>
+              </button>`).join('')}
+          </div>` : ''}
+          ${skippable ? `<button class="btn primary cg-go" data-act="cg-close">${o.confirmLabel ?? '点击任意处继续'}</button>` : ''}
+          ${options.length ? '<div class="cg-tip sub">选一个 · 之后立刻生效</div>' : ''}
+        </div>
+      </div>
+    </div>`;
+  modalOpen = true;
+
+  const figure = els.modal.querySelector('[data-el="cg-figure"]');
+  attachCgImage(figure, file, o.title ?? '');
+
+  els.modal.onclick = (e) => {
+    const b = e.target.closest('[data-act="cg-option"]');
+    if (b) { finish(b.dataset.opt); return; }
+    if (!skippable) return;               // 必须抉择的事件卡：点背景/Esc 都不许逃
+    finish(null);
+  };
+
+  if (skippable) {
+    cgEscHandler = (ev) => {
+      if (ev.key !== 'Escape') return;
+      /* 不 stopPropagation：main 的 Esc 处理器开头就 `if (isModalOpen()) return`，
+       * 这里 modalOpen 已为 true，天然让路，不需要再抢。 */
+      finish(null);
+    };
+    document.addEventListener('keydown', cgEscHandler, true);
+  }
+}
+
+/** 序章卡（B 批）：全景图 + 逐句浮现的序章文字，点任意处 / 「进入夜班」跳过开局 */
+export function showPrologue(onDone) {
+  const rec = CG_BY_ID.b1_prologue;
+  openCg({
+    file: cgUrl(rec?.id ?? 'b1_prologue'),
+    title: rec?.title ?? '序章',
+    lines: PROLOGUE_LINES,
+    variant: 'prologue',
+    skippable: true,
+    confirmLabel: '进入夜班',
+    onClose: onDone,
+  });
+}
+
+/** 里程碑整屏 CG（C 批）：无选项，看完点任意处继续走结算 */
+export function showMilestoneCg(rec, onDone) {
+  if (!rec) { onDone?.(); return; }
+  openCg({
+    file: cgUrl(rec.id),
+    title: rec.title,
+    text: rec.text,
+    caption: rec.caption,
+    variant: 'milestone',
+    skippable: true,
+    confirmLabel: '继续',
+    onClose: onDone,
+  });
+}
+
 /**
  * 抉择事件弹窗（暂停级：弹出期间夜时钟停住，选完恢复）。
+ * 任务6：带 `cg` 的事件在文字上方显示对应插画（A 批事件/剧情卡）。
  * @param choice CHOICES 的一项
  * @param onPick (optionId) => void
  */
 export function openChoice(choice, onPick) {
+  const rec = choice.cg ? CG_BY_ID[choice.cg] : null;
   els.modal.innerHTML = `
     <div class="modal-mask">
-      <div class="modal choice">
+      <div class="modal choice${rec ? ' has-cg' : ''}">
+        ${rec ? `<div class="cg-figure inline" data-el="cg-figure"><div class="cg-ph">载入中…</div></div>` : ''}
         <h2>${choice.emoji} ${choice.title}</h2>
         <div class="choice-body">${choice.body}</div>
         <div class="choice-opts">
@@ -2213,6 +2389,7 @@ export function openChoice(choice, onPick) {
       </div>
     </div>`;
   modalOpen = true;
+  if (rec) attachCgImage(els.modal.querySelector('[data-el="cg-figure"]'), cgUrl(rec.id), rec.title);
   els.modal.onclick = (e) => {
     const b = e.target.closest('[data-opt]');
     if (!b) return;

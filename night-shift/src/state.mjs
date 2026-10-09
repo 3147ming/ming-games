@@ -218,6 +218,12 @@ function baseState() {
     /** 常客脸谱：{ [faceId]: { nights:[夜号数组去重], name, emoji } }，跨夜保留 */
     regularFaces: {},
 
+    /* ---------- 任务6 CG：已弹过的 CG id ----------
+     * 只做"已经弹过"的标记（见 cgs.mjs），**不是**进度数据：
+     * 它进存档白名单（save.mjs 的 'cgSeen'），读档后里程碑 CG 不会重复弹。
+     * ⚠ 只读 push，绝不整体覆盖 —— 它一旦被覆盖，玩家的存档就少了一块。 */
+    cgSeen: [],
+
     /** 结算账本：事件类收支条目（见 ledger.mjs），打烊时列在结算里 */
     ledger: [],
 

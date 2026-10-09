@@ -26,14 +26,22 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const numOr = (v, d = 0) => (Number.isFinite(v) ? v : d);
 
 /**
- * 五个抉择事件。
+ * 抉择事件。
  * apply(api, rng, state) → { text:string, ledger?:{key,label,value} }
+ *
+ * ── 任务6：cg 字段 ──────────────────────────────────────
+ * 带 `cg`（指向 src/cgs.mjs 的 CG id）的事件，弹窗上方会显示对应插画
+ * （A 批事件/剧情卡）。没有 cg 的事件照旧是纯文字卡 —— 渐进增强，
+ * 缺图不会让弹窗开不出来。
+ * `requires(state)` 是可选登场门槛（例如"常客委托"要求店里已经有常客），
+ * planForNight 排期时会先过滤掉不满足的。
  */
 export const CHOICES = [
   {
     id: 'thief',
     title: '小偷进店',
     emoji: '🥷',
+    cg: 'a4_thief',
     body: '一个年轻人把两包泡面塞进了外套，正快步走向门口。',
     options: [
       {
@@ -158,6 +166,100 @@ export const CHOICES = [
       },
     ],
   },
+  /* ---------- 任务6：三张 A 批 CG 剧情卡 ---------- */
+  {
+    id: 'stranger',
+    title: '深夜怪客',
+    emoji: '🌒',
+    cg: 'a1_stranger',
+    body: '凌晨三点，一个戴着兜帽的男人推门进来。他不说要买什么，只把一沓现金按在收银台上，说要"包下你柜子里所有货"。',
+    options: [
+      {
+        id: 'deal',
+        label: '成交',
+        hint: '得 ¥180 · 低概率吓到店里的其他客人',
+        apply(api, rng) {
+          api.earnCash(180, '深夜怪客');
+          api.ledger('choice.stranger', '抉择 · 深夜怪客成交', 180);
+          let text = '你数了数那沓钱，把柜子里的货一件件装袋（+¥180）。';
+          if (rng() < 0.3) {
+            api.addRep(-4);
+            text += ' 他全程没说话，店里其他客人被吓到了（满意度 -4）。';
+          }
+          return { text };
+        },
+      },
+      {
+        id: 'refuse',
+        label: '拒绝',
+        hint: '口碑 +2 · 不得钱',
+        apply(api) {
+          api.addRep(2);
+          api.ledger('choice.stranger', '抉择 · 拒绝怪客', 0);
+          return { text: '你指了指"营业中"的牌子，说这批货不单卖。他看了你一眼，转身走进夜色（满意度 +2）。' };
+        },
+      },
+    ],
+  },
+  {
+    id: 'meteor',
+    title: '流星夜',
+    emoji: '🌠',
+    cg: 'a2_meteor',
+    body: '气象台说今夜有流星雨。便利店的玻璃门外，陆续有人抬头站着——他们只是需要一个不挡视线的地方。',
+    options: [
+      {
+        id: 'poster',
+        label: '挂出观星海报',
+        hint: '今夜客流 +30% · 立刻 +¥50',
+        apply(api) {
+          api.setInfluence(1, 1.3);   // 与网红 buff 同一套口径：nights=1 表示只在今夜生效
+          api.earnCash(50, '观星海报');
+          api.ledger('choice.meteor', '抉择 · 观星海报', 50);
+          return { text: '你连夜打印了一张"观星友好 · 欢迎进店"贴在门口（今夜客流 +30%，顺手多卖了几杯热饮 +¥50）。' };
+        },
+      },
+      {
+        id: 'skip',
+        label: '照常营业',
+        hint: '无事发生',
+        apply() {
+          return { text: '你把门口的灯调暗了一格，让他们看得更清楚。' };
+        },
+      },
+    ],
+  },
+  {
+    id: 'regularFavor',
+    title: '常客委托',
+    emoji: '🤝',
+    cg: 'a3_regular',
+    /** 没有常客就不该弹出"老主顾托你办事" —— 凭空冒出熟人比没有剧情更出戏 */
+    requires: (s) => Object.keys(s?.regularFaces ?? {}).length > 0,
+    body: '常来的那位靠在收银台边，欲言又止。最后他开口：家里临时有急事，能不能先赊 ¥40 的货，明晚一定还。',
+    options: [
+      {
+        id: 'help',
+        label: '替他垫上',
+        hint: '花 ¥40 · 满意度 +6',
+        apply(api) {
+          const paid = api.payCash(40, '常客委托');
+          if (!paid) return { text: '你翻了翻收银机，现金不够。' };
+          api.addRep(6);
+          api.ledger('choice.regularFavor', '抉择 · 常客委托', -40);
+          return { text: '你把钱垫上了。第二天，他带着三个同事一起来买夜宵（满意度 +6）。' };
+        },
+      },
+      {
+        id: 'decline',
+        label: '婉拒',
+        hint: '无事发生',
+        apply() {
+          return { text: '你抱歉地摇摇头——店里规矩，概不赊账。他点点头，自己想办法去了。' };
+        },
+      },
+    ],
+  },
   {
     id: 'influencer',
     title: '网红拍摄',
@@ -202,7 +304,10 @@ export function createChoices(opts = {}) {
   /** 今晚的排期：[{ id, at }]（at = 游戏小时 0..8） */
   function planForNight() {
     const n = rng() < 0.45 ? 2 : 1;
-    const pool = CHOICES.slice();
+    /* 任务6：先按 requires 过滤登场门槛（如"常客委托"要求已有常客）。
+     * 不满足的事件根本不进池子，而不是弹出后再判 —— 后者会让"今晚有 2 个抉择"
+     * 实际只弹 1 个，排期数与体感对不上。 */
+    const pool = CHOICES.filter((c) => (typeof c.requires === 'function' ? !!c.requires(state) : true));
     const queue = [];
     for (let i = 0; i < n && pool.length; i++) {
       const k = Math.floor(rng() * pool.length);

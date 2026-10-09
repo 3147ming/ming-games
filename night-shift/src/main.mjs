@@ -23,6 +23,7 @@ import {
   openSettings, showTutorial, hideTutorial, flashQuestDone,
   openAchievements, openChoice, showThemeBanner, showPromoBanner, setSatBonus, openPhone, openMonitor,
   closeModal,
+  openCg, showPrologue, showMilestoneCg,
 } from './hud.mjs';
 import { createAuthService, createNetBridge } from './account.mjs';
 import { submitLocal, readBoard, scoreOf, clearForAccount } from './leaderboard.mjs';
@@ -53,7 +54,9 @@ import { createStars, unlocksAt, unlocksUpTo } from './stars.mjs';
 import { createAchievements } from './achievements.mjs';
 /* 店铺成长线（B）：现金 + 星级门槛的扩张投资（纯逻辑层；场景副作用经 onBuy 注入） */
 import { createExpansion } from './expansion.mjs';
-import { createChoices } from './choices.mjs';
+import { createChoices, CHOICES } from './choices.mjs';
+/* 任务6 CG：清单 + 里程碑/序章的"只弹一次"判定（纯逻辑，DOM 展示在 hud.mjs） */
+import * as cgs from './cgs.mjs';
 import { createPricing } from './pricing.mjs';
 import { createAmbient } from './ambient.mjs';
 /* 需求G 环境系统 + 需求H 存档（本文件只做装配，规则都在各自模块里） */
@@ -2141,17 +2144,37 @@ function endNight() {
     const steps = profit <= 0 ? 1 : Math.max(1, Math.min(8, Math.ceil(profit / 60)));
     sfx.cashIn(steps);
   }
-  if (state.phase === 'weekEnd') {
-    openWeekEnd(state.weekPassed === true, () => {
-      resetGame();
-      startNight();
-    });
-  } else {
-    openSettle(report, () => {
-      nextNight();
-      startNight();
-    }, UPGRADES, buyUpgrade);
-  }
+  /* 结算面板的"落地函数"：里程碑 CG 看完之后回到这里。
+   * 抽出来是因为 CG 是插在它**前面**的一层，两条分支（周终 / 普通结算）都走同一条路。 */
+  const showSettle = () => {
+    if (state.phase === 'weekEnd') {
+      openWeekEnd(state.weekPassed === true, () => {
+        resetGame();
+        startNight();
+      });
+    } else {
+      openSettle(report, () => {
+        nextNight();
+        startNight();
+      }, UPGRADES, buyUpgrade);
+    }
+  };
+
+  /* 任务6 C 批：里程碑整屏 CG（首次 ★5 / 完成第 7 夜），**只弹一次**，看完接着走结算。
+   * 判定写在 endNight 而不是 stars.evaluate 里：CG 是展示层的事，
+   * 塞进星级逻辑会让它没法在 Node 里单独测"只弹一次"。
+   * ⚠ 一次可能同时达成两张（第 7 夜恰好 ★5）→ 排队依次弹，避免第二张被永久饿死
+   *   （第 7 夜是周终，弹完就进 weekEnd，没有下一次结算了）。 */
+  const msQueue = cgs.pendingMilestones(state, { starLevel: lv, night: report.night });
+  const runCg = (i) => {
+    if (i >= msQueue.length) { showSettle(); return; }
+    // 逐张标记（不是进队就全标）：中途关掉页面，没看到的那张下回还会弹
+    cgs.markCgSeen(state, msQueue[i].id);
+    sfx.giftArrived();   // 里程碑给一声"到货/解锁"音，与结算的 cashIn 区分开
+    showMilestoneCg(msQueue[i], () => runCg(i + 1));
+  };
+  runCg(0);
+
   toast(`第 ${report.night} 夜结束 · 净利 ${fmtYuan(report.netProfit)}`, report.netProfit >= 0 ? 'ok' : 'bad');
 }
 
@@ -2650,12 +2673,25 @@ function applyAccountReset(accountId) {
   mobileControls?.enterGame?.();      // 触屏：重开后进全屏 + 锁横屏
 }
 
+/**
+ * 任务6 B 批：序章卡（全景图 + 逐句浮现的序章文字），**点任意处 / 「进入夜班」 / Esc 跳过**。
+ *
+ * 为什么只在 beginGame（真·开新局）弹、quitToTitle 回标题再点开始不弹：
+ * 序章是"这一周故事的开场"，退出再进来还要看一遍就是打扰；且它同样记在 cgSeen 里，
+ * 一个存档只会见到一次（resetGame 重开会清掉 → 新的一周重新讲一遍）。
+ */
+function startNightWithPrologue() {
+  if (!cgs.prologuePending(state)) { startNight(); return; }
+  cgs.markCgSeen(state, 'b1_prologue');
+  showPrologue(() => startNight());
+}
+
 function beginGame() {
   sfx.startBgm();   // "开始营业"点击是用户手势，BGM 从这里起步（浏览器自动播放策略）
   openStart(() => {
     mobileControls?.enterGame?.();   // 触屏：进入全屏 + 锁横屏（在点击手势内调用）
     sfx.startBgm();
-    startNight();
+    startNightWithPrologue();
   });
 }
 
@@ -2733,12 +2769,20 @@ window.__NS = {
   endNight,
   /* 账号重开（重置）：探针要能验"冷却 / 每日上限 / 密码校验 / 清档范围"整条链路 */
   reset, auth,
+  /* 任务6 CG：清单与"只弹一次"判定（探针直接驱动做端到端验收） */
+  cgs,
+  /* 序章入口：探针要能走"标题 → 序章 → 跳过 → 开局"整条真实链路 */
+  startNightWithPrologue,
+  /* 抉择：探针要走真实入口（暂停 + 结算后果）验证 A 批事件卡的插画与选项路由 */
+  choiceDefs: CHOICES, openChoiceNow,
   // HUD 的几个"瞬间反馈"入口：验收探针要能真的触发一次绿勾/字幕，而不是只看节点在不在
   hud: {
     openSettings, showTutorial, hideTutorial, flashQuestDone, isModalOpen,
     openAchievements, openChoice, showThemeBanner, showPromoBanner,
     /** 块7 探针：走真实入口打开经营面板（默认落在「进货」分页），截图验收新 SKU 出现 */
     openPurchase: openPurchasePanel,
+    /* 任务6 CG：整屏覆盖层（探针直接开做截图 / 布局验收） */
+    openCg, showPrologue, showMilestoneCg,
   },
   /* 探针要走**真实入口**开机器，而不是自己 new 一个小游戏实例：
    * 那样会绕过投币、成就上报、排行榜这一整条链路，验收就没有意义了。 */

@@ -54,7 +54,8 @@ export const AUTOSAVE_SEC = 120;
  * state.mjs 里**允许**持久化的字段（白名单）。
  * 未列出的字段一律不存 —— 尤其是 customers / hover / events，它们带 mesh 引用或运行时句柄。
  */
-const STATE_FIELDS = [
+/** 导出给单测：新增存档字段时，白名单漏登记是最容易静默发生的错误之一，必须可断言 */
+export const STATE_FIELDS = [
   /* 经济 */
   'cash', 'tokens', 'backroom', 'prices', 'upgrades', 'held', 'slots',
   /* 时间 / 流程 */
@@ -95,6 +96,9 @@ const STATE_FIELDS = [
   'reviews', 'inbox', 'errand', 'errandsDoneTonight', 'remedy', 'badReviewStreak',
   /* 模块 4：二手市场（owned 跨夜保留）/ 常客脸谱（跨夜累积）；thief 每夜临时不存 */
   'secondHand', 'regularFaces',
+  /* 任务6 CG：已弹过的 CG id 数组。存了才不会读档后把里程碑 CG 再弹一遍。
+   * 纯字符串数组、无 mesh 引用；它只是"已弹"标记，绝不携带进度数据。 */
+  'cgSeen',
 ];
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
