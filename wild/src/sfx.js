@@ -99,7 +99,8 @@ export const Sfx = {
     this._blip({ type: 'square', f0: 659, dur: 0.1, gain: 0.3, delay: 0.09 });
     this._blip({ type: 'square', f0: 784, dur: 0.14, gain: 0.3, delay: 0.18 });
   },
-  skill() { this._blip({ type: 'sawtooth', f0: 380, f1: 760, dur: 0.16, gain: 0.26 }); },
+  // 阶段 8-2：`skill()`（放技能的锯齿波音效）已删除 —— 没有任何东西会调用它了。
+  //   升级 / 击杀 / 掉落 / 受伤 / 开箱 / 超武进化等音效**全部保留**。
   chest() { // 开箱：明亮的两音叮咚
     this._blip({ type: 'triangle', f0: 880, dur: 0.1, gain: 0.3 });
     this._blip({ type: 'triangle', f0: 1175, dur: 0.16, gain: 0.3, delay: 0.1 });

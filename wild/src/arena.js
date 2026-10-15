@@ -25,12 +25,12 @@ import { Sfx } from './sfx.js';
 //   顶层的 import 不会读值，只有真正调用时才解引用，两种加载顺序都安全。
 //   若在顶层写 `const X = OFFERS.length` 或 `export const A = {...ARENA...}` 就会炸 TDZ。
 import {
-  OFFERS, PASSIVES, WEAPONS, SKILLS, SKILL_ORDER, SKILL_SHORT, SKILL_LABEL, SKILL_SLOT_KEYS,
+  OFFERS, PASSIVES, WEAPONS,
   CAT_LABEL, RARE_PASSIVES, offerById, growthLineOf,
   // 阶段 4-5：超武进化表 + 角色表
   EVOLUTIONS, HEROES, heroById, DEFAULT_HERO, WEAPON_OF_UP, classPassiveOf, classPerkOf,
-  // 阶段 7：每 3 级的"技能向保底"节拍器 + 技能向判据
-  SKILL_TIER_CADENCE, isSkillFlavored,
+  // 阶段 8-2：SKILLS/SKILL_ORDER/SKILL_SHORT/SKILL_LABEL/SKILL_SLOT_KEYS/
+  //           SKILL_TIER_CADENCE/isSkillFlavored 已随主动技能整体删除（见 content.js 删除清单）。
 } from './content.js';
 import { Rng } from './rng.js';   // 阶段 4-7.x：心心掉落的**独立**随机源（不碰主 rng 流，见 killEnemy 注释）
 import { SKIN_TINT_ALPHA, DEFAULT_SKIN, SKINS, skinById, skinNeedsTint } from './skins.js';  // 阶段 6-2：纯外观皮肤
@@ -63,8 +63,14 @@ export const ARENA = {
   //     ⟹ 结论：这条线上"伤害"和"吞吐"必须**联合**加（与 4-1.1 的血量成长↔刷怪密度是同一类耦合）。
   //       "清不掉贴脸那一圈"是主因，而清圈的瓶颈是**每秒能打几发**，不是每发多重。
   //   ⚠ 这一组是**唯一一处本轮主动改动的非技能数值**，已在 README 阶段 4-9 段单独列出，待主理人裁决。
-  BASE_DMG: 7.91,           // 投射物基础伤害（阶段 5.1：12 → 9 → 7 → 7.91；末次为与另三把武器同乘 ×1.13 抬总吞吐以保 ≥14/16 生存；技能不动）
-  BASE_ATTACK_INTERVAL: 0.55, // 自动攻击间隔 s（阶段 4-9：0.8 → 0.55，即攻速 ×1.45）
+  BASE_DMG: 9,              // ★阶段9武器重标 10→9：投射物 8min 占比 54.9% 严重过量（主因是射速×多弹的击杀"量"，非单发伤），
+                           //   下调基础伤是配套项。9 仍 ≥ 普通怪 9 血 ⟹ 开局普通怪/疾影依旧 1 发秒（9≥9、9>5），不破手感。
+                           //   ⚠ 旧注记"单独降到 9 会让生存崩到 11/16"是**只降投射物**时的读数；本轮攻速/环绕刃同步调整、
+                           //      总吞吐补回，16 局实测跑满 16/16、最低血不再崩（见 NIGHT-REPORT 阶段 9）。
+                           //   生效值经 Math.round(dmg*hero.dmgMul)，9.5 与 10 读数一致，故此档只能取 9。
+  BASE_ATTACK_INTERVAL: 0.60, // ★阶段9武器重标 0.55→0.60：**压投射物占比的主旋钮**。投射物的量由"攻速×多弹×射程"决定，
+                           //   放缓自动攻击节拍直接削其击杀量，同时把怪放给环绕刃/直斩/剑 ⟹ 投射物 54.9%→~40%、
+                           //   环绕刃 9.3%→~21%（一口旋钮同时修"过量"与"饿死"）。0.60 是实测最优点（再慢如 0.63 占比反升，见 NIGHT-REPORT）。
   ATTACK_INTERVAL_MIN: 0.2, // 攻速升级下限（再快就不是"割草"而是"糊满屏"了）
   PROJECTILE_SPEED: 540,    // 投射物速度 px/s
   // 射程必须有上限：无上限时敌人刚在屏幕外露头就被点掉 —— ① 敌人永远走不到玩家身边，
@@ -120,7 +126,11 @@ export const ARENA = {
   //   ⟹ 结论：§一-2 在竖屏几何下只能**部分**做到，且"投影物不越屏"这一半的收益
   //     远不抵它的代价。开关保留（一行可开），验收改用「超屏击杀占比」持续盯。
   //     若以后要打开，必须先补偿横向 DPS（抬射程/攻速），并重跑 arena-sim ≥16 局。
-  WEAPON_VIEW_CLIP: false,
+  // ★阶段9-任务2：主理人裁决打开（联调扩面）。投射物射程 264 / 直斩 240 / 剑 380 都 >
+  //   屏半宽 195，横向击杀必在屏外 ⟹ 超屏击杀占比 ~34%。开裁剪后投射物/剑气不越屏，
+  //   超屏降到 ~22-25%（软目标，仍 >20%，构成见 NIGHT-REPORT）。代价是横向 DPS 下降、
+  //   峰可见略掉 —— 已用「密度 + 联调武器」补偿（峰可见/均可见/武器平衡四项硬门禁同时达标）。
+  WEAPON_VIEW_CLIP: true,
   PLAYER_RADIUS: 14,
   // 血量的定法：接触伤害是"一次性"的（怪碰到人就自爆消失），所以一局的总承伤
   // ≈ 整局摸到你的怪数 × 单次伤害。10 分钟版必须比 75 秒小关的 70 血更厚，
@@ -281,9 +291,11 @@ export const ARENA = {
   //     （前 3 分钟照旧空场，实测 60~180s 场上只有 3~20 只）；只加密度 = 怪死得更快、
   //     玩家死得更早（阶段 4-1.1 实测：前四波间歇 ×0.35 → 跑满 12/16→9/16）。
   //     两者一起动才同时拿到"填满屏幕"和"跑满率不降反升"（6/6）。
-  SPAWN_INTERVAL_MUL: 0.65,
+  SPAWN_INTERVAL_MUL: 0.45,   // ★阶段9-任务2 满屏度 0.65→0.45：配合 CLIMAX_MUL 降压，把峰可见从 58 顶到 ≥120、均可见 ≥20。
   CLIMAX_SEC: 180,          // 「后 3 分钟」高潮窗口（spec §1）
-  CLIMAX_MUL: 7.85,         // 高潮窗口内刷怪间隔的**节流**倍率（★ spec 写的是 ×0.90，见下）
+  CLIMAX_MUL: 4,              // ★阶段9-任务2 满屏度 7.85→4：降压高潮节流是峰同屏/峰可见的主旋钮
+                              //   （原 7.85 把高潮刷怪压得太慢，峰同屏顶不到软上限）。4 ⟹ 峰可见 129 / 均可见 31.8 / 跑满 16/16。
+                              //   ⚠ 旧 7.85 的标定前提（未开视口裁剪 + 低密度）已变；联调后重跑 16 局确认，勿沿用旧临界值。
                               // ★★ 为什么不照 spec 的 0.90 —— 这是阶段 4-1 实测出来的一处
                               //   **spec 内部互相冲突**的地方，取舍记录在此：
                               //   spec 的两条密度指示（"整表 ×0.55" + "climax 一次 6 个"）
@@ -496,29 +508,20 @@ export const ARENA = {
   BULLET_DMG: 12,
   MAX_BULLETS: 240,         // 场上弹的上限（与粒子的淘汰策略一致：保最新）
 
-  // ── 主动技能：环形冲击波（spec §4-9 一） ──
-  // ★★ 阶段 4-9：**真正的降格**。4-7 那一版只砍了**基础值**（30 → 15），
-  //   而三选一里的 `ks_dmg +12 × 5 层` 会把有效伤害堆回 75、`ks_radius +40 × 4 层`
-  //   把有效半径堆到 376 —— 于是玩家实测的原话是「主动技能还是大范围秒杀、CD 还短」。
-  //   ★ 实测证据（16 局官方 sim / 84449 次击杀 / **改动前**）：
-  //       冲击波 58530（**69.3%**）· 投射物 13843 · 直斩 11268 · 环绕刃 794 · 闪现 11
-  //       ⟹ 技能占 69.3%、武器只占 30.7%，最差那一局技能占 **82.1%**。
-  //   这一版把四个数字同时写死（spec §一-1~4 逐条），并把**升级路径一起关进笼子**：
-  //     · 伤害 15 → **3.75**（= 15 ÷ 4，spec「砍到现在的 1/4」）。刻意取**严格** 1/4：
-  //       它打不死任何一只成年怪（最小怪血 4 = 群冲/裂片，3.75 < 4）——
-  //       "主要效果是推开、不是杀怪"这句话因此有一条可断言的硬边界（tests 里就是这条）。
-  //     · 半径 216 → **160**（spec §一-2）。上限由 SHOCKWAVE_R_MAX 兜住。
-  //     · 击退 150 → **300**（spec §一-3）—— 它才是这个技能的主效果：把贴脸一圈推出去。
-  //     · CD 2.0 → **8.0s**（spec §一-4）。
-  SHOCKWAVE_DMG: 3.75,
-  SHOCKWAVE_RADIUS: 160,
-  SHOCKWAVE_CD: 8.0,
-  SHOCKWAVE_KNOCK: 300,        // spec §一-3：主效果 = 把贴脸的怪推开 300px（保命解围）
-  // 升级上限。spec 只写了"缩到 160"，但升级路径**也必须**进这个笼子 ——
-  // 190 是**硬小于**竖屏半宽 195 的数（旧版的 216 + 4×40 = 376 会整屏横贯，
-  // 玩家说的"大半个屏幕"就是这么来的）。它是硬上限，不是建议值。
-  SHOCKWAVE_R_MAX: 190,
-  SHOCKWAVE_KNOCK_MAX: 600,    // 击退上限（`ks_knock` 5 层 × +60）；600px 已是"甩出屏幕"的量级，再多只是把怪扔远
+  // ── 主动技能：已于阶段 8-2 整体删除 ──
+  // 这里原本是环形冲击波 / 闪现 / 霜环的四个数值口径（SHOCKWAVE_DMG 3.75 / RADIUS 160 /
+  // CD 8.0 / KNOCK 300）与它们的升级上限（R_MAX 190 / KNOCK_MAX 600）。
+  //
+  // ★ 历史背景（保留这条注释是因为它解释了一个"为什么"——四把武器的伤害为什么是现在这个值）：
+  //   阶段 4-9 先把技能**降格**（伤害砍到 1/4、CD 拉到 8s），实测立刻拿走 **69.3%** 的输出
+  //   （16 局官方 sim：跑满 13/16 → 0/16、存活 600s → 328s、Boss 站场 5~40s → 82s）。
+  //   spec §四-2 又明写「武器必须贡献 >80% 的击杀 —— 它们才是输出主力」，
+  //   ⟹ 技能让出的那份输出**必须由四把武器补上**，否则这份 spec 自相矛盾。
+  //   于是 BASE_DMG / ORBIT_DMG / LASER_DMG / SWORD_DMG 那次调平是"回报 scoped 的那份输出"，
+  //   不是随手感加的。★ 阶段 8-2 把技能彻底删除后，这个值**不再回头重调**（它已跑满 16 局验收），
+  //   若拆除技能导致跑满率跌破 14/16，补偿只能走**被动生存项**，不许动武器伤害（见任务口径）。
+  //
+  // ⟹ 现在的口径：**输出与保命全走四把武器 + 被动池**，技能相关的输入/UI/数值一律不存在。
 
   // ── 阶段 4-7：新怪类型的数值口径 ──
   SHIELD_HITS: 3,        // 护盾怪：吸收前 3 次伤害，破盾后本体脆（"不能一波带走"）
@@ -535,16 +538,25 @@ export const ARENA = {
   //   新增任何动画都必须并进这张表，否则测试不会替它把关。
   ANIM_MAX: 0.30,           // 非瞬移动画时长上限（秒）。整条链路唯一红线。
   ANIM_KEYS: [
-    'MOVE_ACCEL', 'MOVE_DECEL', 'DEATH_ANIM', 'DEATH_FLASH_AT', 'SHOCKWAVE_CHARGE',
-    'SHOCKWAVE_FX', 'FLOAT_LIFE', 'PARTICLE_LIFE_MIN', 'PARTICLE_LIFE_MAX', 'SHOCKWAVE_FLASH',
+    // 阶段 8-2：技能相关条目（SHOCKWAVE_CHARGE / SHOCKWAVE_FX / SHOCKWAVE_FLASH /
+    //   DASH_FX / DASH_INVULN / FROST_FX）已随主动技能整体删除 —— 它们描述的都是不存在的东西了。
+    'MOVE_ACCEL', 'MOVE_DECEL', 'DEATH_ANIM', 'DEATH_FLASH_AT',
+    'FLOAT_LIFE', 'PARTICLE_LIFE_MIN', 'PARTICLE_LIFE_MAX',
     // 阶段 2 新增（spec §7：新增动画必须并入白名单，否则测试不会替它把关）
-    'LASER_FX', 'DASH_FX', 'DASH_INVULN', 'CHEST_OPEN', 'FROST_FX',
+    'LASER_FX', 'CHEST_OPEN',
     // 阶段 4-1 新增：相机跟随的滞后时长。它是"看得见的过渡"（画面确实在缓动），
     // 所以必须受 ≤300ms 这条红线管 —— 相机滞后超过 0.3s 就成了"操作延迟"。
     'CAM_TAU',
     // 阶段 4-3 新增（spec §4-3 冻结项：「动画 ≤300ms 红线」不变）：
     // 命中闪白、宝石弹出的蹦跳、屏震的抖动，全都是"看得见的过渡"，一并进白名单。
     'HIT_FLASH', 'GEM_POP_T', 'SHAKE_T',
+    // 阶段 8-2：复活白闪原先借冲击波的 SHOCKWAVE_FLASH 归一时基，技能删除后自带常量。
+    'REVIVE_FLASH',
+    // 阶段 8 新增：弹幕雨的**命中残渣闪焰**是"看得见的过渡"（白光一闪），必须受 ≤300ms 管。
+    //   ⚠ RAIN_WARN（0.6~0.8s 预警）**不进这张表** —— 与既有先例 BOSS_WINDUP（0.5s 冲锋前摇）
+    //   同一口径：它是**玩法预兆 telegraph**，不是过渡动画。玩家要靠它读出"往哪躲"，
+    //   0.3s 在满屏两百只的局面里根本来不及反应。
+    'RAIN_IMPACT_T',
   ],
   MOVE_ACCEL: 0.12,         // 移动加速：到达 95% 目标速度所需时长（不是时间常数，见 approach()）
   MOVE_DECEL: 0.24,         // 松手减速：到达"基本静止"所需时长（刻意比加速长 ⟹ 滑一小段 = 惯性）
@@ -557,19 +569,15 @@ export const ARENA = {
   DEATH_FLASH_AT: 0.12,     // 白闪保持时长（占总时长的 40% 以内 → 见 DEATH_ANIM）
   DEATH_DRIFT: 16,          // 被投射物打死的碎屑外飘距离 px（小，只做"有方向"的暗示）
   DEATH_LEVELS: 6,          // 白闪色阶档数（预生成调色板，不做每帧 hex 插值）
-  SHOCKWAVE_CHARGE: 0.15,   // 蓄力圈时长（spec §2「先蓄力 0.15s 再扩散爆发」）
-  SHOCKWAVE_FX: 0.28,       // 爆发环扩张时长
-  SHOCKWAVE_FLASH: 0.08,    // 白闪时长（用时长而非"真一帧"，否则掉帧时看不见）
+  // 阶段 8-2：SHOCKWAVE_CHARGE / SHOCKWAVE_FX / SHOCKWAVE_FLASH 三个已随主动技能删除。
   FLOAT_LIFE: 0.30,         // 飘字寿命
   FLOAT_RISE: 18,           // 飘字上飘总距离 px（ease-out 走完：起步快 → 收尾 0）
   PARTICLE_LIFE_MIN: 0.18,
   PARTICLE_LIFE_MAX: 0.30,
   // ── 阶段 2 新增动画（全部 ≤ ANIM_MAX，见上面的 ANIM_KEYS）──
   LASER_FX: 0.20,           // 直斩光束的存续时长
-  DASH_FX: 0.18,            // 闪现残影
-  DASH_INVULN: 0.18,        // 闪现无敌窗口（技能效果，但同样是"有始有终的过渡"）
   CHEST_OPEN: 0.20,         // 开箱动画（spec §5 写死 0.2s）
-  FROST_FX: 0.25,           // 霜环扩散
+  // 阶段 8-2：DASH_FX / DASH_INVULN / FROST_FX 已随闪现与霜环删除。
   PROJECTILE_TRAIL: 22,     // 投射物拖尾长度 px（spec §2；直线飞行，残影即线段）
 
   // ── 阶段 2：武器 · 环绕刃 ──
@@ -587,8 +595,12 @@ export const ARENA = {
   //   半径 130，正中区重获敌群、占比回落到 ~27%。单怪秒伤仍最高（16/0.30s ≈ 53），
   //   只是"覆盖面积"回到四把武器里正常的一档。
   //   ★ 这是"修坏掉的武器"，不是"削过量的武器" —— 过量的是投射物，不是它。
-  ORBIT_DMG: 18.08,         // 阶段 5.1：12 → 16 → 18.08（末次与另三把武器同乘 ×1.13 抬总吞吐，保生存；不改变四武器相对占比）
-  ORBIT_R: 150,             // 阶段 5.1：66 → 200（第二轮过）→ 130（第三轮过缩）→ 150（第四轮：环略外扩找回 ~13pct 占比）
+  ORBIT_DMG: 16,            // ★阶段9联调 25→16：任务1 低密度下环绕刃饿死（抬到 25）；但任务2 提密度后环绕刃
+                           //   **反过来过量**（高密度下更多怪涌进 r 环，占比飙到 36-48%）。⟹ 联调回落单发伤压其占比。
+                           //   注意：占比主要由"环接触数"决定、与伤害弱相关，但降伤能让进环的怪不立刻死、留给直斩/剑，配合半径收缩把四把拉回 [15,40]。
+  ORBIT_R: 140,             // ★阶段9联调 158→140：任务1 为救饿死微扩到 158；任务2 高密度下 158 环接触过多致环绕刃过量，
+                           //   收缩回 140（介于阶段5.1 的 130/150 之间）压制其占比。⚠ 仍远小于 200（那把清场盘会清空中央区）——
+                           //   140 的内沿 ~128 在中央 50% 区（半宽 ~97px）之外，正中照样能有敌群；此条靠 sim 中央区读数复核。
   ORBIT_SPIN: 2.8,          // 角速度 rad/s（≈2.2 秒一圈）
   ORBIT_W: 24,              // 阶段 5.1：13 → 35（第二轮过厚）→ 24（第三轮：判定带回到中等厚度）
   ORBIT_MAX: 5,             // 剑数上限（spec §1）
@@ -607,7 +619,7 @@ export const ARENA = {
   //   于是"缩短射程"改了半天、屏幕上还是看不到死亡过程（穿透的击杀本来就更难看见）。
   //   环绕刃（ORBIT_R）**不动** —— spec 明文"本来就是近身"。
   // 阶段 4-9 配套：伤害 14 → 28（×2）、CD 0.9 → 0.65（节拍 ×1.39）。理由同上（同为"输出主力"）。
-  LASER_DMG: 31.64, LASER_W: 12, LASER_CD: 0.65, LASER_MIN_CD: 0.35, LASER_RANGE: 240, // LASER_DMG 28 → 31.64（阶段 5.1 末轮：同乘 ×1.13 抬总吞吐）
+  LASER_DMG: 28, LASER_W: 12, LASER_CD: 0.50, LASER_MIN_CD: 0.35, LASER_RANGE: 240, // ★阶段9联调：LASER_CD 0.65→0.50（伤害 28 不变）。直斩是 CD 节流武器，高密度下占比被环绕刃挤到 14%；加快节拍抬回 ≥15%（手感类改动，需真机复核）
   // ── 阶段 5：武器 · 剑（第 4 把）──
   // 与 orbit / laser 同一套纪律：独立计时器、独立伤害对象（this.sword），各打各的节拍。
   // ★ 剑气是**飞行实体**（直线飞行 + 穿透 + 有射程），不是直斩那种"扫出去就结算完"的光束 ——
@@ -620,7 +632,7 @@ export const ARENA = {
   //   且 380 < 视口半对角 ≈465，绝大多数方向仍在可见范围内 —— 但**这一条要靠实测/试玩确认**，
   //   不能只信算式。若实测出现"剑的击杀大量不可见"，优先调低 SWORD_RANGE，
   //   **不要去动 ATTACK_RANGE** —— 那个数管着投射物全表的回收半径，动它会波及所有武器。
-  SWORD_DMG: 12.43, SWORD_INTERVAL: 1.2, SWORD_MIN_CD: 0.5, SWORD_SPEED: 420, SWORD_RANGE: 380, // SWORD_DMG 8 → 11 → 12.43（末轮同乘 ×1.13 抬总吞吐保生存）
+  SWORD_DMG: 20, SWORD_INTERVAL: 0.85, SWORD_MIN_CD: 0.5, SWORD_SPEED: 420, SWORD_RANGE: 380, // ★阶段9联调：SWORD_DMG 19→20 + SWORD_INTERVAL 1.2→0.85。剑是自走穿透气道、命中窗口窄，高密度下占比贴 15% 下限；抬伤+加快节拍双管齐下把占比稳过 15%（手感类改动，需真机复核）
   SWORD_COUNT: 1,          // 初始剑气道数（"+1" 走强化，上限 SWORD_MAX_COUNT）
   SWORD_MAX_COUNT: 3,      // 剑气数量上限（spec：扇形展开最多 3 道）
   SWORD_SPREAD: 0.28,      // 多道时的相邻夹角 rad（≈16°，视觉上读作"斩幅"而不是"三条平行的线"）
@@ -638,23 +650,17 @@ export const ARENA = {
   SWORD_C3_SPIN: 2.2,      // 角速度 rad/s（≈2.9 秒一圈）
   SWORD_C3_TICK: 0.35,     // 同一只怪被这一圈再结算的最小间隔 s（沿用 ORBIT_TICK 的口径：
                            //   不节流的后果是 DPS 随帧率变 ⟹ 直接破坏可复现性）
-  // ── 阶段 2：技能 ──
-  SKILL_CD_MUL_MIN: 0.40,   // 「技能冷却 -15%」的叠乘下限（**不动**：它是被动项，不是技能本身的削弱）
-  // ★ 阶段 4-9：三个 CD 下限同步改成「**基础 CD 的一半**」—— 这是可断言的同一条口径
-  //   （tests 断言 `SHOCK_MIN_CD === SHOCKWAVE_CD / 2` 等三条）。旧值 0.8 / 1.2 / 2.5 是
-  //   4-7 那一版的余数：CD 拉到 8 / 10 / 6 秒之后，0.8s 的下限等于**没有下限**。
-  SHOCK_MIN_CD: 4.0,
-  // ★ 阶段 4-9 §三：闪现的定位就是「位移 + 无敌」这两条，所以撞伤 6 → **3**（再砍半，spec §三-1）、
-  //   CD 3.0 → **6.0**（spec §三-3）。3 打不死任何一只怪（最小怪血 4）⟹ 它不可能变成收割工具。
-  //   `DASH_INVULN_MAX` 是「无敌」这条轴的升级上限 = 0.18 + 4×0.02，且**硬小于 ANIM_MAX 0.30**
-  //   （无敌窗口列在 ANIM_KEYS 里，属于"看得见的过渡"，不许越那条红线 —— tests 会断言）。
-  DASH_DIST: 150, DASH_DMG: 3, DASH_CD: 6.0, DASH_MIN_CD: 3.0, DASH_W: 26,
-  DASH_INVULN_MAX: 0.26,
-  // ★ 阶段 4-9 §二：霜环**零伤害**（它本来就不走 applyHit，这一版把它升格成一条断言）、
-  //   半径 150 → **120**、CD 6.0 → **10.0**，冻结时长保持 1.5s（spec §二-1）。
-  //   `FROST_R_MAX` 只允许升级把它推回**降格前的 150**，不许越过旧版。
-  FROST_R: 120, FROST_DUR: 1.5, FROST_CD: 10.0, FROST_MIN_CD: 5.0, FROST_MAX_DUR: 3.0,
-  FROST_R_MAX: 150,
+  // 阶段 8-2：这两个值原本分别是写死的 1.2s 复活无敌与 0.25s 白闪。
+  //   原先白闪的归一时基借用 SHOCKWAVE_FLASH（冲击波白闪），技能删除后必须自带常量，
+  //   否则渲染那边会读到 undefined。★ REVIVE_INVULN **不进 ANIM_KEYS** ——
+  //   它是玩法性的无敌窗口，不是过渡动画（同 BOSS_WINDUP 口径）。
+  REVIVE_INVULN: 1.2,       // 复活后的无敌时长 s
+  REVIVE_FLASH: 0.25,       // 复活白闪时长 s（≤ ANIM_MAX，进 ANIM_KEYS 受红线管）
+  // ── 阶段 2：技能 · 已于阶段 8-2 整体删除 ──
+  //   原本是 SKILL_CD_MUL_MIN / SHOCK_MIN_CD / DASH_* / FROST_* 一整组。
+  //   ⟹ 注意连带的两处（不在这里，但随技能失效，已一并处理）：
+  //     · `SKILL_CD_MUL_MIN` 是被动「技能冷却 -15%」的叠乘下限 ⟹ 该被动已从 PASSIVES 删除；
+  //     · `cdMul` / `knockMul` 两个乘区因此没有任何消费者，core 字段也随之删除。
   // ── 阶段 2：宝箱 ──
   CHEST_FIRST: 40,          // 第一个宝箱的秒数（比 CHEST_EVERY 早，让开局就能见到一次）
   CHEST_EVERY: 75,          // 之后每 ~75 秒一个（spec §5）
@@ -751,7 +757,7 @@ export const ARENA = {
   //   16 局 sim 里那条"事件自证"读数与阶段 4-13 的历史基线就全废了。
   //   独立调度的另一个好处：间隔口径独立可调（90s），不必迁就 EVENT_EVERY。
   // ★ 击杀必掉技能选择的实现口径：精英身上挂 `eliteWave` 标记（只在这条调度里刷的才带），
-  //   死时把 `eliteSkillDrops` 计数 +1；主循环在无升级弹窗时兑现一次三选一。
+  //   死时把 `eliteChoiceDrops` 计数 +1；主循环在无升级弹窗时兑现一次三选一。
   //   刻意**不是**"立刻弹窗"——同一帧可能连杀两只精英、或正好撞上升级弹窗，
   //   直接弹会把 pendingUpgrade 覆盖掉（丢一次玩家的选择）。排队 + 单出是最稳的形态。
   ELITE_WAVE_ON: true,      // 总开关（关掉即回到阶段 4-13 的逐字节行为）
@@ -761,7 +767,8 @@ export const ARENA = {
   ELITE_WAVE_N: 2,          // 每波几只（一只不够"一波"的压迫感，三只会挤占同屏预算）
   ELITE_WAVE_HEARTS: 2,     // 每波附赠心心（与 ELITE_BOON 同口径：净难度不因这只精英单向上升）
   ELITE_WAVE_GEMS: 8,       // 每波附赠经验宝石数
-  ELITE_WAVE_SKILL: 3,      // 精英波的技能三选一：优先给满 3 张技能向牌（不足则回退混合）
+  // 阶段 8-2：ELITE_WAVE_SKILL（精英波优先给满 3 张技能向牌）已随主动技能删除 ——
+  //   精英波现在给的是一次**普通的升级三选一**，不再有"技能向"这种分类。
   EVENT_BANNER_LIFE: 2.6,  // 事件横幅停留 s
   // ★ 阶段 4-7.x：怪物出生淡入（纯视觉，不碰任何判定）。
   APPEAR_T: 0.18,           // 出生 → 满尺寸/满透明度 时长 s
@@ -824,9 +831,27 @@ export const ARENA = {
   BOSS_SUMMON: [4, 6],      // 召唤只数：Boss1 召 4 只、Boss2 召 6 只
   BOSS_SUMMON_R: 70,        // 召唤物落在 Boss 周围多远
   BOSS_HP_MUL: [30, 50],    // 血量 ≈ 同期普通怪的 30 倍 / 50 倍（spec 四）
-  BOSS_FROST_MUL: 0.5,      // 冻结时长减半（spec 四「不能被霜环定到死」）
+  // ★ 阶段 8-2 删除：BOSS_FROST_MUL（Boss 冻结时长减半）。
+  //   它是为霜环存在的 —— 没有霜环就没有"冻结"这回事，常量一并下线。
   BOSS_DENSITY_MUL: 1.25,   // Boss 在场时普通怪的刷怪间隔 ×1.25（= 密度 −20%，spec 四）
   BOSS_DEATH_PARTICLES: 34, // Boss 死亡的碎屑数（spec 三-3「30 个以上」）
+
+  // ───────── 阶段 8：Boss 全屏弹幕雨 ─────────
+  // 形态（玩家已选定）：全屏随机落点「预警圈 → 延迟 → 弹雨」，必须有可站的安全间隙。
+  // ★ 为什么不用"纯随机撒点"：纯随机无法保证留出**成片**的安全区，很可能出现
+  //   "整屏都被盖住、玩家无处可躲"的死局。所以改成**栅格选格 + 格内抖动**：
+  //   先把视野切成 GRID 个格子，只从中挑选一部分，剩下的整片格子天然成为通道。
+  // ★ 覆盖率 = Σ 圆面积 / 视野面积，硬上限 RAIN_COVER_MAX（含时序上同时存在的全部落点）。
+  RAIN_ON: true,            // 总开关（关掉即回到战役前的逐个 Boss 行为）
+  RAIN_GRID: [12, 8],       // 落点栅格 列×行（=96 格；自启动时在整个视野范围内铺开）
+  RAIN_JITTER: 0.30,        // 格内抖动比例（0 = 严格落在格心；太大则格子边界糊在一起，安全间隙就没意义了）
+  RAIN_COUNT: [30, 44],     // 每波落点数：Boss1 30 / Boss2 44（Boss2 更密 —— 区分度）
+  RAIN_WARN: [0.8, 0.6],    // 预警时长 s：Boss1 0.8 / Boss2 0.6（Boss2 更短 = 更难躲 —— 区分度）
+  RAIN_DMG: 12,             // 单发伤害（90 血挨 8 发死；使命是"可躲但不秒杀"，留出走位余地）
+  RAIN_R: 46,               // 命中判定半径 px（与预警圈同 size，所见即所判）
+  RAIN_COVER_MAX: 0.70,     // 覆盖率硬上限。实测：Boss1 21.6% / Boss2 31.7%（远低于上限，留足走位余地）
+                            //   ⟹ 对应的"安全采样点占比" Boss1 79.2% / Boss2 69.6%，不存在无处可躲的死局
+  RAIN_IMPACT_T: 0.22,      // 命中后的残渣停留时长 s（纯表现）
 
   // ───────── 阶段 4-5：超武进化 ─────────
   // 「武器拿满若干次专属强化」= 满级；满级 + 凑齐指定被动 ⟹ 本局**自动进化**（不弹选择）。
@@ -867,7 +892,8 @@ export const ENEMY_TYPES = {
   normal: { id: 'normal', label: '游荡者', shape: 4,  spikes: false, r: 13, speed: 72,  hp: 9,  contact: 4, xp: 1, color: '#8d8378' },
   // 快速：小、跑得快。血薄，一发即死（BASE_DMG 6 > 5）。
   fast:   { id: 'fast',   label: '疾影',   shape: 2,  spikes: false, r: 9,  speed: 132, hp: 5,  contact: 3, xp: 1, color: '#5b93d6' },
-  // 坦克：大、血厚、慢。基础 6 伤需要 5 发，逼玩家用冲击波或绕后。
+  // 坦克：大、血厚、慢。基础 6 伤需要 5 发，逼玩家绕后或靠武器强化堆伤害。
+  // 阶段 8-2：原写的是"逼玩家用冲击波或绕后" —— 冲击波已删，现在只有"绕后 + 堆输出"这一条路。
   tank:   { id: 'tank',   label: '重壳',   shape: 9,  spikes: true,  r: 20, speed: 46,  hp: 30, contact: 7, xp: 3, color: '#d1544a' },
   // ── 阶段 4-1：远程精英（蚀影射手）──
   // 与近战精英**正交**的一种压力：它不追着你咬，而是停在 300px 外绕圈点射。
@@ -921,13 +947,13 @@ export const BOSS_ORDER = Object.keys(BOSS_TYPES).sort((a, b) => BOSS_TYPES[a].a
 
 /** 按 kind 取类型定义（先基础表，后 Boss 表）。渲染/结算的公共入口。 */
 export const typeOf = (kind) => ENEMY_TYPES[kind] || BOSS_TYPES[kind] || null;
-/** 是不是 Boss。热路径上用（碰撞/霜环/死亡结算各判一次），所以做成纯查表。 */
+/** 是不是 Boss。热路径上用（碰撞/死亡结算/重刃增伤各判一次），所以做成纯查表。 */
 export const isBossKind = (kind) => !!BOSS_TYPES[kind];
 
-// 被动 / 武器 / 技能的内容池在 content.js（那边是纯表，这边是执行层）。
+// 被动 / 武器的内容池在 content.js（那边是纯表，这边是执行层）。
 // 数值口径仍然统一住在本文件的 ARENA —— 数字只有一个家，不两边各存一份。
-// `UPGRADES` 是**兼容别名**：阶段 1 按它找被动池，现在被动池已扩到 10 项。
-export { PASSIVES as UPGRADES, WEAPONS, SKILLS, OFFERS, CAT_LABEL };
+// `UPGRADES` 是**兼容别名**：阶段 1 按它找被动池，现在被动池只剩纯被动（技能那两类已删）。
+export { PASSIVES as UPGRADES, WEAPONS, OFFERS, CAT_LABEL };
 
 const COLOR = {
   field: '#0d0c0b',
@@ -938,7 +964,8 @@ const COLOR = {
   ink: '#9a938a',
   danger: '#b3402f',
   blade: '#d1544a',
-  frost: '#5b93d6',
+  // 阶段 8-2：`frost`（霜环扩散特效色）已删除 —— 没有任何东西再读这个键。
+  //   ⚠ 别把 skins.js 里的 'frost' 皮肤 id 和这里混为一谈：那是**涂装**，与技能无关。
   shield: '#3fd0c8',        // 阶段 4-7：护盾环（青）
   heart: '#e0586b',         // 阶段 4-7.x：心心（回血掉落）
   event: '#5fd0c8',         // 阶段 4-12：事件横幅色（青，呼应宝石）
@@ -1124,19 +1151,23 @@ export class ArenaCore {
     //   （tests 会断言；arena-sim 还会交叉核对 Σ 归因 === 总击杀）。
     // ★ 阶段 5：新增 'sword' 桶 —— 剑是第 4 把武器，来自它 applyHit 调用点；
     //   不登记的话剑的击杀会落进 'other'，直接触发那条"有击杀绕过了具名来源"的断言。
-    this.killSrc = { projectile: 0, orbit: 0, laser: 0, sword: 0, shockwave: 0, dash: 0, thorn: 0, other: 0 };
+    // ── 归因表：新增 'bossRain'（阶段 8）—— 它是**预留槽位**。
+    //   弹幕雨只打玩家、不直接打怪 ⟹ 恒为 0；由雨引发的怪死亡全是走 thorn（荆棘反弹）那条既有键。
+    //   留这个槽是为了"将来若让雨能伤怪"，Σ来源 == 总击杀 这条护栏依然成立、不用追着改口径。
+    // ★ 阶段 8-2：'shockwave' 与 'dash' 两个桶已删除 —— 它们的击杀来源（冲击波/闪现撞伤）不存在了。
+    //   现在只剩四把武器 + thorn（荆棘反伤） + bossRain（预留槽，恒 0）+ other（必须恒 0）。
+    this.killSrc = { projectile: 0, orbit: 0, laser: 0, sword: 0, thorn: 0, bossRain: 0, other: 0 };
     // ★ 阶段 5.1 诊断用：每件武器的**净输出伤害**累计（含 gDmgMul，按"实际扣掉的 hp"计，
     //   不把溢出伤害算进去）。只用于 arena-sim 的逐分钟 DPS 复核，不参与任何判定、不改任何玩法。
-    this.dmgDealt = { projectile: 0, orbit: 0, laser: 0, sword: 0, shockwave: 0, dash: 0, thorn: 0, other: 0 };
+    this.dmgDealt = { projectile: 0, orbit: 0, laser: 0, sword: 0, thorn: 0, other: 0 };
 
     // ── 阶段 2：持有的武器 / 技能（"获得即持有"，可叠加强化）──
     // ★ 阶段 4-5：英雄签名武器/技能替换默认组合；投射物**不是人人都有** ——
     //   流浪者/疾风行者以投射物开局，重壳守卫以环绕刃开局（"开局"就是它们的枪）。
     this.weapons = { projectile: hero.weapon === 'projectile', sword: false };
     this.weapons[hero.weapon] = true;
-    this.skills = { shockwave: false, dash: false, frost: false };
-    this.skills[hero.skill] = true;
-    // 武器/技能对象先给零值占位（未解锁也无害；解锁时由 initWeapon/initSkill 覆盖）
+    // 阶段 8-2：`this.skills`（three-slot 技能持有表）已随主动技能删除。
+    // 武器/技能对象先给零值占位（未解锁也无害；解锁时由 initWeapon 覆盖）
     this.orbit = { count: ARENA.ORBIT_COUNT, dmg: ARENA.ORBIT_DMG, r: ARENA.ORBIT_R, ang: 0, spin: ARENA.ORBIT_SPIN };
     this.laser = { dmg: ARENA.LASER_DMG, w: ARENA.LASER_W, interval: ARENA.LASER_CD, cd: 0, cleave: false };
     // 阶段 5：剑（第 4 把）。当前形态不在这里重复存 —— 唯一真源是 this.evolved.sword
@@ -1149,19 +1180,20 @@ export class ArenaCore {
     //   swordBlades 只是"逻辑 → 渲染"这一帧内的交接口，每帧 length=0 重写。
     this.swordRing = { ang: 0, tick: 0 };
     this.swordBlades = [];
-    this.skShock = { radius: ARENA.SHOCKWAVE_RADIUS, dmg: ARENA.SHOCKWAVE_DMG,
-      cdBase: ARENA.SHOCKWAVE_CD, knock: ARENA.SHOCKWAVE_KNOCK };
-    this.skDash = null; this.skFrost = null;   // 解锁时由 initSkill 填
+    // 阶段 8-2：skShock / skDash / skFrost 三个技能对象已随主动技能删除。
     this.initWeapon(hero.weapon);   // orbit / laser 初始化对象（投射物是 no-op）
-    this.initSkill(hero.skill);
     // 被动里三条"乘算/加算"的成长（初始值必须是 1，否则和 ARENA 常量对不上）
-    this.cdMul = 1;         // 技能冷却系数（「技能冷却 -15%」）
+    // 阶段 8-2：`cdMul`（技能冷却系数）已随主动技能删除 —— 它唯一的三个读者是技能 CD。
     this.projSpeed = ARENA.PROJECTILE_SPEED;
     // 阶段 5 · B3：本命武器专属强化的三个默认档（ClassPerks 会按需覆盖）。
     //   默认 = 无改动：没配 perks 的职业（含新加的）行为与阶段 4 完全一致。
     this.projPierce = 0;       // 穿透额度（0 = 命中即消，原行为）
     this.projReachMul = 1;     // 投射物有效射程倍率
-    this.orbitCtrlBonus = 0;   // 环绕刃对被控目标的额外伤害比例
+    // 阶段 8-2 改名：orbitCtrlBonus → orbitHeavyBonus。
+    //   原判据是「被控」（e.stun / e.frozen / 减速场），三个写入点全随主动技能删除
+    //   ⟹ 判据恒 false、+25% 从不触发 ⟹ 它变成了"配了却没效果"的空 perk。
+    //   新判据改成**精英 / Boss**（硬目标）：值仍是 0.25，只是触发条件换成一个还存在的。
+    this.orbitHeavyBonus = 0;  // 环绕刃对精英 / Boss 的额外伤害比例
     // 阶段 3 被动：armor=减伤 / xpMul=经验倍率 / regenRate=每秒回血 / thorn=接触反伤。
     // 默认恒等（0 / 1），对"没拿这些被动"的局零影响。
     // 阶段 5：gDmgMul = **全局伤害系数**（在 applyHit 里统一结算，见那里的注释）。
@@ -1183,14 +1215,15 @@ export class ArenaCore {
     //   **不新增伤害来源**（全是倍率/减伤，保证 killSrc 归因不漏），
     //   **一份数据表驱动**（core 里只有"接 + 跑"，具体数值全在 content 表与 ARENA 常量里）。
     this.classPassive = classPassiveOf(this.heroId);
-    // ── 阶段 5 · B2 技能变体 / B3 专属武器强化 ──
-    // ★ 两者都在**构造器里一次性落实**（读到 CLASS_PERKS 就改对应字段），而不是每帧去查表：
-    //   它们是"这个职业是什么"，不是"这一帧发生了什么"。每帧查表的话，
+    // ── 阶段 5 · B3 专属武器强化（B2 技能变体已于阶段 8-2 随主动技能整体删除）──
+    // ★ 它在**构造器里一次性落实**（读到 CLASS_PERKS 就改对应字段），而不是每帧去查表：
+    //   它是"这个职业是什么"，不是"这一帧发生了什么"。每帧查表的话，
     //   任何一处忘记查都会得到一个"看起来能玩但特有机制没生效"的职业，而那正是最难发现的 bug。
     this.classPerk = classPerkOf(this.heroId);
-    this.slowZones = [];    // B2 重壳守卫「地裂」留下的减速场（别的职业恒为空数组）
+    // 阶段 8-2 删除：`this.slowZones`（B2「地裂」减速场容器）。写端（地裂 perk）已随技能删除，
+    //   容器恒为空数组 ⟹ 连同 step() 里的衰减和 _speedMul() 里的读取一并删。
     // ★ B3 的调用点必须同时满足两个条件，早一步迟一步都是静默失效：
-    //   ① 在 `projSpeed / projPierce / projReachMul / orbitCtrlBonus` **默认值之后** ——
+    //   ① 在 `projSpeed / projPierce / projReachMul / orbitHeavyBonus` **默认值之后** ——
     //      它做的是 `*=` 与覆盖，排在前会被那几行赋值整个擦掉；
     //   ② 在 `this.classPerk` **赋值之后** —— 排在前时这个函数读到的是 undefined，直接 return。
     //   ⟹ 所以放在这两段之间，别的顺序都不行。
@@ -1206,7 +1239,7 @@ export class ArenaCore {
     this.expMul = 1;        // 阶段 5.3：经验收入倍率（每帧由 step 推进；前 3 分钟恒 1）
     this.regenRate = 0;
     this.thorn = 0;
-    this.knockMul = 1;      // 击退系数
+    // 阶段 8-2：knockMul 已删除 —— 它唯一的读者是冲击波的击退距离。
     // ───────── 阶段 7 · 属性树新节点 / 新装备的执行层字段 ─────────
     // ★ 全部**默认值恒等**：critRate=0、lifesteal=0、thorns=0、goldMul=1、dmgCut=0、
     //   shieldEvery=0 ⟹ 没买对应属性/没选对应装备的局，行为与阶段 6 **逐比特相同**，
@@ -1222,13 +1255,13 @@ export class ArenaCore {
     this.shieldEvery = 0;   // 护盾充能周期（秒）；0 = 无护盾
     this.shieldT = -1;      // 充能计时（-1 = 未启用）
     this.shieldLayers = 0;  // 当前护盾层数（每层抵挡 1 次伤害）
-    // 技能的运行时状态
-    this.dashCd = 0; this.frostCd = 0;
-    this.dashInvuln = 0;    // >0 时 damagePlayer 是 no-op（闪现途中无敌）
-    this.skillCursor = 0;   // 循环释放的指针（"按一下放下一个"）
-    this.skillCasts = 0; this.frostCasts = 0; this.laserCasts = 0; this.swordCasts = 0;
-    this.lastDir = { x: 0, y: -1 }; // 最近一次移动方向（站定时闪现的兜底方向）
-    this.fx = [];           // 短特效（光束/霜环/残影/开箱），纯视觉
+    // 阶段 8-2：技能的运行时状态（dashCd / frostCd / dashInvuln / skillCursor /
+    //   skillCasts / frostCasts / shockwaveCd / shockChargeT / shockwaveCastT / shockCasts）
+    //   已随主动技能整体删除。注意 `flashT` **保留** —— 它还有「复活白闪」这个非技能用途。
+    this.laserCasts = 0; this.swordCasts = 0;
+    this.invulnT = 0;       // 无敌窗口剩余时间（>0 时 damagePlayer 免疫）；现由复活使用
+    this.lastDir = { x: 0, y: -1 }; // 最近一次移动方向
+    this.fx = [];           // 短特效（光束/开箱），纯视觉
     // 阶段 4-1：敌方子弹（远程精英的直线弹）。**世界坐标**，与敌人/宝石同一套坐标系，
     // 因此同样参与相机偏移与 1500px 回收，不需要任何特判。
     this.bullets = [];
@@ -1237,14 +1270,10 @@ export class ArenaCore {
     this.chestsOpened = 0;
     this.newThings = 0;     // 已拿到的"新东西"（新武器/新技能）计数，前期保底用
 
-    this.shockwaveCd = 0;
-    this.shockChargeT = -1;     // 蓄力圈进度（<0 表示无）
-    this.shockwaveCastT = -1;   // 爆发环进度（<0 表示无）
-    this.flashT = -1;
+    this.flashT = -1;       // 白闪计时（**复活**用；原冲击波白闪已随技能删除）
     this.hurtT = -1;        // 阶段 4-10：受击红屏脉冲计时（-1 = 不显示）
     this.levelFlashT = -1;  // 阶段 4-11：升级全屏暖光脉冲计时（-1 = 不显示，纯显示字段）
     this.bossFlashT = -1;   // 阶段 4-11：Boss 出场红场脉冲计时（-1 = 不显示，纯显示字段）
-    this.shockCasts = 0;
 
     // 统计口径（模拟器/测试用）
     this.spawned = 0;
@@ -1262,9 +1291,9 @@ export class ArenaCore {
     // ── 阶段 7 · 精英波（独立于 EVENT_SEQ 的 90 秒节奏，见 ARENA.ELITE_WAVE_* 注释块）──
     this.eliteWaveIdx = 0;        // 已触发的精英波数（sim 自证）
     this.nextEliteWaveAt = ARENA.ELITE_WAVE_ON ? ARENA.ELITE_WAVE_FIRST : 1e9;
-    this.eliteWaveKills = 0;      // 精英波怪被击杀数（自证「击杀必掉技能选择」真的在发）
-    this.eliteSkillDrops = 0;     // 待兑现的技能三选一次数（排队，不立刻弹窗——见注释块）
-    this.eliteSkillGiven = 0;     // 已兑现（玩家真的拿到牌）的次数（sim 自证「击杀必掉」）
+    this.eliteWaveKills = 0;      // 精英波怪被击杀数（自证「击杀必掉一次三选一」真的在发）
+    this.eliteChoiceDrops = 0;     // 待兑现的三选一次数（排队，不立刻弹窗——见注释块）
+    this.eliteChoiceGiven = 0;     // 已兑现（玩家真的拿到牌）的次数（sim 自证「击杀必掉」）
     this.bulletsFired = 0;  // 阶段 4-1：远程精英射出的弹数（同上）
     // 阶段 4-1.1：**自证远程怪真的在工作**（spec 要求 arena-sim 报出这三个数）。
     // ★ 为什么必须落成计数器而不是靠"同屏里有橙块"目测：远程怪占刷怪 1.4%~2.5%，
@@ -1323,6 +1352,16 @@ export class ArenaCore {
     //   rollShop 用**独立**随机源（不污染主玩法 rng 流）⟹ 同种子同结果护栏仍成立。
     this.soulfire = 0;
     this.shopRng = new Rng('shop:' + (this.rng && this.rng.seed ? this.rng.seed : 'seed'));
+
+    // ── 阶段 8：Boss 全屏弹幕雨 ──
+    // ★ 落点必须走**独立**随机源 rainRng：一旦挪到主 rng 上，同一粒种子在不同帧率/不同倍速下
+    //   会因为"什么时候想到要去 next()"这种调用时序漂移而拿到不同的落点序列，直接打破
+    //   「同种子同结果」护栏。这里与 shopRng / srcRng / dropRng 同一口径。
+    this.rainRng = new Rng('rain:' + (this.rng && this.rng.seed ? this.rng.seed : 'seed'));
+    this.rain = [];          // 弹雨落点：{ x, y, t, phase:'warn'|'hit', hitT }
+    this.rainWaves = 0;      // 本局已发动的弹雨波数（sim 自证读数）
+    this.rainHits = 0;       // 命中过玩家几次（sim 自证读数）
+    this.bossRain = 0;       // 由 Boss 发动的波数（= rainWaves，保留供 sim 分口径核对）
     this._nextShopIdx = 0;     // 下一个待触发的 SHOP_TIMES 下标
     this.shopOpen = false;     // 非 null/true 时游戏暂停，等待购买/跳过
     this.shopGoods = null;     // 当前 3 件货物（rollShop 的结果）
@@ -1401,7 +1440,8 @@ export class ArenaCore {
     if (b.moveBase) this.moveBase += b.moveBase;
     if (b.magnet) this.magnet += b.magnet;      // 拾荒（绝对半径，和属性树的百分比口径不同来源）
     if (b.xpMul) this.xpMul *= (1 + b.xpMul);
-    if (b.cdMul) this.cdMul *= (1 - b.cdMul);    // 急速：技能冷却缩减
+    // 阶段 8-2：原 `if (b.cdMul) this.cdMul *= (1 - b.cdMul);`（急速装备：技能冷却缩减）已删除 ——
+    //   既没有 this.cdMul 字段、也没有装备会给出这个 key 了（s_haste 已从 LOADOUT_ITEMS 移除）。
     // ── 阶段 7：6 件新装备的buff 落地 ──
     // ★ shots 与 pierceN 都**叠加**到已有字段而不是新建：`shots` 是「投射物 +1」被动在用的、
     //   `projPierce` 是剑与流浪者「连珠」在用的 ⟹ 装备与它们天然同一套口径、同一批硬上限
@@ -1496,9 +1536,19 @@ export class ArenaCore {
     return this.remainSec <= ARENA.CLIMAX_SEC;
   }
 
-  /** 主步进。input = {x, y} 各 ∈ [-1,1]（摇杆/键盘已归一化方向）。
-   *  升级暂停 / 已结束时为 no-op（满足「升级界面暂停游戏」）。 */
+  /** 公开步进（兼容老测试 / fastForward / sim）：1x 下与旧 step 行为完全一致。
+   *  内部拆成 stepWorld（世界/难度逻辑，跟随倍速）+ stepFx（纯表现，按墙上时间）。 */
   step(dt, input = { x: 0, y: 0 }) {
+    if (this.done || this.pendingUpgrade) return;
+    this.stepWorld(dt, input);
+    if (this.done) return;   // 本帧内死亡/打满：旧 step 在结算处 return，fx 不跑，这里对齐
+    this.stepFx(dt);
+  }
+
+  /** 世界 / 难度逻辑步进。dt 为**游戏时间**步长 —— 局内倍速通过改变喂给它的 dt 实现：
+   *  2x ⟹ 同一帧内世界推进 2 倍游戏时间（难度时钟/刷怪/武器/弹雨全跟随），0.5x ⟹ 半速。
+   *  表现层（粒子/飘字/闪脉冲/相机）一律不在这里，见 stepFx。 */
+  stepWorld(dt, input = { x: 0, y: 0 }) {
     if (this.done || this.pendingUpgrade) return;
 
     this.time += dt * 1000;
@@ -1518,33 +1568,19 @@ export class ArenaCore {
     // 它只 push 一行待显示文本，不暂停、不打断任何判定（spec 二-3「不暂停」）。
     this._checkMilestones();
 
-    // 冲击波三拍计时（冷却 / 蓄力 / 爆发环）+ 白闪：全是「无 rng 的纯视觉」，不影响确定性。
-    // 顺序要求：**先衰减计时器，再处理本帧触发的"蓄力完成 → 爆发"**。
-    // 反过来的话，本帧刚点亮的白闪会被本帧的 dt 立刻扣掉 —— dt≈1/60 时看不出问题，
-    // 但一次 100ms 的掉帧就会让白闪整帧消失（"技能炸了却没看见闪"），
-    // 而白闪恰恰是"炸了"这件事唯一的全屏读数。（单元测试抓到的，见 §5）
-    if (this.dashCd > 0) this.dashCd = Math.max(0, this.dashCd - dt);
-    if (this.frostCd > 0) this.frostCd = Math.max(0, this.frostCd - dt);
-    if (this.dashInvuln > 0) this.dashInvuln = Math.max(0, this.dashInvuln - dt);
+    // 阶段 8-2：原「冲击波三拍计时 + 技能 CD/无敌」整段已随主动技能删除。
+    //   ⟹ 保留下来的与技能无关的计时量，口径分两类：
+    //   · 玩法类（跟随倍速，留在 stepWorld）：磐石窗口 stoneT / 复活无敌 invulnT /
+    //     连杀窗口 comboT / 持续回复 / 护盾充能 —— 它们跟着难度时钟走才对（2x 时窗口也该 2x 短）。
+    //   · 纯表现类（按墙上时间，已迁至 stepFx，不受倍速加速）：白闪 flashT / 受击脉冲 hurtT /
+    //     升级暖光 levelFlashT / Boss 出场红脉冲 bossFlashT。
+    //   顺序要求仍是**先衰减、再用**（否则一次掉帧会吃掉整段闪）。
     // 阶段 5 · B1 磐石窗口推进：受击后开一段短窗口，窗口内的后续伤害打折。
-    // 放在这里而不是 damagePlayer 里，是为了「窗口跟着真实时间走」——
+    // 放在这里而不是 damagePlayer 里，是为了「窗口跟着难度时钟走」——
     // 站着不动也该到期，而不是等下一次挨打才结算。
-    // 阶段 5 · B2：地裂减速场的推进与回收（放在 timer 段，和闪现无敌/白闪同一口径 ——
-    //   这些都是"跟着真实时间走"的量，不该赖在某次命中上）。
-    if (this.slowZones.length) this.slowZones = this.slowZones.filter((z) => (z.t -= dt) > 0);
+    // 阶段 8-2 删除：slowZones 的逐帧衰减（容器本身也删了，见构造器注释）。
     if (this.stoneT > 0) this.stoneT = Math.max(0, this.stoneT - dt);
-    if (this.shockwaveCd > 0) this.shockwaveCd = Math.max(0, this.shockwaveCd - dt);
-    if (this.shockwaveCastT >= 0) {
-      this.shockwaveCastT += dt;
-      if (this.shockwaveCastT >= ARENA.SHOCKWAVE_FX) this.shockwaveCastT = -1;
-    }
-    if (this.flashT >= 0) {
-      this.flashT -= dt;
-      if (this.flashT < 0) this.flashT = -1;
-    }
-    if (this.hurtT >= 0) { this.hurtT -= dt; if (this.hurtT < 0) this.hurtT = -1; }   // 阶段 4-10：受击脉冲衰减
-    if (this.levelFlashT >= 0) { this.levelFlashT -= dt; if (this.levelFlashT < 0) this.levelFlashT = -1; }  // 阶段 4-11：升级暖光脉冲衰减
-    if (this.bossFlashT >= 0) { this.bossFlashT -= dt; if (this.bossFlashT < 0) this.bossFlashT = -1; }   // 阶段 4-11：Boss 出场红脉冲衰减
+    if (this.invulnT > 0) this.invulnT = Math.max(0, this.invulnT - dt);   // 无敌窗口衰减（复活用，玩法类→随倍速）
     // 阶段 4-3：连杀窗口衰减 —— 2 秒内没有新的击杀就断连（spec 一-3）。
     // ★ combo 是**纯显示**：断连只清这两个字段，不碰任何伤害/经济/刷怪口径。
     if (this.comboT > 0) {
@@ -1555,13 +1591,6 @@ export class ArenaCore {
     if (this.regenRate > 0) this.healPlayer(this.regenRate * dt);
     // 阶段 7 · 护盾充能（shieldEvery > 0 才进入，默认恒为 0 ⟹ 零开销、逐比特不变）
     this._tickShield(dt);
-    if (this.shockChargeT >= 0) {
-      this.shockChargeT += dt;
-      if (this.shockChargeT >= ARENA.SHOCKWAVE_CHARGE) {
-        this.shockChargeT = -1;
-        this.detonateShockwave(); // 伤害 / 击退 / 白闪 / 爆发环全部发生在这一刻
-      }
-    }
 
     // ── 玩家移动（速度插值，不是线性瞬移） ──
     // 输入只负责给**目标速度**，实际速度用指数趋近追上去：
@@ -1631,8 +1660,9 @@ export class ArenaCore {
     // ── 阶段 4-12：局内突发事件（确定性调度，固定时间 + 固定类型循环）──
     this._stepEvents(dt);
 
-    // ── 阶段 7：精英波调度 + 技能三选一兑现（独立 90 秒节奏，见 ARENA.ELITE_WAVE_*）──
+    // ── 阶段 7：精英波调度 + 三选一兑现（独立 90 秒节奏，见 ARENA.ELITE_WAVE_*）──
     this._stepEliteWaves(dt);
+    this._stepRain(dt);   // 阶段 8：Boss 弹幕雨（按 dt 推进 ⟹ 天然跟随倍速，见倍速任务接口约定）
 
     // ── 武器：环绕刃 / 直斩（投射物走下面的自动攻击）──
     // 三把武器**各打各的**：独立的计时器、独立的伤害、独立的结算。
@@ -1760,24 +1790,15 @@ export class ArenaCore {
       // ★ 这是**性能**措施，不是玩法惩罚 —— 所以它不走 killEnemy（不给击杀数、不掉宝石、
       //   不出死亡动画）。玩家把它甩掉的那一瞬间，它本来就已经在屏幕外 900px 了。
       //   判据用**与玩家的距离**而不是世界坐标：无限场里没有任何固定的"远"。
-      // ★ 位置放在 frozen 判定之前：冻住的怪如果被甩开也得回收，否则会永久占着数组。
+      // ★ 位置在 debuff 判定之前（原话：冻住的怪如果被甩开也得回收，否则会永久占着数组）。
       if (d > ARENA.CULL_DIST) { e.dead = true; continue; }
-      // 霜环：冻住的敌人不移动、也不啃你（冻住了就是冻住了，不是"减速"）。
-      // 判定放在移动之前 —— 先走一步再判，会出现"冻住的怪还挪了最后一格"。
-      if (e.frozen > 0) {
-        e.frozen -= dt;
-        // 阶段 5 · B2 寒潮（疾风行者）：解冻的**那一刻**挂上残留减速 ——
-        //   "冻完了不是马上恢复"，把"拉开距离"从一次性动作变成可持续的拉扯。
-        //   ★ 只在跨过 0 的那一帧赋一次值；之后再冻就是新的一条，互不叠加成越来越慢。
-        if (e.frozen <= 0) this._applyChill(e);
-        continue;
-      }
-      // 阶段 5 · B2 破阵（流浪者）：定身 —— 完全不动、也不啃你。
-      // 和冻结的区别：冻结期间接触伤害直接不结算，定身同样如此，但两者**来源不同**
-      // （技能 vs 技能变体），分开计时才能各自到期、不会因为互相覆盖而"提前解冻"。
-      if (e.stun > 0) { e.stun = Math.max(0, e.stun - dt); continue; }
-      // 阶段 5 · B2 减速：残余寒意 / 地裂减速场，统一在这一帧折算成一个系数。
-      if (e.slowT > 0) { e.slowT = Math.max(0, e.slowT - dt); if (e.slowT === 0) e.slowK = 1; }
+      // 阶段 8-2：原「霜环冻结 / 破阵定身 / 残余减速」三个分支已删除 ——
+      //   它们的**写入端**分别是霜环技能、流浪者「破阵」perk、疾风行者「寒潮」perk，
+      //   三者全部随主动技能移除 ⟹ e.frozen / e.stun / e.slowT 从此恒为初值，分支永不进入。
+      //   留着它们会在 e.frozen 分支里调用已删除的 _applyChill()，所以必须删。
+      //   ⟹ 敌人现在只有一种"正常"状态：整套 debuff 基础设施（e.frozen / e.stun /
+      //     e.slowT / e.slowK / slowZones / _speedMul / _effSpeed）已**读写两端都删干净**，
+      //     移动直接用 e.speed（数值上与旧的 `_effSpeed` 恒等，旧函数恒返回 e.speed × 1）。
       // 阶段 4-1：远程怪走的是另一套行为（保持距离 + 绕行 + 点射），见 stepRanged。
       // 近战怪仍是"直线扑脸"——两种压力的手感必须不同，否则"远程"只是换个皮。
       if (e.kind === 'ranged') { this.stepRanged(e, dx / d, dy / d, d, dt); continue; }
@@ -1785,7 +1806,7 @@ export class ArenaCore {
       // ★ 放在这里而不是 `continue`：Boss 也要参与**下面的接触判定**（它的接触伤害是 3 倍）。
       if (isBossKind(e.kind)) this.stepBoss(e, dx / d, dy / d, d, dt);
       else {
-        const v = this._effSpeed(e) * dt;
+        const v = e.speed * dt;
         e.x += (dx / d) * v;
         e.y += (dy / d) * v;
       }
@@ -1907,6 +1928,44 @@ export class ArenaCore {
     }
     this.hearts = this.hearts.filter((h) => !h.dead);
 
+    // ── 粒子 / 飘字 / 短特效 / 死亡动画衰减 ──
+    // ★ 已迁至 stepFx（纯表现，按**墙上时间**衰减，不受局内倍速加速；见 stepFx 注释）。
+    //   这里留空：stepWorld 只推进世界/难度逻辑，表现层与游戏时间解耦。
+
+    // ── 结算 ──
+    if (this.hp <= 0) {
+      this.hp = 0;
+      this.done = true;
+      this.survived = false;
+      return;
+    }
+    if (this.time >= this.durationMs) {
+      this.time = this.durationMs;
+      this.done = true;
+      this.survived = true;
+      return;
+    }
+
+    // ── 阶段 7 · 精英波技能三选一兑现（每帧最多开一张，节流见 _flushEliteChoiceDrop）──
+    // ★ 刻意放在**两个结算判定之后**：它们各自 return，所以走到这里时 done 必为 false。
+    //   放前面的话，同一帧被怪撞死（或打满 10 分钟）时会把选牌弹在"游戏已结束"之后 ——
+    //   玩家看到一个点不动的弹窗，而 pendingUpgrade 又会永久卡住下一局的 fastForward。
+    this._flushEliteChoiceDrop();
+  }
+
+  /** 纯表现步进：四个视觉脉冲 + 粒子/飘字/短特效/死亡动画衰减。
+   *  dt 为**墙上时间**步长 —— 永远不受局内倍速加速（阶段 9 倍速任务接口约定）。
+   *  这样 2x 时世界飞快、但打击反馈/飘字/白闪/死亡碎屑仍是正常速度，观感不糊；
+   *  0.5x 时世界半速、但飘字上飘节奏仍是正常手感。相机（_updateCam）同理走墙上时间。 */
+  stepFx(dt) {
+    if (this.flashT >= 0) {
+      this.flashT -= dt;
+      if (this.flashT < 0) this.flashT = -1;
+    }
+    if (this.hurtT >= 0) { this.hurtT -= dt; if (this.hurtT < 0) this.hurtT = -1; }   // 受击脉冲衰减
+    if (this.levelFlashT >= 0) { this.levelFlashT -= dt; if (this.levelFlashT < 0) this.levelFlashT = -1; }  // 升级暖光脉冲衰减
+    if (this.bossFlashT >= 0) { this.bossFlashT -= dt; if (this.bossFlashT < 0) this.bossFlashT = -1; }   // Boss 出场红脉冲衰减
+
     // ── 粒子衰减 ──
     for (const pa of this.particles) {
       pa.x += pa.vx * dt;
@@ -1935,26 +1994,6 @@ export class ArenaCore {
     // ── 死亡动画衰减（纯视觉，不参与任何判定）── ──
     for (const d of this.deaths) d.t += dt;
     this.deaths = this.deaths.filter((d) => d.t < d.life);
-
-    // ── 结算 ──
-    if (this.hp <= 0) {
-      this.hp = 0;
-      this.done = true;
-      this.survived = false;
-      return;
-    }
-    if (this.time >= this.durationMs) {
-      this.time = this.durationMs;
-      this.done = true;
-      this.survived = true;
-      return;
-    }
-
-    // ── 阶段 7 · 精英波技能三选一兑现（每帧最多开一张，节流见 _flushEliteSkillDrop）──
-    // ★ 刻意放在**两个结算判定之后**：它们各自 return，所以走到这里时 done 必为 false。
-    //   放前面的话，同一帧被怪撞死（或打满 10 分钟）时会把选牌弹在"游戏已结束"之后 ——
-    //   玩家看到一个点不动的弹窗，而 pendingUpgrade 又会永久卡住下一局的 fastForward。
-    this._flushEliteSkillDrop();
   }
 
   // ── 内部辅助 ──
@@ -2035,10 +2074,10 @@ export class ArenaCore {
       hp, maxHp: hp,   // maxHp 用于 sim 的"怪血硬度"曲线（与当前 hp 同步冻在出生时刻）
       contact: t.contact * this.contactScale(sec) * (elite ? ARENA.ELITE_CONTACT_MUL : 1),
       xp: t.xp * (elite ? ARENA.ELITE_XP_MUL : 1),
-      elite, dead: false, frozen: 0, hitT: 0, appear: 0,
-      // 阶段 5 · B2：三个技能变体共用的 debuff 字段。默认恒等（0 / 0 / 1），
-      //   没配 perks 的职业一个都不会被读到 ⟹ 零行为变化。
-      stun: 0, slowT: 0, slowK: 1,
+      elite, dead: false, hitT: 0, appear: 0,
+      // 阶段 8-2 删除：`frozen` / `stun` / `slowT` / `slowK` 四个 debuff 字段。
+      //   它们的写入端（霜环冻结 / 破阵定身 / 寒潮残留减速 / 地裂减速场）全随主动技能删除，
+      //   读端（`_speedMul` / `_effSpeed` / `_isCrowdControlled`）也已删 ⟹ 字段纯属残留。
       // 远程怪绕行方向 + 首发射击延迟由出生角决定（不用额外 rng，避免平移随机流）。
       spin: kind === 'ranged' ? 1 : 0,
       fireT: (kind === 'ranged' && ang != null)
@@ -2133,7 +2172,7 @@ export class ArenaCore {
     else if (d < keep - band) { rx = -ux; ry = -uy; }
     // 切向分量：恒定绕行。方向在出生时定死，否则一群射手各绕一半会互相穿插成"麻花"。
     const tx = -uy * e.spin, ty = ux * e.spin;
-    const sv = this._effSpeed(e) * dt;   // 阶段 5 · B2：同样地吃减速/控场
+    const sv = e.speed * dt;   // 阶段 5 · B2：同样地吃减速/控场
     e.x += (rx + tx * ARENA.RANGED_STRAFE) * sv;
     e.y += (ry + ty * ARENA.RANGED_STRAFE) * sv;
 
@@ -2339,10 +2378,10 @@ export class ArenaCore {
     // 精英掉 3 颗：按固定角度铺开。**不用 rng** —— 掉落物的排布是纯表现，
     // 不该消耗确定性随机流（消耗了就会让"同种子同结果"多一条隐形的耦合）。
     const nDrops = e.elite ? ARENA.ELITE_GEM_DROPS : 1;
-    // 阶段 7 · 精英波怪击杀 → 兑现一次技能三选一（spec「击杀必掉技能选择」）。
+    // 阶段 7 · 精英波怪击杀 → 兑现一次三选一（spec「击杀必掉一次三选一」）。
     // ★ 判据是 `e.eliteWave`（这条调度刷出来的）而不是 `e.elite`：随机刷出的近战精英
     //   也带 elite 标记，若按它判定，"清场"就等于白嫖一串三选一，机制直接失效。
-    if (e.eliteWave) this._grantEliteSkillDrop();
+    if (e.eliteWave) this._grantEliteChoiceDrop();
 
     for (let i = 0; i < nDrops; i++) {
       if (this.gems.length >= ARENA.MAX_GEMS) this.gems.shift();
@@ -2533,7 +2572,7 @@ export class ArenaCore {
     }
   }
 
-  // ── 阶段 7 · 精英波（spec §局内成长节奏：每 90 秒一波，击杀必掉技能选择）──
+  // ── 阶段 7 · 精英波（spec §局内成长节奏：每 90 秒一波，击杀必掉一次三选一）──
   //
   // ★ 为什么要独立于 EVENT_SEQ 另起一套调度：见 ARENA.ELITE_WAVE_ON 上方的注释块
   //   （EVENT_SEQ 的前提是"每波净增益"，塞进精英会同时毁掉节奏与历史基线）。
@@ -2556,9 +2595,9 @@ export class ArenaCore {
       const a = this.srcRng.next() * TAU;
       const d = ARENA.SPAWN_RING_MIN + this.srcRng.next() * (ARENA.SPAWN_RING_MAX - ARENA.SPAWN_RING_MIN);
       const e = this.makeEnemy(ek, this.player.x + Math.cos(a) * d, this.player.y + Math.sin(a) * d, this.elapsed, true);
-      // ★ eliteWave 标记：**只有这条调度刷出来的精英才掉技能选择**。
+      // ★ eliteWave 标记：**只有这条调度刷出来的精英才掉三选一**。
       //   阶段 4-13 的 elite 事件（虽然当前不在 live 循环里）与随机刷出的近战精英
-      //   都不带这个标记 —— 否则"击杀必掉技能选择"会退化成"清场就白嫖三选一"。
+      //   都不带这个标记 —— 否则"击杀必掉一次三选一"会退化成"清场就白嫖"。
       e.eliteWave = true;
       this.enemies.push(e);
       this.eliteSpawned += 1;
@@ -2576,7 +2615,7 @@ export class ArenaCore {
     }
     const tag = ek === 'ranged' ? '远程精英' : ek === 'fast' ? '疾影精英' : '近战精英';
     this.eventLog.eliteWave += 1;
-    this.milestones.push({ text: `⚠ ${tag}×${ARENA.ELITE_WAVE_N}·击杀必掉技能⚠`, kind: 'event', t: 0, life: ARENA.EVENT_BANNER_LIFE });
+    this.milestones.push({ text: `⚠ ${tag}×${ARENA.ELITE_WAVE_N}·击杀必掉三选一⚠`, kind: 'event', t: 0, life: ARENA.EVENT_BANNER_LIFE });
   }
 
   /**
@@ -2589,22 +2628,22 @@ export class ArenaCore {
    *      `if (this.xp >= this.xpToLevel && !this.pendingUpgrade)` 也会互相打架。
    *   排队 + 每帧只出一张 ⟹ 任何顺序下玩家一共拿到 N 次选择，一次不少。
    */
-  _grantEliteSkillDrop() {
+  _grantEliteChoiceDrop() {
     this.eliteWaveKills += 1;
-    this.eliteSkillDrops += 1;
+    this.eliteChoiceDrops += 1;
   }
 
   /**
-   * 兑现排队中的精英技能三选一。
+   * 兑现排队中的精英三选一。
    * 门禁三条（缺一不可）：① 没有升级弹窗 ② 没结束 ③ 确实有待兑现的次数。
    * 用 `pendingUpgrade` 独占而不是叠加，所以永远不会出现"一次击杀给两张弹窗"。
    */
-  _flushEliteSkillDrop() {
-    if (this.eliteSkillDrops <= 0) return false;
+  _flushEliteChoiceDrop() {
+    if (this.eliteChoiceDrops <= 0) return false;
     if (this.pendingUpgrade || this.done) return false;
-    this.eliteSkillDrops -= 1;
-    this.eliteSkillGiven += 1;
-    this.openUpgrade({ skillFlavored: true, reason: 'elite' });
+    this.eliteChoiceDrops -= 1;
+    this.eliteChoiceGiven += 1;
+    this.openUpgrade({ reason: 'elite' });
     return true;
   }
 
@@ -2635,6 +2674,12 @@ export class ArenaCore {
     this.bossRef = e;
     this.bossSpawned[b.idx] += 1;
     this.spawned += 1;
+    // ── 阶段 8：Boss **降临即撒一场雨** ──
+    // ★ 为什么额外给这一次：轮换里雨最早只能排在第 2 拍（第 1 拍是冲锋，而冲锋是 Boss
+    //   唯一的拉近手段，动不得）。实测不少 Boss 活不过 10s ⟹ 只靠轮换的话，16 局里
+    //   有 6 局整场看不到雨，特性形同不存在。出场先来一场，既保证了"每场 Boss 战
+    //   必定有雨"，也让登场更有仪式感 —— 而且一次都没削冲锋。
+    this._beginRain(b.idx);
     this.bossFlashT = ARENA.BOSS_ENTER_FLASH_T;   // 阶段 4-11：Boss 出场红场脉冲（纯显示，不碰判定）
     return e;
   }
@@ -2664,7 +2709,7 @@ export class ArenaCore {
       return;
     }
     // idle：缓慢追踪（威胁来自血厚 + 攻击，不是速度）
-    const bv = this._effSpeed(e) * dt;   // 阶段 5 · B2：同样地吃减速/控场
+    const bv = e.speed * dt;   // 阶段 5 · B2：同样地吃减速/控场
     e.x += ux * bv;
     e.y += uy * bv;
     e.cycT -= dt;
@@ -2677,8 +2722,19 @@ export class ArenaCore {
     //   所以让冲锋承担"拉近"这件事：Boss1 每 3 轮召一次（2/3 在冲），Boss2 每 4 轮召一次
     //   （3/4 在冲，spec 二-2「Boss2 冲锋更频繁」）。每次冲锋净拉近 ≈147px。
     const idx = BOSS_TYPES[e.kind].idx;
-    const summon = idx === 0 ? (e.cycN % 2 === 0) : (e.cycN % 3 === 2);
-    if (summon) this.bossSummon(e, BOSS_TYPES[e.kind].summon);
+    // ★ 阶段 8：把**一半的召唤轮**换成弹雨轮，冲锋所占的轮次**一个不动**。
+    //   Boss1 每 2 轮有一次召唤轮、Boss2 每 3 轮一次；在这些召唤轮里再剥一半给弹雨。
+    //   · 为什么不去削冲锋：冲锋是 Boss **唯一的拉近手段**（它追速低于玩家），
+    //     一旦把冲锋占比降下来，Boss 会在玩家武器射程外"散步"一整局 ⟹ 站场时间失控。
+    //   · 三个技能互斥、绝不同帧：每个攻击周期只走 rain / summon / windup 三条分支中的一条。
+    //   · 相位是**有意调过的**：雨排在 summon 之**前**（Boss1 第 2 拍、Boss2 第 2 拍）。
+    //     最初把 Boss1 的雨放在第 4 拍（≈20s），实测 16 局里只有 9 局见得到雨 ——
+    //     那些 6~16s 就被秒的 Boss 根本轮不到转向雨这一拍，特性形同不存在。挪到第 2 拍后，
+    //     每个"站得住的"Boss 都会先撒一场雨再谈别的。
+    const sumSlot = idx === 0 ? (e.cycN % 2 === 0) : (e.cycN % 3 === 2);
+    const rainTurn = sumSlot && (idx === 0 ? (e.cycN % 4 === 2) : (e.cycN % 6 === 2));
+    if (rainTurn) this._beginRain(idx);
+    else if (sumSlot) this.bossSummon(e, BOSS_TYPES[e.kind].summon);
     else { e.phase = 'windup'; e.bossT = ARENA.BOSS_WINDUP; e.aimX = ux; e.aimY = uy; }
   }
 
@@ -2689,6 +2745,81 @@ export class ArenaCore {
       // 与刷怪表同一道软上限：场子满了就不补（"限流"，不是"先刷再被丢"）
       if (this.enemies.length >= ARENA.MAX_ENEMIES - ARENA.CLIMAX_SOFT_GAP) break;
       this.spawnEnemy(ARENA.BOSS_SUMMON_R * 0.5, ARENA.BOSS_SUMMON_R, at);
+    }
+  }
+
+  // ───────── 阶段 8：Boss 全屏弹幕雨 ─────────
+
+  /** 弹雨的作用域：以玩家为中心的**一屏**（倾盆而下时屏幕上要看得见完整预警）。 */
+  _rainField() {
+    const w = Math.max(1, Number(this.w) || 0), h = Math.max(1, Number(this.h) || 0);
+    return [this.player.x - w / 2, this.player.y - h / 2, w, h];
+  }
+
+  /**
+   * 阶段 8：起手一波弹雨 —— 只负责铺**预警圈**，真正的结算在 _stepRain 里到时才发生。
+   * ★ 为什么「留出安全间隙」是这个函数的第一设计目标：
+   *   预警圈在这 0.6~0.8s 里就完整画出来了，玩家据此走位；如果压根没留出成片空地，
+   *   那就不是「可躲的弹雨」，而是纯粹的场地剥夺 —— 玩家会觉得是被系统杀了。
+   */
+  _beginRain(idx) {
+    if (!ARENA.RAIN_ON) return 0;
+    const cols = ARENA.RAIN_GRID[0], rows = ARENA.RAIN_GRID[1];
+    const want = ARENA.RAIN_COUNT[idx];
+    const warn = ARENA.RAIN_WARN[idx];
+    const r = ARENA.RAIN_R;
+    const [x0, y0, w, h] = this._rainField();
+    const cells = [];
+    for (let i = 0; i < cols * rows; i++) cells.push(i);
+    // 确定性 Fisher-Yates（走独立 rainRng，见构造函数注释）
+    for (let i = cells.length - 1; i > 0; i--) {
+      const j = Math.floor(this.rainRng.next() * (i + 1));
+      const t = cells[i]; cells[i] = cells[j]; cells[j] = t;
+    }
+    // 三重上限取最小值：① 想要的点数 ② 面积覆盖率硬顶 ③ 至少留 40% 格子当安全区
+    const capArea = Math.max(1, Math.floor((ARENA.RAIN_COVER_MAX * w * h) / (Math.PI * r * r)));
+    const capCells = Math.max(1, Math.floor(cells.length * 0.6));
+    const n = Math.min(want, capArea, capCells);
+    const cw = w / cols, ch = h / rows;
+    for (let k = 0; k < n; k++) {
+      const ci = cells[k];
+      const cx = ci % cols, cy = Math.floor(ci / cols);
+      const jx = (this.rainRng.next() - 0.5) * ARENA.RAIN_JITTER * cw;
+      const jy = (this.rainRng.next() - 0.5) * ARENA.RAIN_JITTER * ch;
+      this.rain.push({
+        x: x0 + (cx + 0.5) * cw + jx,
+        y: y0 + (cy + 0.5) * ch + jy,
+        t: warn, phase: 'warn', hitT: 0, life: warn, idx,
+      });
+    }
+    this.rainWaves += 1;
+    this.bossRain += 1;
+    this.milestones.push({ text: `☔ 弹幕雨 ×${n}·走位躲开☔`, kind: 'event', t: 0, life: ARENA.EVENT_BANNER_LIFE });
+    return n;
+  }
+
+  /**
+   * 阶段 8：推进弹雨（每帧）。预警走完 ⟹ 结算命中 ⟹ 留一小段残渣表现 ⟹ 移除。
+   * ★ 伤害走 damagePlayer（内含闪现无敌 / 护盾层 / 磐石窗 / 减伤），不必自己判一遍。
+   * ★ 落点判定用「所见即所判」的同一个半径 —— 预警圈多大、命中就多大，玩家不会被
+   *   看似在圈外却依然扣血骗到（这类"判定大于显示"的错位是最招骂的手感问题）。
+   */
+  _stepRain(dt) {
+    if (!this.rain.length) return;
+    const r2 = ARENA.RAIN_R * ARENA.RAIN_R;
+    for (let i = this.rain.length - 1; i >= 0; i--) {
+      const p = this.rain[i];
+      if (p.phase === 'warn') {
+        p.t -= dt;
+        if (p.t > 0) continue;
+        const dx = this.player.x - p.x, dy = this.player.y - p.y;
+        if (dx * dx + dy * dy <= r2) { this.damagePlayer(ARENA.RAIN_DMG); this.rainHits += 1; }
+        p.phase = 'hit';
+        p.hitT = ARENA.RAIN_IMPACT_T;
+      } else {
+        p.hitT -= dt;
+        if (p.hitT <= 0) this.rain.splice(i, 1);
+      }
     }
   }
 
@@ -2740,7 +2871,10 @@ export class ArenaCore {
   }
 
   damagePlayer(amount) {
-    if (this.dashInvuln > 0) return; // 闪现途中无敌（spec §3）
+    // 阶段 8-2：这里原本是"闪现途中无敌"。闪现删了，但**无敌窗口本身还有用**
+    //   —— 复活后的那一拍喘气（见下方 revive 分支）走的正是它。
+    //   ⟹ 字段改成中性的 `invulnT`（不再叫 dashInvuln），语义是"还剩多久免疫伤害"。
+    if (this.invulnT > 0) return;
     // ── 阶段 7 · 荆棘装备：受击时反弹**比例**伤害给**周围**敌人 ──
     // ★ 位置在这一行的最前面（扣血之前）而不是之后：反弹是"被打"的补偿，
     //   若放在扣血之后，一旦这一击把玩家打死就会漏掉反弹 —— 而"被打死的那一下也反打"
@@ -2770,8 +2904,8 @@ export class ArenaCore {
     if (this.hp <= 0 && this.revivesLeft > 0) {
       this.revivesLeft -= 1;
       this.hp = Math.ceil(this.maxHp * 0.5);
-      this.dashInvuln = 1.2;        // 复活无敌 1.2s，给一拍喘气
-      this.flashT = 0.25;
+      this.invulnT = ARENA.REVIVE_INVULN;   // 复活无敌窗口：给一拍喘气
+      this.flashT = ARENA.REVIVE_FLASH;
       this.floatText(this.player.x, this.player.y, '复活', COLOR.good);
     }
   }
@@ -2833,40 +2967,19 @@ export class ArenaCore {
   /** 磐石：窗口时长（未装备恒为 0）。 */
   _stoneWindow() { return this.classPassive && this.classPassive.stoneWindow ? this.classPassive.stoneWindow : 0; }
 
-  // ───────── 阶段 5 · B2 的公共 debuff 基础设施 ─────────
-  // 三个变体共用同一套字段（e.stun / e.slowT+slowK / this.slowZones），而不是各自一套。
-  // ★ 理由很实在：三套各自的新 container 意味着三处衰减、三处判空，漏衰减一处就是"永久
-  //   减速"这种查不出来的 bug；共用一个出口则任何一条没有配 perks 的职业 ⟹ 全是空/0 ⟹
-  //   两个函数都返回恒等值（1 / 原速），行为与前作逐比特相同。
-  /** 本帧这只怪的移速倍率（1 = 未受影响）。多个来源取**最强**的那条，不叠乘成定身。 */
-  _speedMul(e) {
-    let k = 1;
-    if (e.slowT > 0 && e.slowK < k) k = e.slowK;
-    for (const z of this.slowZones) {
-      if (z.t <= 0) continue;
-      const dx = e.x - z.x, dy = e.y - z.y;
-      if (dx * dx + dy * dy <= z.r * z.r && z.k < k) k = z.k;
-    }
-    return k;
-  }
-  /** 本帧这只怪的实际移速。 */
-  _effSpeed(e) { return e.speed * this._speedMul(e); }
-  /** 是否处于"被控"状态（被任一方式减速/定身）—— 重壳守卫「重刃」的增伤判据。 */
-  _isCrowdControlled(e) { return e.stun > 0 || e.frozen > 0 || this._speedMul(e) < 1; }
-  /** B2 破阵的定身时长（没这条变体恒为 0）。 */
-  _perkStun() {
-    const S = this.classPerk && this.classPerk.skill;
-    return S && S.stun ? S.stun : 0;
-  }
-  /** 寒潮：解冻的一刻挂上残留减速。已有更强的减速时不去冲淡它。 */
-  _applyChill(e) {
-    const S = this.classPerk && this.classPerk.skill;
-    if (!S || !S.chillDur) return;
-    if (e.slowT > 0 && e.slowK <= S.chillK) return;
-    e.slowT = S.chillDur;
-    e.slowK = S.chillK;
-  }
+  // ───────── 阶段 8-2：B2 的公共 debuff 基础设施已整体删除 ─────────
+  // 原先这里有三个共用出口：`_speedMul()`（e.slowT + slowZones 取最强减速）、
+  // `_effSpeed()`（e.speed × 倍率）、`_isCrowdControlled()`（重刃「重刃」增伤判据）。
+  // 它们的**写入端**分别是：破阵 perk（e.stun）、霜环（e.frozen）、寒潮 perk（e.slowT）、
+  // 地裂 perk（slowZones）—— 四个写入端全随主动技能删除。
+  // ⟹ 读端留着就是"恒 1 / 恒 false"的空壳，所以连读端一起删：移动直接用 `e.speed`，
+  //   数值上与旧的 `_effSpeed(e)` 逐比特相同（旧函数恒返回 e.speed × 1）。
 
+  /** 重壳守卫「重刃」的增伤判据：硬目标 = 精英 或 Boss。
+   *  ★ 阶段 8-2 改判据：原判据是「被控」（stun / frozen / 减速场），三个写入端全没了
+   *    ⟹ 恒 false ⟹ +25% 从不触发 ⟹ 那就是一条"配了却没效果"的空 perk。
+   *    改成"精英 / Boss"后触发条件重新可达，数值（0.25）一字未动。 */
+  _isHeavyTarget(e) { return !!e.elite || isBossKind(e.kind); }
   /** 猎风：位移积分攒层 / 站定掉层。 */
   _stepWind(moved, wantsMove, dt) {
     const P = this.classPassive;
@@ -2932,25 +3045,14 @@ export class ArenaCore {
     const pool = OFFERS.filter((o) => o.avail(this));
     const picks = [];
 
-    // ★ 阶段 7 · 精英波的技能三选一（spec「击杀必掉技能选择」）。
-    //   口径：**三个名额全部**优先给技能向牌（主动技能强化 or 特殊效果），
-    //   而不是像每 3 级保底那样"只塞一张"。两者的体验目标不同：
-    //   · 每 3 级保底 = "别让玩家连着三张纯数值"（防止三选一变得无趣）
-    //   · 精英奖励= "这是我对打了一只精英的回报"（应当明显更值）
-    //   技能向牌池若不足 3 张，退回"能填几张填几张 + 其余按普通池补"，
-    //   但**保底至少 1 张**（否则"必掉技能"这句话就是假的）。
-    if (opts.skillFlavored) {
-      const flavored = pool.filter((o) => isSkillFlavored(o.id));
-      for (const o of flavored) {
-        if (picks.length >= ARENA.ELITE_WAVE_SKILL) break;
-        picks.push(o);
-      }
-    }
+    // 阶段 8-2：精英波原先「三个名额全部优先给技能向牌」的口径已随主动技能删除 ——
+    //   现在它就是**一次普通的升级三选一**（只是来路标成 'elite'：给牌、但不给等级也不吃经验）。
+    //   保留 opts.skillFlavored 这个**参数名**会让读者以为还有技能槽这条分支，故一并清掉。
 
     // ★ 前期保底（spec §4）：前 EARLY_GUARD_SEC 秒内若还没拿到过任何"新东西"，
     //   强行塞一件进三选一。否则开局连抽几个纯数值项，玩家会觉得"这局没有内容"
     //   —— 而"有没有新东西"恰恰是这类游戏前两分钟唯一的兴奋点。
-    //   ★ 必须判上限：opts.skillFlavored 可能已经把 3 个名额占满了，
+    //   ★ 必须判上限：前面的保底可能已经占了名额（现在只剩"前期保底"这一条会插队），
     //   无脑 push 会让弹窗变成 4 个选项（UI 按 UPGRADE_CHOICES 渲染，多的那张直接看不见）。
     if (this.elapsed <= ARENA.EARLY_GUARD_SEC && this.newThings === 0
         && picks.length < ARENA.UPGRADE_CHOICES) {
@@ -2958,22 +3060,10 @@ export class ArenaCore {
       if (news.length) picks.push(this.rng.weighted(news, (o) => o.weight));
     }
 
-    // ★ 阶段 7 · 每 3 级的"技能向保底"（spec「每 3 级提供一次技能选择」的执行方式，
-    //   口径冲突的完整裁决见 content.js SKILL_TIER_CADENCE 上方的注释块）：
-    //   逢 3 的倍数那一级，必定在弹窗里塞进一张「主动技能强化」或「特殊效果」牌。
-    //   ⟹ 这样玩家每~3 次决策就一定碰到一次"机制型"选项（而不是连着三张纯数值），
-    //     而**不改动**每级一次的节奏本身 —— 那条节奏的护栏（首次升级 <20s /
-    //     最长空档 ≤45s）是 16 局 sim 反复扫出来的，动它要整套重标。
-    const isMilestone = this.level % SKILL_TIER_CADENCE === 0;
-    if (isMilestone && !picks.some((o) => isSkillFlavored(o.id))) {
-      const flavored = pool.filter((o) => isSkillFlavored(o.id));
-      if (flavored.length) {
-        const f = this.rng.weighted(flavored, (o) => o.weight);
-        // 若这张技能牌已经占了一个名额，替换掉名单里最后抽到的那张（保持 3 个选项）
-        if (picks.length >= ARENA.UPGRADE_CHOICES) picks.pop();
-        picks.push(f);
-      }
-    }
+    // 阶段 8-2：原「每 3 级的技能向保底」整段删除（SKILL_TIER_CADENCE / isSkillFlavored
+    //   连同 content.js 里的 SPECIAL_EFFECTS 都已消失，见 content.js 的删除清单）。
+    //   ⟹ 三选一现在是纯粹的「被动 / 新武器 / 武器强化」按权重抽取，没有任何保底插队，
+    //     唯一保留的插队是上面的"前期保底"（EARLY_GUARD_SEC 内必给一件新东西）。
 
     // 其余名额按权重**不放回**抽（权重见 content.js：新东西 > 强化 > 被动单项）
     const rest = pool.filter((o) => !picks.includes(o));
@@ -3111,54 +3201,20 @@ export class ArenaCore {
     // projectile → 螺旋弹幕：靠 this.evolved.projectile 开关（step 里每 SPIRAL_CD 齐射一圈），无需改对象
   }
 
-  /** 主动技能「冲击波」—— 调用即"按下"：先进入蓄力（视觉上是向外收拢的蓄力圈），
-   *  蓄力结束由 step() 调 detonateShockwave() 结算伤害 + 击退 + 爆发环。
-   *  冷却**从按下起算** —— 否则玩家会为动画白等 0.15s，那不是"有过程"而是"加延迟"。
-   *  返回是否成功起手（冷却中 / 已在蓄力 / 暂停 / 已结束则失败）。 */
-  shockwave() {
-    if (this.done || this.pendingUpgrade || this.shockwaveCd > 0 || this.shockChargeT >= 0) return false;
-    this.shockChargeT = 0;
-    this.shockwaveCd = this.skShock.cdBase * this.cdMul;
-    return true;
-  }
+  // 阶段 8-2：主动技能「冲击波」的 shockwave() + detonateShockwave() 已整体删除。
+  //   连带消失的还有它作为**唯一触发源**的三样东西：
+  //     ① `e.stun`（定身）—— 只由流浪者「破阵」perk 在这里写；
+  //     ② `slowZones`（减速场）—— 只由重壳守卫「地裂」perk 在这里写；
+  //     ③ 冲击波自己的击退来源（applyHit 的 dist 参数）—— knockMul 随之删除。
+  //   ⟹ `e.stun` / `slowZones` / `_perkStun()` / `_applyChill()` / `e.frozen` /
+  //     `e.slowT` / `e.slowK` / `_speedMul` / `_effSpeed` / `_isCrowdControlled` 全部清理。
+  //     （旧的 `_effSpeed(e)` 恒等于 `e.speed`，所以移动改成直接读 `e.speed` 是逐比特等价的。）
+  // ⚠ 二阶后果及其处置（如实记录）：重壳守卫的**武器**perk「重刃」
+  //   = 环绕刃对被控目标 +25% 伤害 —— "被控"的写入端全没了 ⟹ 这条 perk 会退化成空 perk。
+  //   处置：把**判据**从「被控」改成「精英 / Boss」（硬目标），**数值 0.25 一字未动**。
+  //   这是"让已存在的配装重新生效"，不是补偿性加伤害；补偿仍只允许走被动生存项。
 
-  /** 蓄力结束的那一拍：一次性结算伤害 + 击退，并点亮白闪与爆发环。 */
-  detonateShockwave() {
-    const R = this.skShock.radius;
-    for (const e of this.enemies) {
-      if (e.dead) continue; // 同上的双重结算问题
-      const dx = e.x - this.player.x, dy = e.y - this.player.y;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      if (d > R + e.r) continue;
-      const ux = d > 0.001 ? dx / d : 1, uy = d > 0.001 ? dy / d : 0; // 由玩家指向敌人
-      // 阶段 4-7：冲击波**降格**为保命解围工具 —— 主效果是**击退**（把近身一圈弹推开），
-      // 伤害只是副效果（砍半到 15，不再一个波秒光）。统一走 applyHit：
-      //   · 护盾怪吸收一层、本拍不动血（破盾前不能靠一波扫清）；
-      //   · 存活者：被推 SHOCKWAVE_KNOCK(×knockMul) 像素，真的"扫开一片"；
-      //   · 致死：先位移再结算死亡（碎屑沿同方向外飞），"扫开"手感保留。
-      const killed = this.applyHit(e, this.skShock.dmg,
-        { ux, uy, dist: this.skShock.knock * this.knockMul }, false, 'shockwave');
-      if (!this.reduced && killed) this.burst(e.x, e.y, COLOR.gem, 3, { x: ux, y: uy });
-      // 阶段 5 · B2 破阵（流浪者）：被推开的再多冻一会 —— 位移已经把眼前的空间清出来了，
-      //   定身负责让这片空间**真的可持续**（不然下一帧它们又贴回来，一波推开等于白推）。
-      //   ★ 只对存活者有意义：applyHit 返回 true 说明这只已经死了，不必再控。
-      if (!killed) { const st = this._perkStun(); if (st) e.stun = Math.max(e.stun || 0, st); }
-    }
-    // 阶段 5 · B2 地裂（重壳守卫）：在**玩家所在位置**留一块减速场。
-    //   ★ 为什么是"留在原地"而不是"跟着玩家走"：重装该占住的是"我已经站住的这块地"，
-    //     跟着走的减速场会变成常驻光环，那和"被动减伤"没区别，读不出开技能这个动作。
-    const Z = this.classPerk && this.classPerk.skill;
-    if (Z && Z.zoneDur) {
-      this.slowZones.push({ x: this.player.x, y: this.player.y, r: R * Z.zoneR,
-        t: Z.zoneDur, k: Z.zoneK });
-    }
-    this.enemies = this.enemies.filter((e) => !e.dead);
-    this.shockwaveCastT = 0;
-    this.flashT = ARENA.SHOCKWAVE_FLASH;
-    this.shockCasts += 1;
-  }
-
-  // ───────── 阶段 2：武器 · 技能 · 宝箱 ─────────
+  // ───────── 阶段 2：武器 · 宝箱 ─────────
 
   /** 某个 id 被拿过几次（封顶判据）。 */
   taken(id) {
@@ -3167,14 +3223,16 @@ export class ArenaCore {
     return k;
   }
 
-  /** 武器/技能的初始化（解锁时调用一次）。放在 core 上而不是 content.js 里，
-   *  是因为默认值住在 ARENA —— 让 content.js 自己 new 一份就会口径漂移。 */
+  // 阶段 8-2：initSkill()（解锁技能时初始化它的对象）已随主动技能删除。
+
   /**
    * 阶段 5 · B3：把"本命武器的专属强化"落到具体字段上（每人一条，互不重叠）。
    * ★ 为什么在这里一次性改字段、而不是在 step 里分支判断：
    *   这三条改的都是"这把武器本来就是什么样"，不是"这一帧该怎么算"。
    *   写成每帧分支的话，任何一处漏判都会得到一个"少了点什么"的职业 ——
    *   而它没有报错、没有崩溃，只是弱了一圈，是最难查的那类失效。
+   * ★ 阶段 8-2 注：原本每个角色还有一支 `K.skill`（破阵定身 / 地裂减速场 / 寒潮残留减速），
+   *   已随主动技能删除（详见 content.js CLASS_PERKS 上的注释）。
    */
   _applyClassPerks() {
     const K = this.classPerk;
@@ -3183,7 +3241,9 @@ export class ArenaCore {
     if (W.pierceN) this.projPierce = W.pierceN;      // 流浪者：投射物可穿透目标后再飞一段
     if (W.speedMul) this.projSpeed *= W.speedMul;    // 疾风行者：更快
     if (W.reachMul) this.projReachMul = W.reachMul;  // 疾风行者：更远
-    if (W.ctrlBonus) this.orbitCtrlBonus = W.ctrlBonus; // 重壳守卫：对被控目标增伤
+    // 重壳守卫：对硬目标（精英 / Boss）增伤。★ 阶段 8-2 把判据从「被控」改成「硬目标」，
+    //   因为被控的三个写入端全随主动技能删除了（详见 _isHeavyTarget 的注释）；数值未动。
+    if (W.heavyBonus) this.orbitHeavyBonus = W.heavyBonus;
   }
 
   initWeapon(id) {
@@ -3192,14 +3252,6 @@ export class ArenaCore {
     // 阶段 5：剑。解锁时把对象装起来（"获得即持有"）；形态始终读 this.evolved.sword（不存第二份）。
     else if (id === 'sword') this.sword = { dmg: ARENA.SWORD_DMG, count: ARENA.SWORD_COUNT, interval: ARENA.SWORD_INTERVAL, cd: 0, speed: ARENA.SWORD_SPEED };
   }
-  initSkill(id) {
-    if (id === 'shockwave') this.skShock = { radius: ARENA.SHOCKWAVE_RADIUS, dmg: ARENA.SHOCKWAVE_DMG,
-      cdBase: ARENA.SHOCKWAVE_CD, knock: ARENA.SHOCKWAVE_KNOCK };
-    else if (id === 'dash') this.skDash = { dist: ARENA.DASH_DIST, dmg: ARENA.DASH_DMG,
-      cdBase: ARENA.DASH_CD, invuln: ARENA.DASH_INVULN };
-    else if (id === 'frost') this.skFrost = { r: ARENA.FROST_R, dur: ARENA.FROST_DUR, cdBase: ARENA.FROST_CD };
-  }
-
   /** 环绕刃：剑尖绕玩家转，碰到敌人扣血。命中节流见 ARENA.ORBIT_TICK 的注释。 */
   stepOrbit(dt) {
     const o = this.orbit;
@@ -3219,12 +3271,11 @@ export class ArenaCore {
         const rr = ARENA.ORBIT_W + e.r;
         if (ex * ex + ey * ey > rr * rr) continue;
         e.oCd = ARENA.ORBIT_TICK;
-        // 阶段 5 · B3 重刃（重壳守卫）：被控住的敌人吃更高伤害 —— 与它自己的
-        //   B2「地裂」减速场合成一条完整链路（先踩住地面，再磨）。
+        // 阶段 5 · B3 重刃（重壳守卫）：硬目标（精英 / Boss）吃更高伤害。
         //   ★ 走**倍率**而不是额外一次 applyHit：多一次调用就等于多一个伤害来源，
         //     归因表会多出一栏，而"技能 vs 武器占比"那两条 spec 断言依赖分母干净。
-        const odmg = this.orbitCtrlBonus && this._isCrowdControlled(e)
-          ? o.dmg * (1 + this.orbitCtrlBonus) : o.dmg;
+        const odmg = this.orbitHeavyBonus && this._isHeavyTarget(e)
+          ? o.dmg * (1 + this.orbitHeavyBonus) : o.dmg;
         // 阶段 4-7：走统一伤害入口（护盾吸收 / 击杀 / 命中读数一套口径）。
         this.applyHit(e, odmg, { ux: Math.cos(a), uy: Math.sin(a), dist: ARENA.DEATH_DRIFT, live: false }, false, 'orbit');
         break;
@@ -3368,119 +3419,16 @@ export class ArenaCore {
     this.enemies = this.enemies.filter((e) => !e.dead);
   }
 
-  // ── 技能：一个键/一个按钮循环释放（spec §3 允许的最简方案）──
-
-  /** 当前持有的技能，按 SKILL_ORDER 排好（循环释放的次序）。 */
-  skillOrder() { return SKILL_ORDER.filter((k) => this.skills[k]); }
-  skillReady(k) {
-    if (k === 'shockwave') return this.shockwaveCd <= 0 && this.shockChargeT < 0;
-    if (k === 'dash') return this.dashCd <= 0;
-    if (k === 'frost') return this.frostCd <= 0;
-    return false;
-  }
-  skillCd(k) {
-    if (k === 'shockwave') return this.shockwaveCd;
-    if (k === 'dash') return this.dashCd;
-    if (k === 'frost') return this.frostCd;
-    return 0;
-  }
-  /** 循环指针当前指向的技能（按钮上显示的那个，不管冷却）。 */
-  cursorSkill() {
-    const ks = this.skillOrder();
-    return ks.length ? ks[this.skillCursor % ks.length] : null;
-  }
-  /** 按一下会放出哪个（从指针往后第一个就绪的）。 */
-  nextSkill() {
-    const ks = this.skillOrder();
-    for (let i = 0; i < ks.length; i++) {
-      const k = ks[(this.skillCursor + i) % ks.length];
-      if (this.skillReady(k)) return k;
-    }
-    return null;
-  }
-  /**
-   * 放技能。阶段 3 起支持两种入口：
-   *  · castSkill(id) —— 放**指定**技能（空格/Q/E 三槽各自绑一个固定技能）。
-   *    未持有或冷却中 → 直接 no-op，绝不偷偷放别的技能。
-   *  · castSkill()  —— 不传 id，从循环指针往后找第一个就绪的放出去（驾驶员 / 旧"一个键打天下"口径）。
-   * ★ 为什么还要"循环"：冲击波 CD 最短，写死优先级的话它一好就抢先，dash / frost 会因为
-   *   CD 更长而**永远轮不到**。指针前移保证三个技能轮流上场。
-   */
-  castSkill(id) {
-    if (this.done || this.pendingUpgrade) return false;
-    if (id) {
-      if (!this.skills[id] || !this.skillReady(id)) return false;
-      const ok = id === 'shockwave' ? this.shockwave() : id === 'dash' ? this.dashCast() : this.frostCast();
-      if (ok) { this.skillCasts += 1; return true; }
-      return false;
-    }
-    const ks = this.skillOrder();
-    for (let i = 0; i < ks.length; i++) {
-      const idx = (this.skillCursor + i) % ks.length;
-      const k = ks[idx];
-      if (!this.skillReady(k)) continue;
-      const ok = k === 'shockwave' ? this.shockwave() : k === 'dash' ? this.dashCast() : this.frostCast();
-      if (ok) { this.skillCursor = (idx + 1) % ks.length; this.skillCasts += 1; return true; }
-    }
-    return false;
-  }
-
-  /** 闪现冲刺（spec §3）：朝移动方向瞬移，途中无敌并撞伤沿途敌人。 */
-  dashCast() {
-    const d = this.skDash;
-    let ux = this.lastDir.x, uy = this.lastDir.y;
-    if (ux === 0 && uy === 0) { ux = this.player.vx; uy = this.player.vy; }
-    let m = Math.sqrt(ux * ux + uy * uy);
-    if (m < 1e-6) { ux = 0; uy = -1; m = 1; }  // 站定不动也要放得出来（默认朝上）
-    ux /= m; uy /= m;
-    const p = this.player;
-    // 阶段 4-1：闪现不再被墙截断（无限场），位移严格等于 DASH_DIST ——
-    // 旧口径下贴着边按 Q 会"闪不动"，那是边界造成的、不是技能本身。
-    const nx = p.x + ux * d.dist;
-    const ny = p.y + uy * d.dist;
-
-    // 沿途伤害：点到线段的距离 < 半宽 + 敌人半径
-    const half = ARENA.DASH_W * 0.5;
-    const sx = nx - p.x, sy = ny - p.y;
-    const len2 = sx * sx + sy * sy || 1;
-    for (const e of this.enemies) {
-      if (e.dead) continue;
-      let t = ((e.x - p.x) * sx + (e.y - p.y) * sy) / len2;
-      t = t < 0 ? 0 : t > 1 ? 1 : t;
-      const cx = p.x + sx * t, cy = p.y + sy * t;
-      const dx = e.x - cx, dy = e.y - cy;
-      if (dx * dx + dy * dy > (half + e.r) * (half + e.r)) continue;
-      // 阶段 4-7：走统一伤害入口（护盾吸收 / 击杀 / 命中读数一套口径）。
-      this.applyHit(e, d.dmg, { ux, uy, dist: ARENA.DEATH_DRIFT, live: false }, false, 'dash');
-    }
-    this.enemies = this.enemies.filter((e) => !e.dead);
-
-    this.pushFx({ kind: 'dash', x0: p.x, y0: p.y, x1: nx, y1: ny, r: p.r, t: 0, life: ARENA.DASH_FX });
-    p.x = nx; p.y = ny;
-    this.dashInvuln = d.invuln;   // 阶段 4-9：读运行时值，`kd_invuln` 升级才落得下去
-    this.dashCd = d.cdBase * this.cdMul;
-    return true;
-  }
-
-  /** 霜环（spec §3）：冻住范围内的敌人。冻结期间既不移动也不啃你。 */
-  frostCast() {
-    const f = this.skFrost;
-    let k = 0;
-    for (const e of this.enemies) {
-      if (e.dead) continue;
-      const dx = e.x - this.player.x, dy = e.y - this.player.y;
-      if (dx * dx + dy * dy > (f.r + e.r) * (f.r + e.r)) continue;
-      // 阶段 4-4：Boss 的冻结时长减半（spec 四「不能被霜环定到死」）。
-      // ★ 是"减半"而不是"免疫"：完全免疫会让霜环对 Boss 毫无意义，减半则仍是有效的喘息窗口。
-      e.frozen = f.dur * (isBossKind(e.kind) ? ARENA.BOSS_FROST_MUL : 1);
-      k += 1;
-    }
-    this.pushFx({ kind: 'frost', x: this.player.x, y: this.player.y, r: f.r, t: 0, life: ARENA.FROST_FX });
-    this.frostCd = f.cdBase * this.cdMul;
-    this.frostCasts += 1;
-    if (k) this.floatText(this.player.x, this.player.y - 34, `冻结 ${k}`, COLOR.frost);
-    return true;
-  }
+  // ── 阶段 8-2：主动技能的整套执行层已删除 ──
+  //   删掉的成员：skillOrder / skillReady / skillCd / cursorSkill / nextSkill /
+  //               castSkill / dashCast / frostCast
+  //   调用点在 UI 层同步清掉：空格·Q·E 键位、触屏 .arena-skillbar 三槽、图标栏技能胶囊、
+  //   驾驶员 driver.cast（pilot.js 的 pilotSkill 与 { input, cast, pick } 契约里的 cast）。
+  //
+  //   ★ 留一句给后来人：这套"一个键循环释放三个技能"的设计本来是为了**省键位**
+  //     （竖屏只能容一个手指）。但它最终失败在定位上 —— 阶段 4-9 把技能降格成
+  //     "既不能输出也不能保命"之后，它占着的那根手指就成了纯成本。
+  //     与其让它继续消耗一个输入槽，不如让位给"倍速按钮"这种真正被用到的东西。
 
   /** 短特效入队（容量满时淘汰最旧的 —— 与 burst 同一策略：保住最新的一次） */
   pushFx(f) {
@@ -3524,7 +3472,9 @@ export class ArenaCore {
   }
 
   /** 开箱（spec §5）：直接给一件稀有货，**不弹选择**。
-   *  优先级：未拥有的新武器/新技能 → 高品被动 → 任意未封顶被动 → 兜底 regen。 */
+   *  优先级：未拥有的新武器 → 高品被动 → 任意未封顶被动 → 兜底 regen。
+   *  阶段 8-2：优先级第一档原本是「新武器/新技能」，技能删除后只剩新武器 ——
+   *    `OFFERS.filter((o) => o.unlock)` 本来就会自然收窄，不需要额外分支。 */
   openChest(ch) {
     let from = OFFERS.filter((o) => o.unlock && o.avail(this));
     if (!from.length) from = OFFERS.filter((o) => o.cat === 'passive' && o.avail(this) && RARE_PASSIVES.includes(o.id));
@@ -3605,16 +3555,15 @@ export class ArenaCore {
       kills: this.kills,
       level: this.level,
       gems: this.gemsCollected,
-      casts: this.shockCasts,
-      // 阶段 4-9：击杀来源归因（arena-sim 的「技能 <15% / 武器 >80%」硬断言读它）
+      // 阶段 8-2：`casts`（冲击波次数）/ `skills`（持有的技能）/ `skillCasts`（总释放次数）
+      //   三个读数已随主动技能删除 —— 结算页那个"冲击波"格子也一并撤掉（见 main.js）。
+      // 击杀来源归因（sim 的「武器占比 ≈100%」断言读它）
       killSrc: Object.assign({}, this.killSrc),
       spawned: this.spawned,
       upgrades: this.upgradesTaken.slice(),
       // 阶段 2 复盘读数
       weapons: Object.keys(this.weapons).filter((k) => this.weapons[k]),
-      skills: Object.keys(this.skills).filter((k) => this.skills[k]),
       chests: this.chestsOpened,
-      skillCasts: this.skillCasts,   // casts 仍是冲击波次数（阶段 1 的口径不动）
       // 阶段 4-1 复盘读数（不影响任何判定）
       elites: this.eliteSpawned,
       bullets: this.bulletsFired,
@@ -3663,22 +3612,22 @@ export class ArenaCore {
       this.chests.every((ch) => finite(ch.x) && finite(ch.y)) &&
       this.fx.every((f) => finite(f.t)) &&
       finite(this.orbit.ang) && finite(this.orbit.count) && finite(this.laser.cd) &&
-      finite(this.projSpeed) && finite(this.cdMul) && finite(this.knockMul) &&
-      finite(this.dashCd) && finite(this.frostCd) && finite(this.dashInvuln)
+      // 阶段 8-2：cdMul / knockMul / dashCd / frostCd / dashInvuln 均已删除；
+      //   改为断言还真实存在的量（无敌窗口 invulnT 现在是复活在用）。
+      finite(this.projSpeed) && finite(this.orbit.count) && finite(this.invulnT)
       && finite(this.soulfire);
     return {
       time: this.time, hp: this.hp, done: this.done, survived: this.survived,
       level: this.level, enemies: this.enemies.length, particles: this.particles.length,
       bullets: this.bullets.length,
       gems: this.gems.length, floaters: this.floaters.length, deaths: this.deaths.length,
-      kills: this.kills, gemsCollected: this.gemsCollected, casts: this.shockCasts,
+      kills: this.kills, gemsCollected: this.gemsCollected,
       spawned: this.spawned, shots: this.shots, magnet: this.magnet,
       chests: this.chests.length, fx: this.fx.length, chestsOpened: this.chestsOpened,
-      skillCasts: this.skillCasts,
       weapons: Object.keys(this.weapons).filter((k) => this.weapons[k]).length,
-      skills: Object.keys(this.skills).filter((k) => this.skills[k]).length,
       // 手感层的可观测面（测试靠这几项断言"不瞬移、不瞬停、动画没走完不消失"）
-      speed, charging: this.shockChargeT >= 0,
+      // 阶段 8-2：`charging`（冲击波蓄力中）已随技能删除。
+      speed,
       finite: ok,
     };
   }
@@ -3703,12 +3652,16 @@ export class Arena {
     this.input = { x: 0, y: 0 };
     this.joy = { x: 0, y: 0, active: false, ox: 0, oy: 0, vx: 0, vy: 0, pid: null };
     this.keys = new Set();
-    // 自动驾驶员接缝：非 null 时**接管**输入 / 技能 / 三选一（消费点见 _loop）。
-    // 契约：driver.tick(core) → { input:{x,y}, shock:boolean, pick:index }
+    // 阶段 9：局内倍速（仅渲染层持有；1x 默认）。喂给 core.stepWorld 的 dt = 墙上dt × gameSpeed，
+    // 表现层（stepFx / _updateCam）始终走墙上时间，故倍速只改"难度时钟推进速率"不改观感。
+    this.gameSpeed = 1;
+    // 自动驾驶员接缝：非 null 时**接管**输入 / 三选一（消费点见 _loop）。
+    // 契约：driver.tick(core) → { input:{x,y}, pick:index }
     //   · input  已归一化的方向向量（不与键盘相加，见 _loop 的理由）
-    //   · shock  true 则本帧尝试放冲击波（由 core 自己判冷却）
     //   · pick   三选一的下标。**无人值守时没人点弹窗，必须由它代选** ——
     //           否则 pendingUpgrade 不清，游戏会永远停在那一帧。
+    // ★ 阶段 8-2：原 `cast/shock:boolean`（本帧要不要放技能）已从契约里删除 ——
+    //   没有技能可放。driver.tick 现在只返回 { input, pick }（pilot.js 同步改）。
     // 由 main.js（?pilot=1）或 tools/record-demo.mjs 从外部赋值；null = 纯真人操作。
     this.driver = null;
     // 离屏精灵缓存：形状是静态的，没有理由每帧重新光栅化一条 20 点的路径。
@@ -3719,7 +3672,6 @@ export class Arena {
     this._boxes = new Map(); // 每类型的剪影包围盒缓存
     // 渲染/输入侧的小状态（避免每帧重复写 DOM / 重复解析字体）
     this._needsPaint = true;
-    this._skillTxt = '';
     this._f1 = ''; this._f2 = '';
     this._fps = 0;
     // 阶段 6-1：渲染剖析开关。只在 ?dbg=1 下建表（关掉时 _pmark/_pdone 各只做一次空判断）。
@@ -3748,7 +3700,7 @@ export class Arena {
     // 中央横幅（里程碑 / 后一阶段的 Boss 警告）：渲染层自己计时淡出，core 只负责 push。
     this._banners = [];
     // 阶段 3 音效：每帧比对 core 状态增量来触发声音，这里存"上一帧的快照"
-    this._sfx = { level: 0, hits: 0, kills: 0, chests: 0, casts: 0, hp: ARENA.PLAYER_HP, over: false };
+    this._sfx = { level: 0, hits: 0, kills: 0, chests: 0, hp: ARENA.PLAYER_HP, over: false };
     this._muteBtn = null;
   }
 
@@ -3764,12 +3716,9 @@ export class Arena {
       <canvas class="arena-canvas"></canvas>
       <div class="arena-inventory"></div>
       <button class="arena-mute" type="button" aria-label="音效开关"><span>音</span></button>
-      <div class="arena-hint">拖动屏幕移动 · WASD/方向键亦可 · 空格/Q/E 放技能</div>
-      <div class="arena-skillbar">
-        <button class="skill-slot" data-k="shockwave" aria-label="冲击波（空格）"><b>空格</b><span>波</span></button>
-        <button class="skill-slot" data-k="dash" aria-label="闪现（Q）"><b>Q</b><span>闪</span></button>
-        <button class="skill-slot" data-k="frost" aria-label="霜环（E）"><b>E</b><span>霜</span></button>
-      </div>
+      <div class="arena-hint">拖动屏幕移动 · WASD/方向键亦可</div>
+      <!-- 阶段 9：局内倍速按钮（原主动技能槽腾出的右下角空位）。V 键同样可切换。 -->
+      <button class="arena-speed" type="button" aria-label="局内倍速（V 键切换）">1x</button>
       <div class="arena-levelup" hidden>
         <div class="alu-title">升级！三选一</div>
         <div class="alu-choices"></div>
@@ -3807,21 +3756,13 @@ export class Arena {
     };
     syncMute();
     this._muteBtn.onclick = () => { Sfx.setMuted(!Sfx.isMuted()); syncMute(); };
-    // 阶段 3：三个主动技能槽（空格=冲击波 / Q=闪现 / E=霜环），各自独立释放
-    this.skillBar = root.querySelector('.arena-skillbar');
-    this.skillSlots = {};
-    for (const el of root.querySelectorAll('.skill-slot')) {
-      const k = el.getAttribute('data-k');
-      this.skillSlots[k] = el;
-      // 阶段 4-6：用 pointerdown 而非 onclick —— 触屏上点技能能**即时**释放，且 stopPropagation
-      // 不让这一指的事件冒泡到 window 的摇杆 move/up（即使没按 pid 过滤也是双保险）。
-      // preventDefault 阻止浏览器合成 click，避免「点一下放两次」。
-      el.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.core?.castSkill(k);   // 移动端：点槽位 = 放对应技能（与端游空格/Q/E 等价）
-      });
-    }
+    // 阶段 9：局内倍速按钮（右下角，原技能槽空位）。点击循环 0.5→1→2→3→0.5。
+    this.speedBtn = root.querySelector('.arena-speed');
+    this.speedBtn.textContent = this.gameSpeed + 'x';
+    this.speedBtn.onclick = () => this._cycleSpeed();
+    // 阶段 8-2：三个技能槽的查找/绑定（skillBar / skillSlots 与 pointerdown 释放）已整体删除。
+    //   ⟹ CSS 里的 `.arena-skillbar` / `.skill-slot` 由 styles.css 一并清掉；
+    //      多指处理的 pid 过滤逻辑**保留**（仍有手势可以做别的事作为参照，且动它风险大于收益）。
     this.stage.appendChild(root);
     this._resize();
 
@@ -3886,12 +3827,14 @@ export class Arena {
       const tgt = e.target;
       const inField = !!tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable === true);
       if (inField || e.isComposing || e.keyCode === 229) return;
+      // 阶段 9：V 键循环局内倍速（0.5→1→2→3→0.5）。不进 ARENA_KEYS（不是移动键），
+      //   preventDefault 防止某些浏览器把 V 当快捷键；不写进 this.keys（免得被当作移动输入）。
+      if (e.key === 'v' || e.key === 'V') { this._cycleSpeed(); e.preventDefault(); return; }
+      // 阶段 8-2：空格 / Q / E 三个技能键已删除 —— 按它们**不再有任何反应**，
+      //   也不再 preventDefault（这里特意不再劫持空格：原本是为了防止滚动，但现在
+      //   没有任何东西需要它，继续吞掉空格反而会干扰页面上的按钮与滚动）。
+      //   移动键仍是 ARENA_KEYS 那一套（WASD / 方向键）。
       if (ARENA_KEYS.has(e.key)) { this.keys.add(e.key); e.preventDefault(); }
-      // 阶段 3：空格/Q/E 各自放一个固定技能（slot 绑定见 SKILL_SLOT_KEYS）。
-      // 未拥有的槽按下是 no-op（core.castSkill(id) 会先判持有），不会误放别的技能。
-      else if (e.code === 'Space' || e.key === ' ') { e.preventDefault(); this.core?.castSkill('shockwave'); }
-      else if (e.key === 'q' || e.key === 'Q') { e.preventDefault(); this.core?.castSkill('dash'); }
-      else if (e.key === 'e' || e.key === 'E') { e.preventDefault(); this.core?.castSkill('frost'); }
     };
     this._onKeyUp = (e) => { this.keys.delete(e.key); };
     window.addEventListener('keydown', this._onKeyDown);
@@ -3899,7 +3842,7 @@ export class Arena {
     this._onResize = () => this._resize();
     window.addEventListener('resize', this._onResize);
 
-    // 主动技能：端游空格/Q/E（见 _onKeyDown）/ 手游点技能槽（见 start 里 skillSlots 绑定）
+    // 阶段 8-2：原「主动技能：端游空格/Q/E + 手游点技能槽」两条入口已一起删除。
 
     this.last = performance.now();
     this._preloadAssets();    // 阶段 3：图片异步加载；加载完前渲染层自动回退剪影
@@ -4007,6 +3950,13 @@ export class Arena {
     if (this.core) this.core.setBounds(w, h);
   }
 
+  /** 阶段 9：局内倍速循环（0.5 → 1 → 2 → 3 → 0.5）。端游 V 键与触屏倍速按钮共用。 */
+  _cycleSpeed() {
+    this.gameSpeed = nextGameSpeed(this.gameSpeed);
+    if (this.speedBtn) this.speedBtn.textContent = this.gameSpeed + 'x';
+    this._needsPaint = true;
+  }
+
   _keyVec() {
     let x = 0, y = 0;
     if (this.keys.has('ArrowLeft') || this.keys.has('a') || this.keys.has('A')) x -= 1;
@@ -4034,12 +3984,12 @@ export class Arena {
     if (m > 1) { ix /= m; iy /= m; }
     this.input = { x: ix, y: iy };
 
-    // 驾驶员一旦挂上就**接管**输入与技能，而不是与键盘/摇杆相加 ——
+    // 驾驶员一旦挂上就**接管**输入与三选一拣选，而不是与键盘/摇杆相加 ——
     // 相加会让残留按键把驾驶员规划好的走位拽偏（这正是"互斥而非相加"的同一条理由）。
     // 顺序有讲究：必须在上面合成完 this.input 之后、step 之前。
+    // 阶段 8-2：原 `drive.cast`（本帧是否放技能）已从驾驶员契约里删除，这里不再有释放入口。
     const drive = this.driver ? this.driver.tick(this.core) : null;
     if (drive && drive.input) this.input = { x: drive.input.x, y: drive.input.y };
-    if (drive && drive.cast) this.core.castSkill();
     if (this.core.pendingUpgrade && drive) {
       this.core.chooseUpgrade(drive.pick);
       this.levelupEl.hidden = true; // 驾驶员在场时不弹三选一：弹窗是给真人看的
@@ -4055,14 +4005,22 @@ export class Arena {
 
     const paused = !!this.core.pendingUpgrade || !!this.core.shopOpen;
     if (!this.core.done && !paused) {
-      // 快进档（仅 ?speed=N 开发用）：同一帧内补跑多个子步，而不是放大 dt。
-      // 放大 dt 会让惯性/死亡动画的时长口径随之失真、还可能隧穿过敌人；补步长则物理口径不变。
-      const steps = this.fastForwardSteps || 1;
-      for (let i = 0; i < steps && !this.core.done && !this.core.pendingUpgrade && !this.core.shopOpen; i++) {
-        this.core.step(dt, this.input);
+      // 阶段 9 局内倍速：把这一帧的墙上时间按 gameSpeed 放大成"游戏时间"，
+      // 再拆成 ≤0.05 的子步喂给 stepWorld（物理口径不变，不会隧穿过敌人）。
+      //   · 0.5x ⟹ 世界半速推进（难度时钟慢半拍，用时间换简单）；
+      //   · 2x/3x ⟹ 世界成倍推进（10 分钟内容在 5/3.3 墙上分钟跑完）。
+      // 表现层 stepFx 始终走墙上时间（见 stepFx 注释），不在下面这个循环里。
+      const gameDt = dt * this.gameSpeed;
+      let rem = gameDt;
+      while (rem > 1e-6 && !this.core.done && !this.core.pendingUpgrade && !this.core.shopOpen) {
+        const sub = Math.min(0.05, rem);
+        this.core.stepWorld(sub, this.input);
+        rem -= sub;
       }
       this._needsPaint = true;
     }
+    // 表现层衰减永远按墙上时间（与倍速无关）：2x 时世界飞快、但打击反馈/飘字/白闪仍是正常速度。
+    if (!this.core.done && !paused) this.core.stepFx(dt);
 
     this._pdone('step');
     // 阶段 4-1：相机跟随。放在 step **之后**、绘制**之前** ——
@@ -4106,11 +4064,9 @@ export class Arena {
     if (c.hits > s.hits) { Sfx.hit(); s.hits = c.hits; }
     if (c.kills > s.kills) { Sfx.death(); s.kills = c.kills; }
     if (c.chestsOpened > s.chests) { Sfx.chest(); s.chests = c.chestsOpened; this._shakeBy(ARENA.SHAKE_AMP); }
-    // 技能释放总数（循环释放 + 三槽各自释放都走 skillCasts）
-    const casts = c.skillCasts;
-    // ★ 阶段 4-3：放技能 ⟹ 屏震（spec 一-4 三个触发点之一）。
-    //   与音效同源同口径：都是"比对 core 增量"，不再另设一套事件通道。
-    if (casts > s.casts) { Sfx.skill(); s.casts = casts; this._shakeBy(ARENA.SHAKE_AMP); }
+    // 阶段 8-2：原「放技能 → Sfx.skill() + 屏震」这条反馈已随主动技能删除
+    //   （c.skillCasts 不存在了）。⟹ **注意**：这也拿走了「技能 ⟹ 屏震」这条
+    //   spec 一-4 三触发点之一；屏震现在只剩命中已有的其它来源。
     // 受伤：血量比上一帧低（且不是复活那一下填回去的）
     if (c.hp < s.hp - 0.5 && !c.pendingUpgrade) Sfx.hurt();
     s.hp = c.hp;
@@ -4322,6 +4278,41 @@ export class Arena {
     }
   }
 
+  /** 阶段 8：Boss 弹幕雨。世界层、**画在地面之上实体之下** —— 它是"地面预警标记"。 */
+  _renderRain(ctx, c) {
+    if (!c.rain || !c.rain.length) return;
+    const R = ARENA.RAIN_R;
+    for (const p of c.rain) {
+      if (p.phase === 'warn') {
+        // k：0→1 表示"还剩多少时间落下来"
+        const k = p.life > 0 ? Math.min(1, Math.max(0, 1 - p.t / p.life)) : 1;
+        ctx.save();
+        // 橙色而非红色：接触威胁已经是红的一路，预警要能一眼区分出"这是要砸下来的位置"
+        ctx.globalAlpha = 0.22 + 0.20 * k;
+        ctx.fillStyle = '#e08a2e';
+        ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, TAU); ctx.fill();
+        ctx.globalAlpha = 0.50 + 0.40 * k;
+        ctx.strokeStyle = '#e08a2e';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        // ★ 内圈收缩到圆心：把"还剩多久"变成**看得见的长度**，不用玩家去猜进度
+        ctx.globalAlpha = 0.80;
+        ctx.beginPath(); ctx.arc(p.x, p.y, R * (1 - k), 0, TAU);
+        ctx.strokeStyle = 'rgba(255,240,214,0.95)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        const k = Math.max(0, p.hitT / ARENA.RAIN_IMPACT_T);   // 1→0
+        ctx.save();
+        ctx.globalAlpha = 0.70 * k;
+        ctx.fillStyle = '#e8e3da';
+        ctx.beginPath(); ctx.arc(p.x, p.y, R * (0.55 + 0.45 * (1 - k)), 0, TAU); ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+
   /** 阶段 4-7.x：心心（回血掉落）的形状。居中于 (x,y)，半尺寸 s。 */
   _drawHeart(ctx, x, y, s) {
     ctx.save();
@@ -4390,6 +4381,8 @@ export class Arena {
     ctx.translate(w / 2 - this.cam.x + this._shakeX, h / 2 - this.cam.y + this._shakeY);
     this._renderGround(ctx, w, h);
     this._pdone('ground');
+    this._renderRain(ctx, c);
+    this._pdone('rain');
 
     // 经验宝石（合批：一次 fill 画完所有宝石，而不是 N 次 beginPath+arc+fill。
     // 实测宝石是单项最贵的绘制之一，合批后 subpath 共用一次光栅化）
@@ -4551,19 +4544,11 @@ export class Arena {
       ctx.restore();
     }
     this._pdone('shield');
-    // 冻结标记：淡蓝圈画在剪影之上 —— 一眼能看出"这只不动了"
-    if (c.skills.frost) {
-      let any = false;
-      ctx.beginPath();
-      for (const e of c.enemies) {
-        if (!(e.frozen > 0)) continue;
-        ctx.moveTo(e.x + e.r + 4, e.y);
-        ctx.arc(e.x, e.y, e.r + 4, 0, TAU);
-        any = true;
-      }
-      if (any) { ctx.strokeStyle = 'rgba(91,147,214,0.75)'; ctx.lineWidth = 2; ctx.stroke(); }
-    }
-
+    // 阶段 8-2：原「冻结标记」渲染块已删除 —— 霜环没了，e.frozen 再也不会 >0
+    //   （连 `c.skills.frost` 这个判持有本身的字段都不存在了）。
+    //   ⚠ `_pdone('frost')` 这一行**故意保留**：它是渲染剖析表里的一个段位名，
+    //     删掉会让 ?dbg=1 的剖析表少一行、让"每一段都有读数"这条自证出现空洞。
+    //     它量的是"这一段的耗时"，不依赖任何已删除的机制。
     this._pdone('frost');
     // ── 阶段 4-4：Boss 冲锋的**方向提示**（0.5s 前摇期间画出）──
     // ★ 为什么必须画：spec 二-2 说"有 0.5 秒前摇停顿 + 方向提示"。少了这条线，
@@ -4826,41 +4811,10 @@ export class Arena {
     }
 
     this._pdone('floaters');
-    // 冲击波视觉：蓄力 → 爆发两拍
-    const px = c.player.x, py = c.player.y;
-    // ── 蓄力圈：由外向内收拢、逐渐变亮、线越来越粗 ──
-    // 这一拍的意义不只是好看：0.15s 的蓄力如果画面没变化，玩家读到的只是"卡了一下"。
-    // 收拢方向刻意与爆发环**相反**（内收 vs 外扩），一眼就能分清"准备"和"炸了"。
-    if (c.shockChargeT >= 0) {
-      const cp = clamp(c.shockChargeT / ARENA.SHOCKWAVE_CHARGE, 0, 1);
-      const eo = easeOut(cp);
-      const r = ARENA.SHOCKWAVE_RADIUS * (1 - 0.78 * eo);
-      ctx.fillStyle = `rgba(168,154,230,${0.06 + 0.16 * eo})`;
-      ctx.beginPath();
-      ctx.arc(px, py, r * 0.5, 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = `rgba(168,154,230,${0.35 + 0.55 * eo})`;
-      ctx.lineWidth = 2 + 4 * eo;
-      ctx.beginPath();
-      ctx.arc(px, py, r, 0, TAU);
-      ctx.stroke();
-    }
-    // ── 爆发环：三层错相波纹向外扩散（单环看起来只是"画了个圈"，多层才有"冲出去"的动感） ──
-    if (c.shockwaveCastT >= 0) {
-      const prog = clamp(c.shockwaveCastT / ARENA.SHOCKWAVE_FX, 0, 1);
-      for (let i = 0; i < 3; i++) {
-        const q = clamp(prog * 1.35 - i * 0.18, 0, 1);
-        if (q <= 0) continue;
-        ctx.strokeStyle = `rgba(168,154,230,${Math.max(0, (1 - q) * (i === 0 ? 0.95 : 0.45))})`;
-        ctx.lineWidth = i === 0 ? 5 : 2.5;
-        ctx.beginPath();
-        // 半径走 ease-out（先窜出去、再减速）：线性扩张看起来像匀速推开的圈，不像"炸"。
-        ctx.arc(px, py, easeOut(q) * ARENA.SHOCKWAVE_RADIUS, 0, TAU);
-        ctx.stroke();
-      }
-    }
+    // 阶段 8-2：原「冲击波视觉：蓄力圈 → 爆发环两拍」整段渲染已删除 ——
+    //   c.shockChargeT / c.shockwaveCastT 两个字段与它们的 ARENA 时长常量都不存在了。
+    //   ⟹ `px/py`（玩家坐标）仍保留给下面的特效循环用。
 
-    this._pdone('shock');
     // ── 阶段 2 特效（spec §7）：直斩光束 / 霜环 / 闪现残影 / 开箱金光。
     //    全部走 ease-out、全部 ≤ ANIM_MAX，与阶段 1 的动画共用同一条口径。
     for (const f of c.fx) {
@@ -4879,28 +4833,8 @@ export class Arena {
         ctx.lineWidth = Math.max(1, f.w * 0.5 * fade);
         ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(f.len, 0); ctx.stroke();
         ctx.restore();
-      } else if (f.kind === 'frost') {
-        ctx.strokeStyle = `rgba(91,147,214,${fade * 0.8})`;
-        ctx.lineWidth = 4 - 2 * eo;
-        ctx.beginPath();
-        ctx.arc(f.x, f.y, f.r * (0.35 + 0.65 * eo), 0, TAU);
-        ctx.stroke();
-        ctx.fillStyle = `rgba(91,147,214,${fade * 0.10})`;
-        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, TAU); ctx.fill();
-      } else if (f.kind === 'dash') {
-        // 残影 = 路径上 3 个渐淡的自己（ease-out 分布：起步密、末尾稀）。阶段 3：优先画 hero.png。
-        for (let i = 0; i < 3; i++) {
-          const q = easeOut((i + 1) / 4);
-          ctx.globalAlpha = fade * (0.44 - 0.13 * i);
-          const gx = f.x0 + (f.x1 - f.x0) * q, gy = f.y0 + (f.y1 - f.y0) * q;
-          const sz = this._drawEntity(ctx, 'hero', gx, gy, f.r);
-          if (sz && this.skin !== DEFAULT_SKIN && this._skinMasks[this.skin]) {
-            const { dw, dh } = this._entitySize('hero', f.r);
-            ctx.drawImage(this._skinMasks[this.skin], gx - dw / 2, gy - dh / 2, dw, dh);
-          }
-          if (!sz) { ctx.save(); ctx.translate(gx, gy); ctx.fillStyle = COLOR.player; this._playerPath(ctx, f.r); ctx.restore(); }
-        }
-        ctx.globalAlpha = 1;
+      // 阶段 8-2：'frost'（霜环扩散）与 'dash'（闪现残影）两种特效已随技能删除 ——
+      //   fx 队列现在只有 'beam'（直斩光束）与 'chest'（开箱金光）两种。
       } else if (f.kind === 'chest') {
         ctx.strokeStyle = `rgba(214,171,88,${fade})`;
         ctx.lineWidth = 3;
@@ -4915,8 +4849,9 @@ export class Arena {
     // 白闪：一帧级的全屏提亮。用「时长」而不是真·一帧 —— 掉帧时真一帧会整帧看不见。
     // reducedMotion 下跳过（前庭敏感用户保护，与粒子同一条策略）。
     // 注意它在 restore **之后**：白闪铺的是视口而不是世界，放进世界层会跟着相机漂。
+    // 阶段 8-2：归一基由 SHOCKWAVE_FLASH 换成 REVIVE_FLASH —— 白闪现在只剩「复活」这一个来源。
     if (!this.reduced && c.flashT >= 0) {
-      const k = clamp(c.flashT / ARENA.SHOCKWAVE_FLASH, 0, 1);
+      const k = clamp(c.flashT / ARENA.REVIVE_FLASH, 0, 1);
       ctx.fillStyle = `rgba(232,227,218,${0.38 * k})`;
       ctx.fillRect(0, 0, w, h);
     }
@@ -5087,27 +5022,8 @@ export class Arena {
     //   否则下一帧 HUD 那两行 `if (this._f1 !== FONT_BIG)` 会**跳过赋值**，
     //   于是倒计时/血条读数用的是上一次的连击字体（静默的文字错版）。
 
-    // 技能槽：三槽各自显示 持有/就绪/CD（CD 时变灰并显示剩余秒数）。
-    // 未拥有的槽显示"锁"。只在显示文本真的变化时写 DOM：CD 数字一秒只变 10 次，
-    // 每帧写 textContent + classList 会持续触发样式重算，纯浪费。
-    if (this.skillBar) {
-      for (const k of Object.keys(this.skillSlots)) {
-        const el = this.skillSlots[k];
-        const owned = !!c.skills[k];
-        const cd = owned ? c.skillCd(k) : 0;
-        const ready = owned && cd <= 0;
-        const sig = `${owned ? 1 : 0}|${ready ? 1 : 0}|${cd > 0 ? cd.toFixed(1) : ''}`;
-        if (el._sig !== sig) {
-          el._sig = sig;
-          const label = el.querySelector('span');
-          label.textContent = !owned ? '锁' : ready ? (SKILL_SHORT[k] || '—') : cd.toFixed(1);
-          el.classList.toggle('locked', !owned);
-          el.classList.toggle('cd', owned && cd > 0);
-          el.classList.toggle('ready', ready);
-          el.title = owned ? `${SKILL_LABEL[k]}（${SKILL_SLOT_KEYS[k]}）` : '尚未获得';
-        }
-      }
-    }
+    // 阶段 8-2：技能槽的 HUD 刷新整段删除（三槽的 持有/就绪/CD 显示、SKILL_SHORT 单字、
+    //   SKILL_LABEL 悬停文案、"锁" 态 —— 全部消失）。左下角这块交给倍速按钮。
 
     this._pdone('hud');
     // 阶段 3：持有物图标栏（武器/技能/被动，被动带 ×n）。仅签名变化时才重写 DOM。
@@ -5131,13 +5047,13 @@ export class Arena {
   }
 
   /** 阶段 3：持有物图标栏。把"当前带了什么"画成一行 chip，随升级实时刷新。
-   *  武器/技能各占一格（持有即显示），被动按拿过的次数显示 ×n。
+   *  阶段 8-2：原本是**武器/技能**各占一格，技能删除后只剩武器一格 + 被动 ×n。
    *  ★ 只在持有签名变化时才重写 innerHTML：一局里每帧都重写会把这套小 DOM 反复创建、
    *    触发浏览器布局重算，纯浪费（同屏满屏时每帧都在跑）。 */
   _renderInventory(c) {
     const parts = [];
+    // 阶段 8-2：技能胶囊那一行删掉了（图标栏现在**只有武器 + 被动**）。
     for (const w of WEAPONS) if (c.weapons[w.id]) parts.push({ t: 'w', label: w.label });
-    for (const s of SKILLS) if (c.skills[s.id]) parts.push({ t: 's', label: s.label });
     const tally = {};
     for (const id of c.upgradesTaken) tally[id] = (tally[id] || 0) + 1;
     for (const p of PASSIVES) if (tally[p.id]) parts.push({ t: 'p', label: p.label, n: tally[p.id] });
@@ -5178,7 +5094,8 @@ export class Arena {
       `en ${c.enemies.length} gem ${c.gems.length} lv ${c.level} fps ${this._fps}`,
       // 速度 / 死亡动画 / 蓄力态：「人物滑冰停不下来」「怪死了不消失」这类观感问题
       // 全靠这三个读数区分"是动画没走完"还是"状态没被清掉"。
-      `spd ${Math.round(Math.sqrt(c.player.vx ** 2 + c.player.vy ** 2))} dying ${c.deaths.length} chg ${c.shockChargeT >= 0 ? 'Y' : '-'}`,
+      // 阶段 8-2：读数里的 `chg`（冲击波蓄力中）已删除 —— 没有蓄力这一拍了。
+      `spd ${Math.round(Math.sqrt(c.player.vx ** 2 + c.player.vy ** 2))} dying ${c.deaths.length}`,
       `shots ${c.shots} dmg ${c.dmg} mag ${Math.round(c.magnet)}`,
     ];
     // 阶段 6-1：帧耗时剖析 Top6（每帧毫秒 / 占整帧 %）—— 定位渲染瓶颈的那一组读数
@@ -5207,15 +5124,9 @@ export class Arena {
     this._end();
   }
 
-  /** 探针/外部用：释放冲击波（透传到 ArenaCore；阶段 1 的老接口，保留） */
-  shock() {
-    return this.core ? this.core.shockwave() : false;
-  }
-
-  /** 探针/外部用：放一个技能（走循环指针，与真人按键同一条路径） */
-  cast() {
-    return this.core ? this.core.castSkill() : false;
-  }
+  // 阶段 8-2：探针接口 `shock()`（透传 core.shockwave）与 `cast()`（循环放技能）已删除 ——
+  //   它们只是给外部工具"手动放技能"的口子，核心能力没了这个口子就没有对象。
+  //   ⚠ 外部工具（tools/probe-wild.mjs 等）若调用过 arena.cast()，需要同步改成空操作。
 
   /** 探针/演示用：把模拟推进 sec 秒（不渲染）。用于录制时"跳到后期"而不必真等 8 分钟。
    *  走 1/60 的细步长而不是一次性大步长 —— 大步长会让惯性/接触判定失真，
@@ -5232,7 +5143,7 @@ export class Arena {
       // 阶段 6-4：快进同样不阻塞在商栈（自动「下次再来」，与 sim 口径一致）。
       if (this.core.shopOpen) { this.core.resolveShop([]); continue; }
       this.core.step(h, drive && drive.input ? drive.input : { x: 0, y: 0 });
-      if (drive && drive.cast) this.core.castSkill();
+      // 阶段 8-2：原 `if (drive && drive.cast) this.core.castSkill();` 已删除。
     }
     // 快进会让人瞬移上千像素：让相机在下一次绘制时**直接咔到位**，
     // 否则画面会从起点一路平移过去（观感上像"卡了半秒"，录屏尤其难看）。
@@ -5269,3 +5180,13 @@ const SPRITE_RES = 96; // 离屏精灵分辨率（>绘制尺寸，靠降采样�
 const ARENA_KEYS = new Set([
   'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'w', 'a', 's', 'd', 'W', 'A', 'S', 'D',
 ]);
+
+// ── 阶段 9：局内倍速 ──
+// 合法倍速档（循环顺序）。0.5x = 用时间换简单（难度时钟半速、无刷分漏洞）；
+// 1x 默认；2x / 3x = 难度时钟按倍数推进，但表现层（粒子/飘字/闪脉冲/相机）永远按墙上时间。
+export const GAME_SPEEDS = [0.5, 1, 2, 3];
+// 循环到下一档：0.5 → 1 → 2 → 3 → 0.5。
+export function nextGameSpeed(s) {
+  const i = GAME_SPEEDS.indexOf(s);
+  return GAME_SPEEDS[(i + 1) % GAME_SPEEDS.length];
+}

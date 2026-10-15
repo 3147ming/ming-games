@@ -20,8 +20,8 @@
 //   moveBase    绝对移动速度（基础 150），+8 = 略快
 //   magnet      绝对拾取半径（基础 280），+25 = 拾取范围更大
 //   xpMul       经验乘区（初始 1.0），+0.10 = 经验 +10%
-//   cdMul       技能冷却缩减比例（0.10 = 冷却 -10%）
-//   ── 阶段 7 新增 ──
+  // 阶段 8-2：cdMul 字段与「急速」这件装备已删除 —— 见下方 s_haste 位置的说明。
+  //   ── 阶段 7 新增 ──
 //   dmgCut      伤害**削减**比例（0.15 = 伤害 ×0.85）。散射/贯穿用。
 //               ★ 为什么是"削减"而不是"给 dmgBase 加负数"：dmgBase 是乘区基数，
 //                 写 -0.15 在基数被转生/属性树抬到 1.6 之后含义就漂了；
@@ -72,8 +72,11 @@ export const LOADOUT_ITEMS = [
 
   // ── 印记槽（4 件）──
   { id: 's_sage', slot: 'sigil', name: '悟性', desc: '经验 +10%', buff: { xpMul: 0.10 }, unlock: { tier: 0 } },
-  { id: 's_haste', slot: 'sigil', name: '急速', desc: '技能冷却 -10%', buff: { cdMul: 0.10 }, unlock: { tier: 1 } },
-  // 阶段 7 新增 —— 经济向（贪婪）与保险向（重生）
+  // 阶段 8-2：「急速」（技能冷却 -10%）**已删除** —— 它减的是主动技能 CD，而技能没了。
+  //   ★ 为什么是删掉而不是留着：留着就是一件"装备了完全没有效果"的东西，而本项目的硬纪律是
+  //     「三选一/配装里出现没有效果的选项 = 骗玩家的一次选择」。⟹ 印记槽由 4 件收成 3 件。
+  //   ⟹ 补偿不在这里做：若 16 局跑满率因此跌破 14/16，只允许在**被动生存项**上微调，
+  //     不许回补任何技能相关机制（见 README 阶段 8-2）。
   { id: 's_greed', slot: 'sigil', name: '贪婪', desc: '击杀金币 +20%', buff: { goldMul: 0.20 }, unlock: { tier: 2 } },
   { id: 's_rebirth', slot: 'sigil', name: '重生', desc: '每局首次死亡时复活并回复 50% 生命', buff: { revives: 1 }, unlock: { kills: 800 } },
 ];
@@ -86,7 +89,8 @@ export const loadoutItemById = (id) =>
 /** buff 的全零形状 —— loadoutBuffs 每次都返回它的一个新副本（不给返回常量本身）。 */
 function zeroBuffs() {
   return {
-    dmgBase: 0, maxHp: 0, moveBase: 0, magnet: 0, xpMul: 0, cdMul: 0,
+    dmgBase: 0, maxHp: 0, moveBase: 0, magnet: 0, xpMul: 0,
+    // 阶段 8-2：cdMul 已从零值形状里移除（连带「急速」装备删除）。
     dmgCut: 0, shots: 0, pierceN: 0, critRate: 0, lifesteal: 0,
     thorns: 0, goldMul: 0, shieldEvery: 0, revives: 0,
   };

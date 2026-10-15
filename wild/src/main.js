@@ -4,10 +4,10 @@
 //   ?seed=XXX     指定种子（同种子同结果，用于复现某局）
 //   ?dbg=1        画布左下角打印输入/帧率/手感读数
 //   ?pilot=1      开启自动驾驶员（演示 / 无人值守跑满一局）
-//   ?speed=N      每帧补跑 N 个子步（快进；物理口径不变，见 arena.js 注释）
+//   ?speed=N      开局局内倍速初值（N ∈ 0.5/1/2/3；非法值回落 1x；游戏内可用按钮/V 键切换）
 //   ?t=SECONDS   开局先快进 SECONDS 秒（配合 ?pilot=1 用于"直接看后期满屏怪"）
 
-import { Arena, ARENA } from './arena.js';
+import { Arena, ARENA, GAME_SPEEDS } from './arena.js';
 import { Rng, makeSeed } from './rng.js';
 import { pilotDriver } from './pilot.js';
 import { loadMeta, awardSouls, heroCatalog, selectHero, unlockHero,
@@ -45,7 +45,12 @@ const btnStart = document.getElementById('btn-start');
 const btnRetry = document.getElementById('btn-retry');
 
 const usePilot = params.get('pilot') === '1';
-const speedSteps = Math.max(1, Math.min(20, Number(params.get('speed') || 1)));
+// 阶段 9：?speed=N 现在设「开局局内倍速」初值（合法档见 GAME_SPEEDS；非法值回落 1x）。
+//   旧语义（每帧补步快进）已改为游戏内倍速按钮 + V 键；tools 不读 ?speed，故改动无副作用。
+const initSpeed = (() => {
+  const v = Number(params.get('speed') || 1);
+  return GAME_SPEEDS.includes(v) ? v : 1;
+})();
 const jumpSec = Math.max(0, Number(params.get('t') || 0));
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -89,7 +94,7 @@ function startRun() {
     meta,
   });
   if (usePilot) arena.driver = pilotDriver;
-  arena.fastForwardSteps = speedSteps;
+  arena.gameSpeed = initSpeed;
   arena.start();
   // 快进必须在 start() 之后：core 是 start() 里建的。此刻 rAF 还没跑到第一帧，
   // 所以"跳过去"的画面会直接是第一帧 —— 不会先闪一下开局。
@@ -112,7 +117,7 @@ function showResult(res) {
     </div>
     <div class="rs-row">
       <div class="rs-cell"><span class="rs-k">等级</span><span class="rs-v sm">${res.level}</span></div>
-      <div class="rs-cell"><span class="rs-k">冲击波</span><span class="rs-v sm">${res.casts}</span></div>
+      <!-- 阶段 8-2：结算页的「冲击波」格已删除（res.casts 这个读数也一并取消）。 -->
       <div class="rs-cell"><span class="rs-k">拾取宝石</span><span class="rs-v sm">${res.gems}</span></div>
       <div class="rs-cell"><span class="rs-k">出场敌人</span><span class="rs-v sm">${res.spawned}</span></div>
     </div>`;
@@ -382,4 +387,6 @@ renderAcctBadge();
 renderDailyPanel();     // 阶段 7：每日任务面板
 renderAchPanel();       // 阶段 7：成就面板
 if (acctName) acctName.oninput = () => setName(acctName.value);
-titleMeta.textContent = '点「进入荒野」开始 · 拖动屏幕移动，空格放冲击波';
+// 阶段 8-2：原「空格放冲击波」这句操作提示已随技能删除 —— 现在只剩"拖动屏幕移动"一条，
+//   而移动**不需要**再教（摇杆/拖动是玩家自己会做的），所以整句收成一句开局引导。
+titleMeta.textContent = '点「进入荒野」开始 · 拖动屏幕移动，拾取绿色碎片升级';

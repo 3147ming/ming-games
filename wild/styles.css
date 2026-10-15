@@ -234,6 +234,26 @@ button.big:hover { background: #251f33; }
   backdrop-filter: blur(2px);
 }
 .arena-mute.muted { color: var(--paper-dim); border-color: #3a3531; opacity: .7; }
+/* 阶段 9：局内倍速按钮（右下角，原主动技能槽空位）。点击/V 键循环 0.5→1→2→3→0.5。 */
+.arena-speed {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 56;
+  min-width: 46px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: rgba(13,12,11,.55);
+  color: var(--paper);
+  font-family: var(--font);
+  font-size: 14px;
+  letter-spacing: .04em;
+  cursor: pointer;
+  backdrop-filter: blur(2px);
+}
+.arena-speed:active { border-color: var(--flux); }
 .arena-hint {
   position: absolute;
   left: 12px;
@@ -354,54 +374,9 @@ button.big:hover { background: #251f33; }
 .alu-name { font-size: 15px; color: var(--flux); letter-spacing: .04em; }
 .alu-desc { font-size: 11px; color: var(--paper-dim); }
 
-/* 主动技能槽（阶段 3：空格/Q/E 三槽，各自独立释放一个技能） */
-.arena-skillbar {
-  position: absolute;
-  right: 14px;
-  bottom: 16px;
-  display: flex;
-  gap: 8px;
-  z-index: 55;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.skill-slot {
-  width: 50px;
-  height: 50px;
-  border-radius: 12px;
-  border: 2px solid var(--flux);
-  background: #1b1726;
-  color: var(--flux);
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1px;
-  line-height: 1.1;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background .15s ease-out, border-color .15s ease-out, opacity .15s ease-out;
-}
-.skill-slot b {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: .04em;
-  color: var(--paper-dim);
-  opacity: .85;
-}
-.skill-slot span {
-  font-size: 17px;
-  letter-spacing: .04em;
-  color: var(--flux);
-}
-.skill-slot.ready { background: #251f33; box-shadow: 0 0 10px rgba(168,154,230,.35); }
-.skill-slot.cd { border-color: #4a4458; color: #6b6478; background: #16131e; opacity: .7; }
-.skill-slot.cd span { color: #6b6478; }
-.skill-slot.locked { border-color: #3a3531; background: #161412; opacity: .55; }
-.skill-slot.locked b { color: #5a554e; }
-.skill-slot.locked span { color: #5a554e; }
+/* 阶段 8-2：主动技能槽（.arena-skillbar / .skill-slot 及其 ready/cd/locked 三态）已整体删除。
+   屏幕右下角（原 right:14px bottom:16px 那块）由阶段 9 的「局内倍速按钮」.arena-speed 占用 ——
+   它自带容器与样式（见上方 .arena-speed），不复用这里任何一个已删类名。 */
 
 /* ── 标题页元进度面板（解锁 / 启用）── */
 .meta-panel {

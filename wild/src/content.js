@@ -25,7 +25,8 @@
 
 import { ARENA } from './arena.js';
 
-export const CAT_LABEL = { weapon: '武器', skill: '技能', passive: '被动' };
+// 阶段 8-2：技能槽已从游戏移除（冲击波/闪现/霜环连同其强化项全部删除），只剩武器 + 被动两类。
+export const CAT_LABEL = { weapon: '武器', passive: '被动' };
 
 // ── 抽取权重 ──
 // ★ 新东西的权重刻意最高：否则前期会被一堆纯数值项挤掉，
@@ -46,23 +47,20 @@ export const WEAPONS = [
   { id: 'sword', label: '剑', desc: '斩出飞行的穿透剑气（可进化为扇形 / 环绕形态）', start: false },
 ];
 
-// ───────── 技能池（初始只有冲击波） ─────────
-export const SKILLS = [
-  // ★ 阶段 4-9：三个技能的 desc 全部改成**保命/控制**口径 —— 文案是最容易被漏掉的
-  //   一处"降格"：玩家从三选一里读到"炸开一圈扫开近身之敌"，就会期待它是输出手段。
-  { id: 'shockwave', label: '环形冲击波', desc: '蓄力后炸开一圈，把贴脸的怪推开（保命解围，不是输出）', start: true },
-  { id: 'dash', label: '闪现冲刺', desc: '朝移动方向瞬移，途中无敌（撞伤只有 3，不是收割手段）', start: false },
-  { id: 'frost', label: '霜环', desc: '冻住周围 120px 的敌人 1.5 秒 —— 纯控制，零伤害', start: false },
-];
-/** 主动技能的循环顺序（"按一下放下一个"的次序）。 */
-export const SKILL_ORDER = ['shockwave', 'dash', 'frost'];
-/** 技能按钮上的单字（放不下全名）。 */
-export const SKILL_SHORT = { shockwave: '波', dash: '闪', frost: '霜' };
-/** id → 全名（按钮 title / 调试读数用）。在 content.js 里就地算好：
- *  arena.js 若在自己的顶层读 SKILLS 来推导，就会踩到循环引用的求值期 TDZ。 */
-export const SKILL_LABEL = Object.fromEntries(SKILLS.map((s) => [s.id, s.label]));
-/** 主动技能槽 → 键位标签（HUD 显示用）。阶段 3：空格/Q/E 三槽各绑一个固定技能。 */
-export const SKILL_SLOT_KEYS = { shockwave: '空格', dash: 'Q', frost: 'E' };
+// ───────── 技能池 · 已于阶段 8-2 整体移除 ─────────
+//
+// 主动技能（冲击波 / 闪现 / 霜环）连同"每 3 级技能向保底"的整套机制已**从游戏里完全删除**。
+// 理由（用户已确认"没必要存在"）：三个技能在阶段 4-9 降格之后既不负责输出也不负责保命 ——
+//   冲击波 3.75 伤 < 最小怪血 4（打不死任何东西）、半径上限 190 < 半屏宽 195（扫不出一片）、
+//   闪现撞伤 3 / 无敌 0.18s、霜环零伤害。它们唯一的实际作用是**占住三个输入键和一个触屏角落**。
+// ⟹ 输出与保命全交给四把武器 + 被动池；触屏左下角腾出的空间留给倍速按钮（见阶段 8 联动）。
+//
+// ★ 删除清单（回退请按此重塑）：SKILLS / SKILL_ORDER / SKILL_SHORT / SKILL_LABEL /
+//   SKILL_SLOT_KEYS / skillOffers（解锁 dash·frost + 9 条 ks_/kd_/kf_ 技能强化）/
+//   UP_DEFS 里的 ks_* kd_* kf_* / SKILL_TIER_CADENCE / SPECIAL_EFFECTS / isSkillFlavored /
+//   hero.skill 字段。核心侧对应：this.skills / skShock / skDash / skFrost / castSkill /
+//   shockwave() / dashCast() / frostCast() / skillOrder / skillReady / skillCd / nextSkill /
+//   空格·Q·E 键位 / 触屏 .arena-skillbar 三槽 / 图标栏技能胶囊 / killSrc.shockwave·dash 桶。
 
 // ───────── 被动池（原有 6 项 + 新增 4 项） ─────────
 // 每项都有上限：封顶后从池子里剔除，不让玩家"选了没反应"。
@@ -71,7 +69,8 @@ export const SKILL_SLOT_KEYS = { shockwave: '空格', dash: 'Q', frost: 'E' };
 export const PASSIVES = [
   // ★ 阶段 5.1：伤害类被动改为**全局乘区**（走 c.gUpMul，最终折进 gDmgMul）。
   //   原来是 `c.dmg += 1`（只给投射物），现在是"所有武器伤害 ×1.12" —— 一份升级惠及 4 把武器。
-  { id: 'dmg', label: '伤害 +12%', desc: '全局伤害提高 12%（所有武器/技能/剑气）', max: 10, weight: 2.4,
+  // 阶段 8-2：desc 里的「技能」二字已删 —— 没有技能了，文案留着就是向玩家承诺一个不存在的能力。
+  { id: 'dmg', label: '伤害 +12%', desc: '全局伤害提高 12%（所有武器与剑气）', max: 10, weight: 2.4,
     apply(c) { c.gUpMul *= 1.12; } },
   { id: 'move', label: '移速 +15%', desc: '移动速度提高 15%', max: 6, weight: 2.2,
     // ★ 阶段 5：写累加器而不是直接写 `moveSpeed *= 1.15`。理由 —— moveSpeed 现在是
@@ -96,12 +95,12 @@ export const PASSIVES = [
   // ── 阶段 2 新增 ──
   { id: 'hp', label: '最大血 +15', desc: '血量上限 +15，并立刻补上这 15 点', max: 6, weight: 2.2,
     apply(c) { c.maxHp += 15; c.hp = Math.min(c.maxHp, c.hp + 15); } },
-  { id: 'cd', label: '技能冷却 -15%', desc: '所有主动技能冷却缩短 15%', max: 5, weight: 2.4,
-    apply(c) { c.cdMul = Math.max(ARENA.SKILL_CD_MUL_MIN, c.cdMul * 0.85); } },
+  // 阶段 8-2：`cd`（技能冷却 -15%）与 `knock`（击退 +40%）两条被动**一并删除**。
+  //   它们的乘区 cdMul / knockMul 在项目里**只有**三个主动技能在读（技能 CD 与冲击波击退），
+  //   技能一撤，这两项就变成"选了没反应"的空选项 —— 而"三选一里出现没有效果的选项是在骗
+  //   玩家的一次选择"是本项目的硬纪律。⟹ 宁可少两条被动，也不留两个死旋钮。
   { id: 'pspd', label: '弹速 +25%', desc: '投射物飞得更快', max: 4, weight: 1.8,
     apply(c) { c.projSpeed *= 1.25; } },
-  { id: 'knock', label: '击退 +40%', desc: '冲击波的推开距离增强', max: 4, weight: 1.6,
-    apply(c) { c.knockMul += 0.4; } },
 
   // ── 阶段 3 新增（被动池 10 → 14）──
   // 这四条各自新增一个 core 字段（armor / xpMul / regenRate / thorn），默认值都恒等（0 / 1），
@@ -117,7 +116,9 @@ export const PASSIVES = [
 ];
 
 /** 宝箱在「新武器/新技能都拿满了」时才给的"高品被动"。 */
-export const RARE_PASSIVES = ['hp', 'cd', 'knock', 'pspd'];
+// 阶段 8-2：'cd' / 'knock' 两条被动已随主动技能删除（它们的乘区没了消费者），
+//   稀有被动因此收成 2 条。
+export const RARE_PASSIVES = ['hp', 'pspd'];
 
 // ───────── offer 构造 ─────────
 /**
@@ -137,21 +138,23 @@ function offer(o) {
 
 const passiveOffers = PASSIVES.map((p) => offer({ ...p, cat: 'passive' }));
 
-/** 解锁一件新武器 / 新技能。 */
+/**
+ * 解锁一件新武器。
+ * ★ 阶段 8-2：原本还有 `kind === 'skill'` 那一支（解锁 dash / frost，`c.skills[id] = true; c.initSkill(id)`）。
+ *   技能整体删除后这条函数只被武器调用，所以把 skill 分支与 `s_` 前缀一起删掉 ——
+ *   留着它就是"一个永远走不到的分支"，而分支里的 `c.skills` / `c.initSkill` 连字段都不存在了。
+ */
 function unlockOffer(kind, id, label, desc) {
   return {
-    id: `${kind === 'weapon' ? 'w' : 's'}_${id}`,
+    id: `w_${id}`,
     cat: kind, unlock: true, weight: W_UNLOCK, max: 1,
     label, desc,
-    avail(c) { return kind === 'weapon' ? !c.weapons[id] : !c.skills[id]; },
-    apply(c) {
-      if (kind === 'weapon') { c.weapons[id] = true; c.initWeapon(id); }
-      else { c.skills[id] = true; c.initSkill(id); }
-    },
+    avail(c) { return !c.weapons[id]; },
+    apply(c) { c.weapons[id] = true; c.initWeapon(id); },
   };
 }
 
-/** 已持有武器/技能的强化项。 */
+/** 已持有武器的强化项。 */
 function upOffer(cat, id, label, desc, weight = W_UP) {
   return offer({ cat, id, label, desc, weight });
 }
@@ -178,28 +181,9 @@ const weaponOffers = [
   upOffer('weapon', 'ws_cd', '剑 · 间隔 -0.15s', '挥剑更频繁（下限 0.5s）'),
 ];
 
-const skillOffers = [
-  unlockOffer('skill', 'dash', '新技能 · 闪现冲刺', '瞬移一段，途中无敌并撞伤敌人'),
-  unlockOffer('skill', 'frost', '新技能 · 霜环', '冻住周围的敌人，让他们动不了'),
+// 阶段 8-2：skillOffers（解锁 dash/frost + 9 条 ks_/kd_/kf_ 技能强化）已随主动技能整体删除。
 
-  // ★★ 阶段 4-9：**技能强化里不存在"伤害"这条轴**。
-  //   原来两条伤害类（`ks_dmg +12 × 5`、`kd_dmg +8 × 5`）直接换成保命类：
-  //   冲击波 → **击退距离**（spec §一-3 的主效果）、闪现 → **无敌窗口**（spec §三-2 的全部价值）。
-  //   这不是"顺手改文案"：实测里 `ks_dmg` 一个人就贡献了冲击波 69.3% 击杀里的大头。
-  //   其余六条保留各自的轴（范围 / 时长 / CD），但**全部加了硬上限**，且
-  //   **层数 × 增量 = 恰好顶到上限**（tests 逐条断言）—— 上限住在 ARENA，不在这里抄一份。
-  upOffer('skill', 'ks_radius', '冲击波 · 半径 +10', '炸开的范围更大（上限 190，不到整屏）'),
-  upOffer('skill', 'ks_knock', '冲击波 · 击退 +60', '把贴脸的怪推得更远 —— 这才是它的主效果'),
-  upOffer('skill', 'ks_cd', '冲击波 · CD -1.0s', '冷却更短（最多砍半到 4 秒）'),
-  upOffer('skill', 'kd_dist', '闪现 · 距离 +40', '冲得更远'),
-  upOffer('skill', 'kd_invuln', '闪现 · 无敌 +20ms', '无敌窗口更长（这是闪现的全部价值）'),
-  upOffer('skill', 'kd_cd', '闪现 · CD -0.75s', '冷却更短（最多砍半到 3 秒）'),
-  upOffer('skill', 'kf_radius', '霜环 · 范围 +10', '冻住更大一圈（上限 150）'),
-  upOffer('skill', 'kf_dur', '霜环 · 时长 +0.5s', '冻得更久'),
-  upOffer('skill', 'kf_cd', '霜环 · CD -1.25s', '冷却更短（最多砍半到 5 秒）'),
-];
-
-// 武器/技能强化项的"门槛 + 落地"逐个补齐（放在这里是为了让资质判据与 ARENA 常量
+// 武器强化项的"门槛 + 落地"逐个补齐（放在这里是为了让资质判据与 ARENA 常量
 // 一眼对得上：改数值时这两处最容易被忘掉）。
 //
 // ★ 阶段 4-5：`w` 是"这条强化属于哪把武器"。它同时干两件事 ——
@@ -235,33 +219,11 @@ const UP_DEFS = {
   ws_cd: { w: 'sword', max: 5, more: (c) => c.weapons.sword && c.wlvlUp('sword') && c.sword.interval > ARENA.SWORD_MIN_CD + 1e-9,
     apply: (c) => { c.sword.interval = Math.max(ARENA.SWORD_MIN_CD, c.sword.interval - 0.15); } },
 
-  // ── 技能强化（阶段 4-9 重写：全部落在保命 / 控制轴，且每条都顶到自己的硬上限）──
-  // ★ 为什么 4-7 的降格没生效：它只砍了 ARENA 的**基础值**，而这里的
-  //   `ks_dmg +12 × 5 层` 会把有效伤害堆回 75、`ks_radius +40 × 4 层` 把有效半径堆到 376
-  //   ⟹ 玩家实测「还是大范围秒杀」。实测证据（16 局官方 sim）：技能占 **69.3%** 的击杀。
-  // ⟹ 本版纪律：① 技能**没有伤害升级轴**；② 范围/击退/时长/CD 全部封顶；
-  //   ③ 增量按「（上限 − 基础）÷ 层数」反推，所以**拿满恰好触底/触顶**，不早不晚。
-  ks_radius: { max: 3, more: (c) => !!c.skills.shockwave && c.skShock.radius < ARENA.SHOCKWAVE_R_MAX - 1e-9,
-    apply: (c) => { c.skShock.radius = Math.min(ARENA.SHOCKWAVE_R_MAX, c.skShock.radius + 10); } },
-  ks_knock: { max: 5, more: (c) => !!c.skills.shockwave && c.skShock.knock < ARENA.SHOCKWAVE_KNOCK_MAX - 1e-9,
-    apply: (c) => { c.skShock.knock = Math.min(ARENA.SHOCKWAVE_KNOCK_MAX, c.skShock.knock + 60); } },
-  ks_cd: { max: 4, more: (c) => !!c.skills.shockwave && c.skShock.cdBase > ARENA.SHOCK_MIN_CD + 1e-9,
-    apply: (c) => { c.skShock.cdBase = Math.max(ARENA.SHOCK_MIN_CD, c.skShock.cdBase - 1.0); } },
-  kd_dist: { max: 4, more: (c) => !!c.skills.dash, apply: (c) => { c.skDash.dist += 40; } },
-  kd_invuln: { max: 4, more: (c) => !!c.skills.dash && c.skDash.invuln < ARENA.DASH_INVULN_MAX - 1e-9,
-    apply: (c) => { c.skDash.invuln = Math.min(ARENA.DASH_INVULN_MAX, c.skDash.invuln + 0.02); } },
-  kd_cd: { max: 4, more: (c) => !!c.skills.dash && c.skDash.cdBase > ARENA.DASH_MIN_CD + 1e-9,
-    apply: (c) => { c.skDash.cdBase = Math.max(ARENA.DASH_MIN_CD, c.skDash.cdBase - 0.75); } },
-  kf_radius: { max: 3, more: (c) => !!c.skills.frost && c.skFrost.r < ARENA.FROST_R_MAX - 1e-9,
-    apply: (c) => { c.skFrost.r = Math.min(ARENA.FROST_R_MAX, c.skFrost.r + 10); } },
-  kf_dur: { max: 3, more: (c) => !!c.skills.frost && c.skFrost.dur < ARENA.FROST_MAX_DUR - 1e-9,
-    apply: (c) => { c.skFrost.dur = Math.min(ARENA.FROST_MAX_DUR, c.skFrost.dur + 0.5); } },
-  kf_cd: { max: 4, more: (c) => !!c.skills.frost && c.skFrost.cdBase > ARENA.FROST_MIN_CD + 1e-9,
-    apply: (c) => { c.skFrost.cdBase = Math.max(ARENA.FROST_MIN_CD, c.skFrost.cdBase - 1.25); } },
+  // 阶段 8-2：技能强化（ks_/kd_/kf_ 九条）已随主动技能整体删除 —— 三选一池里不再有任何 'skill' 类目。
 };
 // Object.assign 而不是重写对象：offer() 合成的那个 `avail` 读的是 **this.max / this.more**，
 // 所以补上 max / more 之后它自动就对了 —— 不需要再抄一份判据（抄就会漂）。
-for (const o of [...weaponOffers, ...skillOffers]) {
+for (const o of [...weaponOffers]) {
   const d = UP_DEFS[o.id];
   if (d) Object.assign(o, d);
   else if (!o.unlock) throw new Error(`强化项 ${o.id} 缺 UP_DEFS 定义`);
@@ -269,20 +231,20 @@ for (const o of [...weaponOffers, ...skillOffers]) {
 
 /**
  * 完整 offer 池。**顺序即 id 契约**，测试按 id 断言。
- * 池子的组成顺序刻意是「被动 → 新武器 → 武器强化 → 新技能 → 技能强化」：
- * 与 spec §4 列出的五类一一对应，便于肉眼核对"少了一类没有"。
+ * 阶段 8-2：池子从「被动 → 新武器 → 武器强化 → 新技能 → 技能强化」五类收成
+ * 「**被动 → 新武器 → 武器强化**」三类 —— 技能那两类已随主动技能整体消失。
+ * ⟹ 新断言（取代旧的"技能占比<15%"）：**池里不存在 any cat==='skill' 的项**。
  */
 export const OFFERS = [
-  ...passiveOffers, ...weaponOffers, ...skillOffers,
+  ...passiveOffers, ...weaponOffers,
 ];
 
 /** 按 id 查 offer（宝箱发奖 / 测试都用它）。 */
 export const offerById = (id) => OFFERS.find((o) => o.id === id) || null;
 
-/** 调试/结算用：把 core 当前持有的武器与技能读成字符串数组。 */
+/** 调试/结算用：把 core 当前持有的武器读成字符串数组（阶段 8-2：技能字段已随主动技能移除）。 */
 export const ownedIds = (c) => ({
   weapons: Object.keys(c.weapons).filter((k) => c.weapons[k]),
-  skills: Object.keys(c.skills).filter((k) => c.skills[k]),
 });
 
 // ───────── 阶段 5：长期成长（localStorage 持久化）─────────
@@ -414,36 +376,14 @@ export const UPGRADABLE_LINES = GROWTH_LINES;
 //   其护栏是「首次升级<20s / 最长升级空档 ≤45s」，实测 16/16 达成、
 //   等级在 62.9s 到 Lv.10、361.9s 到 Lv.30。**每 3 级一次会把 10 次决策压成 3 次**，
 //   中期的 build 成型度会明显塌方，而且会连带改变等级曲线的观感（每 90 秒才长一次）。
-//   ⟹ **保留"每级一次"作为主节奏**（它已经超额达成 spec 的"6 分钟内有感知"），
-//     把「每 3 级」落成一条**保底强保**：每逢 3 的倍数那一级的三选一里，
-//     **必定含一张「主动技能强化」或「特殊效果」牌**（见 SKILL_TIER_CADENCE）。
-//     这样 spec 想要的"每 3 级必有一次技能向的确定性选择"这个**体验目标**拿到了，
-//     而不用动已经标定好的升级节奏。纯数值被动不会再连着三张糊满整个弹窗。
-//
-// 三类牌的来源全部复用既有 OFFERS（不新建状态机、不新增伤害来源）：
-//   主动技能强化 → content.js 里 9 条 upOffer('skill', ...)（ks_/kd_/kf_ 三系）
-//   特殊效果     → 新增 6 条 SPECIAL_EFFECTS（见下）
-//   被动属性提升 → 既有 passiveOffers（14 项）
-export const SKILL_TIER_CADENCE = 3;   // 每 3 级的三选一保底含一张技能向牌
-
-/** 6 张「特殊效果」牌（阶段 7 新增）—— 全部确定性、全部走既有字段、不新增伤害来源。
- *  与「被动属性提升」的区别：这三类是**规则型**效果（有条件、有触发、有机制），
- *  而被动池里那些都是无条件加算。玩家在牌面上能直接读到"它在什么条件下生效"。 */
-export const SPECIAL_EFFECTS = [
-  { id: 'sp_burn', label: '灼烧', desc: '击杀的敌人留下 1.5 秒灼烧区，持续掉血（每秒 3）', kind: 'special' },
-  { id: 'sp_haste', label: '急袭', desc: '血量越低伤害越高：每损失 10% 生命，伤害 +6%（上限 +42%）', kind: 'special' },
-  { id: 'sp_thick', label: '厚甲', desc: '每次受击后 2 秒内免疫接触伤害的 50%', kind: 'special' },
-  { id: 'sp_chain', label: '连锁', desc: '投射物命中后弹向附近另一只敌人（每道弹 1 次）', kind: 'special' },
-  { id: 'sp_magnet', label: '夺魂', desc: '击杀时把范围内的宝石立刻拉向自己', kind: 'special' },
-  { id: 'sp_riposte', label: '反击', desc: '受击时对攻击者造成 30% 伤害（每 0.5 秒最多一次）', kind: 'special' },
-];
-
-/** 判定某张牌是不是"技能向"（主动技能强化 or 特殊效果）—— 三级保底用它。 */
-export function isSkillFlavored(id) {
-  if (SPECIAL_EFFECTS.some((e) => e.id === id)) return true;
-  const o = OFFERS.find((x) => x.id === id);
-  return !!o && o.cat === 'skill';
-}
+//   ⟹ **保留"每级一次"作为主节奏**（它已经超额达成 spec 的"6 分钟内有感知"）。
+//     ★ 阶段 8-2：原先挂在"每 3 级"上的那条**技能向保底**（SKILL_TIER_CADENCE +
+//       isSkillFlavored + SPECIAL_EFFECTS）已随主动技能整体删除 —— 它保证的是
+//       "每隔几级必有一张技能牌"，而这个目标随技能消失不再存在。
+//       三类来源里「主动技能强化」删除，「特殊效果」6 张从未真正进池（不在 OFFERS 里），
+//       一并删除以免留下不可达的死配置。三选一现在纯粹是「被动 / 新武器 / 武器强化」。
+//   ⟹ 副作用很小：pool 里只剩纯数值项时"连着三张被动"的概率确实回来了，
+//      但这是"输出与保命全走武器+被动"这条口径的直接后果，用户已确认。
 
 // ───────── 阶段 4-5：超武进化 ─────────
 //
@@ -499,16 +439,18 @@ export const WEAPON_OF_UP = Object.fromEntries(
 //
 // ★ cost 走的是 meta.js 同一套 localStorage（meta.heroes），不是新开一套存档：
 //   "灵魂"这一种货币只该有一个账本。
+// 阶段 8-2：三个角色的 `skill` 开局字段已移除（原为 shockwave / shockwave / frost）。
+//   ⟹ gale 的 desc 里"霜环开局"这句必须跟着改：文案里留着技能名等于向玩家承诺一个不存在的能力。
 export const HEROES = [
-  { id: 'wanderer', label: '流浪者', tag: '均衡', weapon: 'projectile', skill: 'shockwave',
+  { id: 'wanderer', label: '流浪者', tag: '均衡', weapon: 'projectile',
     hpMul: 1, dmgMul: 1, moveMul: 1, atkMul: 1, cost: 0,
     desc: '标准体魄。投射物开局，什么都不偏，也什么都不缺。' },
-  { id: 'bulwark', label: '重壳守卫', tag: '重装', weapon: 'orbit', skill: 'shockwave',
+  { id: 'bulwark', label: '重壳守卫', tag: '重装', weapon: 'orbit',
     hpMul: 1.5, dmgMul: 0.8, moveMul: 0.9, atkMul: 1, cost: 14,
     desc: '血 +50%、攻击 −20%、移速 −10%。环绕刃开局，靠贴身磨。' },
-  { id: 'gale', label: '疾风行者', tag: '敏捷', weapon: 'projectile', skill: 'frost',
+  { id: 'gale', label: '疾风行者', tag: '敏捷', weapon: 'projectile',
     hpMul: 0.7, dmgMul: 1, moveMul: 1.2, atkMul: 1.15, cost: 18,
-    desc: '移速 +20%、血 −30%、攻速 +15%。霜环开局，靠拉开距离。' },
+    desc: '移速 +20%、血 −30%、攻速 +15%。没有主动技能兜底，全靠步幅把距离拉开。' },
 ];
 
 /** 按 id 查角色。**找不到就回退流浪者** —— 存档里塞了乱 id 也不能开局崩。 */
@@ -557,40 +499,40 @@ export const CLASS_PASSIVES = {
 /** 某职业的专属被动（没有就是 null —— 加新职业忘了配也不会崩）。 */
 export const classPassiveOf = (heroId) => CLASS_PASSIVES[heroId] || null;
 
-// ───────── 阶段 5 · B2 技能变体 + B3 专属武器强化 ─────────
+// ───────── 阶段 5 · B3 专属武器强化（B2 技能变体已于阶段 8-2 删除）─────────
 //
 // ⚠ 同样请注意：本表随 B1 一起重建，数值可换、口径不变。改数不需要动 core 逻辑。
 //
-// ★ B2 的设计约束：三个变体必须是**三种不同的机制**，不能是"同一套控制换个数字"。
-//   如果三者都是"更大/更久/更频繁"，玩家只会记住"数值不同"，职业身份照样立不起来。
-//   所以各挑一条单点：
-//     流浪者 → **定身**（完全不动，纯粹的开路）
-//     重壳守卫 → **减速场**（在地上留一块区域，重装惯有的"占住地面"）
-//     疾风行者 → **解冻残留**（冻完之后还黏着你，把"拉开距离"变成可持续动作）
-//   三者都落在同一套 debuff 基础设施（e.stun / e.slowT / slowZones）上，
-//   没这个 perk 的职业 ⟹ 那些字段恒为 0 ⟹ 行为逐比特不变。
-//
-// ★ B3 同理：强化的是**本命武器**（职业开局就有的那把），且三者互不重叠：
+// ★ B3 的设计约束：强化的是**本命武器**（职业开局就有的那把），且三者互不重叠：
 //     流浪者 → 投射物**穿透**（打穿一排）
-//     重壳守卫 → 环绕刃**对被控目标增伤**（和它自己的减速场形成"先控再磨"）
+//     重壳守卫 → 环绕刃**对硬目标（精英 / Boss）增伤**（重装惯有的"啃硬骨头"）
 //     疾风行者 → 投射物**更快更远**（隔着一整个屏幕点名）
 //   → gale 与 wanderer 共用 projectile，但两条口子完全不冲突（一个动射程手感，一个动命中方式）。
+//
+// ★ 阶段 8-2：每个角色的 perks 原本是 **skill（主动技能强化）+ weapon（武器强化）** 两支，
+//   前者三个 perk 全部挂在已删除的冲击波/霜环上（破阵定身 / 地裂减速场 / 寒潮残留减速），
+//   随技能一并移除，只保留 weapon 支。⟹ 失去的这部分"角色辨识度"属于本次口径的直接后果，
+//   若 16 局 sim 跑满率跌破 14/16，只允许在**被动生存项**上补，不许回补技能
+//   （见 README 阶段 8-2 的补偿记录）。
+//
+// ★ 二阶连带（本次一并处理，避免留下"配了却没效果"的空 perk）：
+//   重壳守卫「重刃」的原判据「被控目标」依赖的正是上面那三个写入端 ⟹ 恒不成立。
+//   判据改成「精英 / Boss」，**数值 0.25 一字未动**（详见 arena.js `_isHeavyTarget`）。
 export const CLASS_PERKS = {
+
   wanderer: {
-    skill: { id: 'shockwave', label: '破阵', desc: '冲击波命中的敌人额外定身 0.5 秒',
-      stun: 0.5 },
     weapon: { id: 'projectile', label: '连珠', desc: '投射物可穿透 1 个目标后继续飞行',
       pierceN: 1 },
   },
   bulwark: {
-    skill: { id: 'shockwave', label: '地裂', desc: '冲击波原地留下一段减速场（zoneR 是冲击波半径的倍率）',
-      zoneDur: 2.2, zoneR: 0.6, zoneK: 0.55 },
-    weapon: { id: 'orbit', label: '重刃', desc: '环绕刃对被减速/定身的目标伤害 +25%',
-      ctrlBonus: 0.25 },
+    // ★ 阶段 8-2 改判据：`ctrlBonus`（对被控目标 +25%）→ `heavyBonus`（对硬目标 +25%）。
+    //   被控的三个写入端（破阵定身 / 霜环冻结 / 地裂减速场）全随主动技能删除 ⟹
+    //   原判据恒不成立 ⟹ 这就是一条"配了却没效果"的空 perk。改成**精英 / Boss** 后
+    //   触发条件重新可达，**数值一字未动**（仍是 +25%）。
+    weapon: { id: 'orbit', label: '重刃', desc: '环绕刃对精英 / Boss 伤害 +25%',
+      heavyBonus: 0.25 },
   },
   gale: {
-    skill: { id: 'frost', label: '寒潮', desc: '霜环解冻后残留一段减速（不是解了就没事）',
-      chillDur: 1.2, chillK: 0.6 },
     weapon: { id: 'projectile', label: '疾影', desc: '投射物弹速 +25%、有效射程 +15%',
       speedMul: 1.25, reachMul: 1.15 },
   },

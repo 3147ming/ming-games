@@ -5,8 +5,9 @@
 //      结论无法复跑，也无法在 CI 里守着；
 //   ② 演示视频 —— 需要一段能稳定推进到"满屏怪"的画面，而不是等人手气好。
 //
-// 口径：只**读** core 的公开状态，决策结果交回调用方执行（castSkill / chooseUpgrade
-// 都由调用方调）。因此「同种子 + 同帧序列 ⟹ 同结果」这条可复现性成立。
+// 口径：只**读** core 的公开状态，决策结果交回调用方执行（chooseUpgrade 由调用方调）。
+// 因此「同种子 + 同帧序列 ⟹ 同结果」这条可复现性成立。
+// 阶段 8-2：决策输出从 { input, cast, pick } 收成 { input, pick }（技能已移除，没有可放的）。
 //
 // 算法：**候选方向前探**（steering），不是"力的合成"。
 // 第一版写的是力合成（逃离向量 + 切向 + 回中），它有一个致命盲区：
@@ -112,7 +113,7 @@ const LOW_HP_FRAC = 0.5;               // 血量低于上限的此比例即视�
 //     90 血时恒成立 ⟹ 后半局等于不捡东西，升级空档反而从 38.5s 涨到 53.3s（实测）。
 //     "两下致死"这个口径才既能挡住精英重壳的一击 77，又不会让普通重壳把战利品全关掉。
 const LETHAL_HITS = 1.8;               // 附近最大接触伤害 × 此倍数 ≥ 当前血量 ⟹ 视为致命
-const LETHAL_R = 260;                  // 多近算"挡在路上"（与 CAST_R 同量级：一个身位+一步）
+const LETHAL_R = 260;                  // 多近算"挡在路上"（同量级：一个身位+一步）
 // ★ 驾驶员**必须**会去捡宝石，否则它给出的所有平衡读数都是残的。
 //   真人是看着宝石走的；一个只躲怪、从不捡东西的驾驶员，会把"经验收入"压到
 //   真实值的一半以下 —— 于是你会去调 XP 曲线，而真正该修的是驾驶员。
@@ -128,12 +129,11 @@ const LETHAL_R = 260;                  // 多近算"挡在路上"（与 CAST_R �
 //   所以 45 的权重只在"前面基本安全"时起作用 —— 有东西挡路时照样让开。
 //   ⟹ 它测的是"玩家一直在跑"这条最坏情况下的可见同屏，不是"驾驶员会不会撞死"。
 const HEADING_W = 45;
-const CAST_AT = 2;                     // 圈里有这么多敌人时就放技能
-const CAST_R = 260;                    // 上面那个"圈"的半径
-// ★ 门槛从 4 只降到 2 只：写 4 的时候，前 5 分钟**一次技能都放不出来**
-//   （实测 302s 时同屏只有 1~4 只，凑不齐 4 只聚在 260px 内），
-//   于是"技能系统有没有参加工作"这条在浏览器里根本验不到、录屏也拍不到。
-//   真人的习惯是"有怪靠近就按"，不是"攒到 4 只再炸"。
+// 阶段 8-2：CAST_AT / CAST_R 已随 pilotSkill 删除（它们只服务于"要不要放技能"这个判据）。
+
+// ★ 阶段 8-2 注：这里原本紧跟着 CAST_AT / CAST_R（"圈里聚了几只怪才放技能"）与一段
+//   "门槛从 4 只降到 2 只"的调参记录。技能整体删除后那组常量与它的调参史一并删除 ——
+//   没有可放的东西，也就不存在"攒到几只再按"的问题。
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
@@ -143,20 +143,22 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
  *
  * 顺序的讲究：**新东西排在最前**。驾驶员的偏好不会改变玩家看到的池子，
  * 但它决定了模拟器里那局的成长曲线长什么样 —— 若让它一路堆数值，
- * 「武器/技能系统有没有真的参加工作」这条就测不出来。
+ * 「武器系统有没有真的参加工作」这条就测不出来。
+ * ★ 阶段 8-2：原文写的是「武器/技能系统」，技能整体删除后这里只钉武器侧。
  */
 const PICK_ORDER = [
-  // 新武器 / 新技能（阶段 5：加入第 4 把武器「剑」—— 不登记的话 rank() 会给它 99，
+  // 新武器（阶段 5：加入第 4 把武器「剑」—— 不登记的话 rank() 会给它 99，
   //   驾驶员会**解锁了却永远不养**，剑就以裸数据占位，把整局的成长曲线拖下来）
-  'w_orbit', 'w_laser', 'w_sword', 's_dash', 's_frost',
+  // ★ 阶段 8-2：原 `s_dash` / `s_frost`（新技能）与 `ks_*` / `kd_*` / `kf_*`（技能强化）
+  //   整段已随主动技能删除 —— 它们连 offer 都不存在了，rank() 会给 99（即"不认识"），
+  //   留着只是两条永远匹配不上的死字符串。被动里的 `cd`（技能冷却）/ `knock`（击退）同理删除。
+  'w_orbit', 'w_laser', 'w_sword',
   // 武器强化
   'wo_count', 'wp_shots', 'wl_cd', 'wl_dmg', 'wp_dmg', 'wo_dmg', 'wl_width', 'wp_cd',
   // 阶段 5：剑的三轴（道数优先 —— 它是唯一能改变"一次斩出几道"的轴，也是对总输出最敏感的一条）
   'ws_count', 'ws_dmg', 'ws_cd',
-  // 技能强化
-  'ks_radius', 'kd_dist', 'kf_dur', 'ks_knock', 'ks_cd', 'kd_invuln', 'kd_cd', 'kf_radius', 'kf_cd',
   // 被动
-  'dmg', 'multi', 'atk', 'hp', 'cd', 'move', 'magnet', 'pspd', 'knock', 'regen',
+  'dmg', 'multi', 'atk', 'hp', 'move', 'magnet', 'pspd', 'regen',
 ];
 const rank = (id) => { const k = PICK_ORDER.indexOf(id); return k < 0 ? 99 : k; };
 
@@ -241,23 +243,13 @@ export function pilotPick(core) {
   return best;
 }
 
-/**
- * 是否该放技能。判据只有一条：**循环指针指向的下一个技能冷却好了，且圈里聚了怪**。
- * 放哪一个由 core 的循环指针决定（不是驾驶员挑的）—— 这样模拟出来的技能使用分布
- * 与真人狂按同一个键的分布是一致的。
- */
-export function pilotSkill(core) {
-  if (core.pendingUpgrade || !core.nextSkill()) return false;
-  let n = 0;
-  for (const e of core.enemies) {
-    const dx = e.x - core.player.x, dy = e.y - core.player.y;
-    if (dx * dx + dy * dy <= CAST_R * CAST_R && ++n >= CAST_AT) return true;
-  }
-  return false;
-}
+// 阶段 8-2：`pilotSkill()` 已删除。
+//   它的判据是"循环指针指向的下一个技能冷却好了、且圈里聚了怪"，驾驶员用它来决定这一拍
+//   要不要按技能键。技能没了，这个决策就没有对象 —— driver.tick 现在只输出 { input, pick }。
+//   ⟹ CAST_R / CAST_AT 两个常量也随之下线（它们只服务于这个判据）。
 
-/**
- * 走位输入（已归一化的方向向量）。
+
+/** 走位输入（已归一化的方向向量）。
  * @param {object} core
  * @param {{x:number,y:number}|null} heading 阶段 4-1.2：「移动中驾驶员」的航向偏置。
  *   null = 默认行为（只按安全度/怪群/战利品打分）。传单位向量时，会**额外**加分给与它同向的
@@ -424,11 +416,11 @@ export function pilotInput(core, heading = null) {
   return { x: Math.cos(bestAng), y: Math.sin(bestAng) };
 }
 
-/** 一次决策：输入 + 是否放技能 + 三选一选哪项。契约见 arena.js 的 driver 注释。 */
+/** 一次决策：输入 + 三选一选哪项。契约见 arena.js 的 driver 注释。
+ *  ★ 阶段 8-2：返回值里的 `cast` 已删除 —— 再没有任何技能可以放。 */
 export function pilotTick(core) {
   return {
     input: core.pendingUpgrade ? { x: 0, y: 0 } : pilotInput(core),
-    cast: !core.pendingUpgrade && pilotSkill(core),
     pick: pilotPick(core),
   };
 }
@@ -442,7 +434,6 @@ export function pilotTick(core) {
 export function pilotTickMoving(core, heading) {
   return {
     input: core.pendingUpgrade ? { x: 0, y: 0 } : pilotInput(core, heading),
-    cast: !core.pendingUpgrade && pilotSkill(core),
     pick: pilotPick(core),
   };
 }

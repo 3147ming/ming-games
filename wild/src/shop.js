@@ -7,7 +7,7 @@
 // 出现：第 2 / 5 / 8 分钟各一次（SHOP_TIMES）。
 // 货物：每次 3 件随机（用 ArenaCore 的**独立**随机源抽取，不污染主玩法 rng 流）。
 // 加成：每件都是**纯数值**，且走与成长 / 配装同一套初始字段（dmgBase / maxHp / moveBase /
-//       magnet / xpMul / cdMul），多重来源互不擦除。
+//       magnet / xpMul），多重来源互不擦除。
 //
 // 设计要点：
 //   · 不新增任何伤害来源 ⟹ 击杀归因（killSrc）口径不变（'other' 恒为 0）。
@@ -23,7 +23,7 @@ export const SHOP_TIMES = [120, 300, 480];
  *   name  展示名
  *   desc  一句话描述
  *   stat  作用字段（必须是 applyShopGood 认得的 6 个之一）
- *   amt   数值（有限正数；xpMul/cdMul 是比例，其余是加算）
+ *   amt   数值（有限正数；xpMul 是比例，其余是加算）
  *   cost  价格（魂火；有限正数）
  * ★ stat 与 amt 的语义由 applyShopGood 统一解释，目录里只放数据。
  */
@@ -33,7 +33,8 @@ export const SHOP_ITEMS = [
   { id: 's_move', name: '疾风', desc: '移动速度 +4',    stat: 'moveBase', amt: 4,    cost: 30 },
   { id: 's_mag',  name: '磁引', desc: '拾取范围 +20',   stat: 'magnet',   amt: 20,   cost: 25 },
   { id: 's_xp',   name: '灵慧', desc: '经验获取 +4%',   stat: 'xpMul',    amt: 0.04, cost: 30 },
-  { id: 's_cd',   name: '迅律', desc: '技能冷却 -3%',   stat: 'cdMul',    amt: 0.03, cost: 30 },
+  // 阶段 8-2：「迅律」（技能冷却 -3%，stat: cdMul）已删除 —— cdMul 这个乘区随主动技能一起没了，
+  //   留着它就是一件"花了魂火却什么都没发生"的货物。⟹ 商栈货物由 6 件收成 5 件。
 ];
 
 const SHOP_BY_ID = Object.fromEntries(SHOP_ITEMS.map((g) => [g.id, g]));
@@ -75,7 +76,7 @@ export function applyShopGood(core, good) {
     case 'moveBase': core.moveBase += amt; break;
     case 'magnet':   core.magnet += amt; break;
     case 'xpMul':    core.xpMul *= (1 + amt); break;
-    case 'cdMul':    core.cdMul *= (1 - amt); break;
+    // 阶段 8-2：case 'cdMul' 已删除（迅律货物与 cdMul 字段一并下线）。
     default: return false;
   }
   core._refreshClassBuffs();
