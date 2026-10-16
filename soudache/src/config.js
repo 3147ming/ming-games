@@ -328,6 +328,48 @@ export const ITEMS = {
     desc: '本局最贵的一件东西，几乎不占重量。',
   },
 
+  /* --- 武器配件（枪口 / 瞄具 / 握把） ---
+   * mods 是「同槽同类项相加的增量」，局内换算成乘数 mul = 1 + Δ：
+   * 例如 recoil: -0.2 → recoilMul 0.8（后坐更小）；damage: -0.05 → damageMul 0.95。
+   * 注意：valuable 里的 suppressor / optic 是收藏品（不改语义），配件一律用新 id。
+   */
+  muzzle_comp: {
+    id: 'muzzle_comp', name: '制退器', category: 'attachment', slot: 'muzzle', rarity: 'epic',
+    value: 2200, weight: 0.5, size: { w: 1, h: 1 }, icon: 'parts',
+    mods: { recoil: -0.2, spread: -0.1 },
+    desc: '枪口制退器：后坐 -20%，基础散布 -10%。',
+  },
+  muzzle_sil: {
+    id: 'muzzle_sil', name: '枪口消音器', category: 'attachment', slot: 'muzzle', rarity: 'epic',
+    value: 2800, weight: 0.6, size: { w: 1, h: 1 }, icon: 'suppressor',
+    mods: { noise: -0.6, damage: -0.05 },
+    desc: '消音器：枪声暴露半径 -60%，伤害 -5%（亚音速弹）。',
+  },
+  sight_holo: {
+    id: 'sight_holo', name: '全息瞄具', category: 'attachment', slot: 'sight', rarity: 'rare',
+    value: 1600, weight: 0.3, size: { w: 1, h: 1 }, icon: 'optic',
+    mods: { spread: -0.15, adsSpread: -0.2 },
+    desc: '全息瞄具：基础散布 -15%，开镜散布 -20%。',
+  },
+  sight_scope: {
+    id: 'sight_scope', name: '4 倍镜', category: 'attachment', slot: 'sight', rarity: 'epic',
+    value: 2400, weight: 0.4, size: { w: 1, h: 1 }, icon: 'optic',
+    mods: { range: 0.4, spread: -0.2, adsSpread: -0.3 },
+    desc: '4 倍镜：射程 +40%，基础散布 -20%，开镜散布 -30%。',
+  },
+  grip_vert: {
+    id: 'grip_vert', name: '垂直握把', category: 'attachment', slot: 'grip', rarity: 'rare',
+    value: 1800, weight: 0.4, size: { w: 1, h: 1 }, icon: 'parts',
+    mods: { spreadPerShot: -0.25, recoil: -0.15 },
+    desc: '垂直握把：连射散布累积 -25%，后坐 -15%。',
+  },
+  grip_angle: {
+    id: 'grip_angle', name: '直角握把', category: 'attachment', slot: 'grip', rarity: 'rare',
+    value: 2000, weight: 0.4, size: { w: 1, h: 1 }, icon: 'parts',
+    mods: { reload: -0.1 },
+    desc: '直角握把：换弹速度 +10%。',
+  },
+
   /* --- 武器（由 WEAPONS 展开） --- */
   rifle: { ...WEAPONS.rifle },
   smg: { ...WEAPONS.smg },
@@ -542,6 +584,31 @@ export const ENEMY_TYPES = {
     score: 70,
     lootBonus: 1.1,
   },
+  boss: {
+    id: 'boss',
+    name: 'BOSS·重甲武士',
+    hp: 600,
+    armor: 80,
+    speed: 96, // 重甲：比精英慢，但绝不追不上 —— 靠压迫感而不是风筝
+    radius: 14, // 体型最大（碰撞体也最大，容易被打中）
+    color: '#ff2d2d',
+    weapon: {
+      id: 'enemy_boss_lmg', name: '重机枪·撕裂者', auto: true,
+      damage: 14, rpm: 260, magSize: 40, reloadTime: 3.0,
+      spread: 0.018, spreadPerShot: 0.008, spreadMax: 0.09, recoil: 0.02,
+      range: 620, noiseRadius: 560, ammoItem: 'ammo556',
+    },
+    visionRange: 440,
+    visionAngle: (100 * Math.PI) / 180,
+    hearing: 460,
+    reactionTime: 0.5,
+    accuracy: 0.5,
+    fireDelay: [0.6, 1.2],
+    burst: [4, 6],
+    preferredRange: 320,
+    score: 500,
+    lootBonus: 4,
+  },
 };
 
 /**
@@ -611,6 +678,7 @@ export const ENEMY_SPAWN_WEIGHTS = {
   rusher: 22,
   marksman: 18,
   elite: 18,
+  boss: 14, // 权重不高，且每局最多 1 个（见 mapgen 的 boss 上限逻辑）
 };
 
 /* ============================== 战斗数值 ============================== */
@@ -649,8 +717,15 @@ export const KILLFEED = {
 
 export const SHOP = {
   sellRatio: 0.6, // 出售价 = 价值 * 0.6
-  items: ['rifle', 'smg', 'pistol', 'lv2', 'lv3', 'ammo556', 'ammo9mm', 'medkit', 'bandage', 'pill'],
-  restock: { pistol: 999, ammo556: 999, ammo9mm: 999, medkit: 999, bandage: 999, pill: 999 },
+  items: [
+    'rifle', 'smg', 'pistol', 'lv2', 'lv3', 'ammo556', 'ammo9mm', 'medkit', 'bandage', 'pill',
+    // 武器配件（枪口 / 瞄具 / 握把）
+    'muzzle_comp', 'muzzle_sil', 'sight_holo', 'sight_scope', 'grip_vert', 'grip_angle',
+  ],
+  restock: {
+    pistol: 999, ammo556: 999, ammo9mm: 999, medkit: 999, bandage: 999, pill: 999,
+    muzzle_comp: 999, muzzle_sil: 999, sight_holo: 999, sight_scope: 999, grip_vert: 999, grip_angle: 999,
+  },
 };
 
 export const START_CURRENCY = 4000;
@@ -847,6 +922,47 @@ export const VIEW3D = {
   skyTop: '#101823', // 天空渐变顶部
   skyMid: '#26364A', // 天空渐变中部（地平线附近）
   skyBottom: '#3A4A5C', // 天空渐变底部
+  // --- 时段主题（白昼 / 夜战） ---
+  // 同一张地图、同一套光照结构，只换光照强度与天空色 —— 夜战靠"低光 + 头灯"重建可读性，
+  // 而不是重做一张夜图。fogMul 让夜雾更浓，进一步压缩可视距离（潜行收益）。
+  theme: {
+    day: {
+      hemiIntensity: 0.85,
+      ambientIntensity: 0.34,
+      dirIntensity: 2.1,
+      exposure: 1.12,
+      fogMul: 1,
+      skyTop: '#101823',
+      skyMid: '#26364A',
+      skyBottom: '#3A4A5C',
+    },
+    night: {
+      hemiIntensity: 0.25,
+      ambientIntensity: 0.12,
+      dirIntensity: 0.30,
+      exposure: 1.06,
+      fogMul: 1.35,
+      skyTop: '#0a0f18',
+      skyMid: '#16202e',
+      skyBottom: '#1f2a38',
+    },
+    enemyVisionMul: 0.85, // 夜战敌人视野系数（生成时写入 Enemy.visionMul）
+  },
+
+  // --- 玩家头灯（仅夜战启用，每帧跟随相机位置与朝向） ---
+  // decay 取 0 的原因：three r160 的点/聚光灯衰减是 1/d^decay，d 用**场景单位**，
+  // 而本项目 1 米 = 20 单位 —— decay=1.5 时 20 m 外衰减到 1/8000，头灯等于不存在。
+  // 因此改为"截止距离内恒定、窗口外被 distance 裁掉"，观感与性能都更可控。
+  flashlight: {
+    color: '#FFF2D6',
+    angle: 0.5, // 锥半角（弧度）
+    distance: 420, // 照射距离（场景单位 ≈ 21 m）
+    intensity: 2.2,
+    decay: 0,
+    penumbra: 0.35, // 边缘柔化
+    offset: { x: 0, y: -0.15, z: 0 }, // 相对相机：略低于视线中心（像挂在头盔上）
+  },
+
   dustCount: 420, // 空气尘埃粒子数（营造体积感，0 = 关闭）
   dustRadius: 70, // 尘埃分布半径（米，跟随相机的局部范围）
   dustSize: 0.035, // 尘埃颗粒大小（米）
@@ -858,6 +974,8 @@ export const VIEW3D = {
   enemy: {
     patrol: { torsoW: 0.62, torsoH: 0.95, torsoD: 0.38, headR: 0.19, legH: 0.72 },
     elite: { torsoW: 0.70, torsoH: 1.02, torsoD: 0.42, headR: 0.20, legH: 0.76 },
+    // BOSS·重甲武士：比精英更大一圈，配合深红配色在远处就能一眼认出来
+    boss: { torsoW: 0.78, torsoH: 1.15, torsoD: 0.46, headR: 0.23, legH: 0.80 },
     // 冲锋兵：更瘦小灵活，和"高速贴脸"的定位呼应
     rusher: { torsoW: 0.56, torsoH: 0.88, torsoD: 0.34, headR: 0.18, legH: 0.68 },
     gunLength: 0.62,

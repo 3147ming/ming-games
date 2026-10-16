@@ -90,21 +90,29 @@ export function rollContainer(containerType, rng, opts = {}) {
 export function rollEnemyLoot(enemyType, rng) {
   const type = ENEMY_TYPES[enemyType] || ENEMY_TYPES.patrol;
   const luck = 1 + (type.lootBonus - 1) * 0.8;
+  // BOSS 专属偏移：在 lootBonus 之上再抬一档高稀有度，并多掉 1~2 件 ——
+  // 击杀 BOSS 的风险（600 血 / 80 甲 / 重机枪）必须由掉落兑现。
+  const isBoss = enemyType === 'boss';
   const weights = {
     common: 66 / luck,
     rare: 26,
-    epic: 7 * luck,
-    legendary: 1 * luck,
+    epic: 7 * luck + (isBoss ? 10 : 0),
+    legendary: 1 * luck + (isBoss ? 6 : 0),
   };
-  const count = rng.int(1, 3);
+  const count = isBoss ? rng.int(3, 5) : rng.int(1, 3);
   const out = [];
   for (let i = 0; i < count; i += 1) {
     const item = rollOne(weights, { ammo: 2.5, consumable: 2 }, rng);
     if (item) out.push(item);
   }
-  // 精英额外保底一份弹药
+  // 精英及以上额外保底一份弹药
   if (type.lootBonus > 1 && rng.chance(0.6)) {
     out.push(createItem(ITEMS.ammo556, rng.int(15, AMMO_STACK)));
+  }
+  // BOSS 保底一件高稀有度收藏品（掉落明显更好，且是「猎杀者」成就的正反馈）
+  if (isBoss) {
+    const jackpot = ['keycard', 'gold', 'optic', 'suppressor'];
+    out.push(createItem(ITEMS[rng.pick(jackpot)], 1));
   }
   return out;
 }

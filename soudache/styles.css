@@ -306,6 +306,13 @@ body {
   border-radius: 6px;
 }
 
+/* 选中态（配件槽当前装备 / 时段按钮等）：金色描边 + 金色文字 */
+.btn.tiny.on {
+  border-color: #ffb020;
+  color: #ffb020;
+  background: rgba(255, 176, 32, 0.08);
+}
+
 .btn.big {
   padding: 14px 18px;
   font-size: 16px;
@@ -1703,3 +1710,70 @@ body.touch-mode .battle-panel:not(.hidden) {
 .story-item .si-reward { font-size: 12px; color: #ffb020; flex: 0 0 auto; }
 .story-item .si-text { font-size: 12px; color: #b6c2d1; line-height: 1.9; margin-top: 6px; }
 .story-item .si-req { font-size: 11px; color: #7c8899; margin-top: 6px; }
+
+/* --- 成长树：经验条 --- */
+.tree-xp { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #2b3a4d; border-radius: 10px; background: #111a26; }
+.tree-xp .tx-label { font-size: 12px; color: #d7dee8; font-weight: 600; flex: 0 0 auto; }
+.tree-xp .tx-bar { flex: 1 1 auto; height: 8px; border-radius: 999px; background: #1b2634; overflow: hidden; }
+.tree-xp .tx-fill { height: 100%; background: linear-gradient(90deg, #4fa3ff, #35e0d0); transition: width 0.25s ease; }
+.tree-xp .tx-points { font-size: 12px; color: #ffb020; font-weight: 700; flex: 0 0 auto; }
+
+/* --- 结算页称号 --- */
+.result-title2 {
+  margin-top: 6px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #ffb020;
+  text-shadow: 0 0 12px rgba(255, 176, 32, 0.35);
+}
+
+/* --- 主菜单：今日任务卡片 --- */
+.menu-daily {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #2b3a4d;
+  border-radius: 10px;
+  background: rgba(17, 26, 38, 0.72);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.menu-daily .md-head { font-size: 12px; font-weight: 700; color: #35e0d0; letter-spacing: 1px; }
+.menu-daily .md-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #9aa7b8; }
+.menu-daily .md-row.done { color: #d7dee8; }
+.menu-daily .md-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-daily .md-prog { flex: 0 0 auto; color: #7c8899; font-variant-numeric: tabular-nums; }
+.menu-daily .md-mark { flex: 0 0 auto; min-width: 46px; text-align: right; color: #35e0d0; font-weight: 700; }
+
+/* --- 图鉴：成就 / 剧情档案 --- */
+.codex-ach { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+.codex-item.codex-ach-item { flex-direction: column; align-items: flex-start; gap: 4px; min-height: 0; }
+.codex-item.codex-ach-item .ci-desc { font-size: 11px; color: #9aa7b8; line-height: 1.7; }
+.codex-item.codex-ach-item:not(.locked) { border-color: #ffb020; }
+.codex-item.codex-ach-item.locked .ci-name { color: #7c8899; }
+.codex-story { display: flex; flex-direction: column; gap: 10px; }
+.codex-story-item { padding: 12px 14px; border: 1px solid #2b3a4d; border-radius: 10px; background: #111a26; }
+.codex-story-item.current { border-color: #4fa3ff; }
+.codex-story-item.done { border-color: #35e0d0; }
+.codex-story-item .cs-title { font-size: 13px; font-weight: 700; color: #d7dee8; }
+.codex-story-item.done .cs-title { color: #35e0d0; }
+.codex-story-item.locked .cs-title, .codex-story-item:not(.done):not(.current) .cs-title { color: #7c8899; }
+.codex-story-item .cs-text { font-size: 12px; color: #b6c2d1; line-height: 1.9; margin-top: 6px; }
+.codex-story-item .cs-req { font-size: 11px; color: #7c8899; margin-top: 6px; }
+.codex-story-item .cs-reward { font-size: 11px; color: #ffb020; margin-top: 4px; }
+
+/* --- 战前配置：武器配件槽 --- */
+.attach-block .attach-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px dashed #23303f;
+  flex-wrap: wrap;
+}
+.attach-block .attach-row:first-of-type { border-top: 0; }
+.attach-block .ar-slot { flex: 0 0 46px; font-size: 12px; color: #7c8899; }
+.attach-block .ar-cur { flex: 0 0 auto; min-width: 92px; font-size: 12px; font-weight: 600; color: #d7dee8; }
+.attach-block .ar-opts { flex: 1 1 auto; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }

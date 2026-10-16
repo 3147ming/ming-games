@@ -46,6 +46,9 @@ export class Player {
     this.interactRange = MATCH.interactRange * (1 + (perks.pickup || 0));      // 容器 / 终端交互范围
     this.itemPickupRange = MATCH.itemPickupRange * (1 + (perks.pickup || 0));  // 地面掉落拾取范围
 
+    // --- 武器配件：{ [武器id]: { damageMul, spreadMul, ... } }，combat 开火/换弹时读取 ---
+    this.weaponMods = opts.weaponMods || {};
+
     this.armorDef = opts.armorDef || ARMORS.none;
     this.armor = this.armorDef.armor;
     this.maxArmor = this.armorDef.armor;

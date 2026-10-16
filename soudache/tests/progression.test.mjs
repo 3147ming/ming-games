@@ -9,6 +9,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { ITEMS, SHOP, WEAPONS } from '../src/config.js';
+import { buildPlayerMods, equippedAttachmentIds, ATTACH_SLOTS } from '../src/attachments.js';
 import { refreshDaily, bumpDaily, claimDaily, dailyTaskDone, pickDaily, newDaily } from '../src/daily.js';
 import { syncAchievements, latestTitle, ACHIEVEMENTS } from '../src/achievements.js';
 import { grantXp, learnNode, canLearn, buildPerks, xpForLevel, ALL_NODE_IDS } from '../src/perks.js';
@@ -203,4 +205,73 @@ test('剧情：缺 bossKills 字段的旧存档不应崩溃', () => {
   assert.equal(done.length, bossIdx, '缺字段也要按已有条件推进');
   assert.equal(s.story.stage, bossIdx, '需要 Boss 击杀的那章不得在缺字段时被误判达成');
   assert.equal(currentStage(s).id, STORY_STAGES[bossIdx].id);
+});
+
+/* ==================== 武器配件 ==================== */
+
+test('配件：六件三类齐全，商店在售且补货不断供', () => {
+  assert.deepEqual(ATTACH_SLOTS, ['muzzle', 'sight', 'grip']);
+  const ids = ['muzzle_comp', 'muzzle_sil', 'sight_holo', 'sight_scope', 'grip_vert', 'grip_angle'];
+  for (const id of ids) {
+    const def = ITEMS[id];
+    assert.ok(def, `${id} 必须存在`);
+    assert.equal(def.category, 'attachment');
+    assert.ok(ATTACH_SLOTS.includes(def.slot), `${id} 的 slot 必须合法`);
+    assert.ok(def.mods && Object.keys(def.mods).length, `${id} 必须带 mods`);
+    assert.ok(SHOP.items.includes(id), `${id} 必须上架`);
+    assert.ok((SHOP.restock[id] || 0) > 0, `${id} 必须补货`);
+  }
+  // 每类槽位各两件，玩家有得选
+  for (const slot of ATTACH_SLOTS) {
+    assert.equal(ids.filter((id) => ITEMS[id].slot === slot).length, 2, `${slot} 槽应有两件`);
+  }
+});
+
+test('配件：同武器三槽同名项相加，换算成乘数', () => {
+  const attach = {
+    primary: { muzzle: 'muzzle_comp', grip: 'grip_vert' }, // recoil -0.2 + -0.15 = -0.35
+    secondary: {},
+  };
+  const mods = buildPlayerMods(attach, [WEAPONS.rifle, WEAPONS.pistol]);
+  assert.equal(mods.rifle.recoilMul, 0.65, '制退器 + 垂直握把的后坐加成应相加');
+  assert.equal(mods.rifle.spreadMul, 0.9, '制退器的 spread -0.1');
+  assert.equal(mods.rifle.spreadPerShotMul, 0.75, '垂直握把的 spreadPerShot -0.25');
+  assert.equal(mods.pistol, undefined, '副武器没装配件时不该有乘数表');
+});
+
+test('配件：手枪归副武器槽，其余归主武器槽', () => {
+  const attach = {
+    primary: { grip: 'grip_angle' },
+    secondary: { grip: 'grip_vert' },
+  };
+  const mods = buildPlayerMods(attach, [WEAPONS.rifle, WEAPONS.smg, WEAPONS.pistol]);
+  assert.equal(mods.rifle.reloadMul, 0.9, '步枪吃主武器槽的直角握把');
+  assert.equal(mods.smg.reloadMul, 0.9, '冲锋枪同样归主武器槽');
+  assert.equal(mods.pistol.spreadPerShotMul, 0.75, '手枪吃副武器槽的垂直握把');
+  assert.equal(mods.pistol.reloadMul, undefined);
+});
+
+test('配件：脏存档里的非法 id 被静默忽略', () => {
+  const attach = {
+    primary: { muzzle: 'medkit', sight: 'rifle', grip: 'grip_vert' }, // 只有握把合法
+    secondary: { muzzle: 'muzzle_sil' },
+  };
+  const mods = buildPlayerMods(attach, [WEAPONS.rifle, WEAPONS.pistol]);
+  assert.equal(mods.rifle.spreadPerShotMul, 0.75, '合法的那件照常生效');
+  assert.equal(mods.rifle.recoilMul, 0.85, 'recoil 只算垂直握把的 -0.15；消耗品 / 武器不得变成 mods');
+  assert.equal(mods.pistol.noiseMul, 0.4, '消音器降噪 60%');
+  assert.equal(mods.pistol.damageMul, 0.95, '消音器伤害 -5%');
+  assert.equal(mods.pistol.recoilMul, undefined, '消音器不带后坐 mods，不该凭空出现乘数');
+  assert.deepEqual(buildPlayerMods(null, [WEAPONS.rifle]), {}, 'attach 为空时返回空表');
+  assert.deepEqual(buildPlayerMods({}, []), {}, '没有武器时返回空表');
+});
+
+test('配件：equippedAttachmentIds 只收合法配件', () => {
+  assert.deepEqual(equippedAttachmentIds(null), []);
+  assert.deepEqual(equippedAttachmentIds({ primary: { muzzle: 'pistol' }, secondary: {} }), [],
+    '武器 id 不是配件，不得被消耗');
+  assert.deepEqual(
+    equippedAttachmentIds({ primary: { muzzle: 'muzzle_comp', grip: 'grip_vert' }, secondary: { sight: 'sight_holo' } }),
+    ['muzzle_comp', 'grip_vert', 'sight_holo'],
+  );
 });

@@ -190,7 +190,7 @@ import { sortTasksByPriority } from './contracts.js';
 import { ACHIEVEMENTS } from './achievements.js';
 import { dailyTaskDone } from './daily.js';
 import { PERK_BRANCHES, canLearn, xpForLevel } from './perks.js';
-import { STORY_STAGES } from './story.js';
+import { STORY_STAGES, currentStage } from './story.js';
 
 /** 等宽 / 无衬线字体（与旧 2D 渲染器保持一致） */
 const MONO = '"Consolas", "SFMono-Regular", "JetBrains Mono", "Courier New", monospace';
@@ -249,6 +249,7 @@ export function createUI(root, handlers) {
           <div class="menu-sub">搜刮物资 → 交火突围 → 活着撤离，带出去的才算你的。</div>
         </div>
         <div class="menu-stats" data-role="menu-stats"></div>
+        <div class="menu-daily" data-role="menu-daily"></div>
         <div class="menu-actions">
           <button class="btn primary" data-action="goto-loadout">开始战局</button>
           <button class="btn" data-action="goto-stash">仓库</button>
@@ -622,6 +623,32 @@ export function createUI(root, handlers) {
       node.appendChild(el('span', 'v', v));
       host.appendChild(node);
     }
+    renderMenuDaily(save);
+  }
+
+  /** 主菜单上的今日任务面板：一眼看到三条任务的进度与完成状态 */
+  function renderMenuDaily(save) {
+    const host = q('menu-daily');
+    if (!host) return;
+    host.innerHTML = '';
+    const daily = save.daily || { tasks: [], progress: {}, claimed: [] };
+    const tasks = daily.tasks || [];
+    if (!tasks.length) return;
+    const head = el('div', 'md-head', `今日任务 · 补给${daily.supply ? '已领' : '未领'}`);
+    host.appendChild(head);
+    for (const t of tasks) {
+      const cur = daily.progress[t.type] || 0;
+      const done = dailyTaskDone(t, daily.progress);
+      const claimed = (daily.claimed || []).includes(t.id);
+      const isMoney = t.type === 'value';
+      const row = el('div', `md-row${done ? ' done' : ''}`);
+      row.appendChild(el('span', 'md-name', t.name));
+      const val = el('span', 'md-prog',
+        `${isMoney ? money(cur) : cur} / ${isMoney ? money(t.target) : t.target}`);
+      row.appendChild(val);
+      row.appendChild(el('span', 'md-mark', done ? (claimed ? '✓ 已领' : '✓') : ''));
+      host.appendChild(row);
+    }
   }
 
   /* ---------------- 图鉴 ---------------- */
@@ -658,6 +685,51 @@ export function createUI(root, handlers) {
     }
     secItems.appendChild(itemGrid);
     host.appendChild(secItems);
+
+    // 成就档案（紧跟物品之后：都是"收集进度"类内容）
+    const secAch = el('section', 'codex-sec');
+    const gotIds = (save.ach && save.ach.ids) || [];
+    secAch.appendChild(el('h3', '', `成就 ${gotIds.length}/${ACHIEVEMENTS.length}`));
+    const achList = el('div', 'codex-ach');
+    for (const a of ACHIEVEMENTS) {
+      const got = gotIds.includes(a.id);
+      const node = el('div', `codex-item codex-ach-item${got ? '' : ' locked'}`);
+      node.appendChild(el('div', 'ci-name', got ? a.name : '未达成'));
+      node.appendChild(el('div', 'ci-desc', a.desc));
+      const reward = [`+${money(a.currency)}`];
+      if (a.title) reward.push(`称号「${a.title}」`);
+      node.appendChild(el('div', 'ci-meta', got ? reward.join(' · ') : `未解锁 · ${reward.join(' · ')}`));
+      achList.appendChild(node);
+    }
+    secAch.appendChild(achList);
+    host.appendChild(secAch);
+
+    // 剧情档案：已完成看正文，当前看要求与进度，后续灰显
+    const secStory = el('section', 'codex-sec');
+    const story = save.story || { stage: 0, done: [] };
+    const doneIds = story.done || [];
+    secStory.appendChild(el('h3', '', `剧情档案 ${doneIds.length}/${STORY_STAGES.length}`));
+    const storyList = el('div', 'codex-story');
+    const cur = currentStage(save);
+    for (const s of STORY_STAGES) {
+      const unlocked = doneIds.includes(s.id);
+      const isCur = cur && cur.id === s.id;
+      const node = el('div', `codex-story-item${unlocked ? ' done' : ''}${isCur ? ' current' : ''}`);
+      node.appendChild(el('div', 'cs-title', unlocked || isCur ? s.title : '未解锁'));
+      if (unlocked) {
+        node.appendChild(el('div', 'cs-text', s.text));
+      } else {
+        const stats = save.stats || {};
+        const req = [`撤离 ${stats.extracts || 0}/${s.req.extracts}`];
+        if (s.req.kills) req.push(`击杀 ${stats.kills || 0}/${s.req.kills}`);
+        if (s.req.bossKills) req.push(`Boss ${stats.bossKills || 0}/${s.req.bossKills}`);
+        node.appendChild(el('div', 'cs-req', isCur ? `当前目标：${req.join(' · ')}` : req.join(' · ')));
+      }
+      node.appendChild(el('div', 'cs-reward', `报酬 +${money(s.reward)}`));
+      storyList.appendChild(node);
+    }
+    secStory.appendChild(storyList);
+    host.appendChild(secStory);
 
     // 敌人图鉴
     const secEnemy = el('section', 'codex-sec');
@@ -771,7 +843,19 @@ export function createUI(root, handlers) {
     const tree = save.tree || { xp: 0, level: 1, points: 0, nodes: [] };
     q('tree-points').textContent = `Lv.${tree.level} · 可用点数 ${tree.points}`;
     host.appendChild(el('p', 'hint',
-      `经验 ${tree.xp} / ${xpForLevel(tree.level)} · 每局按评分结算经验，升级得 1 点；节点需按分支顺序学习，本局开始后生效。`));
+      `每局按评分结算经验，升级得 1 点；节点需按分支顺序学习，下一局开始后生效。`));
+    // 经验条：当前 xp / 本升级所需
+    const need = xpForLevel(tree.level);
+    const barWrap = el('div', 'tree-xp');
+    barWrap.appendChild(el('span', 'tx-label', `Lv.${tree.level}`));
+    const bar = el('div', 'tx-bar');
+    const fill = el('div', 'tx-fill');
+    fill.style.width = `${Math.max(0, Math.min(100, Math.round((tree.xp / need) * 100)))}%`;
+    bar.appendChild(fill);
+    barWrap.appendChild(bar);
+    barWrap.appendChild(el('span', 'tx-label', `${tree.xp} / ${need} XP`));
+    barWrap.appendChild(el('span', 'tx-points', `可用点数 ${tree.points}`));
+    host.appendChild(barWrap);
     const wrap = el('div', 'tree-branches');
     for (const branch of Object.values(PERK_BRANCHES)) {
       const col = el('div', 'tree-branch');
@@ -788,7 +872,7 @@ export function createUI(root, handlers) {
           learned ? '已学习' : (can.ok ? '学习（1 点）' : can.reason));
         if (learned || !can.ok) btn.disabled = true;
         else btn.addEventListener('click', () => {
-          if (handlers['learn-perk']) handlers['learn-perk']({ id: n.id });
+          if (handlers['tree-learn']) handlers['tree-learn']({ nodeId: n.id });
         });
         node.appendChild(btn);
         col.appendChild(node);
@@ -874,6 +958,75 @@ export function createUI(root, handlers) {
       { value: 'lv2', label: ARMORS.lv2.name, icon: 'armor', color: '#4fa3ff' },
       { value: 'lv3', label: ARMORS.lv3.name, icon: 'armor', color: '#b45cff' },
     ], lo.armor || 'none', 'armor', (o) => o.label, (o) => o.value !== 'none' && countIn(save, o.value) < 1);
+
+    // 时段：白昼 / 夜战（同一张地图两种光照，夜战带玩家头灯）
+    const timeBlock = el('div', 'opt-block');
+    timeBlock.appendChild(el('h3', null, '时段'));
+    const timeRow = el('div', 'opt-row');
+    const curTime = lo.time || 'random';
+    for (const opt of [
+      { v: 'random', label: '随机' },
+      { v: 'day', label: '白昼' },
+      { v: 'night', label: '夜战' },
+    ]) {
+      const btn = el('button', `opt${curTime === opt.v ? ' active' : ''}`);
+      btn.dataset.action = 'set-time';
+      btn.dataset.time = opt.v;
+      btn.appendChild(el('span', null, opt.label));
+      timeRow.appendChild(btn);
+    }
+    timeBlock.appendChild(timeRow);
+    timeBlock.appendChild(el('p', 'hint',
+      '夜战：整体压暗 + 玩家头灯照明，敌人视野缩短 15%，更适合潜行摸物资。'));
+    host.appendChild(timeBlock);
+
+    // 武器配件：主 / 副武器各三个槽（枪口 / 瞄具 / 握把），可选项从仓库里过滤
+    const SLOT_LABEL = { muzzle: '枪口', sight: '瞄具', grip: '握把' };
+    const attachOf = (weaponSlot) => ((lo.attach || {})[weaponSlot] || {});
+    /** 仓库里可用于该槽的配件（按 id 去重，附带数量） */
+    const attachOptions = (slot) => {
+      const seen = new Map();
+      for (const it of save.stash.items) {
+        const def = ITEMS[it.id];
+        if (!def || def.category !== 'attachment' || def.slot !== slot) continue;
+        seen.set(it.id, (seen.get(it.id) || 0) + (it.qty || 1));
+      }
+      return [...seen.entries()];
+    };
+    const attachBlock = (title, weaponSlot) => {
+      const block = el('div', 'opt-block attach-block');
+      block.appendChild(el('h3', null, title));
+      const equipped = attachOf(weaponSlot);
+      for (const slot of ['muzzle', 'sight', 'grip']) {
+        const row = el('div', 'attach-row');
+        const curId = equipped[slot] || null;
+        const curName = curId && ITEMS[curId] ? ITEMS[curId].name : '空';
+        row.appendChild(el('span', 'ar-slot', SLOT_LABEL[slot]));
+        row.appendChild(el('span', 'ar-cur', curName));
+        const opts = el('div', 'ar-opts');
+        const off = el('button', `btn tiny${curId ? '' : ' on'}`, '卸下');
+        off.dataset.action = 'set-attach';
+        off.dataset.slotWeapon = weaponSlot;
+        off.dataset.slot = slot;
+        off.dataset.value = '';
+        opts.appendChild(off);
+        for (const [id, qty] of attachOptions(slot)) {
+          const def = ITEMS[id];
+          const b = el('button', `btn tiny${curId === id ? ' on' : ''}`, `${def.name}${qty > 1 ? ` ×${qty}` : ''}`);
+          b.dataset.action = 'set-attach';
+          b.dataset.slotWeapon = weaponSlot;
+          b.dataset.slot = slot;
+          b.dataset.value = id;
+          b.title = def.desc || '';
+          opts.appendChild(b);
+        }
+        row.appendChild(opts);
+        block.appendChild(row);
+      }
+      host.appendChild(block);
+    };
+    attachBlock(`主武器配件（${WEAPONS[lo.primary] ? WEAPONS[lo.primary].name : '未携带'}）`, 'primary');
+    attachBlock(`副武器配件（${WEAPONS[lo.secondary] ? WEAPONS[lo.secondary].name : '未携带'}）`, 'secondary');
 
     const counter = (title, kind, value, min, max, unitLabel) => {
       const block = el('div', 'opt-block');
@@ -967,6 +1120,13 @@ export function createUI(root, handlers) {
     items += (lo.ammo9mmBoxes || 0) * ITEMS.ammo9mm.weight;
     items += (lo.medkits || 0) * ITEMS.medkit.weight;
     items += (lo.bandages || 0) * ITEMS.bandage.weight;
+    // 配件重量：装在枪上就跟枪一起带走（与 deploy 的消耗一致）
+    for (const weaponSlot of ['primary', 'secondary']) {
+      const slots = (lo.attach || {})[weaponSlot] || {};
+      for (const id of Object.values(slots)) {
+        if (id && ITEMS[id]) items += ITEMS[id].weight || 0;
+      }
+    }
     const total = Math.round((base + items) * 10) / 10;
     const limit = weightLimitFor(lo.armor || 'none');
     return { base, items, total, limit, over: total > limit };
@@ -1102,6 +1262,10 @@ export function createUI(root, handlers) {
     head.appendChild(el('div', 'result-sub', result.subtitle));
     const grade = el('div', 'result-grade', result.grade);
     head.appendChild(grade);
+    // 称号：解锁过带称号的成就才出现（金色一行，与"当前称号"统计行互为呼应）
+    if (result.titleName) {
+      head.appendChild(el('div', 'result-title2', `称号 · ${result.titleName}`));
+    }
 
     const statsHost = q('result-stats');
     statsHost.innerHTML = '';

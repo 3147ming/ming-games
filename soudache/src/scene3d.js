@@ -32,9 +32,10 @@ export function isWebGLAvailable() {
  * 创建 3D 场景。WebGL 不可用时返回 null（调用方必须处理该分支）。
  * @param {HTMLCanvasElement} canvas 画布
  * @param {object} [device] 设备分级（detectDeviceTier 返回值），low 档走手机降档画质
+ * @param {string} [theme] 时段主题：'day' | 'night'（夜战低光 + 头灯）
  * @returns {object|null} 场景句柄
  */
-export function createScene3D(canvas, device) {
+export function createScene3D(canvas, device, theme = 'day') {
   const lowQ = !!(device && device.quality === 'low');
   let renderer;
   try {
@@ -74,26 +75,46 @@ export function createScene3D(canvas, device) {
 
   /* ---------------- 天空与程序化环境贴图 ---------------- */
 
+  // 保留 canvas / ctx 引用：切换时段时要就地重绘渐变并置 needsUpdate（不重建纹理对象）
+  let skyCanvas = null;
+  let skyCtx = null;
   /**
    * 生成一张竖直渐变的等距柱状投影（equirect）贴图。
    * 既当天空背景，也用来烘环境反射 —— 零外部资源，纯 Canvas 绘制。
+   * @param {string[]} [colors] 三段渐变色 [top, mid, bottom]，缺省取 VIEW3D 的白昼色
    * @returns {THREE.CanvasTexture} 天空贴图
    */
-  function makeSkyTexture() {
+  function makeSkyTexture(colors) {
     const c = document.createElement('canvas');
     c.width = 16;
     c.height = 256;
     const ctx = c.getContext('2d');
+    const [top, mid, bottom] = colors || [VIEW3D.skyTop, VIEW3D.skyMid, VIEW3D.skyBottom];
     const g = ctx.createLinearGradient(0, 0, 0, c.height);
-    g.addColorStop(0, VIEW3D.skyTop);
-    g.addColorStop(0.55, VIEW3D.skyMid);
-    g.addColorStop(1, VIEW3D.skyBottom);
+    g.addColorStop(0, top);
+    g.addColorStop(0.55, mid);
+    g.addColorStop(1, bottom);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, c.width, c.height);
     const tex = new THREE.CanvasTexture(c);
     tex.mapping = THREE.EquirectangularReflectionMapping;
     if ('colorSpace' in tex) tex.colorSpace = THREE.SRGBColorSpace;
+    skyCanvas = c;
+    skyCtx = ctx;
     return tex;
+  }
+
+  /** 就地重绘天空渐变（切换时段用），随后由调用方刷新环境贴图 */
+  function repaintSky(colors) {
+    if (!skyCtx || !skyCanvas) return;
+    const [top, mid, bottom] = colors;
+    const g = skyCtx.createLinearGradient(0, 0, 0, skyCanvas.height);
+    g.addColorStop(0, top);
+    g.addColorStop(0.55, mid);
+    g.addColorStop(1, bottom);
+    skyCtx.fillStyle = g;
+    skyCtx.fillRect(0, 0, skyCanvas.width, skyCanvas.height);
+    skyTex.needsUpdate = true;
   }
 
   const skyTex = makeSkyTexture();
@@ -101,24 +122,30 @@ export function createScene3D(canvas, device) {
   // 手机降档：缩短视距 + 加密雾，既保帧率又避免远处被裁出后露出空洞边界
   // （必须在 scene.fog 之前声明：fog 与 camera 都要用它们）
   const far = lowQ ? 1150 : VIEW3D.far;
-  const fogDensity = VIEW3D.fogDensityPerMeter * (lowQ ? 1.9 : 1) / VIEW3D.metersToUnits;
-  // 设计文档的雾密度以"米"为单位，这里换算到场景单位
-  scene.fog = new THREE.FogExp2(PALETTE3D.fog, fogDensity);
+  const fogBase = VIEW3D.fogDensityPerMeter * (lowQ ? 1.9 : 1) / VIEW3D.metersToUnits;
+  // 设计文档的雾密度以"米"为单位，这里换算到场景单位（夜战再乘 fogMul 加浓）
+  scene.fog = new THREE.FogExp2(PALETTE3D.fog, fogBase);
 
   // 用天空烘一张 PMREM 环境贴图：Standard 材质因此获得天光反射，
   // 金属 / 湿润表面不会是死黑一片，整体质感提升明显。
   // 手机降档：环境贴图分辨率调低（只影响一次性的生成耗时，运行时零成本）
   let envRT = null;
-  try {
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    pmrem.compileEquirectangularShader();
-    if (lowQ && 'envMapSize' in VIEW3D) pmrem.envMapSize = Math.min(pmrem.envMapSize || 128, 64);
-    envRT = pmrem.fromEquirectangular(skyTex);
-    scene.environment = envRT.texture;
-    pmrem.dispose();
-  } catch (err) {
-    console.warn('[搜打撤] 环境贴图生成失败，已跳过（不影响玩法）：', err);
+  /** 用当前天空重烘环境贴图（切换时段后天空变了，反射也要跟着变） */
+  function rebuildEnv() {
+    try {
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      pmrem.compileEquirectangularShader();
+      if (lowQ && 'envMapSize' in VIEW3D) pmrem.envMapSize = Math.min(pmrem.envMapSize || 128, 64);
+      const next = pmrem.fromEquirectangular(skyTex);
+      pmrem.dispose();
+      if (envRT) envRT.dispose();
+      envRT = next;
+      scene.environment = envRT.texture;
+    } catch (err) {
+      console.warn('[搜打撤] 环境贴图生成失败，已跳过（不影响玩法）：', err);
+    }
   }
+  rebuildEnv();
 
   const camera = new THREE.PerspectiveCamera(
     VIEW3D.fov,
@@ -175,6 +202,64 @@ export function createScene3D(canvas, device) {
     target.position.set(fx, 0, fz);
   }
   placeSun(WORLD_W / 2, WORLD_H / 2);
+
+  /* ---------------- 玩家头灯（仅夜战） ---------------- */
+
+  // 头灯是一个挂在相机上的聚光灯：位置每帧跟随相机、朝向取相机前向。
+  // 只在夜战加入场景（白天加进去会白白给所有材质多编译一份聚光灯分支）。
+  const flCfg = VIEW3D.flashlight;
+  const flashlight = new THREE.SpotLight(
+    new THREE.Color(flCfg.color), 0, flCfg.distance, flCfg.angle, flCfg.penumbra, flCfg.decay,
+  );
+  flashlight.castShadow = false; // 头灯打阴影在手机上是纯亏，锥内明暗已足够表达
+  const flTarget = new THREE.Object3D();
+  scene.add(flTarget); // target 必须挂在场景里，方向才会被更新
+  flashlight.target = flTarget;
+  let flashlightInScene = false;
+
+  /**
+   * 每帧跟随相机：把头灯钉在视点、照向相机正前方。
+   * @param {{x:number,y:number,z:number}} pos 相机世界坐标
+   * @param {{x:number,y:number,z:number}} dir 相机前向（单位向量）
+   * @param {boolean} enabled 是否点亮
+   * @returns {void}
+   */
+  function updateFlashlight(pos, dir, enabled) {
+    const want = Boolean(enabled);
+    if (want !== flashlightInScene) {
+      flashlightInScene = want;
+      if (want) scene.add(flashlight);
+      else scene.remove(flashlight);
+    }
+    if (!want) return;
+    const o = flCfg.offset;
+    flashlight.position.set(pos.x + (o.x || 0), pos.y + (o.y || 0), pos.z + (o.z || 0));
+    flTarget.position.set(pos.x + dir.x * 200, pos.y + dir.y * 200, pos.z + dir.z * 200);
+    flashlight.intensity = flCfg.intensity;
+  }
+
+  /* ---------------- 时段主题 ---------------- */
+
+  let curTheme = 'day';
+
+  /**
+   * 切换时段主题（白昼 / 夜战）：只改光照强度、天空色、雾浓度与曝光，
+   * 地图与几何完全不动 —— 同一张图两种气氛。
+   * @param {string} next 'day' | 'night'
+   * @returns {void}
+   */
+  function applyTheme(next) {
+    const t = (VIEW3D.theme && VIEW3D.theme[next]) ? VIEW3D.theme[next] : VIEW3D.theme.day;
+    curTheme = VIEW3D.theme[next] ? next : 'day';
+    hemi.intensity = t.hemiIntensity;
+    ambient.intensity = t.ambientIntensity;
+    sun.intensity = t.dirIntensity;
+    if ('toneMappingExposure' in renderer) renderer.toneMappingExposure = t.exposure;
+    if (scene.fog) scene.fog.density = fogBase * (t.fogMul || 1);
+    repaintSky([t.skyTop, t.skyMid, t.skyBottom]);
+    rebuildEnv(); // 天空变了，环境反射必须跟着变，否则夜里材质仍按白天的天光反照
+  }
+  applyTheme(theme);
 
   /* ---------------- 空气尘埃（体积感） ---------------- */
 
@@ -289,6 +374,12 @@ export function createScene3D(canvas, device) {
     hemi,
     ambient,
     resize,
+    /** 当前时段主题（'day' | 'night'） */
+    get theme() {
+      return curTheme;
+    },
+    applyTheme,
+    updateFlashlight,
     /** 把阴影视锥（与平行光）聚焦到玩家周围，换取更清晰的近处阴影 */
     focusShadow(x, z) {
       placeSun(x, z);

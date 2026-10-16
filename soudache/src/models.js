@@ -11,7 +11,7 @@
  */
 
 import * as THREE from '../vendor/three.module.js';
-import { VIEW3D, PALETTE3D, WEAPONS, ARMORS, RARITY } from './config.js';
+import { VIEW3D, PALETTE3D, WEAPONS, ARMORS, RARITY, ENEMY_TYPES } from './config.js';
 
 /** 米 → 场景单位的换算系数（见 config.VIEW3D 的单位说明） */
 const U = VIEW3D.metersToUnits;
@@ -658,14 +658,17 @@ export function buildVehicleModel() {
 export function buildEnemyModel(typeId) {
   // 体型：精英与精确射手用大号，冲锋兵用瘦小号，其余用标准
   const dims = VIEW3D.enemy;
-  const dim = (typeId === 'elite' || typeId === 'marksman')
-    ? dims.elite
-    : (typeId === 'rusher' ? dims.rusher : dims.patrol);
+  const dim = (typeId === 'boss')
+    ? dims.boss // 重甲武士：最大体型
+    : (typeId === 'elite' || typeId === 'marksman')
+      ? dims.elite
+      : (typeId === 'rusher' ? dims.rusher : dims.patrol);
   const tints = {
     patrol: PALETTE3D.enemyPatrol,
     elite: PALETTE3D.enemyElite,
     marksman: PALETTE3D.enemyMarksman,
     rusher: PALETTE3D.enemyRusher,
+    boss: ENEMY_TYPES.boss.color, // 深红：远处一眼能认出这是 BOSS
   };
   const tint = tints[typeId] || PALETTE3D.enemyPatrol;
   const group = new THREE.Group();

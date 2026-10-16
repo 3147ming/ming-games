@@ -23,7 +23,37 @@ export function defaultLoadout() {
     ammo9mmBoxes: 1,
     medkits: 2,
     bandages: 1,
+    // 武器配件：主/副武器各三个槽（枪口 / 瞄具 / 握把），null = 未装
+    attach: {
+      primary: { muzzle: null, sight: null, grip: null },
+      secondary: { muzzle: null, sight: null, grip: null },
+    },
+    time: 'random', // 时段：random / day / night（夜战低光 + 头灯 + 敌人视野缩短）
   };
+}
+
+/** 配件槽默认值（旧存档缺字段时用它补齐，保证三个槽始终存在） */
+function defaultAttachSlot() {
+  return { muzzle: null, sight: null, grip: null };
+}
+
+/**
+ * 装备配置的兼容合并：旧存档没有 attach / time 时补默认值，
+ * 且 attach 内部也逐槽深合并（避免只写了一半的存档导致槽位缺失）。
+ * @param {object} base 默认配置
+ * @param {object} data 存档中的配置
+ * @returns {object} 合并后的配置
+ */
+function mergeLoadout(base, data) {
+  const lo = { ...base, ...(data || {}) };
+  const at = (data && data.attach) || {};
+  lo.attach = {
+    primary: { ...defaultAttachSlot(), ...(at.primary || {}) },
+    secondary: { ...defaultAttachSlot(), ...(at.secondary || {}) },
+  };
+  // 只接受合法时段值，脏数据回落 random
+  lo.time = (lo.time === 'day' || lo.time === 'night') ? lo.time : 'random';
+  return lo;
 }
 
 /**
@@ -102,7 +132,7 @@ export function loadSave() {
       ...base,
       ...data,
       stash: deserializeInventory(data.stash, ITEMS),
-      loadout: { ...base.loadout, ...(data.loadout || {}) },
+      loadout: mergeLoadout(base.loadout, data.loadout),
       stats: { ...base.stats, ...(data.stats || {}) },
       settings: { ...base.settings, ...(data.settings || {}) },
       layout: { touch: { ...(data.layout && data.layout.touch) } },

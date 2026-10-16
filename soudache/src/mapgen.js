@@ -14,6 +14,19 @@ import { createRng } from './rng.js';
 
 /** 兵种权重表：模块级算一次，避免在敌人生成循环里反复 Object.entries */
 const ENEMY_TYPE_ENTRIES = Object.entries(ENEMY_SPAWN_WEIGHTS);
+/** 剔除 BOSS 后的权重表（本局已出过 BOSS 时用） */
+const ENEMY_TYPE_ENTRIES_NO_BOSS = ENEMY_TYPE_ENTRIES.filter(([id]) => id !== 'boss');
+
+/**
+ * 抽一个兵种 id。
+ * BOSS 走全局上限：本局已经出过就从权重表剔除，保证每局最多 1 个重甲武士。
+ * @param {object} rng 随机数发生器
+ * @param {boolean} bossSpawned 本局是否已出过 BOSS
+ * @returns {string} 兵种 id
+ */
+function pickEnemyType(rng, bossSpawned) {
+  return rng.weighted(bossSpawned ? ENEMY_TYPE_ENTRIES_NO_BOSS : ENEMY_TYPE_ENTRIES);
+}
 
 /* ============================ 基础查询 ============================ */
 
@@ -766,6 +779,7 @@ export function generateMap(seed) {
     (r) => Math.hypot(r.cx - map.playerSpawn.x, r.cy - map.playerSpawn.y) > TILE * 6,
   );
   const pool = spawnRooms.length ? spawnRooms : rooms;
+  let bossSpawned = false;
   for (let i = 0; i < enemyCount; i += 1) {
     let pos = null;
     // 逐步放宽"远离玩家出生点"的要求，保证一定能落到合法地面上
@@ -788,9 +802,11 @@ export function generateMap(seed) {
     map.enemySpawns.push({
       x: Math.round(pos.x),
       y: Math.round(pos.y),
-      // 按权重混编四种兵种（巡逻 / 冲锋 / 精确射手 / 精英）
-      type: rng.weighted(ENEMY_TYPE_ENTRIES),
+      // 按权重混编兵种（巡逻 / 冲锋 / 精确射手 / 精英 / BOSS）。
+      // BOSS 每局最多 1 个：已经出过就从权重表里剔除再抽，保证不会满图重甲武士。
+      type: pickEnemyType(rng, bossSpawned),
     });
+    if (map.enemySpawns[map.enemySpawns.length - 1].type === 'boss') bossSpawned = true;
   }
 
   // 9.4) 架高平台：在大房间内部挑空地架台 —— 站上去抬高视点，并能越过掩体箱观察。

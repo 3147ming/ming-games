@@ -119,6 +119,10 @@ const probeExpr = `JSON.stringify((() => {
     achItems: document.querySelectorAll('.ach-item').length,
     perkNodes: document.querySelectorAll('.perk-node').length,
     storyItems: document.querySelectorAll('.story-item').length,
+    codexAchItems: document.querySelectorAll('.codex-ach-item').length,
+    codexStoryItems: document.querySelectorAll('.codex-story-item').length,
+    attachRows: document.querySelectorAll('.attach-row').length,
+    timeBtns: document.querySelectorAll('[data-action="set-time"]').length,
     booted: !!window.SOUDACHE,
     title: document.title,
   };
@@ -159,6 +163,7 @@ try {
     { btn: '成就', screen: 'ach', key: 'achItems', min: 13, shot: '12-ach.png' },
     { btn: '天赋', screen: 'tree', key: 'perkNodes', min: 9, shot: '13-tree.png' },
     { btn: '剧情', screen: 'story', key: 'storyItems', min: 5, shot: '14-story.png' },
+    { btn: '图鉴', screen: 'codex', key: 'codexAchItems', min: 13, shot: '15-codex.png' },
   ];
   for (const p of pages) {
     const clicked = await clickText(p.btn);
@@ -169,6 +174,25 @@ try {
     expect(`${p.screen} 渲染出内容`, (s[p.key] || 0) >= p.min, `${p.key}=${s[p.key]}`);
     await shot(p.shot);
     await clickText('返回'); // 回菜单，保证下一步按钮在同一层
+    await sleep(500);
+  }
+
+  // 图鉴补充：剧情档案区（5 章）也要渲染
+  {
+    const s = await read();
+    expect('图鉴剧情档案区渲染（5 章）', (s.codexStoryItems || 0) >= 5, `codexStoryItems=${s.codexStoryItems}`);
+  }
+
+  // 战前配置：配件槽（主/副武器 × 3 槽）与时段选择（随机/白昼/夜战）
+  {
+    const clicked = await clickText('开始战局');
+    await sleep(900);
+    const s = await read();
+    expect('点击「开始战局」进入战前配置', clicked === 'ok' && s.visible && s.visible.includes('loadout'), JSON.stringify(s.visible));
+    expect('配件槽渲染（主/副武器各 3 槽）', (s.attachRows || 0) >= 6, `attachRows=${s.attachRows}`);
+    expect('时段选择（随机/白昼/夜战）', (s.timeBtns || 0) >= 3, `timeBtns=${s.timeBtns}`);
+    await shot('16-loadout.png');
+    await clickText('返回');
     await sleep(500);
   }
 
