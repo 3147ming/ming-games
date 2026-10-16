@@ -254,7 +254,7 @@ const itemRes = await evalJs(`(async () => {
   document.getElementById('btn-recruit').click();   // 征一张牌顺便刷新手牌区
   await new Promise(r => setTimeout(r, 120));
   const before = document.querySelectorAll('#hand .card').length;
-  const card = [...document.querySelectorAll('#hand .card')].find(c => /神兵符|符/.test(c.textContent));
+  const card = [...document.querySelectorAll('#hand .card')].find(c => c.dataset.uid === '987654');
   if (!card) return { err: '手牌里找不到神兵符', hand: document.getElementById('hand').textContent };
   // 手牌走 pointerdown / pointerup 判定（原地松手 = 点击），不是 click
   const r = card.getBoundingClientRect();

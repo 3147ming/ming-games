@@ -216,17 +216,102 @@
   }
 
   /* ======================================================== 单位渲染 */
+  /* 水墨 Q 版小人：内嵌 SVG，颜色走 CSS 变量（.unit.e 覆写为红色调）。
+   * 全部只画一次，靠 CSS 给不同兵种不同的待机/攻击 keyframes。 */
+  function weaponOf(u) {
+    let w = u.cls === 'hero'
+      ? (ZY.HERO_BY_ID[u.heroId] ? ZY.HERO_BY_ID[u.heroId].base : 'dao')
+      : (u.type || 'dao');
+    if (w === 'zei') w = 'dao';           // 贼兵套用刀兵形象 + 红色调
+    return w;
+  }
+  function figPerson() {
+    return '<g class="fig-body">' +
+      '<ellipse class="fig-shadow" cx="50" cy="114" rx="19" ry="4"/>' +
+      '<circle class="fig-hair" cx="50" cy="14" r="5"/>' +
+      '<circle class="fig-head" cx="50" cy="28" r="13"/>' +
+      '<rect class="fig-torso" x="37" y="40" width="26" height="40" rx="12"/>' +
+      '<rect class="fig-leg" x="41" y="78" width="8" height="25" rx="4"/>' +
+      '<rect class="fig-leg" x="51" y="78" width="8" height="25" rx="4"/>' +
+      '</g>';
+  }
+  function figHorse() {
+    return '<g class="fig-horse">' +
+      '<ellipse class="fig-hbody" cx="50" cy="98" rx="29" ry="13"/>' +
+      '<rect class="fig-leg" x="28" y="106" width="6" height="13" rx="3"/>' +
+      '<rect class="fig-leg" x="66" y="106" width="6" height="13" rx="3"/>' +
+      '<path class="fig-tail" d="M79 92 q12 5 8 19"/>' +
+      '<circle class="fig-hhead" cx="24" cy="90" r="8"/>' +
+      '<path class="fig-hneck" d="M30 92 q-6 -8 -2 -16"/>' +
+      '</g>';
+  }
+  function figArmDao() {
+    return '<g class="fig-arm">' +
+      '<path class="fig-limb" d="M60 50 Q73 54 76 64"/>' +
+      '<path class="fig-blade" d="M76 64 Q90 44 82 22 Q95 47 84 68 Z"/>' +
+      '</g>';
+  }
+  function figArmQiang() {
+    return '<g class="fig-arm">' +
+      '<path class="fig-limb" d="M60 50 Q72 52 76 60"/>' +
+      '<line class="fig-spear" x1="76" y1="60" x2="97" y2="32"/>' +
+      '<path class="fig-tip" d="M97 32 l-6 -3 l3 7 Z"/>' +
+      '</g>';
+  }
+  function figArmGong() {
+    return '<g class="fig-arm fig-arm-l">' +
+      '<path class="fig-limb" d="M40 52 Q30 58 27 66"/>' +
+      '<g class="fig-bowgrp">' +
+        '<path class="fig-bow" d="M21 38 Q11 64 21 90"/>' +
+        '<line class="fig-string" x1="21" y1="38" x2="21" y2="90"/>' +
+        '<line class="fig-arrow" x1="21" y1="64" x2="21" y2="14"/>' +
+      '</g>' +
+      '</g>';
+  }
+  function figArmQi() {
+    return '<g class="fig-arm">' +
+      '<path class="fig-limb" d="M60 46 Q73 50 77 58"/>' +
+      '<line class="fig-spear" x1="77" y1="58" x2="96" y2="30"/>' +
+      '<path class="fig-tip" d="M96 30 l-6 -3 l3 7 Z"/>' +
+      '</g>';
+  }
+  function figArmNong() {
+    return '<g class="fig-arm">' +
+      '<path class="fig-limb" d="M58 50 Q70 48 76 54"/>' +
+      '<g class="fig-hoe">' +
+        '<line class="fig-handle" x1="76" y1="54" x2="93" y2="70"/>' +
+        '<path class="fig-hoeb" d="M89 65 q9 -2 12 5 q-9 4 -13 -3 Z"/>' +
+      '</g>' +
+      '</g>';
+  }
+  function figArm(type) {
+    if (type === 'qiang') return figArmQiang();
+    if (type === 'gong') return figArmGong();
+    if (type === 'qi') return figArmQi();
+    if (type === 'nong') return figArmNong();
+    return figArmDao();
+  }
+  function figSvg(u) {
+    const w = weaponOf(u);
+    const isHero = u.cls === 'hero';
+    const parts = [];
+    if (isHero) parts.push('<path class="fig-cape" d="M33 44 Q16 72 28 106 L45 95 Q41 70 45 46 Z"/>');
+    if (w === 'nong') parts.push('<path class="fig-hat" d="M28 31 Q50 4 72 31 Q50 23 28 31 Z"/><ellipse class="fig-hat" cx="50" cy="31" rx="23" ry="4"/>');
+    parts.push(figPerson());
+    if (w === 'qi') parts.push(figHorse());
+    parts.push(figArm(w));
+    const inner = '<g class="fig-mount">' + parts.join('') + '</g>';
+    return '<svg class="fig" viewBox="0 0 100 120" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' + inner + '</svg>';
+  }
   function unitHtml(u) {
-    let inner = '';
-    if (u.cls === 'hero') {
-      inner = '<b class="nm">' + u.char + '</b><s class="lv">' + u.heroLevel + '</s><i class="hb"><u></u></i><em class="sk"></em>';
-    } else if (u.cls === 'gold') {
-      inner = '<b>' + u.char + '</b>';
-    } else {
-      inner = '<b>' + u.char + '</b>' + (u.level > 1 ? '<s class="lv">' + u.level + '</s>' : '') +
-        '<i class="hb"><u></u></i>';
+    if (u.cls === 'gold') {
+      return '<b>' + u.char + '</b>';
     }
-    return inner;
+    const nm = '<b' + (u.cls === 'hero' ? ' class="nm"' : '') + '>' + u.char + '</b>';
+    const lv = (u.cls === 'hero' || u.level > 1) ? '<s class="lv">' + (u.cls === 'hero' ? u.heroLevel : u.level) + '</s>' : '';
+    const hb = '<i class="hb"><u></u></i>';
+    const sk = (u.cls === 'hero') ? '<em class="sk"></em>' : '';
+    return nm + figSvg(u) + lv + hb + sk;
   }
 
   function syncUnits(force) {
@@ -238,12 +323,17 @@
       seen[u.id] = true;
       let e = unitEls[u.id];
       if (!e) {
+        const wtype = weaponOf(u);
         e = document.createElement('div');
         e.className = 'unit ' + (u.side === 'player' ? 'p' : 'e') + ' ' + u.cls +
-          (u.elite ? ' elite' : '') + (u.cls === 'soldier' ? ' t-' + u.type : '');
+          (u.elite ? ' elite' : '') +
+          (u.cls === 'soldier' ? ' t-' + u.type : '') +
+          (u.cls === 'hero' && wtype ? ' t-' + wtype : '');
         e.dataset.uid = u.id;
+        e.dataset.weapon = wtype;
         e.innerHTML = unitHtml(u);
         place(e, u.row, u.col);
+        e._r = u.row; e._c = u.col;
         // 平移速度跟自身「走一格」的耗时对齐 → 看起来是连续行军而不是一格一格跳
         e.style.transitionDuration = (u.move > 0 ? Math.min(2.2, u.move * 0.9) : 0.18) + 's';
         e.classList.add('born');
@@ -253,6 +343,13 @@
         e.classList.add('anim');
       }
       place(e, u.row, u.col);
+      // 行军：位置变化时挂 a-move（在 .fig-mount 上跑颠簸 keyframes，不与定位 transform 冲突）
+      if ((e._r !== u.row || e._c !== u.col) && u.move > 0) {
+        e._r = u.row; e._c = u.col;
+        e.classList.add('a-move');
+        clearTimeout(e._moveT);
+        e._moveT = setTimeout(function () { e.classList.remove('a-move'); }, 320);
+      }
       e.classList.toggle('stun', u.stun > 0);
       // 血条
       const bar = e.querySelector('.hb u');
@@ -270,7 +367,12 @@
     Object.keys(unitEls).forEach(function (id) {
       if (!seen[id]) {
         const e = unitEls[id];
-        if (e && e.parentNode) e.parentNode.removeChild(e);
+        if (e && e.parentNode && !e.classList.contains('a-death')) {
+          // 死亡：先播 a-death（约 0.26s），再移除；移除仍以 state.units 为准
+          e.classList.add('a-death');
+          const node = e;
+          setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); }, 270);
+        }
         delete unitEls[id];
       }
     });
@@ -672,6 +774,29 @@
     setTimeout(function () { el.redflash.classList.remove('on'); }, 260);
   }
 
+  function unitElAt(row, col) {
+    const g = state.grid && state.grid[row] && state.grid[row][col];
+    return g ? (unitEls[g.id] || null) : null;
+  }
+  function flashUnitAt(row, col, cls, ms) {
+    const e = unitElAt(row, col);
+    if (!e) return;
+    e.classList.remove(cls); void e.offsetWidth; e.classList.add(cls);
+    clearTimeout(e['_' + cls]);
+    e['_' + cls] = setTimeout(function () { e.classList.remove(cls); }, ms);
+  }
+  function animUnit(uid) {
+    const e = unitEls[uid];
+    if (!e || e.classList.contains('a-attack')) return; // 同一单位攻击动画未播完不重复触发
+    const w = e.dataset.weapon || 'dao';
+    e.classList.add('a-attack', 'atk-' + w);
+    const u = state.units.find(function (x) { return x.id === uid; });
+    const interval = (u && u.aspd > 0) ? (1 / u.aspd) : 0.9;
+    const dur = Math.max(0.2, interval * 0.75) * 1000;
+    clearTimeout(e._atkT);
+    e._atkT = setTimeout(function () { e.classList.remove('a-attack', 'atk-' + w); }, dur);
+  }
+
   function drainFx() {
     if (!state) return;
     while (state.fx.length) {
@@ -679,13 +804,15 @@
       if (f.type === 'toast') { toast(f.text); continue; }
       if (f.type === 'shake') { shakeBoard(); continue; }
       if (f.type === 'redflash') { redFlash(); continue; }
+      if (f.type === 'anim') { animUnit(f.uid); continue; }
       if (f.type === 'ring' || f.type === 'beam') { ringFx(f.row, f.col, f.type); continue; }
       if (f.type === 'slash') { slashFx(f); continue; }
       if (f.type === 'arrow') { arrowFx(f); continue; }
       if (f.type === 'pillar') { pillarFx(f); continue; }
-      if (f.type === 'hit') { hitFx(f); continue; }
+      if (f.type === 'hit') { hitFx(f); flashUnitAt(f.row, f.col, 'a-hit', 260); continue; }
       if (f.type === 'dmg') { dmgFx(f); continue; }
       if (f.row == null) continue;
+      if (f.type === 'merge' || f.type === 'up') flashUnitAt(f.row, f.col, 'a-levelup', 520); // 合成 / 升阶金光
       const map = {
         merge: 'p-merge', hero: 'p-hero', up: 'p-up', bun: 'p-bun', adou: 'p-adou',
         crit: 'p-crit', stun: 'p-stun', heal: 'p-heal', open: 'p-open',

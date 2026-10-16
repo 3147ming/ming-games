@@ -556,3 +556,114 @@ body {
 @media (max-width: 360px) {
   .card b { font-size: 19px; }
 }
+
+/* =============================================================================
+ * V3 · 水墨 Q 版小人形象 + 动作动画（内嵌 SVG，颜色走 CSS 变量）
+ * 关键：所有动画都作用在 .fig 及其内部 <g> 上，绝不动 .unit 自身的
+ *       position transform（translate 定位），避免与行军平移冲突。
+ * ========================================================================== */
+
+/* 单位改为纵向排列：名字小标在上，小人在下 */
+.unit { flex-direction: column; }
+.unit b { font-size: 11px; font-size: 3.6cqw; line-height: 1; letter-spacing: 0; }
+.unit.hero .nm { font-size: 11px; font-size: 3.6cqw; }
+.unit.elite b { font-size: 12px; font-size: 4cqw; }
+.unit.gold b { font-size: 22px; font-size: 7.2cqw; }
+
+.unit .fig {
+  width: 66%; height: 74%; margin-top: 1%;
+  overflow: visible; display: block;
+}
+
+/* 阵营配色：我方深色系，敌方红色系，武将浅色 + 紫调光环 */
+.unit {
+  --fig-skin:#f3dcc0; --fig-cloth:#6f6049; --fig-cloth2:#8a7556;
+  --fig-weapon:#e7d6b5; --fig-accent:#d8b25a; --fig-shadow:rgba(0,0,0,.20);
+}
+.unit.e {
+  --fig-skin:#f6d6cc; --fig-cloth:#b9685d; --fig-cloth2:#cf867b;
+  --fig-weapon:#f0d4b0; --fig-accent:#eaa83e; --fig-shadow:rgba(0,0,0,.22);
+}
+.unit.hero {
+  --fig-skin:#fbf0df; --fig-cloth:#efe7ff; --fig-cloth2:#d6c4f0;
+  --fig-weapon:#d8caf2; --fig-accent:#c79bff;
+}
+.unit.e.hero {
+  --fig-skin:#f8dcd2; --fig-cloth:#ffdcd3; --fig-cloth2:#f3b3a8;
+  --fig-weapon:#f3c8be; --fig-accent:#ff9e8a;
+}
+
+/* 内部零件填色（全部用变量，敌方靠 .unit.e 覆写） */
+.fig-shadow { fill: var(--fig-shadow); }
+.fig-head   { fill: var(--fig-skin); }
+.fig-hair   { fill: var(--fig-cloth2); }
+.fig-torso  { fill: var(--fig-cloth); }
+.fig-leg    { fill: var(--fig-cloth2); }
+.fig-limb   { fill: none; stroke: var(--fig-skin); stroke-width: 5; stroke-linecap: round; }
+.fig-blade  { fill: var(--fig-weapon); stroke: #6b5a3c; stroke-width: 1; }
+.fig-spear  { stroke: var(--fig-weapon); stroke-width: 3.4; stroke-linecap: round; }
+.fig-tip    { fill: var(--fig-accent); }
+.fig-bow    { fill: none; stroke: var(--fig-weapon); stroke-width: 3.4; stroke-linecap: round; }
+.fig-string { stroke: var(--fig-accent); stroke-width: 1.4; }
+.fig-arrow  { stroke: var(--fig-weapon); stroke-width: 2.4; stroke-linecap: round; }
+.fig-handle { stroke: var(--fig-weapon); stroke-width: 4; stroke-linecap: round; }
+.fig-hoeb   { fill: var(--fig-accent); }
+.fig-hat    { fill: var(--fig-weapon); }
+.fig-cape   { fill: var(--fig-accent); opacity: .8; }
+.fig-hbody, .fig-tail { fill: var(--fig-cloth2); }
+.fig-hhead, .fig-hneck { fill: var(--fig-cloth2); }
+
+/* 敌方整体上下镜像（我方朝上、敌方朝下） */
+.unit.e .fig { transform: scaleY(-1); }
+
+/* 待机：常驻轻浮动（作用在 .fig-body，与定位 transform 隔离） */
+.unit .fig-body { transform-box: fill-box; transform-origin: 50% 100%; animation: idleBob 2.4s ease-in-out infinite; }
+@keyframes idleBob { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-3px) scale(1.025); } }
+
+/* 兵种待机点缀 */
+.unit.t-qi .fig-tail { transform-box: fill-box; transform-origin: 0% 50%; animation: tailWag 1.5s ease-in-out infinite; }
+@keyframes tailWag { 0%,100% { transform: rotate(0); } 50% { transform: rotate(14deg); } }
+.unit.t-gong .fig-bow { transform-box: fill-box; transform-origin: 50% 50%; animation: bowSway 2.8s ease-in-out infinite; }
+@keyframes bowSway { 0%,100% { transform: rotate(0); } 50% { transform: rotate(-5deg); } }
+
+/* 行军：位置变化时在 .fig-mount 上跑颠簸（与定位 transform 隔离） */
+.unit.a-move .fig-mount { animation: marchBob .32s ease-in-out; will-change: transform; }
+@keyframes marchBob { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-2px) rotate(-1.5deg); } }
+
+/* 攻击：per-兵种动作（a-attack + atk-<weapon>，作用于内部 <g>） */
+.unit .fig-arm, .unit .fig-bowgrp, .unit .fig-mount { transform-box: fill-box; }
+.unit.a-attack.atk-dao  .fig-arm { transform-origin: 0% 60%; animation: daoSlash .36s ease-out; will-change: transform; }
+.unit.a-attack.atk-qiang .fig-arm { transform-origin: 10% 50%; animation: qiangThrust .40s ease-out; will-change: transform; }
+.unit.a-attack.atk-gong .fig-bowgrp { transform-origin: 50% 50%; animation: gongDraw .55s ease-out; will-change: transform; }
+.unit.a-attack.atk-qi   .fig-mount { transform-origin: 50% 50%; animation: qiCharge .42s ease-out; will-change: transform; }
+.unit.a-attack.atk-nong .fig-arm { transform-origin: 0% 10%; animation: nongHoe .44s ease-out; will-change: transform; }
+@keyframes daoSlash   { 0% { transform: rotate(0); } 35% { transform: rotate(-58deg); } 70% { transform: rotate(28deg); } 100% { transform: rotate(0); } }
+@keyframes qiangThrust { 0% { transform: translateX(0); } 40% { transform: translateX(11px); } 100% { transform: translateX(0); } }
+@keyframes gongDraw   { 0% { transform: translateX(0); } 30% { transform: translateX(9px); } 60% { transform: translateX(9px); } 100% { transform: translateX(0); } } /* 拉弦后松手，箭由 fx 飞出 */
+@keyframes qiCharge   { 0% { transform: translateY(0); } 35% { transform: translateY(-9px); } 100% { transform: translateY(0); } }
+@keyframes nongHoe    { 0% { transform: rotate(0); } 40% { transform: rotate(-52deg); } 100% { transform: rotate(0); } }
+
+/* 受击：红闪已由全局 redflash 覆盖；这里给单位本身轻抖（作用在 .fig-mount） */
+.unit.a-hit .fig-mount { animation: hitShake .26s ease-out; }
+@keyframes hitShake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-3px); } 40% { transform: translateX(3px); } 60% { transform: translateX(-2px); } 80% { transform: translateX(2px); } }
+
+/* 死亡：快速下沉消散 */
+.unit.a-death .fig-mount { animation: deathSink .26s ease-out forwards; }
+@keyframes deathSink { 0% { transform: translateY(0) scale(1); opacity: 1; } 100% { transform: translateY(8px) scale(.6); opacity: 0; } }
+
+/* 合成 / 升阶：金光 + 弹一下（仅 filter，不影响定位 transform） */
+.unit.a-levelup .fig { animation: lvlFlash .5s ease-out; }
+@keyframes lvlFlash { 0% { filter: brightness(1); } 30% { filter: brightness(1.9) drop-shadow(0 0 6px var(--fig-accent)); } 100% { filter: brightness(1); } }
+
+/* 金字：维持金字块 + 呼吸流光（filter 不冲突定位 transform） */
+.unit.gold { animation: goldBreath 2.6s ease-in-out infinite; }
+@keyframes goldBreath { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.18); } }
+
+/* 阿斗：斗字待机轻摆（作用在内部 <b>，不动 .adou 的定位 transform） */
+.adou b { transform-box: fill-box; transform-origin: 50% 80%; animation: adouSway 3s ease-in-out infinite; }
+@keyframes adouSway { 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+
+/* 降低动效偏好：关闭非必要常驻动画（保留攻击/死亡等功能性动画） */
+@media (prefers-reduced-motion: reduce) {
+  .unit .fig-body, .unit.t-qi .fig-tail, .unit.t-gong .fig-bow, .unit.gold, .adou b { animation: none; }
+}

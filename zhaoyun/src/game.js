@@ -334,6 +334,8 @@
 
   function performAttack(state, u, targets) {
     const t0 = targets[0];
+    // V3：攻击动画触发（按单位攻速节流——performAttack 本身只在攻击间隔触发一次）
+    state.fx.push({ type: 'anim', uid: u.id, name: 'attack' });
     const ranged = u.range >= 3 && (u.type === 'gong' || (u.cls === 'hero' && ZY.HERO_BY_ID[u.heroId] && ZY.HERO_BY_ID[u.heroId].base === 'gong'));
     if (u.boss) {
       state.fx.push({ type: 'slash', row: t0.row, col: t0.col, dir: (u.side === 'player' ? 1 : -1) });
