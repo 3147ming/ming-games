@@ -1,6 +1,12 @@
 /* =============================================================================
- * 赵云与阿斗 · 规则表 (units.js)
- * 兵种 / 武将 / 道具 / 征兵概率池 / 军衔 / 关卡 —— 全部数值集中在这里
+ * 赵云与阿斗 · 规则表 (units.js)  — V5 原版对齐
+ * 兵种 / 武将 / 道具 / 武器 / 征兵概率池 / 军衔 / 关卡 —— 全部数值集中在这里
+ * 数值口径 = 原版录屏逐帧逆向（160s / 33 帧 OCR）：
+ *   · 原版实测值（标注【原版】）：征兵 10 起步每次 +2 不封顶、一次 5 张进军营(5 槽)、
+ *     手牌 8 格、开局资源 20、资源 +1/s、刀 4.50/1.88、刘备 16.00/1.25、经验 3.6/10、
+ *     铁剑 攻击+3、击杀普通敌人 +1、阿斗 3 血、巨鹿关 6 波、五对武将字。
+ *   · 原版未展示、按比例推导（标注【推导】）：枪/弓/骑/农民面板、精英/Boss 赏金、
+ *     每击杀经验值、敌方行军速度、波次结构细节。全部可在 balance 复跑复调。
  * 纯经典脚本（非 ES Module），可 file:// 直接双击运行
  * ========================================================================== */
 window.ZY = window.ZY || {};
@@ -8,47 +14,54 @@ window.ZY = window.ZY || {};
   'use strict';
 
   /* ---------- 全局常量 ---------- */
-  const GROW = { hp: 1.55, atk: 1.85, aspd: 1.05 }; // 每升 1 级的成长系数
-  const MAX_LEVEL = 5;            // 等级上限
-  const HERO_MAX_LEVEL = 5;       // 武将等级上限
-  const RECRUIT_BASE_COST = 12;   // 征兵初始成本（每次成功后 +1，上限 60）
-  const RECRUIT_MAX_COST = 60;    // 征兵成本上限
-  const RECRUIT_STEP = 1;         // 每次成功征兵成本递增
-  const BATCH = 3;                // 一次征兵出 3 张
-  const HAND_MAX = 12;            // 待部署栏格数
-  const START_BUN = 24;           // 开局馒头
-  const BASE_INCOME = 2;          // 自然收入 / 秒
-  const ADOU_HP = 3;              // 阿斗血量
-  const ADOU_BONUS = 10;          // 阿斗掉 1 血补偿馒头
-  const WARCRY_MULT = 1.5;        // 神兵符攻击倍率
-  const WARCRY_TIME = 10;         // 神兵符持续秒数
-  const FIREBALL_DMG = 80;        // 火球固定伤害（精英/Boss 同样生效）
-  const FIREBALL_RADIUS = 1;      // 火球爆炸半径（切比雪夫，3×3）
-  const HERO_KILLS_PER_LEVEL = 8; // 武将每击杀多少个敌人升 1 级
-  const LEVEL_CLEAR_BONUS = 25;   // 关卡模式：过关战利品（馒头）
-  const FORK_CHANCE = 0.3;        // 岔口转向概率
-  const NORMAL_BOUNTY = 1;        // 击杀普通敌人赏金
-  const ELITE_BOUNTY = 8;         // 击杀精英赏金
-  const BOSS_HP_MUL = 10;         // Boss 血量倍率（相对同波敌）
-  const BOSS_ATK_MUL = 3;         // Boss 攻击倍率
-  const BOSS_SKILL_CD = 6;        // Boss 震击技能 CD（秒）
-  const BOSS_SLOW = 1;            // Boss 震击减速（秒，即 stun）
-  const BOSS_BOUNTY = 30;         // 击杀 Boss 赏金
+  const GROW = { hp: 1.55, atk: 1.85, aspd: 1.05 }; // 每升 1 级的成长系数【推导，沿用 V4】
+  const MAX_LEVEL = 5;            // 兵种/武将等级上限【原版：满级 5 级】
+  const RECRUIT_BASE_COST = 10;   // 征兵初始成本【原版：10 起步】
+  const RECRUIT_STEP = 2;         // 每次成功征兵成本 +2【原版：10→12→14…不封顶】
+  // 注意：原版征兵成本不封顶（无 RECRUIT_MAX_COST）
+  const BATCH = 5;                // 一次征兵产出 5 张【原版】
+  const BARRACKS_MAX = 5;         // 军营栏 5 槽【原版】
+  const HAND_MAX = 8;             // 手牌区 8 格（武将卡占 2 格）【原版】
+  const START_BUN = 20;           // 开局资源 20【原版】（界面显示为「资源」，蛋形/圆形图标）
+  const BASE_INCOME = 1;          // 资源自动增长 +1/s【原版：5 秒内 +2~4，含击杀奖励】
+  const ADOU_HP = 3;              // 阿斗血量【原版：三颗红心】
+  const ADOU_BONUS = 10;          // 阿斗掉 1 血补偿资源【推导，沿用 V4：卖血换经济】
+  const ADOU_LINE_WAVE = '护驾！护驾！';   // 阿斗台词：敌人来袭时【原版】
+  const ADOU_LINE_LOW = '我快不行了';     // 阿斗台词：血量告急时【原版】
+  const WARCRY_MULT = 1.5;        // 神兵符攻击倍率【推导，沿用 V4】
+  const WARCRY_TIME = 10;         // 神兵符持续秒数【推导，沿用 V4】
+  const FIREBALL_DMG = 80;        // 火球固定伤害（精英/Boss 同样生效）【推导，沿用 V4】
+  const FIREBALL_RADIUS = 1;      // 火球爆炸半径（切比雪夫，3×3）【推导，沿用 V4】
+  const NORMAL_BOUNTY = 1;        // 击杀普通敌人资源 +1【原版】
+  const ELITE_BOUNTY = 8;         // 击杀精英赏金【推导，沿用 V4 口径】
+  const BOSS_BOUNTY = 30;         // 击杀 Boss 赏金【推导，沿用 V4 口径】
+  const XP_PER_KILL = 1.2;        // 每击杀 1 个 Lv1 敌人获得的经验【推导：3 只 = 3.6，对齐原版刘备面板 3.6/10】
+  const XP_PER_LEVEL = 10;        // 经验满 10 升 1 级【原版：经验值 (x/10)】
+  const LEVEL_WAVES = 6;          // 关卡模式每关波数【原版：巨鹿关 = 6 波】
+  const STAR_PAR_WAVE = 25;       // 星级时间基准：每波 25s 内清完算快【推导】
+  const LEVEL_CLEAR_BONUS = 25;   // 关卡模式：过关战利品（资源）【推导，沿用 V4】
+  const SHOVEL_START = 2;         // 开局道具栏铲子数量【原版：道具栏（铲子 x2）】
+  const SHOVEL_WAVE_BONUS = 5;    // 每多少波奖励 1 把铲子【推导】
+  const BOSS_HP_MUL = 10;         // Boss 血量倍率（相对同波敌）【推导，沿用 V4】
+  const BOSS_ATK_MUL = 3;         // Boss 攻击倍率【推导，沿用 V4】
+  const BOSS_SKILL_CD = 6;        // Boss 震击技能 CD（秒）【推导，沿用 V4】
+  const BOSS_SLOW = 1;            // Boss 震击减速（秒，即 stun）【推导，沿用 V4】
 
-  /* ---------- 兵种表 ----------
-   * move   = 每前进 1 格所需秒数（0 = 不移动）
-   * range  = 射程（格，同列直线）
+  /* ---------- 兵种表（1 级面板） ----------
+   * atk/aspd = 原版展示值或按「刀 4.50/1.88」基准的比例推导值（逐项注释）
+   * move   = 敌人每前进 1 格所需秒数（行军速度沿用 V4 实测口径，指令未要求改）
+   * range  = 射程（格，切比雪夫）
    * pierce = 直线贯穿（打到射程内同列所有敌人）
    * splash = 溅射系数（对目标周围 1 格造成 X 倍伤害）
-   * role   = 布阵倾向：front 前排 / mid 二排 / back 后排 / flank 侧翼
+   * produce= 农民每秒产资源
    */
   const UNITS = {
-    dao:   { key: 'dao',   char: '刀', name: '刀兵', hp: 40, atk: 4,   aspd: 1.0, range: 1, move: 2.60, role: 'front' },
-    qiang: { key: 'qiang', char: '枪', name: '枪兵', hp: 32, atk: 3,   aspd: 0.8, range: 2, move: 2.30, role: 'mid', pierce: true },
-    gong:  { key: 'gong',  char: '弓', name: '弓兵', hp: 20, atk: 2.5, aspd: 0.7, range: 4, move: 2.40, role: 'back' },
-    qi:    { key: 'qi',    char: '骑', name: '骑兵', hp: 36, atk: 3,   aspd: 0.9, range: 1, move: 1.75, role: 'flank', splash: 0.5 },
-    zei:   { key: 'zei',   char: '贼', name: '贼兵', hp: 24, atk: 2,   aspd: 1.2, range: 1, move: 1.85, role: 'front' },
-    nong:  { key: 'nong',  char: '农', name: '农民', hp: 18, atk: 0,   aspd: 0,   range: 0, move: 0,    role: 'back', produce: 0.5 },
+    dao:   { key: 'dao',   char: '刀', name: '刀兵', hp: 40,  atk: 4.50, aspd: 1.88, range: 1, move: 2.60, role: 'front', tag: '单体' }, // 刀 = 原版展示值
+    qiang: { key: 'qiang', char: '枪', name: '枪兵', hp: 32,  atk: 3.80, aspd: 2.05, range: 2, move: 2.30, role: 'mid',   pierce: true,  tag: '贯穿' }, // 推导：攻击略低、攻速略快
+    gong:  { key: 'gong',  char: '弓', name: '弓兵', hp: 20,  atk: 3.20, aspd: 1.60, range: 4, move: 2.40, role: 'back',  tag: '远程' },                   // 推导：远程低血
+    qi:    { key: 'qi',    char: '骑', name: '骑兵', hp: 36,  atk: 4.20, aspd: 1.70, range: 1, move: 1.75, role: 'flank', splash: 0.5, tag: '溅射' },      // 推导：近战溅射
+    zei:   { key: 'zei',   char: '贼', name: '贼兵', hp: 24,  atk: 2.00, aspd: 1.20, range: 1, move: 1.85, role: 'front', tag: '敌方' },                   // 敌方普通兵种
+    nong:  { key: 'nong',  char: '农', name: '农民', hp: 18,  atk: 0,    aspd: 0,    range: 0, move: 0,    role: 'back',  produce: 0.4, tag: '产出' },      // 推导：资源产出
   };
 
   // 汉字 → 兵种 key
@@ -59,39 +72,35 @@ window.ZY = window.ZY || {};
   const SOLDIER_CHARS = ['刀', '枪', '弓', '骑'];
 
   /* ---------- 武将表 ----------
-   * 数值 = 对应兵种 3 级 ×1.2，之后按武将等级继续成长
-   * skill.cd 秒，自动释放
+   * V5：五对武将字（原版字对合成表）。刘备 = 原版展示面板 16.00/1.25 单体；
+   * 其余武将按刘备/刀基准比例推导（标注）。heroLevel 成长走 GROW。
+   * 武将卡占 2 格宽（手牌 2 槽 / 棋盘横跨 2 格）。
    */
   const HEROES = [
     {
       id: 'zhaoyun', name: '赵云', chars: ['赵', '云'], base: 'qiang',
-      range: 3, pierce: true, tag: '枪兵系 · 贯穿',
+      atk: 12.0, aspd: 1.45, hpBase: 32, range: 3, pierce: true, tag: '枪兵系 · 贯穿', // 推导
       skill: { cd: 8, type: 'sweep', name: '横扫剑气', desc: '前方直线群伤' },
     },
     {
       id: 'zhangfei', name: '张飞', chars: ['张', '飞'], base: 'dao',
-      range: 1, hpMul: 1.25, dmgReduce: 0.25, tag: '刀兵系 · 高血高防',
+      atk: 13.5, aspd: 1.30, hpBase: 40, hpMul: 1.25, dmgReduce: 0.25, range: 1, tag: '刀兵系 · 高血高防', // 推导
       skill: { cd: 10, type: 'roar', name: '怒吼', desc: '震晕前方 1 格敌人 1 秒' },
     },
     {
       id: 'huangzhong', name: '黄忠', chars: ['黄', '忠'], base: 'gong',
-      range: 5, crit: 0.4, critMul: 2.0, tag: '弓兵系 · 远程暴击',
+      atk: 11.0, aspd: 1.10, hpBase: 20, range: 5, crit: 0.4, critMul: 2.0, tag: '弓兵系 · 远程暴击', // 推导
       skill: { cd: 9, type: 'snipe', name: '蓄力狙击', desc: '对最远敌人单体大伤' },
     },
     {
-      id: 'guanyu', name: '关羽', chars: ['关', '羽'], base: 'qi',
-      range: 1, splash: 0.6, tag: '骑兵系 · 群伤',
-      skill: { cd: 10, type: 'cleave', name: '青龙斩', desc: '周围溅射大伤害' },
-    },
-    {
       id: 'liubei', name: '刘备', chars: ['刘', '备'], base: 'dao',
-      range: 0, noAttack: true, noMove: true, tag: '辅助 · 不攻击',
+      atk: 16.00, aspd: 1.25, hpBase: 40, range: 1, tag: '主公 · 单体', // 原版展示值（攻击 16.00 / 攻速 1.25 / 单体）
       skill: { cd: 5, type: 'heal', name: '仁德', desc: '相邻己方单位回血' },
     },
     {
-      id: 'zhangbao', name: '张苞', chars: ['张', '苞'], base: 'dao',
-      range: 1, tag: '刀兵系 · 中规中矩',
-      skill: { cd: 8, type: 'leap', name: '跳劈', desc: '单体重击' },
+      id: 'machao', name: '马超', chars: ['马', '超'], base: 'qi',
+      atk: 14.0, aspd: 1.35, hpBase: 36, range: 1, splash: 0.6, tag: '骑兵系 · 群伤', // 推导
+      skill: { cd: 10, type: 'cleave', name: '青龙斩', desc: '周围溅射大伤害' },
     },
   ];
 
@@ -99,7 +108,7 @@ window.ZY = window.ZY || {};
   const HERO_BY_NAME = {};
   HEROES.forEach(function (h) { HERO_BY_ID[h.id] = h; HERO_BY_NAME[h.name] = h; });
 
-  // 金色武将字池（去重）
+  // 金色武将字池（去重，共 10 字 = 5 对）
   const GOLD_CHARS = (function () {
     const set = {};
     HEROES.forEach(function (h) { h.chars.forEach(function (c) { set[c] = true; }); });
@@ -107,41 +116,46 @@ window.ZY = window.ZY || {};
   })();
 
   /* ---------- 道具表 ----------
-   * V4 起全部改为「拖出手牌 → 松手位置即目标」的拖放释放
+   * V5：铲子移到道具栏（计数式，开局 ×2，每 SHOVEL_WAVE_BONUS 波 +1）；
+   * 神兵符/毛笔/火球仍以卡牌形态从征兵产出，全部拖放释放。
    */
   const ITEMS = {
     shovel:    { id: 'shovel',    name: '铲子',   glyph: '铲', color: '#7a6a52', desc: '拖到荒地塔位上，扩成可建塔地块' },
-    brush:     { id: 'brush',     name: '毛笔',   glyph: '笔', color: '#3b4a63', desc: '拖到己方塔上，改写该塔兵种（金/将塔不可）' },
+    brush:     { id: 'brush',     name: '毛笔',   glyph: '笔', color: '#3b4a63', desc: '拖到己方塔上，改写该塔兵种（金/将不可）' },
     warcry:    { id: 'warcry',    name: '神兵符', glyph: '符', color: '#b3352f', desc: '拖出释放：全队攻击 ×1.5，持续 10 秒' },
     fireball:  { id: 'fireball',  name: '火球',   glyph: '火', color: '#c65a1e', desc: '拖到主路上：落点 3×3 内敌人受 80 点固定伤害' },
-    // —— 预留枚举位（本轮不做界面与掉落）——
-    dabuwan:   { id: 'dabuwan',   name: '大补丸', glyph: '补', color: '#777', desc: '预留' },
-    xumingdan: { id: 'xumingdan', name: '续命丹', glyph: '丹', color: '#777', desc: '预留' },
-    gongsufu:  { id: 'gongsufu',  name: '攻速符', glyph: '速', color: '#777', desc: '预留' },
-    jiansuni:  { id: 'jiansuni',  name: '减速淤泥', glyph: '泥', color: '#777', desc: '预留' },
-    jiban:     { id: 'jiban',     name: '羁绊',   glyph: '绊', color: '#777', desc: '预留' },
   };
 
-  /* ---------- Boss（关卡关底强化波） ---------- */
+  /* ---------- 武器背包 ----------
+   * V5 新增：至少提供「铁剑 攻击+3」，可装备给武将（面板显示装备加成）。
+   * 其他武器为预留推导位。
+   */
+  const WEAPONS = {
+    tiejian: { id: 'tiejian', name: '铁剑', glyph: '剑', atk: 3, desc: '攻击 +3' }, // 原版展示值
+  };
+
+  /* ---------- Boss（关卡关底 / 无尽强化波） ----------
+   * V5：敌方带名武将「张梁」作为精英/Boss 出场，带名字。
+   */
   const BOSS = {
-    char: '魔', name: '魔将', base: 'zei',
+    char: '梁', name: '张梁', base: 'zei',
     hp: 24, atk: 2, aspd: 0.9, range: 1, move: 2.0,
     hpMul: BOSS_HP_MUL, atkMul: BOSS_ATK_MUL, skillCd: BOSS_SKILL_CD, slow: BOSS_SLOW,
   };
 
   /* ---------- 征兵概率池（合计 100） ----------
-   * V4：新增火球 5%，其余按比例微调保持合计 100 */
+   * V5：铲子改走道具栏计数，不再占卡牌池；权重向兵种/金字倾斜。
+   */
   const RECRUIT_POOL = [
-    { w: 21, kind: 'unit', type: 'dao' },
-    { w: 17, kind: 'unit', type: 'qiang' },
-    { w: 12, kind: 'unit', type: 'gong' },
-    { w: 9,  kind: 'unit', type: 'qi' },
-    { w: 14, kind: 'gold' },
-    { w: 11, kind: 'item', item: 'shovel' },
+    { w: 24, kind: 'unit', type: 'dao' },
+    { w: 18, kind: 'unit', type: 'qiang' },
+    { w: 13, kind: 'unit', type: 'gong' },
+    { w: 10, kind: 'unit', type: 'qi' },
+    { w: 16, kind: 'gold' },
     { w: 5,  kind: 'unit', type: 'nong' },
-    { w: 3,  kind: 'item', item: 'brush' },
-    { w: 3,  kind: 'item', item: 'warcry' },
-    { w: 5,  kind: 'item', item: 'fireball' },
+    { w: 4,  kind: 'item', item: 'brush' },
+    { w: 4,  kind: 'item', item: 'warcry' },
+    { w: 6,  kind: 'item', item: 'fireball' },
   ];
 
   /* ---------- 敌军（无尽 / 关卡）出兵构成 ---------- */
@@ -156,11 +170,12 @@ window.ZY = window.ZY || {};
 
   /* ---------- 波次节奏（关卡 / 无尽）—— 数值基线集中在这里，方便统一调平 ---------- */
   const TUNE = {
-    levelFirstGap: 26,      // 关卡：第一波之前的备战时间（秒）
-    levelGap: 22,           // 关卡：普通波间隔
-    levelBossGap: 26,       // 关卡：关底波之前的间隔
+    levelFirstGap: 20,      // 关卡：第一波之前的备战时间（秒）
+    levelGap: 18,           // 关卡：普通波间隔
+    levelBossGap: 24,       // 关卡：关底波（第 6 波）之前的间隔
+    levelWaves: LEVEL_WAVES,// 关卡：每关波数（第 6 波 = 关底，出张梁）
     levelStep: 1,           // 关卡：每波递增兵数
-    levelEnemyDiv: 3,        // 关卡：敌方等级每几关 +1
+    levelEnemyDiv: 3,       // 关卡：敌方等级每几关 +1
     levelHpRamp: 0.08,      // 关卡：每波血量递增比例
     levelAtkRamp: 0.05,     // 关卡：每波攻击递增比例
     bossCountMul: 1.5,      // 关底波兵数 = 关卡基准 × 此值
@@ -182,8 +197,8 @@ window.ZY = window.ZY || {};
     breakMax: 5,            // 突破口事件最大间隔（波）
     breakMul: 2.5,          // 突破口：该线出怪数量 ×2.5
     breakGapMul: 0.5,       // 突破口：出怪间隔减半
-    levelBreakWave: 2,      // 关卡：每关第几波随机一次突破口
-    versusWaves: 15,        // 竞技：公共波次总数（打满比阿斗剩血，持平比击杀数；进行中仍谁先破谁输）
+    levelBreakWave: 3,      // 关卡：每关第几波随机一次突破口
+    versusWaves: 15,        // 竞技：公共波次总数（打满比阿斗剩血，持平比击杀；进行中仍谁先破谁输）
   };
 
   /* ---------- 军衔 ---------- */
@@ -213,25 +228,23 @@ window.ZY = window.ZY || {};
     };
   }
 
-  /** 武将在某武将等级下的数值（基准 = 对应兵种 3 级 ×1.2） */
+  /** 武将在某武将等级下的数值（基准 = 武将表 atk/aspd + GROW 成长） */
   function heroStats(heroId, heroLevel) {
     const h = HERO_BY_ID[heroId] || HEROES[0];
-    const b = statsAt(h.base, 3);
     const n = Math.max(1, safe(heroLevel)) - 1;
-    let hp = b.hp * 1.2 * Math.pow(GROW.hp, n);
-    const atk = b.atk * 1.2 * Math.pow(GROW.atk, n);
-    const aspd = b.aspd ? b.aspd * Math.pow(GROW.aspd, n) : 0;
-    if (h.hpMul) hp *= h.hpMul;
+    const hp = (h.hpBase || 30) * 2.2 * Math.pow(GROW.hp, n) * (h.hpMul || 1);
     return {
-      hp: hp, atk: atk, aspd: aspd,
+      hp: hp,
+      atk: h.atk * Math.pow(GROW.atk, n),
+      aspd: h.aspd ? h.aspd * Math.pow(GROW.aspd, n) : 0,
       range: h.range != null ? h.range : UNITS[h.base].range,
-      move: h.noMove ? 0 : 2.10,
+      move: 2.10,
       pierce: !!h.pierce,
       splash: h.splash || 0,
       crit: h.crit || 0,
       critMul: h.critMul || 1,
       dmgReduce: h.dmgReduce || 0,
-      noAttack: !!h.noAttack,
+      noAttack: false,
     };
   }
 
@@ -247,22 +260,22 @@ window.ZY = window.ZY || {};
     return list[list.length - 1];
   }
 
-  /** 掷一次征兵，返回一张手牌描述 */
   /** 金字「凑将」辅助抽取：
-   *  字池有 12 个字，纯随机的话要凑出「赵+云」这种固定搭配几乎不可能，
-   *  武将这条主线就废了。所以有一定概率优先抽「能把场上/手里的孤字凑成对」的那个字。
-   *  传 state / side 才能读到当前局面；不传就退化成纯随机（测试用）。
+   *  字池有 10 个字（5 对），纯随机凑对太慢，所以有一定概率优先抽
+   *  「能把手里/军营里的孤字凑成对」的那个字。传 state/side 才能读到局面；
+   *  不传就退化成纯随机（测试用）。
    */
   const GOLD_MATCH_RATE = 0.7;
   function goldNeeds(state, side) {
     const need = [];
     const add = function (ch) { if (need.indexOf(ch) < 0) need.push(ch); };
     if (state && side) {
+      const s = side === 'player' ? state.player : state.enemy;
+      (s.hand || []).forEach(function (c) { if (c.kind === 'gold') add(c.char); });
+      (s.barracks || []).forEach(function (c) { if (c.kind === 'gold') add(c.char); });
       (state.units || []).forEach(function (u) {
         if (u.side === side && u.cls === 'gold' && !u.dead) add(u.char);
       });
-      const hand = (state[side] && state[side].hand) || [];
-      hand.forEach(function (c) { if (c.kind === 'gold') add(c.char); });
     }
     const out = [];
     need.forEach(function (ch) {
@@ -288,16 +301,40 @@ window.ZY = window.ZY || {};
     return { kind: 'item', item: hit.item };
   }
 
+  /** 手牌/军营占用格数（武将卡占 2 格） */
+  function cardSpan(card) { return card && card.kind === 'hero' ? 2 : 1; }
+  function handUsed(side) {
+    let n = 0;
+    (side.hand || []).forEach(function (c) { n += cardSpan(c); });
+    return n;
+  }
+
+  /** 当前可合成的武将（手里同时持有某对两个字 → 返回该武将，否则 null） */
+  function heroSynthReady(state, side) {
+    const s = side === 'player' ? state.player : state.enemy;
+    const hand = s.hand || [];
+    for (let i = 0; i < HEROES.length; i++) {
+      const h = HEROES[i];
+      const a = hand.find(function (c) { return c.kind === 'gold' && c.char === h.chars[0]; });
+      const b = hand.find(function (c) { return c.kind === 'gold' && c.char === h.chars[1]; });
+      if (a && b) return h;
+    }
+    return null;
+  }
+
   ZY.C = {
-    GROW: GROW, MAX_LEVEL: MAX_LEVEL, HERO_MAX_LEVEL: HERO_MAX_LEVEL,
-    RECRUIT_BASE_COST: RECRUIT_BASE_COST, RECRUIT_MAX_COST: RECRUIT_MAX_COST,
-    RECRUIT_STEP: RECRUIT_STEP, BATCH: BATCH, HAND_MAX: HAND_MAX, START_BUN: START_BUN,
+    GROW: GROW, MAX_LEVEL: MAX_LEVEL,
+    RECRUIT_BASE_COST: RECRUIT_BASE_COST, RECRUIT_STEP: RECRUIT_STEP,
+    BATCH: BATCH, BARRACKS_MAX: BARRACKS_MAX, HAND_MAX: HAND_MAX, START_BUN: START_BUN,
     BASE_INCOME: BASE_INCOME, ADOU_HP: ADOU_HP, ADOU_BONUS: ADOU_BONUS,
+    ADOU_LINE_WAVE: ADOU_LINE_WAVE, ADOU_LINE_LOW: ADOU_LINE_LOW,
     WARCRY_MULT: WARCRY_MULT, WARCRY_TIME: WARCRY_TIME,
     FIREBALL_DMG: FIREBALL_DMG, FIREBALL_RADIUS: FIREBALL_RADIUS,
-    HERO_KILLS_PER_LEVEL: HERO_KILLS_PER_LEVEL,
-    LEVEL_CLEAR_BONUS: LEVEL_CLEAR_BONUS, FORK_CHANCE: FORK_CHANCE,
     NORMAL_BOUNTY: NORMAL_BOUNTY, ELITE_BOUNTY: ELITE_BOUNTY, BOSS_BOUNTY: BOSS_BOUNTY,
+    XP_PER_KILL: XP_PER_KILL, XP_PER_LEVEL: XP_PER_LEVEL,
+    LEVEL_WAVES: LEVEL_WAVES, STAR_PAR_WAVE: STAR_PAR_WAVE,
+    LEVEL_CLEAR_BONUS: LEVEL_CLEAR_BONUS,
+    SHOVEL_START: SHOVEL_START, SHOVEL_WAVE_BONUS: SHOVEL_WAVE_BONUS,
     BOSS_HP_MUL: BOSS_HP_MUL, BOSS_ATK_MUL: BOSS_ATK_MUL, BOSS_SKILL_CD: BOSS_SKILL_CD,
     BOSS_SLOW: BOSS_SLOW,
   };
@@ -309,6 +346,7 @@ window.ZY = window.ZY || {};
   ZY.HERO_BY_NAME = HERO_BY_NAME;
   ZY.GOLD_CHARS = GOLD_CHARS;
   ZY.ITEMS = ITEMS;
+  ZY.WEAPONS = WEAPONS;
   ZY.BOSS = BOSS;
   ZY.RECRUIT_POOL = RECRUIT_POOL;
   ZY.ENEMY_MIX = ENEMY_MIX;
@@ -320,4 +358,7 @@ window.ZY = window.ZY || {};
   ZY.heroStats = heroStats;
   ZY.weighted = weighted;
   ZY.rollRecruit = rollRecruit;
+  ZY.cardSpan = cardSpan;
+  ZY.handUsed = handUsed;
+  ZY.heroSynthReady = heroSynthReady;
 })(window.ZY);

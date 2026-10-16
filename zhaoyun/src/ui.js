@@ -1,6 +1,7 @@
 /* =============================================================================
- * 赵云与阿斗 · 界面与交互 (ui.js)
+ * 赵云与阿斗 · 界面与交互 (ui.js)  — V5 原版对齐（竖屏）
  * 渲染、拖拽（pointer 统一鼠标 / 触屏）、飘字特效、结算面板
+ * 布局：顶部信息栏 → 棋盘 → 手牌区 8 格 → 军营栏 5 格 → 征兵按钮 + 道具栏（铲子×N / 兵器）
  * ========================================================================== */
 (function (ZY) {
   'use strict';
@@ -15,6 +16,7 @@
   let cellEls = [], unitEls = {}, adouEls = {};
   let carry = null;                 // 关卡模式跨关继承
   let pendingLevel = 0;
+  let selectedHero = null;          // 武器面板当前选中的武将
 
   const drag = { active: false, src: null, uid: 0, unitId: 0, sx: 0, sy: 0, moved: false, el: null, cell: null };
 
@@ -35,6 +37,12 @@
     el.redflash = $('redflash');
     el.midline = $('midline');
     el.hand = $('hand');
+    el.barracks = $('barracks');
+    el.items = $('items');
+    el.itemShovel = $('item-shovel');
+    el.btnWeapons = $('btn-weapons');
+    el.weaponPanel = $('weapon-panel');
+    el.waveLeft = $('wave-left');
     el.btnRecruit = $('btn-recruit');
     el.hudMode = $('hud-mode');
     el.hudWave = $('hud-wave');
@@ -131,12 +139,11 @@
   }
 
   function syncCells() {
-    // V4 塔防：主路地砖 / 入口 / 塔位 / 荒地 / 障碍 / 来袭预警（入口首段主路 ▼）
+    // V5 塔防：棕色主路地砖 / 绿色塔位 / 荆棘障碍 / 荒地 / 入口 / 来袭预警
     const mode = state.mode;
     const vs = mode === 'versus';
     const warnOn = state.wave.idx > 0 || state.wave.pending.length > 0;
     const brk = state.wave.breakEntrance;
-    // 预警格：双方路的 入口 + 首段主路（竞技对称显示）
     const warnSet = {};
     if (warnOn) {
       ['player', 'enemy'].forEach(function (side) {
@@ -144,7 +151,6 @@
         B.warnCells(mode, side).forEach(function (p) { warnSet[B.key(p.row, p.col)] = true; });
       });
     }
-    // 入口格
     const entSet = {};
     ['player', 'enemy'].forEach(function (side) {
       if (!vs && side === 'enemy') return;
@@ -194,13 +200,15 @@
     el.hpEnemyLine.style.display = state.mode === 'versus' ? '' : 'none';
     el.overlay.hidden = true;
     el.overlay.innerHTML = '';
+    el.weaponPanel.hidden = true;
     unitEls = {};
     el.units.innerHTML = '';
     adouEls = {};
     buildAdou();
+    buildSpawnMark();
     syncCells();
     syncUnits(true);
-    syncHand();
+    syncHand(); syncBarracks(); syncItems();
     syncHud();
     bannerText(state.mode === 'level' ? ('第 ' + (state.levelIdx + 1) + ' 关 · ' + state.levelName)
       : (state.mode === 'endless' ? '守住阿斗' : '竞技 · 对局开始'), 1.8);
@@ -213,7 +221,7 @@
       const d = document.createElement('div');
       d.className = 'adou adou-' + side;
       d.innerHTML = '<b>斗</b><i></i>';
-      place(d, a.row, a.col);
+      place(d, a.row, a.col, 1);
       el.units.appendChild(d);
       adouEls[side] = d;
       d.addEventListener('pointerdown', function (ev) {
@@ -223,15 +231,25 @@
     });
   }
 
-  function place(node, r, c) {
-    node.style.width = (100 / B.COLS) + '%';
+  /** V5：右侧刷怪口另立一「斗」作为敌方刷怪口标记（单人模式） */
+  function buildSpawnMark() {
+    if (state.mode === 'versus') return;
+    const ent = B.entrances(state.mode, 'player')[0];
+    const d = document.createElement('div');
+    d.className = 'adou spawn-mark';
+    d.innerHTML = '<b>斗</b>';
+    place(d, ent.row, ent.col, 1);
+    el.units.appendChild(d);
+  }
+
+  function place(node, r, c, span) {
+    node.style.width = (100 / B.COLS * (span || 1)) + '%';
     node.style.height = (100 / B.ROWS) + '%';
     node.style.transform = 'translate(' + (c * 100) + '%,' + (r * 100) + '%)';
   }
 
   /* ======================================================== 单位渲染 */
-  /* 水墨 Q 版小人：内嵌 SVG，颜色走 CSS 变量（.unit.e 覆写为红色调）。
-   * 全部只画一次，靠 CSS 给不同兵种不同的待机/攻击 keyframes。 */
+  /* 水墨 Q 版小人：内嵌 SVG，颜色走 CSS 变量（.unit.e 覆写为红色调）。 */
   function weaponOf(u) {
     let w = u.cls === 'hero'
       ? (ZY.HERO_BY_ID[u.heroId] ? ZY.HERO_BY_ID[u.heroId].base : 'dao')
@@ -276,9 +294,9 @@
     return '<g class="fig-arm fig-arm-l">' +
       '<path class="fig-limb" d="M40 52 Q30 58 27 66"/>' +
       '<g class="fig-bowgrp">' +
-        '<path class="fig-bow" d="M21 38 Q11 64 21 90"/>' +
-        '<line class="fig-string" x1="21" y1="38" x2="21" y2="90"/>' +
-        '<line class="fig-arrow" x1="21" y1="64" x2="21" y2="14"/>' +
+      '<path class="fig-bow" d="M21 38 Q11 64 21 90"/>' +
+      '<line class="fig-string" x1="21" y1="38" x2="21" y2="90"/>' +
+      '<line class="fig-arrow" x1="21" y1="64" x2="21" y2="14"/>' +
       '</g>' +
       '</g>';
   }
@@ -293,8 +311,8 @@
     return '<g class="fig-arm">' +
       '<path class="fig-limb" d="M58 50 Q70 48 76 54"/>' +
       '<g class="fig-hoe">' +
-        '<line class="fig-handle" x1="76" y1="54" x2="93" y2="70"/>' +
-        '<path class="fig-hoeb" d="M89 65 q9 -2 12 5 q-9 4 -13 -3 Z"/>' +
+      '<line class="fig-handle" x1="76" y1="54" x2="93" y2="70"/>' +
+      '<path class="fig-hoeb" d="M89 65 q9 -2 12 5 q-9 4 -13 -3 Z"/>' +
       '</g>' +
       '</g>';
   }
@@ -318,15 +336,17 @@
     return '<svg class="fig" viewBox="0 0 100 120" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' + inner + '</svg>';
   }
   function unitHtml(u) {
-    if (u.cls === 'gold') {
+    if (u.cls === 'gold') {                                  // 兼容旧存档残留
       return '<b>' + u.char + '</b>';
     }
-    const nm = '<b' + (u.cls === 'hero' ? ' class="nm"' : '') + '>' + u.char + '</b>';
-    // V4：等级角标常显且放大（武将塔显示武将阶数）
+    // V5：带名武将（张梁）显示名字；武将塔显示武将名
+    const label = (u.boss && u.name) ? u.name : u.char;
+    const nm = '<b' + (u.cls === 'hero' || u.boss ? ' class="nm"' : '') + '>' + label + '</b>';
     const lv = '<s class="lv">' + (u.cls === 'hero' ? u.heroLevel : u.level) + '</s>';
     const hb = '<i class="hb"><u></u></i>';
     const sk = (u.cls === 'hero') ? '<em class="sk"></em>' : '';
-    return nm + figSvg(u) + lv + hb + sk;
+    const wp = u.weapon ? '<s class="wp">' + ZY.WEAPONS[u.weapon].glyph + '</s>' : '';   // 装备武器小徽标
+    return nm + figSvg(u) + lv + hb + sk + wp;
   }
 
   function syncUnits(force) {
@@ -343,22 +363,22 @@
         e.className = 'unit ' + (u.side === 'player' ? 'p' : 'e') + ' ' + u.cls +
           (u.elite ? ' elite' : '') +
           (u.cls === 'soldier' ? ' t-' + u.type : '') +
-          (u.cls === 'hero' && wtype ? ' t-' + wtype : '');
+          (u.cls === 'hero' && wtype ? ' t-' + wtype : '') +
+          (u.span > 1 ? ' span2' : '');
         e.dataset.uid = u.id;
         e.dataset.weapon = wtype;
         e.innerHTML = unitHtml(u);
-        place(e, u.row, u.col);
+        place(e, u.row, u.col, u.span);
         e._r = u.row; e._c = u.col;
-        // 平移速度跟自身「走一格」的耗时对齐 → 看起来是连续行军而不是一格一格跳
-        e.style.transitionDuration = (u.move > 0 ? Math.min(2.2, u.move * 0.9) : 0.18) + 's';
+        // 敌人按移速插值滑行；我方塔只会在用户拖拽换位时移动 → 快速落定
+        e.style.transitionDuration = (u.side === 'player' ? 0.18 : (u.move > 0 ? Math.min(2.2, u.move * 0.9) : 0.18)) + 's';
         e.classList.add('born');
         el.units.appendChild(e);
         unitEls[u.id] = e;
         void e.offsetHeight;
         e.classList.add('anim');
       }
-      place(e, u.row, u.col);
-      // 行军：位置变化时挂 a-move（在 .fig-mount 上跑颠簸 keyframes，不与定位 transform 冲突）
+      place(e, u.row, u.col, u.span);
       if ((e._r !== u.row || e._c !== u.col) && u.move > 0) {
         e._r = u.row; e._c = u.col;
         e.classList.add('a-move');
@@ -366,24 +386,33 @@
         e._moveT = setTimeout(function () { e.classList.remove('a-move'); }, 320);
       }
       e.classList.toggle('stun', u.stun > 0);
-      // 血条
       const bar = e.querySelector('.hb u');
       if (bar) bar.style.width = Math.max(0, Math.min(100, (u.hp / u.maxHp) * 100)) + '%';
-      // 等级
       const lv = e.querySelector('.lv');
       if (lv) lv.textContent = u.cls === 'hero' ? u.heroLevel : u.level;
-      // 技能冷却
       const sk = e.querySelector('.sk');
       if (sk) {
         if (u.skillT > 0) { sk.textContent = Math.ceil(u.skillT); sk.classList.remove('ready'); }
         else { sk.textContent = '⚡'; sk.classList.add('ready'); }
+      }
+      // V5：装备武器徽标（装备 / 卸下实时反映，不重建整个单位节点）
+      const wp = e.querySelector('.wp');
+      if (u.weapon) {
+        const g = (ZY.WEAPONS[u.weapon] || {}).glyph || '';
+        if (!wp) {
+          const badge = document.createElement('s');
+          badge.className = 'wp';
+          badge.textContent = g;
+          e.appendChild(badge);
+        } else if (wp.textContent !== g) wp.textContent = g;
+      } else if (wp && wp.parentNode) {
+        wp.parentNode.removeChild(wp);
       }
     }
     Object.keys(unitEls).forEach(function (id) {
       if (!seen[id]) {
         const e = unitEls[id];
         if (e && e.parentNode && !e.classList.contains('a-death')) {
-          // 死亡：先播 a-death（约 0.26s），再移除；移除仍以 state.units 为准
           e.classList.add('a-death');
           const node = e;
           setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); }, 270);
@@ -401,7 +430,7 @@
     });
   }
 
-  /* ======================================================== HUD / 手牌 */
+  /* ======================================================== HUD / 手牌 / 军营 */
   let hudCache = {};
   function syncHud() {
     if (!state) return;
@@ -417,8 +446,9 @@
     if (hudCache.mode !== mode) { hudCache.mode = mode; el.hudMode.textContent = mode; }
     let wave = '';
     if (state.mode !== 'versus') {
-      wave = '第 ' + state.wave.idx + ' 波' + (state.wave.pending.length ? '（出兵中）' : '');
-      if (state.mode === 'level') wave += ' · 剩 ' + Math.max(0, 4 - state.wave.idx) + ' 波';
+      wave = '第 ' + state.wave.idx + (state.mode === 'level' ? '/' + T.levelWaves : '') + ' 波' +
+        (state.wave.pending.length ? '（出兵中）' : '');
+      if (state.mode === 'level') wave += ' · 剩 ' + Math.max(0, T.levelWaves - state.wave.idx) + ' 波';
       wave += ' · 击杀 ' + state.stats.kills;
     } else {
       wave = '第 ' + Math.min(state.wave.idx, T.versusWaves) + '/' + T.versusWaves + ' 波' +
@@ -426,13 +456,22 @@
         ' · 击杀 ' + state.player.kills + ' · 敌 ' + state.enemy.kills;
     }
     if (hudCache.wave !== wave) { hudCache.wave = wave; el.hudWave.textContent = wave; }
-    // 征兵按钮（成本随每次成功征兵 +1，上限 60）
+    // V5：波内剩余敌人数量（左下角，随击杀递减）
+    if (state.mode === 'versus') {
+      el.waveLeft.style.display = 'none';
+    } else {
+      el.waveLeft.style.display = '';
+      const rem = state.wave.pending.length + state.units.filter(function (u) { return u.side === 'enemy' && !u.dead; }).length;
+      const txt = state.wave.idx > 0 ? ('本波剩 ' + rem) : '';
+      if (el.waveLeft.textContent !== txt) el.waveLeft.textContent = txt;
+    }
+    // 征兵按钮（成本 10 起步每次 +2 不封顶；一次 5 张进军营 5 槽）
     const cost = state.player.recruitCost;
-    const can = state.player.bun >= cost && state.player.hand.length < C.HAND_MAX;
+    const bFree = C.BARRACKS_MAX - (state.player.barracks ? state.player.barracks.length : 0);
+    const can = state.player.bun >= cost && bFree > 0;
     el.btnRecruit.classList.toggle('dis', !can);
     el.btnRecruit.querySelector('span').textContent =
-      state.player.hand.length >= C.HAND_MAX ? '待部署栏已满' : (cost + ' 馒头');
-    // 神兵符提示
+      bFree <= 0 ? '军营已满' : (cost + ' 资源');
     el.btnRecruit.classList.toggle('buff', state.buff.player > 0);
   }
 
@@ -442,38 +481,83 @@
     return s;
   }
 
+  function cardInner(card) {
+    if (card.kind === 'item') {
+      return { cls: 'item it-' + card.item, html: '<b>' + ZY.ITEMS[card.item].glyph + '</b><span>' + ZY.ITEMS[card.item].name + '</span>' };
+    }
+    if (card.kind === 'hero') {
+      return { cls: 'hero', html: '<b>' + card.char + '</b><span>武将 · 2格</span>' };
+    }
+    if (card.kind === 'gold') {
+      return { cls: 'gold', html: '<b>' + card.char + '</b><span>将</span>' };
+    }
+    return { cls: 'unit t-' + card.type, html: '<b>' + card.char + '</b><span>' + U[card.type].name + '</span>' };
+  }
+
   let handSig = '';
   function syncHand() {
     if (!state) return;
     const hand = state.player.hand;
-    const sig = hand.map(function (c) { return c.uid + ':' + (c.char || c.item); }).join('|') + '#' + hand.length;
+    const sig = hand.map(function (c) { return c.uid + ':' + (c.char || c.item); }).join('|') + '#' + ZY.handUsed(state.player);
     if (sig === handSig) return;
     handSig = sig;
+    // V5：凑齐武将字对 → 两张金字黄色发光「合成武将」提示（武将卡排前，避免 2 格卡换行）
+    const ready = ZY.heroSynthReady(state, 'player');
+    const pairChars = ready ? ready.chars : [];
+    const ordered = hand.filter(function (c) { return c.kind === 'hero'; })
+      .concat(hand.filter(function (c) { return c.kind !== 'hero'; }));
     el.hand.innerHTML = '';
-    for (let i = 0; i < C.HAND_MAX; i++) {
+    let used = 0;
+    ordered.forEach(function (card) {
+      const span = ZY.cardSpan(card);
+      const inner = cardInner(card);
+      const t = document.createElement('div');
+      t.className = 'card ' + inner.cls;
+      t.style.gridColumn = 'span ' + span;
+      if (card.kind === 'gold' && pairChars.indexOf(card.char) >= 0) t.classList.add('pair');
+      t.innerHTML = inner.html;
+      t.dataset.uid = card.uid;
+      el.hand.appendChild(t);
+      used += span;
+    });
+    for (let i = used; i < C.HAND_MAX; i++) {
+      const slot = document.createElement('div');
+      slot.className = 'slot empty';
+      el.hand.appendChild(slot);
+    }
+  }
+
+  let barSig = '';
+  function syncBarracks() {
+    if (!state) return;
+    const barracks = state.player.barracks || [];
+    const sig = barracks.map(function (c) { return c.uid + ':' + (c.char || c.item); }).join('|') + '#' + barracks.length;
+    if (sig === barSig) return;
+    barSig = sig;
+    el.barracks.innerHTML = '';
+    for (let i = 0; i < C.BARRACKS_MAX; i++) {
       const slot = document.createElement('div');
       slot.className = 'slot';
-      const card = hand[i];
+      const card = barracks[i];
       if (card) {
+        const inner = cardInner(card);
         const t = document.createElement('div');
-        t.className = 'card';
-        if (card.kind === 'item') {
-          t.classList.add('item', 'it-' + card.item);
-          t.innerHTML = '<b>' + ZY.ITEMS[card.item].glyph + '</b><span>' + ZY.ITEMS[card.item].name + '</span>';
-        } else if (card.kind === 'gold') {
-          t.classList.add('gold');
-          t.innerHTML = '<b>' + card.char + '</b><span>将</span>';
-        } else {
-          t.classList.add('unit', 't-' + card.type);
-          t.innerHTML = '<b>' + card.char + '</b><span>' + U[card.type].name + '</span>';
-        }
+        t.className = 'card mini ' + inner.cls;
+        t.innerHTML = inner.html;
         t.dataset.uid = card.uid;
         slot.appendChild(t);
       } else {
         slot.classList.add('empty');
       }
-      el.hand.appendChild(slot);
+      el.barracks.appendChild(slot);
     }
+  }
+
+  function syncItems() {
+    if (!state) return;
+    const n = (state.player.items && state.player.items.shovel) || 0;
+    el.itemShovel.querySelector('b').textContent = '×' + n;
+    el.itemShovel.classList.toggle('dis', n <= 0);
   }
 
   /* ======================================================== 游戏界面事件 */
@@ -482,10 +566,11 @@
       if (!state || state.over) return;
       const r = ZY.Game.recruit(state, 'player');
       if (!r) {
-        toast(state.player.hand.length >= C.HAND_MAX ? '待部署栏已满' : '馒头不够（需要 ' + state.player.recruitCost + '）');
+        const bFree = C.BARRACKS_MAX - (state.player.barracks ? state.player.barracks.length : 0);
+        toast(bFree <= 0 ? '军营已满（5 槽），先把手牌用出去' : '资源不够（需要 ' + state.player.recruitCost + '）');
         return;
       }
-      syncHand(); syncHud();
+      syncHand(); syncBarracks(); syncItems(); syncHud();
     });
 
     el.btnPause.addEventListener('click', function () {
@@ -498,8 +583,13 @@
     el.btnMute.addEventListener('click', function () {
       setMute(!ZY.Save.getMuted());
     });
+    el.btnWeapons.addEventListener('click', function () {
+      if (!state) return;
+      if (el.weaponPanel.hidden) openWeapons(); else el.weaponPanel.hidden = true;
+      ZY.Audio.play('tap');
+    });
 
-    // —— 拖拽：手牌 → 棋盘 ——
+    // —— 拖拽：手牌 → 棋盘 / 手牌区内金字合成 ——
     el.hand.addEventListener('pointerdown', function (ev) {
       const card = ev.target.closest ? ev.target.closest('.card') : null;
       if (!card || !state || state.over) return;
@@ -513,7 +603,34 @@
       moveGhost(ev.clientX, ev.clientY);
     });
 
-    // —— 拖拽：棋盘内己方塔（松手提示「塔已固定」）；行军敌人点选看信息 ——
+    // —— 拖拽：军营 → 手牌 / 军营 → 棋盘 ——
+    el.barracks.addEventListener('pointerdown', function (ev) {
+      const card = ev.target.closest ? ev.target.closest('.card') : null;
+      if (!card || !state || state.over) return;
+      ev.preventDefault();
+      drag.active = true; drag.src = 'barracks';
+      drag.uid = parseInt(card.dataset.uid, 10);
+      drag.sx = ev.clientX; drag.sy = ev.clientY; drag.moved = false;
+      drag.el = card.cloneNode(true);
+      drag.el.classList.add('ghost');
+      document.body.appendChild(drag.el);
+      moveGhost(ev.clientX, ev.clientY);
+    });
+
+    // —— 拖拽：道具栏铲子 → 荒地 ——
+    el.itemShovel.addEventListener('pointerdown', function (ev) {
+      if (!state || state.over) return;
+      if ((state.player.items.shovel || 0) <= 0) { toast('没有铲子了'); return; }
+      ev.preventDefault();
+      drag.active = true; drag.src = 'shovel';
+      drag.sx = ev.clientX; drag.sy = ev.clientY; drag.moved = false;
+      drag.el = el.itemShovel.cloneNode(true);
+      drag.el.classList.add('ghost');
+      document.body.appendChild(drag.el);
+      moveGhost(ev.clientX, ev.clientY);
+    });
+
+    // —— 拖拽：棋盘内己方塔（松手免费换位）；行军敌人点选看信息 ——
     el.units.addEventListener('pointerdown', function (ev) {
       const node = ev.target.closest ? ev.target.closest('.unit') : null;
       if (!node || !state || state.over) return;
@@ -538,7 +655,7 @@
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', cancelDrag);
 
-    // —— 点棋盘：铲子开格 / 毛笔 / 阿斗 ——
+    // —— 点棋盘：阿斗信息 ——
     el.cells.addEventListener('pointerdown', function (ev) {
       const c = ev.target.closest ? ev.target.closest('.cell') : null;
       if (!c || !state || state.over) return;
@@ -570,9 +687,12 @@
     // 拖拽时预览射程点圈
     if (t) {
       let rng = 1;
-      if (drag.src === 'hand') {
-        const card = state.player.hand.find(function (c) { return c.uid === drag.uid; });
+      if (drag.src === 'hand' || drag.src === 'barracks') {
+        const s = state.player;
+        const card = (s.hand.concat(s.barracks || [])).find(function (c) { return c.uid === drag.uid; });
         if (card && card.kind === 'unit') rng = U[card.type].range;
+        else if (card && card.kind === 'hero') rng = ZY.HERO_BY_ID[card.heroId].range;
+        else rng = 0;
       } else {
         const u = state.units.find(function (x) { return x.id === drag.unitId; });
         if (u) rng = u.range;
@@ -591,31 +711,59 @@
     clearRange();
     if (!moved) {
       // 原地松手 = 点击
-      if (src === 'hand') {
-        tapHand(uid);
-      } else {
+      if (src === 'hand') tapHand(uid);
+      else if (src === 'barracks') tapBarracks(uid);
+      else if (src === 'shovel') toast('把铲子拖到荒地塔位上释放');
+      else {
         const u = state.units.find(function (x) { return x.id === unitId; });
         if (u) selectUnit(u);
       }
       return;
     }
-    if (src === 'board') { toast('塔已固定，不能移动'); return; }
+    // —— V5：拖塔换位（免费；等级/合成/装备/攻速计时原样保留）——
+    if (src === 'board') {
+      if (!t) { toast('把塔拖到绿色塔位上换位'); return; }
+      const res = ZY.Game.moveUnit(state, 'player', unitId, t.row, t.col);
+      if (res.same) { toast('塔还在原位'); return; }
+      if (!res.ok) { toast(res.msg || '这里放不了'); return; }
+      syncCells(); syncUnits(); syncHud();
+      return;
+    }
 
-    // —— 手牌拖放释放 ——
-    const card = state.player.hand.find(function (c) { return c.uid === uid; });
-    if (!card) { handSig = ''; syncHand(); return; }
+    // —— 道具栏铲子：拖到荒地释放 ——
+    if (src === 'shovel') {
+      if (!t) { toast('把铲子拖到荒地塔位上释放'); return; }
+      const res = ZY.Game.useShovel(state, 'player', t.row, t.col);
+      if (!res.ok) { toast(res.msg); return; }
+      syncCells(); syncItems(); syncHud();
+      return;
+    }
+
+    const s = state.player;
+    const card = (s.hand.concat(s.barracks || [])).find(function (c) { return c.uid === uid; });
+    if (!card) { handSig = ''; barSig = ''; syncHand(); syncBarracks(); return; }
+
+    // —— 军营 → 手牌：拖到手牌区即转入 ——
+    if (src === 'barracks') {
+      const hr = el.hand.getBoundingClientRect();
+      const overHand = ev.clientX >= hr.left && ev.clientX <= hr.right && ev.clientY >= hr.top && ev.clientY <= hr.bottom;
+      if (overHand) {
+        const r = ZY.Game.stageCard(state, 'player', uid);
+        if (!r) { toast('手牌已满（8 格）'); return; }
+        syncHand(); syncBarracks(); syncHud();
+        return;
+      }
+    }
 
     if (card.kind === 'item') {
       if (card.item === 'warcry') {
-        // 神兵符：拖到任意位置即释放（全局 buff + 轨迹特效）
         consume(uid);
         ZY.Game.useWarcry(state, 'player');
         toast('神兵符！全队攻击 ×' + C.WARCRY_MULT + '（' + C.WARCRY_TIME + 's）');
-        syncHand(); syncHud();
+        syncHand(); syncBarracks(); syncHud();
         return;
       }
       if (card.item === 'fireball') {
-        // 火球：拖出即消耗（无论是否命中），落点 3×3 爆炸
         const cell = t || lastCell;
         consume(uid);
         if (cell) {
@@ -624,15 +772,7 @@
         } else {
           toast('火球已释放');
         }
-        syncHand();
-        return;
-      }
-      if (card.item === 'shovel') {
-        if (!t) { toast('把铲子拖到荒地塔位上释放'); return; }
-        const res = ZY.Game.useShovel(state, 'player', t.row, t.col);
-        if (!res.ok) { toast(res.msg); return; }
-        consume(uid);
-        syncCells(); syncHand();
+        syncHand(); syncBarracks();
         return;
       }
       if (card.item === 'brush') {
@@ -642,17 +782,38 @@
         const res = ZY.Game.useBrush(state, 'player', tower.id);
         if (!res.ok) { toast(res.msg); return; }
         consume(uid);
-        syncUnits(); syncHand();
+        syncUnits(); syncHand(); syncBarracks();
         return;
       }
       return;
     }
 
-    // 兵种 / 金字：空格塔位 = 建塔；己方塔上 = 同字合成 +1 级
+    // —— 金字：拖到另一张金字上 = 合成武将 ——
+    if (card.kind === 'gold' && src === 'hand') {
+      const hr = el.hand.getBoundingClientRect();
+      if (ev.clientX >= hr.left && ev.clientX <= hr.right && ev.clientY >= hr.top && ev.clientY <= hr.bottom) {
+        const under = document.elementFromPoint(ev.clientX, ev.clientY);
+        const target = under && under.closest ? under.closest('.card') : null;
+        if (target && parseInt(target.dataset.uid, 10) !== uid) {
+          const ready = ZY.heroSynthReady(state, 'player');
+          if (ready) {
+            ZY.Game.synthHero(state, 'player');
+            syncHand(); syncBarracks(); syncHud();
+            toast('合成武将 · ' + ready.name);
+            return;
+          }
+        }
+        toast('把金字拖到棋盘外的塔位… 不对，金字要在手牌里凑对合成');
+        return;
+      }
+    }
+
+    // —— 兵种 / 武将卡：空格塔位 = 建塔（武将卡占 2 格）；己方塔上 = 同字合成 +1 级 ——
     if (!t) { toast('拖出棋盘，已取消'); return; }
     const res = ZY.Game.deploy(state, 'player', uid, t.row, t.col);
     if (!res.ok) { toast(res.msg || '放不了'); return; }
-    handSig = ''; syncHand(); syncUnits(); syncCells(); syncHud();
+    handSig = ''; barSig = '';
+    syncHand(); syncBarracks(); syncUnits(); syncCells(); syncHud();
   }
 
   function cancelDrag() {
@@ -665,22 +826,37 @@
 
   function highlight(t) {
     for (let r = 0; r < B.ROWS; r++) for (let c = 0; c < B.COLS; c++) cellEls[r][c].classList.remove('hl', 'bad');
-    if (!t || !state || drag.src !== 'hand') return;
-    const card = state.player.hand.find(function (c) { return c.uid === drag.uid; });
-    if (!card) return;
+    if (!t || !state) return;
+    if (drag.src === 'board') {
+      const u = state.units.find(function (x) { return x.id === drag.unitId; });
+      if (!u) return;
+      if (u.row === t.row && u.col === t.col) return;          // 原地松手：不标记
+      const ok = B.canPlace(state, 'player', t.row, t.col, u.span);
+      cellEls[t.row][t.col].classList.add(ok ? 'hl' : 'bad');
+      return;
+    }
+    if (drag.src !== 'hand' && drag.src !== 'barracks' && drag.src !== 'shovel') return;
     let ok = false;
-    if (card.kind === 'item') {
-      if (card.item === 'shovel') {
-        ok = !B.isPath(state.mode, t.row, t.col) && !B.isObstacle(t.row, t.col) &&
-          !state.deploy[B.key(t.row, t.col)] && B.adjacentToDeploy(state, 'player', t.row, t.col);
-      } else if (card.item === 'brush') {
-        const tw = state.grid[t.row][t.col];
-        ok = !!tw && tw.side === 'player';
-      } else {
-        ok = true;   // 火球 / 神兵符：任意位置可释放
-      }
+    if (drag.src === 'shovel') {
+      ok = !B.isPath(state.mode, t.row, t.col) && !B.isObstacle(t.row, t.col) &&
+        !state.deploy[B.key(t.row, t.col)] && B.adjacentToDeploy(state, 'player', t.row, t.col);
     } else {
-      ok = B.canPlace(state, 'player', t.row, t.col) || isMergeTarget(t, card);
+      const s = state.player;
+      const card = (s.hand.concat(s.barracks || [])).find(function (c) { return c.uid === drag.uid; });
+      if (!card) return;
+      if (card.kind === 'item') {
+        if (card.item === 'brush') {
+          const tw = state.grid[t.row][t.col];
+          ok = !!tw && tw.side === 'player';
+        } else {
+          ok = true;   // 火球 / 神兵符：任意位置可释放
+        }
+      } else if (card.kind === 'gold') {
+        ok = false;
+      } else {
+        const span = ZY.cardSpan(card);
+        ok = B.canPlace(state, 'player', t.row, t.col, span) || isMergeTarget(t, card);
+      }
     }
     cellEls[t.row][t.col].classList.add(ok ? 'hl' : 'bad');
   }
@@ -705,16 +881,49 @@
   function tapHand(uid) {
     const card = state.player.hand.find(function (x) { return x.uid === uid; });
     if (!card) return;
+    if (card.kind === 'gold') {
+      const ready = ZY.heroSynthReady(state, 'player');
+      if (ready && ready.chars.indexOf(card.char) >= 0) {
+        ZY.Game.synthHero(state, 'player');
+        syncHand(); syncBarracks(); syncHud();
+        toast('合成武将 · ' + ready.name + '（拖到塔位，横跨 2 格）');
+        return;
+      }
+      const pair = ZY.HEROES.find(function (h) { return h.chars.indexOf(card.char) >= 0; });
+      toast('金字「' + card.char + '」：凑齐「' + (pair ? pair.chars.join('') : '??') + '」另一半即可合成武将');
+      return;
+    }
+    if (card.kind === 'hero') {
+      const h = ZY.HERO_BY_ID[card.heroId];
+      toast('武将卡「' + h.name + '」：拖到塔位落下，横跨 2 格');
+      return;
+    }
     if (card.kind === 'item') {
       const it = ZY.ITEMS[card.item];
       toast(it.name + '：拖出手牌释放 —— ' + it.desc);
       return;
     }
-    if (card.kind === 'gold') {
-      toast('金字「' + card.char + '」：拖到塔位放下，与另一半横向相邻即成将');
-      return;
-    }
     toast('把「' + card.char + '」拖到塔位建塔；拖到同字塔上可合成升级');
+  }
+
+  function tapBarracks(uid) {
+    const card = (state.player.barracks || []).find(function (x) { return x.uid === uid; });
+    if (!card) return;
+    if (card.kind === 'gold') {
+      const ready = ZY.heroSynthReady(state, 'player');
+      if (ready && ready.chars.indexOf(card.char) >= 0) {
+        toast('「' + card.char + '」：先拖进军牌区（8 格），凑齐即可合成武将');
+        return;
+      }
+    }
+    toast(cardLabelOf(card) + '：拖进军牌区，或直接拖到棋盘建塔');
+  }
+
+  function cardLabelOf(card) {
+    if (card.kind === 'item') return ZY.ITEMS[card.item].name;
+    if (card.kind === 'hero') return '武将卡「' + card.char + '」';
+    if (card.kind === 'gold') return '金字「' + card.char + '」';
+    return '「' + card.char + '」' + U[card.type].name;
   }
 
   function selectUnit(u) {
@@ -727,18 +936,23 @@
   function showUnitInfo(u) {
     if (u.cls === 'hero') {
       const h = ZY.HERO_BY_ID[u.heroId];
-      toast(u.char + ' Lv' + u.heroLevel + ' · ' + h.tag + ' · 技能「' + h.skill.name + '」' + h.skill.desc +
-        '（CD ' + h.skill.cd + 's）· 射程 ' + u.range);
-    } else if (u.cls === 'gold') {
-      toast('金字「' + u.char + '」：与另一半横向相邻、从左到右摆好即可成将');
+      const eq = u.weapon ? (' · 装备' + ZY.WEAPONS[u.weapon].name + '（攻击力+' + ZY.WEAPONS[u.weapon].atk + '）') : '';
+      selectedHero = u.id;
+      toast(u.char + ' Lv' + u.heroLevel + ' · ' + h.tag + eq +
+        ' · 经验 (' + u.xp.toFixed(1) + '/' + C.XP_PER_LEVEL + ')' +
+        ' · 攻 ' + u.atk.toFixed(1) + ' 技能「' + h.skill.name + '」' + h.skill.desc + '（CD ' + h.skill.cd + 's）');
+    } else if (u.boss) {
+      toast(u.name + '（敌方名将）：血 ' + Math.round(u.hp) + '/' + Math.round(u.maxHp) + ' · 沿主路直扑阿斗');
     } else if (u.type === 'nong') {
-      toast('农民塔 Lv' + u.level + '：每秒 +' + (U.nong.produce * u.level).toFixed(1) + ' 馒头');
+      toast('农民塔 Lv' + u.level + '：每秒 +' + (U.nong.produce * u.level).toFixed(1) + ' 资源');
     } else if (u.side === 'enemy') {
-      toast('敌军' + (u.elite ? '精英' : '') + U[u.type].name + '：血 ' + Math.round(u.hp) + '/' + Math.round(u.maxHp) +
+      toast('敌军' + (u.elite ? '精英' : '') + U[u.type].name + ' Lv' + u.level + '：血 ' + Math.round(u.hp) + '/' + Math.round(u.maxHp) +
         ' · 沿主路直扑阿斗');
     } else {
-      toast(U[u.type].name + '塔 Lv' + u.level + '：血 ' + Math.round(u.hp) + '/' + Math.round(u.maxHp) +
-        ' 攻 ' + u.atk.toFixed(1) + ' 射程 ' + u.range);
+      toast(U[u.type].name + '塔 Lv' + u.level + ' · ' + U[u.type].tag +
+        '：血 ' + Math.round(u.hp) + '/' + Math.round(u.maxHp) +
+        ' 攻 ' + u.atk.toFixed(1) + ' 射程 ' + u.range +
+        ' · 经验 (' + u.xp.toFixed(1) + '/' + C.XP_PER_LEVEL + ')');
     }
   }
 
@@ -751,15 +965,63 @@
   function consume(uid) {
     const i = state.player.hand.findIndex(function (x) { return x.uid === uid; });
     if (i >= 0) state.player.hand.splice(i, 1);
-    handSig = '';
+    else {
+      const j = (state.player.barracks || []).findIndex(function (x) { return x.uid === uid; });
+      if (j >= 0) state.player.barracks.splice(j, 1);
+    }
+    handSig = ''; barSig = '';
   }
 
   function showAdouInfo(side) {
     const s = ZY.Game.sideState(state, side);
     if (!s) return;
     toast('阿斗：' + s.adou + ' / ' + C.ADOU_HP + ' 血。敌方单位踏入阿斗格会扣 1 血，' +
-      '同时补偿 +' + C.ADOU_BONUS + ' 馒头（卖血换经济）。血量归零即败。');
+      '同时补偿 +' + C.ADOU_BONUS + ' 资源（卖血换经济）。血量归零即败。');
     ZY.Audio.play('tap');
+  }
+
+  /* ======================================================== 武器背包 */
+  function openWeapons() {
+    const s = state.player;
+    const heroes = state.units.filter(function (u) { return u.side === 'player' && u.cls === 'hero' && !u.dead; });
+    let html = '<h3>武器背包</h3>';
+    Object.keys(ZY.WEAPONS).forEach(function (wid) {
+      const w = ZY.WEAPONS[wid];
+      html += '<div class="w-row"><b>' + w.glyph + '</b><span>' + w.name + ' · ' + w.desc + '</span><i>×' + (s.weapons[wid] || 0) + '</i></div>';
+    });
+    html += '<div class="w-heroes">';
+    if (!heroes.length) {
+      html += '<p class="dim">场上还没有武将 —— 在手牌里凑齐「赵+云」等字对合成武将卡，拖到塔位（占 2 格）即可上场。</p>';
+    }
+    heroes.forEach(function (u) {
+      const eq = u.weapon ? ZY.WEAPONS[u.weapon].name : '未装备';
+      html += '<div class="w-hero" data-uid="' + u.id + '"><b>' + u.char + '</b>' +
+        '<span>Lv' + u.heroLevel + ' · 攻 ' + u.atk.toFixed(1) + ' · ' + eq + '</span>' +
+        '<button class="btn small" data-act="equip">装备铁剑</button>' +
+        (u.weapon ? '<button class="btn small" data-act="unequip">卸下</button>' : '') +
+        '</div>';
+    });
+    html += '</div><button class="btn" data-act="close">关闭</button>';
+    el.weaponPanel.innerHTML = html;
+    el.weaponPanel.hidden = false;
+    Array.prototype.forEach.call(el.weaponPanel.querySelectorAll('.btn'), function (b) {
+      b.addEventListener('click', function () {
+        const act = b.getAttribute('data-act');
+        if (act === 'close') { el.weaponPanel.hidden = true; return; }
+        const row = b.closest('.w-hero');
+        const uid = row ? parseInt(row.dataset.uid, 10) : selectedHero;
+        if (act === 'equip') {
+          const r = ZY.Game.equipWeapon(state, 'player', uid, 'tiejian');
+          toast(r.ok ? ('已装备铁剑 · ' + (ZY.HERO_BY_ID[state.units.find(function (x) { return x.id === uid; }).heroId] || {}).name + ' 攻击力+3') : r.msg);
+        } else if (act === 'unequip') {
+          const r = ZY.Game.unequipWeapon(state, 'player', uid);
+          if (r.ok) toast('已卸下武器');
+        }
+        ZY.Audio.play('tap');
+        syncUnits(); syncHud();
+        openWeapons();
+      });
+    });
   }
 
   /* ======================================================== 飘字 / 特效 */
@@ -865,7 +1127,7 @@
     const w = e.dataset.weapon || 'dao';
     e.classList.add('a-attack', 'atk-' + w);
     const u = state.units.find(function (x) { return x.id === uid; });
-    const interval = (u && u.aspd > 0) ? (1 / u.aspd) : 0.9;
+    const interval = (u && u.aspd > 0) ? 1 / u.aspd : 0.9;
     const dur = Math.max(0.2, interval * 0.75) * 1000;
     clearTimeout(e._atkT);
     e._atkT = setTimeout(function () { e.classList.remove('a-attack', 'atk-' + w); }, dur);
@@ -887,7 +1149,7 @@
       if (f.type === 'hit') { hitFx(f); flashUnitAt(f.row, f.col, 'a-hit', 260); continue; }
       if (f.type === 'dmg') { dmgFx(f); continue; }
       if (f.row == null) continue;
-      if (f.type === 'merge' || f.type === 'up') flashUnitAt(f.row, f.col, 'a-levelup', 520); // 合成 / 升阶金光
+      if (f.type === 'merge' || f.type === 'up') flashUnitAt(f.row, f.col, 'a-levelup', 520); // 合成 / 升级金光
       const map = {
         merge: 'p-merge', hero: 'p-hero', up: 'p-up', bun: 'p-bun', adou: 'p-adou',
         crit: 'p-crit', stun: 'p-stun', heal: 'p-heal', open: 'p-open',
@@ -936,6 +1198,8 @@
       syncUnits();
       syncHud();
       syncHand();
+      syncBarracks();
+      syncItems();
       syncCells();
       drainFx();
       if (state.banner) { bannerText(state.banner.text, state.banner.life); state.banner = null; }
@@ -968,6 +1232,20 @@
     return '关卡模式 · 第 ' + (state.levelIdx + 1) + ' 关 ' + state.levelName;
   }
 
+  /** V5 关卡胜利结算：胜利 / 恭喜晋升 / 1-5 星 / 金币 +20 / 双倍金币（仅展示） */
+  function winPanelLevel() {
+    const r = Math.min(ZY.RANKS.length - 1, ZY.Save.getRank() + 1);
+    ZY.Save.setRank(r);
+    const stars = ZY.Game.starsOf(state);
+    let starHtml = '';
+    for (let i = 1; i <= 5; i++) starHtml += '<i class="' + (i <= stars ? 'on' : 'off') + '">★</i>';
+    return '<p class="promote">恭喜晋升 · <b>' + ZY.Save.rankName(r) + '</b></p>' +
+      '<div class="stars">' + starHtml + '</div>' +
+      '<p class="coin-row">奖励金币 <b>+20</b>' +
+      '<button class="btn small gold" data-act="double">双倍金币</button></p>' +
+      '<p class="dim">阿斗剩 ' + state.player.adou + ' 血 · 击杀 ' + state.stats.kills + ' · 用时 ' + Math.round(state.t) + 's</p>';
+  }
+
   function showResult() {
     const win = state.result === 'win';
     let title = win ? '胜 利' : '败 北';
@@ -975,7 +1253,7 @@
     let btns = '';
 
     if (state.mode === 'versus') {
-      const judged = state.wave.done && state.wave.idx >= T.versusWaves;   // 打满公共波次 → 按剩血/击杀/馒头判定
+      const judged = state.wave.done && state.wave.idx >= T.versusWaves;   // 打满公共波次 → 按剩血/击杀/资源判定
       let reason = '';
       if (judged) {
         if (state.player.adou !== state.enemy.adou) {
@@ -983,7 +1261,7 @@
         } else if (state.player.kills !== state.enemy.kills) {
           reason = '阿斗持平，击杀 ' + state.player.kills + ' : ' + state.enemy.kills;
         } else {
-          reason = '阿斗与击杀均持平，馒头 ' + Math.floor(state.player.bun) + ' : ' + Math.floor(state.enemy.bun);
+          reason = '阿斗与击杀均持平，资源 ' + Math.floor(state.player.bun) + ' : ' + Math.floor(state.enemy.bun);
         }
       }
       if (win) {
@@ -1013,17 +1291,15 @@
       ZY.Save.addKills(state.stats.kills);
       if (win) {
         const next = state.levelIdx + 1;
-        const r = Math.min(ZY.RANKS.length - 1, ZY.Save.getRank() + 1);
-        ZY.Save.setRank(r);
+        body = winPanelLevel();
         if (next >= ZY.LEVELS.length) {
           ZY.Save.setLevel(ZY.LEVELS.length - 1);
-          body = '<p>全关通关！你是 <b>' + ZY.Save.rankName(r) + '</b></p>';
+          body += '<p>全关通关！</p>';
           btns = '<button class="btn primary" data-act="home">返回主菜单</button>' +
             '<button class="btn" data-act="restart">重打本关</button>';
         } else {
           ZY.Save.setLevel(next);
-          body = '<p>' + state.levelName + ' 已克。晋升军衔：<b>' + ZY.Save.rankName(r) + '</b></p>' +
-            '<p class="dim">下一关：' + ZY.LEVELS[next].name + '</p>';
+          body += '<p class="dim">下一关：' + ZY.LEVELS[next].name + '</p>';
           btns = '<button class="btn primary" data-act="next">下一关</button>' +
             '<button class="btn" data-act="restart">重打本关</button>' +
             '<button class="btn" data-act="home">返回主菜单</button>';
@@ -1060,6 +1336,8 @@
           else { state = ZY.Game.baseState(state.mode, { difficulty: state.difficulty }); enterGame(); }
         } else if (act === 'next') {
           startLevelRun(state.levelIdx + 1, state);
+        } else if (act === 'double') {
+          toast('双倍金币：广告位预留（本版本不接广告）');
         } else if (act === 'home') {
           state = null; carry = null;
           el.overlay.hidden = true; el.overlay.innerHTML = '';
@@ -1071,7 +1349,7 @@
     });
   }
 
-  /** 关卡模式开局：可继承上一关的棋盘 / 手牌 / 馒头
+  /** 关卡模式开局：可继承上一关的棋盘 / 手牌 / 军营 / 武器
    *  prev 为空且关卡号 > 0（中途开档）时，补一支该进度应有的部队，避免死局 */
   function startLevelRun(idx, prev, noBonus) {
     idx = Math.max(0, Math.min(ZY.LEVELS.length - 1, idx));

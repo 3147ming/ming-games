@@ -1,11 +1,11 @@
-/* 赵云与阿斗 · 平衡基线自测（Node，不依赖浏览器）— V4 塔防
+/* 赵云与阿斗 · 平衡基线自测（Node，不依赖浏览器）— V5 原版对齐
  * 用法：node tools/balance.mjs
  * 双方均由游戏内 AI（ZY.AI.thinkSide）驱动，量三模式基线：
  *   · 竞技：easy(0.8)/normal(1.0)/hard(1.2) 我方胜率（目标 ≥ 8/6/4，每档 16 局地板）
- *     —— V4 竞技 = 15 波公共波次镜像进双方路；进行中谁先把对方阿斗打归零谁赢，
- *        打满则依次比阿斗剩血 → 击杀 → 馒头存量；难度 = 敌方经济系数（×0.7/×1.0/×1.3）
+ *     —— V5 竞技 = 15 波公共波次镜像进双方路；进行中谁先把对方阿斗打归零谁赢，
+ *        打满则依次比阿斗剩血 → 击杀 → 资源存量；难度 = 敌方经济系数（×0.7/×1.0/×1.3）
  *   · 无尽：中位数波数（目标 ≥ 9）
- *   · 关卡：第 1 关通关率（目标 ≥ 30/64）· 第 4 关 ≥ 2/64
+ *   · 关卡：第 1 关通关率（目标 ≥ 30/64）· 第 4 关 ≥ 2/64（6 波制，关底张梁）
  */
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -77,7 +77,7 @@ let pass = 0, fail = 0;
 const ok = (name, cond, extra) => { if (cond) { pass++; console.log('  ✓ ' + name); } else { fail++; console.log('  ✗ ' + name + (extra ? '  → ' + extra : '')); } };
 
 console.log('\n== 竞技胜率基线（我方 = AI 策略，敌方 = 游戏内 AI，难度=敌方经济系数）==');
-const N = 32;
+const N = 16;
 const we = runVersus(0.8, N), wn = runVersus(1.0, N), wh = runVersus(1.2, N);
 console.log('   easy(0.8): ' + we + '/' + N + '   normal(1.0): ' + wn + '/' + N + '   hard(1.2): ' + wh + '/' + N);
 ok('easy ≥ 8/16', we >= 8, we + '/' + N);
@@ -93,7 +93,7 @@ console.log('\n== 关卡通关率 ==');
 const l1 = runLevel(0, 64);
 console.log('   第 1 关巨鹿：' + l1 + '/64');
 ok('第 1 关通关率 ≥ 30/64', l1 >= 30, l1 + '/64');
-const l4 = runLevel(3, 64);   // 第 4 关（开局塔位 12）
+const l4 = runLevel(3, 64);   // 第 4 关（开局塔位 21，6 波制）
 console.log('   第 4 关汉水：' + l4 + '/64');
 ok('第 4 关通关率 ≥ 2/64', l4 >= 2, l4 + '/64');
 

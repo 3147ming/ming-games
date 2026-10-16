@@ -52,11 +52,12 @@
 
       <details class="rules">
         <summary>玩法速览</summary>
-        <p>· <b>保卫萝卜式塔防</b>：敌人从顶部<b>入口</b>沿<b>蛇形主路</b>一路走向底部<b>阿斗</b>（3 血）。敌人不还手，只管走路 —— 你的任务是在路边<b>塔位</b>建塔拦住它们。</p>
-        <p>· <b>征兵</b>（馒头，逐次 +1 递增，上限 60）一次随机得 3 张字块或道具。<b>拖</b>兵种卡到塔位 = 建塔；<b>拖</b>兵种卡到同字塔上 = 合成 +1 级（上限 5 级，等级角标右上角常显）。开局 8 个塔位（第 4 关起 12 个）。</p>
-        <p>· <b>金色武将字</b>按姓名从左到右<b>横向相邻</b>摆在塔位上即成将（武将塔 = 兵种 L3×1.2 属性 + 技能）。</p>
-        <p>· <b>道具全部拖放释放</b>：<b>铲子</b>拖到荒地 → 扩成塔位；<b>毛笔</b>拖到己方塔 → 改写兵种；<b>神兵符</b>拖出即释放（全队攻击 ×1.5，10 秒）；<b>火球</b>拖到主路 → 落点 3×3 内敌人各受 80 点固定伤害。</p>
-        <p>· 塔自动攻击射程内<b>最靠前</b>（最接近阿斗）的敌人；击杀赏金是主要收入（普 +1 / 精英 +8 / Boss +30）；阿斗被打掉 1 血补偿 +10 馒头（卖血换经济）。</p>
+        <p>· <b>保卫萝卜式塔防</b>（竖屏）：敌人从<b>右侧刷怪口</b>沿<b>蛇形主路</b>一路走向左侧<b>阿斗</b>（3 血，台词"护驾！护驾！"）。敌人不还手，只管走路 —— 你的任务是在路边<b>绿色塔位</b>建塔拦住它们。</p>
+        <p>· <b>征兵</b>（资源 <b>10</b> 起步，每次成功 <b>+2</b> 不封顶）一次出 <b>5 张</b>进<b>军营</b>（5 槽）；拖进军牌区（<b>8 格</b>，武将卡占 2 格），再拖到塔位建塔。资源每秒 +1，击杀普通敌人 +1。</p>
+        <p>· <b>合成</b>：兵种卡拖到<b>同字塔</b>上 = <b>+1 级</b>（刀+刀=刀²，上限 5 级）；手牌里凑齐<b>武将字对</b>（赵+云 / 黄+忠 / 张+飞 / 刘+备 / 马+超）即弹<b>「合成武将」</b>提示，合成武将卡（占 2 格宽）。</p>
+        <p>· <b>经验 / 装备</b>：单位击杀敌人攒经验（满 10 升 1 级，上限 5 级）；<b>武器背包</b>有<b>铁剑（攻击+3）</b>可装备给武将。</p>
+        <p>· <b>道具全部拖放释放</b>：<b>铲子</b>（道具栏 ×2）拖到荒地 → 扩成塔位；<b>毛笔</b>拖到己方塔 → 改写兵种；<b>神兵符</b>拖出即释放（全队攻击 ×1.5，10 秒）；<b>火球</b>拖到主路 → 落点 3×3 内敌人各受 80 点固定伤害。</p>
+        <p>· 塔自动攻击射程内<b>最靠前</b>（最接近阿斗）的敌人；关卡模式每关 <b>6 波</b>，左下角显示<b>本波剩余敌人</b>；关底波有敌方名将<b>张梁</b>登场。通关按表现评 <b>1-5 星</b>，奖励金币 +20。</p>
       </details>
 
       <button class="reset" id="btn-reset">清空存档</button>
@@ -86,6 +87,7 @@
         <div class="cells" id="cells"></div>
         <div class="units" id="units"></div>
         <div class="fx" id="fx"></div>
+        <div class="wave-left" id="wave-left"></div>
         <div class="redflash" id="redflash"></div>
         <div class="midline" id="midline"></div>
       </div>
@@ -93,10 +95,18 @@
 
     <footer class="dock">
       <div class="hand" id="hand"></div>
-      <button class="recruit" id="btn-recruit"><b>征 兵</b><span>12 馒头</span></button>
+      <div class="barracks" id="barracks"></div>
+      <div class="dock-row">
+        <button class="recruit" id="btn-recruit"><b>征 兵</b><span>10 资源</span></button>
+        <div class="items" id="items">
+          <div class="item-slot it-shovel" id="item-shovel">铲<b>×2</b></div>
+          <button class="item-slot it-weapon" id="btn-weapons">兵器</button>
+        </div>
+      </div>
     </footer>
   </section>
 
+  <div class="weapon-panel" id="weapon-panel" hidden></div>
   <div class="banner" id="banner"></div>
   <div class="toast" id="toast"></div>
   <div class="overlay" id="overlay" hidden></div>
