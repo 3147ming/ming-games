@@ -96,11 +96,13 @@ console.log('   存档面板: ' + boot.saveText);
 
 console.log('\n== 进入竞技模式 ==');
 await evalJs(`document.querySelector('.mode-btn[data-mode="versus"]').click()`);
-await sleep(900);
+await sleep(150);   // 仅等首帧渲染；< 0.5s 避免 AI 已用铲子扩地干扰「开局地」计数
 const g = await evalJs(`({
   gameVisible: !document.getElementById('screen-game').hidden,
   cells: document.querySelectorAll('.cell').length,
-  locked: document.querySelectorAll('.cell.locked').length,
+  deploy: document.querySelectorAll('.cell.deploy').length,
+  obstacle: document.querySelectorAll('.cell.obstacle').length,
+  wasteland: document.querySelectorAll('.cell.wasteland').length,
   slots: document.querySelectorAll('#hand .slot').length,
   adou: document.querySelectorAll('.adou').length,
   bun: document.getElementById('hud-bun').textContent,
@@ -109,8 +111,10 @@ const g = await evalJs(`({
 })`);
 ok('对局界面显示', g.gameVisible);
 ok('棋盘 8×12 = 96 格', g.cells === 96, g.cells + '');
-ok('竞技双方各 4 个锁定格', g.locked === 8, g.locked + '');
-ok('待部署栏 6 格', g.slots === 6, g.slots + '');
+ok('竞技开局可部署地 = 18（双方各 9）', g.deploy === 18, g.deploy + '');
+ok('障碍地形存在（长坂坡障碍带）', g.obstacle >= 6, g.obstacle + '');
+ok('荒地（道路不可部署）存在', g.wasteland >= 1, g.wasteland + '');
+ok('待部署栏 12 格', g.slots === 12, g.slots + '');
 ok('双方阿斗都渲染', g.adou === 2, g.adou + '');
 ok('开局馒头 24', parseInt(g.bun, 10) >= 24, g.bun);
 ok('阿斗 3 血', g.hearts === 3, g.hearts + '');
@@ -128,32 +132,83 @@ ok('棋盘贴合 8:12 比例', Math.abs(box.w / box.h - 8 / 12) < 0.02, (box.w /
 ok('棋盘完整落在视口内', box.bottom <= box.vh + 1 && box.top >= -1, 'top=' + box.top + ' bottom=' + box.bottom);
 ok('无文档级滚动溢出', box.overflowY <= 0 && box.overflowX <= 0, 'y=' + box.overflowY + ' x=' + box.overflowX);
 
-console.log('\n== 征兵 ==');
+console.log('\n== 征兵（V2 批量 + 成本递增）==');
 await evalJs(`document.getElementById('btn-recruit').click()`);
 await sleep(300);
 const afterRecruit = await evalJs(`({
   cards: document.querySelectorAll('#hand .card').length,
   bun: parseInt(document.getElementById('hud-bun').textContent, 10)
 })`);
-ok('征兵得到 1 张牌', afterRecruit.cards === 1, afterRecruit.cards + '');
+ok('一次征兵得到 3 张牌（批量）', afterRecruit.cards === 3, afterRecruit.cards + '');
 ok('征兵扣 12 馒头（含自然收入）', afterRecruit.bun >= 11 && afterRecruit.bun <= 14, afterRecruit.bun + '');
 
+console.log('\n== V2 核心机制冒烟 ==');
+// 成本递增：连续征兵每次成功 +1（上限 60）
+const cost = await evalJs(`(() => {
+  const s = ZY.UI.getState();
+  s.player.bun = 300;
+  const c1 = s.player.recruitCost;
+  document.getElementById('btn-recruit').click();
+  const c2 = s.player.recruitCost;
+  document.getElementById('btn-recruit').click();
+  const c3 = s.player.recruitCost;
+  return { c1: c1, c2: c2, c3: c3 };
+})()`);
+ok('征兵成本每次成功 +1（12→13→14）', cost.c2 === cost.c1 + 1 && cost.c3 === cost.c1 + 2, JSON.stringify(cost));
+
+// 铲子扩地：相邻荒地道路格扩为可部署地
+const sh = await evalJs(`(() => {
+  const s = ZY.UI.getState();
+  const before = Object.keys(s.deploy).length;
+  const res = ZY.Game.useShovel(s, 'player', 8, 3);   // (8,3) 邻接开局地 (9,3)
+  const after = Object.keys(s.deploy).length;
+  return { ok: res.ok, before: before, after: after };
+})()`);
+await sleep(160);
+const shCell = await evalJs(`document.querySelector('.cell[data-r="8"][data-c="3"]').classList.contains('deploy')`);
+ok('铲子扩地：相邻荒地→部署地（deploy+1 且格子高亮）', sh.ok && sh.after === sh.before + 1 && shCell, 'before=' + sh.before + ' after=' + sh.after + ' cls=' + shCell);
+
+// 射程点圈：放置一个己方弓兵并点选，应出现 .range-ring.show
+const rng = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  const u = ZY.Game.makeUnit(s, 'player', { cls: 'soldier', type: 'gong', level: 1, row: 10, col: 4 });
+  ZY.Game.addUnit(s, u);
+  await new Promise(r => setTimeout(r, 140));
+  const el = document.querySelector('.unit.p[data-uid="' + u.id + '"]');
+  if (!el) return { err: 'no unit el' };
+  const r = el.getBoundingClientRect();
+  const mk = (t) => new PointerEvent(t, { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, cancelable: true, pointerId: 5, pointerType: 'touch', isPrimary: true });
+  el.dispatchEvent(mk('pointerdown'));
+  await new Promise(r => setTimeout(r, 60));
+  el.dispatchEvent(mk('pointerup'));
+  await new Promise(r => setTimeout(r, 60));
+  return { show: document.querySelector('.range-ring').classList.contains('show') };
+})()`);
+ok('点选己方单位显示射程点圈', rng.show === true, rng.err || '');
+
 console.log('\n== 拖拽部署（pointer 事件模拟）==');
+// 先塞一张确定可部署的兵牌，避免首张恰好是道具导致落子失败
+await evalJs(`(() => {
+  const s = ZY.UI.getState();
+  s.player.bun = 300;
+  s.player.hand.push({ uid: 555001, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+  return true;
+})()`);
+await sleep(160);
 const dragRes = await evalJs(`(async () => {
-  const card = document.querySelector('#hand .card');
+  const card = document.querySelector('#hand .card[data-uid="555001"]');
   const board = document.getElementById('board');
   if (!card) return { err: 'no card' };
   const br = board.getBoundingClientRect();
   const cw = br.width / 8, ch = br.height / 12;
-  // 挑一个「己方半区 + 未锁定 + 没有单位」的格子
-  const free = [...document.querySelectorAll('.cell')].filter((c) => {
-    return +c.dataset.r === 9 && !c.classList.contains('locked');
-  });
+  const beforeHand = document.querySelectorAll('#hand .card').length;
+  // 挑一个「己方可部署地 + 没有单位」的格子（开局地 row9 col3-5，含已扩地）
+  const free = [...document.querySelectorAll('.cell')].filter((c) => c.classList.contains('deploy') && c.classList.contains('zone-p'));
   const occupied = new Set([...document.querySelectorAll('#units .unit')].map((u) => {
     const m = /translate\\(([-\\d.]+)%,\\s*([-\\d.]+)%\\)/.exec(u.style.transform) || [];
     return m[1] + ',' + m[2];
   }));
-  const pick = free.find((c) => !occupied.has(c.dataset.c * 100 + ',' + 900)) || free[0];
+  const pick = free.find((c) => !occupied.has(c.dataset.c * 100 + ',' + c.dataset.r * 100)) || free[0];
   if (!pick) return { err: 'no free cell' };
   const target = { row: +pick.dataset.r, col: +pick.dataset.c };
   const tx = br.left + (target.col + 0.5) * cw;
@@ -172,11 +227,11 @@ const dragRes = await evalJs(`(async () => {
   window.dispatchEvent(mk('pointerup', tx, ty));
   await new Promise(r => setTimeout(r, 200));
   const mine = [...document.querySelectorAll('#units .unit.p')].map((u) => u.textContent);
+  const cardGone = !document.querySelector('#hand .card[data-uid="555001"]');
   return {
-    hl, ghost,
+    hl, ghost, beforeHand, cardGone,
     units: document.querySelectorAll('#units .unit').length,
     mineCount: mine.length,
-    handCards: document.querySelectorAll('#hand .card').length,
     ghostsLeft: document.querySelectorAll('.ghost').length,
     unitText: mine.join('|'),
     toast: document.getElementById('toast').textContent
@@ -185,7 +240,7 @@ const dragRes = await evalJs(`(async () => {
 ok('拖拽时出现落点高亮', dragRes.hl === 1, 'hl=' + dragRes.hl);
 ok('拖拽时出现跟随幽灵', dragRes.ghost === 1, 'ghost=' + dragRes.ghost);
 ok('松手后落子成功（出现我方单位）', dragRes.mineCount >= 1, 'mine=' + dragRes.mineCount + ' toast=' + dragRes.toast);
-ok('手牌被消耗', dragRes.handCards === 0, dragRes.handCards + '');
+ok('落子的那张牌从手牌消失', dragRes.cardGone === true, 'cardGone=' + dragRes.cardGone);
 ok('幽灵元素已清理', dragRes.ghostsLeft === 0, dragRes.ghostsLeft + '');
 console.log('   落子内容: ' + JSON.stringify(dragRes.unitText));
 

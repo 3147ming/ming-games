@@ -183,15 +183,6 @@ body {
 .cell:nth-child(8n) { border-right: none; }
 .cell.zone-p { background: rgba(255,255,255,.42); }
 .cell.zone-e { background: rgba(120,105,80,.07); }
-.cell.locked {
-  background:
-    repeating-linear-gradient(45deg, rgba(90,75,50,.16) 0 4px, transparent 4px 8px);
-}
-.cell.locked::after {
-  content: "✕"; position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--red); opacity: .55; font-size: 5cqw;
-}
 .cell.hl { background: rgba(76,122,74,.28); box-shadow: inset 0 0 0 2px var(--green); }
 .cell.bad { background: rgba(179,53,47,.22); box-shadow: inset 0 0 0 2px var(--red); }
 /* 来袭预警：本波会从这几条纵列压下来 */
@@ -206,6 +197,43 @@ body {
   animation: warnPulse 1.1s ease-in-out infinite;
 }
 @keyframes warnPulse { 0%,100% { opacity: .3; transform: translateY(-2px); } 50% { opacity: .85; transform: translateY(1px); } }
+
+/* 地形：障碍（山石）/ 荒地（道路但暂不可部署）/ 已扩部署地 / 突破口 */
+.cell.obstacle {
+  background:
+    repeating-linear-gradient(45deg, #2f2a22 0 6px, #3a342b 6px 12px);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.25);
+}
+.cell.deploy { box-shadow: inset 0 0 0 1px rgba(118,138,82,.22); }
+.cell.wasteland {
+  background:
+    repeating-linear-gradient(45deg, rgba(90,75,50,.10) 0 4px, transparent 4px 9px),
+    rgba(120,105,80,.05);
+}
+.cell.wasteland::after {
+  content: ""; position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink-3); opacity: .35; font-size: 4cqw;
+}
+.cells.shovel-armed .cell.wasteland {
+  cursor: pointer; box-shadow: inset 0 0 0 2px rgba(118,138,82,.55);
+}
+.cells.shovel-armed .cell.wasteland::after { content: "铲"; opacity: .7; color: var(--green); font-weight: 700; }
+/* 突破口：本波从该兵线 ×2.5 出怪、间隔减半 */
+.cell.break {
+  background: rgba(179,53,47,.16);
+  box-shadow: inset 0 0 0 2px rgba(179,53,47,.5);
+}
+.cell.break::before {
+  content: "▼"; position: absolute; left: 0; right: 0; top: 2px;
+  text-align: center; font-size: 4cqw; line-height: 1;
+  color: var(--red); opacity: .85; animation: warnPulse 1.1s ease-in-out infinite;
+}
+.cell.break::after {
+  content: "突破口"; position: absolute; left: 0; right: 0; bottom: 2px;
+  text-align: center; font-size: 2.6cqw; line-height: 1;
+  color: var(--red); opacity: .85; font-weight: 700; letter-spacing: .05em;
+}
 
 .midline {
   position: absolute; left: 0; right: 0; top: 50%;
@@ -316,6 +344,106 @@ body {
   0% { opacity: .9; transform: translate(-50%,-50%) scale(.4); }
   100% { opacity: 0; transform: translate(-50%,-50%) scale(2.6); }
 }
+
+/* 射程点圈：拖拽预览 / 选中单位显示 */
+.range-ring {
+  position: absolute; transform: translate(-50%,-50%);
+  width: calc(25% * var(--r, 1)); aspect-ratio: 1;
+  border: 2px dashed rgba(179,53,47,.7); border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(179,53,47,.18) inset;
+  pointer-events: none; opacity: 0; transition: opacity .12s;
+  z-index: 5;
+}
+.range-ring.show { opacity: 1; }
+
+/* 攻击挥砍 */
+.slash {
+  position: absolute; width: 16%; height: 16%; transform: translate(-50%,-50%);
+  pointer-events: none; z-index: 6;
+}
+.slash::before {
+  content: ""; position: absolute; inset: 16% 4%;
+  background: linear-gradient(115deg, transparent 42%, rgba(255,255,255,.96) 50%, transparent 58%);
+  transform: rotate(-35deg); animation: slash .26s ease-out forwards;
+}
+.slash.d-left::before { transform: rotate(35deg); }
+@keyframes slash {
+  0% { opacity: 0; transform: rotate(-35deg) scaleX(.3); }
+  40% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(-35deg) scaleX(1.25); }
+}
+
+/* 远程箭矢 */
+.arrow {
+  position: absolute; height: 1.8%; min-height: 3px; transform-origin: 0 50%;
+  background: linear-gradient(90deg, rgba(200,163,74,.05), rgba(200,163,74,.95));
+  border-radius: 3px; pointer-events: none; z-index: 6;
+  animation: arrow .3s ease-out forwards;
+}
+.arrow::after {
+  content: ""; position: absolute; right: -2px; top: 50%; transform: translateY(-50%);
+  border-left: 7px solid rgba(200,163,74,.95);
+  border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+}
+@keyframes arrow { 0% { opacity: 0; } 25% { opacity: 1; } 100% { opacity: 0; } }
+
+/* 武将登场光柱 */
+.pillar {
+  position: absolute; width: 20%; height: 34%;
+  transform: translate(-50%,-50%);
+  background: linear-gradient(180deg, rgba(141,76,156,0), rgba(141,76,156,.55) 28%, rgba(255,255,255,.92) 50%, rgba(141,76,156,.55) 72%, rgba(141,76,156,0));
+  border-radius: 50% / 9%; filter: blur(1px);
+  pointer-events: none; z-index: 4; animation: pillar .7s ease-out forwards;
+}
+@keyframes pillar {
+  0% { opacity: 0; transform: translate(-50%,-50%) scaleY(.4); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%,-50%) scaleY(1.3); }
+}
+
+/* 命中闪白 */
+.hit {
+  position: absolute; width: 18%; height: 18%; transform: translate(-50%,-50%);
+  border-radius: 50%; pointer-events: none; z-index: 6;
+  background: radial-gradient(circle, rgba(255,255,255,.95), rgba(255,210,120,.5) 50%, transparent 72%);
+  animation: hit .2s ease-out forwards;
+}
+@keyframes hit {
+  0% { opacity: 0; transform: translate(-50%,-50%) scale(.4); }
+  50% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%,-50%) scale(1.15); }
+}
+
+/* 伤害数字 */
+.dmg {
+  position: absolute; transform: translate(-50%,-50%);
+  font-size: 11px; font-weight: 800; color: var(--red);
+  text-shadow: 0 1px 2px rgba(255,255,255,.95); pointer-events: none; z-index: 7;
+  animation: dmg .85s ease-out forwards;
+}
+@keyframes dmg {
+  0% { opacity: 0; transform: translate(-50%, 0); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -20px); }
+}
+
+/* 屏幕震动（作用于棋盘） */
+.board.shake { animation: shake .36s ease-in-out; }
+@keyframes shake {
+  0%,100% { transform: translate(0,0); }
+  20% { transform: translate(-3px, 1px); }
+  40% { transform: translate(3px, -2px); }
+  60% { transform: translate(-2px, 2px); }
+  80% { transform: translate(2px, -1px); }
+}
+
+/* 红屏受击闪烁 */
+.redflash {
+  position: absolute; inset: 0; pointer-events: none; z-index: 30; opacity: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(179,53,47,0) 45%, rgba(179,53,47,.38) 100%);
+}
+.redflash.on { animation: redflash .26s ease-out; }
+@keyframes redflash { 0% { opacity: 0; } 45% { opacity: 1; } 100% { opacity: 0; } }
 
 /* ---------------------------------------------------------------- 底栏 */
 .dock { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; padding-top: 2px; }

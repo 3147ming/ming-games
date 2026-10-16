@@ -29,6 +29,10 @@
     el.cells = $('cells');
     el.units = $('units');
     el.fx = $('fx');
+    el.rangeRing = document.createElement('div');
+    el.rangeRing.className = 'range-ring keep';
+    el.fx.appendChild(el.rangeRing);
+    el.redflash = $('redflash');
     el.midline = $('midline');
     el.hand = $('hand');
     el.btnRecruit = $('btn-recruit');
@@ -129,19 +133,43 @@
   }
 
   function syncCells() {
-    // 单人模式：本波来袭纵列在敌方底线前三行打预警标记
+    // 单人模式：本波来袭纵列在敌方底线前三行打 ▼ 预警；突破口波额外打「突破口」
     const warn = (state.mode !== 'versus' && state.wave.lanes && state.wave.lanes.length)
       ? state.wave.lanes : null;
+    const brk = state.wave.breakCols || null;
+    const vs = state.mode === 'versus';
     for (let r = 0; r < B.ROWS; r++) {
       for (let c = 0; c < B.COLS; c++) {
         const e = cellEls[r][c];
-        const locked = !!state.locked[B.key(r, c)];
-        if (locked !== e.classList.contains('locked')) e.classList.toggle('locked', locked);
+        const obs = !!B.isObstacle(r, c);
+        const inDeploy = !!state.deploy[B.key(r, c)];
+        const wasteland = !obs && B.isRoad(r, c) && !inDeploy &&
+          (B.isOwnRow('player', r) || (vs && B.isOwnRow('enemy', r)));
+        toggleCls(e, 'obstacle', obs);
+        toggleCls(e, 'deploy', inDeploy && !obs);
+        toggleCls(e, 'wasteland', wasteland);
         const w = !!warn && r <= 2 && warn.indexOf(c) >= 0;
-        if (w !== e.classList.contains('warn')) e.classList.toggle('warn', w);
+        toggleCls(e, 'warn', w && !brk);
+        const b = !!brk && r <= 2 && brk.indexOf(c) >= 0;
+        toggleCls(e, 'break', b);
       }
     }
   }
+
+  function toggleCls(e, cls, on) {
+    if (on !== e.classList.contains(cls)) e.classList.toggle(cls, on);
+  }
+
+  /* ======================================================== 射程点圈 */
+  function showRangeAt(row, col, rng) {
+    if (!el.rangeRing) return;
+    el.rangeRing.style.left = ((col + 0.5) / B.COLS * 100) + '%';
+    el.rangeRing.style.top = ((row + 0.5) / B.ROWS * 100) + '%';
+    el.rangeRing.style.setProperty('--r', rng);
+    el.rangeRing.classList.add('show');
+  }
+  function showRange(u) { showRangeAt(u.row, u.col, u.range); }
+  function clearRange() { if (el.rangeRing) el.rangeRing.classList.remove('show'); }
 
   /* ======================================================== 进入对局 */
   function enterGame() {
@@ -279,11 +307,12 @@
       wave = '击杀 ' + state.player.kills + ' · 敌 ' + state.enemy.kills;
     }
     if (hudCache.wave !== wave) { hudCache.wave = wave; el.hudWave.textContent = wave; }
-    // 征兵按钮
-    const can = state.player.bun >= C.RECRUIT_COST && state.player.hand.length < C.HAND_MAX;
+    // 征兵按钮（成本随每次成功征兵 +1，上限 60）
+    const cost = state.player.recruitCost;
+    const can = state.player.bun >= cost && state.player.hand.length < C.HAND_MAX;
     el.btnRecruit.classList.toggle('dis', !can);
     el.btnRecruit.querySelector('span').textContent =
-      state.player.hand.length >= C.HAND_MAX ? '待部署栏已满' : (C.RECRUIT_COST + ' 馒头');
+      state.player.hand.length >= C.HAND_MAX ? '待部署栏已满' : (cost + ' 馒头');
     // 神兵符提示
     el.btnRecruit.classList.toggle('buff', state.buff.player > 0);
   }
@@ -302,6 +331,7 @@
       '#' + (armed ? armed.uid : '') + '#' + hand.length;
     if (sig === handSig) return;
     handSig = sig;
+    if (el.cells) el.cells.classList.toggle('shovel-armed', !!(armed && armed.kind === 'shovel'));
     el.hand.innerHTML = '';
     for (let i = 0; i < C.HAND_MAX; i++) {
       const slot = document.createElement('div');
@@ -336,7 +366,7 @@
       if (!state || state.over) return;
       const r = ZY.Game.recruit(state, 'player');
       if (!r) {
-        toast(state.player.hand.length >= C.HAND_MAX ? '待部署栏已满' : '馒头不够（需要 ' + C.RECRUIT_COST + '）');
+        toast(state.player.hand.length >= C.HAND_MAX ? '待部署栏已满' : '馒头不够（需要 ' + state.player.recruitCost + '）');
         return;
       }
       syncHand(); syncHud();
@@ -367,20 +397,25 @@
       moveGhost(ev.clientX, ev.clientY);
     });
 
-    // —— 拖拽：棋盘内移动 / 合成 ——
+    // —— 拖拽：棋盘内移动 / 合成（己方）；敌方单位点选显示射程 ——
     el.units.addEventListener('pointerdown', function (ev) {
       const node = ev.target.closest ? ev.target.closest('.unit') : null;
       if (!node || !state || state.over) return;
       const id = parseInt(node.dataset.uid, 10);
       const u = state.units.find(function (x) { return x.id === id; });
-      if (!u || u.side !== 'player') return;
-      ev.preventDefault();
-      drag.active = true; drag.src = 'board'; drag.unitId = id;
-      drag.sx = ev.clientX; drag.sy = ev.clientY; drag.moved = false;
-      drag.el = node.cloneNode(true);
-      drag.el.classList.add('ghost');
-      document.body.appendChild(drag.el);
-      moveGhost(ev.clientX, ev.clientY);
+      if (!u) return;
+      if (u.side === 'player') {
+        ev.preventDefault();
+        drag.active = true; drag.src = 'board'; drag.unitId = id;
+        drag.sx = ev.clientX; drag.sy = ev.clientY; drag.moved = false;
+        drag.el = node.cloneNode(true);
+        drag.el.classList.add('ghost');
+        document.body.appendChild(drag.el);
+        moveGhost(ev.clientX, ev.clientY);
+      } else {
+        ev.preventDefault(); ev.stopPropagation();
+        selectUnit(u);
+      }
     });
 
     window.addEventListener('pointermove', onMove, { passive: false });
@@ -411,6 +446,18 @@
     const t = cellAt(ev.clientX, ev.clientY);
     highlight(t, ev.clientX, ev.clientY);
     drag.cell = t;
+    // 拖拽时预览射程点圈
+    if (t) {
+      let rng = 1;
+      if (drag.src === 'hand') {
+        const card = state.player.hand.find(function (c) { return c.uid === drag.uid; });
+        if (card && card.kind === 'unit') rng = U[card.type].range;
+      } else {
+        const u = state.units.find(function (x) { return x.id === drag.unitId; });
+        if (u) rng = u.range;
+      }
+      if (rng > 0) showRangeAt(t.row, t.col, rng); else clearRange();
+    } else clearRange();
   }
 
   function onUp(ev) {
@@ -419,10 +466,15 @@
     const t = cellAt(ev.clientX, ev.clientY);
     const src = drag.src, uid = drag.uid, unitId = drag.unitId;
     cancelDrag();
+    clearRange();
     if (!moved) {
       // 视为点击
-      if (src === 'hand') tapHand(uid);
-      else tapUnit(unitId);
+      if (src === 'hand') {
+        tapHand(uid);
+      } else {
+        const u = state.units.find(function (x) { return x.id === unitId; });
+        if (u) selectUnit(u);
+      }
       return;
     }
     if (!t) { toast('拖出棋盘，已取消'); return; }
@@ -454,6 +506,7 @@
     if (drag.el && drag.el.parentNode) drag.el.parentNode.removeChild(drag.el);
     drag.el = null;
     highlight(null);
+    clearRange();
   }
 
   function highlight(t) {
@@ -487,28 +540,32 @@
       armed = (armed && armed.uid === uid) ? null : { kind: card.item, uid: uid };
       handSig = ''; syncHand();
       if (armed) {
-        toast(armed.kind === 'shovel' ? '铲子已拿起：点一个打叉的锁定格开启' : '毛笔已拿起：点一个己方字块改写');
+        toast(armed.kind === 'shovel' ? '铲子已拿起：点一个与部署地相邻的荒地兵线格扩为可部署地' : '毛笔已拿起：点一个己方字块改写');
       }
       return;
     }
     toast('把「' + card.char + '」拖到己方半区空格部署');
   }
 
-  function tapUnit(unitId) {
-    const u = state.units.find(function (x) { return x.id === unitId; });
-    if (!u) return;
-    if (armed && armed.kind === 'brush') {
-      const res = ZY.Game.useBrush(state, 'player', unitId);
+  function selectUnit(u) {
+    if (!u || u.dead) { clearRange(); return; }
+    if (u.range > 0) showRange(u); else clearRange();
+    showUnitInfo(u);
+    ZY.Audio.play('tap');
+  }
+
+  function showUnitInfo(u) {
+    if (armed && armed.kind === 'brush' && u.side === 'player') {
+      const res = ZY.Game.useBrush(state, 'player', u.id);
       if (!res.ok) { toast(res.msg); return; }
       consume(armed.uid);
       armed = null; handSig = ''; syncHand(); syncUnits();
       return;
     }
-    // 展示单位信息
     if (u.cls === 'hero') {
       const h = ZY.HERO_BY_ID[u.heroId];
       toast(u.char + ' Lv' + u.heroLevel + ' · ' + h.tag + ' · 技能「' + h.skill.name + '」' + h.skill.desc +
-        '（CD ' + h.skill.cd + 's）');
+        '（CD ' + h.skill.cd + 's）· 射程 ' + u.range);
     } else if (u.cls === 'gold') {
       toast('金字「' + u.char + '」：与另一半横向相邻、从左到右摆好即可成将');
     } else if (u.type === 'nong') {
@@ -517,10 +574,10 @@
       toast(U[u.type].name + ' Lv' + u.level + '：血 ' + Math.round(u.hp) + '/' + Math.round(u.maxHp) +
         ' 攻 ' + u.atk.toFixed(1) + ' 射程 ' + u.range);
     }
-    ZY.Audio.play('tap');
   }
 
   function handleCellTap(r, c) {
+    clearRange();
     if (armed && armed.kind === 'shovel') {
       const res = ZY.Game.useShovel(state, 'player', r, c);
       if (!res.ok) { toast(res.msg); return; }
@@ -547,15 +604,72 @@
     ZY.Audio.play('tap');
   }
 
-  /* ======================================================== 飘字 / 提示 */
-  function fxAt(row, col, text, cls) {
+  /* ======================================================== 飘字 / 特效 */
+  function fxPos(row, col) {
+    return {
+      left: ((col + 0.5) / B.COLS * 100) + '%',
+      top: ((row + 0.5) / B.ROWS * 100) + '%',
+    };
+  }
+  // 控制特效层总量 ≤ 60 个（常驻 range-ring 不计）
+  function trimFx() {
+    let count = el.fx.childElementCount;
+    let node = el.fx.firstElementChild;
+    while (count > 60 && node) {
+      const next = node.nextElementSibling;
+      if (node !== el.rangeRing) { el.fx.removeChild(node); count--; }
+      node = next;
+    }
+  }
+  function spawnFx(node, ttl) {
+    el.fx.appendChild(node);
+    trimFx();
+    setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); }, ttl);
+  }
+  function nodeAt(row, col, cls) {
     const d = document.createElement('div');
-    d.className = 'pop ' + (cls || '');
-    d.textContent = text;
-    d.style.left = ((col + 0.5) / B.COLS * 100) + '%';
+    d.className = cls;
+    const p = fxPos(row, col);
+    d.style.left = p.left; d.style.top = p.top;
+    return d;
+  }
+  function fxAt(row, col, text, cls) {
+    const d = nodeAt(row, col, 'pop ' + (cls || ''));
     d.style.top = ((row + 0.2) / B.ROWS * 100) + '%';
-    el.fx.appendChild(d);
-    setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 850);
+    d.textContent = text;
+    spawnFx(d, 850);
+  }
+  function ringFx(row, col, kind) {
+    const d = nodeAt(row, col, 'ring ' + kind);
+    spawnFx(d, 520);
+  }
+  function slashFx(f) {
+    const d = nodeAt(f.row, f.col, 'slash ' + (f.dir > 0 ? 'd-right' : 'd-left'));
+    spawnFx(d, 260);
+  }
+  function arrowFx(f) {
+    const d = nodeAt(f.fromRow, f.fromCol, 'arrow');
+    const dxc = f.toCol - f.fromCol, dyc = f.toRow - f.fromRow;
+    const len = Math.max(0.6, Math.hypot(dxc, dyc));
+    const ang = Math.atan2(dyc, dxc) * 180 / Math.PI;
+    d.style.width = (len * 100 / B.COLS) + '%';
+    d.style.transform = 'translateY(-50%) rotate(' + ang + 'deg)';
+    spawnFx(d, 300);
+  }
+  function pillarFx(f) { spawnFx(nodeAt(f.row, f.col, 'pillar'), 700); }
+  function hitFx(f) { spawnFx(nodeAt(f.row, f.col, 'hit'), 200); }
+  function dmgFx(f) {
+    const d = nodeAt(f.row, f.col, 'dmg');
+    d.textContent = f.text;
+    spawnFx(d, 850);
+  }
+  function shakeBoard() {
+    el.board.classList.remove('shake'); void el.board.offsetWidth; el.board.classList.add('shake');
+    setTimeout(function () { el.board.classList.remove('shake'); }, 360);
+  }
+  function redFlash() {
+    el.redflash.classList.remove('on'); void el.redflash.offsetWidth; el.redflash.classList.add('on');
+    setTimeout(function () { el.redflash.classList.remove('on'); }, 260);
   }
 
   function drainFx() {
@@ -563,6 +677,14 @@
     while (state.fx.length) {
       const f = state.fx.shift();
       if (f.type === 'toast') { toast(f.text); continue; }
+      if (f.type === 'shake') { shakeBoard(); continue; }
+      if (f.type === 'redflash') { redFlash(); continue; }
+      if (f.type === 'ring' || f.type === 'beam') { ringFx(f.row, f.col, f.type); continue; }
+      if (f.type === 'slash') { slashFx(f); continue; }
+      if (f.type === 'arrow') { arrowFx(f); continue; }
+      if (f.type === 'pillar') { pillarFx(f); continue; }
+      if (f.type === 'hit') { hitFx(f); continue; }
+      if (f.type === 'dmg') { dmgFx(f); continue; }
       if (f.row == null) continue;
       const map = {
         merge: 'p-merge', hero: 'p-hero', up: 'p-up', bun: 'p-bun', adou: 'p-adou',
@@ -570,19 +692,8 @@
         brush: 'p-brush', big: 'p-big', die: 'p-die',
       };
       const cls = map[f.type] || '';
-      if (f.type === 'die') fxAt(f.row, f.col, '', cls);
-      else if (f.type === 'ring' || f.type === 'beam') ringFx(f.row, f.col, f.type);
-      else fxAt(f.row, f.col, f.text || '', cls);
+      fxAt(f.row, f.col, f.text || '', cls);
     }
-  }
-
-  function ringFx(row, col, kind) {
-    const d = document.createElement('div');
-    d.className = 'ring ' + kind;
-    d.style.left = ((col + 0.5) / B.COLS * 100) + '%';
-    d.style.top = ((row + 0.5) / B.ROWS * 100) + '%';
-    el.fx.appendChild(d);
-    setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 520);
   }
 
   let toastT = 0;
