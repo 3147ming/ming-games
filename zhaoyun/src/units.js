@@ -22,6 +22,8 @@ window.ZY = window.ZY || {};
   const ADOU_BONUS = 10;          // 阿斗掉 1 血补偿馒头
   const WARCRY_MULT = 1.5;        // 神兵符攻击倍率
   const WARCRY_TIME = 10;         // 神兵符持续秒数
+  const FIREBALL_DMG = 80;        // 火球固定伤害（精英/Boss 同样生效）
+  const FIREBALL_RADIUS = 1;      // 火球爆炸半径（切比雪夫，3×3）
   const HERO_KILLS_PER_LEVEL = 8; // 武将每击杀多少个敌人升 1 级
   const LEVEL_CLEAR_BONUS = 25;   // 关卡模式：过关战利品（馒头）
   const FORK_CHANCE = 0.3;        // 岔口转向概率
@@ -105,13 +107,13 @@ window.ZY = window.ZY || {};
   })();
 
   /* ---------- 道具表 ----------
-   * 本轮实现：shovel 铲子 / brush 毛笔 / warcry 神兵符
-   * 其余为预留枚举位（有枚举、无界面、无掉落）
+   * V4 起全部改为「拖出手牌 → 松手位置即目标」的拖放释放
    */
   const ITEMS = {
-    shovel:    { id: 'shovel',    name: '铲子',   glyph: '铲', color: '#7a6a52', desc: '点己方相邻荒地兵线格，将其扩为可部署地' },
-    brush:     { id: 'brush',     name: '毛笔',   glyph: '笔', color: '#3b4a63', desc: '把己方一个字块随机换成同色另一个字' },
-    warcry:    { id: 'warcry',    name: '神兵符', glyph: '符', color: '#b3352f', desc: '全队攻击 ×1.5，持续 10 秒' },
+    shovel:    { id: 'shovel',    name: '铲子',   glyph: '铲', color: '#7a6a52', desc: '拖到荒地塔位上，扩成可建塔地块' },
+    brush:     { id: 'brush',     name: '毛笔',   glyph: '笔', color: '#3b4a63', desc: '拖到己方塔上，改写该塔兵种（金/将塔不可）' },
+    warcry:    { id: 'warcry',    name: '神兵符', glyph: '符', color: '#b3352f', desc: '拖出释放：全队攻击 ×1.5，持续 10 秒' },
+    fireball:  { id: 'fireball',  name: '火球',   glyph: '火', color: '#c65a1e', desc: '拖到主路上：落点 3×3 内敌人受 80 点固定伤害' },
     // —— 预留枚举位（本轮不做界面与掉落）——
     dabuwan:   { id: 'dabuwan',   name: '大补丸', glyph: '补', color: '#777', desc: '预留' },
     xumingdan: { id: 'xumingdan', name: '续命丹', glyph: '丹', color: '#777', desc: '预留' },
@@ -127,17 +129,19 @@ window.ZY = window.ZY || {};
     hpMul: BOSS_HP_MUL, atkMul: BOSS_ATK_MUL, skillCd: BOSS_SKILL_CD, slow: BOSS_SLOW,
   };
 
-  /* ---------- 征兵概率池（合计 100） ---------- */
+  /* ---------- 征兵概率池（合计 100） ----------
+   * V4：新增火球 5%，其余按比例微调保持合计 100 */
   const RECRUIT_POOL = [
-    { w: 22, kind: 'unit', type: 'dao' },
-    { w: 18, kind: 'unit', type: 'qiang' },
-    { w: 13, kind: 'unit', type: 'gong' },
+    { w: 21, kind: 'unit', type: 'dao' },
+    { w: 17, kind: 'unit', type: 'qiang' },
+    { w: 12, kind: 'unit', type: 'gong' },
     { w: 9,  kind: 'unit', type: 'qi' },
-    { w: 15, kind: 'gold' },
-    { w: 12, kind: 'item', item: 'shovel' },
+    { w: 14, kind: 'gold' },
+    { w: 11, kind: 'item', item: 'shovel' },
     { w: 5,  kind: 'unit', type: 'nong' },
     { w: 3,  kind: 'item', item: 'brush' },
     { w: 3,  kind: 'item', item: 'warcry' },
+    { w: 5,  kind: 'item', item: 'fireball' },
   ];
 
   /* ---------- 敌军（无尽 / 关卡）出兵构成 ---------- */
@@ -179,6 +183,7 @@ window.ZY = window.ZY || {};
     breakMul: 2.5,          // 突破口：该线出怪数量 ×2.5
     breakGapMul: 0.5,       // 突破口：出怪间隔减半
     levelBreakWave: 2,      // 关卡：每关第几波随机一次突破口
+    versusWaves: 15,        // 竞技：公共波次总数（打满比阿斗剩血，持平比击杀数；进行中仍谁先破谁输）
   };
 
   /* ---------- 军衔 ---------- */
@@ -289,6 +294,7 @@ window.ZY = window.ZY || {};
     RECRUIT_STEP: RECRUIT_STEP, BATCH: BATCH, HAND_MAX: HAND_MAX, START_BUN: START_BUN,
     BASE_INCOME: BASE_INCOME, ADOU_HP: ADOU_HP, ADOU_BONUS: ADOU_BONUS,
     WARCRY_MULT: WARCRY_MULT, WARCRY_TIME: WARCRY_TIME,
+    FIREBALL_DMG: FIREBALL_DMG, FIREBALL_RADIUS: FIREBALL_RADIUS,
     HERO_KILLS_PER_LEVEL: HERO_KILLS_PER_LEVEL,
     LEVEL_CLEAR_BONUS: LEVEL_CLEAR_BONUS, FORK_CHANCE: FORK_CHANCE,
     NORMAL_BOUNTY: NORMAL_BOUNTY, ELITE_BOUNTY: ELITE_BOUNTY, BOSS_BOUNTY: BOSS_BOUNTY,

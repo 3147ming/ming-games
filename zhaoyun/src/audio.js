@@ -71,6 +71,7 @@
     adou:    function () { tone(180, 0.28, 'sawtooth', 0.14, 90); noise(0.2, 0.05, 300); },
     skill:   function () { tone(880, 0.14, 'triangle', 0.10, 1320); setTimeout(function () { tone(660, 0.20, 'triangle', 0.09, 990); }, 90); },
     item:    function () { tone(740, 0.10, 'sine', 0.10, 980); },
+    boom:    function () { noise(0.32, 0.10, 320); tone(120, 0.30, 'sawtooth', 0.12, 55); setTimeout(function () { noise(0.18, 0.05, 900); }, 60); },
     win:     function () { [523, 659, 784, 1046].forEach(function (f, i) { setTimeout(function () { tone(f, 0.22, 'triangle', 0.11); }, i * 130); }); },
     lose:    function () { [440, 370, 294, 220].forEach(function (f, i) { setTimeout(function () { tone(f, 0.28, 'sine', 0.11); }, i * 160); }); },
     tap:     function () { tone(600, 0.04, 'sine', 0.05); },

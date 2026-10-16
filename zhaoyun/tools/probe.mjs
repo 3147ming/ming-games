@@ -1,11 +1,15 @@
-/* 赵云与阿斗 · 无头 Edge + CDP 冒烟：控制台报错 / 布局 / 交互 / 外部请求 */
+/* 赵云与阿斗 · 无头 Edge + CDP 冒烟：控制台报错 / 布局 / 塔防交互 / 外部请求 — V4
+ * 用法：node tools/probe.mjs   （无头 Edge + CDP）
+ * 覆盖：蛇形主路渲染（地砖/入口标记）/ 拖卡建塔 / 同字卡拖塔合成+1级（等级角标可见）/
+ *      四类道具拖放（神兵符/铲子/火球/毛笔）/ 火球爆炸特效与伤害 / 拖已建塔 toast「塔已固定」/
+ *      竞技双路双阿斗 / 棋盘自适应 / 征兵 / 主循环 / 无外部请求 / 无 console error
+ */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-// 用法：node tools/probe.mjs   （无头 Edge + CDP）
 const INDEX = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'index.html');
 const URL = 'file:///' + INDEX.replace(/\\/g, '/');
 const PORT = 9333;
@@ -33,7 +37,6 @@ let pass = 0, fail = 0;
 const ok = (n, c, x) => { if (c) { pass++; console.log('  ✓ ' + n); } else { fail++; console.log('  ✗ ' + n + (x ? '  → ' + x : '')); } };
 
 await waitPort();
-// 用页面级 target（/json/version 给的是浏览器级端点，没有 Runtime.evaluate）
 let target = null;
 for (let i = 0; i < 40 && !target; i++) {
   const list = await (await fetch('http://127.0.0.1:' + PORT + '/json/list')).json();
@@ -76,7 +79,6 @@ await send('Runtime.enable');
 await send('Page.enable');
 await send('Log.enable');
 await send('Network.enable');
-// 竖屏 375×667（模拟移动端）
 await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 667, deviceScaleFactor: 2, mobile: true });
 await send('Page.navigate', { url: URL });
 await sleep(1400);
@@ -94,12 +96,14 @@ ok('模块齐全', ['B', 'C', 'Game', 'AI', 'Save', 'UI', 'Audio'].every((k) => 
 ok('开始界面可见、对局界面隐藏', boot.startVisible && boot.gameHidden);
 console.log('   存档面板: ' + boot.saveText);
 
-console.log('\n== 进入竞技模式 ==');
-await evalJs(`document.querySelector('.mode-btn[data-mode="versus"]').click()`);
-await sleep(150);   // 仅等首帧渲染；< 0.5s 避免 AI 已用铲子扩地干扰「开局地」计数
+console.log('\n== 进入无尽模式 ==');
+await evalJs(`document.querySelector('.mode-btn[data-mode="endless"]').click()`);
+await sleep(200);
 const g = await evalJs(`({
   gameVisible: !document.getElementById('screen-game').hidden,
   cells: document.querySelectorAll('.cell').length,
+  path: document.querySelectorAll('.cell.path').length,
+  enter: document.querySelectorAll('.cell.enter').length,
   deploy: document.querySelectorAll('.cell.deploy').length,
   obstacle: document.querySelectorAll('.cell.obstacle').length,
   wasteland: document.querySelectorAll('.cell.wasteland').length,
@@ -111,14 +115,16 @@ const g = await evalJs(`({
 })`);
 ok('对局界面显示', g.gameVisible);
 ok('棋盘 8×12 = 96 格', g.cells === 96, g.cells + '');
-ok('竞技开局可部署地 = 18（双方各 9）', g.deploy === 18, g.deploy + '');
-ok('障碍地形存在（长坂坡障碍带）', g.obstacle >= 6, g.obstacle + '');
-ok('荒地（道路不可部署）存在', g.wasteland >= 1, g.wasteland + '');
+ok('蛇形主路渲染（主路格 = 36，地砖路径一眼可辨）', g.path === 36, g.path + '');
+ok('入口格打入口标记（1 个）', g.enter === 1, g.enter + '');
+ok('开局塔位 = 8（主路两侧）', g.deploy === 8, g.deploy + '');
+ok('障碍地形存在（左右山脊 24 格）', g.obstacle === 24, g.obstacle + '');
+ok('荒地（可铲子开塔位）存在', g.wasteland >= 1, g.wasteland + '');
 ok('待部署栏 12 格', g.slots === 12, g.slots + '');
-ok('双方阿斗都渲染', g.adou === 2, g.adou + '');
+ok('阿斗圆标渲染', g.adou === 1, g.adou + '');
 ok('开局馒头 24', parseInt(g.bun, 10) >= 24, g.bun);
 ok('阿斗 3 血', g.hearts === 3, g.hearts + '');
-ok('竞技模式显示中线', g.midShown === 'block', g.midShown);
+ok('无尽模式不显示中线', g.midShown === 'none', g.midShown);
 
 console.log('\n== 棋盘自适应（375×667）==');
 const box = await evalJs(`(() => {
@@ -132,7 +138,7 @@ ok('棋盘贴合 8:12 比例', Math.abs(box.w / box.h - 8 / 12) < 0.02, (box.w /
 ok('棋盘完整落在视口内', box.bottom <= box.vh + 1 && box.top >= -1, 'top=' + box.top + ' bottom=' + box.bottom);
 ok('无文档级滚动溢出', box.overflowY <= 0 && box.overflowX <= 0, 'y=' + box.overflowY + ' x=' + box.overflowX);
 
-console.log('\n== 征兵（V2 批量 + 成本递增）==');
+console.log('\n== 征兵（批量 + 成本递增）==');
 await evalJs(`document.getElementById('btn-recruit').click()`);
 await sleep(300);
 const afterRecruit = await evalJs(`({
@@ -142,8 +148,6 @@ const afterRecruit = await evalJs(`({
 ok('一次征兵得到 3 张牌（批量）', afterRecruit.cards === 3, afterRecruit.cards + '');
 ok('征兵扣 12 馒头（含自然收入）', afterRecruit.bun >= 11 && afterRecruit.bun <= 14, afterRecruit.bun + '');
 
-console.log('\n== V2 核心机制冒烟 ==');
-// 成本递增：连续征兵每次成功 +1（上限 60）
 const cost = await evalJs(`(() => {
   const s = ZY.UI.getState();
   s.player.bun = 300;
@@ -156,63 +160,15 @@ const cost = await evalJs(`(() => {
 })()`);
 ok('征兵成本每次成功 +1（12→13→14）', cost.c2 === cost.c1 + 1 && cost.c3 === cost.c1 + 2, JSON.stringify(cost));
 
-// 铲子扩地：相邻荒地道路格扩为可部署地
-const sh = await evalJs(`(() => {
-  const s = ZY.UI.getState();
-  const before = Object.keys(s.deploy).length;
-  const res = ZY.Game.useShovel(s, 'player', 8, 3);   // (8,3) 邻接开局地 (9,3)
-  const after = Object.keys(s.deploy).length;
-  return { ok: res.ok, before: before, after: after };
-})()`);
-await sleep(160);
-const shCell = await evalJs(`document.querySelector('.cell[data-r="8"][data-c="3"]').classList.contains('deploy')`);
-ok('铲子扩地：相邻荒地→部署地（deploy+1 且格子高亮）', sh.ok && sh.after === sh.before + 1 && shCell, 'before=' + sh.before + ' after=' + sh.after + ' cls=' + shCell);
-
-// 射程点圈：放置一个己方弓兵并点选，应出现 .range-ring.show
-const rng = await evalJs(`(async () => {
-  const s = ZY.UI.getState();
-  const u = ZY.Game.makeUnit(s, 'player', { cls: 'soldier', type: 'gong', level: 1, row: 10, col: 4 });
-  ZY.Game.addUnit(s, u);
-  await new Promise(r => setTimeout(r, 140));
-  const el = document.querySelector('.unit.p[data-uid="' + u.id + '"]');
-  if (!el) return { err: 'no unit el' };
-  const r = el.getBoundingClientRect();
-  const mk = (t) => new PointerEvent(t, { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, cancelable: true, pointerId: 5, pointerType: 'touch', isPrimary: true });
-  el.dispatchEvent(mk('pointerdown'));
-  await new Promise(r => setTimeout(r, 60));
-  el.dispatchEvent(mk('pointerup'));
-  await new Promise(r => setTimeout(r, 60));
-  return { show: document.querySelector('.range-ring').classList.contains('show') };
-})()`);
-ok('点选己方单位显示射程点圈', rng.show === true, rng.err || '');
-
-console.log('\n== 拖拽部署（pointer 事件模拟）==');
-// 先塞一张确定可部署的兵牌，避免首张恰好是道具导致落子失败
-await evalJs(`(() => {
-  const s = ZY.UI.getState();
-  s.player.bun = 300;
-  s.player.hand.push({ uid: 555001, kind: 'unit', char: '刀', type: 'dao', level: 1 });
-  return true;
-})()`);
-await sleep(160);
-const dragRes = await evalJs(`(async () => {
-  const card = document.querySelector('#hand .card[data-uid="555001"]');
-  const board = document.getElementById('board');
-  if (!card) return { err: 'no card' };
-  const br = board.getBoundingClientRect();
-  const cw = br.width / 8, ch = br.height / 12;
-  const beforeHand = document.querySelectorAll('#hand .card').length;
-  // 挑一个「己方可部署地 + 没有单位」的格子（开局地 row9 col3-5，含已扩地）
-  const free = [...document.querySelectorAll('.cell')].filter((c) => c.classList.contains('deploy') && c.classList.contains('zone-p'));
-  const occupied = new Set([...document.querySelectorAll('#units .unit')].map((u) => {
-    const m = /translate\\(([-\\d.]+)%,\\s*([-\\d.]+)%\\)/.exec(u.style.transform) || [];
-    return m[1] + ',' + m[2];
-  }));
-  const pick = free.find((c) => !occupied.has(c.dataset.c * 100 + ',' + c.dataset.r * 100)) || free[0];
-  if (!pick) return { err: 'no free cell' };
-  const target = { row: +pick.dataset.r, col: +pick.dataset.c };
-  const tx = br.left + (target.col + 0.5) * cw;
-  const ty = br.top + (target.row + 0.5) * ch;
+/* ---------------------------------------- 拖拽辅助（页面内执行） */
+const DRAG_HELPERS = `
+window.__cellXY = (r, c) => {
+  const br = document.getElementById('board').getBoundingClientRect();
+  return { x: br.left + (c + 0.5) * (br.width / 8), y: br.top + (r + 0.5) * (br.height / 12) };
+};
+window.__dragCard = async (uid, tx, ty) => {
+  const card = document.querySelector('#hand .card[data-uid="' + uid + '"]');
+  if (!card) return { err: 'no card ' + uid };
   const cr = card.getBoundingClientRect();
   const sx = cr.left + cr.width / 2, sy = cr.top + cr.height / 2;
   const mk = (type, x, y) => new PointerEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true, pointerId: 1, pointerType: 'touch', isPrimary: true });
@@ -222,75 +178,183 @@ const dragRes = await evalJs(`(async () => {
   await new Promise(r => setTimeout(r, 60));
   window.dispatchEvent(mk('pointermove', tx, ty));
   await new Promise(r => setTimeout(r, 60));
-  const hl = document.querySelectorAll('.cell.hl').length;
-  const ghost = document.querySelectorAll('.ghost').length;
+  const mid = { hl: document.querySelectorAll('.cell.hl').length, ghost: document.querySelectorAll('.ghost').length };
   window.dispatchEvent(mk('pointerup', tx, ty));
+  await new Promise(r => setTimeout(r, 220));
+  return { mid: mid, ghostsLeft: document.querySelectorAll('.ghost').length };
+};
+`;
+
+console.log('\n== 道具拖放：火球（拖到主路，3×3 爆炸 + 80 伤害）==');
+await evalJs(DRAG_HELPERS);
+const fb = await evalJs(`(async () => {
+  ${'' /* 注入 3 个聚团敌人（主路 (4,3)(4,4)(4,5)，钉住）+ 一张火球卡 */}
+  const s = ZY.UI.getState();
+  s.player.bun = 300;
+  const mk = (r, c) => { const u = ZY.Game.makeUnit(s, 'enemy', { cls: 'soldier', type: 'dao', level: 1, row: r, col: c, target: 'player' }); u.move = 0; u.hp = u.maxHp = 500; ZY.Game.addUnit(s, u); return u.id; };
+  const ids = [mk(4, 3), mk(4, 4), mk(4, 5)];
+  s.player.hand.push({ uid: 777001, kind: 'item', item: 'fireball' });
   await new Promise(r => setTimeout(r, 200));
-  const mine = [...document.querySelectorAll('#units .unit.p')].map((u) => u.textContent);
-  const cardGone = !document.querySelector('#hand .card[data-uid="555001"]');
+  const p = window.__cellXY(4, 4);
+  const drag = await window.__dragCard(777001, p.x, p.y);
+  await new Promise(r => setTimeout(r, 120));
+  const hp = ids.map((id) => { const u = s.units.find((x) => x.id === id); return u ? u.hp : -1; });
   return {
-    hl, ghost, beforeHand, cardGone,
-    units: document.querySelectorAll('#units .unit').length,
-    mineCount: mine.length,
-    ghostsLeft: document.querySelectorAll('.ghost').length,
-    unitText: mine.join('|'),
+    drag: drag,
+    hp: hp,
+    consumed: !s.player.hand.some((x) => x.uid === 777001),
+    boom: document.querySelectorAll('#fx .boom').length,
     toast: document.getElementById('toast').textContent
   };
 })()`);
-ok('拖拽时出现落点高亮', dragRes.hl === 1, 'hl=' + dragRes.hl);
-ok('拖拽时出现跟随幽灵', dragRes.ghost === 1, 'ghost=' + dragRes.ghost);
-ok('松手后落子成功（出现我方单位）', dragRes.mineCount >= 1, 'mine=' + dragRes.mineCount + ' toast=' + dragRes.toast);
-ok('落子的那张牌从手牌消失', dragRes.cardGone === true, 'cardGone=' + dragRes.cardGone);
-ok('幽灵元素已清理', dragRes.ghostsLeft === 0, dragRes.ghostsLeft + '');
-console.log('   落子内容: ' + JSON.stringify(dragRes.unitText));
+ok('拖拽时出现落点高亮 + 跟随幽灵', fb.drag && fb.drag.mid && fb.drag.mid.hl === 1 && fb.drag.mid.ghost === 1, JSON.stringify(fb.drag));
+ok('火球拖出即消耗（无论命中）', fb.consumed === true);
+ok('爆炸特效节点出现（.boom）', fb.boom >= 1, 'boom=' + fb.boom);
+ok('落点 3×3 内敌人各受 80 伤害', fb.hp.length === 3 && fb.hp.every((h) => h === 420), JSON.stringify(fb.hp));
+console.log('   toast: ' + fb.toast);
 
-console.log('\n== 道具点击使用 ==');
-// 手塞一张神兵符进手牌，模拟点击 → 应消耗该牌并挂上攻击加成
-const itemRes = await evalJs(`(async () => {
+console.log('\n== 拖卡建塔 + 同字合成 + 等级角标 ==');
+const tower = await evalJs(`(async () => {
   const s = ZY.UI.getState();
-  // uid 必须是数字：手牌的 pointerdown 会对 dataset.uid 做 parseInt
-  s.player.hand.push({ uid: 987654, kind: 'item', item: 'warcry' });
-  s.player.bun = 100;
-  document.getElementById('btn-recruit').click();   // 征一张牌顺便刷新手牌区
-  await new Promise(r => setTimeout(r, 120));
-  const before = document.querySelectorAll('#hand .card').length;
-  const card = [...document.querySelectorAll('#hand .card')].find(c => c.dataset.uid === '987654');
-  if (!card) return { err: '手牌里找不到神兵符', hand: document.getElementById('hand').textContent };
-  // 手牌走 pointerdown / pointerup 判定（原地松手 = 点击），不是 click
-  const r = card.getBoundingClientRect();
-  const x = r.left + r.width / 2, y = r.top + r.height / 2;
-  const mk = (type) => new PointerEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true, pointerId: 2, pointerType: 'touch', isPrimary: true });
-  card.dispatchEvent(mk('pointerdown'));
-  await new Promise(r2 => setTimeout(r2, 80));
-  window.dispatchEvent(mk('pointerup'));
-  await new Promise(r2 => setTimeout(r2, 250));
+  s.player.bun = 300;
+  s.player.hand.push({ uid: 555001, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+  s.player.hand.push({ uid: 555002, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+  await new Promise(r => setTimeout(r, 200));
+  // 挑一个空格塔位
+  const free = [...document.querySelectorAll('.cell.deploy')].find((c) => {
+    const r = +c.dataset.r, col = +c.dataset.c;
+    return !s.grid[r][col];
+  });
+  if (!free) return { err: 'no free slot' };
+  const row = +free.dataset.r, col = +free.dataset.c;
+  const p = window.__cellXY(row, col);
+  const d1 = await window.__dragCard(555001, p.x, p.y);
+  const built = s.grid[row][col];
+  const unitEl = built ? document.querySelector('.unit.p[data-uid="' + built.id + '"]') : null;
   return {
-    before,
-    after: document.querySelectorAll('#hand .card').length,
-    buff: ZY.UI.getState().buff.player,
-    stillInHand: ZY.UI.getState().player.hand.some(x => x.item === 'warcry'),
-    banner: document.getElementById('banner').textContent
+    d1: d1,
+    built: !!built && built.type === 'dao' && built.level === 1,
+    cardGone: !s.player.hand.some((x) => x.uid === 555001),
+    unitEl: !!unitEl,
+    row: row, col: col,
+    lvText: unitEl ? (unitEl.querySelector('.lv') || {}).textContent : null,
+    lvSize: unitEl && unitEl.querySelector('.lv') ? parseFloat(getComputedStyle(unitEl.querySelector('.lv')).fontSize) : 0
   };
 })()`);
-if (itemRes.err) {
-  ok('能点击使用道具（神兵符）', false, itemRes.err);
-} else {
-  ok('点击道具后被消耗', itemRes.stillInHand === false && itemRes.after === itemRes.before - 1,
-    '手牌 ' + itemRes.before + ' → ' + itemRes.after);
-  ok('神兵符生效（全队攻击加成已挂上）', itemRes.buff > 0, 'buff=' + itemRes.buff + 's');
-}
+ok('拖兵种卡到塔位 = 建塔（出现我方单位）', tower.built === true && tower.unitEl === true, JSON.stringify(tower).slice(0, 120));
+ok('建塔后卡消失', tower.cardGone === true);
+ok('等级角标 .lv 常显且字号醒目（≥14px）', tower.lvText === '1' && tower.lvSize >= 14, 'text=' + tower.lvText + ' size=' + tower.lvSize);
+ok('拖拽幽灵已清理', tower.d1 && tower.d1.ghostsLeft === 0);
 
-console.log('\n== 跑 6 秒看主循环 ==');
-await sleep(6000);
+const merge = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  const p = window.__cellXY(${tower.row}, ${tower.col});
+  const d = await window.__dragCard(555002, p.x, p.y);
+  const t = s.grid[${tower.row}][${tower.col}];
+  const unitEl = t ? document.querySelector('.unit.p[data-uid="' + t.id + '"]') : null;
+  return {
+    d: d,
+    level: t ? t.level : -1,
+    cardGone: !s.player.hand.some((x) => x.uid === 555002),
+    lvText: unitEl ? (unitEl.querySelector('.lv') || {}).textContent : null,
+    toast: document.getElementById('toast').textContent
+  };
+})()`);
+ok('同字卡拖到同字塔上 = 合成 +1 级', merge.level === 2 && merge.cardGone === true, 'level=' + merge.level);
+ok('等级角标数字变为 2', merge.lvText === '2', 'lv=' + merge.lvText);
+
+const fixed = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  const t = s.grid[${tower.row}][${tower.col}];
+  if (!t) return { err: 'no tower' };
+  const el = document.querySelector('.unit.p[data-uid="' + t.id + '"]');
+  const r = el.getBoundingClientRect();
+  const mk = (type, x, y) => new PointerEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true, pointerId: 3, pointerType: 'touch', isPrimary: true });
+  el.dispatchEvent(mk('pointerdown', r.left + r.width / 2, r.top + r.height / 2));
+  await new Promise(r2 => setTimeout(r2, 60));
+  const p = window.__cellXY(0, 0);
+  window.dispatchEvent(mk('pointermove', p.x, p.y));
+  await new Promise(r2 => setTimeout(r2, 60));
+  window.dispatchEvent(mk('pointerup', p.x, p.y));
+  await new Promise(r2 => setTimeout(r2, 200));
+  return { toast: document.getElementById('toast').textContent, still: !!s.grid[${tower.row}][${tower.col}], ghosts: document.querySelectorAll('.ghost').length };
+})()`);
+ok('拖已建塔 = 无操作 + toast「塔已固定」', fixed.toast.indexOf('塔已固定') >= 0 && fixed.still === true, fixed.toast);
+
+console.log('\n== 道具拖放：神兵符 / 铲子 / 毛笔 ==');
+const items = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  const out = {};
+  // —— 神兵符：拖到任意位置即释放（全局 buff）——
+  s.player.hand.push({ uid: 777002, kind: 'item', item: 'warcry' });
+  await new Promise(r => setTimeout(r, 160));
+  const pw = window.__cellXY(6, 4);
+  const dw = await window.__dragCard(777002, pw.x, pw.y);
+  out.warcry = { consumed: !s.player.hand.some((x) => x.uid === 777002), buff: s.buff.player, toast: document.getElementById('toast').textContent };
+  // —— 铲子：拖到荒地塔位 → +1 塔位 ——
+  const spot = ZY.B.shovelSpots(s, 'player')[0];
+  s.player.hand.push({ uid: 777003, kind: 'item', item: 'shovel' });
+  await new Promise(r => setTimeout(r, 160));
+  const before = Object.keys(s.deploy).length;
+  const ps = window.__cellXY(spot.row, spot.col);
+  const ds = await window.__dragCard(777003, ps.x, ps.y);
+  const cellEl = document.querySelector('.cell[data-r="' + spot.row + '"][data-c="' + spot.col + '"]');
+  out.shovel = { consumed: !s.player.hand.some((x) => x.uid === 777003), before: before, after: Object.keys(s.deploy).length, cls: cellEl.classList.contains('deploy'), toast: document.getElementById('toast').textContent };
+  // —— 毛笔：拖到己方塔 → 改写兵种 ——
+  s.player.hand.push({ uid: 777004, kind: 'item', item: 'brush' });
+  await new Promise(r => setTimeout(r, 160));
+  const t = s.grid[${tower.row}][${tower.col}];
+  const charBefore = t ? t.char : null;
+  const pb = window.__cellXY(${tower.row}, ${tower.col});
+  const db = await window.__dragCard(777004, pb.x, pb.y);
+  out.brush = { consumed: !s.player.hand.some((x) => x.uid === 777004), changed: t ? (t.char !== charBefore) : false, charBefore: charBefore, charAfter: t ? t.char : null };
+  return out;
+})()`);
+ok('神兵符拖出即消耗 + 全队攻击 buff 挂上', items.warcry.consumed === true && items.warcry.buff > 0, JSON.stringify(items.warcry));
+ok('铲子拖荒地 → 塔位 +1 且格子高亮', items.shovel.consumed === true && items.shovel.after === items.shovel.before + 1 && items.shovel.cls === true, JSON.stringify(items.shovel));
+ok('毛笔拖己方塔 → 兵种被改写', items.brush.consumed === true && items.brush.changed === true, JSON.stringify(items.brush));
+console.log('   神兵符 toast: ' + items.warcry.toast);
+
+console.log('\n== 跑 20 秒看主循环（波次出兵）==');
+await sleep(20000);
 const runRes = await evalJs(`({
   units: document.querySelectorAll('#units .unit').length,
+  enemies: document.querySelectorAll('#units .unit.e').length,
+  onPath: [...document.querySelectorAll('#units .unit.e')].filter((u) => {
+    const m = /translate\\(([-\\d.]+)%,\\s*([-\\d.]+)%\\)/.exec(u.style.transform) || [];
+    return m.length === 3;
+  }).length,
   bun: parseInt(document.getElementById('hud-bun').textContent, 10),
   wave: document.getElementById('hud-wave').textContent,
+  warn: document.querySelectorAll('.cell.warn').length,
   pops: document.querySelectorAll('#fx .pop').length
 })`);
-console.log('   单位 ' + runRes.units + ' · 馒头 ' + runRes.bun + ' · HUD「' + runRes.wave + '」');
+console.log('   单位 ' + runRes.units + '（敌 ' + runRes.enemies + '）· 馒头 ' + runRes.bun + ' · HUD「' + runRes.wave + '」· 预警格 ' + runRes.warn);
 ok('主循环在跑（馒头持续增长）', runRes.bun > 15, runRes.bun + '');
-ok('AI 已出兵（同屏有敌方单位）', runRes.units > 1, runRes.units + '');
+ok('波次来袭、敌人已出兵（沿主路行军）', runRes.enemies >= 1, 'enemies=' + runRes.enemies);
+ok('来袭预警格显示（入口首段 ▼）', runRes.warn >= 1, 'warn=' + runRes.warn);
+
+console.log('\n== 竞技双路双阿斗（重开竞技）==');
+await send('Page.navigate', { url: URL });
+await sleep(1400);
+await evalJs(`document.querySelector('.mode-btn[data-mode="versus"]').click()`);
+await sleep(200);
+const vs = await evalJs(`({
+  path: document.querySelectorAll('.cell.path').length,
+  enter: document.querySelectorAll('.cell.enter').length,
+  deploy: document.querySelectorAll('.cell.deploy').length,
+  adou: document.querySelectorAll('.adou').length,
+  heartsP: document.querySelectorAll('#hp-player i.on').length,
+  heartsE: document.querySelectorAll('#hp-enemy i.on').length,
+  midShown: getComputedStyle(document.getElementById('midline')).display,
+  wave: document.getElementById('hud-wave').textContent
+})`);
+ok('竞技双蛇形主路渲染（48 格）', vs.path === 48, vs.path + '');
+ok('双方入口都有入口标记（2 个）', vs.enter === 2, vs.enter + '');
+ok('竞技双方塔位 = 16（各 8）', vs.deploy === 16, vs.deploy + '');
+ok('双阿斗都渲染（各 3 血）', vs.adou === 2 && vs.heartsP === 3 && vs.heartsE === 3, JSON.stringify(vs));
+ok('竞技模式显示中线', vs.midShown === 'block', vs.midShown);
+ok('HUD 显示波次进度（/15）', vs.wave.indexOf('/15') >= 0, vs.wave);
 
 console.log('\n== 外部请求检查 ==');
 const external = requests.filter((u) => !u.startsWith('file://') && !u.startsWith('data:') && !u.startsWith('blob:'));
