@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#ece6da">
+<title>赵云与阿斗</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<div class="stage">
+
+  <!-- 背景水墨山峦（内联 SVG，无外部请求） -->
+  <svg class="ink-mount" viewBox="0 0 375 300" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 300 L0 214 Q34 168 62 196 Q92 140 124 186 Q152 132 182 178 Q214 118 246 172 Q280 132 312 182 Q344 152 375 196 L375 300 Z" fill="#2f2a22"/>
+    <path d="M0 300 L0 248 Q40 214 74 240 Q108 196 142 236 Q176 200 210 238 Q248 206 286 240 Q326 214 375 246 L375 300 Z" fill="#4a4238"/>
+  </svg>
+
+  <!-- ======================= 开始界面 ======================= -->
+  <section id="screen-start" class="screen">
+    <div class="start-wrap">
+      <header class="brand">
+        <h1 class="title">赵云与阿斗</h1>
+        <div class="seal">漢</div>
+        <p class="sub">文字合成 · 塔防</p>
+      </header>
+
+      <div class="modes">
+        <button class="mode-btn" data-mode="versus">
+          <span class="m-icon">戰</span>
+          <span class="m-txt"><b>竞技模式</b><i>上下分屏 1V1 打 AI，先破对方阿斗者胜</i></span>
+        </button>
+        <button class="mode-btn" data-mode="endless">
+          <span class="m-icon">守</span>
+          <span class="m-txt"><b>无尽模式</b><i>单人守家，波次不断，记录最高波数与击杀</i></span>
+        </button>
+        <button class="mode-btn" data-mode="level">
+          <span class="m-icon">關</span>
+          <span class="m-txt"><b>关卡模式</b><i>巨鹿 → 五丈原六关闯关，通关晋升军衔</i></span>
+        </button>
+      </div>
+
+      <div class="diff">
+        <span class="d-lab">AI 难度</span>
+        <button class="diff-btn" data-diff="0.8">简单</button>
+        <button class="diff-btn active" data-diff="1">普通</button>
+        <button class="diff-btn" data-diff="1.2">困难</button>
+      </div>
+
+      <div class="save" id="save-info"></div>
+
+      <details class="rules">
+        <summary>玩法速览</summary>
+        <p>· <b>征兵</b>（12 馒头）随机得一个字块或道具，拖到己方半区空格部署。</p>
+        <p>· 两个<b>同字同级</b>的字块拖到一起合成升级（上限 5 级）；<b>金色武将字</b>按姓名从左到右横向相邻摆好即成将。</p>
+        <p>· 阿斗在己方底行中央，3 血。敌方踏入底线整行扣 1 血并补偿 +10 馒头（卖血换经济）。</p>
+        <p>· 道具：铲子开锁定格 / 农民产馒头 / 毛笔同色改字 / 神兵符全队攻击 ×1.5 持续 10 秒。</p>
+        <p>· 单人模式每波会在来袭纵列顶上打 <b>▼ 预警</b>，据此提前布防；击杀赏金是主要收入来源。</p>
+      </details>
+
+      <button class="reset" id="btn-reset">清空存档</button>
+    </div>
+  </section>
+
+  <!-- ======================= 对局界面 ======================= -->
+  <section id="screen-game" class="screen" hidden>
+    <header class="hud">
+      <div class="hud-l">
+        <div class="hud-mode" id="hud-mode">竞技</div>
+        <div class="hud-wave" id="hud-wave"></div>
+      </div>
+      <div class="hud-mid">
+        <div class="hp-line"><span class="hp-lab">我</span><span class="hearts" id="hp-player"></span></div>
+        <div class="hp-line" id="hp-enemy-line"><span class="hp-lab">敌</span><span class="hearts" id="hp-enemy"></span></div>
+      </div>
+      <div class="hud-r">
+        <div class="bun" id="hud-bun">24</div>
+        <button class="icon-btn" id="btn-mute" title="音效开关">音</button>
+        <button class="icon-btn" id="btn-pause" title="暂停">停</button>
+      </div>
+    </header>
+
+    <div class="board-wrap">
+      <div class="board" id="board">
+        <div class="cells" id="cells"></div>
+        <div class="units" id="units"></div>
+        <div class="fx" id="fx"></div>
+        <div class="midline" id="midline"></div>
+      </div>
+    </div>
+
+    <footer class="dock">
+      <div class="hand" id="hand"></div>
+      <button class="recruit" id="btn-recruit"><b>征 兵</b><span>12 馒头</span></button>
+    </footer>
+  </section>
+
+  <div class="banner" id="banner"></div>
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay" hidden></div>
+</div>
+
+<script src="./src/units.js"></script>
+<script src="./src/board.js"></script>
+<script src="./src/audio.js"></script>
+<script src="./src/storage.js"></script>
+<script src="./src/ai.js"></script>
+<script src="./src/game.js"></script>
+<script src="./src/ui.js"></script>
+<script src="./src/main.js"></script>
+</body>
+</html>
