@@ -23,6 +23,10 @@ import { createTouchControls } from './touch-controls.js';
 import { createAudio } from './audio.js';
 import { createUI, hudLayout } from './ui.js';
 import * as Storage from './storage.js';
+import { latestTitle, syncAchievements } from './achievements.js';
+import { refreshDaily, bumpDaily, claimDaily } from './daily.js';
+import { buildPerks, grantXp, learnNode, canLearn } from './perks.js';
+import { advanceStory } from './story.js';
 
 const canvas = document.getElementById('game-canvas');
 const uiRoot = document.getElementById('ui-root');
@@ -35,6 +39,8 @@ const sceneHandle = isWebGLAvailable() ? createScene3D(canvas, device) : null;
 const renderer = sceneHandle ? new Renderer3D(sceneHandle, canvas, device) : new NoopRenderer3D();
 
 let save = Storage.loadSave();
+// 跨天刷新每日任务（存档里没有或日期变了就重开一组）
+if (refreshDaily(save)) Storage.saveGame(save);
 let world = null;
 let screen = 'menu';
 let paused = false;
@@ -549,6 +555,7 @@ function createWorld(map, seed, rng, player, enemies) {
     onDeath(entity) {
       if (entity.isPlayer) return; // 玩家死亡由主循环统一结算
       w.kills += 1;
+      markDiscovered([], [entity.typeId]); // 图鉴：击杀的敌人类型解锁
       if (audio) audio.death();
       w.decals.push({
         x: entity.x, y: entity.y, r: 15 + w.rng.float(0, 9), life: 1, maxLife: 1,
@@ -569,6 +576,33 @@ function createWorld(map, seed, rng, player, enemies) {
   return w;
 }
 
+/* ============================ 图鉴解锁追踪 ============================ */
+
+/**
+ * 记录玩家首次拥有某物品 / 击杀某敌人的图鉴解锁（幂等，变更才写档）。
+ * @param {string[]} [items] 物品 id 列表
+ * @param {string[]} [enemies] 敌人 typeId 列表
+ * @returns {boolean} 是否有新解锁
+ */
+function markDiscovered(items, enemies) {
+  let changed = false;
+  if (!save.codex || !Array.isArray(save.codex.items)) save.codex = { items: [], enemies: [] };
+  for (const id of items || []) {
+    if (id && ITEMS[id] && !save.codex.items.includes(id)) {
+      save.codex.items.push(id);
+      changed = true;
+    }
+  }
+  for (const id of enemies || []) {
+    if (id && ENEMY_TYPES[id] && !save.codex.enemies.includes(id)) {
+      save.codex.enemies.push(id);
+      changed = true;
+    }
+  }
+  if (changed) Storage.saveGame(save);
+  return changed;
+}
+
 /* ============================ 界面切换 ============================ */
 
 function go(name) {
@@ -578,7 +612,22 @@ function go(name) {
   // 离开战斗（回菜单 / 结算 / 暂停）：释放全屏与方向锁定，避免手机卡在全屏里
   if (name !== 'battle') exitMobileFullscreen();
   if (name !== 'battle' && mouseLook) mouseLook.exitLock();
-  if (name === 'menu') ui.renderMenu(save);
+  if (name === 'menu') {
+    // 图鉴：回菜单时按仓库与配置扫描一次，老存档也能补解锁
+    const owned = save.stash.items.map((it) => it.id)
+      .concat(save.loadout.primary ? [save.loadout.primary] : [])
+      .concat(save.loadout.secondary ? [save.loadout.secondary] : [])
+      .concat(save.loadout.armor && save.loadout.armor !== 'none' ? [save.loadout.armor] : []);
+    markDiscovered(owned, []);
+    ui.renderMenu(save);
+  }
+  if (name === 'codex') ui.renderCodex(save);
+  if (name === 'daily') { refreshDaily(save); ui.renderDaily(save); }
+  if (name === 'ach') ui.renderAchievements(save);
+  if (name === 'tree') ui.renderTree(save);
+  if (name === 'story') ui.renderStory(save);
+  // 菜单氛围：回菜单时开低频底鸣，进战由 startRaid 关掉并切风声层
+  if (name === 'menu' && audio && audio.startMenuAmbient) audio.startMenuAmbient();
   if (name !== 'battle') {
     ui.closeBattlePanels();
     openContainer = null;
@@ -657,6 +706,7 @@ function buy(id) {
   }
   save.currency -= def.value;
   autoPlace(save.stash, item);
+  markDiscovered([id], []); // 图鉴：买过的物品解锁
   Storage.saveGame(save);
   ui.renderShop(save);
   audio.cash();
@@ -710,12 +760,21 @@ function startRaid(seedInput) {
     .filter((id) => id && WEAPONS[id])
     .map((id) => WEAPONS[id]);
   const armorDef = ARMORS[lo.armor] || ARMORS.none;
+  // 局间成长树：已学节点汇总成加成，注入本局角色（未学任何节点时全为 0，行为不变）
+  const perks = buildPerks((save.tree && save.tree.nodes) || []);
+  const startItems = buildLoadoutItems(lo);
+  if (perks.ammo > 0) {
+    // 「弹药储备」：按主武器口径补一叠备弹（放不进背包的会被 autoPlace 静默丢弃）
+    const ammoId = (WEAPONS[lo.primary] && WEAPONS[lo.primary].ammoItem) || 'ammo556';
+    if (ITEMS[ammoId]) startItems.push(createItem(ITEMS[ammoId], perks.ammo));
+  }
   const player = new Player({
     x: map.playerSpawn.x,
     y: map.playerSpawn.y,
     armorDef,
     weaponDefs: defs.length ? defs : [WEAPONS.pistol],
-    items: buildLoadoutItems(lo),
+    items: startItems,
+    perks,
   });
   const enemies = spawnEnemies(map, rng);
 
@@ -730,7 +789,13 @@ function startRaid(seedInput) {
 
   go('battle');
   audio.ensure();
+  if (audio.stopMenuAmbient) audio.stopMenuAmbient(); // 进战关掉菜单氛围，切风声层
   if (audio.startAmbient) audio.startAmbient();
+  // 首局新手引导：未完成过则进入引导模式，按 搜刮→击杀→撤离 三步推进
+  if (!save.settings.tutorialDone) {
+    world.tutorial = { step: 1 };
+    ui.toast('新手引导 1/3：搜刮一个容器（走近按 E / 点交互键）');
+  }
   ui.toast(`已部署 · 种子 ${seed} · ${map.extracts.length} 个撤离点（最后 2 分钟开放）`);
 }
 
@@ -793,6 +858,32 @@ function endRaid(reason) {
   save.stats.kills += world.kills;
   save.stats.bestScore = Math.max(save.stats.bestScore, score);
   save.stats.bestValue = Math.max(save.stats.bestValue, lootValue);
+  if (world.tutorial) save.settings.tutorialDone = true; // 引导战结束即视为完成
+
+  // --- 长期进度：每日任务 → 成就 → 天赋经验 → 剧情 ---
+  // 都在 markDiscovered 之前跑，末尾那次 saveGame 会一次性落盘全部变更。
+  refreshDaily(save); // 跨天先刷新，避免把本局进度算进昨天那一组
+  bumpDaily(save, 'raids', 1);
+  bumpDaily(save, 'kills', world.kills);
+  bumpDaily(save, 'searches', world.searchedCount);
+  bumpDaily(save, 'terminals', world.terminalsHacked);
+  if (success) {
+    bumpDaily(save, 'extracts', 1);
+    bumpDaily(save, 'value', lootValue); // 数值型取历史最大值
+  }
+  const achRes = syncAchievements(save);
+  const xpGain = Math.round(score / 10) + (success ? 40 : 10);
+  const levelsGained = grantXp(save, xpGain);
+  const storyDone = advanceStory(save);
+
+  // 图鉴：本局所有带出/损失物资 + 带入装备全部解锁（第一次拥有即记录）
+  markDiscovered(
+    broughtOut.concat(lost).map((it) => it.id)
+      .concat(save.loadout.primary ? [save.loadout.primary] : [])
+      .concat(save.loadout.secondary ? [save.loadout.secondary] : [])
+      .concat(save.loadout.armor && save.loadout.armor !== 'none' ? [save.loadout.armor] : []),
+    [],
+  );
   Storage.saveGame(save);
   Storage.ensureMinimumKit(save);
 
@@ -816,6 +907,27 @@ function endRaid(reason) {
   if (world.extractFeePaid > 0) {
     stats.push(['撤离手续费', money(world.extractFeePaid)]);
   }
+  // 死亡归因：阵亡时在结算页首行显示"被谁、用什么、多远击杀"
+  if (reason === 'dead') {
+    const src = player.lastHitBy;
+    if (src && ENEMY_TYPES[src.typeId]) {
+      const def = ENEMY_TYPES[src.typeId];
+      const wdef = src.currentWeapon ? src.currentWeapon.def : null;
+      const killerName = (def && def.name) || '敌人';
+      const weaponName = wdef && wdef.name ? wdef.name : '';
+      const distM = Math.round((player.lastHitDist || 0) / 20); // 1 米 = 20 逻辑单位（VIEW3D.metersToUnits）
+      let cause = `被 ${killerName} 击杀`;
+      if (weaponName) cause += ` · ${weaponName}`;
+      if (distM > 0) cause += ` · 距离 ${distM}m`;
+      stats.unshift(['死因', cause]);
+    }
+  }
+  if (achRes.rewards > 0) stats.push(['成就奖励', money(achRes.rewards)]);
+  stats.push(['获得经验', `${xpGain} XP`]);
+  if (levelsGained > 0) stats.push(['天赋等级', `Lv.${save.tree.level}（+${levelsGained} 点）`]);
+  if (storyDone.length) stats.push(['剧情推进', storyDone.map((s) => s.title).join(' → ')]);
+  const titleNow = latestTitle(save);
+  if (titleNow) stats.push(['当前称号', titleNow]);
   stats.push(['评分', String(score)]);
 
   ui.renderResult({
@@ -830,6 +942,11 @@ function endRaid(reason) {
   });
   world.result = reason;
   go('result');
+
+  // 进度反馈放在最后：toast 才会浮在结算页上，而不是被战斗 HUD 盖掉
+  for (const a of achRes.unlocked) ui.toast(`成就解锁：${a.name} · +${money(a.currency)}`, 'ok');
+  if (levelsGained > 0) ui.toast(`升级！Lv.${save.tree.level} · 获得 ${levelsGained} 点天赋`, 'ok');
+  for (const s of storyDone) ui.toast(`剧情推进：${s.title} · +${money(s.reward)}`, 'ok');
 }
 
 /* ============================ 战利品拾取 ============================ */
@@ -1029,6 +1146,26 @@ function updateAirdrop(w) {
     }
 }
 
+/**
+ * 首局新手引导推进：按 搜刮容器 → 击杀敌人 → 活着撤离 三步走。
+ * 完成条件直接复用战局已有计数（searchedCount / kills），不引入新事件源。
+ * @param {object} w 战局
+ * @returns {void}
+ */
+function updateTutorial(w) {
+  const t = w.tutorial;
+  if (!t) return;
+  if (t.step === 1 && w.searchedCount >= 1) {
+    t.step = 2;
+    ui.toast('新手引导 2/3：击杀 1 名敌人（开火命中直至其倒下）');
+    if (audio && audio.ui) audio.ui(0.4);
+  } else if (t.step === 2 && w.kills >= 1) {
+    t.step = 3;
+    ui.toast('新手引导 3/3：活着撤离——最后 2 分钟撤离通道开启，站定 3 秒即可撤离');
+    if (audio && audio.ui) audio.ui(0.4);
+  }
+}
+
 function update(dt) {
   const w = world;
   if (!w || w.over) return;
@@ -1039,7 +1176,10 @@ function update(dt) {
   updateAirdrop(w);
 
   w.player.update(dt, input, w);
+  // 低血量心跳：血量越低心跳越快越响（内部平滑，可每帧调用）
+  if (audio && audio.setHeartRate) audio.setHeartRate(w.player.hp / w.player.maxHp);
   for (const enemy of w.enemies) enemy.update(dt, w);
+  updateTutorial(w);
   updateEffects(dt);
   updateKillFeed(dt);
   updateAmbient(dt);
@@ -1100,6 +1240,32 @@ const ui = createUI(uiRoot, {
     go('shop');
   },
   'goto-howto': () => go('howto'),
+  'goto-codex': () => go('codex'),
+  'goto-daily': () => go('daily'),
+  'goto-ach': () => go('ach'),
+  'goto-tree': () => go('tree'),
+  'goto-story': () => go('story'),
+  'claim-daily': (data) => {
+    const got = claimDaily(save, data.id);
+    if (!got) return;
+    Storage.saveGame(save);
+    audio.ui();
+    ui.toast(`每日任务奖励 +${money(got)}`, 'ok');
+    ui.renderDaily(save);
+    ui.renderMenu(save);
+  },
+  'learn-perk': (data) => {
+    const check = canLearn(save, data.id);
+    if (!check.ok) {
+      ui.toast(check.reason || '无法学习');
+      if (audio && audio.error) audio.error();
+      return;
+    }
+    learnNode(save, data.id);
+    Storage.saveGame(save);
+    audio.ui();
+    ui.renderTree(save);
+  },
   deploy,
   'set-loadout': (data) => {
     const slot = data.slot;
@@ -1396,6 +1562,10 @@ window.addEventListener('resize', () => {
 });
 
 /* ============================ 启动 ============================ */
+
+// 移除 index.html 里的启动加载占位（模块解析完成即隐藏，看门狗兜底）
+const bootLoader = document.getElementById('boot-loading');
+if (bootLoader && bootLoader.parentNode) bootLoader.parentNode.removeChild(bootLoader);
 
 go('menu');
 window.requestAnimationFrame(frame);

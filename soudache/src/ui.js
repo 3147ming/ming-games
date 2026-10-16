@@ -181,12 +181,16 @@ export function hudLayout(W, H, touch = false, tasksOpen = false) {
 
 import {
   ITEMS, WEAPONS, ARMORS, SHOP, RARITY, RARITY_ORDER, CONTAINERS, ENEMY_TYPES, PLAYER, MATCH, AMMO_STACK, SCORING,
-  COLORS, MINIMAP, MINIMAP_LAYERS, TILE, WORLD_W, WORLD_H, COMBAT, KILLFEED,
+  COLORS, MINIMAP, MINIMAP_LAYERS, TILE, WORLD_W, WORLD_H, MAP_COLS, MAP_ROWS, COMBAT, KILLFEED,
 } from './config.js';
 import { totalWeight, totalValue, itemCount, weightLimitFor, weightTier } from './inventory.js';
 import { drawGlyph } from './glyphs.js';
 import { EnemyState } from './enemy.js';
 import { sortTasksByPriority } from './contracts.js';
+import { ACHIEVEMENTS } from './achievements.js';
+import { dailyTaskDone } from './daily.js';
+import { PERK_BRANCHES, canLearn, xpForLevel } from './perks.js';
+import { STORY_STAGES } from './story.js';
 
 /** 等宽 / 无衬线字体（与旧 2D 渲染器保持一致） */
 const MONO = '"Consolas", "SFMono-Regular", "JetBrains Mono", "Courier New", monospace';
@@ -250,6 +254,13 @@ export function createUI(root, handlers) {
           <button class="btn" data-action="goto-stash">仓库</button>
           <button class="btn" data-action="goto-shop">商店</button>
           <button class="btn" data-action="goto-howto">玩法说明</button>
+        </div>
+        <div class="menu-actions sub">
+          <button class="btn small" data-action="goto-daily">每日</button>
+          <button class="btn small" data-action="goto-ach">成就</button>
+          <button class="btn small" data-action="goto-tree">天赋</button>
+          <button class="btn small" data-action="goto-story">剧情</button>
+          <button class="btn small" data-action="goto-codex">图鉴</button>
         </div>
         <div class="menu-foot">
           <button class="link" data-action="toggle-mute">音效开关</button>
@@ -379,6 +390,65 @@ export function createUI(root, handlers) {
             </ul>
           </section>
         </div>
+      </div>
+    </div>
+
+    <div class="screen" data-screen="codex">
+      <div class="panel wide">
+        <header class="panel-head">
+          <h2>图鉴 CODEX</h2>
+          <div class="head-right"><button class="btn ghost" data-action="goto-menu">返回</button></div>
+        </header>
+        <div class="panel-body codex-body" data-role="codex-body"></div>
+      </div>
+    </div>
+
+    <div class="screen" data-screen="daily">
+      <div class="panel wide">
+        <header class="panel-head">
+          <h2>每日任务 DAILY</h2>
+          <div class="head-right">
+            <span class="coin" data-role="daily-currency"></span>
+            <button class="btn ghost" data-action="goto-menu">返回</button>
+          </div>
+        </header>
+        <div class="panel-body daily-body" data-role="daily-body"></div>
+      </div>
+    </div>
+
+    <div class="screen" data-screen="ach">
+      <div class="panel wide">
+        <header class="panel-head">
+          <h2>成就 ACHIEVEMENTS</h2>
+          <div class="head-right">
+            <span class="coin" data-role="ach-currency"></span>
+            <button class="btn ghost" data-action="goto-menu">返回</button>
+          </div>
+        </header>
+        <div class="panel-body ach-body" data-role="ach-body"></div>
+      </div>
+    </div>
+
+    <div class="screen" data-screen="tree">
+      <div class="panel wide">
+        <header class="panel-head">
+          <h2>成长天赋 PERKS</h2>
+          <div class="head-right">
+            <span class="coin" data-role="tree-points"></span>
+            <button class="btn ghost" data-action="goto-menu">返回</button>
+          </div>
+        </header>
+        <div class="panel-body tree-body" data-role="tree-body"></div>
+      </div>
+    </div>
+
+    <div class="screen" data-screen="story">
+      <div class="panel wide">
+        <header class="panel-head">
+          <h2>剧情 STORY</h2>
+          <div class="head-right"><button class="btn ghost" data-action="goto-menu">返回</button></div>
+        </header>
+        <div class="panel-body story-body" data-role="story-body"></div>
       </div>
     </div>
 
@@ -552,6 +622,213 @@ export function createUI(root, handlers) {
       node.appendChild(el('span', 'v', v));
       host.appendChild(node);
     }
+  }
+
+  /* ---------------- 图鉴 ---------------- */
+
+  function renderCodex(save) {
+    const host = q('codex-body');
+    host.innerHTML = '';
+    const codex = save.codex || { items: [], enemies: [] };
+    const knownItems = new Set(codex.items || []);
+    const knownEnemies = new Set(codex.enemies || []);
+    const allItemIds = Object.keys(ITEMS);
+    const allEnemyIds = Object.keys(ENEMY_TYPES);
+
+    // 物品图鉴
+    const secItems = el('section', 'codex-sec');
+    secItems.appendChild(el('h3', '', `物品 ${knownItems.size}/${allItemIds.length}`));
+    const itemGrid = el('div', 'codex-items');
+    for (const id of allItemIds) {
+      const def = ITEMS[id];
+      const node = el('div', `codex-item ${knownItems.has(id) ? '' : 'locked'}`);
+      if (knownItems.has(id)) {
+        node.appendChild(iconEl(def.icon, RARITY[def.rarity].color, 26));
+        const name = el('div', 'ci-name', def.name);
+        node.appendChild(name);
+        node.appendChild(el('div', 'ci-meta', `${RARITY[def.rarity].name} · ${money(def.value)} · ${(def.weight || 0).toFixed(1)}kg`));
+        node.title = def.desc || '';
+      } else {
+        node.appendChild(el('div', 'ci-lock', '?'));
+        node.appendChild(el('div', 'ci-name', '？？？'));
+        node.appendChild(el('div', 'ci-meta', '未发现'));
+        node.title = '搜刮、购买或带出过一次即可解锁';
+      }
+      itemGrid.appendChild(node);
+    }
+    secItems.appendChild(itemGrid);
+    host.appendChild(secItems);
+
+    // 敌人图鉴
+    const secEnemy = el('section', 'codex-sec');
+    secEnemy.appendChild(el('h3', '', `敌人 ${knownEnemies.size}/${allEnemyIds.length}`));
+    const enemyList = el('div', 'codex-enemies');
+    for (const id of allEnemyIds) {
+      const def = ENEMY_TYPES[id];
+      const node = el('div', `codex-enemy ${knownEnemies.has(id) ? '' : 'locked'}`);
+      if (knownEnemies.has(id)) {
+        const w = def.weapon || {};
+        const name = el('div', 'ce-name', def.name);
+        node.appendChild(name);
+        node.appendChild(el('div', 'ce-meta', `HP ${def.hp} · 护甲 ${def.armor} · 移速 ${def.speed}`));
+        node.appendChild(el('div', 'ce-weapon', `${w.name || '未知武器'} · ${w.damage || 0} 伤害`));
+        node.appendChild(el('div', 'ce-desc', `视野 ${def.visionRange} · 命中 ${Math.round((def.accuracy || 0) * 100)}%`));
+        node.title = def.name;
+      } else {
+        node.appendChild(el('div', 'ce-name', '？？？'));
+        node.appendChild(el('div', 'ce-meta', '击杀后解锁'));
+        node.title = '击杀该类敌人一次即可解锁';
+      }
+      enemyList.appendChild(node);
+    }
+    secEnemy.appendChild(enemyList);
+    host.appendChild(secEnemy);
+
+    // 战区情报（静态资料）
+    const secIntel = el('section', 'codex-sec');
+    secIntel.appendChild(el('h3', '', '战区情报'));
+    const intel = el('ul', 'codex-intel');
+    const facts = [
+      `战区规模 ${Math.round(WORLD_W / 20)}×${Math.round(WORLD_H / 20)} m（${MAP_COLS}×${MAP_ROWS} 格）`,
+      `撤离点 ${MATCH.extractTotal} 个 · 最后 ${Math.round(MATCH.extractOpenAt / 60)} 分钟开启 · 站定 ${MATCH.extractChannel} 秒撤离`,
+      `数据终端 ${MATCH.terminalCount} 个 · 破解给情报费与评分`,
+      `空投约 ${MATCH.airdropDelay} 秒着陆 · 载具与绳索速降可用`,
+      `敌人 ${allEnemyIds.length} 类：巡逻兵 / 精英守卫 / 精确射手 / 冲锋兵`,
+      `单局合约 ${MATCH.contractCount} 条 · 达成即入账奖励与评分`,
+    ];
+    for (const f of facts) intel.appendChild(el('li', '', f));
+    secIntel.appendChild(intel);
+    host.appendChild(secIntel);
+  }
+
+  /* ---------------- 每日任务 ---------------- */
+
+  function renderDaily(save) {
+    const host = q('daily-body');
+    host.innerHTML = '';
+    q('daily-currency').textContent = money(save.currency);
+    const daily = save.daily || { tasks: [], progress: {}, claimed: [] };
+    host.appendChild(el('p', 'hint', `日期 ${daily.date || '—'} · 每日 0 点刷新，进度与奖励跨天重置。`));
+    const wrap = el('div', 'daily-tasks');
+    for (const t of daily.tasks || []) {
+      const cur = daily.progress[t.type] || 0;
+      const done = dailyTaskDone(t, daily.progress);
+      const claimed = (daily.claimed || []).includes(t.id);
+      const isMoney = t.type === 'value';
+      const row = el('div', `daily-task${done ? ' done' : ''}${claimed ? ' claimed' : ''}`);
+      const main = el('div', 'dt-main');
+      main.appendChild(el('div', 'dt-name', t.name));
+      const bar = el('div', 'dt-bar');
+      const fill = el('div', 'dt-fill');
+      fill.style.width = `${Math.max(0, Math.min(100, Math.round((cur / t.target) * 100)))}%`;
+      bar.appendChild(fill);
+      main.appendChild(bar);
+      main.appendChild(el('div', 'dt-meta',
+        `${isMoney ? money(cur) : cur} / ${isMoney ? money(t.target) : t.target}`));
+      row.appendChild(main);
+
+      const btn = el('button', `btn small${done && !claimed ? ' primary' : ''}`,
+        claimed ? '已领取' : (done ? `领取 ${money(t.reward)}` : '未完成'));
+      if (!done || claimed) btn.disabled = true;
+      else btn.addEventListener('click', () => {
+        if (handlers['claim-daily']) handlers['claim-daily']({ id: t.id });
+      });
+      row.appendChild(btn);
+      wrap.appendChild(row);
+    }
+    host.appendChild(wrap);
+  }
+
+  /* ---------------- 成就 ---------------- */
+
+  function renderAchievements(save) {
+    const host = q('ach-body');
+    host.innerHTML = '';
+    q('ach-currency').textContent = money(save.currency);
+    const ids = (save.ach && save.ach.ids) || [];
+    host.appendChild(el('p', 'hint',
+      `已解锁 ${ids.length} / ${ACHIEVEMENTS.length} · 每项达成时一次性发放资金，稀有成就额外解锁称号。`));
+    const wrap = el('div', 'ach-list');
+    for (const a of ACHIEVEMENTS) {
+      const got = ids.includes(a.id);
+      const node = el('div', `ach-item${got ? ' got' : ''}`);
+      const head = el('div', 'ai-head');
+      head.appendChild(el('div', 'ai-name', got ? a.name : '？？？'));
+      head.appendChild(el('div', 'ai-reward', got ? money(a.currency) : `+${money(a.currency)}`));
+      node.appendChild(head);
+      node.appendChild(el('div', 'ai-desc', a.desc));
+      if (a.title) node.appendChild(el('div', 'ai-title', `称号：${a.title}`));
+      wrap.appendChild(node);
+    }
+    host.appendChild(wrap);
+  }
+
+  /* ---------------- 成长天赋 ---------------- */
+
+  function renderTree(save) {
+    const host = q('tree-body');
+    host.innerHTML = '';
+    const tree = save.tree || { xp: 0, level: 1, points: 0, nodes: [] };
+    q('tree-points').textContent = `Lv.${tree.level} · 可用点数 ${tree.points}`;
+    host.appendChild(el('p', 'hint',
+      `经验 ${tree.xp} / ${xpForLevel(tree.level)} · 每局按评分结算经验，升级得 1 点；节点需按分支顺序学习，本局开始后生效。`));
+    const wrap = el('div', 'tree-branches');
+    for (const branch of Object.values(PERK_BRANCHES)) {
+      const col = el('div', 'tree-branch');
+      const head = el('h3', '', branch.name);
+      head.style.color = branch.color;
+      col.appendChild(head);
+      for (const n of branch.nodes) {
+        const learned = tree.nodes.includes(n.id);
+        const can = canLearn(save, n.id);
+        const node = el('div', `perk-node${learned ? ' learned' : ''}${can.ok ? ' available' : ''}`);
+        node.appendChild(el('div', 'pn-name', n.name));
+        node.appendChild(el('div', 'pn-desc', n.desc));
+        const btn = el('button', `btn small${learned ? '' : (can.ok ? ' primary' : '')}`,
+          learned ? '已学习' : (can.ok ? '学习（1 点）' : can.reason));
+        if (learned || !can.ok) btn.disabled = true;
+        else btn.addEventListener('click', () => {
+          if (handlers['learn-perk']) handlers['learn-perk']({ id: n.id });
+        });
+        node.appendChild(btn);
+        col.appendChild(node);
+      }
+      wrap.appendChild(col);
+    }
+    host.appendChild(wrap);
+  }
+
+  /* ---------------- 剧情 ---------------- */
+
+  function renderStory(save) {
+    const host = q('story-body');
+    host.innerHTML = '';
+    const story = save.story || { stage: 0, done: [] };
+    const done = story.done || [];
+    const stats = save.stats || {};
+    host.appendChild(el('p', 'hint',
+      `已完成 ${done.length} / ${STORY_STAGES.length} 章 · 每达成一章自动发放报酬。`));
+    const wrap = el('div', 'story-list');
+    STORY_STAGES.forEach((s, i) => {
+      const unlocked = done.includes(s.id);
+      const current = i === story.stage;
+      const node = el('div', `story-item${unlocked ? ' done' : ''}${current ? ' current' : ''}`);
+      const head = el('div', 'si-head');
+      head.appendChild(el('div', 'si-title', unlocked || current ? `第 ${i + 1} 章 · ${s.title}` : `第 ${i + 1} 章 · ？？？`));
+      head.appendChild(el('div', 'si-reward', `+${money(s.reward)}`));
+      node.appendChild(head);
+      if (unlocked) {
+        node.appendChild(el('div', 'si-text', s.text));
+      } else {
+        const req = [];
+        req.push(`撤离 ${stats.extracts || 0}/${s.req.extracts}`);
+        if (s.req.kills) req.push(`击杀 ${stats.kills || 0}/${s.req.kills}`);
+        if (s.req.bossKills) req.push(`Boss ${stats.bossKills || 0}/${s.req.bossKills}`);
+        node.appendChild(el('div', 'si-req', `达成条件：${req.join(' · ')}`));
+      }
+      wrap.appendChild(node);
+    });
+    host.appendChild(wrap);
   }
 
   /* ---------------- 战前配置 ---------------- */
@@ -1469,6 +1746,18 @@ export function createUI(root, handlers) {
           `目标 · 终端 ${world.terminalsHacked}/${MATCH.terminalCount} · ${airdropInfo}`,
           C.x + 14, goalY,
         );
+        // 首局新手引导：目标行前插一条引导进度（与合约同区，避免新增 HUD 元素）
+        if (world.tutorial) {
+          const stepNames = ['搜刮一个容器', '击杀一名敌人', '活着撤离'];
+          const ts = world.tutorial;
+          ctx.textAlign = 'left';
+          ctx.fillStyle = COLORS.accent2;
+          ctx.font = `600 ${C.compact ? 9 : 10}px ${MONO}`;
+          ctx.fillText(
+            `引导 ${ts.step}/${stepNames.length} · ${stepNames[ts.step - 1]}`,
+            C.x + 14, goalY - (C.compact ? 11 : 12),
+          );
+        }
         shown.slice(0, cap).forEach((c, i) => {
           const nameY = y0 + C.headH + 10 + (i + 1) * C.rowH;
           ctx.textAlign = 'left';
@@ -1637,13 +1926,26 @@ export function createUI(root, handlers) {
       ctx.stroke();
     }
 
-    // 受击红色晕影
+    // 受击红色晕影（方向化：有 hurtDir 时红晕中心偏到受击方向的屏幕边缘，一眼看出子弹从哪来）
     if (player.hurtFlash > 0) {
       const a = Math.min(0.5, (player.hurtFlash / 0.3) * 0.5);
-      const g = ctx.createRadialGradient(cx, cy, Math.min(W, H) * 0.3, cx, cy, Math.max(W, H) * 0.7);
-      g.addColorStop(0, 'rgba(255,0,0,0)');
-      g.addColorStop(1, `rgba(255,0,0,${a})`);
-      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      const R = Math.max(W, H) * 0.75;
+      let gx = cx;
+      let gy = cy;
+      if (typeof player.hurtDir === 'number') {
+        // hurtDir: 0=正前方（屏幕上方），>0=右侧；屏幕 y 轴向下，方向向量需要取反
+        gx = cx + Math.sin(player.hurtDir) * R * 0.55;
+        gy = cy - Math.cos(player.hurtDir) * R * 0.55;
+        const g2 = ctx.createRadialGradient(gx, gy, Math.min(W, H) * 0.08, gx, gy, R);
+        g2.addColorStop(0, `rgba(255,0,0,${a})`);
+        g2.addColorStop(1, 'rgba(255,0,0,0)');
+        ctx.fillStyle = g2; ctx.fillRect(0, 0, W, H);
+      } else {
+        const g = ctx.createRadialGradient(cx, cy, Math.min(W, H) * 0.3, cx, cy, Math.max(W, H) * 0.7);
+        g.addColorStop(0, 'rgba(255,0,0,0)');
+        g.addColorStop(1, `rgba(255,0,0,${a})`);
+        ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      }
     }
 
     if (paused) {
@@ -1685,6 +1987,11 @@ export function createUI(root, handlers) {
       if (slider && Math.abs(Number(slider.value) - Number(v)) > 1e-6) slider.value = String(v);
     },
     renderMenu,
+    renderCodex,
+    renderDaily,
+    renderAchievements,
+    renderTree,
+    renderStory,
     renderLoadout,
     renderStash,
     renderShop,

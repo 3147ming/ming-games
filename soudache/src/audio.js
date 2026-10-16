@@ -18,6 +18,10 @@ export function createAudio() {
   let reverbSend = null; // 混响总线（send 端），不支持 ConvolverNode 时为 null
   let ambientWind = null; // 持续风声节点组
   let tension = null; // 战斗紧张层节点组
+  let hurtBus = null; // 受击音效总线（可走立体声方位）
+  let hurtPan = null; // 受击音效的 StereoPanner（方位提示）
+  let heartbeat = null; // 低血量心跳层节点组
+  let menuAmbient = null; // 菜单氛围层节点组
 
   /**
    * 程序化生成一段衰减噪声当作脉冲响应，用于室内 / 远场混响（零外部音频文件）。
@@ -216,10 +220,49 @@ export function createAudio() {
       tone({ type: 'triangle', freq: 320, freq2: 180, dur: 0.06, gain: 0.14 });
     },
 
-    /** 玩家受伤 */
-    hurt() {
-      tone({ type: 'sawtooth', freq: 200, freq2: 90, dur: 0.25, gain: 0.22 });
-      noise({ dur: 0.18, freq: 700, freq2: 200, gain: 0.2, type: 'lowpass' });
+    /** 玩家受伤（pan = -1~1 方位，由受击相对方向换算；缺省为居中） */
+    hurt(pan) {
+      if (!ready()) return;
+      if (!hurtBus) {
+        try {
+          hurtBus = ctx.createGain();
+          hurtPan = ctx.createStereoPanner();
+          hurtBus.connect(hurtPan);
+          hurtPan.connect(master);
+        } catch (e) {
+          hurtBus = null;
+          hurtPan = null;
+        }
+      }
+      const t0 = ctx.currentTime;
+      const dest = hurtBus || master;
+      if (hurtPan) {
+        const p = Math.max(-1, Math.min(1, (typeof pan === 'number' ? pan : 0) / (Math.PI / 2) * 0.9));
+        hurtPan.pan.setValueAtTime(p, t0);
+      }
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(200, t0);
+      osc.frequency.exponentialRampToValueAtTime(90, t0 + 0.25);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.linearRampToValueAtTime(0.22, t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.26);
+      osc.connect(g); g.connect(dest);
+      osc.start(t0); osc.stop(t0 + 0.28);
+      const src = ctx.createBufferSource();
+      src.buffer = noiseBuffer;
+      src.loop = true;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(700, t0);
+      filter.frequency.exponentialRampToValueAtTime(200, t0 + 0.18);
+      const g2 = ctx.createGain();
+      g2.gain.setValueAtTime(0.0001, t0);
+      g2.gain.linearRampToValueAtTime(0.2, t0 + 0.005);
+      g2.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.19);
+      src.connect(filter); filter.connect(g2); g2.connect(dest);
+      src.start(t0); src.stop(t0 + 0.22);
     },
 
     /** 击中墙面的碎屑声 */
@@ -399,7 +442,7 @@ export function createAudio() {
       }
     },
 
-    /** 离场 / 回菜单：停掉风声与紧张层，避免常驻节点泄漏 */
+    /** 离场 / 回菜单：停掉风声、紧张层、心跳与菜单氛围，避免常驻节点泄漏 */
     stopAmbient() {
       if (ambientWind) {
         try { ambientWind.src.stop(); ambientWind.lfo.stop(); } catch (e) { /* 已停止 */ }
@@ -408,6 +451,14 @@ export function createAudio() {
       if (tension) {
         try { tension.osc.stop(); } catch (e) { /* 已停止 */ }
         tension = null;
+      }
+      if (heartbeat) {
+        try { heartbeat.osc.stop(); heartbeat.lfo.stop(); } catch (e) { /* 已停止 */ }
+        heartbeat = null;
+      }
+      if (menuAmbient) {
+        try { menuAmbient.osc1.stop(); menuAmbient.osc2.stop(); menuAmbient.lfo.stop(); } catch (e) { /* 已停止 */ }
+        menuAmbient = null;
       }
     },
 
@@ -445,6 +496,99 @@ export function createAudio() {
         tension.g.gain.setTargetAtTime(level * 0.075, ctx.currentTime, 0.35);
         tension.filter.frequency.setTargetAtTime(150 + level * 220, ctx.currentTime, 0.35);
       } catch (e) { /* 忽略参数自动化失败 */ }
+    },
+
+    /**
+     * 低血量心跳层：血量低于 55% 时启动，越危险频率越快、音量越大。
+     * 可每帧调用（内部用 setTargetAtTime 平滑），满血时静音但保留节点。
+     * @param {number} hpRatio 0~1（当前血量 / 最大血量）
+     * @returns {void}
+     */
+    setHeartRate(hpRatio) {
+      if (!ready()) return;
+      const r = Math.max(0, Math.min(1, hpRatio));
+      if (r >= 0.55) {
+        if (heartbeat) {
+          try { heartbeat.g.gain.setTargetAtTime(0, ctx.currentTime, 0.3); } catch (e) { /* 忽略 */ }
+        }
+        return;
+      }
+      if (!heartbeat) {
+        try {
+          const osc = ctx.createOscillator();
+          osc.type = 'sine';
+          osc.frequency.value = 50;
+          const g = ctx.createGain();
+          g.gain.value = 0;
+          const lfo = ctx.createOscillator();
+          lfo.type = 'triangle';
+          lfo.frequency.value = 1.2;
+          const lfoG = ctx.createGain();
+          lfoG.gain.value = 0;
+          osc.connect(g);
+          g.connect(master);
+          lfo.connect(lfoG);
+          lfoG.connect(g.gain);
+          osc.start();
+          lfo.start();
+          heartbeat = { osc, g, lfo, lfoG };
+        } catch (e) {
+          heartbeat = null;
+          return;
+        }
+      }
+      const danger = 1 - r; // 越接近死亡越大
+      try {
+        // LFO 每周期给低频正弦一个"泵" = 一下心跳；频率 1.1Hz(66bpm) → 3Hz(180bpm)
+        heartbeat.lfo.frequency.setTargetAtTime(1.1 + danger * 1.9, ctx.currentTime, 0.35);
+        heartbeat.lfoG.gain.setTargetAtTime(0.09 + danger * 0.15, ctx.currentTime, 0.4);
+      } catch (e) { /* 忽略参数自动化失败 */ }
+    },
+
+    /**
+     * 菜单氛围层：两个失谐低频正弦产生缓慢拍频，像远处发电机/电台的低鸣。
+     * 只在菜单等非战局界面调用；进战由 startAmbient 顶替。
+     * @returns {void}
+     */
+    startMenuAmbient() {
+      if (!ensure() || menuAmbient) return;
+      try {
+        const osc1 = ctx.createOscillator();
+        osc1.type = 'sine';
+        osc1.frequency.value = 55;
+        const osc2 = ctx.createOscillator();
+        osc2.type = 'sine';
+        osc2.frequency.value = 55.7;
+        const f = ctx.createBiquadFilter();
+        f.type = 'lowpass';
+        f.frequency.value = 200;
+        const g = ctx.createGain();
+        g.gain.value = 0.016;
+        const lfo = ctx.createOscillator();
+        lfo.frequency.value = 0.06;
+        const lfoG = ctx.createGain();
+        lfoG.gain.value = 0.007;
+        osc1.connect(f);
+        osc2.connect(f);
+        f.connect(g);
+        g.connect(master);
+        lfo.connect(lfoG);
+        lfoG.connect(g.gain);
+        osc1.start();
+        osc2.start();
+        lfo.start();
+        menuAmbient = { osc1, osc2, f, g, lfo, lfoG };
+      } catch (e) {
+        menuAmbient = null;
+      }
+    },
+
+    /** 停掉菜单氛围层（进战时调用） */
+    stopMenuAmbient() {
+      if (menuAmbient) {
+        try { menuAmbient.osc1.stop(); menuAmbient.osc2.stop(); menuAmbient.lfo.stop(); } catch (e) { /* 已停止 */ }
+        menuAmbient = null;
+      }
     },
 
     /** 远处传来的枪声：走混响支路、音量很低，营造"别处正在交火"的氛围 */

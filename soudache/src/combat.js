@@ -73,10 +73,12 @@ export function startReload(entity, world) {
     }
     return false;
   }
+  // 换弹速度可被天赋修正（reloadMul < 1 = 更快）；敌人没有该字段时为 1，行为不变
+  const reloadTime = w.def.reloadTime * (entity.reloadMul || 1);
   w.reloading = true;
   w.reloadAmount = Math.min(need, available);
-  w.reloadTimer = w.def.reloadTime;
-  w.reloadTotal = w.def.reloadTime;
+  w.reloadTimer = reloadTime;
+  w.reloadTotal = reloadTime;
   if (entity.isPlayer && world.audio) world.audio.reload();
   return true;
 }
@@ -306,6 +308,13 @@ export function hitscan3D(world, shooter, opts) {
   };
 }
 
+/** 把任意弧度角归一化到 [-π, π] */
+function normAngle(a) {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
+
 /**
  * 结算一次伤害（含护甲减伤与耐久损耗）。
  * @param {object} world 战局上下文
@@ -329,12 +338,17 @@ export function applyDamage(world, target, raw, source, hx, hy, hitHeight) {
   const px = typeof hx === 'number' ? hx : target.x;
   const py = typeof hy === 'number' ? hy : target.y;
   const angle = Math.atan2(py - (source ? source.y : py - 1), px - (source ? source.x : px));
+  // 受击方向（仅玩家且来源存在）：相对玩家朝向的方位角，供 HUD 方向性红晕与方位音效使用。
+  // 约定：0 = 正前方，>0 = 右侧，<0 = 左侧（若实测镜像，只改 normAngle 的符号约定）。
+  if (target.isPlayer && source && typeof target.yaw === 'number') {
+    target.hurtDir = normAngle(Math.atan2(source.y - target.y, source.x - target.x) - target.yaw);
+  }
   if (world.spawnBlood) world.spawnBlood(px, py, angle, target.isPlayer ? 5 : COMBAT.bloodPerHit, hitHeight);
   if (world.addDamageNumber) {
     world.addDamageNumber(px, py, Math.round(dmg), target.isPlayer ? '#ff5c5c' : '#ffd166', hitHeight);
   }
   if (world.audio) {
-    if (target.isPlayer) world.audio.hurt();
+    if (target.isPlayer) world.audio.hurt(target.hurtDir);
     else world.audio.hit();
   }
   if (typeof target.onDamaged === 'function') target.onDamaged(source, world);
@@ -417,7 +431,7 @@ export function fireWeapon(world, shooter, opts = {}) {
   const accuracyPenalty = opts.accuracy != null ? (1 - Math.max(0, Math.min(1, opts.accuracy))) * 0.38 : 0;
   const jitter = world.rng.float(-1, 1) * (spreadNow + accuracyPenalty);
   let angle = shooter.angle + jitter + (shooter.recoilOffset || 0);
-  shooter.recoilOffset = (shooter.recoilOffset || 0) + def.recoil * world.rng.float(-1, 1);
+  shooter.recoilOffset = (shooter.recoilOffset || 0) + def.recoil * (shooter.recoilMul || 1) * world.rng.float(-1, 1);
   // 轻度辅助瞄准：把这一发的偏航角小幅拉向瞄准锥内最近的敌人（只改当发，不动 shooter.angle）
   if (shooter.isPlayer && COMBAT.aimAssist && COMBAT.aimAssist.enabled) {
     const adjusted = applyAimAssist(world, shooter, angle, COMBAT.aimAssist);
@@ -437,7 +451,7 @@ export function fireWeapon(world, shooter, opts = {}) {
     // 开火抬枪（aim punch）：仅抬俯仰不改 yaw —— 视觉后坐，不影响水平朝向。
     shooter.recoilPitch = Math.min(
       COMBAT.recoilPitchMax,
-      (shooter.recoilPitch || 0) + def.recoil * COMBAT.recoilPitchMul,
+      (shooter.recoilPitch || 0) + def.recoil * (shooter.recoilMul || 1) * COMBAT.recoilPitchMul,
     );
     eyeY = VIEW3D.metersToUnits * (
       (shooter.crouching ? VIEW3D.eyeCrouch : VIEW3D.eyeStand) + (shooter.elevation || 0)

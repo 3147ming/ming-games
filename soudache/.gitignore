@@ -1,0 +1,9 @@
+# esbuild 本地依赖（构建时按需 npm i esbuild，不进仓库）
+node_modules/
+
+# 构建临时文件（最终产物 build/soudache.<hash>.js 需要提交，GitHub Pages 直接托管它）
+build/bundle-name.txt
+build/*.tmp.js
+
+# 探针/调试产物（截图等）
+.workbuddy/
