@@ -71,6 +71,9 @@ export const PLAYER = {
   weightOverStaminaFloor: 0.4, // 体力恢复下限（比移速更早触底：体力是逃命的底线）
   staminaExhaustSpeedMul: 0.55, // 疲惫时移速倍率（体力耗尽后）
   staminaExhaustRecovery: 0.3, // 体力恢复到该比例（maxStamina）才解除疲惫
+  // 体力将尽过渡：还没 exhausted（未归零）但低于该比例时，冲刺速度先打折
+  // （1.5 × 0.7 ≈ 1.05：比走路快、比满速冲刺慢），避免归零瞬间骤停
+  staminaLowMul: 0.7,
   noiseCrouch: 70,
   noiseWalk: 150,
   noiseSprint: 340,
@@ -695,12 +698,12 @@ export const COMBAT = {
   // --- 开火手感：视角上抬（aim punch）与准星扩张 ---
   recoilPitchMul: 2.2, // 每发抬枪角度 = def.recoil * 该系数（弧度）
   recoilPitchMax: 0.09, // 抬枪累积上限（约 5°，防止连射时枪口飞上天）
-  recoilRecover: 9, // 抬枪回落速率（越大回得越快）
+  recoilRecover: 5, // 抬枪回落速率（越大回得越快）
   crosshairBloom: 16, // 准星随扩散外扩的最大增量（腰射）
   crosshairBloomAds: 10, // 瞄准时的最大增量（更小）
   // 轻度辅助瞄准（仅玩家、仅偏航）：准星靠近敌人时把这一发小幅吸过去，不做全自动锁头。
   // enabled 由 save.settings.aimAssist 在启动时写入，可在暂停菜单关闭。
-  aimAssist: { enabled: true, coneDeg: 7, strength: 0.45 },
+  aimAssist: { enabled: true, coneDeg: 7, strength: 0.25 },
 };
 
 /* ============================== 击杀信息流 ============================== */
@@ -894,7 +897,7 @@ export const VIEW3D = {
   near: 4, // 近裁剪面（0.2 m，够近又不损失深度精度）
   far: 2200, // 远裁剪面（地图对角线 3000，靠雾收边）
   pitchLimit: (85 * Math.PI) / 180, // pitch 限幅
-  sensitivity: 0.0022, // 鼠标灵敏度（弧度 / 像素）
+  sensitivity: 0.0035, // 鼠标灵敏度（弧度 / 像素）
   maxPixelRatio: 1.75, // devicePixelRatio 上限，防止高分屏掉帧
   minPixelRatioFallback: 1, // 自适应降级第 3 级：帧率仍不足时把像素比压到 1
 

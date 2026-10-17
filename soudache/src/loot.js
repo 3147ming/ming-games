@@ -8,7 +8,7 @@
 import {
   ITEMS, ITEMS_BY_RARITY, RARITY_ORDER, CONTAINERS, AMMO_STACK, ENEMY_TYPES,
 } from './config.js';
-import { createItem } from './inventory.js';
+import { createItem, displayUnits } from './inventory.js';
 
 /**
  * 掷一次稀有度。
@@ -124,7 +124,8 @@ export function rollEnemyLoot(enemyType, rng) {
  */
 export function valueOf(items) {
   if (!Array.isArray(items)) return 0;
-  return Math.round(items.reduce((s, it) => s + (it.value || 0) * Math.max(1, it.qty || 1), 0));
+  // 弹药按"盒"计价（qty 是发、value 是盒价），与仓库/商店/负重同一口径
+  return Math.round(items.reduce((s, it) => s + (it.value || 0) * displayUnits(it), 0));
 }
 
 /**
@@ -134,5 +135,6 @@ export function valueOf(items) {
  */
 export function weightOf(items) {
   if (!Array.isArray(items)) return 0;
-  return Math.round(items.reduce((s, it) => s + (it.weight || 0) * Math.max(1, it.qty || 1), 0) * 10) / 10;
+  // 弹药按"盒"计重（qty 是发、weight 是盒重），与负重系统同一口径
+  return Math.round(items.reduce((s, it) => s + (it.weight || 0) * displayUnits(it), 0) * 10) / 10;
 }

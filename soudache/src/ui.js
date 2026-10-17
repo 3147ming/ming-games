@@ -183,7 +183,7 @@ import {
   ITEMS, WEAPONS, ARMORS, SHOP, RARITY, RARITY_ORDER, CONTAINERS, ENEMY_TYPES, PLAYER, MATCH, AMMO_STACK, SCORING,
   COLORS, MINIMAP, MINIMAP_LAYERS, TILE, WORLD_W, WORLD_H, MAP_COLS, MAP_ROWS, COMBAT, KILLFEED,
 } from './config.js';
-import { totalWeight, totalValue, itemCount, weightLimitFor, weightTier } from './inventory.js';
+import { totalWeight, totalValue, itemCount, weightLimitFor, weightTier, displayUnits } from './inventory.js';
 import { drawGlyph } from './glyphs.js';
 import { EnemyState } from './enemy.js';
 import { sortTasksByPriority } from './contracts.js';
@@ -553,6 +553,13 @@ export function createUI(root, handlers) {
       node.classList.toggle('hidden', key !== name);
     }
     root.classList.toggle('in-battle', name === 'battle');
+    // 离开战斗视图栈（菜单 / 配置 / 仓库 / 商店 / 图鉴等）时清掉 HUD 画布：
+    // renderHud 只在 battle / result 屏每帧重绘，不清理的话最后一帧
+    // （含"已暂停"遮罩与整体暗化）会一直贴在配置页背后 —— 这就是
+    // "阵亡 → 再来一局 → 配置页出现已暂停遮罩"的根因。
+    // 三种不清：battle（每帧重绘）/ result（结算页故意保留变暗的冻结 HUD）/
+    // pause（半透明暂停面板下就是要看冻结画面）。
+    if (name !== 'battle' && name !== 'result' && name !== 'pause') clearHud();
   }
 
   function toast(message, type = 'info') {
@@ -581,8 +588,10 @@ export function createUI(root, handlers) {
       node.appendChild(iconEl(item.icon, RARITY[item.rarity].color, Math.min(30, 15 * Math.min(item.w, item.h) + 12)));
       const name = el('div', 'gi-name', item.name);
       node.appendChild(name);
-      if (item.qty > 1) node.appendChild(el('div', 'gi-qty', String(item.qty)));
       if (item.uid === selectedUid) node.classList.add('selected');
+      // 数量角标按盒口径：一盒弹（60 发）不再顶一个"60"，半盒显示 0.5
+      const units = displayUnits(item);
+      if (units > 1) node.appendChild(el('div', 'gi-qty', fmtUnits(units)));
       node.addEventListener('click', () => {
         selectedUid = item.uid;
         if (onSelect) onSelect(item);
@@ -591,12 +600,29 @@ export function createUI(root, handlers) {
     }
   }
 
+  /* ---------------- 弹药盒口径（展示统一） ----------------
+   * 库存 qty 是"发"（combat 换弹按发消耗），而重量 / 价值定义是"盒"口径
+   * （一盒 = stack 发）。所有行内展示换算成盒，与仓库总重 / 总估值、
+   * 商店卖价、结算损失清单、局内负重保持同一口径 —— 修复前一盒 5.56
+   * 在行里按 ×60 / 60.0kg / ¥36,000 显示。 */
+  const isAmmoItem = (item) => item.category === 'ammo' && item.stack > 1;
+  const fmtUnits = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+  /** 数量后缀（带前导空格）：弹药 "×1.5 盒"；其他 "×3"；单件 "" */
+  const qtySuffix = (item) => {
+    if (isAmmoItem(item)) return ` ×${fmtUnits(displayUnits(item))} 盒`;
+    return item.qty > 1 ? ` ×${item.qty}` : '';
+  };
+  /** 行内计重（kg，盒口径） */
+  const rowWeight = (item) => (item.weight || 0) * displayUnits(item);
+  /** 行内计价（盒口径） */
+  const rowValue = (item) => (item.value || 0) * displayUnits(item);
+
   function itemRow(item, extra) {
     const row = el('div', 'item-row');
     row.appendChild(iconEl(item.icon, RARITY[item.rarity].color, 24));
     const main = el('div', 'item-main');
-    main.appendChild(el('div', 'item-name', item.qty > 1 ? `${item.name} ×${item.qty}` : item.name));
-    main.appendChild(el('div', 'item-meta', `${item.w}×${item.h} 格 · ${(item.weight * item.qty).toFixed(1)}kg · ${RARITY[item.rarity].name}`));
+    main.appendChild(el('div', 'item-name', `${item.name}${qtySuffix(item)}`));
+    main.appendChild(el('div', 'item-meta', `${item.w}×${item.h} 格 · ${rowWeight(item).toFixed(1)}kg · ${RARITY[item.rarity].name}`));
     row.appendChild(main);
     if (extra) row.appendChild(extra);
     return row;
@@ -1189,7 +1215,7 @@ export function createUI(root, handlers) {
     host.appendChild(itemRow(item));
     host.appendChild(el('p', 'desc', item.desc || ''));
     const row = el('div', 'btn-row');
-    const sell = el('button', 'btn small', `出售 ${money(item.value * item.qty * SHOP.sellRatio)}`);
+    const sell = el('button', 'btn small', `出售 ${money(rowValue(item) * SHOP.sellRatio)}`);
     sell.dataset.action = 'sell';
     sell.dataset.uid = item.uid;
     row.appendChild(sell);
@@ -1228,7 +1254,7 @@ export function createUI(root, handlers) {
 
     const sellHost = q('shop-sell');
     sellHost.innerHTML = '';
-    const sellable = save.stash.items.slice().sort((a, b) => b.value * b.qty - a.value * a.qty);
+    const sellable = save.stash.items.slice().sort((a, b) => rowValue(b) - rowValue(a));
     if (!sellable.length) {
       sellHost.appendChild(el('p', 'hint', '仓库空空如也，去战局里搜点东西回来。'));
     }
@@ -1236,10 +1262,10 @@ export function createUI(root, handlers) {
       const row = el('div', 'item-row');
       row.appendChild(iconEl(item.icon, RARITY[item.rarity].color, 24));
       const main = el('div', 'item-main');
-      main.appendChild(el('div', 'item-name', item.qty > 1 ? `${item.name} ×${item.qty}` : item.name));
-      main.appendChild(el('div', 'item-meta', `${(item.weight * item.qty).toFixed(1)}kg · 单价 ${money(item.value)}`));
+      main.appendChild(el('div', 'item-name', `${item.name}${qtySuffix(item)}`));
+      main.appendChild(el('div', 'item-meta', `${rowWeight(item).toFixed(1)}kg · 单价 ${money(item.value)}`));
       row.appendChild(main);
-      const sell = el('button', 'btn small', money(item.value * item.qty * SHOP.sellRatio));
+      const sell = el('button', 'btn small', money(rowValue(item) * SHOP.sellRatio));
       sell.dataset.action = 'sell';
       sell.dataset.uid = item.uid;
       row.appendChild(sell);
@@ -1283,14 +1309,23 @@ export function createUI(root, handlers) {
       lootHost.appendChild(el('p', 'hint', result.emptyText));
       return;
     }
+    // 同 id 合并成一行：部署时每盒弹药是一个独立 item（qty=60 发），
+    // 不合并的话两盒 5.56 会显示两行"×1 盒"，玩家对不上账。
+    // 合并后两盒 = "×2 盒 / 2.0kg / ¥1,200"（qty 按发累加，盒口径不变）。
+    const merged = new Map();
     for (const item of result.items) {
+      const prev = merged.get(item.id);
+      if (prev) prev.qty += item.qty;
+      else merged.set(item.id, { ...item });
+    }
+    for (const item of merged.values()) {
       const row = el('div', 'item-row');
       row.appendChild(iconEl(item.icon, RARITY[item.rarity].color, 22));
       const main = el('div', 'item-main');
-      main.appendChild(el('div', 'item-name', item.qty > 1 ? `${item.name} ×${item.qty}` : item.name));
-      main.appendChild(el('div', 'item-meta', `${RARITY[item.rarity].name} · ${(item.weight * item.qty).toFixed(1)}kg`));
+      main.appendChild(el('div', 'item-name', `${item.name}${qtySuffix(item)}`));
+      main.appendChild(el('div', 'item-meta', `${RARITY[item.rarity].name} · ${rowWeight(item).toFixed(1)}kg`));
       row.appendChild(main);
-      row.appendChild(el('div', 'item-value', money(item.value * item.qty)));
+      row.appendChild(el('div', 'item-value', money(rowValue(item))));
       lootHost.appendChild(row);
     }
   }
@@ -1330,10 +1365,10 @@ export function createUI(root, handlers) {
       if (i === lootSel) row.classList.add('selected');
       row.appendChild(iconEl(item.icon, RARITY[item.rarity].color, 22));
       const main = el('div', 'item-main');
-      main.appendChild(el('div', 'item-name', item.qty > 1 ? `${item.name} ×${item.qty}` : item.name));
-      main.appendChild(el('div', 'item-meta', `${item.w}×${item.h}格 · ${(item.weight * item.qty).toFixed(1)}kg · ${RARITY[item.rarity].name}`));
+      main.appendChild(el('div', 'item-name', `${item.name}${qtySuffix(item)}`));
+      main.appendChild(el('div', 'item-meta', `${item.w}×${item.h}格 · ${rowWeight(item).toFixed(1)}kg · ${RARITY[item.rarity].name}`));
       row.appendChild(main);
-      row.appendChild(el('div', 'item-value', money(item.value * item.qty)));
+      row.appendChild(el('div', 'item-value', money(rowValue(item))));
       const take = el('button', 'btn tiny', '拾取');
       take.dataset.action = 'loot-take';
       take.dataset.uid = item.uid;
@@ -2031,8 +2066,7 @@ export function createUI(root, handlers) {
         prompt = { title: '按 E 撤离', sub };
       } else if (ni) {
         // 地面掉落物：排在撤离点之后、容器之前，与 player.interact 优先级一致
-        const qty = ni.qty > 1 ? ` ×${ni.qty}` : '';
-        prompt = { title: `按 E 拾取 ${ni.name}${qty}`, sub: `${money(ni.value * (ni.qty || 1))} · ${(ni.weight * (ni.qty || 1)).toFixed(1)}kg` };
+        prompt = { title: `按 E 拾取 ${ni.name}${qtySuffix(ni)}`, sub: `${money(rowValue(ni))} · ${rowWeight(ni).toFixed(1)}kg` };
       } else if (c) {
         prompt = { title: c.searched ? '已搜刮' : '按 E 搜索', sub: c.searched ? '' : '搜刮容器' };
       }
@@ -2113,9 +2147,13 @@ export function createUI(root, handlers) {
     }
 
     if (paused) {
+      // 整体变暗：真暂停与结算页（world.over）都要，把注意力让给面板
       ctx.fillStyle = 'rgba(6,9,13,0.55)'; ctx.fillRect(0, 0, W, H);
-      ctx.textAlign = 'center'; ctx.fillStyle = COLORS.text; ctx.font = `700 24px ${SANS}`;
-      ctx.fillText('已暂停', W / 2, H / 2);
+      // "已暂停"三个字只在真暂停时写：结算页写它会误导（局已结束，不是暂停）
+      if (!world.over) {
+        ctx.textAlign = 'center'; ctx.fillStyle = COLORS.text; ctx.font = `700 24px ${SANS}`;
+        ctx.fillText('已暂停', W / 2, H / 2);
+      }
     }
   }
 

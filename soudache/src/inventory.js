@@ -218,6 +218,26 @@ export function hasSpace(inv, item) {
 }
 
 /**
+ * 物品的计价 / 计重 / 展示单位数。
+ *
+ * 弹药是唯一的口径特例：库存 qty 存的是"发"（combat 换弹按发消耗、
+ * deploy 按 boxes×AMMO_STACK 发扣仓库），而 ITEMS 里的 weight / value
+ * 都是"盒"口径（一盒 = stack 发，见 ITEMS.ammo556.desc）。
+ * 所有展示与计价统一换算成盒数，保证仓库 / 背包 / 商店 / 结算 / 负重
+ * 五处口径一致（修复前一盒 5.56 按 60kg / ¥36,000 计，带弹即超重）。
+ * 非弹药物品 qty 即单位数，堆叠语义不变。
+ * @param {object} item 物品实例
+ * @returns {number} 单位数（弹药为盒数，可为小数；非弹药为 qty）
+ */
+export function displayUnits(item) {
+  if (!item) return 0;
+  if (item.category === 'ammo' && item.stack > 1) {
+    return (item.qty || 0) / item.stack;
+  }
+  return Math.max(1, item.qty || 1);
+}
+
+/**
  * 容器总重量（kg）。
  * @param {object} inv 容器
  * @returns {number} 重量
@@ -225,7 +245,7 @@ export function hasSpace(inv, item) {
 export function totalWeight(inv) {
   if (!inv) return 0;
   let sum = 0;
-  for (const it of inv.items) sum += (it.weight || 0) * Math.max(1, it.qty || 1);
+  for (const it of inv.items) sum += (it.weight || 0) * displayUnits(it);
   return Math.round(sum * 10) / 10;
 }
 
@@ -237,7 +257,7 @@ export function totalWeight(inv) {
 export function totalValue(inv) {
   if (!inv) return 0;
   let sum = 0;
-  for (const it of inv.items) sum += (it.value || 0) * Math.max(1, it.qty || 1);
+  for (const it of inv.items) sum += (it.value || 0) * displayUnits(it);
   return Math.round(sum);
 }
 

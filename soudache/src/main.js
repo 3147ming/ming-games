@@ -10,7 +10,7 @@ import { pickContracts, updateContracts, settleExtractContracts } from './contra
 import { createRng, randomSeed } from './rng.js';
 import { generateMap, hasLineOfSight } from './mapgen.js';
 import {
-  createItem, autoPlace, hasSpace, totalValue, totalWeight, consumeById, removeItemByUid,
+  createItem, autoPlace, hasSpace, totalValue, totalWeight, consumeById, removeItemByUid, displayUnits,
 } from './inventory.js';
 import * as Loot from './loot.js';
 import { Player, buildLoadoutItems } from './player.js';
@@ -702,6 +702,10 @@ function addXp(score, silent) {
 
 function go(name) {
   screen = name;
+  // 离开战局一律清暂停标记：阵亡进结算 / 再来一局回配置 / 放弃战局 / 撤离结算 /
+  // 回主菜单，每条路径都不能把 paused=true 带出去（否则暂停遮罩会在配置页残留）。
+  // setPaused 自带 world.over 守卫无法在这里用，直接置位。
+  if (name !== 'battle') paused = false;
   ui.show(name);
   canvas.classList.toggle('active', name === 'battle' || name === 'result');
   // 离开战斗（回菜单 / 结算 / 暂停）：释放全屏与方向锁定，避免手机卡在全屏里
@@ -817,14 +821,15 @@ function buy(id) {
 function sell(uid) {
   const item = save.stash.items.find((it) => it.uid === uid);
   if (!item) return;
-  const price = Math.round(item.value * item.qty * SHOP.sellRatio);
+  // 卖价按盒口径（弹药 qty 是发、value 是盒价），与商店挂牌价一致
+  const price = Math.round(item.value * displayUnits(item) * SHOP.sellRatio);
   removeItemByUid(save.stash, uid);
   save.currency += price;
   Storage.saveGame(save);
   ui.renderShop(save);
   ui.renderStash(save);
   audio.cash();
-  ui.toast(`出售 ${item.name} ×${item.qty} → ${money(price)}`);
+  ui.toast(`出售 ${item.name} → ${money(price)}`);
 }
 
 function sellAll() {
@@ -834,7 +839,7 @@ function sellAll() {
     return;
   }
   let gained = 0;
-  for (const item of items) gained += Math.round(item.value * item.qty * SHOP.sellRatio);
+  for (const item of items) gained += Math.round(item.value * displayUnits(item) * SHOP.sellRatio);
   save.stash.items.length = 0;
   save.currency += gained;
   Storage.saveGame(save);
@@ -912,6 +917,7 @@ function startRaid(seedInput) {
 function endRaid(reason) {
   if (!world || world.over) return;
   world.over = true;
+  paused = false; // 结算即离局：暂停标记与暂停面板都不许跨屏幕残留
   if (audio && audio.stopAmbient) audio.stopAmbient();
   ui.closeBattlePanels();
   input.fire = false;
@@ -938,7 +944,7 @@ function endRaid(reason) {
     let overflow = 0;
     for (const item of broughtOut) {
       if (autoPlace(save.stash, item)) continue;
-      overflow += Math.round(item.value * item.qty * SHOP.sellRatio);
+      overflow += Math.round(item.value * displayUnits(item) * SHOP.sellRatio);
     }
     if (overflow > 0) {
       save.currency += overflow;

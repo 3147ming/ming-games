@@ -75,6 +75,7 @@ export class Player {
     this.sprinting = false;
     this.moving = false;
     this.moveSpeed = 0;
+    this.moveSm = 0; // 平滑移动速度：朝目标速度指数趋近，消除二进制键位的瞬移/急停感
     this.walkPhase = 0;
     this.recoilOffset = 0;
     this.muzzleFlash = 0;
@@ -469,14 +470,33 @@ export class Player {
     }
 
     // ---- 移动 ----
+    // 两步速度链：先算目标速度，再用平滑速度 moveSm 指数趋近，
+    // 位移与 walkPhase 全部由 moveSm 驱动（约 0.25s 到达 90%）。
+    // 约束：moving 判定仍由输入方向 mag>0.01 决定（读条打断/噪音/冲刺全部即时）；
+    // 加速度只作用于位移，不作用于视角/转身；各姿态倍率全部作用在 targetSpeed 上。
     const weightMul = weightSpeedMultiplier(
       this.weight, this.weightLimit, PLAYER.weightOverSpeedFloor,
     );
-    let speed = PLAYER.speed * weightMul;
-    if (this.crouching) speed *= PLAYER.crouchMul;
-    else if (this.sprinting) speed *= PLAYER.sprintMul;
-    if (this.exhausted) speed *= PLAYER.staminaExhaustSpeedMul;
-    if (this.busy) speed = 0;
+    // a. 目标速度：weightMul × 蹲行/冲刺/疲惫倍率
+    let targetSpeed = PLAYER.speed * weightMul;
+    if (this.crouching) targetSpeed *= PLAYER.crouchMul;
+    else if (this.sprinting) targetSpeed *= PLAYER.sprintMul;
+    if (this.exhausted) targetSpeed *= PLAYER.staminaExhaustSpeedMul;
+    // 体力将尽过渡：未 exhausted 但快见底时，冲刺先降速到"比走路快、比满速冲刺慢"的
+    // 过渡段（1.5 × 0.7 ≈ 1.05），避免归零瞬间从 1.5 倍骤降到 0.55 倍的停顿感
+    if (!this.exhausted && this.sprinting
+      && this.stamina < this.maxStamina * 0.15) {
+      targetSpeed *= PLAYER.staminaLowMul;
+    }
+    // 松键（无输入）与读条中目标均为 0：前者自然衰减到 0 无急停，后者直接清零不残留滑动
+    if (!this.moving || this.busy) targetSpeed = 0;
+    // b. 平滑趋近：time constant ≈ 0.1s（dt*10），约 0.25s 到 90%
+    if (this.busy) {
+      this.moveSm = 0;
+    } else {
+      this.moveSm += (targetSpeed - this.moveSm) * (1 - Math.exp(-dt * 10));
+    }
+    const speed = this.moveSm;
     this.moveSpeed = this.moving ? speed : 0;
 
     if (this.moving && speed > 0) {

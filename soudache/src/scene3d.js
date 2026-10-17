@@ -302,7 +302,7 @@ export function createScene3D(canvas, device, theme = 'day') {
   let frames = 0;
 
   /**
-   * 累积帧时间，连续低于 ~45fps 时逐级降级画质以保帧率。
+   * 累积帧时间，连续低于 ~55fps 时逐级降级画质以保帧率。
    * 降级顺序遵循"先牺牲画质细节、最后才动分辨率"：
    * 阴影贴图 2048 → 1024 → 关闭实时阴影 → 像素比降到 minPixelRatioFallback。
    * @param {number} dt 帧间隔秒
@@ -318,7 +318,7 @@ export function createScene3D(canvas, device, theme = 'day') {
     const avg = acc / frames;
     acc = 0;
     frames = 0;
-    if (avg > 0.0222) {
+    if (avg > 0.0182) {
       perfLevel += 1;
       if (perfLevel === 1) {
         sun.shadow.mapSize.set(VIEW3D.shadowMapSizeFallback, VIEW3D.shadowMapSizeFallback);
