@@ -73,6 +73,40 @@
     '11,2',                         // 阿斗右侧
   ];
   const SLOTS_SOLO_BIG = SLOTS_SOLO_BASE.concat(['5,3', '7,3', '9,3', '11,3']);   // 第 4 关起 21 个
+
+  /* ---------- 关卡专属地图（per-level） ----------
+   * 0~5 关共用经实战验证的 37 格蛇形原图（levelIdx ≥ 3 起塔位升级为 21 格 BIG）。
+   * 6~7 关为「内容扩展」新增：以原图做双射镜像变换（左右翻转 / 上下翻转）派生，
+   *   保证路径 / 塔位 / 障碍三集合仍两两不交、且全部落在棋盘内（镜像保邻接、保不交）。
+   *   —— 镜像后入口(阿斗)随之翻转，形成视觉与战术都不同的新布局。 */
+  function tfV(p) { return { row: p.row, col: COLS - 1 - p.col }; }   // 左右翻转
+  function tfH(p) { return { row: ROWS - 1 - p.row, col: p.col }; }   // 上下翻转
+  function keyTf(k, fn) { const a = k.split(','); const p = fn({ row: +a[0], col: +a[1] }); return p.row + ',' + p.col; }
+  function buildMap(fn) {
+    return {
+      path: SOLO_PATH.map(fn),
+      entrance: fn(SOLO_ENTRANCE),
+      adou: fn(SOLO_ADOU),
+      slotsBase: SLOTS_SOLO_BASE.map(function (k) { return keyTf(k, fn); }),
+      slotsBig: SLOTS_SOLO_BIG.map(function (k) { return keyTf(k, fn); }),
+    };
+  }
+  const SOLO_BASE_MAP = {
+    path: SOLO_PATH, entrance: SOLO_ENTRANCE, adou: SOLO_ADOU,
+    slotsBase: SLOTS_SOLO_BASE, slotsBig: SLOTS_SOLO_BIG,
+  };
+  const SOLO_MAPS = [
+    SOLO_BASE_MAP, SOLO_BASE_MAP, SOLO_BASE_MAP, SOLO_BASE_MAP, SOLO_BASE_MAP, SOLO_BASE_MAP,
+    buildMap(tfV),   // 第 7 关：左右翻转（敌从顶部左侧入，阿斗底部右侧）
+    buildMap(tfH),   // 第 8 关：上下翻转（敌从底部右侧入，阿斗顶部左侧）
+  ];
+  function resolveSoloMap(levelIdx) {
+    let li = (typeof levelIdx === 'number') ? levelIdx : 0;
+    if (li < 0) li = 0;
+    if (li >= SOLO_MAPS.length) li = SOLO_MAPS.length - 1;
+    return SOLO_MAPS[li];
+  }
+
   const SLOTS_VS_P = ['1,1', '1,2', '3,2', '3,3', '5,1', '5,2', '7,2', '7,3'];     // 我方 8 个
   const SLOTS_VS_E = SLOTS_VS_P.map(function (k) { const p = k.split(','); return p[0] + ',' + (COLS - 1 - +p[1]); });
 
@@ -81,38 +115,46 @@
     const set = {};
     const put = function (arr) { arr.forEach(function (k) { set[k] = side; }); };
     if (mode === 'versus') put(side === 'enemy' ? SLOTS_VS_E : SLOTS_VS_P);
-    else put(levelIdx >= 3 ? SLOTS_SOLO_BIG : SLOTS_SOLO_BASE);
+    else { const m = resolveSoloMap(levelIdx); put(levelIdx >= 3 ? m.slotsBig : m.slotsBase); }
     return set;
   }
 
   /* ---------- 路径查询 ---------- */
-  function pathSeq(mode, side) {
+  function pathSeq(mode, side, levelIdx) {
     if (mode === 'versus') return side === 'enemy' ? VS_E_PATH : VS_P_PATH;
-    return SOLO_PATH;
+    return resolveSoloMap(levelIdx).path;
   }
   const _pathSets = {};
-  function pathSet(mode) {
-    if (_pathSets[mode]) return _pathSets[mode];
+  function pathSet(mode, levelIdx) {
+    if (mode === 'versus') {
+      if (_pathSets['versus']) return _pathSets['versus'];
+      const s = {};
+      [VS_P_PATH, VS_E_PATH].forEach(function (seq) { seq.forEach(function (p) { s[key(p.row, p.col)] = true; }); });
+      _pathSets['versus'] = s;
+      return s;
+    }
+    const li = (typeof levelIdx === 'number' && levelIdx > 0) ? levelIdx : 0;
+    const ck = 'solo:' + li;
+    if (_pathSets[ck]) return _pathSets[ck];
     const s = {};
-    const seqs = mode === 'versus' ? [VS_P_PATH, VS_E_PATH] : [SOLO_PATH];
-    seqs.forEach(function (seq) { seq.forEach(function (p) { s[key(p.row, p.col)] = true; }); });
-    _pathSets[mode] = s;
+    resolveSoloMap(li).path.forEach(function (p) { s[key(p.row, p.col)] = true; });
+    _pathSets[ck] = s;
     return s;
   }
-  function isPath(mode, r, c) { return !!pathSet(mode)[key(r, c)]; }
+  function isPath(mode, r, c, levelIdx) { return !!pathSet(mode, levelIdx)[key(r, c)]; }
 
-  function entrances(mode, side) {
+  function entrances(mode, side, levelIdx) {
     if (mode === 'versus') return [VS_ENTRANCE[side === 'enemy' ? 'enemy' : 'player']];
-    return [SOLO_ENTRANCE];
+    return [resolveSoloMap(levelIdx).entrance];
   }
-  function adouAt(mode, side) {
+  function adouAt(mode, side, levelIdx) {
     if (mode === 'versus') return VS_ADOU[side] || null;
-    return side === 'player' ? SOLO_ADOU : null;
+    return side === 'player' ? resolveSoloMap(levelIdx).adou : null;
   }
   /** 入口格 + 首段主路（预警 ▼ 用） */
-  function warnCells(mode, side) {
-    const seq = pathSeq(mode, side);
-    const ent = entrances(mode, side)[0];
+  function warnCells(mode, side, levelIdx) {
+    const seq = pathSeq(mode, side, levelIdx);
+    const ent = entrances(mode, side, levelIdx)[0];
     return [ent, seq[1], seq[2]].filter(Boolean);
   }
 
@@ -130,14 +172,14 @@
    *  span=2（武将塔）：右侧邻格也要满足同样条件。 */
   function canPlace(state, side, r, c, span) {
     if (!inBoard(r, c)) return false;
-    if (isPath(state.mode, r, c)) return false;
+    if (isPath(state.mode, r, c, state.levelIdx)) return false;
     if (isObstacle(r, c)) return false;
     if (state.deploy[key(r, c)] !== side) return false;
     if (state.grid[r][c]) return false;
     if (span && span > 1) {
       const c2 = c + 1;
       if (!inBoard(r, c2)) return false;
-      if (isPath(state.mode, r, c2)) return false;
+      if (isPath(state.mode, r, c2, state.levelIdx)) return false;
       if (isObstacle(r, c2)) return false;
       if (state.deploy[key(r, c2)] !== side) return false;
       if (state.grid[r][c2]) return false;
@@ -185,7 +227,7 @@
     const out = [];
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
-        if (isPath(state.mode, r, c) || isObstacle(r, c)) continue;
+        if (isPath(state.mode, r, c, state.levelIdx) || isObstacle(r, c)) continue;
         if (state.deploy[key(r, c)]) continue;
         if (!adjacentToDeploy(state, side, r, c)) continue;
         out.push({ row: r, col: c });
@@ -195,8 +237,8 @@
   }
 
   /** 某格相对主路某个参照点的覆盖格数（切比雪夫 ≤ d）——AI 选塔位用 */
-  function coverCount(mode, side, r, c, d) {
-    const seq = pathSeq(mode, side);
+  function coverCount(mode, side, r, c, d, levelIdx) {
+    const seq = pathSeq(mode, side, levelIdx);
     let n = 0;
     for (let i = 0; i < seq.length; i++) {
       if (Math.max(Math.abs(seq[i].row - r), Math.abs(seq[i].col - c)) <= d) n++;
@@ -208,6 +250,7 @@
     ROWS: ROWS, COLS: COLS,
     SOLO_PATH: SOLO_PATH, VS_P_PATH: VS_P_PATH, VS_E_PATH: VS_E_PATH,
     SOLO_ENTRANCE: SOLO_ENTRANCE, SOLO_ADOU: SOLO_ADOU,
+    resolveSoloMap: resolveSoloMap, SOLO_MAPS: SOLO_MAPS,
     key: key, inBoard: inBoard, isObstacle: isObstacle,
     isPath: isPath, pathSet: pathSet, pathSeq: pathSeq,
     entrances: entrances, adouAt: adouAt, warnCells: warnCells,

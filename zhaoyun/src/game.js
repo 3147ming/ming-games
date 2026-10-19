@@ -46,7 +46,7 @@
       path: spec.path || null, pi: spec.pi || 0,
     };
     if (side === 'enemy' && u.target && !u.path) {
-      u.path = B.pathSeq(state.mode, u.target);
+      u.path = B.pathSeq(state.mode, u.target, state.levelIdx);
       if (spec.pi == null) u.pi = 0;          // 调用方显式给了 pi（如从半路放置）则尊重之
     }
 
@@ -204,7 +204,7 @@
     const s = sideState(state, side);
     s.adou -= 1;
     s.bun += C.ADOU_BONUS;
-    const a = B.adouAt(state.mode, side);
+    const a = B.adouAt(state.mode, side, state.levelIdx);
     state.fx.push({ type: 'adou', row: a.row, col: a.col, text: '阿斗 -1' });
     state.fx.push({ type: 'bun', row: a.row, col: a.col, text: '+' + C.ADOU_BONUS + ' 资源' });
     state.fx.push({ type: 'shake' });
@@ -314,7 +314,7 @@
     u.moveT = 0;
     const next = u.path[u.pi + 1];
     if (!next) return;                               // 已在终点（理论上进入终点即被移除）
-    const adou = B.adouAt(state.mode, u.target);
+    const adou = B.adouAt(state.mode, u.target, state.levelIdx);
     if (adou && next.row === adou.row && next.col === adou.col) {
       // 踏入阿斗格 → 破门
       state.grid[u.row][u.col] = null;
@@ -478,7 +478,7 @@
           if (!st) return;
           st.bun += bonus;
           st.items.shovel = (st.items.shovel || 0) + 1;      // 每 5 波奖励 1 把铲子
-          const a = B.adouAt(state.mode, sd);
+          const a = B.adouAt(state.mode, sd, state.levelIdx);
           state.fx.push({ type: 'bun', row: a ? a.row : 6, col: a ? a.col : 3, text: '波次奖励 +' + bonus });
         });
       }
@@ -541,7 +541,7 @@
   /** 出一个敌人：竞技模式双方路各出一个（数量/强度对等） */
   function spawnEnemyNow(state, spec) {
     const targets = state.mode === 'versus' ? ['player', 'enemy'] : ['player'];
-    const ents = targets.map(function (t) { return B.entrances(state.mode, t)[0]; });
+    const ents = targets.map(function (t) { return B.entrances(state.mode, t, state.levelIdx)[0]; });
     // 入口被堵 → 返回 false 由调用方放回队首、下一 tick 立即重试（V6 手感）
     if (!ents.every(function (e) { return B.inBoard(e.row, e.col) && !state.grid[e.row][e.col]; })) {
       return false;
@@ -731,7 +731,7 @@
     // —— 空格：建塔（武将卡 span=2） ——
     const span = ZY.cardSpan(card);
     if (!B.canPlace(state, side, r, c, span)) {
-      if (B.isPath(state.mode, r, c)) return { ok: false, msg: '这里是主路，不能建塔' };
+      if (B.isPath(state.mode, r, c, state.levelIdx)) return { ok: false, msg: '这里是主路，不能建塔' };
       if (B.isObstacle(r, c)) return { ok: false, msg: '这里是荆棘障碍，不能建塔' };
       if (state.deploy[B.key(r, c)] !== side) return { ok: false, msg: '只能放在自己的塔位上' };
       if (span > 1) return { ok: false, msg: '武将塔要横跨 2 格，右侧放不下' };
@@ -760,7 +760,7 @@
     if (!u || u.dead || u.side !== side) return { ok: false, msg: '没有这个单位' };
     if (u.row === r && u.col === c) return { ok: true, same: true, unit: u };   // 放回原地 = 无事发生
     if (!B.canPlace(state, side, r, c, u.span)) {
-      if (B.isPath(state.mode, r, c)) return { ok: false, msg: '这里是主路，不能放塔' };
+      if (B.isPath(state.mode, r, c, state.levelIdx)) return { ok: false, msg: '这里是主路，不能放塔' };
       if (B.isObstacle(r, c)) return { ok: false, msg: '这里是荆棘障碍，不能放塔' };
       if (state.grid[r][c]) return { ok: false, msg: '这一格已经有单位了' };
       if (u.span > 1) return { ok: false, msg: '武将塔要横跨 2 格，右侧放不下' };
@@ -789,7 +789,7 @@
     const s = sideState(state, side);
     if (!s || !s.items || !(s.items.shovel > 0)) return { ok: false, msg: '没有铲子了' };
     if (!B.inBoard(r, c)) return { ok: false, msg: '超出棋盘' };
-    if (B.isPath(state.mode, r, c)) return { ok: false, msg: '主路格不能建塔' };
+    if (B.isPath(state.mode, r, c, state.levelIdx)) return { ok: false, msg: '主路格不能建塔' };
     if (B.isObstacle(r, c)) return { ok: false, msg: '障碍格不能扩' };
     if (state.deploy[B.key(r, c)]) return { ok: false, msg: '这一格已经是塔位' };
     if (!B.adjacentToDeploy(state, side, r, c)) return { ok: false, msg: '铲子只能扩与塔位相邻的荒地' };

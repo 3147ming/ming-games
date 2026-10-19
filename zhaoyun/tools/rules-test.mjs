@@ -756,7 +756,33 @@ section('敌人沿蛇形主路行军（右侧进入 · 不穿塔位 · 不回头
   }));
 }
 
-/* ------------------------------------------------ 17. 塔攻击最靠前的敌人 */
+/* ------------------------------------------------ 16b. 关卡专属地图（V6 新关卡） */
+section('关卡专属地图（第 7/8 关 = 原图镜像派生新布局）');
+{
+  ok('关卡总数 = 8', ZY.LEVELS.length === 8, ZY.LEVELS.length + '');
+  ok('第 7 关名 = 街亭', ZY.LEVELS[6].name === '街亭');
+  ok('第 8 关名 = 麦城', ZY.LEVELS[7].name === '麦城');
+  const COLS = B.COLS, ROWS = B.ROWS;
+  const mirrorV = function (k) { const p = k.split(','); return p[0] + ',' + (COLS - 1 - +p[1]); };
+  const mirrorH = function (k) { const p = k.split(','); return (ROWS - 1 - +p[0]) + ',' + p[1]; };
+  const baseSet = B.pathSet('endless', 0);
+  [6, 7].forEach(function (li) {
+    const tf = li === 6 ? mirrorV : mirrorH;
+    const seq = B.pathSeq('level', 'player', li);
+    const ent = B.entrances('level', 'player', li)[0];
+    const adou = B.adouAt('level', 'player', li);
+    const pset = B.pathSet('level', li);
+    const slots = Object.keys(B.startSlots('level', 'player', li));
+    ok('第 ' + (li + 1) + ' 关主路 37 格', Object.keys(pset).length === 37, Object.keys(pset).length + '');
+    ok('第 ' + (li + 1) + ' 关首格 = 入口', seq[0].row === ent.row && seq[0].col === ent.col);
+    ok('第 ' + (li + 1) + ' 关末格 = 阿斗', seq[seq.length - 1].row === adou.row && seq[seq.length - 1].col === adou.col);
+    ok('第 ' + (li + 1) + ' 关塔位与主路无交叠', slots.every((k) => !pset[k]));
+    ok('第 ' + (li + 1) + ' 关塔位与障碍无交叠', slots.every((k) => { const p = k.split(','); return !B.isObstacle(+p[0], +p[1]); }));
+    ok('第 ' + (li + 1) + ' 关路径全在棋盘内', seq.every((p) => B.inBoard(p.row, p.col)));
+    ok('第 ' + (li + 1) + ' 关为原图双射镜像', seq.every((p) => baseSet[tf(p.row + ',' + p.col)]));
+    ok('第 ' + (li + 1) + ' 关入口 ≠ 原图 (0,6)', !(ent.row === 0 && ent.col === 6), ent.row + ',' + ent.col);
+  });
+}
 section('塔攻击射程内「最靠前」的敌人（离阿斗最近优先）');
 {
   const s = G.baseState('endless', {});

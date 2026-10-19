@@ -29,7 +29,7 @@
     if (i < 0) return false;
     const foes = state.units.filter(function (u) { return !u.dead && u.side === 'enemy' && u.target === side; });
     if (foes.length < 3) return false;
-    const seq = B.pathSeq(state.mode, side);
+    const seq = B.pathSeq(state.mode, side, state.levelIdx);
     let best = null, bestHit = 2;
     for (let p = 0; p < seq.length; p++) {
       const cell = seq[p];
@@ -100,7 +100,7 @@
     let best = null, bestScore = -Infinity;
     for (let p = 0; p < spots.length; p++) {
       const sp = spots[p];
-      const score = B.coverCount(state.mode, side, sp.row, sp.col, 2) + Math.random();
+      const score = B.coverCount(state.mode, side, sp.row, sp.col, 2, state.levelIdx) + Math.random();
       if (score > bestScore) { bestScore = score; best = sp; }
     }
     if (!best) return false;
@@ -123,7 +123,7 @@
       const p = k.split(',');
       const r = +p[0], c = +p[1];
       if (!canPlace(state, side, r, c, span)) return;
-      const score = B.coverCount(state.mode, side, r, c, 2) + Math.random() * 1.2;
+      const score = B.coverCount(state.mode, side, r, c, 2, state.levelIdx) + Math.random() * 1.2;
       if (score > bestScore) { bestScore = score; best = { row: r, col: c }; }
     });
     if (!best) return false;

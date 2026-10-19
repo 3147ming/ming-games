@@ -148,20 +148,20 @@
     if (warnOn) {
       ['player', 'enemy'].forEach(function (side) {
         if (!vs && side === 'enemy') return;
-        B.warnCells(mode, side).forEach(function (p) { warnSet[B.key(p.row, p.col)] = true; });
+        B.warnCells(mode, side, state.levelIdx).forEach(function (p) { warnSet[B.key(p.row, p.col)] = true; });
       });
     }
     const entSet = {};
     ['player', 'enemy'].forEach(function (side) {
       if (!vs && side === 'enemy') return;
-      B.entrances(mode, side).forEach(function (p) { entSet[B.key(p.row, p.col)] = true; });
+      B.entrances(mode, side, state.levelIdx).forEach(function (p) { entSet[B.key(p.row, p.col)] = true; });
     });
     for (let r = 0; r < B.ROWS; r++) {
       for (let c = 0; c < B.COLS; c++) {
         const e = cellEls[r][c];
         const k = B.key(r, c);
         const obs = B.isObstacle(r, c);
-        const onPath = B.isPath(mode, r, c);
+        const onPath = B.isPath(mode, r, c, state.levelIdx);
         const slotSide = state.deploy[k];
         const inDeploy = !!slotSide;
         const wasteland = !obs && !onPath && !inDeploy;
@@ -217,7 +217,7 @@
   function buildAdou() {
     ['player', 'enemy'].forEach(function (side) {
       if (!state.hasAdou[side]) return;
-      const a = B.adouAt(state.mode, side);
+      const a = B.adouAt(state.mode, side, state.levelIdx);
       const d = document.createElement('div');
       d.className = 'adou adou-' + side;
       d.innerHTML = '<b>斗</b><i></i>';
@@ -234,7 +234,7 @@
   /** V5：右侧刷怪口另立一「斗」作为敌方刷怪口标记（单人模式） */
   function buildSpawnMark() {
     if (state.mode === 'versus') return;
-    const ent = B.entrances(state.mode, 'player')[0];
+    const ent = B.entrances(state.mode, 'player', state.levelIdx)[0];
     const d = document.createElement('div');
     d.className = 'adou spawn-mark';
     d.innerHTML = '<b>斗</b>';
@@ -845,7 +845,7 @@
     if (drag.src !== 'hand' && drag.src !== 'barracks' && drag.src !== 'shovel') return;
     let ok = false;
     if (drag.src === 'shovel') {
-      ok = !B.isPath(state.mode, t.row, t.col) && !B.isObstacle(t.row, t.col) &&
+      ok = !B.isPath(state.mode, t.row, t.col, state.levelIdx) && !B.isObstacle(t.row, t.col) &&
         !state.deploy[B.key(t.row, t.col)] && B.adjacentToDeploy(state, 'player', t.row, t.col);
     } else {
       const s = state.player;
@@ -965,7 +965,7 @@
 
   function handleCellTap(r, c) {
     clearRange();
-    const a = B.adouAt(state.mode, 'player');
+    const a = B.adouAt(state.mode, 'player', state.levelIdx);
     if (a && r === a.row && c === a.col) { showAdouInfo('player'); return; }
   }
 

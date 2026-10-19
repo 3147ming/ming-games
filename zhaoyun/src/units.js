@@ -227,6 +227,8 @@ window.ZY = window.ZY || {};
     { name: '汉水',   hpMul: 1.36, atkMul: 1.18, count: 3 },
     { name: '定军山', hpMul: 1.52, atkMul: 1.26, count: 4 },
     { name: '五丈原', hpMul: 1.70, atkMul: 1.35, count: 4 },
+    { name: '街亭',   hpMul: 1.80, atkMul: 1.40, count: 4 },
+    { name: '麦城',   hpMul: 1.95, atkMul: 1.48, count: 5 },
   ];
 
   /* ---------- 数值工具 ---------- */
