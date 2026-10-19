@@ -294,8 +294,12 @@
   /* ------------------------------------------------------------ 行军：沿主路逐格走 */
   function walkPath(state, u, dt) {
     if (u.move <= 0 || !u.path) return;
+    // V6 手感：出关第一步用 gateExit 快速腾出入口格，出关后恢复正常移速。
+    //       否则单格入口被一个敌人占满移速周期，整波只能按「1 个 / 移速」滴出，
+    //       关底张梁排到队尾可达 20s+（入口堵路节流）。
+    const stepT = (u.pi === 0 ? Math.min(u.move, (ZY.TUNE && ZY.TUNE.gateExit) || 0.5) : u.move);
     u.moveT += dt;
-    if (u.moveT < u.move) return;
+    if (u.moveT < stepT) return;
     u.moveT = 0;
     const next = u.path[u.pi + 1];
     if (!next) return;                               // 已在终点（理论上进入终点即被移除）
@@ -425,9 +429,11 @@
     w.spawnT += dt;
     const gap = w.spawnGap || SPAWN_GAP;
     if (w.pending.length && w.spawnT >= gap) {
-      w.spawnT = 0;
       const spec = w.pending.shift();
-      spawnEnemyNow(state, spec);
+      // V6：出兵成功才清零；入口仍被占则放回队首并保持阈值，下一 tick 立即重试
+      //     （旧逻辑无条件归零，失败要白等一个完整 gap）
+      if (spawnEnemyNow(state, spec)) w.spawnT = 0;
+      else { w.pending.unshift(spec); w.spawnT = gap; }
     }
     if (w.done) return;
     w.timer += dt;
@@ -489,7 +495,9 @@
       w.pending.push({ type: pick.type, level: level, hpMul: hpMul, atkMul: atkMul, elite: i < elites });
     }
     if (isBoss) {
-      w.pending.push({ type: 'boss', level: level, hpMul: hpMul, atkMul: atkMul, boss: true });   // 张梁
+      // V6 手感：张梁「领队」先出（旧逻辑 push 到队尾，单车道吞吐 1/移速，
+      // 9 个前排小兵要先排队 ~26s，关底名将迟迟不登场）。领队登场更有压迫感，也消除排队。
+      w.pending.unshift({ type: 'boss', level: level, hpMul: hpMul, atkMul: atkMul, boss: true });   // 张梁
     }
     w.total = w.pending.length;                      // V5：波内总敌人数（左下角「剩 N」用）
     if (bt) {
@@ -523,10 +531,9 @@
   function spawnEnemyNow(state, spec) {
     const targets = state.mode === 'versus' ? ['player', 'enemy'] : ['player'];
     const ents = targets.map(function (t) { return B.entrances(state.mode, t)[0]; });
-    // 入口被堵 → 攒着下一批再试
+    // 入口被堵 → 返回 false 由调用方放回队首、下一 tick 立即重试（V6 手感）
     if (!ents.every(function (e) { return B.inBoard(e.row, e.col) && !state.grid[e.row][e.col]; })) {
-      state.wave.pending.unshift(spec);
-      return;
+      return false;
     }
     targets.forEach(function (tgt, i) {
       const u = makeUnit(state, 'enemy', {
@@ -541,6 +548,7 @@
         state.fx.push({ type: 'big', row: u.row, col: u.col, text: ZY.BOSS.name });
       }
     });
+    return true;
   }
 
   /* ------------------------------------------------------------ 胜负 */

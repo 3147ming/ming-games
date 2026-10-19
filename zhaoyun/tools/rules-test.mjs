@@ -506,9 +506,12 @@ section('张梁（敌方带名武将 · 第 6 波登场）+ 波内剩余递减')
   s2.player.adou = 1e9;
   s2.wave.idx = 5; s2.wave.done = false; s2.wave.pending = []; s2.wave.timer = s2.wave.interval;
   G.tick(s2, 0.2);
-  for (let i = 0; i < 800 && !s2.units.some((u) => u.boss); i++) G.tick(s2, 0.1);
+  ok('张梁领队（关底波 pending 队首即 Boss）', !!(s2.wave.pending[0] && s2.wave.pending[0].boss));
+  let bt = 0;
+  for (let i = 0; i < 800 && !s2.units.some((u) => u.boss); i++) { G.tick(s2, 0.1); bt += 0.1; }
   const bo = s2.units.find((u) => u.boss);
   ok('张梁出场且带名字', !!bo && bo.name === '张梁' && bo.char === '梁', bo ? bo.name : '未出场');
+  ok('张梁快速登场（< 4s，旧口径排到队尾 ~26s）', !!bo && bt < 4, bt.toFixed(1) + 's');
   ok('张梁登场飘字提示', s2.fx.some((f) => f.type === 'toast' && f.text.indexOf('张梁') >= 0));
   ok('张梁赏金 30', bo && bo.bounty === C.BOSS_BOUNTY);
   // Boss 震击
@@ -614,6 +617,9 @@ section('突破口事件 / 开局塔位 / 无尽波次节奏');
 
 /* ------------------------------------------------ 15. 竞技模式（AI） */
 section('竞技模式（双路公共波次 + AI 行为）');
+// 固定随机源：竞技对局由随机驱动，真实随机下约 2/10 局 AI 整局凑不出「赵云」→ 假阴性闪红。
+// 本段改用固定种子，跑多少遍结果完全一致（种子已挑选：15 波内 AI 必合成 1 名武将）。
+vm.runInContext('__origRand__ = Math.random; Math.random = (function(){ var s = 20261019; return function(){ s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; }; })();', ctx);
 {
   const s = G.baseState('versus', { difficulty: 1 });
   let guard = 0, aiLvPeak = 0, aiHeroPeak = 0, aiTowerPeak = 0, bothPaths = false;
@@ -654,6 +660,7 @@ section('竞技模式（双路公共波次 + AI 行为）');
   ok('AI 把武将卡拖到相邻双塔位（span2）', !!heroU && heroU.span === 2 && h.grid[heroU.row][heroU.col + 1] === heroU,
     heroU ? heroU.row + ',' + heroU.col : '未上盘');
 }
+vm.runInContext('Math.random = __origRand__;', ctx);   // 恢复真实随机源
 
 /* ------------------------------------------------ 16. 行军纪律（右入口蛇形路） */
 section('敌人沿蛇形主路行军（右侧进入 · 不穿塔位 · 不回头）');

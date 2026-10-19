@@ -99,6 +99,16 @@ await evalJs(`(() => {
   }
   return placed;
 })()`);
+await sleep(300);
+// #31 验证：关底名将张梁改为「领队先出」，此处确定性放置一名张梁到主路中段，
+// 肉眼复核名将渲染（紫色武将调 + 名牌「张梁」）。
+await evalJs(`(() => {
+  const s = ZY.UI.getState();
+  const u = ZY.Game.makeUnit(s, 'enemy', { cls:'soldier', type:'boss', level:3, boss:true, target:'player', row:5, col:3 });
+  ZY.Game.addUnit(s, u);
+  s.banner = null;                       // 清掉「守住阿斗」开场横幅，避免遮挡名将
+  return 'zhaoliang@' + u.row + ',' + u.col;
+})()`);
 await sleep(500);
 const types = await evalJs(`[...document.querySelectorAll('.units .unit')].map(u=>u.className).join(' | ')`);
 console.log('   棋盘单位类名: ' + types);

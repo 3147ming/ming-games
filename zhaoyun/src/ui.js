@@ -378,6 +378,12 @@
         void e.offsetHeight;
         e.classList.add('anim');
       }
+      // V6：过渡时长跟随当前步 —— 出关第一步（pi=0）用 gateExit，出关后按移速插值；
+      //     玩家单位（塔）只会在拖拽换位时移动，固定 0.18s 快速落定
+      const stepSec = u.side === 'player' ? 0.18
+        : (u.pi === 0 ? Math.min(u.move > 0 ? u.move : 0.5, (ZY.TUNE && ZY.TUNE.gateExit) || 0.5)
+                      : (u.move > 0 ? Math.min(2.2, u.move * 0.9) : 0.18));
+      if (e._dur !== stepSec) { e._dur = stepSec; e.style.transitionDuration = stepSec + 's'; }
       place(e, u.row, u.col, u.span);
       if ((e._r !== u.row || e._c !== u.col) && u.move > 0) {
         e._r = u.row; e._c = u.col;
