@@ -873,3 +873,139 @@ body {
 .w-hero span { flex: 1; color: var(--ink-2); }
 .w-heroes p.dim { font-size: 12px; color: var(--ink-3); line-height: 1.7; margin: 4px 0; }
 .weapon-panel > .btn { width: 100%; }
+
+/* =============================================================================
+ * V6 · 视觉打磨（卡通塔防质感）
+ *  - 兵种色彩身份：刀/枪/弓/骑/农 各自专属强调色，棋盘与手牌一眼可辨
+ *  - 单位/卡牌圆润化 + 类型描边光环 + 顶部色楔
+ *  - 棋盘地形质感增强、HUD/按钮/道具层次加深、开始界面更有游戏感
+ *  - 全程纯样式，不改动 DOM 结构与任何数值/逻辑
+ * ========================================================================== */
+
+/* —— 兵种强调色（同时作用于单位与卡牌） —— */
+.unit, .card { --accent: #9a8f7a; }
+.unit.t-dao,  .card.t-dao  { --accent: #5b8bd0; }   /* 刀 · 钢蓝 */
+.unit.t-qiang,.card.t-qiang{ --accent: #c8893f; }   /* 枪 · 铜棕 */
+.unit.t-gong, .card.t-gong { --accent: #5aa86a; }   /* 弓 · 竹绿 */
+.unit.t-qi,   .card.t-qi   { --accent: #d4584f; }   /* 骑 · 朱红 */
+.unit.t-nong, .card.t-nong { --accent: #b59a4e; }   /* 农 · 土金 */
+.unit.hero,   .card.hero   { --accent: var(--purple); }
+.unit.gold,   .card.gold   { --accent: var(--gold-deep); }
+
+/* 单位：更圆润 + 类型描边光环 + 顶部色楔 */
+.unit {
+  border-radius: 22%;
+  box-shadow: 0 3px 8px rgba(20,15,8,.32), 0 0 0 2px var(--accent, transparent);
+}
+.unit::before {                                   /* 顶部类型色楔 */
+  content: ""; position: absolute; left: 22%; right: 22%; top: 5%;
+  height: 3px; border-radius: 3px; background: var(--accent); opacity: .92; z-index: 1;
+}
+.unit.e   { box-shadow: 0 3px 8px rgba(20,15,8,.32), 0 0 0 2px var(--accent, transparent); }
+.unit.gold{ border-radius: 22%; }
+.unit.hero{ border-radius: 26%; }
+.unit.elite { box-shadow: 0 0 0 2px #ffcf6a, 0 4px 10px rgba(0,0,0,.34); }
+.unit.span2 { border-radius: 18%; }
+.unit .lv  { border-radius: 6px; }
+
+/* 卡面：圆润 + 类型顶栏 + 文字随类型着色 + 轻抬起 */
+.card {
+  border-radius: 12px;
+  box-shadow: 0 3px 8px rgba(60,45,25,.22), 0 0 0 1.5px rgba(255,255,255,.30) inset;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.card.unit { border-top: 3px solid var(--accent); }
+.card.t-dao b, .card.t-qiang b, .card.t-gong b, .card.t-qi b, .card.t-nong b {
+  text-shadow: 0 1px 0 rgba(0,0,0,.4);
+}
+.card span { color: var(--accent); font-weight: 600; }
+.card.hero span { color: #e9ddff; }
+.card.gold span { color: #5a4310; }
+.card.unit:active { transform: translateY(1px) scale(.98); }
+
+/* 手牌/军营格子：浅底 + 类型色边，未放置也清晰 */
+.slot { background: rgba(255,255,255,.34); border: 1px dashed rgba(140,128,108,.5); }
+
+/* —— 棋盘地形质感增强 —— */
+.board {
+  border: 3px solid #6d5a3c; border-radius: 12px;
+  background:
+    radial-gradient(120% 60% at 50% 0%, #fbf7ee 0%, #f1ece1 60%, #e7e0d2 100%);
+  box-shadow:
+    0 0 0 2px rgba(255,255,255,.30) inset,
+    0 4px 22px rgba(60,45,25,.20) inset,
+    0 6px 18px rgba(60,45,25,.24);
+}
+.cell.path {
+  background:
+    repeating-linear-gradient(0deg, rgba(90,75,50,.14) 0 1px, transparent 1px 6px),
+    repeating-linear-gradient(90deg, rgba(90,75,50,.14) 0 1px, transparent 1px 6px),
+    linear-gradient(180deg, #c4b99f, #ab9d83);
+  box-shadow: inset 0 0 0 1px rgba(60,50,35,.22), inset 0 1px 0 rgba(255,255,255,.25);
+}
+.cell.deploy {
+  background:
+    radial-gradient(120% 120% at 50% 30%, rgba(150,186,110,.30), rgba(120,152,84,.20));
+  box-shadow: inset 0 0 0 1.5px rgba(96,124,64,.5);
+}
+.cell.deploy::before { border: 1.6px dashed rgba(96,124,64,.62); }
+.cell.obstacle::after { width: 40%; height: 40%; opacity: .9; }
+
+/* —— HUD 层次 —— */
+.hud {
+  background: linear-gradient(180deg, rgba(255,255,255,.5), rgba(255,255,255,.12));
+  border-bottom: 1px solid var(--line); border-radius: 0 0 10px 10px;
+}
+.bun { text-shadow: 0 1px 0 rgba(255,255,255,.5); }
+.icon-btn:active { transform: scale(.94); }
+
+/* —— 征兵按钮 / 道具：更"糖果"的按压感 —— */
+.recruit {
+  background: linear-gradient(180deg, #d24a42, #a82e29);
+  box-shadow: 0 4px 0 #7e201b, 0 6px 12px rgba(150,45,40,.35);
+  transition: transform .08s, box-shadow .08s;
+}
+.recruit:active { transform: translateY(3px); box-shadow: 0 1px 0 #7e201b, 0 2px 6px rgba(150,45,40,.35); }
+.recruit.buff { box-shadow: 0 4px 0 #7e201b, 0 0 0 2px var(--gold), 0 6px 14px rgba(150,45,40,.4); }
+.recruit.dis { background: linear-gradient(180deg, #b8b0a0, #a09889); box-shadow: 0 4px 0 #857d6e; }
+.item-slot {
+  background: rgba(255,255,255,.62); border: 1px solid var(--line);
+  box-shadow: 0 2px 5px rgba(60,45,25,.14);
+  transition: transform .1s, box-shadow .1s;
+}
+.item-slot:active { transform: translateY(1px) scale(.97); box-shadow: 0 1px 3px rgba(60,45,25,.18); }
+
+/* —— 开始界面：更有游戏感的头图与按钮 —— */
+.brand { padding-top: 4%; }
+.title {
+  background: linear-gradient(180deg, var(--ink) 0%, #4a4236 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 3px rgba(255,255,255,.5));
+}
+.brand::after {                                  /* 标题下的朱红分隔印 */
+  content: ""; display: block; width: 46px; height: 4px; margin: 10px auto 0;
+  background: var(--red); border-radius: 3px; opacity: .85;
+  box-shadow: 0 1px 3px rgba(120,30,26,.4);
+}
+.mode-btn {
+  border-radius: 14px;
+  box-shadow: 0 3px 0 rgba(120,105,80,.35), 0 4px 10px rgba(60,45,25,.14);
+  transition: transform .12s, border-color .12s, box-shadow .12s;
+}
+.mode-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(120,105,80,.35), 0 2px 6px rgba(60,45,25,.14); border-color: var(--red); }
+.m-icon { box-shadow: 0 2px 5px rgba(179,53,47,.2); }
+
+/* —— 弹层与星级更"亮" —— */
+.panel { border-radius: 18px; box-shadow: 0 14px 40px rgba(0,0,0,.45); }
+.stars i.on { text-shadow: 0 0 14px rgba(232,200,106,.9); animation: starPop .4s ease-out backwards; }
+.stars i.on:nth-child(2) { animation-delay: .08s; }
+.stars i.on:nth-child(3) { animation-delay: .16s; }
+.stars i.on:nth-child(4) { animation-delay: .24s; }
+.stars i.on:nth-child(5) { animation-delay: .32s; }
+@keyframes starPop { from { transform: scale(0) rotate(-30deg); opacity: 0; } to { transform: scale(1) rotate(0); opacity: 1; } }
+
+/* —— 窄屏微调同步圆润 —— */
+@media (max-height: 640px) {
+  .card { border-radius: 10px; }
+  .unit { border-radius: 20%; }
+}
