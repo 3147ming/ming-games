@@ -102,6 +102,19 @@ window.ZY = window.ZY || {};
       atk: 14.0, aspd: 1.35, hpBase: 36, range: 1, splash: 0.6, tag: '骑兵系 · 群伤', // 推导
       skill: { cd: 10, type: 'cleave', name: '青龙斩', desc: '周围溅射大伤害' },
     },
+    // —— V6 内容扩展：补入武圣关羽 + 军师诸葛亮（字对由 HEROES 自动派生到 GOLD_CHARS）
+    {
+      id: 'guanyu', name: '关羽', chars: ['关', '羽'], base: 'dao',
+      atk: 15.5, aspd: 1.15, hpBase: 44, hpMul: 1.2, dmgReduce: 0.15, range: 2, splash: 0.35,
+      tag: '刀兵系 · 横扫重击', // 推导：高攻高血、站桩近战横扫
+      skill: { cd: 9, type: 'sweep', name: '青龙偃月', desc: '前方扇形群伤' },
+    },
+    {
+      id: 'zhugeliang', name: '诸葛亮', chars: ['诸', '葛'], base: 'gong',
+      atk: 10.5, aspd: 1.25, hpBase: 18, range: 4, crit: 0.15, critMul: 1.8,
+      tag: '军师 · 范围火计', // 推导：远程法师，群伤 + 短控
+      skill: { cd: 11, type: 'burn', name: '八阵图', desc: '范围内群伤并短眩晕' },
+    },
   ];
 
   const HERO_BY_ID = {};

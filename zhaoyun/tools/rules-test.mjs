@@ -78,8 +78,10 @@ section('原版数值口径（录屏逆向，写死不改）');
     ZY.HERO_BY_ID.liubei.atk === 16.00 && ZY.HERO_BY_ID.liubei.aspd === 1.25,
     ZY.HERO_BY_ID.liubei.atk + '/' + ZY.HERO_BY_ID.liubei.aspd);
   ok('铁剑 攻击 +3', ZY.WEAPONS.tiejian.atk === 3 && ZY.WEAPONS.tiejian.name === '铁剑');
-  ok('五对武将字（赵云/黄忠/张飞/刘备/马超）', ZY.HEROES.length === 5 &&
-    ZY.HEROES.every((h) => h.chars.length === 2));
+  ok('武将字对齐全（原五虎 + 关羽/诸葛亮）', ZY.HEROES.length === 7 &&
+    ZY.HEROES.every((h) => h.chars.length === 2) &&
+    !!ZY.HERO_BY_ID.guanyu && !!ZY.HERO_BY_ID.zhugeliang);
+  ok('金武将字池 = 14 字（7 对）', ZY.GOLD_CHARS.length === 14, ZY.GOLD_CHARS.length + '');
   ok('Boss = 带名武将张梁', ZY.BOSS.name === '张梁' && ZY.BOSS.char === '梁');
   const pool = ZY.RECRUIT_POOL.reduce((a, x) => a + x.w, 0);
   ok('征兵概率池合计 100（无铲子）', pool === 100 && !ZY.RECRUIT_POOL.some((x) => x.item === 'shovel'), pool + '');
@@ -179,6 +181,24 @@ section('武将字对合成（手牌凑对 → 2 格武将卡 + 「合成武将�
   ok('金字不能拖到棋盘上盘', !G.deploy(s4, 'player', 1, 1, 1).ok);
   ok('刘备数值 = 原版 16.00 / 1.25',
     Math.abs(ZY.heroStats('liubei', 1).atk - 16.00) < 1e-9 && Math.abs(ZY.heroStats('liubei', 1).aspd - 1.25) < 1e-9);
+
+  // —— V6 新武将：关羽（横扫）/ 诸葛亮（八阵图 · 群伤 + 眩晕） ——
+  ok('关羽 = 刀系横扫（sweep）', ZY.HERO_BY_ID.guanyu.base === 'dao' && ZY.HERO_BY_ID.guanyu.skill.type === 'sweep');
+  ok('诸葛亮 = 军师火计（burn）', ZY.HERO_BY_ID.zhugeliang.skill.type === 'burn' && ZY.HERO_BY_ID.zhugeliang.range === 4);
+  const sz = G.baseState('endless', {});
+  freezeWaves(sz);
+  sz.player.adou = 1e9;
+  const zhuge = G.makeUnit(sz, 'player', { cls: 'hero', heroId: 'zhugeliang', heroLevel: 1, row: 3, col: 2, span: 1, target: null });
+  zhuge.skillT = 0; G.addUnit(sz, zhuge);
+  const foe = G.makeUnit(sz, 'enemy', { cls: 'soldier', type: 'zei', level: 1, row: 3, col: 1, target: 'player', pi: 0 });
+  foe.move = 0; foe.path = null; const foeHp0 = foe.hp; G.addUnit(sz, foe);
+  let burned = false, stunnedZ = false;
+  for (let i = 0; i < 50 && !(burned && stunnedZ); i++) {
+    G.tick(sz, 0.1);
+    if (foe.hp < foeHp0) burned = true;
+    if (foe.stun > 0) stunnedZ = true;
+  }
+  ok('诸葛亮「八阵图」命中群伤并眩晕', burned && stunnedZ, 'hp=' + Math.round(foe.hp) + '/' + foeHp0 + ' stun=' + foe.stun.toFixed(2));
 }
 
 /* ------------------------------------------------ 5. 建塔 + 同字合成（刀²） */

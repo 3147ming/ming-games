@@ -253,6 +253,17 @@
         near.forEach(function (t) { hurt(state, u, t, u.atk * 2); });
         state.fx.push({ type: 'ring', row: u.row, col: u.col }); fired = true;
       }
+    } else if (sk.type === 'burn') {                 // 诸葛亮：范围内群伤 + 短眩晕
+      const all = B.threatsInRange(state, u, 4);
+      if (all.length) {
+        all.forEach(function (t) {
+          hurt(state, u, t, u.atk * 1.8);
+          t.stun = Math.max(t.stun, 0.6);
+          state.fx.push({ type: 'stun', row: t.row, col: t.col, text: '晕' });
+        });
+        state.fx.push({ type: 'ring', row: u.row, col: u.col });
+        fired = true;
+      }
     } else if (sk.type === 'heal') {                 // 刘备：相邻己方回血
       const near = B.neighbors(state, u.row, u.col, false);
       let healed = false;
