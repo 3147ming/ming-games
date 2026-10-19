@@ -14,6 +14,8 @@
   let state = null;
   let raf = 0, lastTs = 0, acc = 0;
   let cellEls = [], unitEls = {}, adouEls = {};
+  let cellStatic = null, cellStaticKey = '';   // V6：地形静态描述子缓存（对局内不变）
+  let itemSig = -1;                            // V6：铲子数量签名（避免每帧写 DOM）
   let carry = null;                 // 关卡模式跨关继承
   let pendingLevel = 0;
   let selectedHero = null;          // 武器面板当前选中的武将
@@ -56,6 +58,8 @@
     el.toast = $('toast');
     el.overlay = $('overlay');
     el.saveInfo = $('save-info');
+    el.btnRecruitCost = el.btnRecruit.querySelector('span');   // V6：缓存引用，避免每帧 querySelector
+    el.itemShovelN = el.itemShovel.querySelector('b');
 
     buildCells();
     bindStart();
@@ -140,41 +144,58 @@
 
   function syncCells() {
     // V5 塔防：棕色主路地砖 / 绿色塔位 / 荆棘障碍 / 荒地 / 入口 / 来袭预警
+    // V6 性能：地形三态（障碍 / 主路 / 入口）对局内不变 → 预计算静态描述子，
+    //     每帧只处理动态量（塔位 deploy / 预警 warn / 突破口 break / 荒地），
+    //     消除 84 格 × 每帧的地图查询与对象分配。
     const mode = state.mode;
-    const vs = mode === 'versus';
+    const sig = mode + ':' + state.levelIdx;
+    if (!cellStatic || cellStaticKey !== sig) buildCellStatic(mode);
+    const st = cellStatic;
     const warnOn = state.wave.idx > 0 || state.wave.pending.length > 0;
     const brk = state.wave.breakEntrance;
-    const warnSet = {};
+    let warnSet = null;
     if (warnOn) {
+      const vs = mode === 'versus';
+      warnSet = {};
       ['player', 'enemy'].forEach(function (side) {
         if (!vs && side === 'enemy') return;
         B.warnCells(mode, side, state.levelIdx).forEach(function (p) { warnSet[B.key(p.row, p.col)] = true; });
       });
     }
+    for (let r = 0; r < B.ROWS; r++) {
+      const row = cellEls[r], srow = st[r];
+      for (let c = 0; c < B.COLS; c++) {
+        const e = row[c], s = srow[c], k = s.k;
+        const inDeploy = !!state.deploy[k];
+        toggleCls(e, 'obstacle', s.obs);
+        toggleCls(e, 'path', s.path && !s.obs);
+        toggleCls(e, 'deploy', inDeploy && !s.obs);
+        toggleCls(e, 'wasteland', !s.obs && !s.path && !inDeploy);
+        toggleCls(e, 'enter', s.ent);
+        const w = !!warnSet && !!warnSet[k] && !brk;
+        toggleCls(e, 'warn', w && !s.ent);
+        toggleCls(e, 'break', !!brk && s.ent);
+      }
+    }
+  }
+  /** 预计算每格静态地形（障碍 / 主路 / 入口），随 mode+levelIdx 失效重算 */
+  function buildCellStatic(mode) {
+    const vs = mode === 'versus';
     const entSet = {};
     ['player', 'enemy'].forEach(function (side) {
       if (!vs && side === 'enemy') return;
       B.entrances(mode, side, state.levelIdx).forEach(function (p) { entSet[B.key(p.row, p.col)] = true; });
     });
+    cellStatic = [];
     for (let r = 0; r < B.ROWS; r++) {
+      const row = [];
       for (let c = 0; c < B.COLS; c++) {
-        const e = cellEls[r][c];
         const k = B.key(r, c);
-        const obs = B.isObstacle(r, c);
-        const onPath = B.isPath(mode, r, c, state.levelIdx);
-        const slotSide = state.deploy[k];
-        const inDeploy = !!slotSide;
-        const wasteland = !obs && !onPath && !inDeploy;
-        toggleCls(e, 'obstacle', obs);
-        toggleCls(e, 'path', onPath && !obs);
-        toggleCls(e, 'deploy', inDeploy && !obs);
-        toggleCls(e, 'wasteland', wasteland);
-        toggleCls(e, 'enter', !!entSet[k]);
-        const w = !!warnSet[k] && !brk;
-        toggleCls(e, 'warn', w && !entSet[k]);
-        toggleCls(e, 'break', !!brk && !!entSet[k]);
+        row.push({ k: k, obs: B.isObstacle(r, c), path: B.isPath(mode, r, c, state.levelIdx), ent: !!entSet[k] });
       }
+      cellStatic.push(row);
     }
+    cellStaticKey = mode + ':' + state.levelIdx;
   }
 
   function toggleCls(e, cls, on) {
@@ -243,9 +264,13 @@
   }
 
   function place(node, r, c, span) {
-    node.style.width = (100 / B.COLS * (span || 1)) + '%';
-    node.style.height = (100 / B.ROWS) + '%';
-    node.style.transform = 'translate(' + (c * 100) + '%,' + (r * 100) + '%)';
+    // V6 性能：仅当值变化才写 style（每帧 × 每单位调用，相同字符串重复写会触发无效样式失效）
+    const w = (100 / B.COLS * (span || 1)) + '%';
+    const h = (100 / B.ROWS) + '%';
+    const tf = 'translate(' + (c * 100) + '%,' + (r * 100) + '%)';
+    if (node._pw !== w) { node._pw = w; node.style.width = w; }
+    if (node._ph !== h) { node._ph = h; node.style.height = h; }
+    if (node._ptf !== tf) { node._ptf = tf; node.style.transform = tf; }
   }
 
   /* ======================================================== 单位渲染 */
@@ -368,6 +393,9 @@
         e.dataset.uid = u.id;
         e.dataset.weapon = wtype;
         e.innerHTML = unitHtml(u);
+        e._bar = e.querySelector('.hb u');      // V6：缓存子节点引用，每帧不再 querySelector
+        e._lvEl = e.querySelector('.lv');
+        e._skEl = e.querySelector('.sk');
         place(e, u.row, u.col, u.span);
         e._r = u.row; e._c = u.col;
         // 敌人按移速插值滑行；我方塔只会在用户拖拽换位时移动 → 快速落定
@@ -391,31 +419,45 @@
         clearTimeout(e._moveT);
         e._moveT = setTimeout(function () { e.classList.remove('a-move'); }, 320);
       }
-      e.classList.toggle('stun', u.stun > 0);
-      const bar = e.querySelector('.hb u');
-      if (bar) bar.style.width = Math.max(0, Math.min(100, (u.hp / u.maxHp) * 100)) + '%';
-      const lv = e.querySelector('.lv');
-      if (lv) lv.textContent = u.cls === 'hero' ? u.heroLevel : u.level;
-      const sk = e.querySelector('.sk');
+      // V6 性能：以下逐项仅在值变化时写 DOM（每帧 × 每单位）
+      if (e._stun !== (u.stun > 0)) { e._stun = u.stun > 0; e.classList.toggle('stun', e._stun); }
+      const bar = e._bar;
+      if (bar) {
+        const hp = Math.max(0, Math.min(100, (u.hp / u.maxHp) * 100));
+        if (e._hp !== hp) { e._hp = hp; bar.style.width = hp + '%'; }
+      }
+      const lv = e._lvEl;
+      if (lv) {
+        const lvTxt = u.cls === 'hero' ? u.heroLevel : u.level;
+        if (e._lv !== lvTxt) { e._lv = lvTxt; lv.textContent = lvTxt; }
+      }
+      const sk = e._skEl;
       if (sk) {
-        if (u.skillT > 0) { sk.textContent = Math.ceil(u.skillT); sk.classList.remove('ready'); }
-        else { sk.textContent = '⚡'; sk.classList.add('ready'); }
+        if (u.skillT > 0) {
+          const t = Math.ceil(u.skillT);
+          if (e._skT !== t) { e._skT = t; e._skR = false; sk.textContent = t; sk.classList.remove('ready'); }
+        } else if (!e._skR) {
+          e._skR = true; e._skT = -1; sk.textContent = '⚡'; sk.classList.add('ready');
+        }
       }
       // V5：装备武器徽标（装备 / 卸下实时反映，不重建整个单位节点）
-      const wp = e.querySelector('.wp');
       if (u.weapon) {
         const g = (ZY.WEAPONS[u.weapon] || {}).glyph || '';
+        let wp = e._wp;
         if (!wp) {
-          const badge = document.createElement('s');
-          badge.className = 'wp';
-          badge.textContent = g;
-          e.appendChild(badge);
-        } else if (wp.textContent !== g) wp.textContent = g;
-      } else if (wp && wp.parentNode) {
-        wp.parentNode.removeChild(wp);
+          wp = document.createElement('s');
+          wp.className = 'wp';
+          e.appendChild(wp);
+          e._wp = wp;
+        }
+        if (wp.textContent !== g) wp.textContent = g;
+      } else if (e._wp && e._wp.parentNode) {
+        e._wp.parentNode.removeChild(e._wp);
+        e._wp = null;
       }
     }
-    Object.keys(unitEls).forEach(function (id) {
+    // V6 性能：for...in 清扫死亡单位（不再每帧分配 Object.keys 数组）
+    for (const id in unitEls) {
       if (!seen[id]) {
         const e = unitEls[id];
         if (e && e.parentNode && !e.classList.contains('a-death')) {
@@ -425,14 +467,15 @@
         }
         delete unitEls[id];
       }
-    });
-    // 阿斗血量
+    }
+    // 阿斗血量（V6：缓存 <i> 引用 + 仅在变化时写）
     ['player', 'enemy'].forEach(function (side) {
       const d = adouEls[side];
       if (!d) return;
       const s = ZY.Game.sideState(state, side);
-      d.querySelector('i').textContent = '♥' + s.adou;
-      d.classList.toggle('hurt', s.adou <= 1);
+      if (!d._hpEl) d._hpEl = d.querySelector('i');
+      if (d._hpEl && d._adou !== s.adou) { d._adou = s.adou; d._hpEl.textContent = '♥' + s.adou; }
+      if (d._hurt !== (s.adou <= 1)) { d._hurt = (s.adou <= 1); d.classList.toggle('hurt', d._hurt); }
     });
   }
 
@@ -463,22 +506,32 @@
     }
     if (hudCache.wave !== wave) { hudCache.wave = wave; el.hudWave.textContent = wave; }
     // V5：波内剩余敌人数量（左下角，随击杀递减）
+    // V6 性能：display / textContent 仅在变化时写；计数改用循环（不再每帧 filter 分配数组）
     if (state.mode === 'versus') {
-      el.waveLeft.style.display = 'none';
+      if (hudCache.wlDisp !== 'none') { hudCache.wlDisp = 'none'; el.waveLeft.style.display = 'none'; }
     } else {
-      el.waveLeft.style.display = '';
-      const rem = state.wave.pending.length + state.units.filter(function (u) { return u.side === 'enemy' && !u.dead; }).length;
+      if (hudCache.wlDisp !== '') { hudCache.wlDisp = ''; el.waveLeft.style.display = ''; }
+      let rem = state.wave.pending.length;
+      for (let i = 0; i < state.units.length; i++) {
+        const u = state.units[i];
+        if (u.side === 'enemy' && !u.dead) rem++;
+      }
       const txt = state.wave.idx > 0 ? ('本波剩 ' + rem) : '';
-      if (el.waveLeft.textContent !== txt) el.waveLeft.textContent = txt;
+      if (hudCache.waveLeft !== txt) { hudCache.waveLeft = txt; el.waveLeft.textContent = txt; }
     }
     // 征兵按钮（成本 10 起步每次 +2 不封顶；一次 5 张进军营 5 槽）
+    // V6 性能：文案/样式仅在变化时写
     const cost = state.player.recruitCost;
     const bFree = C.BARRACKS_MAX - (state.player.barracks ? state.player.barracks.length : 0);
     const can = state.player.bun >= cost && bFree > 0;
-    el.btnRecruit.classList.toggle('dis', !can);
-    el.btnRecruit.querySelector('span').textContent =
-      bFree <= 0 ? '军营已满' : (cost + ' 资源');
-    el.btnRecruit.classList.toggle('buff', state.buff.player > 0);
+    const costTxt = bFree <= 0 ? '军营已满' : (cost + ' 资源');
+    if (hudCache.recruitCost !== costTxt) {
+      hudCache.recruitCost = costTxt;
+      if (el.btnRecruitCost) el.btnRecruitCost.textContent = costTxt;
+    }
+    if (hudCache.recruitDis !== !can) { hudCache.recruitDis = !can; el.btnRecruit.classList.toggle('dis', !can); }
+    const buffOn = state.buff.player > 0;
+    if (hudCache.recruitBuff !== buffOn) { hudCache.recruitBuff = buffOn; el.btnRecruit.classList.toggle('buff', buffOn); }
   }
 
   function hearts(n) {
@@ -562,8 +615,11 @@
 
   function syncItems() {
     if (!state) return;
+    // V6 性能：仅在数量变化时写 DOM
     const n = (state.player.items && state.player.items.shovel) || 0;
-    el.itemShovel.querySelector('b').textContent = '×' + n;
+    if (itemSig === n) return;
+    itemSig = n;
+    if (el.itemShovelN) el.itemShovelN.textContent = '×' + n;
     el.itemShovel.classList.toggle('dis', n <= 0);
   }
 
@@ -1124,8 +1180,15 @@
   function flashUnitAt(row, col, cls, ms) {
     const e = unitElAt(row, col);
     if (!e) return;
-    e.classList.remove(cls); void e.offsetWidth; e.classList.add(cls);
-    clearTimeout(e['_' + cls]);
+    // V6 性能：原实现「移除类 → void offsetWidth 强制同步布局 → 加回类」用于重启动画，
+    //     但高频连击（多塔同帧命中）会每击触发一次全盘强制布局 → 掉帧尖刺。
+    //     改为：已在闪烁则只续期（视觉无差），省掉强制布局；冷启动依旧自然播放。
+    if (e.classList.contains(cls)) {
+      clearTimeout(e['_' + cls]);
+      e['_' + cls] = setTimeout(function () { e.classList.remove(cls); }, ms);
+      return;
+    }
+    e.classList.add(cls);
     e['_' + cls] = setTimeout(function () { e.classList.remove(cls); }, ms);
   }
   function animUnit(uid) {
