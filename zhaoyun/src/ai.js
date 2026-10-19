@@ -58,9 +58,11 @@
     return false;
   }
 
-  /** V5 武将字对合成：手里凑齐一对 → 合成武将卡（2 格宽） */
+  /** V5 武将字对合成：手里凑齐一对 → 合成武将卡（2 格宽）
+   *  V6：先做「同名武将卡升星」（2 合 1，净腾 2 格手牌），再做字对合成 */
   function trySynth(state, side) {
     const s = S(state, side);
+    if (ZY.heroStarReady(state, side) && ZY.Game.synthHeroStar(state, side)) return true;
     if (!ZY.heroSynthReady(state, side)) return false;
     // 手牌放不下 2 格武将卡时，先腾位（交给 stage 逻辑自然流转）
     if (ZY.handUsed(s) > C.HAND_MAX - 2) return false;

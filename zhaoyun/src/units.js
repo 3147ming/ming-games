@@ -337,6 +337,21 @@ window.ZY = window.ZY || {};
     return null;
   }
 
+  /** V6 合成深化：同名武将卡凑齐 2 张（均未满星）→ 返回该 heroId，可升星，否则 null */
+  function heroStarReady(state, side) {
+    const s = side === 'player' ? state.player : state.enemy;
+    const hand = s.hand || [];
+    const seen = {};
+    for (let i = 0; i < hand.length; i++) {
+      const c = hand[i];
+      if (c.kind !== 'hero' || !c.heroId) continue;
+      if ((c.level || 1) >= MAX_LEVEL) continue;          // 满星不再升
+      seen[c.heroId] = (seen[c.heroId] || 0) + 1;
+      if (seen[c.heroId] >= 2) return c.heroId;
+    }
+    return null;
+  }
+
   ZY.C = {
     GROW: GROW, MAX_LEVEL: MAX_LEVEL,
     RECRUIT_BASE_COST: RECRUIT_BASE_COST, RECRUIT_STEP: RECRUIT_STEP,
@@ -376,4 +391,5 @@ window.ZY = window.ZY || {};
   ZY.cardSpan = cardSpan;
   ZY.handUsed = handUsed;
   ZY.heroSynthReady = heroSynthReady;
+  ZY.heroStarReady = heroStarReady;
 })(window.ZY);

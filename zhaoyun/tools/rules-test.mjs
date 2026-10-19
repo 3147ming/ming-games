@@ -201,6 +201,45 @@ section('武将字对合成（手牌凑对 → 2 格武将卡 + 「合成武将�
   ok('诸葛亮「八阵图」命中群伤并眩晕', burned && stunnedZ, 'hp=' + Math.round(foe.hp) + '/' + foeHp0 + ' stun=' + foe.stun.toFixed(2));
 }
 
+/* ------------------------------------------------ 4b. 合成深化：同名武将卡升星 */
+section('合成深化 · 同名武将卡 ×2 → 升星（Lv+1，封顶 5，仍占 2 格）');
+{
+  const s = G.baseState('endless', {});
+  s.player.hand = [
+    { uid: 1, kind: 'hero', heroId: 'zhaoyun', char: '赵云', level: 1, span: 2 },
+    { uid: 2, kind: 'hero', heroId: 'zhaoyun', char: '赵云', level: 1, span: 2 },
+    { uid: 3, kind: 'hero', heroId: 'guanyu', char: '关羽', level: 1, span: 2 },
+  ];
+  ok('同名武将卡凑齐 2 张 → 可升星', ZY.heroStarReady(s, 'player') === 'zhaoyun');
+  const card = G.synthHeroStar(s, 'player');
+  ok('升星产出 1 张 2★ 武将卡', !!card && card.heroId === 'zhaoyun' && card.level === 2 && card.span === 2, JSON.stringify(card));
+  ok('两张同名将卡被消耗（净腾 2 格）', s.player.hand.length === 2 && s.player.hand.filter((c) => c.heroId === 'zhaoyun').length === 1);
+  ok('升星后不能再升（只剩 1 张同名）', ZY.heroStarReady(s, 'player') === null && G.synthHeroStar(s, 'player') === null);
+  // 星级封顶：两张满星将卡不可升
+  const s2 = G.baseState('endless', {});
+  s2.player.hand = [
+    { uid: 1, kind: 'hero', heroId: 'zhangfei', char: '张飞', level: 5, span: 2 },
+    { uid: 2, kind: 'hero', heroId: 'zhangfei', char: '张飞', level: 5, span: 2 },
+  ];
+  ok('满星（5★）将卡不再升星', ZY.heroStarReady(s2, 'player') === null && G.synthHeroStar(s2, 'player') === null);
+  // 部署 2★ 将卡 → 单位 heroLevel = 2（武将卡横跨 2 格，需同时开放 1,1 与 1,2）
+  const s3 = G.baseState('endless', {});
+  openSlots(s3, 'player', ['1,1', '1,2']);
+  s3.player.hand = [{ uid: 9, kind: 'hero', heroId: 'zhaoyun', char: '赵云', level: 2, span: 2 }];
+  const rd = G.deploy(s3, 'player', 9, 1, 1);
+  const u = s3.units.find((x) => x.cls === 'hero' && x.heroId === 'zhaoyun');
+  ok('2★ 武将卡上盘 → 单位 heroLevel = 2 且横跨 2 格', rd.ok && !!u && u.heroLevel === 2 && u.span === 2, u ? 'lv=' + u.heroLevel + ' span=' + u.span : '未上盘');
+  // AI 优先升星：thinkSide 一回合内应把同名将卡合掉
+  const s4 = G.baseState('versus', { difficulty: 1 });
+  s4.enemy.hand = [
+    { uid: 1, kind: 'hero', heroId: 'machao', char: '马超', level: 1, span: 2 },
+    { uid: 2, kind: 'hero', heroId: 'machao', char: '马超', level: 1, span: 2 },
+  ];
+  s4.enemy.bun = 0;
+  ZY.AI.thinkSide(s4, 'enemy');
+  ok('AI 会优先把同名将卡升星', s4.enemy.hand.some((c) => c.heroId === 'machao' && c.level === 2));
+}
+
 /* ------------------------------------------------ 5. 建塔 + 同字合成（刀²） */
 section('拖卡建塔 + 同字合成 +1 级（刀+刀 = 刀²）');
 {

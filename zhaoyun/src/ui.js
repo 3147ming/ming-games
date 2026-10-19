@@ -492,7 +492,8 @@
       return { cls: 'item it-' + card.item, html: '<b>' + ZY.ITEMS[card.item].glyph + '</b><span>' + ZY.ITEMS[card.item].name + '</span>' };
     }
     if (card.kind === 'hero') {
-      return { cls: 'hero', html: '<b>' + card.char + '</b><span>武将 · 2格</span>' };
+      const star = (card.level || 1) > 1 ? (' · ' + card.level + '★') : ' · 2格';
+      return { cls: 'hero' + ((card.level || 1) > 1 ? ' star' + Math.min(5, card.level) : ''), html: '<b>' + card.char + '</b><span>武将' + star + '</span>' };
     }
     if (card.kind === 'gold') {
       return { cls: 'gold', html: '<b>' + card.char + '</b><span>将</span>' };

@@ -652,7 +652,7 @@
 
   function cardLabel(card) {
     if (card.kind === 'item') return ZY.ITEMS[card.item].name;
-    if (card.kind === 'hero') return '武将卡「' + card.char + '」（占 2 格）';
+    if (card.kind === 'hero') return '武将卡「' + card.char + '」' + ((card.level || 1) > 1 ? ' ' + card.level + '★' : '') + '（占 2 格）';
     if (card.kind === 'gold') return '金字「' + card.char + '」';
     return '「' + card.char + '」' + U[card.type].name;
   }
@@ -672,6 +672,32 @@
       ZY.Audio.play('hero');
       state.banner = { text: '合成武将 · ' + h.name, life: 1.8 };
       state.fx.push({ type: 'toast', text: '「' + h.name + '」合成！拖到塔位落下（横跨 2 格）' });
+    }
+    return card;
+  }
+
+  /** V6 合成深化：同名武将卡 ×2 → 升 1 星（level+1，封顶 MAX_LEVEL），仍占 2 格。
+   *  字对 → 武将（Lv1）之上再叠一层「武将 → 升星」，把手牌里的重复将卡变成战力。 */
+  function synthHeroStar(state, side) {
+    const s = sideState(state, side);
+    const heroId = ZY.heroStarReady(state, side);
+    if (!heroId) return null;
+    const idxs = [];
+    for (let i = 0; i < s.hand.length && idxs.length < 2; i++) {
+      const c = s.hand[i];
+      if (c.kind === 'hero' && c.heroId === heroId && (c.level || 1) < C.MAX_LEVEL) idxs.push(i);
+    }
+    if (idxs.length < 2) return null;
+    const lv = Math.min(C.MAX_LEVEL, Math.max(s.hand[idxs[0]].level || 1, s.hand[idxs[1]].level || 1) + 1);
+    const hi = Math.max(idxs[0], idxs[1]), lo = Math.min(idxs[0], idxs[1]);
+    s.hand.splice(hi, 1); s.hand.splice(lo, 1);          // 从后往前删，避免索引错位
+    const h = ZY.HERO_BY_ID[heroId];
+    const card = { uid: state.nextCardId++, kind: 'hero', heroId: heroId, char: h.name, level: lv, span: 2 };
+    s.hand.push(card);
+    if (side === 'player') {
+      ZY.Audio.play('hero');
+      state.banner = { text: '武将升星 · ' + h.name + ' ' + lv + '★', life: 1.8 };
+      state.fx.push({ type: 'toast', text: '「' + h.name + '」升星至 ' + lv + ' 星！' });
     }
     return card;
   }
@@ -943,7 +969,7 @@
     TICK: TICK, SPAWN_GAP: SPAWN_GAP,
     baseState: baseState, inherit: inherit, seedArmy: seedArmy,
     tick: tick, recruit: recruit, stageCard: stageCard, deploy: deploy,
-    synthHero: synthHero, useShovel: useShovel, useBrush: useBrush,
+    synthHero: synthHero, synthHeroStar: synthHeroStar, useShovel: useShovel, useBrush: useBrush,
     useWarcry: useWarcry, useFireball: useFireball,
     equipWeapon: equipWeapon, unequipWeapon: unequipWeapon,
     endGame: endGame, sideState: sideState, cardLabel: cardLabel,
