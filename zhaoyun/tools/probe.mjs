@@ -604,6 +604,104 @@ ok('竞技模式显示中线', vs.midShown === 'block', vs.midShown);
 ok('HUD 显示波次进度（/15）', vs.wave.indexOf('/15') >= 0, vs.wave);
 ok('竞技模式不显示波内剩余角标', vs.waveLeftShown === false);
 
+console.log('\n== V7 美术升级：位图立绘 / 动作动画 / 技能播报 / 纯色棋盘 ==');
+await send('Page.navigate', { url: URL });
+await sleep(1400);
+await evalJs(`document.querySelector('.mode-btn[data-mode="endless"]').click()`);
+await sleep(300);
+const art = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  s.paused = true;
+  const dao  = ZY.Game.makeUnit(s, 'player', { cls:'soldier', type:'dao', level:1, row:1, col:2, target:null });
+  ZY.Game.addUnit(s, dao);
+  const hero = ZY.Game.makeUnit(s, 'player', { cls:'hero', heroId:'zhaoyun', heroLevel:1, row:1, col:5, span:2, target:null });
+  ZY.Game.addUnit(s, hero);
+  const zei  = ZY.Game.makeUnit(s, 'enemy', { cls:'soldier', type:'zei', level:1, row:5, col:3, target:'player' });
+  ZY.Game.addUnit(s, zei);
+  const boss = ZY.Game.makeUnit(s, 'enemy', { cls:'soldier', type:'zei', boss:true, level:1, row:8, col:4, target:'player' });
+  ZY.Game.addUnit(s, boss);
+  await new Promise(r => setTimeout(r, 460));
+  const imgs = [...document.querySelectorAll('.unit .fig-img')];
+  const srcOf = el => el && el.querySelector('.fig-img') ? el.querySelector('.fig-img').getAttribute('src') : null;
+  const dEl = document.querySelector('.unit.p[data-uid="' + dao.id + '"]');
+  const hEl = document.querySelector('.unit.p[data-uid="' + hero.id + '"]');
+  const zEl = document.querySelector('.unit.e[data-uid="' + zei.id + '"]');
+  const bEl = document.querySelector('.unit.e[data-uid="' + boss.id + '"]');
+  let gradientCells = 0;
+  document.querySelectorAll('.cell').forEach(c => { if (getComputedStyle(c).backgroundImage.indexOf('repeating-linear-gradient') >= 0) gradientCells++; });
+  const pathBg = getComputedStyle(document.querySelector('.cell.path')).backgroundImage;
+  return {
+    imgCount: imgs.length,
+    allLoaded: imgs.length > 0 && imgs.every(i => i.naturalWidth > 0),
+    allAssetSrc: imgs.length > 0 && imgs.every(i => (i.getAttribute('src') || '').indexOf('assets/') === 0),
+    daoKey: srcOf(dEl), heroKey: srcOf(hEl), zeiKey: srcOf(zEl), bossKey: srcOf(bEl),
+    idleAnim: hEl ? getComputedStyle(hEl.querySelector('.fig-img')).animationName : 'none',
+    gradientCells: gradientCells, pathBg: pathBg,
+    hasSkillBanner: !!document.getElementById('skill-banner'),
+    hasSkillFx: !!document.querySelector('.skill-fx'),
+    bossCls: bEl ? bEl.className : '',
+    heroLeft: hEl ? Math.round(hEl.getBoundingClientRect().left - document.getElementById('board').getBoundingClientRect().left) : -1,
+    heroRight: hEl ? Math.round(hEl.getBoundingClientRect().right - document.getElementById('board').getBoundingClientRect().left) : -1,
+    boardW: Math.round(document.getElementById('board').getBoundingClientRect().width),
+    ids: { dao: dao.id, hero: hero.id, zei: zei.id, boss: boss.id }
+  };
+})()`);
+ok('V7 场上单位改为位图立绘（.fig-img）', art.imgCount >= 4, 'img=' + art.imgCount);
+ok('V7 立绘全为本地 assets/ 且解码成功（naturalWidth>0）', art.allAssetSrc && art.allLoaded, JSON.stringify({ src: art.allAssetSrc, loaded: art.allLoaded }));
+ok('V7 立绘映射正确（刀兵/赵云/黄巾/张梁）',
+  /daobing/.test(art.daoKey) && /zhaoyun/.test(art.heroKey) && /hj-melee/.test(art.zeiKey) && /zhangliang/.test(art.bossKey),
+  [art.daoKey, art.heroKey, art.zeiKey, art.bossKey].join(' | '));
+ok('V7 待机跃动动画生效（figIdle）', /figIdle/.test(art.idleAnim), art.idleAnim);
+ok('V7 棋盘格子纯色（无 repeating-linear-gradient）+ 主路纯色', art.gradientCells === 0 && art.pathBg === 'none', 'gradient=' + art.gradientCells + ' pathBg=' + art.pathBg);
+ok('V7 新增 #skill-banner 与粒子层容器', art.hasSkillBanner && art.hasSkillFx);
+ok('V7 Boss 单位带 .boss 标记（金色泛光/放大）', /(^| )boss( |$)/.test(art.bossCls), art.bossCls);
+ok('V7 武将（span2）横向落在棋盘内（不再右移出界）',
+  art.heroLeft >= 0 && art.heroRight <= art.boardW + 1 && (art.heroRight - art.heroLeft) > art.boardW / 8 * 1.6,
+  'left=' + art.heroLeft + ' right=' + art.heroRight + ' boardW=' + art.boardW);
+
+// 攻击动作帧：注入 anim 事件 → .a-atk
+const atk = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  s.fx.push({ type: 'anim', uid: ${art.ids.dao} });
+  await new Promise(r => setTimeout(r, 90));
+  const el = document.querySelector('.unit.p[data-uid="${art.ids.dao}"]');
+  return { hasAtk: !!(el && el.classList.contains('a-atk')), cls: el ? el.className : '' };
+})()`);
+ok('V7 攻击触发 .a-atk 动作类', atk.hasAtk === true, atk.cls);
+
+// 技能播报 + 粒子（赵云 · 横扫剑气）——走真实自动释放链路（验证 game.js → ZY.UI.onSkillCast）
+const skill1 = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  const hero = s.units.find(u => u.id === ${art.ids.hero});
+  const foe = ZY.Game.makeUnit(s, 'enemy', { cls:'soldier', type:'zei', level:1, row:2, col:5, target:'player' });
+  foe.move = 0; foe.hp = foe.maxHp = 9000;
+  ZY.Game.addUnit(s, foe);
+  await new Promise(r => setTimeout(r, 80));
+  hero.skillT = 0;
+  s.paused = false;
+  await new Promise(r => setTimeout(r, 340));
+  s.paused = true;
+  const b = document.getElementById('skill-banner');
+  return { text: b ? b.textContent : '', shown: b ? b.classList.contains('show') : false,
+           parts: document.querySelectorAll('.skill-fx .fx-particle').length, fired: hero.skillT > 0 };
+})()`);
+ok('V7 技能真正释放 → #skill-banner 播报「横扫剑气！」', skill1.text === '横扫剑气！' && skill1.shown === true, skill1.text + ' fired=' + skill1.fired);
+ok('V7 技能粒子生成（6–12 个，≤ 上限 20）', skill1.parts >= 6 && skill1.parts <= 20, 'particles=' + skill1.parts);
+
+// Boss 技能播报（先等 1.5s 防刷屏解除）
+const bossSkill = await evalJs(`(async () => {
+  await new Promise(r => setTimeout(r, 1600));
+  const s = ZY.UI.getState();
+  const boss = s.units.find(u => u.id === ${art.ids.boss});
+  boss.move = 0; boss.skillT = 0;
+  s.paused = false;
+  await new Promise(r => setTimeout(r, 220));
+  s.paused = true;
+  const b = document.getElementById('skill-banner');
+  return { text: b ? b.textContent : '', parts: document.querySelectorAll('.skill-fx .fx-particle').length };
+})()`);
+ok('V7 Boss 技能释放 → 播报「黄天当立！」+ 法阵粒子', bossSkill.text === '黄天当立！' && bossSkill.parts >= 6, bossSkill.text + ' parts=' + bossSkill.parts);
+
 console.log('\n== 外部请求检查 ==');
 const external = requests.filter((u) => !u.startsWith('file://') && !u.startsWith('data:') && !u.startsWith('blob:'));
 ok('无任何外部网络请求', external.length === 0, external.join(' | '));

@@ -280,7 +280,8 @@
 
     if (!fired) return false;
     u.skillT = sk.cd;
-    state.banner = { text: h.name + ' · ' + sk.name, life: 1.5 };
+    /* V7：技能真正释放 → 表现钩子（技能名播报 + 专属粒子）；game.js 不直接写 DOM */
+    if (ZY.UI && ZY.UI.onSkillCast) ZY.UI.onSkillCast(u);
     state.fx.push({ type: 'ring', row: u.row, col: u.col });
     state.fx.push({ type: 'shake' });
     ZY.Audio.play('skill');
@@ -298,7 +299,8 @@
     state.fx.push({ type: 'ring', row: u.row, col: u.col });
     state.fx.push({ type: 'shake' });
     state.fx.push({ type: 'redflash' });
-    if (hitAny) state.banner = { text: '张梁 · 震击', life: 1.0 };
+    /* V7：Boss 技能释放 → 播报「黄天当立！」+ 黄色法阵粒子 */
+    if (ZY.UI && ZY.UI.onSkillCast) ZY.UI.onSkillCast(u);
     ZY.Audio.play('skill');
   }
 

@@ -62,6 +62,14 @@
     el.saveInfo = $('save-info');
     el.btnRecruitCost = el.btnRecruit.querySelector('span');   // V6：缓存引用，避免每帧 querySelector
     el.itemShovelN = el.itemShovel.querySelector('b');
+    // V7：技能播报横幅 + 粒子层（建在棋盘内，随棋盘坐标定位）
+    el.skillBanner = document.createElement('div');
+    el.skillBanner.id = 'skill-banner';
+    el.skillBanner.className = 'skill-banner';
+    el.board.appendChild(el.skillBanner);
+    el.skillFx = document.createElement('div');
+    el.skillFx.className = 'skill-fx';
+    el.board.appendChild(el.skillFx);
 
     buildCells();
     bindStart();
@@ -270,7 +278,8 @@
     // V6 性能：仅当值变化才写 style（每帧 × 每单位调用，相同字符串重复写会触发无效样式失效）
     const w = (100 / B.COLS * (span || 1)) + '%';
     const h = (100 / B.ROWS) + '%';
-    const tf = 'translate(' + (c * 100) + '%,' + (r * 100) + '%)';
+    // V7：translate 百分比相对元素自身宽度 —— 跨格单位需按 span 折算，否则武将塔（span2）会右移出棋盘
+    const tf = 'translate(' + (c * 100 / (span || 1)) + '%,' + (r * 100) + '%)';
     if (node._pw !== w) { node._pw = w; node.style.width = w; }
     if (node._ph !== h) { node._ph = h; node.style.height = h; }
     if (node._ptf !== tf) { node._ptf = tf; node.style.transform = tf; }
@@ -284,6 +293,16 @@
       : (u.type || 'dao');
     if (w === 'zei') w = 'dao';           // 贼兵套用刀兵形象 + 红色调
     return w;
+  }
+  /* V7：立绘资源键解析（assets/<key>.png）——武将按 heroId；敌方按 side 取黄巾立绘 */
+  function assetKeyOf(u) {
+    if (u.heroId) return u.heroId;                         // zhaoyun / guanyu / zhangfei ...
+    if (u.boss) return 'zhangliang';                       // 张梁
+    if (u.side === 'enemy') {
+      return u.type === 'gong' ? 'hj-archer' : 'hj-melee'; // 黄巾远程 / 近战
+    }
+    const map = { dao: 'daobing', qiang: 'qiangbing', gong: 'gongbing', qi: 'qibing', nong: 'nongmin' };
+    return map[u.type] || 'daobing';
   }
   function figPerson() {
     return '<g class="fig-body">' +
@@ -395,7 +414,9 @@
     const hb = '<i class="hb"><u></u></i>';
     const sk = (u.cls === 'hero') ? '<em class="sk"></em>' : '';
     const wp = u.weapon ? '<s class="wp">' + ZY.WEAPONS[u.weapon].glyph + '</s>' : '';   // 装备武器小徽标
-    return nm + figSvg(u) + lv + hb + sk + wp;
+    // V7：位图立绘（assets/ 相对路径，不转 base64）；名字/角标/血条/技能/武器徽标一并保留
+    const fig = '<span class="fig-wrap"><img class="fig-img" src="assets/' + assetKeyOf(u) + '.png" draggable="false" alt=""></span>';
+    return nm + fig + lv + hb + sk + wp;
   }
 
   function syncUnits(force) {
@@ -411,6 +432,7 @@
         e = document.createElement('div');
         e.className = 'unit ' + (u.side === 'player' ? 'p' : 'e') + ' ' + u.cls +
           (u.elite ? ' elite' : '') +
+          (u.boss ? ' boss' : '') +
           (u.cls === 'soldier' ? ' t-' + u.type : '') +
           (u.cls === 'hero' && wtype ? ' t-' + wtype : '') +
           (u.span > 1 ? ' span2' : '');
@@ -1234,14 +1256,14 @@
   }
   function animUnit(uid) {
     const e = unitEls[uid];
-    if (!e || e.classList.contains('a-attack')) return; // 同一单位攻击动画未播完不重复触发
+    if (!e || e.classList.contains('a-atk')) return; // 同一单位攻击动画未播完不重复触发
     const w = e.dataset.weapon || 'dao';
-    e.classList.add('a-attack', 'atk-' + w);
+    e.classList.add('a-atk', 'atk-' + w);            // V7：.a-atk 驱动立绘前冲/倾斜
     const u = state.units.find(function (x) { return x.id === uid; });
     const interval = (u && u.aspd > 0) ? 1 / u.aspd : 0.9;
     const dur = Math.max(0.2, interval * 0.75) * 1000;
     clearTimeout(e._atkT);
-    e._atkT = setTimeout(function () { e.classList.remove('a-attack', 'atk-' + w); }, dur);
+    e._atkT = setTimeout(function () { e.classList.remove('a-atk', 'atk-' + w); }, dur);
   }
 
   function drainFx() {
@@ -1284,6 +1306,84 @@
     el.banner.textContent = text;
     el.banner.classList.add('show');
     bannerLife = life || 1.5;
+  }
+
+  /* ======================================================== V7 技能播报 + 粒子 */
+  let skillBannerLock = 0;
+  function showSkillBanner(text) {
+    const now = Date.now();
+    if (now < skillBannerLock) return;          // 1.5s 内不重复播报（同屏仅一条，丢弃而非排队）
+    skillBannerLock = now + 1500;
+    if (!el.skillBanner) return;
+    el.skillBanner.textContent = text;
+    el.skillBanner.classList.remove('show');
+    void el.skillBanner.offsetWidth;            // 强制重排以重启动画
+    el.skillBanner.classList.add('show');
+  }
+
+  const PARTICLE_CAP = 60;
+  let particleCount = 0;
+  const PARTICLE_CFG = {
+    sweep:  { n: 8,  dist: 48, lift: 6,  size: 5,  dur: 520, tall: true },   // 横扫剑气：青白剑光
+    roar:   { n: 7,  dist: 0,  lift: 0,  size: 44, dur: 600, ring: true },   // 怒吼：橙色震波圆环
+    snipe:  { n: 6,  dist: 62, lift: 0,  size: 4,  dur: 480, tall: true },   // 狙击：金色弹道
+    heal:   { n: 8,  dist: 34, lift: 12, size: 6,  dur: 640 },                // 仁德：绿色上飘
+    cleave: { n: 8,  dist: 46, lift: 4,  size: 5,  dur: 540, tall: true },   // 青龙斩：青色弧光
+    burn:   { n: 10, dist: 40, lift: 12, size: 5,  dur: 620 },                // 八阵图：红色火焰
+    boss:   { n: 12, dist: 0,  lift: 0,  size: 48, dur: 680, ring: true },   // Boss：黄色法阵
+  };
+  function spawnSkillParticles(u, type) {
+    const e = unitEls[u.id];
+    const layer = el.skillFx;
+    if (!e || !layer || particleCount >= PARTICLE_CAP) return;
+    const cfg = PARTICLE_CFG[type] || PARTICLE_CFG.sweep;
+    const key = PARTICLE_CFG[type] ? type : 'sweep';
+    // 注意：单位用 CSS transform 定位，offsetLeft 不含平移 → 必须用 getBoundingClientRect 取真实中心
+    const rr = e.getBoundingClientRect();
+    const lr = layer.getBoundingClientRect();
+    const cx = rr.left - lr.left + rr.width / 2;
+    const cy = rr.top - lr.top + rr.height / 2;
+    const n = Math.min(cfg.n, PARTICLE_CAP - particleCount);
+    for (let i = 0; i < n; i++) {
+      const p = document.createElement('div');
+      p.className = 'fx-particle p-' + key;
+      let size = cfg.size, dx = 0, dy = 0;
+      if (!cfg.ring) {
+        const ang = Math.random() * Math.PI * 2;
+        const d = cfg.dist * (0.5 + Math.random() * 0.5);
+        dx = Math.cos(ang) * d;
+        dy = Math.sin(ang) * d - cfg.lift;
+        size = cfg.size * (0.7 + Math.random() * 0.6);
+      }
+      p.style.left = cx + 'px';
+      p.style.top = cy + 'px';
+      p.style.width = size + 'px';
+      p.style.height = (cfg.tall ? size * 2.4 : size) + 'px';
+      if (!cfg.ring) {
+        p.style.setProperty('--dx', dx.toFixed(1) + 'px');
+        p.style.setProperty('--dy', dy.toFixed(1) + 'px');
+      }
+      const dur = cfg.dur * (0.8 + Math.random() * 0.4);
+      p.style.animationDuration = dur + 'ms';
+      layer.appendChild(p);
+      particleCount++;
+      (function (node, ms) {
+        setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); particleCount--; }, ms + 80);
+      })(p, dur);
+    }
+  }
+  /* game.js 在技能真正释放时调用；ui.js 不与技能数值/CD 耦合 */
+  function onSkillCast(u) {
+    let name, type;
+    if (u.boss) { name = '黄天当立！'; type = 'boss'; }
+    else {
+      const h = ZY.HERO_BY_ID[u.heroId];
+      const sk = h && h.skill;
+      name = (sk ? sk.name : '技能') + '！';
+      type = sk ? sk.type : 'sweep';
+    }
+    showSkillBanner(name);
+    spawnSkillParticles(u, type);
   }
 
   /* ======================================================== 主循环 */
@@ -1475,6 +1575,7 @@
   ZY.UI = {
     init: init,
     toast: toast,
+    onSkillCast: onSkillCast,       // V7：技能释放表现钩子（game.js 调用）
     getState: function () { return state; },
   };
 })(window.ZY);

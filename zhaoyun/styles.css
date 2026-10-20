@@ -43,14 +43,7 @@ body {
     radial-gradient(120% 80% at 50% 0%, #f4efe6 0%, var(--paper) 55%, var(--paper-2) 100%);
   overflow: hidden;
 }
-.stage::before { /* 纸纹 */
-  content: "";
-  position: absolute; inset: 0; pointer-events: none;
-  opacity: .5;
-  background-image:
-    repeating-linear-gradient(0deg, rgba(0,0,0,.018) 0 1px, transparent 1px 3px),
-    repeating-linear-gradient(90deg, rgba(0,0,0,.014) 0 1px, transparent 1px 4px);
-}
+/* V7：移除页面背景细网格（原纸纹 repeating-linear-gradient），改纯净底色 */
 .ink-mount {
   position: absolute; left: 0; right: 0; bottom: 0;
   width: 100%; height: 42%; pointer-events: none; opacity: .16;
@@ -196,25 +189,10 @@ body {
 
 /* 地形：荆棘障碍（深绿刺丛）/ 荒地（可铲成塔位）/ 塔位 / 蛇形主路 / 入口 / 突破口 */
 .cell.obstacle {
-  background:
-    repeating-linear-gradient(45deg, #22331f 0 5px, #2c4028 5px 10px),
-    repeating-linear-gradient(-45deg, rgba(20,32,18,.55) 0 5px, transparent 5px 10px),
-    linear-gradient(180deg, #33472c, #243521);
-  box-shadow: inset 0 0 0 1px rgba(10,18,10,.5), inset 0 0 8px rgba(0,0,0,.35);
+  background: #2c4028;   /* V7：荆棘纯色（去斜纹/交叉线），仅保留内描边 */
+  box-shadow: inset 0 0 0 1px rgba(10,18,10,.55), inset 0 0 8px rgba(0,0,0,.35);
 }
-.cell.obstacle::after {      /* 棘刺点缀 */
-  content: ""; position: absolute; left: 50%; top: 55%;
-  width: 34%; height: 34%; transform: translate(-50%,-50%);
-  background:
-    linear-gradient(45deg, transparent 44%, #4e6b40 44% 56%, transparent 56%),
-    linear-gradient(-45deg, transparent 44%, #4e6b40 44% 56%, transparent 56%);
-  opacity: .8;
-}
-.cell.wasteland {
-  background:
-    repeating-linear-gradient(45deg, rgba(90,75,50,.10) 0 4px, transparent 4px 9px),
-    rgba(120,105,80,.05);
-}
+.cell.wasteland { background: #4e7d3a; }   /* V7：草地纯色打底（去斜纹） */
 .cell.deploy {
   background: rgba(120,140,90,.07);
   box-shadow: inset 0 0 0 1px rgba(118,138,82,.35);
@@ -225,10 +203,7 @@ body {
 }
 /* 蛇形主路：石砖地坪，与塔位/荒地/障碍一眼可辨 */
 .cell.path {
-  background:
-    repeating-linear-gradient(0deg, rgba(90,75,50,.16) 0 1px, transparent 1px 6px),
-    repeating-linear-gradient(90deg, rgba(90,75,50,.16) 0 1px, transparent 1px 6px),
-    linear-gradient(180deg, #bab09a, #a4977f);
+  background: #8a7b63;   /* V7：棕色主路纯色（去网格/斜纹） */
   box-shadow: inset 0 0 0 1px rgba(60,50,35,.20);
 }
 .cell.path::after {      /* 路心石点 */
@@ -246,9 +221,7 @@ body {
 }
 /* 突破口：该波从入口集中出怪 */
 .cell.break {
-  background:
-    repeating-linear-gradient(0deg, rgba(179,53,47,.10) 0 1px, transparent 1px 6px),
-    rgba(179,53,47,.16);
+  background: rgba(179,53,47,.18);   /* V7：纯色红（去网格） */
   box-shadow: inset 0 0 0 2px rgba(179,53,47,.55);
   animation: breakPulse 1s ease-in-out infinite;
 }
@@ -583,6 +556,55 @@ body {
 }
 .banner.show { opacity: 1; transform: scale(1); }
 
+/* ---------------------------------------------------------------- V7 技能播报 + 粒子 */
+.skill-banner {
+  position: absolute; left: 50%; top: 5%;
+  transform: translateX(-50%) scale(.6);
+  z-index: 60; pointer-events: none; opacity: 0;
+  padding: 6px 18px; border-radius: 999px; white-space: nowrap;
+  font-size: 18px; font-weight: 800; letter-spacing: .06em;
+  color: #fff;
+  background: linear-gradient(180deg, #e23b2f 0%, #b3261c 100%);
+  border: 2px solid #ffd86b;
+  box-shadow: 0 4px 16px rgba(179,38,28,.5), inset 0 0 0 1px rgba(255,255,255,.25);
+  text-shadow: 0 1px 2px rgba(0,0,0,.35);
+}
+.skill-banner.show { animation: skillPop 1.6s ease-out forwards; }
+@keyframes skillPop {
+  0%   { opacity: 0; transform: translateX(-50%) scale(.6); }
+  12%  { opacity: 1; transform: translateX(-50%) scale(1.2); }
+  30%  { opacity: 1; transform: translateX(-50%) scale(1); }
+  72%  { opacity: 1; transform: translateX(-50%) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) scale(.95); }
+}
+
+/* 技能粒子层（独立于常规 fx，避免被 trimFx 回收） */
+.skill-fx { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+.fx-particle {
+  position: absolute; pointer-events: none;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  animation-name: particleFly;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+  will-change: transform, opacity;
+}
+@keyframes particleFly {
+  0%   { transform: translate(-50%,-50%) scale(1); opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--dx,0px)), calc(-50% + var(--dy,0px))) scale(.3); opacity: 0; }
+}
+.fx-particle.p-sweep { background: linear-gradient(180deg,#eafffb,#7ef0e6); box-shadow: 0 0 8px #7ef0e6; border-radius: 2px; }
+.fx-particle.p-cleave{ background: linear-gradient(180deg,#dffbff,#7ec8f0); box-shadow: 0 0 8px #7ec8f0; border-radius: 2px; }
+.fx-particle.p-snipe { background: linear-gradient(180deg,#fff2c0,#ffcf4d); box-shadow: 0 0 8px #ffcf4d; border-radius: 2px; }
+.fx-particle.p-heal  { background: radial-gradient(circle,#d6ffce,#5fd36a); box-shadow: 0 0 8px #5fd36a; }
+.fx-particle.p-burn  { background: radial-gradient(circle,#ffd27a,#ff5a3c); box-shadow: 0 0 8px #ff5a3c; }
+.fx-particle.p-roar  { background: transparent; border: 2px solid rgba(255,170,80,.9); box-shadow: 0 0 10px rgba(255,150,40,.6); animation-name: particleRing; }
+.fx-particle.p-boss  { background: transparent; border: 2px solid rgba(255,210,90,.95); box-shadow: 0 0 14px rgba(255,200,60,.7); animation-name: particleRing; }
+@keyframes particleRing {
+  0%   { transform: translate(-50%,-50%) scale(.2); opacity: .95; }
+  100% { transform: translate(-50%,-50%) scale(1.9); opacity: 0; }
+}
+
 .toast {
   position: absolute; left: 8%; right: 8%; bottom: calc(var(--dock-h, 128px) + 8px);
   background: rgba(36,33,28,.92); color: #f3eee3;
@@ -645,9 +667,74 @@ body {
 .unit.elite b { font-size: 12px; font-size: 4cqw; }
 .unit.gold b { font-size: 22px; font-size: 7.2cqw; }
 
-.unit .fig {
-  width: 66%; height: 74%; margin-top: 1%;
-  overflow: visible; display: block;
+/* ---- V7：单位立绘（位图 <img class="fig-img">，assets/ 相对路径） ---- */
+.unit .fig-wrap {
+  flex: 1 1 auto; width: 100%; min-height: 0;
+  display: flex; align-items: flex-end; justify-content: center;
+  pointer-events: none;
+}
+.unit .fig-img {
+  height: 92%; max-width: 100%;
+  object-fit: contain; object-position: bottom center;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,.35));
+  transform-origin: 50% 100%;
+  will-change: transform;
+  -webkit-user-select: none; user-select: none;
+}
+/* 敌方水平镜像（从右侧入口向左走向阿斗）——放在容器上，与子元素动画 transform 隔离 */
+.unit.e .fig-wrap { transform: scaleX(-1); }
+/* 武将 / 精英 / Boss：更强立体投影 + 略大立绘 */
+.unit.hero .fig-img,
+.unit.elite .fig-img,
+.unit.boss .fig-img { filter: drop-shadow(0 3px 4px rgba(0,0,0,.4)); }
+.unit.elite .fig-img { height: 112%; }
+.unit.boss  .fig-img { height: 118%; }
+
+/* V7 待机跃动（所有单位）；武将额外极轻微摆动（±1.5°） */
+.unit.anim:not(.a-atk):not(.a-hit):not(.a-death):not(.a-levelup):not(.a-move) .fig-img {
+  animation: figIdle 1.6s ease-in-out infinite;
+}
+.unit.hero.anim:not(.a-atk):not(.a-hit):not(.a-death):not(.a-levelup):not(.a-move) .fig-img {
+  animation: figIdleHero 1.9s ease-in-out infinite;
+}
+@keyframes figIdle { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes figIdleHero { 0%,100% { transform: translateY(0) rotate(-1.5deg); } 50% { transform: translateY(-3px) rotate(1.5deg); } }
+
+/* V7 行军：移动中轻微起伏（a-move） */
+.unit.a-move .fig-img { animation: figMarch .32s ease-in-out; }
+@keyframes figMarch { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+
+/* V7 攻击：前冲 + 倾斜（.a-atk，覆盖待机） */
+.unit.a-atk .fig-img { animation: figAtk .22s ease-out; }
+@keyframes figAtk {
+  0%   { transform: translateX(0) translateY(0) rotate(0); }
+  32%  { transform: translateX(7px) translateY(-2px) rotate(3deg); }
+  100% { transform: translateX(0) translateY(0) rotate(0); }
+}
+
+/* V7 受击：白闪 + 轻抖 160ms */
+.unit.a-hit .fig-img { animation: figHit .26s ease-out; }
+@keyframes figHit {
+  0%,100% { transform: translateX(0); filter: brightness(1) drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+  20% { transform: translateX(-3px); filter: brightness(1.8) drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+  40% { transform: translateX(3px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+
+/* V7 死亡：淡出 + 缩小 300ms */
+.unit.a-death .fig-img { animation: figDie .3s ease-out forwards; }
+@keyframes figDie {
+  0%   { transform: translateY(0) scale(1); opacity: 1; }
+  100% { transform: translateY(8px) scale(.6); opacity: 0; }
+}
+
+/* V7 合成 / 升阶：金光（仅 filter，不影响定位 transform） */
+.unit.a-levelup .fig-img { animation: figLvl .5s ease-out; }
+@keyframes figLvl {
+  0%   { filter: brightness(1) drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+  30%  { filter: brightness(1.9) drop-shadow(0 0 6px #ffd86b); }
+  100% { filter: brightness(1) drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
 }
 
 /* 阵营配色：我方深色系，敌方红色系，武将浅色 + 紫调光环 */
@@ -740,7 +827,7 @@ body {
 
 /* 降低动效偏好：关闭非必要常驻动画（保留攻击/死亡等功能性动画） */
 @media (prefers-reduced-motion: reduce) {
-  .unit .fig-body, .unit.t-qi .fig-tail, .unit.t-gong .fig-bow, .unit.gold, .adou b { animation: none; }
+  .unit.anim .fig-img, .unit.hero.anim .fig-img, .unit.gold, .adou b { animation: none; }
 }
 
 /* =============================================================================
@@ -814,7 +901,7 @@ body {
 
 /* 武将塔：横跨 2 格（宽度由 JS 内联设为 200%） */
 .unit.span2 { border-radius: 16%; }
-.unit.span2 .fig { width: 56%; }
+.unit.span2 .fig-wrap { width: 190%; }   /* V7：武将立绘横向放大，左右各溢出半格 */
 .unit.span2 .lv { font-size: max(14px, 4.6cqw); }
 
 /* 装备武器小徽标（右下角） */
@@ -939,18 +1026,15 @@ body {
     0 6px 18px rgba(60,45,25,.24);
 }
 .cell.path {
-  background:
-    repeating-linear-gradient(0deg, rgba(90,75,50,.14) 0 1px, transparent 1px 6px),
-    repeating-linear-gradient(90deg, rgba(90,75,50,.14) 0 1px, transparent 1px 6px),
-    linear-gradient(180deg, #c4b99f, #ab9d83);
+  background: #8a7b63;   /* V7：棕色主路纯色（去网格/斜纹） */
   box-shadow: inset 0 0 0 1px rgba(60,50,35,.22), inset 0 1px 0 rgba(255,255,255,.25);
 }
 .cell.deploy {
   background:
-    radial-gradient(120% 120% at 50% 30%, rgba(150,186,110,.30), rgba(120,152,84,.20));
-  box-shadow: inset 0 0 0 1.5px rgba(96,124,64,.5);
+    radial-gradient(120% 120% at 50% 30%, rgba(214,232,170,.62), rgba(150,186,110,.42));
+  box-shadow: inset 0 0 0 1.5px rgba(230,245,200,.7);
 }
-.cell.deploy::before { border: 1.6px dashed rgba(96,124,64,.62); }
+.cell.deploy::before { border: 1.6px dashed rgba(235,250,205,.85); }
 .cell.obstacle::after { width: 40%; height: 40%; opacity: .9; }
 
 /* —— HUD 层次 —— */
