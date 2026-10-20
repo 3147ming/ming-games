@@ -33,6 +33,27 @@
     el.game = $('screen-game');
     el.board = $('board');
     el.cells = $('cells');
+    // V7.3：主路整块绘制的 SVG 层。
+    // 必须压在 .cells 之上：描边有一半落在轮廓外侧，垫在格子下面会被相邻格的
+    // 底色盖掉，只剩内侧半条线；入口/突破口/预警这类"要盖在路面上"的标记
+    // 用 z-index 单独提回去（见 styles.css .cell.enter/.break/.warn 等）。
+    const NS = 'http://www.w3.org/2000/svg';
+    el.road = document.createElementNS(NS, 'svg');
+    el.road.setAttribute('id', 'road');
+    el.road.setAttribute('preserveAspectRatio', 'none');
+    el.road.setAttribute('aria-hidden', 'true');
+    el.roadPath = document.createElementNS(NS, 'path');
+    el.roadPath.setAttribute('class', 'road-fill');
+    el.roadEdge = document.createElementNS(NS, 'path');
+    el.roadEdge.setAttribute('class', 'road-edge');
+    el.road.appendChild(el.roadPath);
+    el.road.appendChild(el.roadEdge);
+    el.roadFill = el.roadPath;
+    el.board.insertBefore(el.road, el.cells.nextSibling);
+    if (typeof ResizeObserver !== 'undefined') {
+      // 首次布局在游戏页显示之后才成立 → 尺寸一出现就补建一次
+      new ResizeObserver(function () { if (roadDirty) buildRoad(); }).observe(el.cells);
+    }
     el.units = $('units');
     el.fx = $('fx');
     el.rangeRing = document.createElement('div');
@@ -208,28 +229,50 @@
       cellStatic.push(row);
     }
     cellStaticKey = mode + ':' + state.levelIdx;
-    markPathEdges();
+    buildRoad();
   }
 
-  /** V7.2：给主路格标"轮廓边"（pe-t/r/b/l）—— 与主路接壤的边不打标记，
-      于是相邻主路格之间没有描边，白底连成一条长带。
-      主路形状对局内不变 → 只在 mode/levelIdx 变化时算一次，零每帧开销。 */
-  function markPathEdges() {
+  /* ======================================================== 敌人主路（V7.3）
+     整条主路交给 SVG 一次画完，不再让 37 个格子各铺各的白底 —— 这样横向、竖向、
+     拐角、S 弯本来就是同一块形状，不可能出现格间接缝或拐角断头。
+       ① 填充层：每个主路格一个"同向"矩形子路径，全部放进同一个 <path>。
+          nonzero 填充规则下共边会被合并成一块实心区域，而天然洞口（被主路
+          整圈围住的非主路格）里一个矩形都没有，自然留空。
+       ② 描边层：只画真正的外沿边（一侧是主路、另一侧不是），每条边一段
+          M..L；不闭合、不过格，所以永远不会画出格子分隔线。linecap 用
+          square，相邻边的端头互相搭接，拐角处自然接成连续轮廓。
+     主路形状对局内不变 → 只在 mode/levelIdx 变化时重建一次，零每帧开销。 */
+  let roadDirty = true;
+  function buildRoad() {
+    roadDirty = true;
+    if (!el.roadFill || !cellStatic || !cellEls.length) return;
+    const W = el.cells.offsetWidth, H = el.cells.offsetHeight;
+    if (!W || !H) return;              // 游戏页还没显示/布局，等 ResizeObserver 再建
     const st = cellStatic;
     const isP = function (r, c) {
       return r >= 0 && r < B.ROWS && c >= 0 && c < B.COLS && st[r][c].path && !st[r][c].obs;
     };
+    // 坐标一律用统一网格公式算，不能读 offset*：格宽是小数（292/8=36.5），
+    // offsetLeft/offsetWidth 会被取整，逐格累加会出现 1px 重叠或缝隙。
+    const cw = W / B.COLS, ch = H / B.ROWS;
+    const n = function (v) { return Math.round(v * 100) / 100; };
+    let dFill = '', dEdge = '';
     for (let r = 0; r < B.ROWS; r++) {
       for (let c = 0; c < B.COLS; c++) {
-        const e = cellEls[r] && cellEls[r][c];
-        if (!e) continue;
-        const p = isP(r, c);
-        toggleCls(e, 'pe-t', p && !isP(r - 1, c));
-        toggleCls(e, 'pe-r', p && !isP(r, c + 1));
-        toggleCls(e, 'pe-b', p && !isP(r + 1, c));
-        toggleCls(e, 'pe-l', p && !isP(r, c - 1));
+        if (!isP(r, c)) continue;
+        const x = c * cw, y = r * ch, x2 = x + cw, y2 = y + ch;
+        dFill += 'M' + n(x) + ' ' + n(y) + 'h' + n(cw) + 'v' + n(ch) + 'h-' + n(cw) + 'z';
+        if (!isP(r - 1, c)) dEdge += 'M' + n(x) + ' ' + n(y) + 'L' + n(x2) + ' ' + n(y);
+        if (!isP(r + 1, c)) dEdge += 'M' + n(x) + ' ' + n(y2) + 'L' + n(x2) + ' ' + n(y2);
+        if (!isP(r, c - 1)) dEdge += 'M' + n(x) + ' ' + n(y) + 'L' + n(x) + ' ' + n(y2);
+        if (!isP(r, c + 1)) dEdge += 'M' + n(x2) + ' ' + n(y) + 'L' + n(x2) + ' ' + n(y2);
       }
     }
+    el.road.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    el.roadFill.setAttribute('d', dFill);
+    el.roadEdge.setAttribute('d', dEdge);
+    el.roadPath = el.roadFill;         // probe / 调试统一读填充路径
+    roadDirty = false;
   }
 
   /** V7.1：某格四邻是否有 side 的塔位（用静态缓存里的 key，零分配） */

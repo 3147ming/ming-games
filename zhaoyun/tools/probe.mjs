@@ -604,6 +604,31 @@ ok('竞技模式显示中线', vs.midShown === 'block', vs.midShown);
 ok('HUD 显示波次进度（/15）', vs.wave.indexOf('/15') >= 0, vs.wave);
 ok('竞技模式不显示波内剩余角标', vs.waveLeftShown === false);
 
+// V7.3：竞技场是另一套路径形状（48 格，含被主路整圈围住的空腔），
+// 确认同一套绘制方式在带洞的地图上依然正确。
+const vsRoad = await evalJs(`(() => {
+  const road = document.getElementById('road');
+  const paths = road ? [...road.querySelectorAll('path')] : [];
+  const p = paths.find(n => (n.getAttribute('class') || '').indexOf('road-fill') >= 0) || paths[0] || null;
+  const vb = road ? (road.getAttribute('viewBox') || '0 0 0 0').split(' ').map(Number) : [0, 0, 0, 0];
+  const cw = vb[2] / 8, chh = vb[3] / 12;
+  const inFill = (x, y) => { try { return !!p && p.isPointInFill(new DOMPoint(x, y)); } catch (e) { return false; } };
+  const cells = [...document.querySelectorAll('.cell')];
+  const isP = n => n.classList.contains('path') && !n.classList.contains('obstacle');
+  let okCenter = 0, nPath = 0, outside = 0;
+  cells.forEach(n => {
+    const x = +n.dataset.c * cw + cw / 2, y = +n.dataset.r * chh + chh / 2;
+    if (isP(n)) { nPath++; if (inFill(x, y)) okCenter++; }
+    else if (inFill(x, y)) outside++;
+  });
+  return { nPath: nPath, okCenter: okCenter, outside: outside, pathEls: paths.length };
+})()`);
+ok('V7.3 竞技模式主路同样整块绘制，覆盖全部主路格',
+  vsRoad.pathEls === 2 && vsRoad.nPath > 0 && vsRoad.okCenter === vsRoad.nPath,
+  '覆盖=' + vsRoad.okCenter + '/' + vsRoad.nPath + ' path=' + vsRoad.pathEls);
+ok('V7.3 竞技模式被主路围住的空腔不被填满（自然留洞，不靠特判）',
+  vsRoad.outside === 0, vsRoad.outside + ' 格');
+
 console.log('\n== V7 美术升级：位图立绘 / 动作动画 / 技能播报 / 纯色棋盘 ==');
 await send('Page.navigate', { url: URL });
 await sleep(1400);
@@ -630,19 +655,41 @@ const art = await evalJs(`(async () => {
   let gradientCells = 0;
   document.querySelectorAll('.cell').forEach(c => { if (getComputedStyle(c).backgroundImage.indexOf('repeating-linear-gradient') >= 0) gradientCells++; });
   const pathBg = getComputedStyle(document.querySelector('.cell.path')).backgroundImage;
-  // V7.2：主路连贯性体检 —— 相邻两块主路之间的那条边必须是"透明边框 + 无内阴影"
+  // V7.2/V7.3：主路连贯性体检
   const at = {};
   document.querySelectorAll('.cell').forEach(n => { at[n.dataset.r + ',' + n.dataset.c] = n; });
   const isP = n => !!n && n.classList.contains('path') && !n.classList.contains('obstacle');
-  let seams = 0, badSeams = 0;
+  let seamsH = 0, seamsV = 0, badSeams = 0;
   document.querySelectorAll('.cell.path').forEach(n => {
     const r = +n.dataset.r, c = +n.dataset.c, cs = getComputedStyle(n);
-    if (isP(at[r + ',' + (c + 1)])) { seams++; if (cs.borderRightColor !== 'rgba(0, 0, 0, 0)' || parseFloat(cs.borderRightWidth) === 0) badSeams++; }
-    if (isP(at[(r + 1) + ',' + c])) { seams++; if (cs.borderBottomColor !== 'rgba(0, 0, 0, 0)' || parseFloat(cs.borderBottomWidth) === 0) badSeams++; }
+    if (isP(at[r + ',' + (c + 1)])) { seamsH++; if (cs.borderRightColor !== 'rgba(0, 0, 0, 0)' || parseFloat(cs.borderRightWidth) === 0) badSeams++; }
+    if (isP(at[(r + 1) + ',' + c])) { seamsV++; if (cs.borderBottomColor !== 'rgba(0, 0, 0, 0)' || parseFloat(cs.borderBottomWidth) === 0) badSeams++; }
   });
-  const peT = document.querySelectorAll('.cell.path.pe-t');
+  const seams = seamsH + seamsV;
   const pathCell = document.querySelector('.cell.path');
-  const peSample = peT.length ? getComputedStyle(peT[0]) : null;
+  // V7.3：整条主路由 #road 里的一条闭合 path 绘制 —— 用 isPointInFill 直接问几何体
+  // "这个点算不算路面"，横/竖/拐角一视同仁，不依赖任何逐格拼贴的判据。
+  const road = document.getElementById('road');
+  const roadPaths = road ? [...road.querySelectorAll('path')] : [];
+  const roadPath = roadPaths.find(n => (n.getAttribute('class') || '').indexOf('road-fill') >= 0) || roadPaths[0] || null;
+  const roadEdgeEl = roadPaths.find(n => (n.getAttribute('class') || '').indexOf('road-edge') >= 0) || null;
+  const roadD = roadPath ? (roadPath.getAttribute('d') || '') : '';
+  const roadEdgeD = roadEdgeEl ? (roadEdgeEl.getAttribute('d') || '') : '';
+  const inFill = (x, y) => { try { return !!roadPath && roadPath.isPointInFill(new DOMPoint(x, y)); } catch (e) { return false; } };
+  const vb = road ? road.getAttribute('viewBox').split(' ').map(Number) : [0, 0, 0, 0];
+  const cw = vb[2] / 8, chh = vb[3] / 12;
+  const pathCells = [...document.querySelectorAll('.cell.path')];
+  let roadCenter = 0, roadH = 0, roadV = 0, roadOutside = 0;
+  pathCells.forEach(n => {
+    const r = +n.dataset.r, c = +n.dataset.c, x = c * cw, y = r * chh;
+    if (inFill(x + cw / 2, y + chh / 2)) roadCenter++;
+    if (isP(at[r + ',' + (c + 1)]) && inFill(x + cw, y + chh / 2)) roadH++;
+    if (isP(at[(r + 1) + ',' + c]) && inFill(x + cw / 2, y + chh)) roadV++;
+  });
+  document.querySelectorAll('.cell').forEach(n => {
+    if (isP(n)) return;
+    if (inFill(+n.dataset.c * cw + cw / 2, +n.dataset.r * chh + chh / 2)) roadOutside++;
+  });
   const bgOf = sel => { const n = document.querySelector(sel); return n ? getComputedStyle(n).backgroundColor : 'none'; };
   return {
     imgCount: imgs.length,
@@ -651,11 +698,17 @@ const art = await evalJs(`(async () => {
     daoKey: srcOf(dEl), heroKey: srcOf(hEl), zeiKey: srcOf(zEl), bossKey: srcOf(bEl),
     idleAnim: hEl ? getComputedStyle(hEl.querySelector('.fig-img')).animationName : 'none',
     gradientCells: gradientCells, pathBg: pathBg,
-    seams: seams, badSeams: badSeams,
-    peCount: document.querySelectorAll('.cell.path.pe-t').length + document.querySelectorAll('.cell.path.pe-r').length +
-             document.querySelectorAll('.cell.path.pe-b').length + document.querySelectorAll('.cell.path.pe-l').length,
-    peBorderTop: peSample ? peSample.borderTopColor : 'none',
-    peBorderW: peSample ? peSample.borderTopWidth : '0px',
+    seams: seams, seamsH: seamsH, seamsV: seamsV, badSeams: badSeams,
+    roadPathCount: roadPaths.length,
+    roadFillCount: (roadD.match(/M/g) || []).length,
+    roadEdgeSegs: (roadEdgeD.match(/M/g) || []).length,
+    roadFill: roadPath ? getComputedStyle(roadPath).fill : 'none',
+    roadFillRule: roadPath ? getComputedStyle(roadPath).fillRule : 'none',
+    roadEdgeStroke: roadEdgeEl ? getComputedStyle(roadEdgeEl).stroke : 'none',
+    roadStrokeW: roadEdgeEl ? (parseFloat(getComputedStyle(roadEdgeEl).strokeWidth) || 0) : 0,
+    roadViewBox: road ? road.getAttribute('viewBox') : '',
+    roadPathN: pathCells.length,
+    roadCenter: roadCenter, roadH: roadH, roadV: roadV, roadOutside: roadOutside,
     pathShadow: pathCell ? getComputedStyle(pathCell).boxShadow : '',
     pathAfter: pathCell ? getComputedStyle(pathCell, '::after').content : '',
     cPath: bgOf('.cell.path'), cDeploy: bgOf('.cell.deploy'), cWaste: bgOf('.cell.wasteland'),
@@ -685,22 +738,38 @@ ok('V7 武将（span2）横向落在棋盘内（不再右移出界）',
   'left=' + art.heroLeft + ' right=' + art.heroRight + ' boardW=' + art.boardW);
 
 // —— V7.1 棋盘配色：白路 / 棕塔位 / 绿荒地 / 米底 ——
-ok('V7.1 敌人主路为白色（#ffffff）', art.cPath === 'rgb(255, 255, 255)', art.cPath);
+ok('V7.1 敌人主路为白色（#ffffff）', art.roadFill === 'rgb(255, 255, 255)', art.roadFill);
 ok('V7.1 可建塔位为棕色（#8a5a2b）', art.cDeploy === 'rgb(138, 90, 43)', art.cDeploy);
 ok('V7.1 可开垦荒地为草绿（#4e7d3a）', art.cWaste === 'rgb(78, 125, 58)' && art.wasteCount > 0, art.cWaste + ' n=' + art.wasteCount);
 ok('V7.1 普通空地为浅米/宣纸色（#e8e0c8）', art.cPlain === 'rgb(232, 224, 200)' && art.plainCount > 0, art.cPlain + ' n=' + art.plainCount);
 ok('V7.1 四色互不相同（路/塔位/荒地/空地可一眼分辨）',
-  new Set([art.cPath, art.cDeploy, art.cWaste, art.cPlain]).size === 4,
-  [art.cPath, art.cDeploy, art.cWaste, art.cPlain].join(' | '));
+  new Set([art.roadFill, art.cDeploy, art.cWaste, art.cPlain]).size === 4,
+  [art.roadFill, art.cDeploy, art.cWaste, art.cPlain].join(' | '));
 
 // —— V7.2 敌路径连贯化：白色长条，路上无格子断点 ——
 ok('V7.2 相邻主路格之间无分隔边框（全部接缝透明）', art.seams > 0 && art.badSeams === 0,
   'seams=' + art.seams + ' bad=' + art.badSeams);
 ok('V7.2 主路格不画内阴影（避免小数格宽处的亚像素浅缝）', art.pathShadow === 'none', art.pathShadow.slice(0, 60));
 ok('V7.2 主路无每格路心点（::after 已移除，路上无格子节奏）', art.pathAfter === 'none', art.pathAfter);
-ok('V7.2 路径轮廓边已标记且描边可见（.pe-* + 非透明边框）',
-  art.peCount > 0 && art.peBorderTop !== 'rgba(0, 0, 0, 0)' && parseFloat(art.peBorderW) >= 2,
-  'pe=' + art.peCount + ' ' + art.peBorderTop + '/' + art.peBorderW);
+
+// —— V7.3 整条路交给 SVG 一次画完：横向 / 竖向 / 拐角 / S 弯一体成型 ——
+ok('V7.3 主路只用两个 <path>（填充层 + 描边层），不是逐格 DOM',
+  art.roadPathCount === 2, 'path 元素数=' + art.roadPathCount);
+ok('V7.3 填充层一条 path 内画完所有主路格（nonzero 共边合并成实心路面）',
+  art.roadFillCount === art.roadPathN && art.roadFillRule === 'nonzero',
+  '矩形子路径=' + art.roadFillCount + '/' + art.roadPathN + ' rule=' + art.roadFillRule);
+ok('V7.3 主路层纯白填充 + 外沿边描边（不描格子缝）',
+  art.roadFill === 'rgb(255, 255, 255)' && art.roadEdgeStroke !== 'none' && art.roadStrokeW > 0 && art.roadEdgeSegs > 0,
+  art.roadFill + ' / 描边 ' + art.roadEdgeStroke + ' ' + art.roadStrokeW + 'px · ' + art.roadEdgeSegs + ' 段');
+ok('V7.3 主路格不再各自铺白底（透明，白底只由整块轮廓提供）',
+  art.cPath === 'rgba(0, 0, 0, 0)', art.cPath);
+ok('V7.3 所有主路格中心都落在同一块路面内',
+  art.roadPathN > 0 && art.roadCenter === art.roadPathN,
+  art.roadCenter + '/' + art.roadPathN);
+ok('V7.3 横向 + 竖向接缝中点全部在路面内（竖段与拐角同样连贯）',
+  art.seamsH > 0 && art.seamsV > 0 && art.roadH === art.seamsH && art.roadV === art.seamsV,
+  '横 ' + art.roadH + '/' + art.seamsH + ' · 竖 ' + art.roadV + '/' + art.seamsV);
+ok('V7.3 路面不外溢（非主路格 0 误覆盖）', art.roadOutside === 0, art.roadOutside + ' 格');
 
 // 攻击动作帧：注入 anim 事件 → .a-atk
 const atk = await evalJs(`(async () => {
