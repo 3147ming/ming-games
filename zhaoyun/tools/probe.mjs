@@ -630,6 +630,19 @@ const art = await evalJs(`(async () => {
   let gradientCells = 0;
   document.querySelectorAll('.cell').forEach(c => { if (getComputedStyle(c).backgroundImage.indexOf('repeating-linear-gradient') >= 0) gradientCells++; });
   const pathBg = getComputedStyle(document.querySelector('.cell.path')).backgroundImage;
+  // V7.2：主路连贯性体检 —— 相邻两块主路之间的那条边必须是"透明边框 + 无内阴影"
+  const at = {};
+  document.querySelectorAll('.cell').forEach(n => { at[n.dataset.r + ',' + n.dataset.c] = n; });
+  const isP = n => !!n && n.classList.contains('path') && !n.classList.contains('obstacle');
+  let seams = 0, badSeams = 0;
+  document.querySelectorAll('.cell.path').forEach(n => {
+    const r = +n.dataset.r, c = +n.dataset.c, cs = getComputedStyle(n);
+    if (isP(at[r + ',' + (c + 1)])) { seams++; if (cs.borderRightColor !== 'rgba(0, 0, 0, 0)' || parseFloat(cs.borderRightWidth) === 0) badSeams++; }
+    if (isP(at[(r + 1) + ',' + c])) { seams++; if (cs.borderBottomColor !== 'rgba(0, 0, 0, 0)' || parseFloat(cs.borderBottomWidth) === 0) badSeams++; }
+  });
+  const peT = document.querySelectorAll('.cell.path.pe-t');
+  const pathCell = document.querySelector('.cell.path');
+  const peSample = peT.length ? getComputedStyle(peT[0]) : null;
   const bgOf = sel => { const n = document.querySelector(sel); return n ? getComputedStyle(n).backgroundColor : 'none'; };
   return {
     imgCount: imgs.length,
@@ -638,6 +651,13 @@ const art = await evalJs(`(async () => {
     daoKey: srcOf(dEl), heroKey: srcOf(hEl), zeiKey: srcOf(zEl), bossKey: srcOf(bEl),
     idleAnim: hEl ? getComputedStyle(hEl.querySelector('.fig-img')).animationName : 'none',
     gradientCells: gradientCells, pathBg: pathBg,
+    seams: seams, badSeams: badSeams,
+    peCount: document.querySelectorAll('.cell.path.pe-t').length + document.querySelectorAll('.cell.path.pe-r').length +
+             document.querySelectorAll('.cell.path.pe-b').length + document.querySelectorAll('.cell.path.pe-l').length,
+    peBorderTop: peSample ? peSample.borderTopColor : 'none',
+    peBorderW: peSample ? peSample.borderTopWidth : '0px',
+    pathShadow: pathCell ? getComputedStyle(pathCell).boxShadow : '',
+    pathAfter: pathCell ? getComputedStyle(pathCell, '::after').content : '',
     cPath: bgOf('.cell.path'), cDeploy: bgOf('.cell.deploy'), cWaste: bgOf('.cell.wasteland'),
     cPlain: bgOf('.cell:not(.path):not(.deploy):not(.wasteland):not(.obstacle):not(.enter):not(.break)'),
     wasteCount: document.querySelectorAll('.cell.wasteland').length,
@@ -657,7 +677,7 @@ ok('V7 立绘映射正确（刀兵/赵云/黄巾/张梁）',
   /daobing/.test(art.daoKey) && /zhaoyun/.test(art.heroKey) && /hj-melee/.test(art.zeiKey) && /zhangliang/.test(art.bossKey),
   [art.daoKey, art.heroKey, art.zeiKey, art.bossKey].join(' | '));
 ok('V7 待机跃动动画生效（figIdle）', /figIdle/.test(art.idleAnim), art.idleAnim);
-ok('V7 棋盘格子纯色（无 repeating-linear-gradient）+ 主路纯色', art.gradientCells === 0 && art.pathBg === 'none', 'gradient=' + art.gradientCells + ' pathBg=' + art.pathBg);
+ok('V7 棋盘格子无重复斜纹纹理（repeating-linear-gradient）', art.gradientCells === 0 && art.pathBg.indexOf('repeating-linear-gradient') < 0, 'gradient=' + art.gradientCells + ' pathBg=' + art.pathBg.slice(0, 60));
 ok('V7 新增 #skill-banner 与粒子层容器', art.hasSkillBanner && art.hasSkillFx);
 ok('V7 Boss 单位带 .boss 标记（金色泛光/放大）', /(^| )boss( |$)/.test(art.bossCls), art.bossCls);
 ok('V7 武将（span2）横向落在棋盘内（不再右移出界）',
@@ -672,6 +692,15 @@ ok('V7.1 普通空地为浅米/宣纸色（#e8e0c8）', art.cPlain === 'rgb(232,
 ok('V7.1 四色互不相同（路/塔位/荒地/空地可一眼分辨）',
   new Set([art.cPath, art.cDeploy, art.cWaste, art.cPlain]).size === 4,
   [art.cPath, art.cDeploy, art.cWaste, art.cPlain].join(' | '));
+
+// —— V7.2 敌路径连贯化：白色长条，路上无格子断点 ——
+ok('V7.2 相邻主路格之间无分隔边框（全部接缝透明）', art.seams > 0 && art.badSeams === 0,
+  'seams=' + art.seams + ' bad=' + art.badSeams);
+ok('V7.2 主路格不画内阴影（避免小数格宽处的亚像素浅缝）', art.pathShadow === 'none', art.pathShadow.slice(0, 60));
+ok('V7.2 主路无每格路心点（::after 已移除，路上无格子节奏）', art.pathAfter === 'none', art.pathAfter);
+ok('V7.2 路径轮廓边已标记且描边可见（.pe-* + 非透明边框）',
+  art.peCount > 0 && art.peBorderTop !== 'rgba(0, 0, 0, 0)' && parseFloat(art.peBorderW) >= 2,
+  'pe=' + art.peCount + ' ' + art.peBorderTop + '/' + art.peBorderW);
 
 // 攻击动作帧：注入 anim 事件 → .a-atk
 const atk = await evalJs(`(async () => {

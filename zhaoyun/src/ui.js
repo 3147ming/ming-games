@@ -208,6 +208,28 @@
       cellStatic.push(row);
     }
     cellStaticKey = mode + ':' + state.levelIdx;
+    markPathEdges();
+  }
+
+  /** V7.2：给主路格标"轮廓边"（pe-t/r/b/l）—— 与主路接壤的边不打标记，
+      于是相邻主路格之间没有描边，白底连成一条长带。
+      主路形状对局内不变 → 只在 mode/levelIdx 变化时算一次，零每帧开销。 */
+  function markPathEdges() {
+    const st = cellStatic;
+    const isP = function (r, c) {
+      return r >= 0 && r < B.ROWS && c >= 0 && c < B.COLS && st[r][c].path && !st[r][c].obs;
+    };
+    for (let r = 0; r < B.ROWS; r++) {
+      for (let c = 0; c < B.COLS; c++) {
+        const e = cellEls[r] && cellEls[r][c];
+        if (!e) continue;
+        const p = isP(r, c);
+        toggleCls(e, 'pe-t', p && !isP(r - 1, c));
+        toggleCls(e, 'pe-r', p && !isP(r, c + 1));
+        toggleCls(e, 'pe-b', p && !isP(r + 1, c));
+        toggleCls(e, 'pe-l', p && !isP(r, c - 1));
+      }
+    }
   }
 
   /** V7.1：某格四邻是否有 side 的塔位（用静态缓存里的 key，零分配） */

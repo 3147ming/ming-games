@@ -202,16 +202,26 @@ body {
   content: ""; position: absolute; inset: 13%;
   border: 1.5px dashed rgba(255,226,170,.75); border-radius: 4px;
 }
-/* 蛇形主路：白路，与塔位/荒地/障碍一眼可辨 */
+/* 蛇形主路：白色长条（V7.2）
+   相邻两块主路之间边框透明、无内阴影、无路心点 → 白底直接连成一整条长带；
+   只有"不与主路接壤"的那几边（.pe-t/r/b/l，由 ui.js 按地图静态标记）才画
+   2px 浅灰描边 + 6px 渐变内阴影，让长条从米底上跳出来。 */
 .cell.path {
-  background: #ffffff;   /* V7.1：主路改白（极浅内阴影保砖缝层次） */
-  box-shadow: inset 0 0 0 1px rgba(90,75,50,.13), inset 0 -1px 0 rgba(90,75,50,.06);
+  background-color: #ffffff;
+  border: 1px solid transparent;   /* 内部接缝透明（覆盖 .cell:nth-child(8n) 的 none） */
+  --pe-line: rgba(86,72,52,.42);
+  /* 轮廓边的柔和内阴影用背景渐变做（不用 box-shadow：box-shadow 离屏绘制
+     会在小数格宽(36.5px)的相邻白格之间留下 1px 亚像素浅缝）。 */
+  background-image:
+    linear-gradient(to bottom, var(--pe-t, transparent), rgba(0,0,0,0) 6px),
+    linear-gradient(to top,    var(--pe-b, transparent), rgba(0,0,0,0) 6px),
+    linear-gradient(to right,  var(--pe-r, transparent), rgba(0,0,0,0) 6px),
+    linear-gradient(to left,   var(--pe-l, transparent), rgba(0,0,0,0) 6px);
 }
-.cell.path::after {      /* 路心石点 */
-  content: ""; position: absolute; left: 50%; top: 50%;
-  width: 13%; height: 13%; transform: translate(-50%,-50%);
-  border-radius: 50%; background: rgba(90,75,50,.10);
-}
+.cell.path.pe-t { border-top-color: var(--pe-line);    border-top-width: 2px;    --pe-t: rgba(80,66,44,.20); }
+.cell.path.pe-r { border-right-color: var(--pe-line);  border-right-width: 2px;  --pe-r: rgba(80,66,44,.20); }
+.cell.path.pe-b { border-bottom-color: var(--pe-line); border-bottom-width: 2px; --pe-b: rgba(80,66,44,.20); }
+.cell.path.pe-l { border-left-color: var(--pe-line);   border-left-width: 2px;   --pe-l: rgba(80,66,44,.20); }
 /* 入口：红框 + 入口小签 */
 .cell.enter { box-shadow: inset 0 0 0 2px var(--red), inset 0 0 9px rgba(179,53,47,.35); }
 .cell.enter::before {
@@ -1027,8 +1037,7 @@ body {
     0 6px 18px rgba(60,45,25,.24);
 }
 .cell.path {
-  background: #ffffff;   /* V7.1：主路白（极浅内阴影保留砖缝层次） */
-  box-shadow: inset 0 0 0 1px rgba(90,75,50,.14), inset 0 -1px 0 rgba(90,75,50,.07);
+  background-color: #ffffff;   /* V7.2：主路白（只设底色，别用 background 简写，否则会冲掉轮廓渐变） */
 }
 .cell.deploy {
   background-color: #8a5a2b;   /* V7.1：塔位棕（底色） */
