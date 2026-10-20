@@ -177,10 +177,12 @@
       for (let c = 0; c < B.COLS; c++) {
         const e = row[c], s = srow[c], k = s.k;
         const inDeploy = !!state.deploy[k];
+        const plain = !s.obs && !s.path && !inDeploy;
         toggleCls(e, 'obstacle', s.obs);
         toggleCls(e, 'path', s.path && !s.obs);
         toggleCls(e, 'deploy', inDeploy && !s.obs);
-        toggleCls(e, 'wasteland', !s.obs && !s.path && !inDeploy);
+        // V7.1：荒地（草绿）只标"紧邻既有塔位、可铲开垦"的格；其余空地走 .cell 米底
+        toggleCls(e, 'wasteland', plain && (adjDeploy(r, c, 'player') || adjDeploy(r, c, 'enemy')));
         toggleCls(e, 'enter', s.ent);
         const w = !!warnSet && !!warnSet[k] && !brk;
         toggleCls(e, 'warn', w && !s.ent);
@@ -206,6 +208,17 @@
       cellStatic.push(row);
     }
     cellStaticKey = mode + ':' + state.levelIdx;
+  }
+
+  /** V7.1：某格四邻是否有 side 的塔位（用静态缓存里的 key，零分配） */
+  function adjDeploy(r, c, side) {
+    const st = cellStatic;
+    if (!st) return false;
+    if (r > 0 && state.deploy[st[r - 1][c].k] === side) return true;
+    if (r < B.ROWS - 1 && state.deploy[st[r + 1][c].k] === side) return true;
+    if (c > 0 && state.deploy[st[r][c - 1].k] === side) return true;
+    if (c < B.COLS - 1 && state.deploy[st[r][c + 1].k] === side) return true;
+    return false;
   }
 
   function toggleCls(e, cls, on) {

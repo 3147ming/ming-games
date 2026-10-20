@@ -630,6 +630,7 @@ const art = await evalJs(`(async () => {
   let gradientCells = 0;
   document.querySelectorAll('.cell').forEach(c => { if (getComputedStyle(c).backgroundImage.indexOf('repeating-linear-gradient') >= 0) gradientCells++; });
   const pathBg = getComputedStyle(document.querySelector('.cell.path')).backgroundImage;
+  const bgOf = sel => { const n = document.querySelector(sel); return n ? getComputedStyle(n).backgroundColor : 'none'; };
   return {
     imgCount: imgs.length,
     allLoaded: imgs.length > 0 && imgs.every(i => i.naturalWidth > 0),
@@ -637,6 +638,10 @@ const art = await evalJs(`(async () => {
     daoKey: srcOf(dEl), heroKey: srcOf(hEl), zeiKey: srcOf(zEl), bossKey: srcOf(bEl),
     idleAnim: hEl ? getComputedStyle(hEl.querySelector('.fig-img')).animationName : 'none',
     gradientCells: gradientCells, pathBg: pathBg,
+    cPath: bgOf('.cell.path'), cDeploy: bgOf('.cell.deploy'), cWaste: bgOf('.cell.wasteland'),
+    cPlain: bgOf('.cell:not(.path):not(.deploy):not(.wasteland):not(.obstacle):not(.enter):not(.break)'),
+    wasteCount: document.querySelectorAll('.cell.wasteland').length,
+    plainCount: document.querySelectorAll('.cell:not(.path):not(.deploy):not(.wasteland):not(.obstacle):not(.enter):not(.break)').length,
     hasSkillBanner: !!document.getElementById('skill-banner'),
     hasSkillFx: !!document.querySelector('.skill-fx'),
     bossCls: bEl ? bEl.className : '',
@@ -658,6 +663,15 @@ ok('V7 Boss 单位带 .boss 标记（金色泛光/放大）', /(^| )boss( |$)/.t
 ok('V7 武将（span2）横向落在棋盘内（不再右移出界）',
   art.heroLeft >= 0 && art.heroRight <= art.boardW + 1 && (art.heroRight - art.heroLeft) > art.boardW / 8 * 1.6,
   'left=' + art.heroLeft + ' right=' + art.heroRight + ' boardW=' + art.boardW);
+
+// —— V7.1 棋盘配色：白路 / 棕塔位 / 绿荒地 / 米底 ——
+ok('V7.1 敌人主路为白色（#ffffff）', art.cPath === 'rgb(255, 255, 255)', art.cPath);
+ok('V7.1 可建塔位为棕色（#8a5a2b）', art.cDeploy === 'rgb(138, 90, 43)', art.cDeploy);
+ok('V7.1 可开垦荒地为草绿（#4e7d3a）', art.cWaste === 'rgb(78, 125, 58)' && art.wasteCount > 0, art.cWaste + ' n=' + art.wasteCount);
+ok('V7.1 普通空地为浅米/宣纸色（#e8e0c8）', art.cPlain === 'rgb(232, 224, 200)' && art.plainCount > 0, art.cPlain + ' n=' + art.plainCount);
+ok('V7.1 四色互不相同（路/塔位/荒地/空地可一眼分辨）',
+  new Set([art.cPath, art.cDeploy, art.cWaste, art.cPlain]).size === 4,
+  [art.cPath, art.cDeploy, art.cWaste, art.cPlain].join(' | '));
 
 // 攻击动作帧：注入 anim 事件 → .a-atk
 const atk = await evalJs(`(async () => {
