@@ -697,6 +697,19 @@ body {
   user-select: none;
 }
 
+/* 物品位图图标（assets/icons/，透明底漫画风描边）。
+   与 .icon 同样的铁律：装饰元素不吃点击，否则会拦下「点选 / 拾取 / 出售」。
+   不加圆角与边框 —— 描边本身已经提供了边界。 */
+.item-ic {
+  height: 20px;
+  width: auto;
+  vertical-align: middle;
+  margin-right: 6px;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
 /* ============================ 列表行 ============================ */
 
 .shop-body {

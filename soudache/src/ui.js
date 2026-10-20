@@ -181,7 +181,7 @@ export function hudLayout(W, H, touch = false, tasksOpen = false) {
 
 import {
   ITEMS, WEAPONS, ARMORS, SHOP, RARITY, RARITY_ORDER, CONTAINERS, ENEMY_TYPES, PLAYER, MATCH, AMMO_STACK, SCORING,
-  COLORS, MINIMAP, MINIMAP_LAYERS, TILE, WORLD_W, WORLD_H, MAP_COLS, MAP_ROWS, COMBAT, KILLFEED,
+  COLORS, MINIMAP, MINIMAP_LAYERS, TILE, WORLD_W, WORLD_H, MAP_COLS, MAP_ROWS, COMBAT, KILLFEED, ITEM_ICONS,
 } from './config.js';
 import { totalWeight, totalValue, itemCount, weightLimitFor, weightTier, displayUnits } from './inventory.js';
 import { drawGlyph } from './glyphs.js';
@@ -220,6 +220,33 @@ function iconEl(kind, color, size = 26) {
   ctx.scale(dpr, dpr);
   drawGlyph(ctx, kind, size / 2, size / 2, size * 0.74, color);
   return canvas;
+}
+
+/**
+ * 物品图标节点（assets/icons/ 的位图优先）。
+ *
+ * 设计取舍：
+ *  - 映射表 config.ITEM_ICONS 的 key 是**物品 id**（rifle/lv2…），不是图标文件名（m4a1/vest2…）；
+ *  - 没有映射的物品回退到矢量图标（而不是纯文字），避免同屏两种风格的行高低落；
+ *  - 位图加载失败时静默换回矢量图标 —— 任何情况下都不会出现裂图；
+ *  - img 同样 pointer-events:none，别让装饰图标吃掉"点选物品 / 拾取"的点击。
+ * @param {string} id 物品 id
+ * @param {string} kind 矢量图标种类（ITEMS[].icon，回退用）
+ * @param {string} color 矢量图标颜色（回退用）
+ * @param {number} size 回退矢量图标的边长（px）
+ * @returns {HTMLElement} <img class="item-ic"> 或矢量 canvas
+ */
+function itemIconEl(id, kind, color, size = 24) {
+  const src = ITEM_ICONS[id];
+  if (!src) return iconEl(kind, color, size);
+  const img = document.createElement('img');
+  img.className = 'item-ic';
+  img.alt = '';
+  img.decoding = 'async';
+  img.src = src;
+  img.height = 20; // 与 CSS 的 height 一致：先给出高度，加载完成前就不跳版
+  img.addEventListener('error', () => img.replaceWith(iconEl(kind, color, size)), { once: true });
+  return img;
 }
 
 function el(tag, cls, text) {
@@ -585,7 +612,7 @@ export function createUI(root, handlers) {
       node.style.gridColumn = `${item.col + 1} / span ${item.w}`;
       node.style.gridRow = `${item.row + 1} / span ${item.h}`;
       node.dataset.uid = item.uid;
-      node.appendChild(iconEl(item.icon, RARITY[item.rarity].color, Math.min(30, 15 * Math.min(item.w, item.h) + 12)));
+      node.appendChild(itemIconEl(item.id, item.icon, RARITY[item.rarity].color, Math.min(30, 15 * Math.min(item.w, item.h) + 12)));
       const name = el('div', 'gi-name', item.name);
       node.appendChild(name);
       if (item.uid === selectedUid) node.classList.add('selected');
@@ -619,7 +646,7 @@ export function createUI(root, handlers) {
 
   function itemRow(item, extra) {
     const row = el('div', 'item-row');
-    row.appendChild(iconEl(item.icon, RARITY[item.rarity].color, 24));
+    row.appendChild(itemIconEl(item.id, item.icon, RARITY[item.rarity].color, 24));
     const main = el('div', 'item-main');
     main.appendChild(el('div', 'item-name', `${item.name}${qtySuffix(item)}`));
     main.appendChild(el('div', 'item-meta', `${item.w}×${item.h} 格 · ${rowWeight(item).toFixed(1)}kg · ${RARITY[item.rarity].name}`));
@@ -696,7 +723,7 @@ export function createUI(root, handlers) {
       const def = ITEMS[id];
       const node = el('div', `codex-item ${knownItems.has(id) ? '' : 'locked'}`);
       if (knownItems.has(id)) {
-        node.appendChild(iconEl(def.icon, RARITY[def.rarity].color, 26));
+        node.appendChild(itemIconEl(id, def.icon, RARITY[def.rarity].color, 26));
         const name = el('div', 'ci-name', def.name);
         node.appendChild(name);
         node.appendChild(el('div', 'ci-meta', `${RARITY[def.rarity].name} · ${money(def.value)} · ${(def.weight || 0).toFixed(1)}kg`));
@@ -958,7 +985,7 @@ export function createUI(root, handlers) {
         btn.dataset.action = 'set-loadout';
         btn.dataset.slot = slot;
         btn.dataset.value = String(opt.value);
-        btn.appendChild(iconEl(opt.icon || 'bolt', opt.color || '#9aa7b8', 20));
+        btn.appendChild(itemIconEl(opt.value, opt.icon || 'bolt', opt.color || '#9aa7b8', 20));
         btn.appendChild(el('span', null, renderLabel ? renderLabel(opt) : opt.label));
         if (renderMissing && renderMissing(opt)) btn.classList.add('missing');
         row.appendChild(btn);
@@ -1233,7 +1260,7 @@ export function createUI(root, handlers) {
       const def = ITEMS[id];
       if (!def) continue;
       const row = el('div', 'item-row');
-      row.appendChild(iconEl(def.icon, RARITY[def.rarity].color, 24));
+      row.appendChild(itemIconEl(id, def.icon, RARITY[def.rarity].color, 24));
       const main = el('div', 'item-main');
       main.appendChild(el('div', 'item-name', def.name));
       const meta = [];
@@ -1260,7 +1287,7 @@ export function createUI(root, handlers) {
     }
     for (const item of sellable) {
       const row = el('div', 'item-row');
-      row.appendChild(iconEl(item.icon, RARITY[item.rarity].color, 24));
+      row.appendChild(itemIconEl(item.id, item.icon, RARITY[item.rarity].color, 24));
       const main = el('div', 'item-main');
       main.appendChild(el('div', 'item-name', `${item.name}${qtySuffix(item)}`));
       main.appendChild(el('div', 'item-meta', `${rowWeight(item).toFixed(1)}kg · 单价 ${money(item.value)}`));
@@ -1320,7 +1347,7 @@ export function createUI(root, handlers) {
     }
     for (const item of merged.values()) {
       const row = el('div', 'item-row');
-      row.appendChild(iconEl(item.icon, RARITY[item.rarity].color, 22));
+      row.appendChild(itemIconEl(item.id, item.icon, RARITY[item.rarity].color, 22));
       const main = el('div', 'item-main');
       main.appendChild(el('div', 'item-name', `${item.name}${qtySuffix(item)}`));
       main.appendChild(el('div', 'item-meta', `${RARITY[item.rarity].name} · ${rowWeight(item).toFixed(1)}kg`));
@@ -1363,7 +1390,7 @@ export function createUI(root, handlers) {
     lootItems.forEach((item, i) => {
       const row = el('div', 'item-row');
       if (i === lootSel) row.classList.add('selected');
-      row.appendChild(iconEl(item.icon, RARITY[item.rarity].color, 22));
+      row.appendChild(itemIconEl(item.id, item.icon, RARITY[item.rarity].color, 22));
       const main = el('div', 'item-main');
       main.appendChild(el('div', 'item-name', `${item.name}${qtySuffix(item)}`));
       main.appendChild(el('div', 'item-meta', `${item.w}×${item.h}格 · ${rowWeight(item).toFixed(1)}kg · ${RARITY[item.rarity].name}`));

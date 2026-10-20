@@ -95,6 +95,32 @@ export const RARITY = {
 
 export const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary'];
 
+/* ============================== 物品位图图标 ============================== */
+
+/**
+ * 物品 id → 图标位图路径（assets/icons/，透明底漫画风描边）。
+ *
+ * ⚠ key 必须是**游戏内 def.id**，不是图标文件名：
+ *   图标文件按武器外观命名（m4a1 / mp5 / g17），而 ITEMS 里的 id 是 rifle / smg / pistol；
+ *   护甲同理（vest2 / vest3 ↔ lv2 / lv3）。对不上时先打印实际 id 再补映射。
+ *
+ * 没有映射的物品（其余配件、收藏品）由 ui.js 回退到矢量图标 —— 不渲染 <img>，绝不出现裂图。
+ */
+export const ITEM_ICONS = {
+  rifle: 'assets/icons/m4a1.png',
+  smg: 'assets/icons/mp5.png',
+  pistol: 'assets/icons/g17.png',
+  medkit: 'assets/icons/medkit.png',
+  bandage: 'assets/icons/bandage.png',
+  ammo556: 'assets/icons/ammo556.png',
+  ammo9mm: 'assets/icons/ammo9mm.png',
+  lv2: 'assets/icons/vest2.png',
+  lv3: 'assets/icons/vest3.png',
+  muzzle_sil: 'assets/icons/muzzle_sil.png',
+  sight_scope: 'assets/icons/sight_scope.png',
+  grip_vert: 'assets/icons/grip_vert.png',
+};
+
 /* ============================== 武器 ============================== */
 
 /**
