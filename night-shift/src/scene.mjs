@@ -22,6 +22,7 @@ import { createCharacter } from './character.mjs';
 import { NEON } from './art.mjs';
 import { fmtYuan } from './fmt.mjs';
 import { state } from './state.mjs';
+import { itemArtFor } from './artmap.mjs';
 
 let MATS = null;
 /** 钓鱼池塘逐帧动画引用（水面顶点起伏 + 鱼浮动），由 buildFacility 赋值 */
@@ -100,9 +101,16 @@ function prodMat(hex, { clear = false, rough = 0.62, metal = 0.05 } = {}) {
  * 而贴图是**按变体**（shape+color+accent）唯一的 —— 混进同一个 cache key 会让
  * "同色不同贴图"的两个变体互相串图（改一个另一个跟着变）。
  * 所以这里按变体 key 单独缓存一层，取不到贴图时原样回落到 prodMat（纯色）。
+ *
+ * 美术接入（任务：美术资产接入）：skuId 命中 artmap 且调用方标记 useArt（仅主体零件）
+ * 时，优先用美术图（prodMatArt）替换程序化贴图；取不到再走下面的程序化逻辑。
  */
 const _prodTexMatCache = new Map();
-function prodMatTx(variant, opts = {}) {
+function prodMatTx(variant, opts = {}, skuId = null, useArt = false) {
+  if (useArt && skuId) {
+    const am = prodMatArt(skuId, opts, variant?.shape);
+    if (am) return am;
+  }
   const tex = productTexture(variant);
   if (!tex) return prodMat(variant.color, opts);
   const key = `${variant.shape}|${variant.color}|${variant.accent}|${opts.clear ? 1 : 0}|${opts.rough ?? ''}`;
@@ -117,6 +125,72 @@ function prodMatTx(variant, opts = {}) {
     });
     if (opts.clear) { m.transparent = true; m.opacity = 0.5; }
     _prodTexMatCache.set(key, m);
+  }
+  return m;
+}
+
+/* ---------- 美术接入：商品主体正面美术贴图（任务：美术资产接入） ----------
+ * 6 张厚涂风商品图（assets/art/items/{skuId}.png，见 artmap.mjs 的 ITEM_ART）按 SKU id
+ * 作为商品**主体零件**的正面贴图（朝玩家视角面）。与 prodMatTx 的程序化贴图互斥：
+ * 命中美术图的 SKU 主体直接用美术图；其它零件（盖/底/封口/标签色带）仍是 accent 纯色。
+ *
+ * - TextureLoader 异步：load 一返回就持有 Texture 对象（探针据 material.map 判"已加载"），
+ *   图片解码完成前该帧仍画上一版颜色，几 ms 内自然换上，不阻塞首帧、不抛错。
+ * - 按 skuId 缓存贴图与材质：同一 SKU 的所有件共享一份（美术图本就按 SKU 唯一）。
+ * - 未知 SKU → itemArtFor 返回 null → 走回 prodMatTx 程序化贴图，纯色兜底不报错。
+ *
+ * ⚠ UV 必须把**图片中心对准正前方**，不能整张图从 u=0 开始绕：
+ *   源图是**产品居中、两侧各留约 30% 浅灰**的商品图（指令要求保留灰底不抠图）。
+ *   而圆柱体 u=0 的接缝正好在正前方（theta=0 → +Z），offset=0 时正面看到的正是
+ *   图片左右边缘的灰底 —— 实测就是"一根白罐子"，贴图挂了等于没挂。
+ *
+ *   修法：offset.x = 0.5（把图片中心挪到 u=0，即正前方）+ RepeatWrapping（否则
+ *   u>0.5 那段超出 [0,1] 会被 clamp 成右边缘，接缝处图像断裂）。这样绕一圈是
+ *   "图片中心在前 / 左右灰底在后"，无拼接缝；正面 180° 恰好是图片中间一半，
+ *   产品图占满可见面。盒体每面 UV 独立、无接缝，整图铺面即可（产品居中，留灰边）。 */
+const ART_UV = {
+  /** 圆柱：整图绕一圈，但图片中心对准正前方 */
+  cyl: { repeat: 1, offset: 0.5, wrap: THREE.RepeatWrapping },
+  /** 盒面：每面 0..1，整图铺满（居中留灰边，符合"保留背景"） */
+  box: { repeat: 1, offset: 0, wrap: THREE.ClampToEdgeWrapping },
+};
+/** 盒体形状（其余按圆柱处理）：bentobox 的盒身、hotdog 的面包都是 BoxGeometry */
+const ART_BOX_SHAPES = new Set(['bentobox', 'hotdog']);
+
+const _prodArtTexCache = new Map();
+function prodArtTexture(skuId, shape) {
+  const url = itemArtFor(skuId);
+  if (!url) return null;
+  const mode = ART_BOX_SHAPES.has(shape) ? 'box' : 'cyl';
+  const key = `${skuId}|${mode}`;
+  let tex = _prodArtTexCache.get(key);
+  if (tex === undefined) {
+    tex = new THREE.TextureLoader().load(url);
+    tex.colorSpace = THREE.SRGBColorSpace; // 与 texFromCanvas({srgb:true}) 口径一致
+    tex.wrapS = ART_UV[mode].wrap;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.repeat.set(ART_UV[mode].repeat, 1);
+    tex.offset.set(ART_UV[mode].offset, 0);
+    _prodArtTexCache.set(key, tex);
+  }
+  return tex;
+}
+const _prodArtMatCache = new Map();
+function prodMatArt(skuId, opts = {}, shape = null) {
+  const tex = prodArtTexture(skuId, shape);
+  if (!tex) return null;
+  const key = `${skuId}|${shape ?? ''}|${opts.clear ? 1 : 0}|${opts.rough ?? ''}`;
+  let m = _prodArtMatCache.get(key);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({
+      // 美术图已含主色，color 必须留白 —— 否则颜色被乘两遍整体发暗
+      color: 0xFFFFFF,
+      map: tex,
+      roughness: opts.rough ?? 0.62,
+      metalness: opts.metal ?? 0.05,
+    });
+    if (opts.clear) { m.transparent = true; m.opacity = 0.5; }
+    _prodArtMatCache.set(key, m);
   }
   return m;
 }
@@ -137,9 +211,9 @@ const PRODUCT_SHAPE = {
   /** 易拉罐（高瘦）：罐身 + 顶盖圈 + 底圈 */
   can: {
     h: 0.166,
-    build(v) {
+    build(v, skuId) {
       const g = new THREE.Group();
-      addPart(g, prodGeo('can.body', () => new THREE.CylinderGeometry(0.030, 0.030, 0.150, 10)), prodMatTx(v), 0, 0.076);
+      addPart(g, prodGeo('can.body', () => new THREE.CylinderGeometry(0.030, 0.030, 0.150, 10)), prodMatTx(v, {}, skuId, true), 0, 0.076);
       addPart(g, prodGeo('can.rim', () => new THREE.CylinderGeometry(0.0312, 0.0312, 0.010, 10)), prodMat(v.accent, { metal: 0.45, rough: 0.35 }), 0, 0.156);
       addPart(g, prodGeo('can.foot', () => new THREE.CylinderGeometry(0.0312, 0.0312, 0.008, 10)), prodMat(v.accent, { metal: 0.45, rough: 0.35 }), 0, 0.005);
       return g;
@@ -148,9 +222,9 @@ const PRODUCT_SHAPE = {
   /** 塑料瓶（带盖）：瓶身 + 肩锥 + 螺纹盖 */
   bottle: {
     h: 0.180,
-    build(v) {
+    build(v, skuId) {
       const g = new THREE.Group();
-      addPart(g, prodGeo('bt.body', () => new THREE.CylinderGeometry(0.0295, 0.031, 0.110, 10)), prodMatTx(v, { clear: v.clear }), 0, 0.056);
+      addPart(g, prodGeo('bt.body', () => new THREE.CylinderGeometry(0.0295, 0.031, 0.110, 10)), prodMatTx(v, { clear: v.clear }, skuId, true), 0, 0.056);
       addPart(g, prodGeo('bt.shoulder', () => new THREE.CylinderGeometry(0.014, 0.0295, 0.028, 10)), prodMatTx(v, { clear: v.clear }), 0, 0.125);
       addPart(g, prodGeo('bt.cap', () => new THREE.CylinderGeometry(0.0155, 0.0155, 0.020, 8)), prodMat(v.accent), 0, 0.149);
       return g;
@@ -159,9 +233,9 @@ const PRODUCT_SHAPE = {
   /** 杯装（奶茶）：锥形杯 + 圆盖 + 斜插吸管 */
   cup: {
     h: 0.196,
-    build(v) {
+    build(v, skuId) {
       const g = new THREE.Group();
-      addPart(g, prodGeo('cup.body', () => new THREE.CylinderGeometry(0.034, 0.026, 0.130, 12)), prodMatTx(v), 0, 0.066);
+      addPart(g, prodGeo('cup.body', () => new THREE.CylinderGeometry(0.034, 0.026, 0.130, 12)), prodMatTx(v, {}, skuId, true), 0, 0.066);
       addPart(g, prodGeo('cup.lid', () => new THREE.CylinderGeometry(0.0365, 0.0365, 0.014, 12)), prodMat(v.accent), 0, 0.138);
       addPart(g, prodGeo('cup.straw', () => new THREE.CylinderGeometry(0.005, 0.005, 0.062, 6)), prodMat(v.accent), 0.013, 0.168);
       return g;
@@ -210,9 +284,9 @@ const PRODUCT_SHAPE = {
   /** 泡面杯：上粗下细的杯身 + 封口盖 */
   noodlecup: {
     h: 0.124,
-    build(v) {
+    build(v, skuId) {
       const g = new THREE.Group();
-      addPart(g, prodGeo('nc.body', () => new THREE.CylinderGeometry(0.046, 0.034, 0.108, 12)), prodMatTx(v, { rough: 0.8 }), 0, 0.055);
+      addPart(g, prodGeo('nc.body', () => new THREE.CylinderGeometry(0.046, 0.034, 0.108, 12)), prodMatTx(v, { rough: 0.8 }, skuId, true), 0, 0.055);
       addPart(g, prodGeo('nc.lid', () => new THREE.CylinderGeometry(0.048, 0.048, 0.012, 12)), prodMat(v.accent), 0, 0.115);
       return g;
     },
@@ -220,9 +294,9 @@ const PRODUCT_SHAPE = {
   /** 便当盒：扁平盒 + 盖 + 横向扎带 */
   bentobox: {
     h: 0.064,
-    build(v) {
+    build(v, skuId) {
       const g = new THREE.Group();
-      addPart(g, prodGeo('bb.body', () => new THREE.BoxGeometry(0.132, 0.046, 0.098)), prodMatTx(v, { rough: 0.75 }), 0, 0.024);
+      addPart(g, prodGeo('bb.body', () => new THREE.BoxGeometry(0.132, 0.046, 0.098)), prodMatTx(v, { rough: 0.75 }, skuId, true), 0, 0.024);
       addPart(g, prodGeo('bb.lid', () => new THREE.BoxGeometry(0.135, 0.012, 0.100)), prodMat(v.accent), 0, 0.053);
       addPart(g, prodGeo('bb.band', () => new THREE.BoxGeometry(0.024, 0.064, 0.102)), prodMat(v.accent, { rough: 0.6 }), 0, 0.031);
       return g;
@@ -231,9 +305,9 @@ const PRODUCT_SHAPE = {
   /** 热狗：面包夹 + 中间一根肠 */
   hotdog: {
     h: 0.062,
-    build(v) {
+    build(v, skuId) {
       const g = new THREE.Group();
-      addPart(g, prodGeo('hd.bun', () => new THREE.BoxGeometry(0.122, 0.038, 0.056)), prodMatTx(v, { rough: 0.86 }), 0, 0.020);
+      addPart(g, prodGeo('hd.bun', () => new THREE.BoxGeometry(0.122, 0.038, 0.056)), prodMatTx(v, { rough: 0.86 }, skuId, true), 0, 0.020);
       const sausage = addPart(g, prodGeo('hd.sausage', () => new THREE.CapsuleGeometry(0.017, 0.088, 3, 8)), prodMat(v.accent, { rough: 0.6 }), 0, 0.045);
       sausage.rotation.z = Math.PI / 2;
       return g;
@@ -242,10 +316,10 @@ const PRODUCT_SHAPE = {
   /** 烤肠：竹签 + 一串肠 */
   sausage: {
     h: 0.142,
-    build(v) {
+    build(v, skuId) {
       const g = new THREE.Group();
       addPart(g, prodGeo('sg.stick', () => new THREE.CylinderGeometry(0.004, 0.004, 0.140, 6)), prodMat(v.accent, { rough: 0.5 }), 0, 0.071);
-      addPart(g, prodGeo('sg.body', () => new THREE.CapsuleGeometry(0.018, 0.086, 3, 8)), prodMatTx(v, { rough: 0.7 }), 0, 0.071);
+      addPart(g, prodGeo('sg.body', () => new THREE.CapsuleGeometry(0.018, 0.086, 3, 8)), prodMatTx(v, { rough: 0.7 }, skuId, true), 0, 0.071);
       return g;
     },
   },
@@ -281,10 +355,14 @@ const PRODUCT_SHAPE = {
   },
 };
 
-/** 按变体造一个商品模型；形状名不认识时回落到易拉罐（保证"有货就一定看得见东西"） */
-function buildProduct(variant) {
+/** 按变体造一个商品模型；形状名不认识时回落到易拉罐（保证"有货就一定看得见东西"）。
+ *  skuId 供美术接入：命中 artmap 的 SKU，主体零件用美术贴图（见 prodMatArt）。 */
+function buildProduct(variant, skuId = null) {
   const shape = PRODUCT_SHAPE[variant?.shape] ?? PRODUCT_SHAPE.can;
-  return { group: shape.build(variant), h: shape.h };
+  const group = shape.build(variant, skuId);
+  // 美术接入：给每个商品组打上 skuId，供探针按 SKU 遍历场景查"主体材质是否挂了美术贴图"
+  if (skuId) group.userData.skuId = skuId;
+  return { group, h: shape.h };
 }
 
 /** 低多边形小鱼（装饰，钓鱼池塘用；身体 + 尾鳍，不含碰撞） */
@@ -2157,7 +2235,7 @@ export function createWorld(canvas) {
     const to = new THREE.Vector3(); items.group.getWorldPosition(to);
     to.y += 0.22;            // 大致落在层板上方
     const variant = productVariant(skuId, i, 0);
-    const mesh = variant ? buildProduct(variant).group : null;
+    const mesh = variant ? buildProduct(variant, skuId).group : null;
     if (!mesh) { flyingSlots.delete(i); return; }
     /* 不去动 carryGroup.visible —— 它由 updateHands 按 st.held 驱动，且带
      * "key 未变就早退"的脏检查；这里强行置 false 可能被那次早退吞掉，导致
@@ -2519,7 +2597,7 @@ export function createWorld(canvas) {
         holder.userData.variantKey = key;
         for (const child of [...holder.children]) holder.remove(child);
         if (variant) {
-          const built = buildProduct(variant);
+          const built = buildProduct(variant, sku.id);
           holder.add(built.group);
           holder.userData.h = built.h;
         }

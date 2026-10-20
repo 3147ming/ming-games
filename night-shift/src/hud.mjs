@@ -16,6 +16,7 @@ import { fmtYuan, fmtYuanSigned } from './fmt.mjs';
 /* 任务6 CG：只取清单与判定（纯逻辑模块，无 DOM 依赖），展示在这里拼。
  * 为什么不把 CG 表直接写进 hud：那会让"里程碑只弹一次"这类规则无法在 Node 里单测。 */
 import { CG_BY_ID, PROLOGUE_LINES, cgUrl } from './cgs.mjs';
+import { charArtFor } from './artmap.mjs';
 
 let els = {};
 let modalOpen = false;
@@ -86,6 +87,9 @@ export function mountHud(root) {
     </div>
 
     <div class="prompt" data-el="prompt" style="display:none"></div>
+    <!-- 美术接入：顾客/交互对象小头像（100×100 圆角）。默认隐藏，命中身份时由
+         setCustomerPortrait 挂 src；未知身份不显示、不报错。 -->
+    <img class="cust-portrait" data-el="cust-portrait" alt="" style="display:none">
     <div class="held" data-el="held" style="display:none"></div>
     <div class="hintbar" data-el="hint">WASD 移动 · 鼠标视角 · <b>E</b> 交互 · <b>Tab</b> 商店 · <b>B</b> 背包 · <b>L</b> 排行 · <b>F5</b> 存档 · <b>F9</b> 读档 · Esc 暂停</div>
 
@@ -115,6 +119,7 @@ export function mountHud(root) {
     night: q('night'), rep: q('rep'), cash: q('cash'), rev: q('rev'),
     tokens: q('tokens'), envline: q('envline'),
     prompt: q('prompt'), held: q('held'), hint: q('hint'),
+    custPortrait: q('cust-portrait'),
     quest: q('quest'), incident: q('incident'), tutorial: q('tutorial'),
     qlen: q('qlen'), qmax: q('qmax'), qbody: q('qbody'), queuebox: q('queuebox'),
     toasts: q('toasts'), modal: q('modal'), start: q('start'),
@@ -129,6 +134,36 @@ export function mountHud(root) {
 
 export function isModalOpen() {
   return modalOpen;
+}
+
+/* ---------- 美术接入：顾客/店员肖像（任务：美术资产接入） ----------
+ * 顾客在结账等交互场景显示其身份小头像（assets/art/chars/{identityId}.png，见 artmap）。
+ * 原则：命中 → 挂 src 并显示；未知身份 / 无身份 → 隐藏，绝不抛错、不留碎图标。
+ * 只在 src 真正变化时才改 DOM，避免每帧重触发图片加载（探针与手感都不受益）。 */
+export function setCustomerPortrait(identityId) {
+  const img = els.custPortrait;
+  if (!img) return;
+  const url = identityId ? charArtFor(identityId) : null;
+  if (!url) { clearCustomerPortrait(); return; }
+  if (img.dataset.cur !== url) {
+    img.dataset.cur = url;
+    img.src = url;
+  }
+  if (img.style.display === 'none') img.style.display = '';
+}
+export function clearCustomerPortrait() {
+  const img = els.custPortrait;
+  if (!img) return;
+  // 幂等短路：renderHud 每帧都调，不短路会每帧写一次 style 触发样式重算
+  if (img.style.display === 'none') return;
+  img.style.display = 'none';
+  // 保留 dataset.cur / src：下次同一身份直接复用已加载图片，不闪白
+}
+
+/** 店员（玩家角色）肖像 HTML：供店员页头部 / 序章内嵌。无图则返回空串（调用方自然不渲染）。 */
+export function clerkPortraitHtml(cls = 'clerk-portrait') {
+  const url = charArtFor('clerk');
+  return url ? `<img class="${cls}" src="${url}" alt="店员">` : '';
 }
 
 /** 状态条：按数值 + 阈值上色（绿=安全 / 琥珀=临界 / 红=越阈）。thr 取自 config.CLERK.thr */
@@ -298,9 +333,12 @@ export function renderHud(env) {
     els.prompt.className = `prompt${h.ok ? '' : ' denied'}`;
     els.prompt.innerHTML = `<kbd>E</kbd>${h.prompt}`;
     els.crosshair.className = `crosshair${h.ok ? ' is-hover' : ''}`;
+    // 美术接入：交互对象带身份（结账队首顾客）时显示其肖像，无身份则隐藏
+    setCustomerPortrait(h.identityId);
   } else {
     els.prompt.style.display = 'none';
     els.crosshair.className = 'crosshair';
+    clearCustomerPortrait();
   }
 
   // 手持
@@ -716,7 +754,7 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
     /* 上限来自快照而不是 config：星级每升 1 级，店员总上限 +1 */
     const cap = snap.cap ?? STAFF.maxTotal;
     const per = cap > STAFF.order.length ? '（升星后可增聘同岗位）' : '（各 1 人）';
-    return `<div class="sub">店员 ${snap.headcount ?? 0}/${cap} 名${per} · 每 ${STAFF.salarySec}s 扣一次薪资 · 现金不足全员停工</div>${rows}`;
+    return `<div class="sub staff-head">${clerkPortraitHtml()}<div>店员 ${snap.headcount ?? 0}/${cap} 名${per} · 每 ${STAFF.salarySec}s 扣一次薪资 · 现金不足全员停工</div></div>${rows}`;
   }
 
   /* ---------- 仓库页（需求J） ---------- */

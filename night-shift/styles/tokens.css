@@ -288,6 +288,22 @@ html, body {
 .prompt.denied { border-color: var(--warning); }
 .prompt.denied kbd { background: var(--warning); color: #fff; }
 
+/* 美术接入：顾客交互小头像（100×100 圆角）。挂在准星**左侧**、E 提示左侧，
+   不挡准星与提示；默认 display:none，命中身份才显示（见 hud.setCustomerPortrait）。 */
+.cust-portrait {
+  position: absolute;
+  left: calc(50% - 128px);
+  top: calc(50% - 22px);
+  width: 100px;
+  height: 100px;
+  border-radius: 14px;
+  border: 2px solid var(--brand);
+  background: var(--surface-raised);
+  object-fit: cover;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .5);
+  pointer-events: none;
+}
+
 /* ---------- 手持 / 底部提示条 ---------- */
 .held {
   position: absolute;
@@ -924,6 +940,13 @@ html, body {
   display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center;
   padding: 10px 12px; border-radius: 11px; margin-bottom: 8px;
   background: rgba(20, 26, 36, .5); border: 1px solid rgba(150, 170, 200, .16);
+}
+/* 美术接入：店员页头部的玩家（clerk）肖像 + 文案横排 */
+.staff-head { display: flex; align-items: center; gap: 12px; }
+.staff-head .clerk-portrait {
+  width: 52px; height: 52px; flex: none;
+  border-radius: 12px; border: 2px solid var(--brand);
+  background: var(--surface-raised); object-fit: cover;
 }
 .staff-row.hired { border-color: rgba(177, 91, 216, .35); }
 .staff-row .s-emoji { font-size: 22px; text-align: center; }

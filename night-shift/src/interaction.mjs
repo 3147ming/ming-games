@@ -283,6 +283,8 @@ export function createInteraction({
       return {
         type: 'checkout', ok: true,
         prompt: `结账 ${sku.emoji}×${head.qty} ${fmtYuan(unit * head.qty)}`, ref: ud,
+        // 美术接入：队首顾客身份 → HUD 显示其肖像（未知身份则 HUD 隐藏，不报错）
+        identityId: head.identityId ?? null,
       };
     }
 

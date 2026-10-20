@@ -4,7 +4,8 @@
  * 设计取舍：
  * - 头身比 ~6.5（头高 0.26 / 身高 1.71），比原来的"胶囊+球"更拟人。
  * - 服装层次用**贴图**表现（衬衫 + 外套领 + 腰带画在同一张躯干贴图上），
- *   这样 1 个 mesh 就能有层次感，部件数压到 9 个 —— 同屏多角色时 draw call 可控。
+ *   这样 1 个 mesh 就能有层次感，部件数压到 12 个（基础 10 + 2 只小团手）——
+ *   同屏多角色时 draw call 可控。
  * - 几何与材质全部模块级共享缓存，只有 Group 是每个角色一份。
  * - 基础动作：走动摆臂摆腿 + 身体起伏；待机呼吸微晃；朝向随移动方向平滑转动。
  */
@@ -31,8 +32,12 @@ function geos() {
     torso: new THREE.CylinderGeometry(0.145, 0.185, 0.5, 14),
     // 下装：裙/裤
     skirt: new THREE.CylinderGeometry(0.19, 0.24, 0.3, 14),
-    // 手臂 / 腿：胶囊（手部用臂末端收口表现，省 2 个 mesh / 角色）
+    // 手臂 / 腿：胶囊（手部另加一颗小团球 mesh，见下方"小团手"）
     arm: new THREE.CapsuleGeometry(0.042, 0.26, 3, 8),
+    // 小团手：略扁的圆球（卡通小手套感，不做五指）。
+    // 分段数取 16×12 而非最低配：手球比臂粗（0.055 > 0.042），两壳相交处会形成一条
+    // "腕线"，低模球的相交曲线是锯齿状的（放大看像锯齿领子），提高分段让腕线光滑。
+    hand: new THREE.SphereGeometry(0.055, 16, 12),
     leg: new THREE.CapsuleGeometry(0.058, 0.38, 3, 8),
   };
   return GEO;
@@ -313,9 +318,23 @@ export function createCharacter(opt = {}) {
     const pivot = new THREE.Group();
     pivot.position.set(sx * 0.175, 1.3, 0);
     body.add(pivot);
-    const arm = new THREE.Mesh(G.arm, std(skin, { roughness: 0.8 }));
+    const armMat = std(skin, { roughness: 0.8 });
+    const arm = new THREE.Mesh(G.arm, armMat);
     arm.position.y = -0.19;
     pivot.add(arm);
+    /* 小团手：以前臂末端"直接收口"当手，末端那颗圆疙瘩看着像粗糙的残肢；
+     * 改成在收口处套一颗略扁的圆球（卡通小手套感，不做五指）。
+     * - 挂在 **arm**（不是肩枢轴 pivot）：行走摆臂时手跟着手臂转，不用额外动画逻辑；
+     * - 位置：arm 局部 y = -0.13 —— 胶囊下半球的球心就在臂中心下方 length/2 处，
+     *   换算到肩枢轴空间正好是 -0.32（"末端 y≈-0.32"），球心与收口同心 →
+     *   手既不悬空也不插进臂里；
+     * - 半径 0.055 > 臂半径 0.042，手比臂胖一圈，轮廓上能读出"戴着手套"。
+     * 代价：每角色 +2 mesh（共享几何 + 共享材质，不增加 draw call 资源占用）。 */
+    const hand = new THREE.Mesh(G.hand, armMat);
+    hand.name = 'hand';
+    hand.position.y = -0.13;
+    hand.scale.set(1, 0.85, 1);
+    arm.add(hand);
     pivot.rotation.z = sx * 0.08;
     arms.push(pivot);
   }

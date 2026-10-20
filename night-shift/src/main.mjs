@@ -24,7 +24,10 @@ import {
   openAchievements, openChoice, showThemeBanner, showPromoBanner, setSatBonus, openPhone, openMonitor,
   closeModal,
   openCg, showPrologue, showMilestoneCg,
+  setCustomerPortrait, clearCustomerPortrait,
 } from './hud.mjs';
+/* 美术资产接入：商品/人物映射表（纯逻辑，scene/hud 共用） */
+import { ITEM_ART, CHAR_ART, artUrl, itemArtFor, charArtFor } from './artmap.mjs';
 import { createAuthService, createNetBridge } from './account.mjs';
 import { submitLocal, readBoard, scoreOf, clearForAccount } from './leaderboard.mjs';
 /* 账号重开（重置）：本账号进度清回初始状态，见 reset.mjs 的四个"为什么" */
@@ -2747,6 +2750,33 @@ if (identity) {
 /* 诊断出口：黑屏 / 画面异常时在控制台敲 `__NS.post.stats()` 就能看 后处理 是否退化、
    RT 尺寸和像素格式，不必改代码重跑一遍（postfx.mjs 文件头 ADR-005 的三个坑都记在这里）。
    音频同理：`__NS.sfx.stats()` 区分"没建起来 / suspended / 总线增益为 0"三种聋法。 */
+/** 美术接入：遍历场景找 skuId 对应的商品主体，报其材质 map 是否挂上美术图且已解码（探针用）。
+ *  商品组在 buildProduct 时打了 group.userData.skuId；主体零件的 material.map 命中
+ *  prodMatArt 即带 assets/art/items/{stem}.png。 */
+function artProductMapInfo(skuId) {
+  const info = { skuId, found: false, hasArtMap: false, mapSrc: null, imgLoaded: false, artUrl: itemArtFor(skuId) };
+  const root = world?.scene;
+  if (!root) return info;
+  root.traverse((o) => {
+    if (info.found || !o.userData || o.userData.skuId !== skuId) return;
+    o.traverse((m) => {
+      if (info.found) return;
+      const map = m.material?.map;
+      if (!map) return;
+      const src = map.image ? (map.image.currentSrc || map.image.src || '') : '';
+      // 只认美术图：image 是 HTMLImageElement 且指向 assets/art/items/。
+      // 程序化贴图（productTexture）的 image 是 canvas（无 src），不会被误判成美术图；
+      // 瓶身肩锥等非主体零件也走程序化贴图，靠这条过滤掉。
+      if (!src.includes('assets/art/items/')) return;
+      info.found = true;
+      info.hasArtMap = true;
+      info.mapSrc = src;
+      info.imgLoaded = !!map.image && (map.image.complete !== false) && (map.image.naturalWidth ?? 0) > 0;
+    });
+  });
+  return info;
+}
+
 window.__NS = {
   world, state, player, npcs, worldState, dayNight, save, post, staff, staffApi, warehouseApi,
   sfx, settings,
@@ -2783,6 +2813,18 @@ window.__NS = {
     openPurchase: openPurchasePanel,
     /* 任务6 CG：整屏覆盖层（探针直接开做截图 / 布局验收） */
     openCg, showPrologue, showMilestoneCg,
+    /* 美术接入：顾客肖像显示/隐藏（探针驱动 + 验收头像位 src） */
+    setCustomerPortrait, clearCustomerPortrait,
+  },
+  /* 美术资产接入：商品贴图 / 人物肖像的映射与就绪态查询（探针端到端验收） */
+  art: {
+    ITEM_ART, CHAR_ART, artUrl, itemArtFor, charArtFor,
+    setCustomerPortrait, clearCustomerPortrait,
+    productMapInfo: artProductMapInfo,
+    itemTextureReady(skuId) {
+      const i = artProductMapInfo(skuId);
+      return i.hasArtMap && i.imgLoaded;
+    },
   },
   /* 探针要走**真实入口**开机器，而不是自己 new 一个小游戏实例：
    * 那样会绕过投币、成就上报、排行榜这一整条链路，验收就没有意义了。 */
