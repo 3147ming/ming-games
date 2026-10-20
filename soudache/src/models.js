@@ -11,7 +11,7 @@
  */
 
 import * as THREE from '../vendor/three.module.js';
-import { VIEW3D, PALETTE3D, WEAPONS, ARMORS, RARITY, ENEMY_TYPES } from './config.js';
+import { VIEW3D, PALETTE3D, WEAPONS, ARMORS, RARITY } from './config.js';
 
 /** 米 → 场景单位的换算系数（见 config.VIEW3D 的单位说明） */
 const U = VIEW3D.metersToUnits;
@@ -207,9 +207,10 @@ function speckle(ctx, size, base, spread, count) {
 
 // 各贴图绘制函数（仅在浏览器中执行）
 const FLOOR_TEX = (ctx, s) => {
-  ctx.fillStyle = '#aeb6c0'; ctx.fillRect(0, 0, s, s);
-  speckle(ctx, s, [150, 160, 175], 0.5, 260);
-  ctx.strokeStyle = 'rgba(40,48,60,0.35)'; ctx.lineWidth = 2;
+  // 对照 04-scene-day.png：暖调沙土地（贴图与沙黄顶点色相乘，底色要亮且偏暖）
+  ctx.fillStyle = '#d6cdb8'; ctx.fillRect(0, 0, s, s);
+  speckle(ctx, s, [205, 195, 172], 0.4, 260);
+  ctx.strokeStyle = 'rgba(90,80,58,0.32)'; ctx.lineWidth = 2;
   ctx.strokeRect(0, 0, s, s);
   ctx.beginPath(); ctx.moveTo(s / 2, 0); ctx.lineTo(s / 2, s); ctx.moveTo(0, s / 2); ctx.lineTo(s, s / 2); ctx.stroke();
 };
@@ -238,17 +239,23 @@ const METAL_TEX = (ctx, s) => {
   speckle(ctx, s, [120, 128, 140], 0.5, 80);
 };
 const MEDKIT_TEX = (ctx, s) => {
-  ctx.fillStyle = '#f4f6f8'; ctx.fillRect(0, 0, s, s);
+  // 对照 docs/art-concept/01-player-loadout.png：军绿箱体 + 橙十字
+  ctx.fillStyle = '#5c6b4f'; ctx.fillRect(0, 0, s, s);
+  speckle(ctx, s, [80, 94, 70], 0.4, 60);
   const w = s * 0.22;
-  ctx.fillStyle = '#e23b3b';
+  ctx.fillStyle = '#E8863C';
   ctx.fillRect(s / 2 - w / 2, s * 0.18, w, s * 0.64);
   ctx.fillRect(s * 0.18, s / 2 - w / 2, s * 0.64, w);
 };
 const AMMO_TEX = (ctx, s) => {
-  ctx.fillStyle = '#2b2f36'; ctx.fillRect(0, 0, s, s);
-  ctx.fillStyle = '#c9a227'; ctx.fillRect(0, s * 0.34, s, s * 0.32);
-  ctx.fillStyle = '#1c1f25'; ctx.font = `bold ${Math.floor(s * 0.2)}px monospace`;
-  ctx.textAlign = 'center'; ctx.fillText('5.56', s / 2, s * 0.56);
+  // 对照 01 图：橙白配色弹药盒
+  ctx.fillStyle = '#DD7E33'; ctx.fillRect(0, 0, s, s);
+  ctx.fillStyle = '#f2ede2'; // 白色斜带
+  ctx.beginPath();
+  ctx.moveTo(0, s * 0.72); ctx.lineTo(s, s * 0.30); ctx.lineTo(s, s * 0.52); ctx.lineTo(0, s * 0.94);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#26221c'; ctx.font = `bold ${Math.floor(s * 0.2)}px monospace`;
+  ctx.textAlign = 'center'; ctx.fillText('5.56', s / 2, s * 0.24);
 };
 const ARMOR_TEX = (ctx, s) => {
   ctx.fillStyle = '#7f8c9b'; ctx.fillRect(0, 0, s, s);
@@ -266,6 +273,72 @@ export function getMetalTexture() { return getTex('metal', METAL_TEX, 128); }
 export function getMedkitTexture() { return getTex('medkit', MEDKIT_TEX, 64); }
 export function getAmmoTexture() { return getTex('ammo', AMMO_TEX, 64); }
 export function getArmorTexture() { return getTex('armor', ARMOR_TEX, 64); }
+
+/* --------------------------- 天花板天空贴图 --------------------------- */
+
+/** 低多边形云团的固定轮廓系数（同一组半径撑出几何感，避免画成圆球） */
+const CLOUD_SHAPE = [1, 0.72, 0.95, 0.62, 1.02, 0.78, 0.88];
+
+/**
+ * 画一朵几何云：底部冷灰压底 + 顶部纯白多边形。
+ * @param {CanvasRenderingContext2D} ctx 画布上下文
+ * @param {number} s 画布边长
+ * @param {number} cx 云心 x（0~1 归一化）
+ * @param {number} cy 云心 y（0~1 归一化）
+ * @param {number} r 云半径（0~1 归一化）
+ * @param {boolean} night 是否夜战（夜战云几乎不可见）
+ * @returns {void}
+ */
+function drawCloud(ctx, s, cx, cy, r, night) {
+  const px = cx * s;
+  const py = cy * s;
+  const rad = r * s;
+  const poly = (color, oy, scale) => {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    for (let i = 0; i < CLOUD_SHAPE.length; i += 1) {
+      const a = (i / CLOUD_SHAPE.length) * Math.PI * 2;
+      const rr = rad * CLOUD_SHAPE[i] * scale;
+      const x = px + Math.cos(a) * rr * 1.3;
+      const y = py + oy + Math.sin(a) * rr * 0.72;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+  };
+  poly(night ? '#151f2e' : '#c9d9e7', rad * 0.2, 1); // 底部冷灰
+  poly(night ? '#18232f' : '#fbfdff', 0, 1); // 云顶
+}
+
+/**
+ * 天花板用的"天空"贴图：整张地图有顶盖，白天顶盖就是淡蓝天空 + 几何白云，
+ * 夜战则是深蓝黑（对照 docs/art-concept/04 / 05-scene-*.png）。
+ * 程序化生成、零外部资源；按主题各缓存一份。
+ * @param {string} [theme='day'] 时段主题
+ * @returns {THREE.CanvasTexture|null} 贴图（Node 无 DOM 时为 null）
+ */
+export function getSkyCeilingTexture(theme = 'day') {
+  const night = theme === 'night';
+  return getTex(`skyceil-${night ? 'night' : 'day'}`, (ctx, s) => {
+    if (night) {
+      ctx.fillStyle = '#0d1420'; ctx.fillRect(0, 0, s, s);
+      drawCloud(ctx, s, 0.24, 0.32, 0.13, true);
+      drawCloud(ctx, s, 0.68, 0.64, 0.15, true);
+      return;
+    }
+    ctx.fillStyle = '#a8c8e0'; ctx.fillRect(0, 0, s, s);
+    // 极轻的竖向渐层，避免大面积平铺显得死板（不产生明显接缝）
+    const g = ctx.createLinearGradient(0, 0, 0, s);
+    g.addColorStop(0, 'rgba(255,255,255,0.10)');
+    g.addColorStop(1, 'rgba(120,160,200,0.14)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
+    drawCloud(ctx, s, 0.18, 0.28, 0.12, false);
+    drawCloud(ctx, s, 0.56, 0.16, 0.09, false);
+    drawCloud(ctx, s, 0.80, 0.54, 0.13, false);
+    drawCloud(ctx, s, 0.34, 0.70, 0.10, false);
+    drawCloud(ctx, s, 0.08, 0.84, 0.08, false);
+  }, 256);
+}
 
 /* ============================ 地面 ============================ */
 
@@ -663,25 +736,28 @@ export function buildEnemyModel(typeId) {
     : (typeId === 'elite' || typeId === 'marksman')
       ? dims.elite
       : (typeId === 'rusher' ? dims.rusher : dims.patrol);
-  const tints = {
-    patrol: PALETTE3D.enemyPatrol,
-    elite: PALETTE3D.enemyElite,
-    marksman: PALETTE3D.enemyMarksman,
-    rusher: PALETTE3D.enemyRusher,
-    boss: ENEMY_TYPES.boss.color, // 深红：远处一眼能认出这是 BOSS
+  // 皮肤（对照 docs/art-concept/02-enemies.png）：按敌人类型取一整套配色与部件开关
+  const skins = VIEW3D.enemySkins || {};
+  const skin = skins[typeId] || skins.patrol || {
+    uniform: PALETTE3D.enemyPatrol, dark: PALETTE3D.vmDark,
+    helmet: PALETTE3D.helmet, pack: PALETTE3D.backpack, plate: PALETTE3D.vmDark,
   };
-  const tint = tints[typeId] || PALETTE3D.enemyPatrol;
   const group = new THREE.Group();
 
-  const bodyMat = lowPolyMat(tint); // 军服
-  const darkMat = lowPolyMat(PALETTE3D.vmDark); // 背心 / 靴 / 手套 / 耳机
+  const bodyMat = lowPolyMat(skin.uniform); // 作战服
+  const darkMat = lowPolyMat(skin.dark); // 背心 / 靴 / 手套 / 耳机
   const gunMat = lowPolyMat(PALETTE3D.vmBody); // 武器
   const skinMat = lowPolyMat(PALETTE3D.hand); // 面部与手（皮肤色）
-  const helmetMat = lowPolyMat(PALETTE3D.helmet);
-  const packMat = lowPolyMat(PALETTE3D.backpack);
+  const helmetMat = lowPolyMat(skin.helmet); // 头盔（rusher 头套 / boss 深红盔）
+  const packMat = lowPolyMat(skin.pack);
+  const plateMat = lowPolyMat(skin.plate || skin.dark); // 甲片（精英红点缀 / boss 深红插板）
+  const maskMat = skin.masked ? lowPolyMat(skin.uniform) : null; // 头套蒙面：头露部分全用作战服色
+  const visorMat = skin.visor ? lowPolyMat(skin.visor, { phong: true, shininess: 70, specular: '#4a5e74' }) : null; // 现代防弹面罩（boss）
   const eyeMat = lowPolyMat('#12161A'); // 眼部暗色，做出"有脸"
   // mats 用于受击闪红，因此要覆盖所有可见材质
-  const mats = [bodyMat, darkMat, gunMat, skinMat, helmetMat, packMat];
+  const mats = [bodyMat, darkMat, gunMat, skinMat, helmetMat, packMat, plateMat];
+  if (maskMat) mats.push(maskMat);
+  if (visorMat) mats.push(visorMat);
 
   const legH = u(dim.legH);
   const torsoH = u(dim.torsoH);
@@ -733,7 +809,10 @@ export function buildEnemyModel(typeId) {
   abdomen.position.y = torsoH * 0.36;
   torso.add(abdomen);
 
-  const chest = new THREE.Mesh(new THREE.BoxGeometry(torsoW, torsoH * 0.40, torsoD), bodyMat);
+  const chest = new THREE.Mesh(
+    new THREE.BoxGeometry(torsoW, torsoH * 0.40, torsoD),
+    skin.heavy ? plateMat : bodyMat, // BOSS：深红插板胸甲色块
+  );
   chest.position.y = torsoH * 0.70;
   torso.add(chest);
 
@@ -745,9 +824,10 @@ export function buildEnemyModel(typeId) {
   vest.position.y = torsoH * 0.60;
   torso.add(vest);
 
-  // 胸前弹匣袋
+  // 胸前弹匣袋（精英守卫用红色甲片色点缀，呼应 02 图过渡配色）
+  const pouchMat = typeId === 'elite' ? plateMat : packMat;
   for (const side of [-1, 1]) {
-    const pouch = new THREE.Mesh(new THREE.BoxGeometry(u(0.11), u(0.14), u(0.07)), packMat);
+    const pouch = new THREE.Mesh(new THREE.BoxGeometry(u(0.11), u(0.14), u(0.07)), pouchMat);
     pouch.position.set(side * torsoW * 0.30, torsoH * 0.42, -torsoD * 0.58);
     torso.add(pouch);
   }
@@ -757,16 +837,19 @@ export function buildEnemyModel(typeId) {
   belt.position.y = torsoH * 0.20;
   torso.add(belt);
 
-  // 肩甲
+  // 肩甲（精英/BOSS 用甲片色：精英红点缀、BOSS 深红肩甲）
+  const padMat = (typeId === 'elite' || typeId === 'boss') ? plateMat : darkMat;
   for (const side of [-1, 1]) {
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(u(0.20), u(0.13), torsoD * 0.9), darkMat);
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(u(0.20), u(0.13), torsoD * 0.9), padMat);
     pad.position.set(side * (torsoW * 0.5 + u(0.06)), torsoH * 0.86, 0);
     torso.add(pad);
   }
 
   /* ---------- 颈 + 头 + 五官 ---------- */
+  // 头颈露肤部分按皮肤开关取材质：蒙面→作战服色头套；BOSS 面罩→深红甲片（全覆盖重甲）
+  const neckMat = visorMat ? plateMat : (maskMat || skinMat);
   const neckY = torsoH * 0.98;
-  const neck = new THREE.Mesh(new THREE.BoxGeometry(u(0.13), u(0.10), u(0.13)), skinMat);
+  const neck = new THREE.Mesh(new THREE.BoxGeometry(u(0.13), u(0.10), u(0.13)), neckMat);
   neck.position.y = neckY;
   torso.add(neck);
 
@@ -777,28 +860,36 @@ export function buildEnemyModel(typeId) {
   const headW = headR * 1.72;
   const headH2 = headR * 2.0;
   const headD = headR * 1.78;
-  const skull = new THREE.Mesh(new THREE.BoxGeometry(headW, headH2, headD), skinMat);
+  const skull = new THREE.Mesh(new THREE.BoxGeometry(headW, headH2, headD), neckMat);
   head.add(skull);
 
-  // 正面：脸板 + 双眼 + 眉骨 + 鼻梁 + 护目镜带 —— low-poly 但五官分明，不再是无脸方块
+  // 正面：脸板 + 双眼 + 眉骨 + 鼻梁 —— low-poly 但五官分明，不再是无脸方块
+  // 冲锋兵：头套蒙面（脸板/颅顶用头套色，只留眼缝）；BOSS：深色防弹面罩盖住整张脸
+  const faceMat = visorMat || maskMat || skinMat;
   const faceZ = -headD / 2 - u(0.004);
-  const face = new THREE.Mesh(new THREE.BoxGeometry(headW * 0.92, headH2 * 0.72, u(0.02)), skinMat);
+  const face = new THREE.Mesh(new THREE.BoxGeometry(headW * 0.92, headH2 * 0.72, u(0.02)), faceMat);
   face.position.set(0, -headH2 * 0.04, faceZ);
   head.add(face);
 
-  for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.BoxGeometry(headW * 0.24, u(0.045), u(0.02)), eyeMat);
-    eye.position.set(side * headW * 0.24, headH2 * 0.10, faceZ - u(0.012));
-    head.add(eye);
-    // 眉骨压在眼睛上方，让眼神更有压迫感
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(headW * 0.30, u(0.028), u(0.02)), darkMat);
-    brow.position.set(side * headW * 0.24, headH2 * 0.19, faceZ - u(0.012));
-    head.add(brow);
+  if (!visorMat) {
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(headW * 0.24, u(0.045), u(0.02)), eyeMat);
+      eye.position.set(side * headW * 0.24, headH2 * 0.10, faceZ - u(0.012));
+      head.add(eye);
+      // 眉骨压在眼睛上方，让眼神更有压迫感（蒙面时被头套盖住，不再单独画）
+      if (!maskMat) {
+        const brow = new THREE.Mesh(new THREE.BoxGeometry(headW * 0.30, u(0.028), u(0.02)), darkMat);
+        brow.position.set(side * headW * 0.24, headH2 * 0.19, faceZ - u(0.012));
+        head.add(brow);
+      }
+    }
   }
 
-  const nose = new THREE.Mesh(new THREE.BoxGeometry(u(0.05), u(0.06), u(0.05)), skinMat);
-  nose.position.set(0, -headH2 * 0.04, faceZ - u(0.03));
-  head.add(nose);
+  if (!maskMat && !visorMat) {
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(u(0.05), u(0.06), u(0.05)), skinMat);
+    nose.position.set(0, -headH2 * 0.04, faceZ - u(0.03));
+    head.add(nose);
+  }
 
   // 通讯耳罩
   for (const side of [-1, 1]) {
@@ -885,7 +976,7 @@ export function buildEnemyModel(typeId) {
     flash,
     gun,
     head,
-    baseTint: new THREE.Color(tint),
+    baseTint: new THREE.Color(skin.uniform),
     // 动画用的可动部件（渲染层按 walkPhase / wantsMove 驱动）
     parts: { torso, head, legs, arms, torsoBaseY: legH },
   };
@@ -933,8 +1024,10 @@ const VM_PARAMS = {
 export function buildViewmodel(weaponId) {
   const p = VM_PARAMS[weaponId] || VM_PARAMS.pistol;
   const group = new THREE.Group();
+  // 对照 docs/art-concept/01-player-loadout.png：军绿装备 + 橙色点缀细节
   const bodyMat = lowPolyMat(PALETTE3D.vmBody, { phong: true, shininess: 30, map: getMetalTexture() });
   const darkMat = lowPolyMat(PALETTE3D.vmDark, { phong: true, shininess: 18 });
+  const accentMat = lowPolyMat(PALETTE3D.accent || '#E8863C', { phong: true, shininess: 40 });
 
   const add = (dims, pos, mat) => {
     const mesh = new THREE.Mesh(
@@ -951,7 +1044,7 @@ export function buildViewmodel(weaponId) {
   add(p.mag, p.magAt, darkMat);
   add(p.stock, p.stockAt, bodyMat);
   add(p.grip, p.gripAt, darkMat);
-  add(p.sight, p.sightAt, darkMat);
+  add(p.sight, p.sightAt, accentMat); // 橙色瞄具：第一人称视角里最顺眼的点缀位
 
   // 战术细节：顶部导轨（Picatinny）+ 前握把/枪口制退器（仅长枪），贴近现代突击步枪轮廓
   add([p.receiver[0] * 0.95, 0.035, p.receiver[2] * 0.72],
@@ -961,8 +1054,8 @@ export function buildViewmodel(weaponId) {
     add([p.barrel[0] * 1.4, p.barrel[0] * 1.4, 0.09], [p.muzzleAt[0], p.muzzleAt[1], p.muzzleAt[2]], darkMat);
   }
 
-  // 双手（第一人称代入感：右手握把、左手托护目前方）
-  const handMat = lowPolyMat(PALETTE3D.hand);
+  // 双手（第一人称代入感：军绿手套右手握把、左手托护目前方）
+  const handMat = lowPolyMat(PALETTE3D.glove || PALETTE3D.hand);
   const handR = new THREE.Mesh(new THREE.BoxGeometry(u(0.12), u(0.12), u(0.22)), handMat);
   handR.position.set(u(0.04), u(-0.15), u(-0.12));
   group.add(handR);
@@ -994,7 +1087,7 @@ export function buildViewmodel(weaponId) {
     }
   });
 
-  group.userData = { flash, muzzle: flash.position.clone(), mats: [bodyMat, darkMat] };
+  group.userData = { flash, muzzle: flash.position.clone(), mats: [bodyMat, darkMat, accentMat, handMat] };
   return group;
 }
 
@@ -1049,9 +1142,9 @@ export function buildItemModel(itemId, rarity = 'common') {
   };
 
   if (WEAPONS[itemId]) {
-    // 武器：枪身 + 弹匣，缓慢自转以便辨识
+    // 武器：军绿枪身 + 橙色弹匣点缀，缓慢自转以便辨识
     box(0.5, 0.14, 1.5, rareMat(PALETTE3D.vmBody, { phong: true, map: getMetalTexture() }), 0, 0.12, 0);
-    box(0.12, 0.22, 0.34, rareMat(PALETTE3D.vmDark), 0, -0.12, -0.42);
+    box(0.12, 0.22, 0.34, rareMat(PALETTE3D.accent || '#E8863C'), 0, -0.12, -0.42);
     g.userData.spin = true;
   } else if (itemId === 'medkit' || itemId === 'bandage') {
     box(0.52, 0.36, 0.42, rareMat(PALETTE3D.medkit, { map: getMedkitTexture() }));

@@ -78,6 +78,28 @@ export function createScene3D(canvas, device, theme = 'day') {
   // 保留 canvas / ctx 引用：切换时段时要就地重绘渐变并置 needsUpdate（不重建纹理对象）
   let skyCanvas = null;
   let skyCtx = null;
+
+  // 几何白云（对照 docs/art-concept/04-scene-day.png）：固定布局画进天空纹理，零额外资源。
+  // equirect 横向无缝环绕；夜战重绘渐变时整幅覆盖，云自然消失。
+  const CLOUDS = [
+    [0.08, 0.34, 0.070], [0.22, 0.40, 0.050], [0.37, 0.33, 0.062],
+    [0.54, 0.42, 0.046], [0.68, 0.35, 0.078], [0.87, 0.40, 0.055],
+  ];
+  function drawClouds(ctx, w, h) {
+    ctx.fillStyle = 'rgba(250,252,254,0.95)';
+    for (const [cu, cv, r] of CLOUDS) {
+      const cx = cu * w;
+      const cy = cv * h;
+      const rw = r * w;
+      const rh = r * w * 0.42;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rw, rh, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx - rw * 0.55, cy + rh * 0.35, rw * 0.6, rh * 0.7, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + rw * 0.6, cy + rh * 0.3, rw * 0.55, rh * 0.65, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
   /**
    * 生成一张竖直渐变的等距柱状投影（equirect）贴图。
    * 既当天空背景，也用来烘环境反射 —— 零外部资源，纯 Canvas 绘制。
@@ -86,7 +108,7 @@ export function createScene3D(canvas, device, theme = 'day') {
    */
   function makeSkyTexture(colors) {
     const c = document.createElement('canvas');
-    c.width = 16;
+    c.width = 256;
     c.height = 256;
     const ctx = c.getContext('2d');
     const [top, mid, bottom] = colors || [VIEW3D.skyTop, VIEW3D.skyMid, VIEW3D.skyBottom];
@@ -96,6 +118,7 @@ export function createScene3D(canvas, device, theme = 'day') {
     g.addColorStop(1, bottom);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, c.width, c.height);
+    drawClouds(ctx, c.width, c.height); // 初始按白昼带云，随后 applyTheme 按主题重绘
     const tex = new THREE.CanvasTexture(c);
     tex.mapping = THREE.EquirectangularReflectionMapping;
     if ('colorSpace' in tex) tex.colorSpace = THREE.SRGBColorSpace;
@@ -105,7 +128,7 @@ export function createScene3D(canvas, device, theme = 'day') {
   }
 
   /** 就地重绘天空渐变（切换时段用），随后由调用方刷新环境贴图 */
-  function repaintSky(colors) {
+  function repaintSky(colors, withClouds) {
     if (!skyCtx || !skyCanvas) return;
     const [top, mid, bottom] = colors;
     const g = skyCtx.createLinearGradient(0, 0, 0, skyCanvas.height);
@@ -114,6 +137,7 @@ export function createScene3D(canvas, device, theme = 'day') {
     g.addColorStop(1, bottom);
     skyCtx.fillStyle = g;
     skyCtx.fillRect(0, 0, skyCanvas.width, skyCanvas.height);
+    if (withClouds) drawClouds(skyCtx, skyCanvas.width, skyCanvas.height);
     skyTex.needsUpdate = true;
   }
 
@@ -251,12 +275,20 @@ export function createScene3D(canvas, device, theme = 'day') {
   function applyTheme(next) {
     const t = (VIEW3D.theme && VIEW3D.theme[next]) ? VIEW3D.theme[next] : VIEW3D.theme.day;
     curTheme = VIEW3D.theme[next] ? next : 'day';
+    scene.userData.theme = curTheme; // level3d 据此决定天花板用白昼天空还是夜战深蓝黑
     hemi.intensity = t.hemiIntensity;
+    hemi.color.set(t.hemiSky || PALETTE3D.hemiSky);
+    hemi.groundColor.set(t.hemiGround || PALETTE3D.hemiGround);
     ambient.intensity = t.ambientIntensity;
+    if (t.ambientColor) ambient.color.set(t.ambientColor);
     sun.intensity = t.dirIntensity;
+    if (t.sunColor) sun.color.set(t.sunColor); // 白昼暖阳 / 夜战冷月光
     if ('toneMappingExposure' in renderer) renderer.toneMappingExposure = t.exposure;
-    if (scene.fog) scene.fog.density = fogBase * (t.fogMul || 1);
-    repaintSky([t.skyTop, t.skyMid, t.skyBottom]);
+    if (scene.fog) {
+      scene.fog.density = fogBase * (t.fogMul || 1);
+      if (t.fogColor) scene.fog.color.set(t.fogColor);
+    }
+    repaintSky([t.skyTop, t.skyMid, t.skyBottom], t.clouds);
     rebuildEnv(); // 天空变了，环境反射必须跟着变，否则夜里材质仍按白天的天光反照
   }
   applyTheme(theme);

@@ -1725,6 +1725,12 @@ window.SOUDACHE = {
   get world() {
     return world;
   },
+  get scene() {
+    return sceneHandle ? sceneHandle.scene : null;
+  },
+  get camera() {
+    return sceneHandle ? sceneHandle.camera : null;
+  },
   get save() {
     return save;
   },

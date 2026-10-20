@@ -493,7 +493,7 @@ export const ENEMY_TYPES = {
     armor: 15,
     speed: 112,
     radius: 11,
-    color: '#d2603f',
+    color: '#6b7a5a', // 与 02 图左一浅灰绿作战服一致
     weapon: {
       id: 'enemy_ar', name: 'AK-74N', auto: true,
       damage: 8, rpm: 300, magSize: 20, reloadTime: 2.8,
@@ -569,7 +569,7 @@ export const ENEMY_TYPES = {
     armor: 5,
     speed: 168, // 最快
     radius: 10,
-    color: '#E08A3C',
+    color: '#2e3438', // 与 02 图中间深灰蓝黑作战服一致
     weapon: {
       id: 'enemy_smg', name: 'PP-19 冲锋枪', auto: true,
       damage: 7, rpm: 900, magSize: 30, reloadTime: 2.2,
@@ -594,7 +594,7 @@ export const ENEMY_TYPES = {
     armor: 80,
     speed: 96, // 重甲：比精英慢，但绝不追不上 —— 靠压迫感而不是风筝
     radius: 14, // 体型最大（碰撞体也最大，容易被打中）
-    color: '#ff2d2d',
+    color: '#a3362c', // 深红重甲主色（02 图右一）
     weapon: {
       id: 'enemy_boss_lmg', name: '重机枪·撕裂者', auto: true,
       damage: 14, rpm: 260, magSize: 40, reloadTime: 3.0,
@@ -801,10 +801,11 @@ export const MINIMAP_LAYERS = {
 
 /** 3D 调色板（Low-Poly 风格化） */
 export const PALETTE3D = {
-  ground: '#33403A',
-  groundAlt: '#2C352F',
-  wall: '#5C5F52',
-  wallTop: '#6C7060',
+  // 场景基调对照 docs/art-concept/04-scene-day.png：沙黄地面 + 混凝土灰掩体 + 暖调
+  ground: '#b8a06a',
+  groundAlt: '#ab935d',
+  wall: '#969183', // 掩体混凝土灰（偏暖，配合白昼暖光出 04 图的沙土感）
+  wallTop: '#a39e90',
   crate: '#9C7B36',
   crateTrim: '#8A5A16',
   crateRubble: '#6B5640', // 击碎后的瓦砾色
@@ -826,19 +827,22 @@ export const PALETTE3D = {
   terminalHacked: '#10B981', // 已破解：转绿
   airdrop: '#FFB020', // 空投信标：传说金
   highlight: '#FBBF24',
-  enemyPatrol: '#9CA3AF',
-  enemyElite: '#DC2626',
+  // 敌人军服基色（对照 docs/art-concept/02-enemies.png；模型细分配色见 VIEW3D.enemySkins）
+  enemyPatrol: '#6b7a5a', // 普通步枪兵：浅灰绿作战服
+  enemyElite: '#4a5544', // 精英守卫：深灰绿（红色甲片点缀在皮肤里）
   enemyMarksman: '#7B68A6', // 精确射手：紫
-  enemyRusher: '#E08A3C', // 冲锋兵：橙
-  vmBody: '#393E36',
+  enemyRusher: '#2e3438', // 冲锋兵：深灰蓝黑
+  accent: '#E8863C', // 橙色点缀（viewmodel 瞄具 / 物品细节，对照 01 图）
+  glove: '#4d5844', // 第一人称手套（军绿装备）
+  vmBody: '#4d5642', // 第一人称枪身：军绿（提亮一档，弱光下也能看清轮廓）
   vmDark: '#22281F',
-  sky: '#1A2430',
-  fog: '#1A2430',
+  sky: '#a8c8e0',
+  fog: '#bfd2de', // 白昼雾色（淡蓝地平线；夜战由 theme.fogColor 覆盖）
   dust: '#C9D6E4', // 空气尘埃颜色
-  ceiling: '#4A524A', // 天花板基色（略亮于墙，配合自发光避免从下看发黑）
-  ceilingBeam: '#33392F', // 结构横梁基色
-  hemiSky: '#93C5FD',
-  hemiGround: '#475569',
+  ceiling: '#585c56', // 天花板基色（混凝土灰，配合自发光避免从下看发黑）
+  ceilingBeam: '#41453f', // 结构横梁基色
+  hemiSky: '#b3d4ee',
+  hemiGround: '#6a6152', // 暖色地面反照（沙黄回光）
   dirLight: '#FFF7ED',
   ambient: '#1E293B',
   tracer: '#FFD9A0',
@@ -850,9 +854,9 @@ export const PALETTE3D = {
   metal: '#5B6168',
   metalDark: '#363C44',
   concrete: '#565A4C',
-  medkit: '#F4F6F8',
-  medkitCross: '#E23B3B',
-  ammoBox: '#C9A227',
+  medkit: '#5c6b4f', // 医疗箱军绿箱底（橙十字见 MEDKIT_TEX，对照 01 图）
+  medkitCross: '#E8863C',
+  ammoBox: '#DD7E33', // 弹药盒橙白配色（对照 01 图）
   armorPlate: '#7F8C9B',
   hand: '#C8A07A',
   helmet: '#33392F',
@@ -922,32 +926,49 @@ export const VIEW3D = {
   toneMappingExposure: 1.12, // 色调映射曝光（>1 提亮，配合 ACES 使用）
   envIntensity: 0.85, // 程序化环境贴图强度（给 Standard 材质提供天光反射）
   envMapSize: 128, // 环境贴图（PMREM）分辨率，越大越细腻但生成越慢
-  skyTop: '#101823', // 天空渐变顶部
-  skyMid: '#26364A', // 天空渐变中部（地平线附近）
-  skyBottom: '#3A4A5C', // 天空渐变底部
+  // 白昼天空（对照 docs/art-concept/04-scene-day.png：淡蓝 + 几何白云，整体暖调明快）
+  skyTop: '#a8c8e0', // 天空渐变顶部
+  skyMid: '#bcd6e8', // 天空渐变中部（地平线附近）
+  skyBottom: '#d2dfe9', // 天空渐变底部
   // --- 时段主题（白昼 / 夜战） ---
   // 同一张地图、同一套光照结构，只换光照强度与天空色 —— 夜战靠"低光 + 头灯"重建可读性，
   // 而不是重做一张夜图。fogMul 让夜雾更浓，进一步压缩可视距离（潜行收益）。
+  // 颜色项（fogColor/hemiSky/hemiGround/sunColor/ambientColor）与 clouds 开关一并随主题切换。
   theme: {
     day: {
-      hemiIntensity: 0.85,
-      ambientIntensity: 0.34,
-      dirIntensity: 2.1,
-      exposure: 1.12,
-      fogMul: 1,
-      skyTop: '#101823',
-      skyMid: '#26364A',
-      skyBottom: '#3A4A5C',
+      hemiIntensity: 0.95,
+      ambientIntensity: 0.40,
+      dirIntensity: 2.2,
+      exposure: 1.16,
+      fogMul: 0.9,
+      // 天空是环境贴图的来源：整张地图有天花板（level3d），天空主要通过
+      // PMREM 反射影响墙面/地面颜色，所以白昼天空要"淡"而不是"浓蓝"，
+      // 否则反射会把混凝土墙染成冷蓝、丢掉 04 图的暖调。
+      skyTop: '#a8c8e0',
+      skyMid: '#bcd6e8',
+      skyBottom: '#d2dfe9',
+      fogColor: '#c6d3d8',
+      hemiSky: '#dce9f4',
+      hemiGround: '#6a6152',
+      sunColor: '#fff3dc', // 暖阳
+      ambientColor: '#7a6f57', // 暖灰环境光（压住冷蓝天光，整体暖调）
+      clouds: true, // 几何白云（画进天空渐变纹理，零额外资源）
     },
     night: {
-      hemiIntensity: 0.25,
-      ambientIntensity: 0.12,
-      dirIntensity: 0.30,
+      hemiIntensity: 0.22,
+      ambientIntensity: 0.10,
+      dirIntensity: 0.26,
       exposure: 1.06,
-      fogMul: 1.35,
-      skyTop: '#0a0f18',
-      skyMid: '#16202e',
-      skyBottom: '#1f2a38',
+      fogMul: 1.4,
+      skyTop: '#0a0e16',
+      skyMid: '#101826',
+      skyBottom: '#17202e',
+      fogColor: '#0c1220',
+      hemiSky: '#2c3a55',
+      hemiGround: '#0e1218',
+      sunColor: '#93a9cf', // 冷月光
+      ambientColor: '#1c2836',
+      clouds: false,
     },
     enemyVisionMul: 0.85, // 夜战敌人视野系数（生成时写入 Enemy.visionMul）
   },
@@ -968,7 +989,7 @@ export const VIEW3D = {
 
   dustCount: 420, // 空气尘埃粒子数（营造体积感，0 = 关闭）
   dustRadius: 70, // 尘埃分布半径（米，跟随相机的局部范围）
-  dustSize: 0.035, // 尘埃颗粒大小（米）
+  dustSize: 0.022, // 尘埃颗粒大小（米）——刻意压小：sizeAttenuation 下靠近相机会被放大成大色块
   groundRoughness: 0.86, // 地面粗糙度
   wallRoughness: 0.76, // 墙面 / 掩体箱粗糙度
   metalness: 0.06, // 非金属表面的基础金属度（略微给一点，增加反射层次）
@@ -983,6 +1004,23 @@ export const VIEW3D = {
     rusher: { torsoW: 0.56, torsoH: 0.88, torsoD: 0.34, headR: 0.18, legH: 0.68 },
     gunLength: 0.62,
     hitFlashColor: '#FFE4E6',
+  },
+
+  // --- 敌人皮肤（对照 docs/art-concept/02-enemies.png；只换色/开部件，不加几何） ---
+  // uniform=作战服 dark=背心/靴/手套 helmet=盔 pack=背包 plate=甲片
+  // masked=true 头套蒙面（遮住肤色脸）；visor=面罩色（BOSS 现代防弹面罩，盖住面部零件）
+  // heavy=true 全身插板重甲（胸甲/肩甲走 plate 深红块）
+  enemySkins: {
+    // 普通步枪兵：浅灰绿作战服 + 同色系稍深防弹头盔（02 图左一）
+    patrol: { uniform: '#6b7a5a', dark: '#3e4636', helmet: '#566248', pack: '#4a5443', plate: '#566248' },
+    // 精英守卫：深灰绿 + 红色甲片点缀（普通兵与 BOSS 之间的过渡配色）
+    elite: { uniform: '#4a5544', dark: '#333a30', helmet: '#3d4636', pack: '#3f4839', plate: '#b03028' },
+    // 精确射手：未在参考图内，沿用紫色系辨识
+    marksman: { uniform: '#7B68A6', dark: '#22281f', helmet: '#33392f', pack: '#3a4a3f', plate: '#7B68A6' },
+    // 冲锋兵：深灰蓝黑作战服 + 头套蒙面（02 图中间前倾冲刺姿）
+    rusher: { uniform: '#2e3438', dark: '#23272b', helmet: '#262c31', pack: '#262b30', plate: '#262c31', masked: true },
+    // BOSS：深红全覆盖插板重甲 + 现代防弹头盔 + 面罩（02 图右一；无任何日式/武士元素）
+    boss: { uniform: '#a3362c', dark: '#6f221b', helmet: '#8c2b22', pack: '#6f221b', plate: '#7a241d', visor: '#161e28', heavy: true },
   },
 
   // --- 武器视图模型（挂在相机下，局部坐标；尺寸/距离单位：米） ---
