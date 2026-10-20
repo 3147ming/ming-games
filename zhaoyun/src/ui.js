@@ -17,6 +17,8 @@
   let cellStatic = null, cellStaticKey = '';   // V6：地形静态描述子缓存（对局内不变）
   let itemSig = -1;                            // V6：铲子数量签名（避免每帧写 DOM）
   let carry = null;                 // 关卡模式跨关继承
+  let selectedUnitId = null;        // V6 数值校准：当前选中的我方塔（显示等级角标）
+  let dragMatchKey = null;          // V6 数值校准：拖拽中的「同字卡」匹配键（'u:type' / 'h:heroId'）
   let pendingLevel = 0;
   let selectedHero = null;          // 武器面板当前选中的武将
 
@@ -225,6 +227,7 @@
     unitEls = {};
     el.units.innerHTML = '';
     adouEls = {};
+    selectedUnitId = null; dragMatchKey = null;   // V6 数值校准：开局清空选中/同字卡角标态
     buildAdou();
     buildSpawnMark();
     syncCells();
@@ -360,6 +363,27 @@
     const inner = '<g class="fig-mount">' + parts.join('') + '</g>';
     return '<svg class="fig" viewBox="0 0 100 120" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' + inner + '</svg>';
   }
+  /* V6 数值校准：等级角标（.lv）默认隐藏，仅在两种触发下显示 ——
+   *   ① 拖动手牌/军营中的「同字卡」（兵种同字 / 武将字对）时，场上对应塔显示（合成/升级目标提示）；
+   *   ② 点击/选中某塔时显示（配合属性面板看数值）。
+   * 规则层等级数值不变，仅 UI 显隐。matchKey：兵种塔 'u:'+type，武将塔 'h:'+heroId。 */
+  function cardMatchKey(c) {
+    if (!c) return null;
+    if (c.kind === 'unit') return 'u:' + c.type;
+    if (c.kind === 'hero') return 'h:' + c.heroId;
+    return null;                              // 道具（火球/神兵符/毛笔）/ 铲子 → 不触发
+  }
+  function updateBadges() {
+    const sel = selectedUnitId;
+    const mk = (drag.active && dragMatchKey) ? dragMatchKey : null;
+    for (const id in unitEls) {
+      const e = unitEls[id];
+      if (!e) continue;
+      const show = (mk && e.dataset.matchKey === mk) || (sel && +e.dataset.uid === sel);
+      if (e._badge !== show) { e._badge = show; e.classList.toggle('show-lv', show); }
+    }
+  }
+
   function unitHtml(u) {
     if (u.cls === 'gold') {                                  // 兼容旧存档残留
       return '<b>' + u.char + '</b>';
@@ -392,6 +416,8 @@
           (u.span > 1 ? ' span2' : '');
         e.dataset.uid = u.id;
         e.dataset.weapon = wtype;
+        e.dataset.matchKey = (u.cls === 'hero') ? ('h:' + u.heroId) : (u.cls === 'soldier' ? ('u:' + u.type) : '');
+        e._badge = false;
         e.innerHTML = unitHtml(u);
         e._bar = e.querySelector('.hb u');      // V6：缓存子节点引用，每帧不再 querySelector
         e._lvEl = e.querySelector('.lv');
@@ -663,6 +689,9 @@
       drag.el = card.cloneNode(true);
       drag.el.classList.add('ghost');
       document.body.appendChild(drag.el);
+      // V6 数值校准：同字卡拖动 → 场上对应塔显示等级角标（合成/升级目标提示）
+      const c = state.player.hand.find((x) => x.uid === drag.uid);
+      dragMatchKey = cardMatchKey(c); updateBadges();
       moveGhost(ev.clientX, ev.clientY);
     });
 
@@ -677,6 +706,9 @@
       drag.el = card.cloneNode(true);
       drag.el.classList.add('ghost');
       document.body.appendChild(drag.el);
+      // V6 数值校准：同字卡拖动 → 场上对应塔显示等级角标（合成/升级目标提示）
+      const c = state.player.barracks.find((x) => x.uid === drag.uid);
+      dragMatchKey = cardMatchKey(c); updateBadges();
       moveGhost(ev.clientX, ev.clientY);
     });
 
@@ -707,6 +739,8 @@
         drag.el = node.cloneNode(true);
         drag.el.classList.add('ghost');
         document.body.appendChild(drag.el);
+        // V6 数值校准：拖塔换位时先收起选中态与同字卡角标
+        selectedUnitId = null; dragMatchKey = null; updateBadges();
         moveGhost(ev.clientX, ev.clientY);
       } else {
         ev.preventDefault(); ev.stopPropagation();
@@ -883,6 +917,8 @@
     drag.active = false; drag.src = null; drag.cell = null; drag.moved = false;
     if (drag.el && drag.el.parentNode) drag.el.parentNode.removeChild(drag.el);
     drag.el = null;
+    // V6 数值校准：拖拽结束，收回同字卡触发的等级角标（选中态仍保留）
+    dragMatchKey = null; updateBadges();
     highlight(null);
     clearRange();
   }
@@ -992,6 +1028,9 @@
   function selectUnit(u) {
     if (!u || u.dead) { clearRange(); return; }
     if (u.side === 'player' && u.range > 0) showRange(u); else clearRange();
+    // V6 数值校准：点击/选中我方塔 → 显示其等级角标（脱离选中即隐藏）
+    selectedUnitId = (u.side === 'player') ? u.id : null;
+    updateBadges();
     showUnitInfo(u);
     ZY.Audio.play('tap');
   }
@@ -1021,6 +1060,8 @@
 
   function handleCellTap(r, c) {
     clearRange();
+    // V6 数值校准：点棋盘空白处 / 阿斗 → 收起选中塔的等级角标
+    if (selectedUnitId !== null) { selectedUnitId = null; updateBadges(); }
     const a = B.adouAt(state.mode, 'player', state.levelIdx);
     if (a && r === a.row && c === a.col) { showAdouInfo('player'); return; }
   }

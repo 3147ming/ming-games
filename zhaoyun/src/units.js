@@ -23,7 +23,7 @@ window.ZY = window.ZY || {};
   const BARRACKS_MAX = 5;         // 军营栏 5 槽【原版】
   const HAND_MAX = 8;             // 手牌区 8 格（武将卡占 2 格）【原版】
   const START_BUN = 20;           // 开局资源 20【原版】（界面显示为「资源」，蛋形/圆形图标）
-  const BASE_INCOME = 1;          // 资源自动增长 +1/s【原版：5 秒内 +2~4，含击杀奖励】
+  const BASE_INCOME = 1;          // 资源自动增长 +1/s【原版：5 秒内 +2~4，含击杀奖励 · 校准确认】
   const ADOU_HP = 3;              // 阿斗血量【原版：三颗红心】
   const ADOU_BONUS = 10;          // 阿斗掉 1 血补偿资源【推导，沿用 V4：卖血换经济】
   const ADOU_LINE_WAVE = '护驾！护驾！';   // 阿斗台词：敌人来袭时【原版】
@@ -33,13 +33,13 @@ window.ZY = window.ZY || {};
   const FIREBALL_DMG = 80;        // 火球固定伤害（精英/Boss 同样生效）【推导，沿用 V4】
   const FIREBALL_RADIUS = 1;      // 火球爆炸半径（切比雪夫，3×3）【推导，沿用 V4】
   const NORMAL_BOUNTY = 1;        // 击杀普通敌人资源 +1【原版】
-  const ELITE_BOUNTY = 8;         // 击杀精英赏金【推导，沿用 V4 口径】
-  const BOSS_BOUNTY = 30;         // 击杀 Boss 赏金【推导，沿用 V4 口径】
-  const XP_PER_KILL = 1.2;        // 每击杀 1 个 Lv1 敌人获得的经验【推导：3 只 = 3.6，对齐原版刘备面板 3.6/10】
-  const XP_PER_LEVEL = 10;        // 经验满 10 升 1 级【原版：经验值 (x/10)】
+  const ELITE_BOUNTY = 8;         // 击杀精英赏金【推导·校准确认：V4 口径，无尽强化波/关卡突破口，血厚难杀，8 对得起收益】
+  const BOSS_BOUNTY = 30;         // 击杀 Boss 赏金【推导·校准确认：张梁血=贼24×10倍率×波次倍率，30 合理】
+  const XP_PER_KILL = 1.2;        // 每击杀 1 个 Lv1 敌人获得的经验【推导·校准确认：3 只 = 3.6，对齐原版刘备面板 3.6/10】
+  const XP_PER_LEVEL = 10;        // 经验满 10 升 1 级【原版：经验值 (x/10) · 校准确认】
   const LEVEL_WAVES = 6;          // 关卡模式每关波数【原版：巨鹿关 = 6 波】
-  const STAR_PAR_WAVE = 25;       // 星级时间基准：每波 25s 内清完算快【推导】
-  const LEVEL_CLEAR_BONUS = 25;   // 关卡模式：过关战利品（资源）【推导，沿用 V4】
+  const STAR_PAR_WAVE = 25;       // 星级时间基准：每波 25s 内清完算快【推导·校准确认】
+  const LEVEL_CLEAR_BONUS = 25;   // 关卡模式：过关战利品（资源）【推导·校准确认：结算界面金币 +20 为原版展示值，两者不同体系，均保留】
   const SHOVEL_START = 2;         // 开局道具栏铲子数量【原版：道具栏（铲子 x2）】
   const SHOVEL_WAVE_BONUS = 5;    // 每多少波奖励 1 把铲子【推导】
   const BOSS_HP_MUL = 10;         // Boss 血量倍率（相对同波敌）【推导，沿用 V4】
@@ -57,11 +57,11 @@ window.ZY = window.ZY || {};
    */
   const UNITS = {
     dao:   { key: 'dao',   char: '刀', name: '刀兵', hp: 40,  atk: 4.50, aspd: 1.88, range: 1, move: 2.60, role: 'front', tag: '单体' }, // 刀 = 原版展示值
-    qiang: { key: 'qiang', char: '枪', name: '枪兵', hp: 32,  atk: 3.80, aspd: 2.05, range: 2, move: 2.30, role: 'mid',   pierce: true,  tag: '贯穿' }, // 推导：攻击略低、攻速略快
-    gong:  { key: 'gong',  char: '弓', name: '弓兵', hp: 20,  atk: 3.20, aspd: 1.60, range: 4, move: 2.40, role: 'back',  tag: '远程' },                   // 推导：远程低血
-    qi:    { key: 'qi',    char: '骑', name: '骑兵', hp: 36,  atk: 4.20, aspd: 1.70, range: 1, move: 1.75, role: 'flank', splash: 0.5, tag: '溅射' },      // 推导：近战溅射
+    qiang: { key: 'qiang', char: '枪', name: '枪兵', hp: 32,  atk: 3.80, aspd: 2.05, range: 2, move: 2.30, role: 'mid',   pierce: true,  tag: '贯穿' }, // 推导·校准确认：肉盾刀40 > 骑36 > 枪32 > 弓20 > 农18，定位自洽
+    gong:  { key: 'gong',  char: '弓', name: '弓兵', hp: 20,  atk: 3.20, aspd: 1.60, range: 4, move: 2.40, role: 'back',  tag: '远程' },                   // 推导·校准确认：远程低血；弓 3.20 即武将黄忠/诸葛亮攻击公式基准
+    qi:    { key: 'qi',    char: '骑', name: '骑兵', hp: 36,  atk: 4.20, aspd: 1.70, range: 1, move: 1.75, role: 'flank', splash: 0.5, tag: '溅射' },      // 推导·校准确认：近战溅射；骑 4.20 即武将马超攻击公式基准
     zei:   { key: 'zei',   char: '贼', name: '贼兵', hp: 24,  atk: 2.00, aspd: 1.20, range: 1, move: 1.85, role: 'front', tag: '敌方' },                   // 敌方普通兵种
-    nong:  { key: 'nong',  char: '农', name: '农民', hp: 18,  atk: 0,    aspd: 0,    range: 0, move: 0,    role: 'back',  produce: 0.4, tag: '产出' },      // 推导：资源产出
+    nong:  { key: 'nong',  char: '农', name: '农民', hp: 18,  atk: 0,    aspd: 0,    range: 0, move: 0,    role: 'back',  produce: 0.4, tag: '产出' },      // 推导·校准确认：资源产出 0.4/s，征兵池 5%，回本约 25-30s
   };
 
   // 汉字 → 兵种 key
@@ -72,47 +72,53 @@ window.ZY = window.ZY || {};
   const SOLDIER_CHARS = ['刀', '枪', '弓', '骑'];
 
   /* ---------- 武将表 ----------
-   * V5：五对武将字（原版字对合成表）。刘备 = 原版展示面板 16.00/1.25 单体；
-   * 其余武将按刘备/刀基准比例推导（标注）。heroLevel 成长走 GROW。
-   * 武将卡占 2 格宽（手牌 2 槽 / 棋盘横跨 2 格）。
+   * V5：五对武将字（原版字对合成表）。
+   * V6 数值校准（用户拍板）：武将攻击面板统一按「对应兵种 3 级 × 1.2」复算
+   *   （V1 已确立并被接受的规则：武将 = 对应兵种 3 级 × 1.2，保留两位小数），
+   *   即 atk = UNITS[base].atk × GROW.atk^(3-1) × 1.2 = UNITS[base].atk × 1.85² × 1.2。
+   *   刘备 = 原版展示锚定值 16.00，不参与公式；其余武将略高于刘备是「有意且正确」的
+   *   （原版只展示了刘备面板，其余武将攻击未展示、不构成冲突；刘备靠「仁德」群体回血定位）。
+   *   同系武将攻击相同是公式决定的、有意且正确（张飞=关羽=18.48、黄忠=诸葛亮=13.14）；
+   *   武将个体差异由 hp/攻速/技能/特性字段承担。攻速/hpBase/技能/标签/占 2 格宽均不动。
+   * heroLevel 成长走 GROW。武将卡占 2 格宽（手牌 2 槽 / 棋盘横跨 2 格）。
    */
   const HEROES = [
     {
       id: 'zhaoyun', name: '赵云', chars: ['赵', '云'], base: 'qiang',
-      atk: 12.0, aspd: 1.45, hpBase: 32, range: 3, pierce: true, tag: '枪兵系 · 贯穿', // 推导
+      atk: 15.61, aspd: 1.45, hpBase: 32, range: 3, pierce: true, tag: '枪兵系 · 贯穿', // atk = 枪 3 级 ×1.2（V1 规则）= 3.80×1.85²×1.2 = 15.61
       skill: { cd: 8, type: 'sweep', name: '横扫剑气', desc: '前方直线群伤' },
     },
     {
       id: 'zhangfei', name: '张飞', chars: ['张', '飞'], base: 'dao',
-      atk: 13.5, aspd: 1.30, hpBase: 40, hpMul: 1.25, dmgReduce: 0.25, range: 1, tag: '刀兵系 · 高血高防', // 推导
+      atk: 18.48, aspd: 1.30, hpBase: 40, hpMul: 1.25, dmgReduce: 0.25, range: 1, tag: '刀兵系 · 高血高防', // atk = 刀 3 级 ×1.2 = 4.50×1.85²×1.2 = 18.48
       skill: { cd: 10, type: 'roar', name: '怒吼', desc: '震晕前方 1 格敌人 1 秒' },
     },
     {
       id: 'huangzhong', name: '黄忠', chars: ['黄', '忠'], base: 'gong',
-      atk: 11.0, aspd: 1.10, hpBase: 20, range: 5, crit: 0.4, critMul: 2.0, tag: '弓兵系 · 远程暴击', // 推导
+      atk: 13.14, aspd: 1.10, hpBase: 20, range: 5, crit: 0.4, critMul: 2.0, tag: '弓兵系 · 远程暴击', // atk = 弓 3 级 ×1.2 = 3.20×1.85²×1.2 = 13.14
       skill: { cd: 9, type: 'snipe', name: '蓄力狙击', desc: '对最远敌人单体大伤' },
     },
     {
       id: 'liubei', name: '刘备', chars: ['刘', '备'], base: 'dao',
-      atk: 16.00, aspd: 1.25, hpBase: 40, range: 1, tag: '主公 · 单体', // 原版展示值（攻击 16.00 / 攻速 1.25 / 单体）
+      atk: 16.00, aspd: 1.25, hpBase: 40, range: 1, tag: '主公 · 单体', // 原版展示锚定值（攻击 16.00 / 攻速 1.25 / 单体），不参与公式
       skill: { cd: 5, type: 'heal', name: '仁德', desc: '相邻己方单位回血' },
     },
     {
       id: 'machao', name: '马超', chars: ['马', '超'], base: 'qi',
-      atk: 14.0, aspd: 1.35, hpBase: 36, range: 1, splash: 0.6, tag: '骑兵系 · 群伤', // 推导
+      atk: 17.25, aspd: 1.35, hpBase: 36, range: 1, splash: 0.6, tag: '骑兵系 · 群伤', // atk = 骑 3 级 ×1.2 = 4.20×1.85²×1.2 = 17.25
       skill: { cd: 10, type: 'cleave', name: '青龙斩', desc: '周围溅射大伤害' },
     },
     // —— V6 内容扩展：补入武圣关羽 + 军师诸葛亮（字对由 HEROES 自动派生到 GOLD_CHARS）
     {
       id: 'guanyu', name: '关羽', chars: ['关', '羽'], base: 'dao',
-      atk: 15.5, aspd: 1.15, hpBase: 44, hpMul: 1.2, dmgReduce: 0.15, range: 2, splash: 0.35,
-      tag: '刀兵系 · 横扫重击', // 推导：高攻高血、站桩近战横扫
+      atk: 18.48, aspd: 1.15, hpBase: 44, hpMul: 1.2, dmgReduce: 0.15, range: 2, splash: 0.35,
+      tag: '刀兵系 · 横扫重击', // atk = 刀 3 级 ×1.2 = 4.50×1.85²×1.2 = 18.48（V6 新增，一并校准）；同系张飞=关羽=18.48 为公式决定、有意
       skill: { cd: 9, type: 'sweep', name: '青龙偃月', desc: '前方扇形群伤' },
     },
     {
       id: 'zhugeliang', name: '诸葛亮', chars: ['诸', '葛'], base: 'gong',
-      atk: 10.5, aspd: 1.25, hpBase: 18, range: 4, crit: 0.15, critMul: 1.8,
-      tag: '军师 · 范围火计', // 推导：远程法师，群伤 + 短控
+      atk: 13.14, aspd: 1.25, hpBase: 18, range: 4, crit: 0.15, critMul: 1.8,
+      tag: '军师 · 范围火计', // atk = 弓 3 级 ×1.2 = 3.20×1.85²×1.2 = 13.14（V6 新增，一并校准）；同系黄忠=诸葛亮=13.14 为公式决定、有意
       skill: { cd: 11, type: 'burn', name: '八阵图', desc: '范围内群伤并短眩晕' },
     },
   ];

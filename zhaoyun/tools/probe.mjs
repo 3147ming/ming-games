@@ -190,6 +190,28 @@ window.__tapEl = async (sel) => {
   await new Promise(r2 => setTimeout(r2, 240));
   return { ok: true };
 };
+window.__dragHold = async (sel, tx, ty) => {
+  const el = document.querySelector(sel);
+  if (!el) return { err: 'no el ' + sel };
+  const r = el.getBoundingClientRect();
+  const sx = r.left + r.width / 2, sy = r.top + r.height / 2;
+  const mk = (type, x, y) => new PointerEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true, pointerId: 1, pointerType: 'touch', isPrimary: true });
+  el.dispatchEvent(mk('pointerdown', sx, sy));
+  await new Promise(r2 => setTimeout(r2, 60));
+  window.dispatchEvent(mk('pointermove', (sx + tx) / 2, (sy + ty) / 2));
+  await new Promise(r2 => setTimeout(r2, 60));
+  window.dispatchEvent(mk('pointermove', tx, ty));
+  await new Promise(r2 => setTimeout(r2, 60));
+  return { hl: document.querySelectorAll('.cell.hl').length, ghost: document.querySelectorAll('.ghost').length };
+};
+window.__dragEnd = async (tx, ty) => {
+  const mk = (type, x, y) => new PointerEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true, pointerId: 1, pointerType: 'touch', isPrimary: true });
+  window.dispatchEvent(mk('pointermove', tx, ty));
+  await new Promise(r2 => setTimeout(r2, 60));
+  window.dispatchEvent(mk('pointerup', tx, ty));
+  await new Promise(r2 => setTimeout(r2, 240));
+  return { ghostsLeft: document.querySelectorAll('.ghost').length };
+};
 `;
 
 console.log('\n== 征兵（10 起步 +2 不封顶 · 一次 5 张进军营 5 槽）==');
@@ -333,7 +355,7 @@ ok('铁剑装备给武将（攻击 +3）', weapon.weapon === 'tiejian' && Math.a
 ok('单位身上出现武器徽标', weapon.wpBadge === '剑', weapon.wpBadge);
 console.log('   面板: ' + weapon.panelTxt);
 
-console.log('\n== 拖卡建塔 + 同字合成（刀²）+ 等级角标 ==');
+console.log('\n== 拖卡建塔 + 同字合成（刀²）+ 等级角标显隐 ==');
 const tower = await evalJs(`(async () => {
   const s = ZY.UI.getState();
   s.player.bun = 300;
@@ -352,22 +374,45 @@ const tower = await evalJs(`(async () => {
   const builtObj = s.grid[row][col];
   const builtOk = !!builtObj && builtObj.type === 'dao' && builtObj.level === 1;
   const unitEl0 = builtObj ? document.querySelector('.unit.p[data-uid="' + builtObj.id + '"]') : null;
-  const lv1 = unitEl0 && unitEl0.querySelector('.lv') ? unitEl0.querySelector('.lv').textContent : null;
-  const lvSize = unitEl0 && unitEl0.querySelector('.lv') ? parseFloat(getComputedStyle(unitEl0.querySelector('.lv')).fontSize) : 0;
+  const lvEl0 = unitEl0 && unitEl0.querySelector('.lv');
+  const lv1 = lvEl0 ? lvEl0.textContent : null;
+  const lvSize = lvEl0 ? parseFloat(getComputedStyle(lvEl0).fontSize) : 0;
+  const lvVisDefault = lvEl0 ? getComputedStyle(lvEl0).visibility : 'none';   // V6 校准：默认隐藏
   const cardGone = !s.player.hand.some((x) => x.uid === 555001);
-  const d2 = await window.__dragFrom('#hand .card[data-uid="555002"]', p.x, p.y);
+  // 拖动第二张同字卡（刀）→ 同字塔等级角标应可见（合成/升级目标提示）
+  const hold = await window.__dragHold('#hand .card[data-uid="555002"]', p.x, p.y);
+  const elDuring = document.querySelector('.unit.p[data-uid="' + builtObj.id + '"]');
+  const lvVisDuringDrag = (elDuring && elDuring.querySelector('.lv')) ? getComputedStyle(elDuring.querySelector('.lv')).visibility : 'none';
+  const d2 = await window.__dragEnd(p.x, p.y);   // 松手 → 同字合成（刀²），拖拽结束角标收回
   const t2 = s.grid[row][col];
+  const elAfter = t2 ? document.querySelector('.unit.p[data-uid="' + t2.id + '"]') : null;
+  const lvVisAfterDrag = (elAfter && elAfter.querySelector('.lv')) ? getComputedStyle(elAfter.querySelector('.lv')).visibility : 'none';
+  // 点击该塔（选中）→ 等级角标应可见
+  await window.__tapEl('.unit.p[data-uid="' + t2.id + '"]');
+  const lvVisOnSelect = (elAfter && elAfter.querySelector('.lv')) ? getComputedStyle(elAfter.querySelector('.lv')).visibility : 'none';
+  // 点棋盘空白处（脱离选中）→ 角标再隐藏
+  const empty = [...document.querySelectorAll('.cell.deploy')].find((c) => {
+    const r = +c.dataset.r, col = +c.dataset.c;
+    return !s.grid[r][col];
+  });
+  if (empty) await window.__tapEl('.cell[data-r="' + +empty.dataset.r + '"][data-c="' + +empty.dataset.c + '"]');
+  const lvVisAfterDeselect = (elAfter && elAfter.querySelector('.lv')) ? getComputedStyle(elAfter.querySelector('.lv')).visibility : 'none';
   return {
     d1: d1, d2: d2, row: row, col: col,
-    built: builtOk, unitEl0: !!unitEl0, lv1: lv1, lvSize: lvSize, cardGone: cardGone,
+    built: builtOk, unitEl0: !!unitEl0, lv1: lv1, lvSize: lvSize, lvVisDefault: lvVisDefault, cardGone: cardGone,
+    lvVisDuringDrag: lvVisDuringDrag, lvVisAfterDrag: lvVisAfterDrag, lvVisOnSelect: lvVisOnSelect, lvVisAfterDeselect: lvVisAfterDeselect,
     level2: t2 ? t2.level : -1,
     mergeGone: !s.player.hand.some((x) => x.uid === 555002)
   };
 })()`);
 ok('拖兵种卡到塔位 = 建塔（出现我方单位）', tower.built === true && tower.unitEl0 === true, JSON.stringify(tower).slice(0, 120));
 ok('建塔后卡消失', tower.cardGone === true);
-ok('等级角标 .lv 常显且字号醒目（≥14px）', tower.lv1 === '1' && tower.lvSize >= 14, 'text=' + tower.lv1 + ' size=' + tower.lvSize);
+ok('等级角标默认隐藏（visibility:hidden）且字号预留 ≥14px', tower.lvVisDefault === 'hidden' && tower.lvSize >= 14, 'vis=' + tower.lvVisDefault + ' size=' + tower.lvSize);
+ok('拖动同字卡时 → 目标同字塔等级角标可见', tower.lvVisDuringDrag === 'visible', 'vis=' + tower.lvVisDuringDrag);
 ok('同字卡拖到同字塔 = 刀²（+1 级）', tower.level2 === 2 && tower.mergeGone === true, 'level=' + tower.level2);
+ok('拖拽结束后角标收回（隐藏）', tower.lvVisAfterDrag === 'hidden', 'vis=' + tower.lvVisAfterDrag);
+ok('点击/选中塔 → 等级角标可见', tower.lvVisOnSelect === 'visible', 'vis=' + tower.lvVisOnSelect);
+ok('脱离选中（点空白）→ 角标再隐藏', tower.lvVisAfterDeselect === 'hidden', 'vis=' + tower.lvVisAfterDeselect);
 ok('拖拽幽灵已清理', tower.d1 && tower.d1.ghostsLeft === 0 && tower.d2 && tower.d2.ghostsLeft === 0);
 
 console.log('\n== 拖塔换位（免费 · 等级/攻速计时保留 · 非法落点拒绝）==');

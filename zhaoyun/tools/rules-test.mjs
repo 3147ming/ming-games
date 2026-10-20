@@ -83,6 +83,38 @@ section('原版数值口径（录屏逆向，写死不改）');
     !!ZY.HERO_BY_ID.guanyu && !!ZY.HERO_BY_ID.zhugeliang);
   ok('金武将字池 = 14 字（7 对）', ZY.GOLD_CHARS.length === 14, ZY.GOLD_CHARS.length + '');
   ok('Boss = 带名武将张梁', ZY.BOSS.name === '张梁' && ZY.BOSS.char === '梁');
+
+  /* ------------------------------------------------ 1b. V6 数值校准：武将攻击面板按公式复算（防漂移） */
+  section('武将攻击面板校准（V6 数值校准 · atk = 对应兵种 3 级 × 1.2）');
+  const _G = ZY.C.GROW.atk;
+  const _expAtk = (base) => Math.round(ZY.UNITS[base].atk * _G * _G * 1.2 * 100) / 100;
+  ['zhaoyun', 'zhangfei', 'huangzhong', 'machao', 'guanyu', 'zhugeliang'].forEach(function (id) {
+    const h = ZY.HERO_BY_ID[id];
+    ok('武将「' + h.name + '」(' + h.base + ') atk = 兵种 3 级 × 1.2 = ' + _expAtk(h.base),
+      h.atk === _expAtk(h.base), 'atk=' + h.atk + ' 期望=' + _expAtk(h.base));
+  });
+  ok('刘备 atk = 原版锚 16.00 且【不参与】公式（刀 3 级 ×1.2 = ' + _expAtk('dao') + ' ≠ 16.00）',
+    ZY.HERO_BY_ID.liubei.atk === 16.00 && _expAtk('dao') !== 16.00);
+  // 快照断言：校准只改 atk，攻速 / hpBase / 技能 CD 一律不动（防误伤）
+  const _z = ZY.HERO_BY_ID.zhaoyun, _f = ZY.HERO_BY_ID.zhangfei,
+        _g = ZY.HERO_BY_ID.guanyu, _zl = ZY.HERO_BY_ID.zhugeliang;
+  ok('赵云 攻速/hpBase/技能CD 未变（1.45 / 32 / cd8）',
+    _z.aspd === 1.45 && _z.hpBase === 32 && _z.skill.cd === 8 && _z.range === 3 && _z.pierce === true);
+  ok('张飞 攻速/hpBase/hpMul/dmgReduce/技能CD 未变（1.30 / 40 / 1.25 / 0.25 / cd10）',
+    _f.aspd === 1.30 && _f.hpBase === 40 && _f.hpMul === 1.25 && _f.dmgReduce === 0.25 && _f.skill.cd === 10);
+  ok('关羽 攻速/hpBase/hpMul/dmgReduce/range/splash/技能类型 未变（横扫）',
+    _g.aspd === 1.15 && _g.hpBase === 44 && _g.hpMul === 1.2 && _g.dmgReduce === 0.15 &&
+    _g.range === 2 && _g.splash === 0.35 && _g.skill.type === 'sweep');
+  ok('诸葛亮 攻速/hpBase/range/crit/技能类型 未变（八阵图·burn）',
+    _zl.aspd === 1.25 && _zl.hpBase === 18 && _zl.range === 4 && _zl.crit === 0.15 && _zl.critMul === 1.8 && _zl.skill.type === 'burn');
+  // 其余推导值校准确认：数值不变（仅注释标注，此处锁数值）
+  ok('校准确认：ELITE_BOUNTY=8 / BOSS_BOUNTY=30 / XP_PER_KILL=1.2 / XP_PER_LEVEL=10 / BASE_INCOME=1',
+    ZY.C.ELITE_BOUNTY === 8 && ZY.C.BOSS_BOUNTY === 30 && ZY.C.XP_PER_KILL === 1.2 &&
+    ZY.C.XP_PER_LEVEL === 10 && ZY.C.BASE_INCOME === 1);
+  ok('校准确认：兵种 hp 阶梯 刀40>骑36>枪32>弓20>农18 / 农民 produce=0.4 / STAR_PAR_WAVE=25 / LEVEL_CLEAR_BONUS=25',
+    ZY.UNITS.dao.hp === 40 && ZY.UNITS.qi.hp === 36 && ZY.UNITS.qiang.hp === 32 &&
+    ZY.UNITS.gong.hp === 20 && ZY.UNITS.nong.hp === 18 && ZY.UNITS.nong.produce === 0.4 &&
+    ZY.C.STAR_PAR_WAVE === 25 && ZY.C.LEVEL_CLEAR_BONUS === 25);
   const pool = ZY.RECRUIT_POOL.reduce((a, x) => a + x.w, 0);
   ok('征兵概率池合计 100（无铲子）', pool === 100 && !ZY.RECRUIT_POOL.some((x) => x.item === 'shovel'), pool + '');
 }
@@ -282,7 +314,7 @@ section('武将卡拖到塔位 = 横跨 2 格建塔');
   const r = G.deploy(s, 'player', 1, 1, 5);
   ok('武将卡落塔位 = 建成 2 格宽武将塔', r.ok && s.grid[1][5].cls === 'hero' && s.grid[1][5].span === 2, JSON.stringify(r).slice(0, 80));
   ok('右邻格同占（双格记账）', s.grid[1][6] === s.grid[1][5]);
-  ok('赵云塔数值 = 12.0 / 1.45（推导）', Math.abs(s.grid[1][5].atk - 12.0) < 1e-9 && Math.abs(s.grid[1][5].aspd - 1.45) < 1e-9);
+  ok('赵云塔数值 = 15.61 / 1.45（V6 公式校准：枪 3 级 ×1.2）', Math.abs(s.grid[1][5].atk - 15.61) < 1e-9 && Math.abs(s.grid[1][5].aspd - 1.45) < 1e-9);
   // 右侧被占 → 放不下
   const s2 = G.baseState('endless', {});
   openSlots(s2, 'player', ['1,1', '1,2']);
