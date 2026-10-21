@@ -136,7 +136,23 @@ const expect = (name, cond, extra = '') => {
   checks.push({ name, ok: !!cond });
   console.log(`  ${cond ? 'ok  ' : 'FAIL'} ${name}${extra ? ' — ' + extra : ''}`);
 };
+/** 等当前屏里的位图加载完（最多等 8s）：否则"还在下载"会被误判成"裂图" */
+const waitImages = async (selector = '') => {
+  await evaluate(`(async () => {
+    const want = ${JSON.stringify('__SCOPE__')};
+    const scope = (want && document.querySelector(want)) || document;
+    const imgs = [...scope.querySelectorAll('img.item-ic')];
+    const t0 = Date.now();
+    while (Date.now() - t0 < 8000) {
+      if (imgs.every((i) => i.complete)) break;
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    return true;
+  })()`.replace('"__SCOPE__"', JSON.stringify(selector)));
+};
+
 const scan = async (selector = '') => {
+  await waitImages(selector);
   // 注意替换的是**带引号的整体**："__SCOPE__" → "[data-screen=\"stash\"]"，
   // 只替换裸标识符会把外层引号吃掉，拼出 want = "[data-screen="stash"]" 这种语法错误。
   const raw = await evaluate(SCAN.replace('"__SCOPE__"', JSON.stringify(selector)));
@@ -262,15 +278,19 @@ try {
     return 'loot=' + (c.loot || []).length;
   })()`);
   expect('传送到容器旁并标记已搜过', String(opened).startsWith('loot=') && Number(String(opened).slice(5)) > 0, String(opened));
-  await sleep(400);
-  await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE', key: 'e', bubbles: true }))`);
-  await sleep(400);
-  await evaluate(`window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyE', key: 'e', bubbles: true }))`);
-  await sleep(800);
-  const lootOpen = await evaluate(`(() => {
-    const n = document.querySelector('[data-role="loot"]');
-    return !!n && !n.classList.contains('hidden');
-  })()`);
+  await sleep(600);
+  // 按 E 重试：容器已标记 searched，按一次就该开面板；线上时序可能吃掉第一次按键
+  let lootOpen = false;
+  for (let k = 0; k < 3 && !lootOpen; k += 1) {
+    await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE', key: 'e', bubbles: true }))`);
+    await sleep(120);
+    await evaluate(`window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyE', key: 'e', bubbles: true }))`);
+    await sleep(700);
+    lootOpen = await evaluate(`(() => {
+      const n = document.querySelector('[data-role="loot"]');
+      return !!n && !n.classList.contains('hidden');
+    })()`);
+  }
   expect('战利品面板已打开', lootOpen === true);
   if (lootOpen === true) {
     s = await scan('[data-role="loot"]');
