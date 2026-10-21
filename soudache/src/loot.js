@@ -8,7 +8,7 @@
 import {
   ITEMS, ITEMS_BY_RARITY, RARITY_ORDER, CONTAINERS, AMMO_STACK, ENEMY_TYPES,
 } from './config.js';
-import { createItem, displayUnits } from './inventory.js';
+import { createItem } from './inventory.js';
 
 /**
  * 掷一次稀有度。
@@ -90,29 +90,21 @@ export function rollContainer(containerType, rng, opts = {}) {
 export function rollEnemyLoot(enemyType, rng) {
   const type = ENEMY_TYPES[enemyType] || ENEMY_TYPES.patrol;
   const luck = 1 + (type.lootBonus - 1) * 0.8;
-  // BOSS 专属偏移：在 lootBonus 之上再抬一档高稀有度，并多掉 1~2 件 ——
-  // 击杀 BOSS 的风险（600 血 / 80 甲 / 重机枪）必须由掉落兑现。
-  const isBoss = enemyType === 'boss';
   const weights = {
     common: 66 / luck,
     rare: 26,
-    epic: 7 * luck + (isBoss ? 10 : 0),
-    legendary: 1 * luck + (isBoss ? 6 : 0),
+    epic: 7 * luck,
+    legendary: 1 * luck,
   };
-  const count = isBoss ? rng.int(3, 5) : rng.int(1, 3);
+  const count = rng.int(1, 3);
   const out = [];
   for (let i = 0; i < count; i += 1) {
     const item = rollOne(weights, { ammo: 2.5, consumable: 2 }, rng);
     if (item) out.push(item);
   }
-  // 精英及以上额外保底一份弹药
+  // 精英额外保底一份弹药
   if (type.lootBonus > 1 && rng.chance(0.6)) {
     out.push(createItem(ITEMS.ammo556, rng.int(15, AMMO_STACK)));
-  }
-  // BOSS 保底一件高稀有度收藏品（掉落明显更好，且是「猎杀者」成就的正反馈）
-  if (isBoss) {
-    const jackpot = ['keycard', 'gold', 'optic', 'suppressor'];
-    out.push(createItem(ITEMS[rng.pick(jackpot)], 1));
   }
   return out;
 }
@@ -124,8 +116,7 @@ export function rollEnemyLoot(enemyType, rng) {
  */
 export function valueOf(items) {
   if (!Array.isArray(items)) return 0;
-  // 弹药按"盒"计价（qty 是发、value 是盒价），与仓库/商店/负重同一口径
-  return Math.round(items.reduce((s, it) => s + (it.value || 0) * displayUnits(it), 0));
+  return Math.round(items.reduce((s, it) => s + (it.value || 0) * Math.max(1, it.qty || 1), 0));
 }
 
 /**
@@ -135,6 +126,5 @@ export function valueOf(items) {
  */
 export function weightOf(items) {
   if (!Array.isArray(items)) return 0;
-  // 弹药按"盒"计重（qty 是发、weight 是盒重），与负重系统同一口径
-  return Math.round(items.reduce((s, it) => s + (it.weight || 0) * displayUnits(it), 0) * 10) / 10;
+  return Math.round(items.reduce((s, it) => s + (it.weight || 0) * Math.max(1, it.qty || 1), 0) * 10) / 10;
 }

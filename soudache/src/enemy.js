@@ -169,8 +169,7 @@ export class Enemy {
     const dx = target.x - this.x;
     const dy = target.y - this.y;
     const dist = Math.hypot(dx, dy);
-    // 夜战系数（实例级，默认 1）：低光下视野缩短，见 spawnEnemies({ night: true })
-    let range = this.def.visionRange * (this.visionMul || 1);
+    let range = this.def.visionRange;
     if (target.crouching) range *= 0.72;
     if (this.isInBush(world, target) && dist > 130) range *= 0.4;
     if (dist > range) return false;
@@ -813,13 +812,10 @@ export class Enemy {
  * @param {object} rng 随机数发生器
  * @returns {Array<Enemy>} 敌人数组
  */
-export function spawnEnemies(map, rng, opts = {}) {
-  // 夜战：敌人视野缩短 15%（低光环境下更利于潜行，与"头灯照出去才看得清"互为表里）
-  const visionMul = opts.night ? 0.85 : 1;
+export function spawnEnemies(map, rng) {
   return map.enemySpawns.map((spawn, i) => {
     const e = new Enemy(spawn.type, spawn.x, spawn.y, i, rng.fork(i + 1));
     if (spawn.guardOf != null) e.guardOf = spawn.guardOf;
-    if (visionMul !== 1) e.visionMul = visionMul; // 实例级系数：不污染共享的 ENEMY_TYPES 定义
     // 巡逻路线：取若干随机房间地面点，让敌人沿固定路线往返而非纯随机游走
     e.patrolRoute = map.rooms
       .map((room) => randomPointInRoom(map, room, rng.fork(i * 7 + 13)))

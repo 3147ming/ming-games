@@ -10,7 +10,7 @@ import { pickContracts, updateContracts, settleExtractContracts } from './contra
 import { createRng, randomSeed } from './rng.js';
 import { generateMap, hasLineOfSight } from './mapgen.js';
 import {
-  createItem, autoPlace, hasSpace, totalValue, totalWeight, consumeById, removeItemByUid, displayUnits,
+  createItem, autoPlace, hasSpace, totalValue, totalWeight, consumeById, removeItemByUid,
 } from './inventory.js';
 import * as Loot from './loot.js';
 import { Player, buildLoadoutItems } from './player.js';
@@ -23,11 +23,6 @@ import { createTouchControls } from './touch-controls.js';
 import { createAudio } from './audio.js';
 import { createUI, hudLayout } from './ui.js';
 import * as Storage from './storage.js';
-import { latestTitle, syncAchievements } from './achievements.js';
-import { refreshDaily as rotateDaily, bumpDaily, claimDaily, dailyTaskDone } from './daily.js';
-import { buildPerks, grantXp, learnNode, canLearn, ALL_NODE_IDS } from './perks.js';
-import { advanceStory } from './story.js';
-import { buildPlayerMods, equippedAttachmentIds } from './attachments.js';
 
 const canvas = document.getElementById('game-canvas');
 const uiRoot = document.getElementById('ui-root');
@@ -40,7 +35,6 @@ const sceneHandle = isWebGLAvailable() ? createScene3D(canvas, device) : null;
 const renderer = sceneHandle ? new Renderer3D(sceneHandle, canvas, device) : new NoopRenderer3D();
 
 let save = Storage.loadSave();
-// 注意：跨天刷新（含登录补给）需要 ui.toast，必须等 createUI 之后才能跑 —— 见文件末尾启动段。
 let world = null;
 let screen = 'menu';
 let paused = false;
@@ -555,13 +549,6 @@ function createWorld(map, seed, rng, player, enemies) {
     onDeath(entity) {
       if (entity.isPlayer) return; // 玩家死亡由主循环统一结算
       w.kills += 1;
-      markDiscovered([], [entity.typeId]); // 图鉴：击杀的敌人类型解锁
-      if (entity.typeId === 'boss') {
-        // BOSS 击杀单独计数：成就「猎杀者」与剧情终章都读它
-        save.stats.bossKills = (save.stats.bossKills || 0) + 1;
-        Storage.saveGame(save);
-        if (w.toast) w.toast('击杀 BOSS·重甲武士！');
-      }
       if (audio) audio.death();
       w.decals.push({
         x: entity.x, y: entity.y, r: 15 + w.rng.float(0, 9), life: 1, maxLife: 1,
@@ -582,155 +569,16 @@ function createWorld(map, seed, rng, player, enemies) {
   return w;
 }
 
-/* ============================ 图鉴解锁追踪 ============================ */
-
-/**
- * 记录玩家首次拥有某物品 / 击杀某敌人的图鉴解锁（幂等，变更才写档）。
- * @param {string[]} [items] 物品 id 列表
- * @param {string[]} [enemies] 敌人 typeId 列表
- * @returns {boolean} 是否有新解锁
- */
-function markDiscovered(items, enemies) {
-  let changed = false;
-  if (!save.codex || !Array.isArray(save.codex.items)) save.codex = { items: [], enemies: [] };
-  for (const id of items || []) {
-    if (id && ITEMS[id] && !save.codex.items.includes(id)) {
-      save.codex.items.push(id);
-      changed = true;
-    }
-  }
-  for (const id of enemies || []) {
-    if (id && ENEMY_TYPES[id] && !save.codex.enemies.includes(id)) {
-      save.codex.enemies.push(id);
-      changed = true;
-    }
-  }
-  if (changed) Storage.saveGame(save);
-  return changed;
-}
-
-/* ============================ 长期进度：每日 / 成就 / 天赋 / 剧情 ============================ */
-
-/**
- * 跨天刷新每日任务，并在新的一天发放登录补给。
- * 幂等：同一天重复调用不会重置进度、也不会重复发补给（判定在 rotateDaily 里）。
- * @returns {boolean} 是否发生了跨天刷新
- */
-function refreshDaily() {
-  const fresh = rotateDaily(save);
-  if (fresh) {
-    // 登录补给：一件医疗包 + 一卷绷带 + 一笔启动资金（放不进仓库时 autoPlace 静默丢弃）
-    autoPlace(save.stash, createItem(ITEMS.medkit, 1));
-    autoPlace(save.stash, createItem(ITEMS.bandage, 1));
-    save.currency += 300;
-    if (ui && ui.toast) ui.toast('每日补给已发放：医疗包 + 绷带 + ¥300', 'ok');
-  }
-  // 标记当天补给已领（老存档首次进入不补发历史补给，只把状态对齐）
-  if (save.daily.supply !== true) save.daily.supply = true;
-  Storage.saveGame(save);
-  return fresh;
-}
-
-/**
- * 累计本局对每日任务的贡献，并对已达标任务自动发放奖励。
- * 计数型累加、数值型（带出估值）取历史最大值；每个任务只能领一次（claimed 兜底）。
- * @param {object} w 战局上下文
- * @param {boolean} success 是否撤离成功
- * @param {number} lootValue 本局带出估值
- * @param {boolean} [silent] true = 不弹 toast（结算页由调用方统一延后播放）
- * @returns {{paid: number, done: object[]}} 发放总额与本次达成的任务
- */
-function updateDailyProgress(w, success, lootValue, silent) {
-  rotateDaily(save); // 跨天先刷新，避免把本局进度算进昨天那一组
-  bumpDaily(save, 'raids', 1);
-  bumpDaily(save, 'kills', w.kills || 0);
-  bumpDaily(save, 'searches', w.searchedCount || 0);
-  bumpDaily(save, 'terminals', w.terminalsHacked || 0);
-  if (success) {
-    bumpDaily(save, 'extracts', 1);
-    bumpDaily(save, 'value', lootValue); // 数值型取历史最大值：差的一局不能拉低带出估值
-  }
-  const daily = save.daily;
-  let paid = 0;
-  const done = [];
-  for (const task of daily.tasks || []) {
-    if ((daily.claimed || []).includes(task.id)) continue;
-    if (!dailyTaskDone(task, daily.progress)) continue;
-    daily.claimed.push(task.id);
-    save.currency += task.reward;
-    paid += task.reward;
-    done.push(task);
-    if (!silent) {
-      if (ui && ui.toast) ui.toast(`每日任务完成：${task.name} +${money(task.reward)}`, 'ok');
-      if (audio && audio.cash) audio.cash();
-    }
-  }
-  return { paid, done };
-}
-
-/**
- * 扫描成就：达标即解锁并发放一次性货币（补发漏掉的、绝不重复刷钱）。
- * @returns {object[]} 本次新解锁的成就列表
- */
-function checkAchievements(silent) {
-  const res = syncAchievements(save);
-  if (silent) return res.unlocked;
-  for (const a of res.unlocked) {
-    if (ui && ui.toast) ui.toast(`成就解锁：${a.name}${a.currency ? ` +${money(a.currency)}` : ''}`, 'ok');
-    if (audio && audio.cash) audio.cash();
-  }
-  if (res.unlocked.length) Storage.saveGame(save);
-  return res.unlocked;
-}
-
-/**
- * 结算发放经验，够则升级给点数（一次可能连升多级）。
- * @param {number} score 本局评分
- * @returns {number} 本次升了几级
- */
-function addXp(score, silent) {
-  const xp = Math.round(40 + score / 25);
-  const levels = grantXp(save, xp);
-  if (levels > 0 && !silent) {
-    if (ui && ui.toast) ui.toast(`升级！等级 ${save.tree.level}，获得 ${levels} 点成长点`, 'ok');
-    if (audio && audio.ui) audio.ui(0.4);
-  }
-  return levels;
-}
-
 /* ============================ 界面切换 ============================ */
 
 function go(name) {
   screen = name;
-  // 离开战局一律清暂停标记：阵亡进结算 / 再来一局回配置 / 放弃战局 / 撤离结算 /
-  // 回主菜单，每条路径都不能把 paused=true 带出去（否则暂停遮罩会在配置页残留）。
-  // setPaused 自带 world.over 守卫无法在这里用，直接置位。
-  if (name !== 'battle') paused = false;
   ui.show(name);
   canvas.classList.toggle('active', name === 'battle' || name === 'result');
   // 离开战斗（回菜单 / 结算 / 暂停）：释放全屏与方向锁定，避免手机卡在全屏里
   if (name !== 'battle') exitMobileFullscreen();
   if (name !== 'battle' && mouseLook) mouseLook.exitLock();
-  if (name === 'menu') {
-    // 回菜单先跑一次跨天刷新与成就扫描：补发给"在别处达成但还没结算"的进度，
-    // 保证菜单上的资金 / 每日面板 / 称号都是最新的。
-    refreshDaily();
-    checkAchievements();
-    // 图鉴：回菜单时按仓库与配置扫描一次，老存档也能补解锁
-    const owned = save.stash.items.map((it) => it.id)
-      .concat(save.loadout.primary ? [save.loadout.primary] : [])
-      .concat(save.loadout.secondary ? [save.loadout.secondary] : [])
-      .concat(save.loadout.armor && save.loadout.armor !== 'none' ? [save.loadout.armor] : []);
-    markDiscovered(owned, []);
-    ui.renderMenu(save);
-  }
-  if (name === 'codex') ui.renderCodex(save);
-  if (name === 'daily') { refreshDaily(); ui.renderDaily(save); }
-  if (name === 'ach') ui.renderAchievements(save);
-  if (name === 'tree') ui.renderTree(save);
-  if (name === 'story') ui.renderStory(save);
-  // 菜单氛围：回菜单时开低频底鸣，进战由 startRaid 关掉并切风声层
-  if (name === 'menu' && audio && audio.startMenuAmbient) audio.startMenuAmbient();
+  if (name === 'menu') ui.renderMenu(save);
   if (name !== 'battle') {
     ui.closeBattlePanels();
     openContainer = null;
@@ -789,8 +637,6 @@ function deploy() {
   consumeById(save.stash, 'ammo9mm', (lo.ammo9mmBoxes || 0) * AMMO_STACK);
   consumeById(save.stash, 'medkit', lo.medkits || 0);
   consumeById(save.stash, 'bandage', lo.bandages || 0);
-  // 配件：随身枪械带出去，装在上面的配件一起消耗（仓库里剩下的不动）
-  for (const id of equippedAttachmentIds(lo.attach)) consumeById(save.stash, id, 1);
   Storage.saveGame(save);
   startRaid(ui.getSeed());
 }
@@ -811,7 +657,6 @@ function buy(id) {
   }
   save.currency -= def.value;
   autoPlace(save.stash, item);
-  markDiscovered([id], []); // 图鉴：买过的物品解锁
   Storage.saveGame(save);
   ui.renderShop(save);
   audio.cash();
@@ -821,15 +666,14 @@ function buy(id) {
 function sell(uid) {
   const item = save.stash.items.find((it) => it.uid === uid);
   if (!item) return;
-  // 卖价按盒口径（弹药 qty 是发、value 是盒价），与商店挂牌价一致
-  const price = Math.round(item.value * displayUnits(item) * SHOP.sellRatio);
+  const price = Math.round(item.value * item.qty * SHOP.sellRatio);
   removeItemByUid(save.stash, uid);
   save.currency += price;
   Storage.saveGame(save);
   ui.renderShop(save);
   ui.renderStash(save);
   audio.cash();
-  ui.toast(`出售 ${item.name} → ${money(price)}`);
+  ui.toast(`出售 ${item.name} ×${item.qty} → ${money(price)}`);
 }
 
 function sellAll() {
@@ -839,7 +683,7 @@ function sellAll() {
     return;
   }
   let gained = 0;
-  for (const item of items) gained += Math.round(item.value * displayUnits(item) * SHOP.sellRatio);
+  for (const item of items) gained += Math.round(item.value * item.qty * SHOP.sellRatio);
   save.stash.items.length = 0;
   save.currency += gained;
   Storage.saveGame(save);
@@ -865,35 +709,17 @@ function startRaid(seedInput) {
   const defs = [lo.primary, lo.secondary]
     .filter((id) => id && WEAPONS[id])
     .map((id) => WEAPONS[id]);
-  // 时段：random 由本局 rng 五五开，day/night 直接采用（同一张图两种光照）
-  const pref = lo.time || 'random';
-  const theme = pref === 'random' ? (rng.chance(0.5) ? 'day' : 'night') : pref;
-  if (sceneHandle && typeof sceneHandle.applyTheme === 'function') sceneHandle.applyTheme(theme);
-  if (pref === 'random') ui.toast(theme === 'night' ? '本局时段：夜战（头灯已开启）' : '本局时段：白昼');
-
   const armorDef = ARMORS[lo.armor] || ARMORS.none;
-  // 局间成长树：已学节点汇总成加成，注入本局角色（未学任何节点时全为 0，行为不变）
-  const perks = buildPerks((save.tree && save.tree.nodes) || []);
-  const startItems = buildLoadoutItems(lo);
-  if (perks.ammo > 0) {
-    // 「弹药储备」：按主武器口径补一叠备弹（放不进背包的会被 autoPlace 静默丢弃）
-    const ammoId = (WEAPONS[lo.primary] && WEAPONS[lo.primary].ammoItem) || 'ammo556';
-    if (ITEMS[ammoId]) startItems.push(createItem(ITEMS[ammoId], perks.ammo));
-  }
   const player = new Player({
     x: map.playerSpawn.x,
     y: map.playerSpawn.y,
     armorDef,
     weaponDefs: defs.length ? defs : [WEAPONS.pistol],
-    items: startItems,
-    perks,
-    weaponMods: buildPlayerMods(lo.attach, defs.length ? defs : [WEAPONS.pistol]),
+    items: buildLoadoutItems(lo),
   });
-  // 夜战：敌人视野缩短（生成时写入实例系数，不污染共享的 ENEMY_TYPES 定义）
-  const enemies = spawnEnemies(map, rng, { night: theme === 'night' });
+  const enemies = spawnEnemies(map, rng);
 
   world = createWorld(map, seed, rng, player, enemies);
-  world.theme = theme; // 渲染层据此决定是否点亮头灯
   openContainer = null;
   paused = false;
   input.fire = false;
@@ -904,20 +730,13 @@ function startRaid(seedInput) {
 
   go('battle');
   audio.ensure();
-  if (audio.stopMenuAmbient) audio.stopMenuAmbient(); // 进战关掉菜单氛围，切风声层
   if (audio.startAmbient) audio.startAmbient();
-  // 首局新手引导：未完成过则进入引导模式，按 搜刮→击杀→撤离 三步推进
-  if (!save.settings.tutorialDone) {
-    world.tutorial = { step: 1 };
-    ui.toast('新手引导 1/3：搜刮一个容器（走近按 E / 点交互键）');
-  }
   ui.toast(`已部署 · 种子 ${seed} · ${map.extracts.length} 个撤离点（最后 2 分钟开放）`);
 }
 
 function endRaid(reason) {
   if (!world || world.over) return;
   world.over = true;
-  paused = false; // 结算即离局：暂停标记与暂停面板都不许跨屏幕残留
   if (audio && audio.stopAmbient) audio.stopAmbient();
   ui.closeBattlePanels();
   input.fire = false;
@@ -944,7 +763,7 @@ function endRaid(reason) {
     let overflow = 0;
     for (const item of broughtOut) {
       if (autoPlace(save.stash, item)) continue;
-      overflow += Math.round(item.value * displayUnits(item) * SHOP.sellRatio);
+      overflow += Math.round(item.value * item.qty * SHOP.sellRatio);
     }
     if (overflow > 0) {
       save.currency += overflow;
@@ -974,25 +793,6 @@ function endRaid(reason) {
   save.stats.kills += world.kills;
   save.stats.bestScore = Math.max(save.stats.bestScore, score);
   save.stats.bestValue = Math.max(save.stats.bestValue, lootValue);
-  if (world.tutorial) save.settings.tutorialDone = true; // 引导战结束即视为完成
-
-  // --- 长期进度：每日任务 → 成就 → 天赋经验 → 剧情 ---
-  // 都在 markDiscovered 之前跑，末尾那次 saveGame 会一次性落盘全部变更。
-  // silent=true：进度先结算，toast 统一挪到结算页之后播放（否则会被战斗 HUD 盖掉）。
-  const dailyRes = updateDailyProgress(world, success, lootValue, true);
-  const achUnlocked = checkAchievements(true);
-  const xpGain = Math.round(40 + score / 25);
-  const levelsGained = addXp(score, true);
-  const storyDone = advanceStory(save);
-
-  // 图鉴：本局所有带出/损失物资 + 带入装备全部解锁（第一次拥有即记录）
-  markDiscovered(
-    broughtOut.concat(lost).map((it) => it.id)
-      .concat(save.loadout.primary ? [save.loadout.primary] : [])
-      .concat(save.loadout.secondary ? [save.loadout.secondary] : [])
-      .concat(save.loadout.armor && save.loadout.armor !== 'none' ? [save.loadout.armor] : []),
-    [],
-  );
   Storage.saveGame(save);
   Storage.ensureMinimumKit(save);
 
@@ -1016,30 +816,6 @@ function endRaid(reason) {
   if (world.extractFeePaid > 0) {
     stats.push(['撤离手续费', money(world.extractFeePaid)]);
   }
-  // 死亡归因：阵亡时在结算页首行显示"被谁、用什么、多远击杀"
-  if (reason === 'dead') {
-    const src = player.lastHitBy;
-    if (src && ENEMY_TYPES[src.typeId]) {
-      const def = ENEMY_TYPES[src.typeId];
-      const wdef = src.currentWeapon ? src.currentWeapon.def : null;
-      const killerName = (def && def.name) || '敌人';
-      const weaponName = wdef && wdef.name ? wdef.name : '';
-      const distM = Math.round((player.lastHitDist || 0) / 20); // 1 米 = 20 逻辑单位（VIEW3D.metersToUnits）
-      let cause = `被 ${killerName} 击杀`;
-      if (weaponName) cause += ` · ${weaponName}`;
-      if (distM > 0) cause += ` · 距离 ${distM}m`;
-      stats.unshift(['死因', cause]);
-    }
-  }
-  if (dailyRes.paid > 0) stats.push(['每日任务', money(dailyRes.paid)]);
-  // 成就奖励：本次发放总额（补发也计入，与 toast 一致）
-  const achPaid = achUnlocked.reduce((s, a) => s + (a.currency || 0), 0);
-  if (achPaid > 0) stats.push(['成就奖励', money(achPaid)]);
-  stats.push(['获得经验', `${xpGain} XP`]);
-  if (levelsGained > 0) stats.push(['天赋等级', `Lv.${save.tree.level}（+${levelsGained} 点）`]);
-  if (storyDone.length) stats.push(['剧情推进', storyDone.map((s) => s.title).join(' → ')]);
-  const titleName = latestTitle(save); // 结算页头部展示：已解锁的最新称号
-  if (titleName) stats.push(['当前称号', titleName]);
   stats.push(['评分', String(score)]);
 
   ui.renderResult({
@@ -1047,7 +823,6 @@ function endRaid(reason) {
     title: info.title,
     subtitle: info.subtitle,
     grade: rating.grade,
-    titleName, // 解锁的最新称号（金色一行，未解锁时不渲染）
     lootTitle: success ? '带出物资' : '损失清单',
     emptyText: success ? '这次什么都没带出来。' : '没有可损失的物资。',
     items: success ? broughtOut : lost,
@@ -1055,15 +830,6 @@ function endRaid(reason) {
   });
   world.result = reason;
   go('result');
-
-  // 进度反馈放在最后：toast 才会浮在结算页上，而不是被战斗 HUD 盖掉
-  for (const t of dailyRes.done) ui.toast(`每日任务完成：${t.name} · +${money(t.reward)}`, 'ok');
-  for (const a of achUnlocked) ui.toast(`成就解锁：${a.name}${a.currency ? ` · +${money(a.currency)}` : ''}`, 'ok');
-  if (levelsGained > 0) ui.toast(`升级！Lv.${save.tree.level} · 获得 ${levelsGained} 点天赋`, 'ok');
-  for (const s of storyDone) ui.toast(`剧情推进：${s.title} · +${money(s.reward)}`, 'ok');
-  if (dailyRes.done.length || achUnlocked.length || storyDone.length) {
-    if (audio && audio.cash) audio.cash();
-  }
 }
 
 /* ============================ 战利品拾取 ============================ */
@@ -1263,26 +1029,6 @@ function updateAirdrop(w) {
     }
 }
 
-/**
- * 首局新手引导推进：按 搜刮容器 → 击杀敌人 → 活着撤离 三步走。
- * 完成条件直接复用战局已有计数（searchedCount / kills），不引入新事件源。
- * @param {object} w 战局
- * @returns {void}
- */
-function updateTutorial(w) {
-  const t = w.tutorial;
-  if (!t) return;
-  if (t.step === 1 && w.searchedCount >= 1) {
-    t.step = 2;
-    ui.toast('新手引导 2/3：击杀 1 名敌人（开火命中直至其倒下）');
-    if (audio && audio.ui) audio.ui(0.4);
-  } else if (t.step === 2 && w.kills >= 1) {
-    t.step = 3;
-    ui.toast('新手引导 3/3：活着撤离——最后 2 分钟撤离通道开启，站定 3 秒即可撤离');
-    if (audio && audio.ui) audio.ui(0.4);
-  }
-}
-
 function update(dt) {
   const w = world;
   if (!w || w.over) return;
@@ -1293,10 +1039,7 @@ function update(dt) {
   updateAirdrop(w);
 
   w.player.update(dt, input, w);
-  // 低血量心跳：血量越低心跳越快越响（内部平滑，可每帧调用）
-  if (audio && audio.setHeartRate) audio.setHeartRate(w.player.hp / w.player.maxHp);
   for (const enemy of w.enemies) enemy.update(dt, w);
-  updateTutorial(w);
   updateEffects(dt);
   updateKillFeed(dt);
   updateAmbient(dt);
@@ -1340,26 +1083,6 @@ function frame(ts) {
   ui.setLockHint(wantsMouseLock() && !input.locked);
 }
 
-/**
- * 学习一个天赋节点（扣 1 点并写入已学列表）。
- * @param {string} nodeId 节点 id
- * @returns {boolean} 是否成功
- */
-function learnPerk(nodeId) {
-  if (!ALL_NODE_IDS.includes(nodeId)) return false;
-  const check = canLearn(save, nodeId);
-  if (!check.ok) {
-    ui.toast(check.reason || '无法学习');
-    if (audio && audio.error) audio.error();
-    return false;
-  }
-  learnNode(save, nodeId);
-  Storage.saveGame(save);
-  if (audio && audio.ui) audio.ui();
-  ui.renderTree(save);
-  return true;
-}
-
 /* ============================ UI 动作 ============================ */
 
 const ui = createUI(uiRoot, {
@@ -1377,43 +1100,6 @@ const ui = createUI(uiRoot, {
     go('shop');
   },
   'goto-howto': () => go('howto'),
-  'goto-codex': () => go('codex'),
-  'goto-daily': () => go('daily'),
-  'goto-ach': () => go('ach'),
-  'goto-tree': () => go('tree'),
-  'goto-story': () => go('story'),
-  'claim-daily': (data) => {
-    const got = claimDaily(save, data.id);
-    if (!got) return;
-    Storage.saveGame(save);
-    audio.ui();
-    ui.toast(`每日任务奖励 +${money(got)}`, 'ok');
-    ui.renderDaily(save);
-    ui.renderMenu(save);
-  },
-  'tree-learn': (data) => learnPerk(data.nodeId || data.id),
-  'learn-perk': (data) => learnPerk(data.nodeId || data.id), // 兼容旧动作名（渲染层已统一走 tree-learn）
-  'set-attach': (data) => {
-    const slotWeapon = data.slotWeapon === 'secondary' ? 'secondary' : 'primary';
-    const slot = String(data.slot || '');
-    if (!ATTACH_SLOTS.includes(slot)) return;
-    const value = data.value === '' || data.value == null ? null : String(data.value);
-    if (value && !(ITEMS[value] && ITEMS[value].category === 'attachment')) return;
-    if (!save.loadout.attach) save.loadout.attach = { primary: {}, secondary: {} };
-    if (!save.loadout.attach[slotWeapon]) save.loadout.attach[slotWeapon] = {};
-    save.loadout.attach[slotWeapon][slot] = value;
-    Storage.saveGame(save);
-    ui.renderLoadout(save);
-    if (audio && audio.ui) audio.ui(0.4);
-  },
-  'set-time': (data) => {
-    const t = data.time;
-    if (t !== 'random' && t !== 'day' && t !== 'night') return;
-    save.loadout.time = t;
-    Storage.saveGame(save);
-    ui.renderLoadout(save);
-    if (audio && audio.ui) audio.ui(0.4);
-  },
   deploy,
   'set-loadout': (data) => {
     const slot = data.slot;
@@ -1711,12 +1397,6 @@ window.addEventListener('resize', () => {
 
 /* ============================ 启动 ============================ */
 
-// 移除 index.html 里的启动加载占位（模块解析完成即隐藏，看门狗兜底）
-const bootLoader = document.getElementById('boot-loading');
-if (bootLoader && bootLoader.parentNode) bootLoader.parentNode.removeChild(bootLoader);
-
-// 跨天刷新每日任务 + 登录补给（必须在 createUI 之后：补给提示要走 ui.toast）
-refreshDaily();
 go('menu');
 window.requestAnimationFrame(frame);
 
@@ -1724,12 +1404,6 @@ window.requestAnimationFrame(frame);
 window.SOUDACHE = {
   get world() {
     return world;
-  },
-  get scene() {
-    return sceneHandle ? sceneHandle.scene : null;
-  },
-  get camera() {
-    return sceneHandle ? sceneHandle.camera : null;
   },
   get save() {
     return save;

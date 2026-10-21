@@ -968,19 +968,6 @@ export class Renderer3D {
     }
     this._syncCamera(player, dt, world);
     this._syncViewmodel(player, dt);
-
-    // 夜战头灯：每帧把相机位置/朝向交给场景，灯才会跟着视点扫出去。
-    // 暂停 / 结算时关灯（此时已经是菜单式观看，不需要战术照明，也避免光照突变）。
-    if (this.handle.updateFlashlight) {
-      const wantLight = world.theme === 'night' && !paused;
-      if (wantLight || this._flWasOn) {
-        const cam = this.handle.camera;
-        if (!this._flDir) this._flDir = new T.Vector3();
-        cam.getWorldDirection(this._flDir);
-        this.handle.updateFlashlight(cam.position, this._flDir, wantLight);
-      }
-      this._flWasOn = wantLight;
-    }
     this._syncFx(world, dt);
     this._syncDamageNumbers(world);
 

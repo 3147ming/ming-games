@@ -32,23 +32,8 @@ export class Player {
     this.ads = false; // 是否正在瞄准（由输入层设置）
     this.radius = PLAYER.radius;
 
-    // --- 局间成长树加成：buildPerks(save.tree.nodes) 汇总，未学节点时全为 0 ---
-    const perks = opts.perks || {};
-    this.perks = perks;
-    this.maxHp = PLAYER.maxHp + (perks.hp || 0);
-    this.hp = this.maxHp;
-    this.bonusWeight = perks.weight || 0;                                  // 负重上限额外 +N kg
-    this.staminaRegenMul = 1 + (perks.stamina || 0);                       // 体力恢复速度
-    this.searchTimeMul = Math.max(0.4, 1 - (perks.search || 0));           // 搜索读条缩短
-    this.extractTime = Math.max(0.8, MATCH.extractChannel - (perks.extract || 0)); // 撤离读条缩短
-    this.reloadMul = Math.max(0.4, 1 - (perks.reload || 0));               // 换弹更快（combat 读取）
-    this.recoilMul = Math.max(0.4, 1 - (perks.recoil || 0));               // 后坐更小（combat 读取）
-    this.interactRange = MATCH.interactRange * (1 + (perks.pickup || 0));      // 容器 / 终端交互范围
-    this.itemPickupRange = MATCH.itemPickupRange * (1 + (perks.pickup || 0));  // 地面掉落拾取范围
-
-    // --- 武器配件：{ [武器id]: { damageMul, spreadMul, ... } }，combat 开火/换弹时读取 ---
-    this.weaponMods = opts.weaponMods || {};
-
+    this.maxHp = PLAYER.maxHp;
+    this.hp = PLAYER.maxHp;
     this.armorDef = opts.armorDef || ARMORS.none;
     this.armor = this.armorDef.armor;
     this.maxArmor = this.armorDef.armor;
@@ -75,14 +60,10 @@ export class Player {
     this.sprinting = false;
     this.moving = false;
     this.moveSpeed = 0;
-    this.moveSm = 0; // 平滑移动速度：朝目标速度指数趋近，消除二进制键位的瞬移/急停感
     this.walkPhase = 0;
     this.recoilOffset = 0;
     this.muzzleFlash = 0;
     this.hurtFlash = 0;
-    this.hurtDir = null; // 最近一次受击的相对方位角（combat.js 写入，HUD 方向性红晕用）
-    this.lastHitBy = null; // 最近一次伤害来源（死亡归因用）
-    this.lastHitDist = 0; // 最近一次受击距离（逻辑单位）
     this.fireLocked = false;
     this.noiseTimer = 0;
     this.recoilPitch = 0; // 开火抬枪（视角上抬），仅视觉，自动回落
@@ -120,9 +101,9 @@ export class Player {
     return Math.round(w * 10) / 10;
   }
 
-  /** 当前负重上限（kg）= 基础 20 + 护甲加成 + 天赋加成 */
+  /** 当前负重上限（kg）= 基础 20 + 护甲加成 */
   get weightLimit() {
-    return weightLimitFor(this.armorDef.id) + (this.bonusWeight || 0);
+    return weightLimitFor(this.armorDef.id);
   }
 
   /** 是否硬性超重（超重即禁跑，见 update） */
@@ -385,7 +366,6 @@ export class Player {
       return;
     }
     this.hurtFlash = Math.max(0, this.hurtFlash - dt);
-    if (this.hurtFlash <= 0) this.hurtDir = null; // 红晕结束后清掉方向，回到无方向受击态
     this.muzzleFlash = Math.max(0, this.muzzleFlash - dt);
     this.recoilOffset *= Math.max(0, 1 - dt * 7);
     // 抬枪回落：开火后视角自动回到原俯仰（不惩罚玩家，避免必须手动压枪）
@@ -460,8 +440,7 @@ export class Player {
         const regenMul = weightStaminaMultiplier(
           this.weight, this.weightLimit, PLAYER.weightOverStaminaFloor,
         );
-        this.stamina = Math.min(this.maxStamina, this.stamina
-          + PLAYER.staminaRegen * regenMul * (this.staminaRegenMul || 1) * dt);
+        this.stamina = Math.min(this.maxStamina, this.stamina + PLAYER.staminaRegen * regenMul * dt);
       }
     }
     // 疲惫解除：体力回升到阈值以上才恢复（迟滞，避免在临界点反复抖动）
@@ -470,33 +449,14 @@ export class Player {
     }
 
     // ---- 移动 ----
-    // 两步速度链：先算目标速度，再用平滑速度 moveSm 指数趋近，
-    // 位移与 walkPhase 全部由 moveSm 驱动（约 0.25s 到达 90%）。
-    // 约束：moving 判定仍由输入方向 mag>0.01 决定（读条打断/噪音/冲刺全部即时）；
-    // 加速度只作用于位移，不作用于视角/转身；各姿态倍率全部作用在 targetSpeed 上。
     const weightMul = weightSpeedMultiplier(
       this.weight, this.weightLimit, PLAYER.weightOverSpeedFloor,
     );
-    // a. 目标速度：weightMul × 蹲行/冲刺/疲惫倍率
-    let targetSpeed = PLAYER.speed * weightMul;
-    if (this.crouching) targetSpeed *= PLAYER.crouchMul;
-    else if (this.sprinting) targetSpeed *= PLAYER.sprintMul;
-    if (this.exhausted) targetSpeed *= PLAYER.staminaExhaustSpeedMul;
-    // 体力将尽过渡：未 exhausted 但快见底时，冲刺先降速到"比走路快、比满速冲刺慢"的
-    // 过渡段（1.5 × 0.7 ≈ 1.05），避免归零瞬间从 1.5 倍骤降到 0.55 倍的停顿感
-    if (!this.exhausted && this.sprinting
-      && this.stamina < this.maxStamina * 0.15) {
-      targetSpeed *= PLAYER.staminaLowMul;
-    }
-    // 松键（无输入）与读条中目标均为 0：前者自然衰减到 0 无急停，后者直接清零不残留滑动
-    if (!this.moving || this.busy) targetSpeed = 0;
-    // b. 平滑趋近：time constant ≈ 0.1s（dt*10），约 0.25s 到 90%
-    if (this.busy) {
-      this.moveSm = 0;
-    } else {
-      this.moveSm += (targetSpeed - this.moveSm) * (1 - Math.exp(-dt * 10));
-    }
-    const speed = this.moveSm;
+    let speed = PLAYER.speed * weightMul;
+    if (this.crouching) speed *= PLAYER.crouchMul;
+    else if (this.sprinting) speed *= PLAYER.sprintMul;
+    if (this.exhausted) speed *= PLAYER.staminaExhaustSpeedMul;
+    if (this.busy) speed = 0;
     this.moveSpeed = this.moving ? speed : 0;
 
     if (this.moving && speed > 0) {
@@ -551,7 +511,7 @@ export class Player {
     }
     if (this.extract) {
       this.extract.progress += dt;
-      if (this.extract.progress >= (this.extractTime || MATCH.extractChannel)) {
+      if (this.extract.progress >= MATCH.extractChannel) {
         const point = this.extract.point;
         this.extract = null;
         world.onExtract(point);
@@ -674,8 +634,7 @@ export class Player {
     if (extract) {
       if (world.canAffordExtract && !world.canAffordExtract(extract)) return false;
       this.extract = { point: extract, progress: 0 };
-      const need = this.extractTime || MATCH.extractChannel;
-      if (world.toast) world.toast(`开始撤离：${extract.name} — ${need} 秒`);
+      if (world.toast) world.toast(`开始撤离：${extract.name} — ${MATCH.extractChannel} 秒`);
       if (world.audio) world.audio.extractStart();
       return true;
     }
@@ -698,7 +657,7 @@ export class Player {
       if (world.toast) world.toast('这个容器已经空了');
       return false;
     }
-    this.search = { container, progress: 0, total: world.containerSearchTime(container) * (this.searchTimeMul || 1) };
+    this.search = { container, progress: 0, total: world.containerSearchTime(container) };
     if (world.audio) world.audio.searchStart();
     return true;
   }
@@ -748,7 +707,7 @@ export class Player {
    * @returns {object|null} 容器
    */
   nearestContainer(world) {    let best = null;
-    let bestDist = this.interactRange || MATCH.interactRange;
+    let bestDist = MATCH.interactRange;
     for (const container of world.map.containers) {
       const d = Math.hypot(container.x - this.x, container.y - this.y);
       if (d <= bestDist && hasLineOfSight(world.map, this.x, this.y, container.x, container.y)) {
@@ -780,11 +739,6 @@ export class Player {
    */
   onDamaged(source, world) {
     this.damageTaken += 1;
-    // 死亡归因：记录最近一次伤害来源与距离（endRaid 结算页展示"被谁击杀"）
-    if (source && source !== this) {
-      this.lastHitBy = source;
-      this.lastHitDist = Math.hypot(source.x - this.x, source.y - this.y);
-    }
     if (this.heal || this.extract) {
       this.interrupt('damage');
       if (world && world.toast) world.toast('读条被打断！');
@@ -816,7 +770,7 @@ export class Player {
     const list = world.items;
     if (!list || !list.length) return null;
     let best = null;
-    let bd = this.itemPickupRange || MATCH.itemPickupRange;
+    let bd = MATCH.itemPickupRange;
     for (const it of list) {
       if (it.taken) continue;
       const d = Math.hypot(it.x - this.x, it.y - this.y);

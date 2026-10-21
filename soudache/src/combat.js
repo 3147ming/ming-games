@@ -8,12 +8,6 @@
 import { COMBAT, CELL, VIEW3D } from './config.js';
 import { cellAt, crateRectIndexAt, damageCrateRect, elevationAt } from './mapgen.js';
 
-/** 没有配件时的空加成表：所有乘数取 1（敌人与未装配件时走它，保证行为不变） */
-const EMPTY_MODS = Object.freeze({
-  damageMul: 1, spreadMul: 1, spreadPerShotMul: 1, recoilMul: 1,
-  rangeMul: 1, noiseMul: 1, reloadMul: 1, adsSpreadMul: 1,
-});
-
 /**
  * 创建一个武器运行时状态。
  * @param {object} def 武器定义（WEAPONS 或敌人武器）
@@ -79,15 +73,10 @@ export function startReload(entity, world) {
     }
     return false;
   }
-  // 换弹速度可被天赋（entity.reloadMul）与配件（weaponMods[武器id].reloadMul）修正，
-  // 两者都是"乘数"语义：< 1 = 更快。敌人两个字段都没有 → 恒为 1，行为不变。
-  const modReload = (entity.weaponMods && entity.weaponMods[w.def.id]
-    && entity.weaponMods[w.def.id].reloadMul) || 1;
-  const reloadTime = w.def.reloadTime * (entity.reloadMul || 1) * modReload;
   w.reloading = true;
   w.reloadAmount = Math.min(need, available);
-  w.reloadTimer = reloadTime;
-  w.reloadTotal = reloadTime;
+  w.reloadTimer = w.def.reloadTime;
+  w.reloadTotal = w.def.reloadTime;
   if (entity.isPlayer && world.audio) world.audio.reload();
   return true;
 }
@@ -232,10 +221,17 @@ export function hitscan3D(world, shooter, opts) {
   // 单位方向向量：x = 水平分量, y = 高度轴, z = 水平分量（场景 z == 逻辑 y）
   const D = { x: dx * cp, y: sp, z: dy * cp };
 
+  // 枪口前移的水平量保留（与旧 hitscan / 敌人 AI 路径的距离基准一致），
+  // 但**必须补偿高度**：只平移 XZ 而不抬升，等于把视线平移成一条平行线，
+  // 弹着点会偏低 muzzle·tan(pitch)（近距离仰射 / 打高台时明显，平地≈0）。
+  // 补上 muzzle·tan(pitch) 后，射线起点正好落在相机视线上 —— 两条射线重合成同一条，
+  // 于是「准星指哪，子弹打到哪」严格成立；距离约定不变，旧回归护栏继续等价。
   const muzzle = shooter.radius + 10;
   const ox = shooter.x + dx * muzzle;
   const oy = shooter.y + dy * muzzle;
-  const Oy = eyeY;
+  // tan(pitch) 在接近 ±90° 时发散（pitchLimit 85°，这里再夹一层保险）
+  const tanPitch = Math.tan(Math.max(-1.5, Math.min(1.5, pitch)));
+  const Oy = eyeY + muzzle * tanPitch;
   const wallTop = VIEW3D.wallHeight * VIEW3D.metersToUnits;
   const crateTop = VIEW3D.crateHeight * VIEW3D.metersToUnits;
 
@@ -317,13 +313,6 @@ export function hitscan3D(world, shooter, opts) {
   };
 }
 
-/** 把任意弧度角归一化到 [-π, π] */
-function normAngle(a) {
-  while (a > Math.PI) a -= Math.PI * 2;
-  while (a < -Math.PI) a += Math.PI * 2;
-  return a;
-}
-
 /**
  * 结算一次伤害（含护甲减伤与耐久损耗）。
  * @param {object} world 战局上下文
@@ -347,17 +336,12 @@ export function applyDamage(world, target, raw, source, hx, hy, hitHeight) {
   const px = typeof hx === 'number' ? hx : target.x;
   const py = typeof hy === 'number' ? hy : target.y;
   const angle = Math.atan2(py - (source ? source.y : py - 1), px - (source ? source.x : px));
-  // 受击方向（仅玩家且来源存在）：相对玩家朝向的方位角，供 HUD 方向性红晕与方位音效使用。
-  // 约定：0 = 正前方，>0 = 右侧，<0 = 左侧（若实测镜像，只改 normAngle 的符号约定）。
-  if (target.isPlayer && source && typeof target.yaw === 'number') {
-    target.hurtDir = normAngle(Math.atan2(source.y - target.y, source.x - target.x) - target.yaw);
-  }
   if (world.spawnBlood) world.spawnBlood(px, py, angle, target.isPlayer ? 5 : COMBAT.bloodPerHit, hitHeight);
   if (world.addDamageNumber) {
     world.addDamageNumber(px, py, Math.round(dmg), target.isPlayer ? '#ff5c5c' : '#ffd166', hitHeight);
   }
   if (world.audio) {
-    if (target.isPlayer) world.audio.hurt(target.hurtDir);
+    if (target.isPlayer) world.audio.hurt();
     else world.audio.hit();
   }
   if (typeof target.onDamaged === 'function') target.onDamaged(source, world);
@@ -435,20 +419,12 @@ export function fireWeapon(world, shooter, opts = {}) {
   w.ammo -= 1;
   w.cooldown = 60 / def.rpm;
 
-  // 武器配件：三槽 mods 已预先汇总成乘数（见 main.buildPlayerMods）。
-  // 没有配件的 shooter（包括所有敌人）取空对象 → 全部乘 1，行为完全不变。
-  const mods = (shooter.weaponMods && shooter.weaponMods[def.id]) || EMPTY_MODS;
-  const spreadMul = mods.spreadMul || 1;
-  const spreadMaxNow = def.spreadMax * spreadMul;
-  let spreadNow = Math.min(spreadMaxNow, def.spread * spreadMul + w.spread);
-  // 开镜（ADS）在基础散布之上再收一档：准星收窄了，子弹就该真的更准
-  if (shooter.ads) spreadNow *= (COMBAT.adsSpreadMul || 1) * (mods.adsSpreadMul || 1);
-  w.spread = Math.min(spreadMaxNow, w.spread + def.spreadPerShot * (mods.spreadPerShotMul || 1));
+  const spreadNow = Math.min(def.spreadMax, def.spread + w.spread);
+  w.spread = Math.min(def.spreadMax, w.spread + def.spreadPerShot);
   const accuracyPenalty = opts.accuracy != null ? (1 - Math.max(0, Math.min(1, opts.accuracy))) * 0.38 : 0;
   const jitter = world.rng.float(-1, 1) * (spreadNow + accuracyPenalty);
   let angle = shooter.angle + jitter + (shooter.recoilOffset || 0);
-  const recoilNow = def.recoil * (shooter.recoilMul || 1) * (mods.recoilMul || 1);
-  shooter.recoilOffset = (shooter.recoilOffset || 0) + recoilNow * world.rng.float(-1, 1);
+  shooter.recoilOffset = (shooter.recoilOffset || 0) + def.recoil * world.rng.float(-1, 1);
   // 轻度辅助瞄准：把这一发的偏航角小幅拉向瞄准锥内最近的敌人（只改当发，不动 shooter.angle）
   if (shooter.isPlayer && COMBAT.aimAssist && COMBAT.aimAssist.enabled) {
     const adjusted = applyAimAssist(world, shooter, angle, COMBAT.aimAssist);
@@ -468,7 +444,7 @@ export function fireWeapon(world, shooter, opts = {}) {
     // 开火抬枪（aim punch）：仅抬俯仰不改 yaw —— 视觉后坐，不影响水平朝向。
     shooter.recoilPitch = Math.min(
       COMBAT.recoilPitchMax,
-      (shooter.recoilPitch || 0) + recoilNow * COMBAT.recoilPitchMul,
+      (shooter.recoilPitch || 0) + def.recoil * COMBAT.recoilPitchMul,
     );
     eyeY = VIEW3D.metersToUnits * (
       (shooter.crouching ? VIEW3D.eyeCrouch : VIEW3D.eyeStand) + (shooter.elevation || 0)
@@ -476,11 +452,7 @@ export function fireWeapon(world, shooter, opts = {}) {
     // 竖直散布：比水平散布小，且以准星为中心（不影响 yaw）。
     const jitterV = world.rng.float(-1, 1) * (spreadNow + accuracyPenalty) * 0.6;
     const pitch = aimPitch + jitterV;
-    shot = hitscan3D(world, shooter, {
-      angle, pitch, eyeY,
-      maxDist: def.range * (mods.rangeMul || 1),
-      damage: def.damage * (mods.damageMul || 1),
-    });
+    shot = hitscan3D(world, shooter, { angle, pitch, eyeY, maxDist: def.range, damage: def.damage });
   } else {
     // 敌人 AI 打玩家：与玩家同源走 hitscan3D（竖直感知），正确命中高地/低地的玩家。
     // 敌人无 .elevation 字段，眼高由所在格高程 + 站立眼高推导；并俯仰瞄准玩家身体中心，
@@ -500,11 +472,7 @@ export function fireWeapon(world, shooter, opts = {}) {
     // 竖直散布：与玩家对称，比水平散布小，以玩家身体中心为基准
     const jitterV = world.rng.float(-1, 1) * (spreadNow + accuracyPenalty) * 0.6;
     pitch += jitterV;
-    shot = hitscan3D(world, shooter, {
-      angle, pitch, eyeY,
-      maxDist: def.range * (mods.rangeMul || 1),
-      damage: def.damage * (mods.damageMul || 1),
-    });
+    shot = hitscan3D(world, shooter, { angle, pitch, eyeY, maxDist: def.range, damage: def.damage });
   }
 
   if (world.tracers) {
@@ -528,7 +496,7 @@ export function fireWeapon(world, shooter, opts = {}) {
       t: 0, life: COMBAT.shellLife,
     });
   }
-  if (world.emitNoise) world.emitNoise(shooter.x, shooter.y, def.noiseRadius * (mods.noiseMul || 1), shooter.faction);
+  if (world.emitNoise) world.emitNoise(shooter.x, shooter.y, def.noiseRadius, shooter.faction);
   if (world.audio) {
     const distToPlayer = Math.hypot(shooter.x - world.player.x, shooter.y - world.player.y);
     const vol = shooter.isPlayer ? 1 : Math.max(0, 1 - distToPlayer / 900);

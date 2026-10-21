@@ -15,7 +15,6 @@ import { VIEW3D, PALETTE3D, MATCH, CONTAINERS, RNG_SALT_3D, WORLD_W, WORLD_H } f
 import {
   u, lowPolyMat, boxWithFaceColors, mergeGeometries, buildGround, buildBushGeometry,
   buildContainerParts, buildExtractMarker, CONTAINER_COLORS, getConcreteTexture, surfaceMat,
-  getSkyCeilingTexture,
 } from './models.js';
 // 只为挑台阶朝向而查询格子是否实心（纯查询，不修改 mapgen 的任何输出）
 import { isTileSolid } from './mapgen.js';
@@ -119,36 +118,22 @@ export function buildLevel(scene, map, rng) {
    * - 略高于墙顶（ceilingGap）避免与墙顶共面 z-fighting；
    * - 结构横梁沿 X / Z 按间距排布，合并为单网格（1 个 draw call），不投影阴影；
    * - 天花板与横梁均带轻微自发光，保证从下方观看不会发黑。
-   *
-   * ⚠ 美术口径（对照 docs/art-concept/04-scene-day.png / 05-scene-night.png）：
-   *   整张地图有顶盖 → 玩家实际上看不到"天空"。因此顶盖本身按天空来画：
-   *   白昼 = 淡蓝天空 + 几何白云（程序化贴图，Basic 材质不参与光照，保证亮度稳定），
-   *   夜战 = 深蓝黑（与夜战环境基调一致）。这比改地图结构代价小得多，
-   *   也让"抬头看天"与参考图的色调方向一致。
    */
 
   const ceilGap = u(VIEW3D.level.ceilingGap);
   const ceilY = u(VIEW3D.wallHeight) + ceilGap;
-  const theme = (scene.userData && scene.userData.theme) || 'day';
 
   const ceilGeo = new THREE.PlaneGeometry(WORLD_W, WORLD_H);
   ceilGeo.rotateX(-Math.PI / 2);
   ceilGeo.translate(WORLD_W / 2, ceilY, WORLD_H / 2);
   ceilGeo.computeBoundingBox();
   ceilGeo.computeBoundingSphere();
-  const skyTex = getSkyCeilingTexture(theme);
-  const ceilMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color('#FFFFFF'),
-    map: skyTex || undefined,
+  const ceilColor = new THREE.Color(PALETTE3D.ceiling);
+  const ceilMat = new THREE.MeshLambertMaterial({
+    color: ceilColor,
     side: THREE.DoubleSide,
+    emissive: ceilColor.clone().multiplyScalar(VIEW3D.level.ceilingEmissive),
   });
-  if (skyTex) {
-    // 一张贴图覆盖 400 单位（20 m），云团大小与参考图观感一致
-    skyTex.wrapS = THREE.RepeatWrapping;
-    skyTex.wrapT = THREE.RepeatWrapping;
-    skyTex.repeat.set(WORLD_W / 400, WORLD_H / 400);
-    skyTex.needsUpdate = true;
-  }
   const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
   ceiling.castShadow = false;
   ceiling.receiveShadow = false;
@@ -182,9 +167,6 @@ export function buildLevel(scene, map, rng) {
   beams.castShadow = false;
   beams.receiveShadow = false;
   beams.name = 'ceilingBeams';
-  // 白昼顶盖是"天空"，横梁横在天空上会像脚手架 → 白昼隐藏，露出开阔天空（04 图观感）；
-  // 夜战顶盖是深蓝黑屋面，横梁保留，读作废墟结构。
-  if (theme === 'day') beams.visible = false;
   group.add(beams);
   disposables.push(beamGeo, beamMat);
 

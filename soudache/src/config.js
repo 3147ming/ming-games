@@ -71,9 +71,6 @@ export const PLAYER = {
   weightOverStaminaFloor: 0.4, // 体力恢复下限（比移速更早触底：体力是逃命的底线）
   staminaExhaustSpeedMul: 0.55, // 疲惫时移速倍率（体力耗尽后）
   staminaExhaustRecovery: 0.3, // 体力恢复到该比例（maxStamina）才解除疲惫
-  // 体力将尽过渡：还没 exhausted（未归零）但低于该比例时，冲刺速度先打折
-  // （1.5 × 0.7 ≈ 1.05：比走路快、比满速冲刺慢），避免归零瞬间骤停
-  staminaLowMul: 0.7,
   noiseCrouch: 70,
   noiseWalk: 150,
   noiseSprint: 340,
@@ -94,32 +91,6 @@ export const RARITY = {
 };
 
 export const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary'];
-
-/* ============================== 物品位图图标 ============================== */
-
-/**
- * 物品 id → 图标位图路径（assets/icons/，透明底漫画风描边）。
- *
- * ⚠ key 必须是**游戏内 def.id**，不是图标文件名：
- *   图标文件按武器外观命名（m4a1 / mp5 / g17），而 ITEMS 里的 id 是 rifle / smg / pistol；
- *   护甲同理（vest2 / vest3 ↔ lv2 / lv3）。对不上时先打印实际 id 再补映射。
- *
- * 没有映射的物品（其余配件、收藏品）由 ui.js 回退到矢量图标 —— 不渲染 <img>，绝不出现裂图。
- */
-export const ITEM_ICONS = {
-  rifle: 'assets/icons/m4a1.png',
-  smg: 'assets/icons/mp5.png',
-  pistol: 'assets/icons/g17.png',
-  medkit: 'assets/icons/medkit.png',
-  bandage: 'assets/icons/bandage.png',
-  ammo556: 'assets/icons/ammo556.png',
-  ammo9mm: 'assets/icons/ammo9mm.png',
-  lv2: 'assets/icons/vest2.png',
-  lv3: 'assets/icons/vest3.png',
-  muzzle_sil: 'assets/icons/muzzle_sil.png',
-  sight_scope: 'assets/icons/sight_scope.png',
-  grip_vert: 'assets/icons/grip_vert.png',
-};
 
 /* ============================== 武器 ============================== */
 
@@ -357,48 +328,6 @@ export const ITEMS = {
     desc: '本局最贵的一件东西，几乎不占重量。',
   },
 
-  /* --- 武器配件（枪口 / 瞄具 / 握把） ---
-   * mods 是「同槽同类项相加的增量」，局内换算成乘数 mul = 1 + Δ：
-   * 例如 recoil: -0.2 → recoilMul 0.8（后坐更小）；damage: -0.05 → damageMul 0.95。
-   * 注意：valuable 里的 suppressor / optic 是收藏品（不改语义），配件一律用新 id。
-   */
-  muzzle_comp: {
-    id: 'muzzle_comp', name: '制退器', category: 'attachment', slot: 'muzzle', rarity: 'epic',
-    value: 2200, weight: 0.5, size: { w: 1, h: 1 }, icon: 'parts',
-    mods: { recoil: -0.2, spread: -0.1 },
-    desc: '枪口制退器：后坐 -20%，基础散布 -10%。',
-  },
-  muzzle_sil: {
-    id: 'muzzle_sil', name: '枪口消音器', category: 'attachment', slot: 'muzzle', rarity: 'epic',
-    value: 2800, weight: 0.6, size: { w: 1, h: 1 }, icon: 'suppressor',
-    mods: { noise: -0.6, damage: -0.05 },
-    desc: '消音器：枪声暴露半径 -60%，伤害 -5%（亚音速弹）。',
-  },
-  sight_holo: {
-    id: 'sight_holo', name: '全息瞄具', category: 'attachment', slot: 'sight', rarity: 'rare',
-    value: 1600, weight: 0.3, size: { w: 1, h: 1 }, icon: 'optic',
-    mods: { spread: -0.15, adsSpread: -0.2 },
-    desc: '全息瞄具：基础散布 -15%，开镜散布 -20%。',
-  },
-  sight_scope: {
-    id: 'sight_scope', name: '4 倍镜', category: 'attachment', slot: 'sight', rarity: 'epic',
-    value: 2400, weight: 0.4, size: { w: 1, h: 1 }, icon: 'optic',
-    mods: { range: 0.4, spread: -0.2, adsSpread: -0.3 },
-    desc: '4 倍镜：射程 +40%，基础散布 -20%，开镜散布 -30%。',
-  },
-  grip_vert: {
-    id: 'grip_vert', name: '垂直握把', category: 'attachment', slot: 'grip', rarity: 'rare',
-    value: 1800, weight: 0.4, size: { w: 1, h: 1 }, icon: 'parts',
-    mods: { spreadPerShot: -0.25, recoil: -0.15 },
-    desc: '垂直握把：连射散布累积 -25%，后坐 -15%。',
-  },
-  grip_angle: {
-    id: 'grip_angle', name: '直角握把', category: 'attachment', slot: 'grip', rarity: 'rare',
-    value: 2000, weight: 0.4, size: { w: 1, h: 1 }, icon: 'parts',
-    mods: { reload: -0.1 },
-    desc: '直角握把：换弹速度 +10%。',
-  },
-
   /* --- 武器（由 WEAPONS 展开） --- */
   rifle: { ...WEAPONS.rifle },
   smg: { ...WEAPONS.smg },
@@ -519,7 +448,7 @@ export const ENEMY_TYPES = {
     armor: 15,
     speed: 112,
     radius: 11,
-    color: '#6b7a5a', // 与 02 图左一浅灰绿作战服一致
+    color: '#d2603f',
     weapon: {
       id: 'enemy_ar', name: 'AK-74N', auto: true,
       damage: 8, rpm: 300, magSize: 20, reloadTime: 2.8,
@@ -595,7 +524,7 @@ export const ENEMY_TYPES = {
     armor: 5,
     speed: 168, // 最快
     radius: 10,
-    color: '#2e3438', // 与 02 图中间深灰蓝黑作战服一致
+    color: '#E08A3C',
     weapon: {
       id: 'enemy_smg', name: 'PP-19 冲锋枪', auto: true,
       damage: 7, rpm: 900, magSize: 30, reloadTime: 2.2,
@@ -612,31 +541,6 @@ export const ENEMY_TYPES = {
     preferredRange: 90, // 贴脸：会一路冲到你面前
     score: 70,
     lootBonus: 1.1,
-  },
-  boss: {
-    id: 'boss',
-    name: 'BOSS·重甲武士',
-    hp: 600,
-    armor: 80,
-    speed: 96, // 重甲：比精英慢，但绝不追不上 —— 靠压迫感而不是风筝
-    radius: 14, // 体型最大（碰撞体也最大，容易被打中）
-    color: '#a3362c', // 深红重甲主色（02 图右一）
-    weapon: {
-      id: 'enemy_boss_lmg', name: '重机枪·撕裂者', auto: true,
-      damage: 14, rpm: 260, magSize: 40, reloadTime: 3.0,
-      spread: 0.018, spreadPerShot: 0.008, spreadMax: 0.09, recoil: 0.02,
-      range: 620, noiseRadius: 560, ammoItem: 'ammo556',
-    },
-    visionRange: 440,
-    visionAngle: (100 * Math.PI) / 180,
-    hearing: 460,
-    reactionTime: 0.5,
-    accuracy: 0.5,
-    fireDelay: [0.6, 1.2],
-    burst: [4, 6],
-    preferredRange: 320,
-    score: 500,
-    lootBonus: 4,
   },
 };
 
@@ -707,7 +611,6 @@ export const ENEMY_SPAWN_WEIGHTS = {
   rusher: 22,
   marksman: 18,
   elite: 18,
-  boss: 14, // 权重不高，且每局最多 1 个（见 mapgen 的 boss 上限逻辑）
 };
 
 /* ============================== 战斗数值 ============================== */
@@ -724,12 +627,12 @@ export const COMBAT = {
   // --- 开火手感：视角上抬（aim punch）与准星扩张 ---
   recoilPitchMul: 2.2, // 每发抬枪角度 = def.recoil * 该系数（弧度）
   recoilPitchMax: 0.09, // 抬枪累积上限（约 5°，防止连射时枪口飞上天）
-  recoilRecover: 5, // 抬枪回落速率（越大回得越快）
+  recoilRecover: 9, // 抬枪回落速率（越大回得越快）
   crosshairBloom: 16, // 准星随扩散外扩的最大增量（腰射）
   crosshairBloomAds: 10, // 瞄准时的最大增量（更小）
   // 轻度辅助瞄准（仅玩家、仅偏航）：准星靠近敌人时把这一发小幅吸过去，不做全自动锁头。
   // enabled 由 save.settings.aimAssist 在启动时写入，可在暂停菜单关闭。
-  aimAssist: { enabled: true, coneDeg: 7, strength: 0.25 },
+  aimAssist: { enabled: true, coneDeg: 7, strength: 0.45 },
 };
 
 /* ============================== 击杀信息流 ============================== */
@@ -746,15 +649,8 @@ export const KILLFEED = {
 
 export const SHOP = {
   sellRatio: 0.6, // 出售价 = 价值 * 0.6
-  items: [
-    'rifle', 'smg', 'pistol', 'lv2', 'lv3', 'ammo556', 'ammo9mm', 'medkit', 'bandage', 'pill',
-    // 武器配件（枪口 / 瞄具 / 握把）
-    'muzzle_comp', 'muzzle_sil', 'sight_holo', 'sight_scope', 'grip_vert', 'grip_angle',
-  ],
-  restock: {
-    pistol: 999, ammo556: 999, ammo9mm: 999, medkit: 999, bandage: 999, pill: 999,
-    muzzle_comp: 999, muzzle_sil: 999, sight_holo: 999, sight_scope: 999, grip_vert: 999, grip_angle: 999,
-  },
+  items: ['rifle', 'smg', 'pistol', 'lv2', 'lv3', 'ammo556', 'ammo9mm', 'medkit', 'bandage', 'pill'],
+  restock: { pistol: 999, ammo556: 999, ammo9mm: 999, medkit: 999, bandage: 999, pill: 999 },
 };
 
 export const START_CURRENCY = 4000;
@@ -827,11 +723,10 @@ export const MINIMAP_LAYERS = {
 
 /** 3D 调色板（Low-Poly 风格化） */
 export const PALETTE3D = {
-  // 场景基调对照 docs/art-concept/04-scene-day.png：沙黄地面 + 混凝土灰掩体 + 暖调
-  ground: '#b8a06a',
-  groundAlt: '#ab935d',
-  wall: '#969183', // 掩体混凝土灰（偏暖，配合白昼暖光出 04 图的沙土感）
-  wallTop: '#a39e90',
+  ground: '#33403A',
+  groundAlt: '#2C352F',
+  wall: '#5C5F52',
+  wallTop: '#6C7060',
   crate: '#9C7B36',
   crateTrim: '#8A5A16',
   crateRubble: '#6B5640', // 击碎后的瓦砾色
@@ -853,22 +748,19 @@ export const PALETTE3D = {
   terminalHacked: '#10B981', // 已破解：转绿
   airdrop: '#FFB020', // 空投信标：传说金
   highlight: '#FBBF24',
-  // 敌人军服基色（对照 docs/art-concept/02-enemies.png；模型细分配色见 VIEW3D.enemySkins）
-  enemyPatrol: '#6b7a5a', // 普通步枪兵：浅灰绿作战服
-  enemyElite: '#4a5544', // 精英守卫：深灰绿（红色甲片点缀在皮肤里）
+  enemyPatrol: '#9CA3AF',
+  enemyElite: '#DC2626',
   enemyMarksman: '#7B68A6', // 精确射手：紫
-  enemyRusher: '#2e3438', // 冲锋兵：深灰蓝黑
-  accent: '#E8863C', // 橙色点缀（viewmodel 瞄具 / 物品细节，对照 01 图）
-  glove: '#4d5844', // 第一人称手套（军绿装备）
-  vmBody: '#4d5642', // 第一人称枪身：军绿（提亮一档，弱光下也能看清轮廓）
+  enemyRusher: '#E08A3C', // 冲锋兵：橙
+  vmBody: '#393E36',
   vmDark: '#22281F',
-  sky: '#a8c8e0',
-  fog: '#bfd2de', // 白昼雾色（淡蓝地平线；夜战由 theme.fogColor 覆盖）
+  sky: '#1A2430',
+  fog: '#1A2430',
   dust: '#C9D6E4', // 空气尘埃颜色
-  ceiling: '#585c56', // 天花板基色（混凝土灰，配合自发光避免从下看发黑）
-  ceilingBeam: '#41453f', // 结构横梁基色
-  hemiSky: '#b3d4ee',
-  hemiGround: '#6a6152', // 暖色地面反照（沙黄回光）
+  ceiling: '#4A524A', // 天花板基色（略亮于墙，配合自发光避免从下看发黑）
+  ceilingBeam: '#33392F', // 结构横梁基色
+  hemiSky: '#93C5FD',
+  hemiGround: '#475569',
   dirLight: '#FFF7ED',
   ambient: '#1E293B',
   tracer: '#FFD9A0',
@@ -880,9 +772,9 @@ export const PALETTE3D = {
   metal: '#5B6168',
   metalDark: '#363C44',
   concrete: '#565A4C',
-  medkit: '#5c6b4f', // 医疗箱军绿箱底（橙十字见 MEDKIT_TEX，对照 01 图）
-  medkitCross: '#E8863C',
-  ammoBox: '#DD7E33', // 弹药盒橙白配色（对照 01 图）
+  medkit: '#F4F6F8',
+  medkitCross: '#E23B3B',
+  ammoBox: '#C9A227',
   armorPlate: '#7F8C9B',
   hand: '#C8A07A',
   helmet: '#33392F',
@@ -927,7 +819,7 @@ export const VIEW3D = {
   near: 4, // 近裁剪面（0.2 m，够近又不损失深度精度）
   far: 2200, // 远裁剪面（地图对角线 3000，靠雾收边）
   pitchLimit: (85 * Math.PI) / 180, // pitch 限幅
-  sensitivity: 0.0035, // 鼠标灵敏度（弧度 / 像素）
+  sensitivity: 0.0022, // 鼠标灵敏度（弧度 / 像素）
   maxPixelRatio: 1.75, // devicePixelRatio 上限，防止高分屏掉帧
   minPixelRatioFallback: 1, // 自适应降级第 3 级：帧率仍不足时把像素比压到 1
 
@@ -952,70 +844,12 @@ export const VIEW3D = {
   toneMappingExposure: 1.12, // 色调映射曝光（>1 提亮，配合 ACES 使用）
   envIntensity: 0.85, // 程序化环境贴图强度（给 Standard 材质提供天光反射）
   envMapSize: 128, // 环境贴图（PMREM）分辨率，越大越细腻但生成越慢
-  // 白昼天空（对照 docs/art-concept/04-scene-day.png：淡蓝 + 几何白云，整体暖调明快）
-  skyTop: '#a8c8e0', // 天空渐变顶部
-  skyMid: '#bcd6e8', // 天空渐变中部（地平线附近）
-  skyBottom: '#d2dfe9', // 天空渐变底部
-  // --- 时段主题（白昼 / 夜战） ---
-  // 同一张地图、同一套光照结构，只换光照强度与天空色 —— 夜战靠"低光 + 头灯"重建可读性，
-  // 而不是重做一张夜图。fogMul 让夜雾更浓，进一步压缩可视距离（潜行收益）。
-  // 颜色项（fogColor/hemiSky/hemiGround/sunColor/ambientColor）与 clouds 开关一并随主题切换。
-  theme: {
-    day: {
-      hemiIntensity: 0.95,
-      ambientIntensity: 0.40,
-      dirIntensity: 2.2,
-      exposure: 1.16,
-      fogMul: 0.9,
-      // 天空是环境贴图的来源：整张地图有天花板（level3d），天空主要通过
-      // PMREM 反射影响墙面/地面颜色，所以白昼天空要"淡"而不是"浓蓝"，
-      // 否则反射会把混凝土墙染成冷蓝、丢掉 04 图的暖调。
-      skyTop: '#a8c8e0',
-      skyMid: '#bcd6e8',
-      skyBottom: '#d2dfe9',
-      fogColor: '#c6d3d8',
-      hemiSky: '#dce9f4',
-      hemiGround: '#6a6152',
-      sunColor: '#fff3dc', // 暖阳
-      ambientColor: '#7a6f57', // 暖灰环境光（压住冷蓝天光，整体暖调）
-      clouds: true, // 几何白云（画进天空渐变纹理，零额外资源）
-    },
-    night: {
-      hemiIntensity: 0.22,
-      ambientIntensity: 0.10,
-      dirIntensity: 0.26,
-      exposure: 1.06,
-      fogMul: 1.4,
-      skyTop: '#0a0e16',
-      skyMid: '#101826',
-      skyBottom: '#17202e',
-      fogColor: '#0c1220',
-      hemiSky: '#2c3a55',
-      hemiGround: '#0e1218',
-      sunColor: '#93a9cf', // 冷月光
-      ambientColor: '#1c2836',
-      clouds: false,
-    },
-    enemyVisionMul: 0.85, // 夜战敌人视野系数（生成时写入 Enemy.visionMul）
-  },
-
-  // --- 玩家头灯（仅夜战启用，每帧跟随相机位置与朝向） ---
-  // decay 取 0 的原因：three r160 的点/聚光灯衰减是 1/d^decay，d 用**场景单位**，
-  // 而本项目 1 米 = 20 单位 —— decay=1.5 时 20 m 外衰减到 1/8000，头灯等于不存在。
-  // 因此改为"截止距离内恒定、窗口外被 distance 裁掉"，观感与性能都更可控。
-  flashlight: {
-    color: '#FFF2D6',
-    angle: 0.5, // 锥半角（弧度）
-    distance: 420, // 照射距离（场景单位 ≈ 21 m）
-    intensity: 2.2,
-    decay: 0,
-    penumbra: 0.35, // 边缘柔化
-    offset: { x: 0, y: -0.15, z: 0 }, // 相对相机：略低于视线中心（像挂在头盔上）
-  },
-
+  skyTop: '#101823', // 天空渐变顶部
+  skyMid: '#26364A', // 天空渐变中部（地平线附近）
+  skyBottom: '#3A4A5C', // 天空渐变底部
   dustCount: 420, // 空气尘埃粒子数（营造体积感，0 = 关闭）
   dustRadius: 70, // 尘埃分布半径（米，跟随相机的局部范围）
-  dustSize: 0.022, // 尘埃颗粒大小（米）——刻意压小：sizeAttenuation 下靠近相机会被放大成大色块
+  dustSize: 0.035, // 尘埃颗粒大小（米）
   groundRoughness: 0.86, // 地面粗糙度
   wallRoughness: 0.76, // 墙面 / 掩体箱粗糙度
   metalness: 0.06, // 非金属表面的基础金属度（略微给一点，增加反射层次）
@@ -1024,29 +858,10 @@ export const VIEW3D = {
   enemy: {
     patrol: { torsoW: 0.62, torsoH: 0.95, torsoD: 0.38, headR: 0.19, legH: 0.72 },
     elite: { torsoW: 0.70, torsoH: 1.02, torsoD: 0.42, headR: 0.20, legH: 0.76 },
-    // BOSS·重甲武士：比精英更大一圈，配合深红配色在远处就能一眼认出来
-    boss: { torsoW: 0.78, torsoH: 1.15, torsoD: 0.46, headR: 0.23, legH: 0.80 },
     // 冲锋兵：更瘦小灵活，和"高速贴脸"的定位呼应
     rusher: { torsoW: 0.56, torsoH: 0.88, torsoD: 0.34, headR: 0.18, legH: 0.68 },
     gunLength: 0.62,
     hitFlashColor: '#FFE4E6',
-  },
-
-  // --- 敌人皮肤（对照 docs/art-concept/02-enemies.png；只换色/开部件，不加几何） ---
-  // uniform=作战服 dark=背心/靴/手套 helmet=盔 pack=背包 plate=甲片
-  // masked=true 头套蒙面（遮住肤色脸）；visor=面罩色（BOSS 现代防弹面罩，盖住面部零件）
-  // heavy=true 全身插板重甲（胸甲/肩甲走 plate 深红块）
-  enemySkins: {
-    // 普通步枪兵：浅灰绿作战服 + 同色系稍深防弹头盔（02 图左一）
-    patrol: { uniform: '#6b7a5a', dark: '#3e4636', helmet: '#566248', pack: '#4a5443', plate: '#566248' },
-    // 精英守卫：深灰绿 + 红色甲片点缀（普通兵与 BOSS 之间的过渡配色）
-    elite: { uniform: '#4a5544', dark: '#333a30', helmet: '#3d4636', pack: '#3f4839', plate: '#b03028' },
-    // 精确射手：未在参考图内，沿用紫色系辨识
-    marksman: { uniform: '#7B68A6', dark: '#22281f', helmet: '#33392f', pack: '#3a4a3f', plate: '#7B68A6' },
-    // 冲锋兵：深灰蓝黑作战服 + 头套蒙面（02 图中间前倾冲刺姿）
-    rusher: { uniform: '#2e3438', dark: '#23272b', helmet: '#262c31', pack: '#262b30', plate: '#262c31', masked: true },
-    // BOSS：深红全覆盖插板重甲 + 现代防弹头盔 + 面罩（02 图右一；无任何日式/武士元素）
-    boss: { uniform: '#a3362c', dark: '#6f221b', helmet: '#8c2b22', pack: '#6f221b', plate: '#7a241d', visor: '#161e28', heavy: true },
   },
 
   // --- 武器视图模型（挂在相机下，局部坐标；尺寸/距离单位：米） ---

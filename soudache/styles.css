@@ -216,13 +216,6 @@ body {
   gap: 10px;
 }
 
-/* 二级入口（每日 / 成就 / 天赋 / 剧情 / 图鉴）：不抢主流程按钮的视觉权重 */
-.menu-actions.sub {
-  margin-top: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
-  gap: 8px;
-}
-
 .menu-foot {
   margin-top: 18px;
   display: flex;
@@ -304,13 +297,6 @@ body {
   padding: 4px 9px;
   font-size: 11px;
   border-radius: 6px;
-}
-
-/* 选中态（配件槽当前装备 / 时段按钮等）：金色描边 + 金色文字 */
-.btn.tiny.on {
-  border-color: #ffb020;
-  color: #ffb020;
-  background: rgba(255, 176, 32, 0.08);
 }
 
 .btn.big {
@@ -692,19 +678,6 @@ body {
   /* 关键：图标是纯装饰画布，绝不能吃掉落在它上面的点击/触摸。
      缺失这一条时，物品格子里的图标会把「点选物品」整个拦下
      （表现：背包/商店里怎么点都没反应，elementFromPoint 命中的是 canvas.icon）。 */
-  pointer-events: none;
-  -webkit-user-drag: none;
-  user-select: none;
-}
-
-/* 物品位图图标（assets/icons/，透明底漫画风描边）。
-   与 .icon 同样的铁律：装饰元素不吃点击，否则会拦下「点选 / 拾取 / 出售」。
-   不加圆角与边框 —— 描边本身已经提供了边界。 */
-.item-ic {
-  height: 20px;
-  width: auto;
-  vertical-align: middle;
-  margin-right: 6px;
   pointer-events: none;
   -webkit-user-drag: none;
   user-select: none;
@@ -1633,160 +1606,3 @@ body.touch-mode .battle-panel:not(.hidden) {
 }
 
 
-
-/* ===== 启动加载占位（index.html 内联结构，模块解析完成前显示） ===== */
-#boot-loading {
-  position: fixed; inset: 0; z-index: 9998;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
-  background: #080c12; color: #d7dee8;
-  font-family: system-ui, 'Microsoft YaHei', sans-serif;
-}
-.boot-spinner {
-  width: 34px; height: 34px; border-radius: 50%;
-  border: 3px solid #22303f; border-top-color: #ffb020;
-  animation: boot-spin 0.9s linear infinite;
-}
-@keyframes boot-spin { to { transform: rotate(360deg); } }
-.boot-text { font-size: 14px; color: #7c8899; letter-spacing: 0.5px; }
-
-/* ===== 图鉴 ===== */
-.codex-body { display: flex; flex-direction: column; gap: 18px; padding: 16px 20px 24px; }
-.codex-sec h3 { margin: 0 0 10px; font-size: 13px; color: #35e0d0; letter-spacing: 1px; }
-.codex-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-.codex-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #2b3a4d; border-radius: 8px; background: #111a26; min-height: 46px; }
-.codex-item .ci-name { font-size: 12px; color: #d7dee8; font-weight: 600; }
-.codex-item .ci-meta { font-size: 10px; color: #7c8899; }
-.codex-item.locked { opacity: 0.55; }
-.codex-item .ci-lock { width: 26px; height: 26px; border-radius: 50%; border: 1px dashed #3b4a5d; color: #3b4a5d; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
-.codex-enemies { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
-.codex-enemy { padding: 10px 12px; border: 1px solid #2b3a4d; border-radius: 8px; background: #111a26; }
-.codex-enemy .ce-name { font-size: 13px; font-weight: 700; color: #d7dee8; }
-.codex-enemy .ce-meta { font-size: 11px; color: #9aa7b8; margin-top: 3px; }
-.codex-enemy .ce-weapon { font-size: 11px; color: #ffb020; margin-top: 2px; }
-.codex-enemy .ce-desc { font-size: 10px; color: #7c8899; margin-top: 2px; }
-.codex-enemy.locked { opacity: 0.55; }
-.codex-enemy.locked .ce-name { color: #5a6a7d; }
-.codex-intel { margin: 0; padding-left: 18px; font-size: 12px; color: #9aa7b8; line-height: 2; }
-
-/* --- 每日任务 --- */
-.daily-body { display: flex; flex-direction: column; gap: 14px; padding: 16px 20px 24px; }
-.daily-tasks { display: flex; flex-direction: column; gap: 10px; }
-.daily-task {
-  display: flex; align-items: center; gap: 14px;
-  padding: 12px 14px; border: 1px solid #2b3a4d; border-radius: 10px; background: #111a26;
-}
-.daily-task.done { border-color: #35e0d0; }
-.daily-task.claimed { opacity: 0.6; }
-.daily-task .dt-main { flex: 1 1 auto; min-width: 0; }
-.daily-task .dt-name { font-size: 13px; font-weight: 600; color: #d7dee8; }
-.daily-task .dt-meta { font-size: 11px; color: #7c8899; margin-top: 4px; }
-.daily-task .dt-bar {
-  margin-top: 6px; height: 6px; border-radius: 3px; background: #1b2634; overflow: hidden;
-}
-.daily-task .dt-fill { height: 100%; background: #35e0d0; transition: width 0.25s ease; }
-.daily-task .btn { flex: 0 0 auto; min-width: 96px; }
-
-/* --- 成就 --- */
-.ach-body { display: flex; flex-direction: column; gap: 14px; padding: 16px 20px 24px; }
-.ach-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
-.ach-item { padding: 10px 12px; border: 1px solid #2b3a4d; border-radius: 8px; background: #111a26; opacity: 0.55; }
-.ach-item.got { opacity: 1; border-color: #ffb020; }
-.ach-item .ai-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.ach-item .ai-name { font-size: 13px; font-weight: 700; color: #d7dee8; }
-.ach-item .ai-reward { font-size: 12px; color: #ffb020; flex: 0 0 auto; }
-.ach-item .ai-desc { font-size: 11px; color: #9aa7b8; margin-top: 4px; }
-.ach-item .ai-title { font-size: 10px; color: #35e0d0; margin-top: 3px; }
-
-/* --- 成长天赋 --- */
-.tree-body { display: flex; flex-direction: column; gap: 14px; padding: 16px 20px 24px; }
-.tree-branches { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
-.tree-branch { display: flex; flex-direction: column; gap: 8px; }
-.tree-branch h3 { margin: 0; font-size: 13px; letter-spacing: 1px; }
-.perk-node {
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 10px 12px; border: 1px solid #2b3a4d; border-radius: 8px; background: #111a26;
-}
-.perk-node.available { border-color: #35e0d0; }
-.perk-node.learned { border-color: #ffb020; background: #17202c; }
-.perk-node .pn-name { font-size: 13px; font-weight: 600; color: #d7dee8; }
-.perk-node .pn-desc { font-size: 11px; color: #9aa7b8; }
-.perk-node .btn { margin-top: 2px; }
-
-/* --- 剧情 --- */
-.story-body { display: flex; flex-direction: column; gap: 14px; padding: 16px 20px 24px; }
-.story-list { display: flex; flex-direction: column; gap: 10px; }
-.story-item { padding: 12px 14px; border: 1px solid #2b3a4d; border-radius: 10px; background: #111a26; }
-.story-item.current { border-color: #4fa3ff; }
-.story-item.done { border-color: #35e0d0; }
-.story-item .si-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.story-item .si-title { font-size: 13px; font-weight: 700; color: #d7dee8; }
-.story-item .si-reward { font-size: 12px; color: #ffb020; flex: 0 0 auto; }
-.story-item .si-text { font-size: 12px; color: #b6c2d1; line-height: 1.9; margin-top: 6px; }
-.story-item .si-req { font-size: 11px; color: #7c8899; margin-top: 6px; }
-
-/* --- 成长树：经验条 --- */
-.tree-xp { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #2b3a4d; border-radius: 10px; background: #111a26; }
-.tree-xp .tx-label { font-size: 12px; color: #d7dee8; font-weight: 600; flex: 0 0 auto; }
-.tree-xp .tx-bar { flex: 1 1 auto; height: 8px; border-radius: 999px; background: #1b2634; overflow: hidden; }
-.tree-xp .tx-fill { height: 100%; background: linear-gradient(90deg, #4fa3ff, #35e0d0); transition: width 0.25s ease; }
-.tree-xp .tx-points { font-size: 12px; color: #ffb020; font-weight: 700; flex: 0 0 auto; }
-
-/* --- 结算页称号 --- */
-.result-title2 {
-  margin-top: 6px;
-  text-align: center;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  color: #ffb020;
-  text-shadow: 0 0 12px rgba(255, 176, 32, 0.35);
-}
-
-/* --- 主菜单：今日任务卡片 --- */
-.menu-daily {
-  margin-top: 12px;
-  padding: 10px 12px;
-  border: 1px solid #2b3a4d;
-  border-radius: 10px;
-  background: rgba(17, 26, 38, 0.72);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.menu-daily .md-head { font-size: 12px; font-weight: 700; color: #35e0d0; letter-spacing: 1px; }
-.menu-daily .md-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #9aa7b8; }
-.menu-daily .md-row.done { color: #d7dee8; }
-.menu-daily .md-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.menu-daily .md-prog { flex: 0 0 auto; color: #7c8899; font-variant-numeric: tabular-nums; }
-.menu-daily .md-mark { flex: 0 0 auto; min-width: 46px; text-align: right; color: #35e0d0; font-weight: 700; }
-
-/* --- 图鉴：成就 / 剧情档案 --- */
-.codex-ach { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
-.codex-item.codex-ach-item { flex-direction: column; align-items: flex-start; gap: 4px; min-height: 0; }
-.codex-item.codex-ach-item .ci-desc { font-size: 11px; color: #9aa7b8; line-height: 1.7; }
-.codex-item.codex-ach-item:not(.locked) { border-color: #ffb020; }
-.codex-item.codex-ach-item.locked .ci-name { color: #7c8899; }
-.codex-story { display: flex; flex-direction: column; gap: 10px; }
-.codex-story-item { padding: 12px 14px; border: 1px solid #2b3a4d; border-radius: 10px; background: #111a26; }
-.codex-story-item.current { border-color: #4fa3ff; }
-.codex-story-item.done { border-color: #35e0d0; }
-.codex-story-item .cs-title { font-size: 13px; font-weight: 700; color: #d7dee8; }
-.codex-story-item.done .cs-title { color: #35e0d0; }
-.codex-story-item.locked .cs-title, .codex-story-item:not(.done):not(.current) .cs-title { color: #7c8899; }
-.codex-story-item .cs-text { font-size: 12px; color: #b6c2d1; line-height: 1.9; margin-top: 6px; }
-.codex-story-item .cs-req { font-size: 11px; color: #7c8899; margin-top: 6px; }
-.codex-story-item .cs-reward { font-size: 11px; color: #ffb020; margin-top: 4px; }
-
-/* --- 战前配置：武器配件槽 --- */
-.attach-block .attach-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 0;
-  border-top: 1px dashed #23303f;
-  flex-wrap: wrap;
-}
-.attach-block .attach-row:first-of-type { border-top: 0; }
-.attach-block .ar-slot { flex: 0 0 46px; font-size: 12px; color: #7c8899; }
-.attach-block .ar-cur { flex: 0 0 auto; min-width: 92px; font-size: 12px; font-weight: 600; color: #d7dee8; }
-.attach-block .ar-opts { flex: 1 1 auto; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
