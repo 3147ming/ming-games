@@ -73,9 +73,9 @@ section('原版数值口径（录屏逆向，写死不改）');
   ok('开局铲子 ×2', C.SHOVEL_START === 2);
   ok('阿斗来袭台词「护驾！护驾！」', C.ADOU_LINE_WAVE === '护驾！护驾！', C.ADOU_LINE_WAVE);
   ok('阿斗低血台词「我快不行了」', C.ADOU_LINE_LOW === '我快不行了', C.ADOU_LINE_LOW);
-  ok('刀 = 原版展示值 4.50 / 1.88', U.dao.atk === 4.50 && U.dao.aspd === 1.88, U.dao.atk + '/' + U.dao.aspd);
-  ok('刘备 = 原版展示值 16.00 / 1.25',
-    ZY.HERO_BY_ID.liubei.atk === 16.00 && ZY.HERO_BY_ID.liubei.aspd === 1.25,
+  ok('刀 = V8 展示值 5.00 / 1.80（兵种机制重做）', U.dao.atk === 5.00 && U.dao.aspd === 1.80, U.dao.atk + '/' + U.dao.aspd);
+  ok('刘备 = 锚定 16.00 / V8 攻速 1.80',
+    ZY.HERO_BY_ID.liubei.atk === 16.00 && ZY.HERO_BY_ID.liubei.aspd === 1.80,
     ZY.HERO_BY_ID.liubei.atk + '/' + ZY.HERO_BY_ID.liubei.aspd);
   ok('铁剑 攻击 +3', ZY.WEAPONS.tiejian.atk === 3 && ZY.WEAPONS.tiejian.name === '铁剑');
   ok('武将字对齐全（原五虎 + 关羽/诸葛亮）', ZY.HEROES.length === 7 &&
@@ -98,15 +98,15 @@ section('原版数值口径（录屏逆向，写死不改）');
   // 快照断言：校准只改 atk，攻速 / hpBase / 技能 CD 一律不动（防误伤）
   const _z = ZY.HERO_BY_ID.zhaoyun, _f = ZY.HERO_BY_ID.zhangfei,
         _g = ZY.HERO_BY_ID.guanyu, _zl = ZY.HERO_BY_ID.zhugeliang;
-  ok('赵云 攻速/hpBase/技能CD 未变（1.45 / 32 / cd8）',
-    _z.aspd === 1.45 && _z.hpBase === 32 && _z.skill.cd === 8 && _z.range === 3 && _z.pierce === true);
-  ok('张飞 攻速/hpBase/hpMul/dmgReduce/技能CD 未变（1.30 / 40 / 1.25 / 0.25 / cd10）',
-    _f.aspd === 1.30 && _f.hpBase === 40 && _f.hpMul === 1.25 && _f.dmgReduce === 0.25 && _f.skill.cd === 10);
-  ok('关羽 攻速/hpBase/hpMul/dmgReduce/range/splash/技能类型 未变（横扫）',
-    _g.aspd === 1.15 && _g.hpBase === 44 && _g.hpMul === 1.2 && _g.dmgReduce === 0.15 &&
+  ok('赵云 攻速/hpBase/技能CD（V8 同步 1.95 / 32 / cd8）',
+    _z.aspd === 1.95 && _z.hpBase === 32 && _z.skill.cd === 8 && _z.range === 3 && _z.pierce === true);
+  ok('张飞 攻速/hpBase/hpMul/dmgReduce/技能CD（V8 同步 1.80 / 40 / 1.25 / 0.25 / cd10）',
+    _f.aspd === 1.80 && _f.hpBase === 40 && _f.hpMul === 1.25 && _f.dmgReduce === 0.25 && _f.skill.cd === 10);
+  ok('关羽 攻速/hpBase/hpMul/dmgReduce/range/splash/技能类型（V8 攻速同步 1.80 · 横扫）',
+    _g.aspd === 1.80 && _g.hpBase === 44 && _g.hpMul === 1.2 && _g.dmgReduce === 0.15 &&
     _g.range === 2 && _g.splash === 0.35 && _g.skill.type === 'sweep');
-  ok('诸葛亮 攻速/hpBase/range/crit/技能类型 未变（八阵图·burn）',
-    _zl.aspd === 1.25 && _zl.hpBase === 18 && _zl.range === 4 && _zl.crit === 0.15 && _zl.critMul === 1.8 && _zl.skill.type === 'burn');
+  ok('诸葛亮 攻速/hpBase/range/crit/技能类型（V8 攻速同步 1.60 · 八阵图·burn）',
+    _zl.aspd === 1.60 && _zl.hpBase === 18 && _zl.range === 4 && _zl.crit === 0.15 && _zl.critMul === 1.8 && _zl.skill.type === 'burn');
   // 其余推导值校准确认：数值不变（仅注释标注，此处锁数值）
   ok('校准确认：ELITE_BOUNTY=8 / BOSS_BOUNTY=30 / XP_PER_KILL=1.2 / XP_PER_LEVEL=10 / BASE_INCOME=1',
     ZY.C.ELITE_BOUNTY === 8 && ZY.C.BOSS_BOUNTY === 30 && ZY.C.XP_PER_KILL === 1.2 &&
@@ -117,6 +117,32 @@ section('原版数值口径（录屏逆向，写死不改）');
     ZY.C.STAR_PAR_WAVE === 25 && ZY.C.LEVEL_CLEAR_BONUS === 25);
   const pool = ZY.RECRUIT_POOL.reduce((a, x) => a + x.w, 0);
   ok('征兵概率池合计 100（无铲子）', pool === 100 && !ZY.RECRUIT_POOL.some((x) => x.item === 'shovel'), pool + '');
+}
+
+/* ------------------------------------------------ 1c. V8 兵种机制 + 数值平衡：面板与武将 atk 复算 */
+section('V8 兵种面板与武将 atk 复算（五 · 兵种机制+数值平衡）');
+{
+  ok('刀 V8 = 5.00 / 1.80', U.dao.atk === 5.00 && U.dao.aspd === 1.80, U.dao.atk + '/' + U.dao.aspd);
+  ok('枪 V8 = 4.20 / 1.95 / pierce', U.qiang.atk === 4.20 && U.qiang.aspd === 1.95 && U.qiang.pierce === true);
+  ok('骑 V8 = 3.60 / 1.85 / splash 0.75', U.qi.atk === 3.60 && U.qi.aspd === 1.85 && Math.abs(U.qi.splash - 0.75) < 1e-9, U.qi.atk + '/' + U.qi.aspd);
+  ok('弓 不变 = 3.20 / 1.60', U.gong.atk === 3.20 && U.gong.aspd === 1.60);
+  ok('农 不变 = 0 / 0', U.nong.atk === 0 && U.nong.aspd === 0);
+  // 武将 atk = 对应兵种 3 级 × 1.2；刘备锚定 16.00 不进公式
+  const _Ga = C.GROW.atk;
+  const _exp = (base) => Math.round(U[base].atk * _Ga * _Ga * 1.2 * 100) / 100;
+  ok('赵云 atk = 枪 3 级 ×1.2 = 17.25', ZY.HERO_BY_ID.zhaoyun.atk === 17.25 && ZY.HERO_BY_ID.zhaoyun.atk === _exp('qiang'));
+  ok('张飞 atk = 刀 3 级 ×1.2 = 20.54', ZY.HERO_BY_ID.zhangfei.atk === 20.54 && ZY.HERO_BY_ID.zhangfei.atk === _exp('dao'));
+  ok('关羽 atk = 刀 3 级 ×1.2 = 20.54', ZY.HERO_BY_ID.guanyu.atk === 20.54 && ZY.HERO_BY_ID.guanyu.atk === _exp('dao'));
+  ok('马超 atk = 骑 3 级 ×1.2 = 14.79', ZY.HERO_BY_ID.machao.atk === 14.79 && ZY.HERO_BY_ID.machao.atk === _exp('qi'));
+  ok('黄忠 atk = 弓 3 级 ×1.2 = 13.14', ZY.HERO_BY_ID.huangzhong.atk === 13.14 && ZY.HERO_BY_ID.huangzhong.atk === _exp('gong'));
+  ok('诸葛亮 atk = 弓 3 级 ×1.2 = 13.14', ZY.HERO_BY_ID.zhugeliang.atk === 13.14 && ZY.HERO_BY_ID.zhugeliang.atk === _exp('gong'));
+  ok('刘备 atk = 锚定 16.00（不进公式）', ZY.HERO_BY_ID.liubei.atk === 16.00);
+  // V8 攻速随兵种系同步
+  ok('赵云 攻速随枪系 1.95', ZY.HERO_BY_ID.zhaoyun.aspd === 1.95);
+  ok('张飞/关羽 攻速随刀系 1.80', ZY.HERO_BY_ID.zhangfei.aspd === 1.80 && ZY.HERO_BY_ID.guanyu.aspd === 1.80);
+  ok('马超 攻速随骑系 1.85', ZY.HERO_BY_ID.machao.aspd === 1.85);
+  ok('黄忠/诸葛 攻速随弓系 1.60', ZY.HERO_BY_ID.huangzhong.aspd === 1.60 && ZY.HERO_BY_ID.zhugeliang.aspd === 1.60);
+  ok('刘备 攻速随刀系 1.80', ZY.HERO_BY_ID.liubei.aspd === 1.80);
 }
 
 /* ------------------------------------------------ 2. 征兵：10 起步 +2 不封顶 / 一次 5 张进军营 */
@@ -211,8 +237,8 @@ section('武将字对合成（手牌凑对 → 2 格武将卡 + 「合成武将�
   openSlots(s4, 'player', ['1,1']);
   s4.player.hand = [{ uid: 1, kind: 'gold', char: '赵', level: 1 }];
   ok('金字不能拖到棋盘上盘', !G.deploy(s4, 'player', 1, 1, 1).ok);
-  ok('刘备数值 = 原版 16.00 / 1.25',
-    Math.abs(ZY.heroStats('liubei', 1).atk - 16.00) < 1e-9 && Math.abs(ZY.heroStats('liubei', 1).aspd - 1.25) < 1e-9);
+  ok('刘备数值 = 锚定 16.00 / V8 攻速 1.80',
+    Math.abs(ZY.heroStats('liubei', 1).atk - 16.00) < 1e-9 && Math.abs(ZY.heroStats('liubei', 1).aspd - 1.80) < 1e-9);
 
   // —— V6 新武将：关羽（横扫）/ 诸葛亮（八阵图 · 群伤 + 眩晕） ——
   ok('关羽 = 刀系横扫（sweep）', ZY.HERO_BY_ID.guanyu.base === 'dao' && ZY.HERO_BY_ID.guanyu.skill.type === 'sweep');
@@ -272,35 +298,77 @@ section('合成深化 · 同名武将卡 ×2 → 升星（Lv+1，封顶 5，仍�
   ok('AI 会优先把同名将卡升星', s4.enemy.hand.some((c) => c.heroId === 'machao' && c.level === 2));
 }
 
-/* ------------------------------------------------ 5. 建塔 + 同字合成（刀²） */
-section('拖卡建塔 + 同字合成 +1 级（刀+刀 = 刀²）');
+/* ------------------------------------------------ 5. 建塔 + 同字合成（V8 改版：卡只喂 1 级 / 塔塔同级合成升阶） */
+section('V8 合成改版：卡喂 1 级塔 · 塔塔同级合成升阶');
 {
   const s = G.baseState('endless', {});
-  openSlots(s, 'player', ['1,1']);
+  const safe = Object.keys(B.startSlots('endless', 'player'));   // 全局塔位，绝不与主路重合
+  openSlots(s, 'player', safe);
+  const A = safe[0], B0 = safe[1], C0 = safe[2], D0 = safe[3], E0 = safe[4], F0 = safe[5];
+  const rc = (k) => k.split(',').map(Number);
   s.player.hand = [
     { uid: 1, kind: 'unit', char: '刀', type: 'dao', level: 1 },
     { uid: 2, kind: 'unit', char: '刀', type: 'dao', level: 1 },
     { uid: 3, kind: 'unit', char: '枪', type: 'qiang', level: 1 },
   ];
-  const rb = G.deploy(s, 'player', 1, 1, 1);
-  ok('拖兵种卡到塔位 = 建塔', rb.ok && s.grid[1][1] && s.grid[1][1].type === 'dao' && s.grid[1][1].level === 1, JSON.stringify(rb));
+  const [ar, ac] = rc(A);
+  const rb = G.deploy(s, 'player', 1, ar, ac);
+  ok('拖兵种卡到塔位 = 建塔', rb.ok && s.grid[ar][ac] && s.grid[ar][ac].type === 'dao' && s.grid[ar][ac].level === 1, JSON.stringify(rb));
   ok('建塔后卡消失', s.player.hand.length === 2);
-  const r1 = G.deploy(s, 'player', 2, 1, 1);
-  ok('刀+刀 = 刀²（+1 级）', r1.ok && r1.merged === true && s.grid[1][1].level === 2, JSON.stringify(r1));
-  const r2 = G.deploy(s, 'player', 3, 1, 1);
-  ok('异字不可合成', !r2.ok && s.grid[1][1].level === 2, r2.msg);
-  let lvOk = true;
-  for (let lv = 3; lv <= 5; lv++) {
-    s.player.hand.push({ uid: 100 + lv, kind: 'unit', char: '刀', type: 'dao', level: 1 });
-    if (!G.deploy(s, 'player', 100 + lv, 1, 1).ok) { lvOk = false; break; }
-  }
-  ok('逐级喂养到 5 级上限', lvOk && s.grid[1][1].level === 5, '实际 ' + (s.grid[1][1] && s.grid[1][1].level));
-  s.player.hand.push({ uid: 199, kind: 'unit', char: '刀', type: 'dao', level: 1 });
-  ok('满级（5 级）不可再合成', !G.deploy(s, 'player', 199, 1, 1).ok);
-  s.player.hand.push({ uid: 200, kind: 'unit', char: '刀', type: 'dao', level: 1 });
-  ok('主路格不能建塔', !G.deploy(s, 'player', 200, 0, 6).ok);
-  ok('障碍格（荆棘山脊）不能建塔', !G.deploy(s, 'player', 200, 5, 0).ok);
-  ok('荒地（非塔位）不能建塔', !G.deploy(s, 'player', 200, 11, 3).ok);
+  const r1 = G.deploy(s, 'player', 2, ar, ac);
+  ok('刀+刀 = 刀²（+1 级）', r1.ok && r1.merged === true && s.grid[ar][ac].level === 2, JSON.stringify(r1));
+  const r2 = G.deploy(s, 'player', 3, ar, ac);
+  ok('异字不可喂卡', !r2.ok && s.grid[ar][ac].level === 2, r2.msg);
+
+  // V8 新规则：卡只能喂 1 级塔
+  s.player.hand.push({ uid: 4, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+  const r3 = G.deploy(s, 'player', 4, ar, ac);
+  ok('V8：卡不能喂 2 级塔（仅 1 级可喂）', !r3.ok && s.grid[ar][ac].level === 2, r3.msg);
+
+  // V8 塔塔合成：再建一座 1 级刀 → 喂成 2 级；两座 2 级刀合并 → 3 级
+  const [br, bc] = rc(B0);
+  s.player.hand.push({ uid: 5, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+  G.deploy(s, 'player', 5, br, bc);
+  s.player.hand.push({ uid: 6, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+  G.deploy(s, 'player', 6, br, bc);            // (B) 现在是 2 级刀
+  const before = s.units.length;
+  const m1 = G.mergeTower(s, 'player', s.grid[br][bc].id, ar, ac);  // 把 (B) 拖到 (A)
+  ok('V8：塔塔合成 2+2 → 3 级', m1.ok && m1.merged === true && s.grid[ar][ac].level === 3, JSON.stringify(m1));
+  ok('V8：被吃塔消失（占地清空 + 单位数 -1）', s.units.length === before - 1 && s.grid[br][bc] === null, 'units ' + before + '→' + s.units.length);
+
+  // 不同兵种不可合并
+  const [cr, cc] = rc(C0);
+  s.player.hand.push({ uid: 7, kind: 'unit', char: '枪', type: 'qiang', level: 1 });
+  G.deploy(s, 'player', 7, cr, cc);
+  s.player.hand.push({ uid: 8, kind: 'unit', char: '枪', type: 'qiang', level: 1 });
+  G.deploy(s, 'player', 8, cr, cc);            // (C) 现在是 2 级枪
+  const m2 = G.mergeTower(s, 'player', s.grid[cr][cc].id, ar, ac);  // 枪拖到刀塔
+  ok('V8：不同兵种不可合成', !m2.ok && s.grid[ar][ac].level === 3, m2.msg);
+
+  // 不能和自己合成
+  const m3 = G.mergeTower(s, 'player', s.grid[ar][ac].id, ar, ac);
+  ok('V8：不能和自己合成', !m3.ok, m3.msg);
+
+  // 等级不同不可合成：造一座 2 级刀 (D) 拖到 3 级刀 (A)
+  const [dr, dc] = rc(D0);
+  const lo = G.makeUnit(s, 'player', { cls: 'soldier', type: 'dao', level: 2, row: dr, col: dc, span: 1, target: null });
+  G.addUnit(s, lo);
+  const m4 = G.mergeTower(s, 'player', lo.id, ar, ac);
+  ok('V8：等级不同不可合成', !m4.ok && s.grid[ar][ac].level === 3 && s.grid[dr][dc] === lo, m4.msg);
+
+  // 满级（5 级）不可再合成：两座 5 级刀 (E)(F)
+  const [er, ec] = rc(E0), [fr, fc] = rc(F0);
+  const a5 = G.makeUnit(s, 'player', { cls: 'soldier', type: 'dao', level: 5, row: er, col: ec, span: 1, target: null });
+  G.addUnit(s, a5);
+  const b5 = G.makeUnit(s, 'player', { cls: 'soldier', type: 'dao', level: 5, row: fr, col: fc, span: 1, target: null });
+  G.addUnit(s, b5);
+  const m5 = G.mergeTower(s, 'player', b5.id, er, ec);  // 5 级拖到 5 级
+  ok('V8：满级（5 级）不可再合成', !m5.ok && s.grid[er][ec].level === 5, m5.msg);
+
+  s.player.hand.push({ uid: 300, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+  ok('主路格不能建塔', !G.deploy(s, 'player', 300, 0, 6).ok);
+  ok('障碍格（荆棘山脊）不能建塔', !G.deploy(s, 'player', 300, 5, 0).ok);
+  ok('荒地（非塔位）不能建塔', !G.deploy(s, 'player', 300, 11, 3).ok);
   const pset = B.pathSet('endless');
   ok('塔位与主路互斥', Object.keys(s.deploy).every((k) => !pset[k]));
 }
@@ -314,7 +382,7 @@ section('武将卡拖到塔位 = 横跨 2 格建塔');
   const r = G.deploy(s, 'player', 1, 1, 5);
   ok('武将卡落塔位 = 建成 2 格宽武将塔', r.ok && s.grid[1][5].cls === 'hero' && s.grid[1][5].span === 2, JSON.stringify(r).slice(0, 80));
   ok('右邻格同占（双格记账）', s.grid[1][6] === s.grid[1][5]);
-  ok('赵云塔数值 = 15.61 / 1.45（V6 公式校准：枪 3 级 ×1.2）', Math.abs(s.grid[1][5].atk - 15.61) < 1e-9 && Math.abs(s.grid[1][5].aspd - 1.45) < 1e-9);
+  ok('赵云塔数值 = 17.25 / 1.95（V8 公式校准：枪 3 级 ×1.2）', Math.abs(s.grid[1][5].atk - 17.25) < 1e-9 && Math.abs(s.grid[1][5].aspd - 1.95) < 1e-9);
   // 右侧被占 → 放不下
   const s2 = G.baseState('endless', {});
   openSlots(s2, 'player', ['1,1', '1,2']);

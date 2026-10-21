@@ -715,17 +715,18 @@
 
     const t = state.grid[r] && state.grid[r][c];
     if (t) {
-      // —— 落到己方塔上：同字合成 ——
+      // —— 落到己方塔上：V8 卡喂塔（仅 1 级塔）+ 同字合成 ——
       if (t.side !== side) return { ok: false, msg: '不能叠到敌方单位上' };
       if (card.kind !== 'unit' || t.cls !== 'soldier') return { ok: false, msg: '只有同字兵种塔才能合成' };
-      if (t.type !== card.type) return { ok: false, msg: '只有同字才能合成' };
-      if (t.level >= C.MAX_LEVEL) return { ok: false, msg: '已满级（' + C.MAX_LEVEL + ' 级），不能再合成' };
+      if (t.type !== card.type) return { ok: false, msg: '兵种不同，无法合成' };
+      if (t.level >= C.MAX_LEVEL) return { ok: false, msg: '已满级（' + C.MAX_LEVEL + ' 级），无法再合成' };
+      if (t.level !== 1) return { ok: false, msg: '只有 1 级塔才能喂卡；同级塔可拖来合成升阶' };
       t.level++;
       restatUnit(state, t);
       removeCard(s, found);
       if (side === 'player') {
         ZY.Audio.play('merge');
-        state.fx.push({ type: 'merge', row: r, col: c, text: '+1 级 → ' + t.level });
+        state.fx.push({ type: 'merge', row: r, col: c, text: t.char + '² 合成 Lv' + t.level });
       }
       return { ok: true, merged: true, level: t.level };
     }
@@ -753,6 +754,30 @@
     removeCard(s, found);
     if (side === 'player') ZY.Audio.play('place');
     return { ok: true, unit: u };
+  }
+
+  /** V8 塔塔合成：拖一座兵种塔到另一座「同兵种、同等级」的己方兵种塔上 → 目标塔 +1 级，被吃塔消失（占地清空）。
+   *  允许 1+1=2（与卡喂并存）；等级上限 5（4+4=5 后不可再合）；不同兵种 / 等级 / 满级 → 拒绝。 */
+  function mergeTower(state, side, draggedId, r, c) {
+    const u = state.units.find(function (x) { return x.id === draggedId; });
+    if (!u || u.dead || u.side !== side || u.cls !== 'soldier') return { ok: false, msg: '只能合成己方的兵种塔' };
+    const t = state.grid[r] && state.grid[r][c];
+    if (!t || t.dead || t.side !== side || t.cls !== 'soldier') return { ok: false, msg: '要把塔拖到己方兵种塔上' };
+    if (t.id === u.id) return { ok: false, msg: '不能和自己合成' };
+    if (t.type !== u.type) return { ok: false, msg: '兵种不同，无法合成' };
+    if (t.level !== u.level) return { ok: false, msg: '等级不同，只有同级才能合成' };
+    if (t.level >= C.MAX_LEVEL) return { ok: false, msg: '已满级（' + C.MAX_LEVEL + ' 级），无法再合成' };
+    t.level++;
+    restatUnit(state, t);
+    removeUnit(state, u, true);                 // 被吃塔消失（清空占地，不触发死亡特效）
+    const di = state.units.indexOf(u);          // 立即从单位表移除，避免拖拽来源滞留一帧
+    if (di >= 0) state.units.splice(di, 1);
+    if (side === 'player') {
+      ZY.Audio.play('merge');
+      state.fx.push({ type: 'merge', row: r, col: c, text: t.char + '² 合成 Lv' + t.level });
+      state.fx.push({ type: 'toast', text: '塔塔合成 · ' + t.char + ' 升至 Lv' + t.level });
+    }
+    return { ok: true, merged: true, level: t.level, consumedId: u.id };
   }
 
   /** V5：拖塔换位——免费把已部署塔拖到另一个可放置格（三模式一致）。
@@ -890,7 +915,7 @@
       mode: mode, difficulty: num(opts.difficulty, 1),
       levelIdx: num(opts.levelIdx, 0),
       levelName: mode === 'level' ? ZY.LEVELS[num(opts.levelIdx, 0)].name : '',
-      t: 0, paused: false, over: false, result: null,
+      t: 0, paused: false, over: false, result: null, speed: 1, orientLock: false,
       grid: B.createGrid(), units: [], deploy: {},
       nextBreak: T.breakStart, levelBtDone: false,
       nextId: 1, nextCardId: 1,
@@ -970,7 +995,7 @@
   ZY.Game = {
     TICK: TICK, SPAWN_GAP: SPAWN_GAP,
     baseState: baseState, inherit: inherit, seedArmy: seedArmy,
-    tick: tick, recruit: recruit, stageCard: stageCard, deploy: deploy,
+    tick: tick, recruit: recruit, stageCard: stageCard, deploy: deploy, mergeTower: mergeTower,
     synthHero: synthHero, synthHeroStar: synthHeroStar, useShovel: useShovel, useBrush: useBrush,
     useWarcry: useWarcry, useFireball: useFireball,
     equipWeapon: equipWeapon, unequipWeapon: unequipWeapon,

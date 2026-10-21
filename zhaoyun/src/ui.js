@@ -13,6 +13,9 @@
 
   let state = null;
   let raf = 0, lastTs = 0, acc = 0;
+  let orientMq = null;             // V8：手机横屏锁定的媒体查询（竖屏 + 触摸 + 窄屏）
+  let frameRect = null;           // 棋盘（#fx）矩形缓存：仅在尺寸变化时重算（攻击/技能特效用棋盘几何推算中心，杜绝主循环内 getBoundingClientRect 强制重排）
+  let activeAtkFx = 0;            // V8：攻击特效并发计数（上限封顶，避免满编塔阵同屏齐射时 DOM 抖动）
   let cellEls = [], unitEls = {}, adouEls = {};
   let cellStatic = null, cellStaticKey = '';   // V6：地形静态描述子缓存（对局内不变）
   let itemSig = -1;                            // V6：铲子数量签名（避免每帧写 DOM）
@@ -77,6 +80,7 @@
     el.hudBun = $('hud-bun');
     el.btnPause = $('btn-pause');
     el.btnMute = $('btn-mute');
+    el.btnSpeed = $('btn-speed');
     el.banner = $('banner');
     el.toast = $('toast');
     el.overlay = $('overlay');
@@ -92,13 +96,35 @@
     el.skillFx.className = 'skill-fx';
     el.board.appendChild(el.skillFx);
 
+    // V8 性能：棋盘尺寸变化（进场/横竖屏切换/窗口缩放）时才重算一次 frameRect
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(measureFrame).observe(el.fx);
+    window.addEventListener('resize', measureFrame);
+
     buildCells();
     bindStart();
     bindGame();
     refreshSave();
     setMute(ZY.Save.getMuted());
+    setupOrientation();
     loop();
   }
+
+  /* ======================================================== V8 手机横屏锁定 */
+  function setupOrientation() {
+    // 仅「竖屏 + 触摸设备 + 窄屏」触发；桌面（含窄窗口）不强制，符合 V8「桌面不强制」
+    orientMq = window.matchMedia('(orientation: portrait) and (max-width: 900px) and (pointer: coarse)');
+    const apply = function () { if (state) state.orientLock = orientMq.matches; };  // 竖屏 → 锁定暂停；横屏 → 恢复
+    if (orientMq.addEventListener) orientMq.addEventListener('change', apply);
+    else if (orientMq.addListener) orientMq.addListener(apply);            // 旧版 Safari 兜底
+    window.addEventListener('orientationchange', function () { setTimeout(apply, 80); });
+    apply();
+  }
+  // 进入对局时把当前方向写入 state.orientLock，保证开局即按真实方向锁定（setupOrientation 早于 state 创建）
+  function syncOrientation() { if (state && orientMq) state.orientLock = orientMq.matches; }
+
+  // V8 性能：frameRect 只在棋盘尺寸真正变化时重算（ResizeObserver / window.resize），
+  // 不再放进主循环逐帧测量 —— 逐帧 getBoundingClientRect 会强制同步布局，是无头下帧耗时尖峰的根因。
+  function measureFrame() { if (el.fx) frameRect = el.fx.getBoundingClientRect(); }
 
   /* ======================================================== 开始界面 */
   function bindStart() {
@@ -112,6 +138,7 @@
           startLevelRun(ZY.Save.getLevel(), null);
         } else {
           state = ZY.Game.baseState(mode, { difficulty: diff });
+          syncOrientation();
           enterGame();
         }
       });
@@ -305,6 +332,7 @@
   function enterGame() {
     el.start.hidden = true;
     el.game.hidden = false;
+    requestAnimationFrame(measureFrame);   // V8 性能：布局落定后补测一次棋盘矩形（之后靠 ResizeObserver）
     el.midline.style.display = state.mode === 'versus' ? 'block' : 'none';
     el.hpEnemyLine.style.display = state.mode === 'versus' ? '' : 'none';
     el.overlay.hidden = true;
@@ -320,6 +348,7 @@
     syncUnits(true);
     syncHand(); syncBarracks(); syncItems();
     syncHud();
+    applySpeed();   // V8：重置倍速显示（baseState 已将 speed 置 1，状态不存档）
     bannerText(state.mode === 'level' ? ('第 ' + (state.levelIdx + 1) + ' 关 · ' + state.levelName)
       : (state.mode === 'endless' ? '守住阿斗' : '竞技 · 对局开始'), 1.8);
   }
@@ -772,6 +801,12 @@
     el.btnMute.addEventListener('click', function () {
       setMute(!ZY.Save.getMuted());
     });
+    el.btnSpeed.addEventListener('click', function () {
+      if (!state || state.over) return;
+      state.speed = state.speed === 1 ? 2 : 1;   // 1x ↔ 2x 循环切换
+      applySpeed();
+      ZY.Audio.play('tap');
+    });
     el.btnWeapons.addEventListener('click', function () {
       if (!state) return;
       if (el.weaponPanel.hidden) openWeapons(); else el.weaponPanel.hidden = true;
@@ -917,9 +952,19 @@
       }
       return;
     }
-    // —— V5：拖塔换位（免费；等级/合成/装备/攻速计时原样保留）——
+    // —— V8：拖塔 → 先判塔塔合成（同兵种、同等级），否则走换位语义 ——
     if (src === 'board') {
       if (!t) { toast('把塔拖到绿色塔位上换位'); return; }
+      const u = state.units.find(function (x) { return x.id === unitId; });
+      if (u && u.cls === 'soldier') {
+        const tw = state.grid[t.row][t.col];
+        if (tw && tw.cls === 'soldier' && tw.side === 'player' && tw.id !== u.id &&
+            tw.type === u.type && tw.level === u.level && tw.level < C.MAX_LEVEL) {
+          const res = ZY.Game.mergeTower(state, 'player', unitId, t.row, t.col);
+          if (res.ok) { syncCells(); syncUnits(); syncHud(); return; }
+          toast(res.msg || '无法合成'); return;
+        }
+      }
       const res = ZY.Game.moveUnit(state, 'player', unitId, t.row, t.col);
       if (res.same) { toast('塔还在原位'); return; }
       if (!res.ok) { toast(res.msg || '这里放不了'); return; }
@@ -1030,7 +1075,13 @@
       const u = state.units.find(function (x) { return x.id === drag.unitId; });
       if (!u) return;
       if (u.row === t.row && u.col === t.col) return;          // 原地松手：不标记
-      const ok = B.canPlace(state, 'player', t.row, t.col, u.span);
+      let ok = false;
+      if (u.cls === 'soldier') {
+        const tw = state.grid[t.row][t.col];                   // V8：同兵种同等级塔 = 可合成目标
+        ok = !!tw && tw.side === 'player' && tw.cls === 'soldier' && tw.id !== u.id &&
+              tw.type === u.type && tw.level === u.level && tw.level < C.MAX_LEVEL;
+      }
+      if (!ok) ok = B.canPlace(state, 'player', t.row, t.col, u.span);
       cellEls[t.row][t.col].classList.add(ok ? 'hl' : 'bad');
       return;
     }
@@ -1059,12 +1110,12 @@
     }
     cellEls[t.row][t.col].classList.add(ok ? 'hl' : 'bad');
   }
-  /** 落到己方塔上：同字且未满级 → 可合成 */
+  /** 落到己方塔上：V8 卡只喂同兵种 1 级塔 → 可合成 */
   function isMergeTarget(t, card) {
     const tw = state.grid[t.row][t.col];
     if (!tw || tw.side !== 'player' || tw.cls !== 'soldier') return false;
     if (card.kind !== 'unit' || tw.type !== card.type) return false;
-    return tw.level < C.MAX_LEVEL;
+    return tw.level === 1 && tw.level < C.MAX_LEVEL;
   }
 
   function cellAt(x, y) {
@@ -1332,16 +1383,72 @@
     e.classList.add(cls);
     e['_' + cls] = setTimeout(function () { e.classList.remove(cls); }, ms);
   }
+  // V8 性能：单位中心完全用棋盘几何推算（与 place() 同算法），复用尺寸变化时缓存的 frameRect，
+  // 杜绝攻击/技能时逐次 getBoundingClientRect 触发的强制同步重排（zy-perf 尾延迟根因）。
+  // 返回 fx 层坐标系下的中心 (cx,cy) 与单位像素尺寸 (uw,uh)。
+  function unitCenter(u) {
+    if (!frameRect || !frameRect.width) {
+      if (el.fx) frameRect = el.fx.getBoundingClientRect();   // 兜底：首帧/容器未就绪时退回一次实时测量
+      if (!frameRect || !frameRect.width) return null;
+    }
+    const span = u.span || 1;
+    return {
+      cx: (u.col + span / 2) * frameRect.width / B.COLS,
+      cy: (u.row + 0.5) * frameRect.height / B.ROWS,
+      uw: frameRect.width * span / B.COLS,
+      uh: frameRect.height / B.ROWS
+    };
+  }
+
   function animUnit(uid) {
     const e = unitEls[uid];
     if (!e || e.classList.contains('a-atk')) return; // 同一单位攻击动画未播完不重复触发
     const w = e.dataset.weapon || 'dao';
-    e.classList.add('a-atk', 'atk-' + w);            // V7：.a-atk 驱动立绘前冲/倾斜
+    e.classList.add('a-atk', 'atk-' + w);            // V8：.a-atk + atk-<weapon> 驱动每兵种专属动作
     const u = state.units.find(function (x) { return x.id === uid; });
+    const sp = (state && state.speed) || 1;
     const interval = (u && u.aspd > 0) ? 1 / u.aspd : 0.9;
-    const dur = Math.max(0.2, interval * 0.75) * 1000;
+    const dur = Math.max(0.2, interval * 0.75) * 1000 / sp;   // V8 倍速：动画时长按比例缩放，观感同步
     clearTimeout(e._atkT);
     e._atkT = setTimeout(function () { e.classList.remove('a-atk', 'atk-' + w); }, dur);
+    // V8 攻击专属特效：克隆 / 拖光 / 弧光，注入 .fx 层（与单位定位解耦，倍速同步缩放）
+    const fx = el.fx;
+    if (fx && u) {
+      const ctr = unitCenter(u);
+      if (ctr) {
+        const cx = ctr.cx, cy = ctr.cy, uw = ctr.uw, uh = ctr.uh;
+        if (w === 'dao') {
+          const fimg = e.querySelector('.fig-img');
+          if (fimg && fimg.src) {
+            const nd = document.createElement('div');
+            nd.className = 'fx-after dao';
+            nd.style.left = cx + 'px'; nd.style.top = cy + 'px';
+            nd.style.width = (uw * 0.72) + 'px';
+            nd.style.height = (uh * 0.94) + 'px';
+            const im = document.createElement('img');
+            im.src = fimg.src; im.alt = '';
+            if (u.side === 'e') im.style.transform = 'scaleX(-1)';   // 敌方朝左翻转
+            nd.appendChild(im);
+            fx.appendChild(nd);
+            setTimeout(function () { if (nd.parentNode) nd.parentNode.removeChild(nd); }, 260 / sp);
+          }
+        } else if (w === 'qiang') {
+          const nd = document.createElement('div');
+          nd.className = 'fx-pierce q' + (u.side === 'e' ? ' e' : '');
+          nd.style.left = cx + 'px'; nd.style.top = cy + 'px';
+          nd.style.animationDuration = (260 / sp) + 'ms';
+          fx.appendChild(nd);
+          setTimeout(function () { if (nd.parentNode) nd.parentNode.removeChild(nd); }, 300 / sp);
+        } else if (w === 'qi') {
+          const nd = document.createElement('div');
+          nd.className = 'fx-slash-arc q';
+          nd.style.left = cx + 'px'; nd.style.top = cy + 'px';
+          nd.style.animationDuration = (300 / sp) + 'ms';
+          fx.appendChild(nd);
+          setTimeout(function () { if (nd.parentNode) nd.parentNode.removeChild(nd); }, 340 / sp);
+        }
+      }
+    }
   }
 
   function drainFx() {
@@ -1399,29 +1506,28 @@
     el.skillBanner.classList.add('show');
   }
 
-  const PARTICLE_CAP = 60;
+  const PARTICLE_CAP = 80;          // V8：存活上限 60 → 80（性能预算内）
   let particleCount = 0;
   const PARTICLE_CFG = {
-    sweep:  { n: 8,  dist: 48, lift: 6,  size: 5,  dur: 520, tall: true },   // 横扫剑气：青白剑光
-    roar:   { n: 7,  dist: 0,  lift: 0,  size: 44, dur: 600, ring: true },   // 怒吼：橙色震波圆环
-    snipe:  { n: 6,  dist: 62, lift: 0,  size: 4,  dur: 480, tall: true },   // 狙击：金色弹道
-    heal:   { n: 8,  dist: 34, lift: 12, size: 6,  dur: 640 },                // 仁德：绿色上飘
-    cleave: { n: 8,  dist: 46, lift: 4,  size: 5,  dur: 540, tall: true },   // 青龙斩：青色弧光
-    burn:   { n: 10, dist: 40, lift: 12, size: 5,  dur: 620 },                // 八阵图：红色火焰
-    boss:   { n: 12, dist: 0,  lift: 0,  size: 48, dur: 680, ring: true },   // Boss：黄色法阵
+    sweep:  { n: 10, dist: 50, lift: 7,  size: 5,  dur: 520, tall: true },   // 横扫剑气：青白剑光
+    roar:   { n: 9,  dist: 0,  lift: 0,  size: 46, dur: 600, ring: true },   // 怒吼：橙色震波圆环
+    snipe:  { n: 8,  dist: 64, lift: 0,  size: 4,  dur: 480, tall: true },   // 狙击：金色弹道
+    heal:   { n: 9,  dist: 34, lift: 13, size: 6,  dur: 640 },                // 仁德：绿色上飘
+    cleave: { n: 10, dist: 48, lift: 5,  size: 5,  dur: 540, tall: true },   // 青龙斩：青色弧光
+    burn:   { n: 12, dist: 42, lift: 13, size: 5,  dur: 620 },                // 八阵图：红色火焰
+    boss:   { n: 14, dist: 0,  lift: 0,  size: 50, dur: 680, ring: true },   // Boss：黄色法阵
   };
   function spawnSkillParticles(u, type) {
     const e = unitEls[u.id];
     const layer = el.skillFx;
     if (!e || !layer || particleCount >= PARTICLE_CAP) return;
+    const ctr = unitCenter(u);
+    if (!ctr) return;
     const cfg = PARTICLE_CFG[type] || PARTICLE_CFG.sweep;
     const key = PARTICLE_CFG[type] ? type : 'sweep';
-    // 注意：单位用 CSS transform 定位，offsetLeft 不含平移 → 必须用 getBoundingClientRect 取真实中心
-    const rr = e.getBoundingClientRect();
-    const lr = layer.getBoundingClientRect();
-    const cx = rr.left - lr.left + rr.width / 2;
-    const cy = rr.top - lr.top + rr.height / 2;
-    const n = Math.min(cfg.n, PARTICLE_CAP - particleCount);
+    // V8 性能：单位中心用棋盘几何推算（与 place() 同算法），复用每帧缓存的 frameRect，杜绝逐次 getBoundingClientRect 强制重排
+    const cx = ctr.cx, cy = ctr.cy;
+    const n = Math.min(cfg.n, PARTICLE_CAP - particleCount, 20);   // V8：单帧创建上限 20，护住 zy-perf 预算
     for (let i = 0; i < n; i++) {
       const p = document.createElement('div');
       p.className = 'fx-particle p-' + key;
@@ -1441,7 +1547,7 @@
         p.style.setProperty('--dx', dx.toFixed(1) + 'px');
         p.style.setProperty('--dy', dy.toFixed(1) + 'px');
       }
-      const dur = cfg.dur * (0.8 + Math.random() * 0.4);
+      const dur = cfg.dur * (0.8 + Math.random() * 0.4) / ((state && state.speed) || 1);   // V8 倍速：粒子时长同步缩放
       p.style.animationDuration = dur + 'ms';
       layer.appendChild(p);
       particleCount++;
@@ -1464,6 +1570,14 @@
     spawnSkillParticles(u, type);
   }
 
+  /* ======================================================== 倍速显示同步 */
+  function applySpeed() {
+    const sp = (state && state.speed) || 1;
+    if (el.btnSpeed) el.btnSpeed.textContent = sp + 'x';
+    const stage = document.querySelector('.stage');
+    if (stage) stage.setAttribute('data-speed', String(sp));
+  }
+
   /* ======================================================== 主循环 */
   function loop(ts) {
     raf = requestAnimationFrame(loop);
@@ -1472,11 +1586,14 @@
     lastTs = ts;
     if (!isFinite(dt) || dt < 0) dt = 0;
     if (dt > 0.25) dt = 0.25;
+    // V8 倍速：把真实 dt 按 speed 放大注入累加器（tick 步数上限同步放大，防跳步）
+    const sp = (state && state.speed) || 1;
+    const gdt = dt * sp;
 
-    if (state && !state.paused && !state.over) {
-      acc += dt;
+    if (state && !state.paused && !state.orientLock && !state.over) {
+      acc += gdt;
       let steps = 0;
-      while (acc >= ZY.Game.TICK && steps < 6) {
+      while (acc >= ZY.Game.TICK && steps < 6 * sp) {
         ZY.Game.tick(state, ZY.Game.TICK);
         acc -= ZY.Game.TICK;
         steps++;
@@ -1493,7 +1610,7 @@
       drainFx();
       if (state.banner) { bannerText(state.banner.text, state.banner.life); state.banner = null; }
       if (bannerLife > 0) {
-        bannerLife -= dt;
+        bannerLife -= gdt;
         if (bannerLife <= 0) el.banner.classList.remove('show');
       }
       if (state.over && el.overlay.hidden) showResult();

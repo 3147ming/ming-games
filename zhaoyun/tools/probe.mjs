@@ -814,6 +814,238 @@ const bossSkill = await evalJs(`(async () => {
 })()`);
 ok('V7 Boss 技能释放 → 播报「黄天当立！」+ 法阵粒子', bossSkill.text === '黄天当立！' && bossSkill.parts >= 6, bossSkill.text + ' parts=' + bossSkill.parts);
 
+/* ========================================================= V8 收尾验收断言 */
+console.log('\n== V8 合成改版（卡喂 1 级 · 塔塔同级合成升阶）==');
+const syn8 = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  const G = ZY.Game, B = ZY.B;
+  const slots = Object.keys(B.startSlots('endless','player')).map(k => k.split(',').map(Number));
+  s.units = s.units.filter(u => u.side !== 'player');
+  const mk = (r,c,type,lv) => { const u = G.makeUnit(s,'player',{cls:'soldier',type,level:lv,row:r,col:c,span:1,target:null}); G.addUnit(s,u); return u; };
+  const A = slots[0], Bc = slots[1], C = slots[2], D = slots[3], E = slots[4], F = slots[5];
+  mk(A[0],A[1],'dao',2);
+  const bT = mk(Bc[0],Bc[1],'dao',2);
+  mk(C[0],C[1],'qiang',2);
+  s.player.hand.push({uid:9001,kind:'unit',char:'刀',type:'dao',level:1});
+  const rFeed = G.deploy(s,'player',9001,A[0],A[1]);          // V8：卡不能喂 2 级塔
+  const cardStill = s.player.hand.some(x => x.uid === 9001);
+  const lvlA = s.grid[A[0]][A[1]].level;
+  const before = s.units.length;
+  const m = G.mergeTower(s,'player',bT.id,A[0],A[1]);         // 塔塔 2+2 → 3
+  const after = s.units.length;
+  const consumedGone = s.grid[Bc[0]][Bc[1]] === null;
+  const lvlAfter = s.grid[A[0]][A[1]].level;
+  const cT = s.units.find(u => u.side==='player' && u.type==='qiang' && u.level===2 && u.row===C[0] && u.col===C[1]);
+  const m2 = G.mergeTower(s,'player',cT ? cT.id : 0,A[0],A[1]);   // 异兵种
+  const m3 = G.mergeTower(s,'player',s.grid[A[0]][A[1]].id,A[0],A[1]); // 自合
+  const dT = mk(D[0],D[1],'dao',2);
+  const m4 = G.mergeTower(s,'player',dT.id,A[0],A[1]);        // 不同级
+  const eT = mk(E[0],E[1],'dao',5);
+  const fT = mk(F[0],F[1],'dao',5);
+  const m5 = G.mergeTower(s,'player',fT.id,E[0],E[1]);        // 满级
+  return {
+    rFeedOk: !rFeed.ok, rFeedMsg: rFeed.msg, cardStill, lvlA,
+    mOk: m.ok, mMerged: m.merged, mLevel: m.level, before, after, consumedGone, lvlAfter,
+    m2Ok: !m2.ok, m3Ok: !m3.ok, m4Ok: !m4.ok, m5Ok: !m5.ok, lvlFinal: s.grid[A[0]][A[1]].level, eLv: s.grid[E[0]][E[1]].level
+  };
+})()`);
+ok('V8 卡不能喂 2 级塔（仅 1 级可喂）', syn8.rFeedOk && syn8.cardStill && syn8.lvlA === 2, syn8.rFeedMsg);
+ok('V8 塔塔合成 2+2 → 3 级', syn8.mOk && syn8.mMerged && syn8.mLevel === 3 && syn8.lvlAfter === 3, JSON.stringify({ ok: syn8.mOk, lv: syn8.lvlAfter }));
+ok('V8 被吃塔消失（单位表 -1 + 占位清空）', syn8.after === syn8.before - 1 && syn8.consumedGone, 'before=' + syn8.before + ' after=' + syn8.after);
+ok('V8 异兵种不可合成', syn8.m2Ok);
+ok('V8 不能和自己合成', syn8.m3Ok);
+ok('V8 等级不同不可合成（仍为 3 级）', syn8.m4Ok && syn8.lvlFinal === 3);
+ok('V8 满级（5 级）不可再合成', syn8.m5Ok && syn8.eLv === 5);
+
+console.log('\n== V8 手机横屏锁定（遮罩 + orientLock 暂停）==');
+const rot = await evalJs(`(() => {
+  const ov = document.getElementById('rotate-overlay');
+  const mq = window.matchMedia('(orientation: portrait) and (max-width: 900px) and (pointer: coarse)');
+  return { exists: !!ov, mq: mq.matches, disp: ov ? getComputedStyle(ov).display : 'none',
+           tip: ov ? (ov.querySelector('.rotate-tip')||{}).textContent : '',
+           sub: ov ? (ov.querySelector('.rotate-sub')||{}).textContent : '' };
+})()`);
+ok('V8 横屏锁定遮罩存在（含「请横屏游玩」文案）', rot.exists && rot.tip.indexOf('请横屏游玩') >= 0, rot.tip + ' / ' + rot.sub);
+ok('V8 遮罩显示与媒体查询一致（竖屏+触屏 → flex）', rot.disp === (rot.mq ? 'flex' : 'none'), 'disp=' + rot.disp + ' mq=' + rot.mq);
+await send('Emulation.setDeviceMetricsOverride', { width: 667, height: 375, deviceScaleFactor: 2, mobile: true });
+await sleep(300);
+const rotL = await evalJs(`(() => {
+  const ov = document.getElementById('rotate-overlay');
+  const mq = window.matchMedia('(orientation: portrait) and (max-width: 900px) and (pointer: coarse)');
+  return { disp: getComputedStyle(ov).display, mq: mq.matches };
+})()`);
+ok('V8 横屏（landscape）→ 遮罩隐藏、不锁定', rotL.disp === 'none' && rotL.mq === false, 'disp=' + rotL.disp + ' mq=' + rotL.mq);
+await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 667, deviceScaleFactor: 2, mobile: true });
+await sleep(200);
+const lockT = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  s.paused = false; s.over = false; s.orientLock = true;
+  const t0 = s.t;
+  await new Promise(r => setTimeout(r, 450));
+  const frozen = (s.t - t0) < 0.05;
+  s.orientLock = false;
+  return { frozen: frozen, dt: s.t - t0 };
+})()`);
+ok('V8 竖屏锁定 → 主循环暂停（仿真时间冻结）', lockT.frozen, 'Δt=' + lockT.dt.toFixed(3));
+
+console.log('\n== V8 倍速开关 1x ↔ 2x ==');
+const spBtn = await evalJs(`(() => {
+  const s = ZY.UI.getState();
+  const btn = document.getElementById('btn-speed');
+  s.paused = false; s.over = false; s.orientLock = false;
+  const before = s.speed;
+  btn.click(); const a1 = s.speed; const lab1 = btn.textContent;
+  btn.click(); const a2 = s.speed;
+  return { exists: !!btn, before, a1, a2, lab1 };
+})()`);
+ok('V8 倍速按钮存在', spBtn.exists);
+ok('V8 倍速 1x → 2x 切换', spBtn.before === 1 && spBtn.a1 === 2, '1→' + spBtn.a1);
+ok('V8 倍速 2x → 1x 复位（不存档）', spBtn.a2 === 1, spBtn.a2 + '');
+ok('V8 倍速按钮文案含倍速标识', /2/.test(spBtn.lab1) || /倍/.test(spBtn.lab1), spBtn.lab1);
+const spTim = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  s.paused = false; s.over = false; s.orientLock = false;
+  s.speed = 1; await new Promise(r => setTimeout(r, 200));
+  const t0 = s.t; await new Promise(r => setTimeout(r, 600)); const t1 = s.t; const d1 = t1 - t0;
+  s.speed = 2; await new Promise(r => setTimeout(r, 200));
+  const t2 = s.t; await new Promise(r => setTimeout(r, 600)); const t3 = s.t; const d2 = t3 - t2;
+  s.speed = 1;
+  return { d1: d1, d2: d2 };
+})()`);
+ok('V8 主循环在跑（1x 推进仿真时间）', spTim.d1 > 0.05, 'd1=' + spTim.d1.toFixed(2));
+ok('V8 倍速 2x 仿真推进约 2 倍（≥1.4×）', spTim.d1 > 0.05 && spTim.d2 > spTim.d1 * 1.4, 'd1=' + spTim.d1.toFixed(2) + ' d2=' + spTim.d2.toFixed(2));
+
+console.log('\n== V8 兵种机制 + 数值平衡 ==');
+const nums = await evalJs(`(() => {
+  const st = (t,l) => ZY.statsAt(t,l);
+  const hs = (h,l) => ZY.heroStats(h,l);
+  const mk = (type) => ZY.Game.makeUnit(ZY.UI.getState(),'player',{cls:'soldier',type,level:1,row:0,col:0,span:1,target:null});
+  const q = mk('qiang'), k = mk('qi');
+  return {
+    dao: st('dao',1), qiang: st('qiang',1), qi: st('qi',1), gong: st('gong',1), nong: st('nong',1),
+    zy: hs('zhaoyun',1), zf: hs('zhangfei',1), gy: hs('guanyu',1), mc: hs('machao',1),
+    hz: hs('huangzhong',1), zgl: hs('zhugeliang',1), lb: hs('liubei',1),
+    qPierce: !!q.pierce, kSplash: k.splash
+  };
+})()`);
+ok('V8 刀兵面板 5.00 / 1.80', Math.abs(nums.dao.atk-5.00)<0.01 && Math.abs(nums.dao.aspd-1.80)<0.01, nums.dao.atk + '/' + nums.dao.aspd);
+ok('V8 枪兵面板 4.20 / 1.95（贯穿）', Math.abs(nums.qiang.atk-4.20)<0.01 && Math.abs(nums.qiang.aspd-1.95)<0.01 && nums.qPierce, nums.qiang.atk + '/' + nums.qiang.aspd);
+ok('V8 骑兵面板 3.60 / 1.85（溅射）', Math.abs(nums.qi.atk-3.60)<0.01 && Math.abs(nums.qi.aspd-1.85)<0.01 && nums.kSplash>0, nums.qi.atk + '/' + nums.kSplash);
+ok('V8 弓兵面板 3.20 / 1.60', Math.abs(nums.gong.atk-3.20)<0.01 && Math.abs(nums.gong.aspd-1.60)<0.01, nums.gong.atk + '/' + nums.gong.aspd);
+ok('V8 赵云 atk=17.25 · 攻速随枪系 1.95', Math.abs(nums.zy.atk-17.25)<0.01 && Math.abs(nums.zy.aspd-1.95)<0.01, nums.zy.atk + '/' + nums.zy.aspd);
+ok('V8 关张 atk=20.54（刀系公式）', Math.abs(nums.zf.atk-20.54)<0.01 && Math.abs(nums.gy.atk-20.54)<0.01, nums.zf.atk + '/' + nums.gy.atk);
+ok('V8 马超 atk=14.79 · 攻速随骑系 1.85', Math.abs(nums.mc.atk-14.79)<0.01 && Math.abs(nums.mc.aspd-1.85)<0.01, nums.mc.atk + '/' + nums.mc.aspd);
+ok('V8 黄忠/诸葛 atk=13.14 · 攻速随弓系 1.60', Math.abs(nums.hz.atk-13.14)<0.01 && Math.abs(nums.zgl.atk-13.14)<0.01 && Math.abs(nums.hz.aspd-1.60)<0.01, nums.hz.atk + '/' + nums.zgl.atk);
+ok('V8 刘备 atk=16.00（锚定不进公式）· 1.80', Math.abs(nums.lb.atk-16.00)<0.01 && Math.abs(nums.lb.aspd-1.80)<0.01, nums.lb.atk + '/' + nums.lb.aspd);
+
+console.log('\n== V8 攻击动作分化（每兵种专属类 + 特效）==');
+const act8 = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  s.paused = false; s.over = false; s.orientLock = false;
+  const G = ZY.Game;
+  s.units = s.units.filter(u => u.side !== 'player');
+  const slots = Object.keys(ZY.B.startSlots('endless','player')).map(k => k.split(',').map(Number));
+  const mkP = (r,c,type) => { const u = G.makeUnit(s,'player',{cls:'soldier',type,level:1,row:r,col:c,span:1,target:null}); G.addUnit(s,u); return u; };
+  const a = mkP(slots[0][0],slots[0][1],'dao');
+  const q = mkP(slots[1][0],slots[1][1],'qiang');
+  const k = mkP(slots[2][0],slots[2][1],'qi');
+  await new Promise(r => setTimeout(r, 140));
+  s.fx.push({type:'anim', uid:a.id});
+  s.fx.push({type:'anim', uid:q.id});
+  s.fx.push({type:'anim', uid:k.id});
+  let dao=false,qiang=false,qi=false,fxAfter=false,fxPierce=false,fxArc=false;
+  for (let i=0;i<30;i++){
+    await new Promise(r => setTimeout(r, 60));
+    const aE=document.querySelector('.unit.p[data-uid="'+a.id+'"]');
+    if(aE && aE.classList.contains('a-atk') && aE.classList.contains('atk-dao')) dao=true;
+    const qE=document.querySelector('.unit.p[data-uid="'+q.id+'"]');
+    if(qE && qE.classList.contains('a-atk') && qE.classList.contains('atk-qiang')) qiang=true;
+    const kE=document.querySelector('.unit.p[data-uid="'+k.id+'"]');
+    if(kE && kE.classList.contains('a-atk') && kE.classList.contains('atk-qi')) qi=true;
+    if(document.querySelector('#fx .fx-after.dao')) fxAfter=true;
+    if(document.querySelector('#fx .fx-pierce')) fxPierce=true;
+    if(document.querySelector('#fx .fx-slash-arc')) fxArc=true;
+    if(dao&&qiang&&qi&&fxAfter&&fxPierce&&fxArc) break;
+  }
+  return {dao,qiang,qi,fxAfter,fxPierce,fxArc};
+})()`);
+ok('V8 刀兵攻击 → .a-atk.atk-dao 专属动作', act8.dao);
+ok('V8 枪兵攻击 → .a-atk.atk-qiang 专属动作', act8.qiang);
+ok('V8 骑兵攻击 → .a-atk.atk-qi 专属动作', act8.qi);
+ok('V8 刀攻击残影特效 .fx-after.dao', act8.fxAfter);
+ok('V8 枪攻击贯穿拖光 .fx-pierce', act8.fxPierce);
+ok('V8 骑攻击溅射弧光 .fx-slash-arc', act8.fxArc);
+
+console.log('\n== V8 特效密度（存活上限 80 + 同帧≤20）==');
+const part8 = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  s.paused = false; s.over = false; s.orientLock = false;
+  const G = ZY.Game;
+  s.units = s.units.filter(u => u.cls !== 'hero');
+  const slots = Object.keys(ZY.B.startSlots('endless','player')).map(k => k.split(',').map(Number));
+  const mkH = (hid,r,c) => { const u = G.makeUnit(s,'player',{cls:'hero',heroId:hid,heroLevel:1,row:r,col:c,span:2,target:null}); G.addUnit(s,u); return u; };
+  const z = mkH('zhaoyun',slots[0][0],slots[0][1]);
+  z.skillT = 0;
+  await new Promise(r => setTimeout(r, 160));
+  const single = document.querySelectorAll('.skill-fx .fx-particle').length;
+  const g = mkH('guanyu',slots[1][0],slots[1][1]);
+  const m = mkH('machao',slots[2][0],slots[2][1]);
+  let maxLive = 0;
+  for (let i=0;i<24;i++){
+    await new Promise(r => setTimeout(r, 50));
+    [z,g,m].forEach(h => { if (h.skillT > 0.4) h.skillT = 0; });
+    const live = document.querySelectorAll('.skill-fx .fx-particle').length;
+    if (live > maxLive) maxLive = live;
+  }
+  s.units = s.units.filter(u => u.cls !== 'hero');
+  return { single, maxLive };
+})()`);
+ok('V8 单次技能粒子 ∈ [6,20]（同帧创建上限 20）', part8.single >= 6 && part8.single <= 20, 'single=' + part8.single);
+ok('V8 粒子洪峰 ≤ 存活上限 80', part8.maxLive <= 80, 'maxLive=' + part8.maxLive);
+
+/* —— V8 六张验收截图（375×667 竖屏 + 横屏覆盖各要点） —— */
+const SHOT_DIR = 'D:/Projects/_github_pages/ming-games/zhaoyun/tools/shots';
+fs.mkdirSync(SHOT_DIR, { recursive: true });
+async function capShot(name) { const r = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(SHOT_DIR, name), Buffer.from(r.result.data, 'base64')); }
+await send('Page.navigate', { url: URL }); await sleep(1200);
+await capShot('01-start.png');
+await evalJs(DRAG_HELPERS);
+await evalJs(`document.querySelector('.mode-btn[data-mode="endless"]').click()`); await sleep(400);
+await capShot('02-endless-board.png');
+await evalJs(`(async () => {
+  const s = ZY.UI.getState(); s.player.bun = 300;
+  s.player.hand.push({uid:91001,kind:'unit',char:'刀',type:'dao',level:1});
+  s.player.hand.push({uid:91002,kind:'unit',char:'刀',type:'dao',level:1});
+  await new Promise(r=>setTimeout(r,200));
+  const free=[...document.querySelectorAll('.cell.deploy')].find(c=>{const r=+c.dataset.r,col=+c.dataset.c;return !ZY.UI.getState().grid[r][col];});
+  const p=window.__cellXY(+free.dataset.r,+free.dataset.c);
+  await window.__dragFrom('#hand .card[data-uid="91001"]',p.x,p.y);
+  await new Promise(r=>setTimeout(r,260));
+  await window.__dragFrom('#hand .card[data-uid="91002"]',p.x,p.y);
+})()`);
+await sleep(200);
+await capShot('03-deploy-merge.png');
+await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  s.player.hand=[]; s.player.hand.push({uid:92001,kind:'gold',char:'赵',level:1}); s.player.hand.push({uid:92002,kind:'gold',char:'云',level:1});
+  await new Promise(r=>setTimeout(r,260));
+  await window.__tapEl('#hand .card[data-uid="92001"]');
+  await new Promise(r=>setTimeout(r,120));
+  const hero=document.querySelector('#hand .card.hero');
+  if(hero){const uid=+hero.dataset.uid; const p=window.__cellXY(1,5); await window.__dragFrom('#hand .card.hero[data-uid="'+uid+'"]',p.x,p.y);}
+})()`);
+await sleep(300);
+await capShot('04-hero-tower.png');
+await evalJs(`document.getElementById('btn-speed').click();`);
+await sleep(200);
+await capShot('05-speed-2x.png');
+await send('Emulation.setDeviceMetricsOverride', { width: 812, height: 375, deviceScaleFactor: 2, mobile: true });
+await sleep(400);
+await capShot('06-landscape.png');
+await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 667, deviceScaleFactor: 2, mobile: true });
+await sleep(200);
+console.log('   截图已存: ' + SHOT_DIR);
+
 console.log('\n== 外部请求检查 ==');
 const external = requests.filter((u) => !u.startsWith('file://') && !u.startsWith('data:') && !u.startsWith('blob:'));
 ok('无任何外部网络请求', external.length === 0, external.join(' | '));

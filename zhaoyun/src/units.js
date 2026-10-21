@@ -56,10 +56,10 @@ window.ZY = window.ZY || {};
    * produce= 农民每秒产资源
    */
   const UNITS = {
-    dao:   { key: 'dao',   char: '刀', name: '刀兵', hp: 40,  atk: 4.50, aspd: 1.88, range: 1, move: 2.60, role: 'front', tag: '单体' }, // 刀 = 原版展示值
-    qiang: { key: 'qiang', char: '枪', name: '枪兵', hp: 32,  atk: 3.80, aspd: 2.05, range: 2, move: 2.30, role: 'mid',   pierce: true,  tag: '贯穿' }, // 推导·校准确认：肉盾刀40 > 骑36 > 枪32 > 弓20 > 农18，定位自洽
-    gong:  { key: 'gong',  char: '弓', name: '弓兵', hp: 20,  atk: 3.20, aspd: 1.60, range: 4, move: 2.40, role: 'back',  tag: '远程' },                   // 推导·校准确认：远程低血；弓 3.20 即武将黄忠/诸葛亮攻击公式基准
-    qi:    { key: 'qi',    char: '骑', name: '骑兵', hp: 36,  atk: 4.20, aspd: 1.70, range: 1, move: 1.75, role: 'flank', splash: 0.5, tag: '溅射' },      // 推导·校准确认：近战溅射；骑 4.20 即武将马超攻击公式基准
+    dao:   { key: 'dao',   char: '刀', name: '刀兵', hp: 40,  atk: 5.00, aspd: 1.80, range: 1, move: 2.60, role: 'front', tag: '单体' }, // V8：单体近战重装，atk 5.00 / aspd 1.80（1 级 DPS 9.0）
+    qiang: { key: 'qiang', char: '枪', name: '枪兵', hp: 32,  atk: 4.20, aspd: 1.95, range: 2, move: 2.30, role: 'mid',   pierce: true,  tag: '贯穿' }, // V8：直线贯穿，atk 4.20 / aspd 1.95（1 级 DPS 8.19）
+    gong:  { key: 'gong',  char: '弓', name: '弓兵', hp: 20,  atk: 3.20, aspd: 1.60, range: 4, move: 2.40, role: 'back',  tag: '远程' },                   // 远程不变：atk 3.20 / aspd 1.60（1 级 DPS 5.12）
+    qi:    { key: 'qi',    char: '骑', name: '骑兵', hp: 36,  atk: 3.60, aspd: 1.85, range: 1, move: 1.75, role: 'flank', splash: 0.75, tag: '溅射' },   // V8：3×3 面伤，atk 3.60 / aspd 1.85 / splash 0.75（1 级 DPS 6.66）
     zei:   { key: 'zei',   char: '贼', name: '贼兵', hp: 24,  atk: 2.00, aspd: 1.20, range: 1, move: 1.85, role: 'front', tag: '敌方' },                   // 敌方普通兵种
     nong:  { key: 'nong',  char: '农', name: '农民', hp: 18,  atk: 0,    aspd: 0,    range: 0, move: 0,    role: 'back',  produce: 0.4, tag: '产出' },      // 推导·校准确认：资源产出 0.4/s，征兵池 5%，回本约 25-30s
   };
@@ -85,40 +85,40 @@ window.ZY = window.ZY || {};
   const HEROES = [
     {
       id: 'zhaoyun', name: '赵云', chars: ['赵', '云'], base: 'qiang',
-      atk: 15.61, aspd: 1.45, hpBase: 32, range: 3, pierce: true, tag: '枪兵系 · 贯穿', // atk = 枪 3 级 ×1.2（V1 规则）= 3.80×1.85²×1.2 = 15.61
+      atk: 17.25, aspd: 1.95, hpBase: 32, range: 3, pierce: true, tag: '枪兵系 · 贯穿', // V8：atk = 枪 3 级 ×1.2 = 4.20×3.4225×1.2 = 17.25
       skill: { cd: 8, type: 'sweep', name: '横扫剑气', desc: '前方直线群伤' },
     },
     {
       id: 'zhangfei', name: '张飞', chars: ['张', '飞'], base: 'dao',
-      atk: 18.48, aspd: 1.30, hpBase: 40, hpMul: 1.25, dmgReduce: 0.25, range: 1, tag: '刀兵系 · 高血高防', // atk = 刀 3 级 ×1.2 = 4.50×1.85²×1.2 = 18.48
+      atk: 20.54, aspd: 1.80, hpBase: 40, hpMul: 1.25, dmgReduce: 0.25, range: 1, tag: '刀兵系 · 高血高防', // V8：atk = 刀 3 级 ×1.2 = 5.00×3.4225×1.2 = 20.54
       skill: { cd: 10, type: 'roar', name: '怒吼', desc: '震晕前方 1 格敌人 1 秒' },
     },
     {
       id: 'huangzhong', name: '黄忠', chars: ['黄', '忠'], base: 'gong',
-      atk: 13.14, aspd: 1.10, hpBase: 20, range: 5, crit: 0.4, critMul: 2.0, tag: '弓兵系 · 远程暴击', // atk = 弓 3 级 ×1.2 = 3.20×1.85²×1.2 = 13.14
+      atk: 13.14, aspd: 1.60, hpBase: 20, range: 5, crit: 0.4, critMul: 2.0, tag: '弓兵系 · 远程暴击', // atk = 弓 3 级 ×1.2 = 3.20×3.4225×1.2 = 13.14（V8 攻速随弓系 1.60）
       skill: { cd: 9, type: 'snipe', name: '蓄力狙击', desc: '对最远敌人单体大伤' },
     },
     {
       id: 'liubei', name: '刘备', chars: ['刘', '备'], base: 'dao',
-      atk: 16.00, aspd: 1.25, hpBase: 40, range: 1, tag: '主公 · 单体', // 原版展示锚定值（攻击 16.00 / 攻速 1.25 / 单体），不参与公式
+      atk: 16.00, aspd: 1.80, hpBase: 40, range: 1, tag: '主公 · 单体', // 攻击 16.00 为原版展示锚定值（不进公式）；攻速随刀系 V8 = 1.80
       skill: { cd: 5, type: 'heal', name: '仁德', desc: '相邻己方单位回血' },
     },
     {
       id: 'machao', name: '马超', chars: ['马', '超'], base: 'qi',
-      atk: 17.25, aspd: 1.35, hpBase: 36, range: 1, splash: 0.6, tag: '骑兵系 · 群伤', // atk = 骑 3 级 ×1.2 = 4.20×1.85²×1.2 = 17.25
+      atk: 14.79, aspd: 1.85, hpBase: 36, range: 1, splash: 0.6, tag: '骑兵系 · 群伤', // V8：atk = 骑 3 级 ×1.2 = 3.60×3.4225×1.2 = 14.79
       skill: { cd: 10, type: 'cleave', name: '青龙斩', desc: '周围溅射大伤害' },
     },
     // —— V6 内容扩展：补入武圣关羽 + 军师诸葛亮（字对由 HEROES 自动派生到 GOLD_CHARS）
     {
       id: 'guanyu', name: '关羽', chars: ['关', '羽'], base: 'dao',
-      atk: 18.48, aspd: 1.15, hpBase: 44, hpMul: 1.2, dmgReduce: 0.15, range: 2, splash: 0.35,
-      tag: '刀兵系 · 横扫重击', // atk = 刀 3 级 ×1.2 = 4.50×1.85²×1.2 = 18.48（V6 新增，一并校准）；同系张飞=关羽=18.48 为公式决定、有意
+      atk: 20.54, aspd: 1.80, hpBase: 44, hpMul: 1.2, dmgReduce: 0.15, range: 2, splash: 0.35,
+      tag: '刀兵系 · 横扫重击', // V8：atk = 刀 3 级 ×1.2 = 5.00×3.4225×1.2 = 20.54（同系张飞=关羽=20.54 公式决定、有意）
       skill: { cd: 9, type: 'sweep', name: '青龙偃月', desc: '前方扇形群伤' },
     },
     {
       id: 'zhugeliang', name: '诸葛亮', chars: ['诸', '葛'], base: 'gong',
-      atk: 13.14, aspd: 1.25, hpBase: 18, range: 4, crit: 0.15, critMul: 1.8,
-      tag: '军师 · 范围火计', // atk = 弓 3 级 ×1.2 = 3.20×1.85²×1.2 = 13.14（V6 新增，一并校准）；同系黄忠=诸葛亮=13.14 为公式决定、有意
+      atk: 13.14, aspd: 1.60, hpBase: 18, range: 4, crit: 0.15, critMul: 1.8,
+      tag: '军师 · 范围火计', // atk = 弓 3 级 ×1.2 = 3.20×3.4225×1.2 = 13.14（同系黄忠=诸葛亮=13.14 公式决定、有意；V8 攻速随弓系 1.60）
       skill: { cd: 11, type: 'burn', name: '八阵图', desc: '范围内群伤并短眩晕' },
     },
   ];

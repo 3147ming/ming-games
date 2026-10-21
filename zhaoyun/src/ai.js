@@ -69,7 +69,7 @@
     return !!ZY.Game.synthHero(state, side);
   }
 
-  /** 喂塔合成：同字塔（未满级）← 手牌卡，优先喂等级低的（均衡成长） */
+  /** V8 喂塔合成：手牌兵种卡只喂「同兵种 1 级」塔 → 升 2 级 */
   function tryFeed(state, side) {
     const s = S(state, side);
     const towers = ownTowers(state, side);
@@ -77,13 +77,25 @@
     for (let i = 0; i < s.hand.length; i++) {
       const card = s.hand[i];
       if (card.kind !== 'unit') continue;
-      let best = null;
-      for (let t = 0; t < towers.length; t++) {
-        const u = towers[t];
-        if (u.cls !== 'soldier' || u.type !== card.type || u.level >= C.MAX_LEVEL) continue;
-        if (!best || u.level < best.level) best = u;
-      }
+      const best = towers.find(function (u) { return u.cls === 'soldier' && u.type === card.type && u.level === 1; });
       if (best) return !!ZY.Game.deploy(state, side, card.uid, best.row, best.col).ok;
+    }
+    return false;
+  }
+
+  /** V8 塔塔合成：存在同兵种、同等级的己方兵种塔一对（均未满级）→ 优先合并（均衡升主塔，不牺牲防线） */
+  function tryTowerMerge(state, side) {
+    const towers = ownTowers(state, side).filter(function (u) { return u.cls === 'soldier' && u.level < C.MAX_LEVEL; });
+    const seen = {};
+    for (let i = 0; i < towers.length; i++) {
+      const u = towers[i];
+      const key = u.type + ':' + u.level;
+      const target = seen[key];
+      if (target) {
+        if (ZY.Game.mergeTower(state, side, u.id, target.row, target.col).ok) return true;
+      } else {
+        seen[key] = u;
+      }
     }
     return false;
   }
@@ -174,6 +186,8 @@
     if (tryWarcry(state, side)) return;
     // 5) 武将字对合成（凑齐就合，别让金字烂在手里）
     if (trySynth(state, side)) return;
+    // 5.5) V8 塔塔合成（同兵种同级两塔优先合并，均衡升主塔）
+    if (tryTowerMerge(state, side)) return;
     // 6) 喂塔合成（塔少时优先铺开，由 tryFeed 内部控制）
     if (tryFeed(state, side)) return;
     // 7) 铲子扩塔位

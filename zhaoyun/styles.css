@@ -16,8 +16,8 @@
   --red: #b3352f;
   --green: #4c7a4a;
   --line: #cfc6b4;
-  --dock-h: 178px; /* 底栏（手牌 8 格 + 军营 5 格 + 征兵/道具行）总高，toast 定位用 */
-  --chrome: 220px; /* 顶栏 + 底栏占用高度，用于棋盘自适应 */
+  --dock-h: 188px; /* 底栏（手牌 8 格 + 军营 5 格 + 征兵/道具行）总高，toast 定位用 */
+  --chrome: 232px; /* 顶栏 + 底栏占用高度，用于棋盘自适应 */
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -475,7 +475,10 @@ body {
 .dock { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; padding-top: 2px; }
 .hand {
   display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px;
-  height: 62px; touch-action: none;
+  height: 66px; padding: 4px; touch-action: none;
+  border: 2px solid #6d5a3c; border-radius: 12px;
+  background: rgba(255,255,255,.34);
+  box-shadow: 0 2px 8px rgba(60,45,25,.16), 0 1px 0 rgba(255,255,255,.5) inset;
 }
 .hand .slot { flex: none; max-width: none; width: auto; height: 100%; border-radius: 8px; }
 .slot {
@@ -518,7 +521,10 @@ body {
 /* 军营 5 槽（征兵落点） */
 .barracks {
   display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;
-  height: 46px; touch-action: none;
+  height: 50px; padding: 4px; touch-action: none;
+  border: 2px solid #6d5a3c; border-radius: 11px;
+  background: rgba(255,255,255,.34);
+  box-shadow: 0 2px 8px rgba(60,45,25,.16), 0 1px 0 rgba(255,255,255,.5) inset;
 }
 .barracks .slot { flex: none; max-width: none; width: auto; height: 100%; border-radius: 8px; }
 .card.mini b { font-size: 17px; }
@@ -662,10 +668,10 @@ body {
 
 /* ---------------------------------------------------------------- 窄屏微调 */
 @media (max-height: 640px) {
-  :root { --chrome: 200px; --dock-h: 160px; }
-  .hand { height: 54px; }
-  .slot { height: 54px; }
-  .barracks { height: 40px; }
+  :root { --chrome: 212px; --dock-h: 172px; }
+  .hand { height: 58px; }
+  .slot { height: 58px; }
+  .barracks { height: 44px; }
   .recruit { height: 44px; }
   .item-slot { height: 44px; width: 46px; }
 }
@@ -811,18 +817,25 @@ body {
 .unit.a-move .fig-mount { animation: marchBob .32s ease-in-out; will-change: transform; }
 @keyframes marchBob { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-2px) rotate(-1.5deg); } }
 
-/* 攻击：per-兵种动作（a-attack + atk-<weapon>，作用于内部 <g>） */
+/* 攻击：per-兵种专属动作（a-attack + atk-<weapon>，作用于内部 <g>） —— V8 强化 */
 .unit .fig-arm, .unit .fig-bowgrp, .unit .fig-mount { transform-box: fill-box; }
-.unit.a-attack.atk-dao  .fig-arm { transform-origin: 0% 60%; animation: daoSlash .36s ease-out; will-change: transform; }
-.unit.a-attack.atk-qiang .fig-arm { transform-origin: 10% 50%; animation: qiangThrust .40s ease-out; will-change: transform; }
+.unit.a-attack.atk-dao  .fig-arm { transform-origin: 0% 55%; animation: daoSlash .34s cubic-bezier(.2,.8,.3,1); will-change: transform; }
+.unit.a-attack.atk-dao  .fig-img { animation: daoLunge .34s ease-out; will-change: transform; }
+.unit.a-attack.atk-qiang .fig-arm { transform-origin: 10% 50%; animation: qiangThrust .40s cubic-bezier(.3,.7,.2,1); will-change: transform; }
+.unit.a-attack.atk-qiang .fig-img { animation: qiangLunge .40s ease-out; will-change: transform; }
 .unit.a-attack.atk-gong .fig-bowgrp { transform-origin: 50% 50%; animation: gongDraw .55s ease-out; will-change: transform; }
-.unit.a-attack.atk-qi   .fig-mount { transform-origin: 50% 50%; animation: qiCharge .42s ease-out; will-change: transform; }
+.unit.a-attack.atk-qi   .fig-mount { transform-origin: 50% 60%; animation: qiSwing .40s cubic-bezier(.2,.8,.3,1); will-change: transform; }
 .unit.a-attack.atk-nong .fig-arm { transform-origin: 0% 10%; animation: nongHoe .44s ease-out; will-change: transform; }
-@keyframes daoSlash   { 0% { transform: rotate(0); } 35% { transform: rotate(-58deg); } 70% { transform: rotate(28deg); } 100% { transform: rotate(0); } }
-@keyframes qiangThrust { 0% { transform: translateX(0); } 40% { transform: translateX(11px); } 100% { transform: translateX(0); } }
+/* V8：近战挥击时立绘掠过一道暖色弧光（纯 drop-shadow，无外部资源） */
+.unit.a-attack.atk-dao  .fig-img { filter: drop-shadow(0 0 5px rgba(255,224,150,.6)) drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+.unit.a-attack.atk-qi   .fig-mount { filter: drop-shadow(0 0 6px rgba(150,210,255,.55)) drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+@keyframes daoSlash   { 0% { transform: rotate(10deg); } 26% { transform: rotate(-74deg); } 58% { transform: rotate(22deg); } 100% { transform: rotate(0); } }
+@keyframes daoLunge   { 0% { transform: translateX(0) rotate(0); } 26% { transform: translateX(11px) translateY(-3px) rotate(5deg); } 58% { transform: translateX(3px) rotate(-2deg); } 100% { transform: translateX(0) rotate(0); } }
+@keyframes qiangThrust { 0% { transform: translateX(0); } 32% { transform: translateX(16px); } 60% { transform: translateX(16px); } 100% { transform: translateX(0); } }
+@keyframes qiangLunge { 0% { transform: translateX(0); } 32% { transform: translateX(9px); } 60% { transform: translateX(9px); } 100% { transform: translateX(0); } }
 @keyframes gongDraw   { 0% { transform: translateX(0); } 30% { transform: translateX(9px); } 60% { transform: translateX(9px); } 100% { transform: translateX(0); } } /* 拉弦后松手，箭由 fx 飞出 */
-@keyframes qiCharge   { 0% { transform: translateY(0); } 35% { transform: translateY(-9px); } 100% { transform: translateY(0); } }
-@keyframes nongHoe    { 0% { transform: rotate(0); } 40% { transform: rotate(-52deg); } 100% { transform: rotate(0); } }
+@keyframes qiSwing    { 0% { transform: translateY(0) rotate(0); } 28% { transform: translateY(-11px) rotate(-14deg); } 64% { transform: translateY(-4px) rotate(12deg); } 100% { transform: translateY(0) rotate(0); } }
+@keyframes nongHoe    { 0% { transform: rotate(0); } 40% { transform: rotate(-58deg); } 100% { transform: rotate(0); } }
 
 /* 受击：红闪已由全局 redflash 覆盖；这里给单位本身轻抖（作用在 .fig-mount） */
 .unit.a-hit .fig-mount { animation: hitShake .26s ease-out; }
@@ -890,6 +903,65 @@ body {
 @keyframes trailFade {
   0% { opacity: .95; transform: translate(-50%,-50%) scale(1); }
   100% { opacity: 0; transform: translate(-50%,-50%) scale(.4); }
+}
+
+/* =============================================================================
+ * V8 · 攻击动作专属特效（注入 .fx 层；纯 CSS / 无外部资源 / GPU 友好）
+ *   .fx-after   刀：劈砍残影（克隆立绘，180–260ms 内滑出淡出）
+ *   .fx-pierce  枪：戳刺后的贯穿拖光（横向光带）
+ *   .fx-slash-arc 骑：侧向挥砍的溅射弧光
+ * ========================================================================== */
+.fx-after {
+  position: absolute; pointer-events: none; z-index: 7;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,.35));
+  opacity: .55; will-change: transform, opacity;
+}
+.fx-after img { width: 100%; height: 100%; object-fit: contain; object-position: bottom center; display: block; }
+.fx-after.dao { animation: afterDao .24s ease-out forwards; }
+@keyframes afterDao {
+  0%   { transform: translate(-50%,-50%) translateX(0) skewX(0) scaleX(1); opacity: .55; }
+  100% { transform: translate(-50%,-50%) translateX(18px) skewX(-16deg) scaleX(1.05); opacity: 0; }
+}
+
+.fx-pierce {
+  position: absolute; height: 11%; width: 40%;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(90deg,
+    rgba(255,240,200,0) 0%, rgba(255,236,170,.9) 42%, #fff 58%, rgba(255,236,170,.9) 74%, rgba(255,240,200,0) 100%);
+  border-radius: 50%; pointer-events: none; z-index: 7;
+  filter: blur(.4px) drop-shadow(0 0 7px rgba(255,222,140,.9));
+  opacity: 0; will-change: transform, opacity;
+}
+.fx-pierce.q { animation: pierceGo .26s ease-out forwards; }
+.fx-pierce.e { transform: translate(-50%,-50%) scaleX(-1); }   /* 敌方朝左 */
+.fx-pierce.e.q { animation: pierceGoE .26s ease-out forwards; }
+@keyframes pierceGo {
+  0%   { opacity: 0; transform: translate(-50%,-50%) scaleX(.2); }
+  35%  { opacity: .95; }
+  100% { opacity: 0; transform: translate(-50%,-50%) scaleX(1.3); }
+}
+@keyframes pierceGoE {
+  0%   { opacity: 0; transform: translate(-50%,-50%) scaleX(-1) scaleX(.2); }
+  35%  { opacity: .95; }
+  100% { opacity: 0; transform: translate(-50%,-50%) scaleX(-1) scaleX(1.3); }
+}
+
+.fx-slash-arc {
+  position: absolute; width: 48%; aspect-ratio: 1; border-radius: 50%;
+  transform: translate(-50%,-50%) rotate(0);
+  pointer-events: none; z-index: 7; border: 3px solid transparent;
+  background: conic-gradient(from 205deg,
+    rgba(126,200,240,0) 0deg, rgba(126,200,240,.9) 38deg, rgba(222,251,255,.95) 54deg, rgba(126,200,240,0) 100deg);
+  -webkit-mask: radial-gradient(circle, transparent 55%, #000 57%, #000 74%, transparent 76%);
+          mask: radial-gradient(circle, transparent 55%, #000 57%, #000 74%, transparent 76%);
+  opacity: 0; will-change: transform, opacity;
+}
+.fx-slash-arc.q { animation: arcGo .30s ease-out forwards; }
+@keyframes arcGo {
+  0%   { opacity: 0; transform: translate(-50%,-50%) rotate(-32deg) scale(.5); }
+  40%  { opacity: .9; }
+  100% { opacity: 0; transform: translate(-50%,-50%) rotate(42deg) scale(1.06); }
 }
 
 /* =============================================================================
@@ -1112,4 +1184,26 @@ body {
 @media (max-height: 640px) {
   .card { border-radius: 10px; }
   .unit { border-radius: 20%; }
+}
+
+/* =============================================================================
+ * V8 · 手机竖屏「请横屏游玩」遮罩（仅竖屏触摸设备触发，桌面不强制）
+ *   显示由媒体查询控制；暂停由 ui.js 的 orientLock 联动。
+ * ========================================================================== */
+.rotate-overlay {
+  display: none;
+  position: absolute; inset: 0; z-index: 80;
+  flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  background: radial-gradient(120% 80% at 50% 38%, #2b2620 0%, #15120e 100%);
+  color: #f3eee3; text-align: center; padding: 8%;
+}
+.rotate-icon { width: 30%; max-width: 120px; height: auto; transform-origin: 50% 50%; animation: rotHint 2.4s ease-in-out infinite; }
+.rotate-tip { font-size: 22px; letter-spacing: .2em; font-weight: 700; }
+.rotate-sub { font-size: 13px; color: #b9b0a0; letter-spacing: .06em; }
+@keyframes rotHint { 0%,100% { transform: rotate(-90deg); } 50% { transform: rotate(0deg); } }
+@media (orientation: portrait) and (max-width: 900px) and (pointer: coarse) {
+  .rotate-overlay { display: flex; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rotate-icon { animation: none; }
 }

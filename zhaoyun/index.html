@@ -77,6 +77,7 @@
       </div>
       <div class="hud-r">
         <div class="bun" id="hud-bun">24</div>
+        <button class="icon-btn" id="btn-speed" title="倍速切换">1x</button>
         <button class="icon-btn" id="btn-mute" title="音效开关">音</button>
         <button class="icon-btn" id="btn-pause" title="暂停">停</button>
       </div>
@@ -110,6 +111,18 @@
   <div class="banner" id="banner"></div>
   <div class="toast" id="toast"></div>
   <div class="overlay" id="overlay" hidden></div>
+
+  <!-- V8 手机竖屏：请横屏游玩遮罩（仅竖屏触摸设备显示，桌面不强制） -->
+  <div class="rotate-overlay" id="rotate-overlay">
+    <svg class="rotate-icon" viewBox="0 0 64 64" aria-hidden="true">
+      <rect x="20" y="6" width="24" height="42" rx="5" fill="none" stroke="#f3eee3" stroke-width="3"/>
+      <circle cx="32" cy="43" r="2.6" fill="#f3eee3"/>
+      <path d="M46 26 a20 20 0 1 1 -13 -18" fill="none" stroke="#ffd86b" stroke-width="3" stroke-linecap="round"/>
+      <path d="M33 4 l-2 7 7 0 z" fill="#ffd86b"/>
+    </svg>
+    <div class="rotate-tip">请横屏游玩</div>
+    <div class="rotate-sub">将手机横置以获得最佳体验</div>
+  </div>
 </div>
 
 <script src="./src/units.js"></script>
