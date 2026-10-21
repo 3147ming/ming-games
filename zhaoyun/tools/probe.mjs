@@ -866,7 +866,22 @@ const rot = await evalJs(`(() => {
            sub: ov ? (ov.querySelector('.rotate-sub')||{}).textContent : '' };
 })()`);
 ok('V8 横屏锁定遮罩存在（含「请横屏游玩」文案）', rot.exists && rot.tip.indexOf('请横屏游玩') >= 0, rot.tip + ' / ' + rot.sub);
-ok('V8 遮罩显示与媒体查询一致（竖屏+触屏 → flex）', rot.disp === (rot.mq ? 'flex' : 'none'), 'disp=' + rot.disp + ' mq=' + rot.mq);
+// 探针默认只有 mobile:true，不会让 (pointer: coarse) 成立 —— 必须显式开启触摸模拟，
+// 否则「竖屏 → 遮罩显示」会空过（disp 与 mq 同时为 false，断言恒真）。
+await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+await sleep(250);
+const rotTouch = await evalJs(`(() => {
+  const ov = document.getElementById('rotate-overlay');
+  const st = ZY.UI.getState();
+  return { mq: window.matchMedia('(orientation: portrait) and (max-width: 900px) and (pointer: coarse)').matches,
+           disp: ov ? getComputedStyle(ov).display : 'none',
+           lock: !!(st && st.orientLock) };
+})()`);
+ok('V8 竖屏 + 触屏 → 遮罩全屏显示（display:flex）',
+  rotTouch.mq === true && rotTouch.disp === 'flex', 'mq=' + rotTouch.mq + ' disp=' + rotTouch.disp);
+ok('V8 竖屏 + 触屏 → 开局自动锁定暂停（orientLock=true）', rotTouch.lock, 'lock=' + rotTouch.lock);
+await send('Emulation.setTouchEmulationEnabled', { enabled: false });
+await sleep(200);
 await send('Emulation.setDeviceMetricsOverride', { width: 667, height: 375, deviceScaleFactor: 2, mobile: true });
 await sleep(300);
 const rotL = await evalJs(`(() => {
@@ -875,6 +890,33 @@ const rotL = await evalJs(`(() => {
   return { disp: getComputedStyle(ov).display, mq: mq.matches };
 })()`);
 ok('V8 横屏（landscape）→ 遮罩隐藏、不锁定', rotL.disp === 'none' && rotL.mq === false, 'disp=' + rotL.disp + ' mq=' + rotL.mq);
+
+// V8 横屏「完整布局」：不能只是把 9:16 竖屏列居中（那样 HUD 右侧倍速键会被裁掉）
+const lay8 = await evalJs(`(() => {
+  const r = (sel) => { const e = document.querySelector(sel); return e ? e.getBoundingClientRect() : null; };
+  const stage = r('.stage'), board = r('#board'), dock = r('.dock'), hud = r('.hud');
+  return {
+    vw: window.innerWidth, vh: window.innerHeight,
+    sw: document.documentElement.scrollWidth,
+    stage: stage ? { w: stage.width, h: stage.height } : null,
+    board: board ? { l: board.left, r: board.right, t: board.top, b: board.bottom, w: board.width } : null,
+    dock: dock ? { l: dock.left, r: dock.right, w: dock.width } : null,
+    hud: hud ? { l: hud.left, r: hud.right, b: hud.bottom } : null
+  };
+})()`);
+ok('V8 横屏舞台铺满视口（不再压成 9:16 窄列）',
+  !!lay8.stage && lay8.stage.w >= lay8.vw * 0.97 && Math.abs(lay8.stage.w - lay8.vw) < 2,
+  'stage=' + (lay8.stage ? lay8.stage.w.toFixed(0) : 'null') + ' vw=' + lay8.vw);
+ok('V8 横屏操作栏在棋盘右侧（横向布局生效）',
+  !!lay8.board && !!lay8.dock && lay8.dock.l >= lay8.board.r - 1,
+  'board.r=' + (lay8.board ? lay8.board.r.toFixed(0) : 'null') + ' dock.l=' + (lay8.dock ? lay8.dock.l.toFixed(0) : 'null'));
+ok('V8 横屏无水平裁切（HUD 倍速键不被切掉）',
+  lay8.sw <= lay8.vw + 1 && (!lay8.hud || lay8.hud.r <= lay8.vw + 1),
+  'scrollW=' + lay8.sw + ' vw=' + lay8.vw);
+ok('V8 横屏棋盘完整可见（HUD 下方且不超出底部）',
+  !!lay8.board && !!lay8.hud && lay8.board.t >= lay8.hud.b - 1 && lay8.board.b <= lay8.vh + 1,
+  lay8.board ? ('board.t=' + lay8.board.t.toFixed(0) + ' hud.b=' + lay8.hud.b.toFixed(0) + ' board.b=' + lay8.board.b.toFixed(0)) : 'null');
+
 await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 667, deviceScaleFactor: 2, mobile: true });
 await sleep(200);
 const lockT = await evalJs(`(async () => {
@@ -984,12 +1026,30 @@ const part8 = await evalJs(`(async () => {
   s.units = s.units.filter(u => u.cls !== 'hero');
   const slots = Object.keys(ZY.B.startSlots('endless','player')).map(k => k.split(',').map(Number));
   const mkH = (hid,r,c) => { const u = G.makeUnit(s,'player',{cls:'hero',heroId:hid,heroLevel:1,row:r,col:c,span:2,target:null}); G.addUnit(s,u); return u; };
+  // 技能需要射程内有敌人（castSkill 无目标不释放）——显式造高血量敌人贴住武将，
+  // 否则敌人走远后 single 会变 0，测试随战况偶发失败。
+  const extras = [];
+  const mkE = (r,c) => {
+    const rr = Math.max(0, Math.min(ZY.B.ROWS - 1, r)), cc = Math.max(0, Math.min(ZY.B.COLS - 1, c));
+    const u = G.makeUnit(s,'enemy',{cls:'soldier',type:'zei',level:1,row:rr,col:cc,span:1,target:null});
+    u.hp = u.maxHp = 99999; G.addUnit(s,u); extras.push(u); return u;
+  };
   const z = mkH('zhaoyun',slots[0][0],slots[0][1]);
+  z.skillT = 99;                       // 先锁住技能，等这一帧 syncUnits 把立绘建出来再放，避免首帧时序抖动
+  mkE(slots[0][0], slots[0][1] + 1);
+  mkE(slots[0][0] + 1, slots[0][1]);
+  mkE(slots[0][0], slots[0][1] - 1);
+  await new Promise(r => setTimeout(r, 120));
   z.skillT = 0;
-  await new Promise(r => setTimeout(r, 160));
+  await new Promise(r => setTimeout(r, 220));
   const single = document.querySelectorAll('.skill-fx .fx-particle').length;
   const g = mkH('guanyu',slots[1][0],slots[1][1]);
   const m = mkH('machao',slots[2][0],slots[2][1]);
+  g.skillT = 99; m.skillT = 99;
+  mkE(slots[1][0], slots[1][1] + 1);
+  mkE(slots[2][0], slots[2][1] + 1);
+  await new Promise(r => setTimeout(r, 120));
+  g.skillT = 0; m.skillT = 0;
   let maxLive = 0;
   for (let i=0;i<24;i++){
     await new Promise(r => setTimeout(r, 50));
@@ -997,10 +1057,12 @@ const part8 = await evalJs(`(async () => {
     const live = document.querySelectorAll('.skill-fx .fx-particle').length;
     if (live > maxLive) maxLive = live;
   }
-  s.units = s.units.filter(u => u.cls !== 'hero');
-  return { single, maxLive };
+  s.units = s.units.filter(u => u.cls !== 'hero' && extras.indexOf(u) < 0);
+  return { single, maxLive, fxW: (document.querySelector('#fx')||{getBoundingClientRect:function(){return {width:0};}}).getBoundingClientRect().width,
+           heroEls: document.querySelectorAll('.unit.hero').length };
 })()`);
-ok('V8 单次技能粒子 ∈ [6,20]（同帧创建上限 20）', part8.single >= 6 && part8.single <= 20, 'single=' + part8.single);
+ok('V8 单次技能粒子 ∈ [6,20]（同帧创建上限 20）', part8.single >= 6 && part8.single <= 20,
+  'single=' + part8.single + ' fxW=' + Math.round(part8.fxW) + ' heroEls=' + part8.heroEls);
 ok('V8 粒子洪峰 ≤ 存活上限 80', part8.maxLive <= 80, 'maxLive=' + part8.maxLive);
 
 /* —— V8 六张验收截图（375×667 竖屏 + 横屏覆盖各要点） —— */

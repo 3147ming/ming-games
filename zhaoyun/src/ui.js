@@ -1518,9 +1518,9 @@
     boss:   { n: 14, dist: 0,  lift: 0,  size: 50, dur: 680, ring: true },   // Boss：黄色法阵
   };
   function spawnSkillParticles(u, type) {
-    const e = unitEls[u.id];
+    // 粒子位置由棋盘几何推算，不依赖单位 DOM 元素 —— 武将刚部署、立绘还没建出来的同帧放技能也能正常出特效
     const layer = el.skillFx;
-    if (!e || !layer || particleCount >= PARTICLE_CAP) return;
+    if (!layer || particleCount >= PARTICLE_CAP) return;
     const ctr = unitCenter(u);
     if (!ctr) return;
     const cfg = PARTICLE_CFG[type] || PARTICLE_CFG.sweep;
