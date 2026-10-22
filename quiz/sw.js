@@ -14,7 +14,7 @@
    - 发布新版本时把 VERSION 加一（quiz-v1 → quiz-v2），旧缓存会在 activate 里被清掉。
    ============================================================= */
 
-var VERSION = 'quiz-v1';
+var VERSION = 'quiz-v2';
 var CACHE = VERSION;
 var BASE = self.registration ? self.registration.scope : self.location.href.replace(/sw\.js.*$/, '');
 
@@ -30,9 +30,16 @@ function abs(p) {
   try { return new URL(p, BASE).href; } catch (e) { return p; }
 }
 
+/* 安装兜底超时：宁可这次装失败（下次访问自动重试），也不要永远卡在 installing */
+function withTimeout(p, ms) {
+  return Promise.race([p, new Promise(function (_, rej) {
+    setTimeout(function () { rej(new Error('quiz sw: install timeout')); }, ms);
+  })]);
+}
+
 /* ---------------- install ---------------- */
 self.addEventListener('install', function (event) {
-  event.waitUntil((async function () {
+  event.waitUntil(withTimeout((async function () {
     var cache = await caches.open(CACHE);
     var mandatory = [abs('./'), abs('./index.html')];
     var rest = CORE.slice(2).map(abs);
@@ -50,25 +57,26 @@ self.addEventListener('install', function (event) {
     for (var i = 0; i < mandatory.length; i++) {
       if (await grab(mandatory[i])) shellOK = true;
     }
-    for (var j = 0; j < rest.length; j++) await grab(rest[j]);
+    // 其余外壳并发抓（串行在冷 CDN 上要 8~10s，并发能压到 2~3s）
+    await Promise.all(rest.map(grab));
 
     // 可选音频：先 HEAD 探体积，超限就完全不下载（避免把几十 MB 的曲库拖进安装流程）
-    for (var k = 0; k < AUDIO_GUESS.length; k++) {
+    await Promise.all(AUDIO_GUESS.map(async function (p) {
       try {
-        var u = abs(AUDIO_GUESS[k]);
+        var u = abs(p);
         var head = await fetch(new Request(u, { method: 'HEAD', cache: 'no-store' }));
-        if (!head || !head.ok) continue;
+        if (!head || !head.ok) return;
         var len = parseInt(head.headers.get('content-length') || '0', 10);
-        if (!len || len > AUDIO_MAX_BYTES) continue;
+        if (!len || len > AUDIO_MAX_BYTES) return;
         var r = await fetch(new Request(u, { cache: 'reload' }));
-        if (!r || !r.ok) continue;
+        if (!r || !r.ok) return;
         await cache.put(u, r.clone());
       } catch (e) { /* 占位文件缺失 = 正常情况，忽略 */ }
-    }
+    }));
 
     if (!shellOK) throw new Error('quiz sw: precache shell failed');
     await self.skipWaiting();
-  })());
+  })(), 30000));
 });
 
 /* ---------------- activate ---------------- */
