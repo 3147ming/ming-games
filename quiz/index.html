@@ -106,6 +106,14 @@ input[type=range]{-webkit-appearance:none;appearance:none;height:6px;padding:0;b
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;
   background:var(--purple);box-shadow:0 2px 6px rgba(124,92,255,.45);cursor:pointer}
 input[type=checkbox]{width:20px;height:20px;flex:none;accent-color:var(--purple)}
+.fld{margin:9px 0}
+.flabel{font-size:12.5px;font-weight:700;color:var(--sub);margin:0 0 5px 2px;letter-spacing:.2px}
+select{width:100%;padding:11px 34px 11px 12px;border-radius:12px;border:1px solid var(--line);
+  font-size:15px;background:#fff;color:var(--ink);box-sizing:border-box;font-family:inherit;
+  -webkit-appearance:none;appearance:none;cursor:pointer;
+  background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237c5cff' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 13px center}
+select:focus{outline:none;border-color:#c3b0ff;box-shadow:0 0 0 3px rgba(124,92,255,.12)}
 
 /* ---------- 答题 ---------- */
 .qcard{background:var(--card);border-radius:20px;padding:16px;box-shadow:var(--shadow);margin:10px 0}
@@ -1320,6 +1328,27 @@ function openMusic(){
   ov.p.appendChild(ht('div','muted','版权说明：内置曲目为默认名，正式公开使用前请确保你拥有相应音频的授权。'));
 }
 
+/* ---------- AI 服务商预设（选服务商自动填地址 + 刷新模型） ---------- */
+var AI_PRESETS=[
+  {id:'custom',name:'自定义（手填地址与模型）',url:'',models:[]},
+  {id:'doubao',name:'豆包 Ark（火山方舟）',url:'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+   models:['doubao-seed-1-6-250615','doubao-1-5-pro-32k-250115','doubao-1-5-lite-32k-250115']},
+  {id:'deepseek',name:'DeepSeek',url:'https://api.deepseek.com/v1/chat/completions',
+   models:['deepseek-chat','deepseek-reasoner']},
+  {id:'kimi',name:'Kimi（Moonshot）',url:'https://api.moonshot.cn/v1/chat/completions',
+   models:['moonshot-v1-8k','moonshot-v1-32k']},
+  {id:'zhipu',name:'智谱 GLM',url:'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+   models:['glm-4-flash','glm-4-air','glm-4-plus']},
+  {id:'qwen',name:'通义千问',url:'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+   models:['qwen-turbo','qwen-plus','qwen-max']},
+  {id:'openai',name:'OpenAI',url:'https://api.openai.com/v1/chat/completions',
+   models:['gpt-4o-mini','gpt-4o']}
+];
+function aiPreset(id){for(var i=0;i<AI_PRESETS.length;i++){if(AI_PRESETS[i].id===id)return AI_PRESETS[i];}return AI_PRESETS[0];}
+function aiPresetByUrl(u){u=(u||'').trim();for(var i=1;i<AI_PRESETS.length;i++){if(AI_PRESETS[i].url===u)return AI_PRESETS[i];}return null;}
+// 是否属于任意一家的预置模型（用来区分「下拉选出来的」和「用户手打的」模型名）
+function isPresetModel(m){if(!m)return false;for(var i=1;i<AI_PRESETS.length;i++){if(AI_PRESETS[i].models.indexOf(m)>=0)return true;}return false;}
+
 /* ---------- 设置 ---------- */
 function openSettings(){
   var ov=overlayPanel('⚙️ 设置');
@@ -1330,15 +1359,65 @@ function openSettings(){
   // AI 配置
   var sec2=ht('div','section-title','🌐 AI 建题库（OpenAI 兼容）');ov.p.appendChild(sec2);
   var cfg=loadAICfg()||{};
-  var urlI=h('input');urlI.placeholder='API 地址，如 https://api.deepseek.com/v1/chat/completions';urlI.value=cfg.url||'';urlI.style.margin='6px 0';ov.p.appendChild(urlI);
-  var keyI=h('input');keyI.type='password';keyI.placeholder='API Key';keyI.value=cfg.key||'';keyI.style.margin='6px 0';ov.p.appendChild(keyI);
-  var modI=h('input');modI.placeholder='模型名，如 deepseek-chat';modI.value=cfg.model||'';modI.style.margin='6px 0';ov.p.appendChild(modI);
-  var proxI=h('input');proxI.placeholder='代理地址（可选，跨域被拦时填）';proxI.value=cfg.proxy||'';proxI.style.margin='6px 0';ov.p.appendChild(proxI);
+
+  // 服务商：选中即自动填接口地址
+  var provWrap=h('div','fld');provWrap.appendChild(ht('div','flabel','服务商'));
+  var provI=h('select');provI.id='aiProvider';
+  AI_PRESETS.forEach(function(p){var o=h('option');o.value=p.id;o.textContent=p.name;provI.appendChild(o);});
+  provWrap.appendChild(provI);ov.p.appendChild(provWrap);
+
+  // 模型：预设服务商给下拉，自定义给手填框（表单里始终有一个真实的模型名）
+  var modWrap=h('div','fld');modWrap.appendChild(ht('div','flabel','模型'));
+  var modSel=h('select');modSel.id='aiModel';
+  var modI=h('input');modI.id='aiModelInput';modI.placeholder='模型名，如 deepseek-chat';modI.value=cfg.model||'';
+  modWrap.appendChild(modSel);modWrap.appendChild(modI);ov.p.appendChild(modWrap);
+
+  var urlWrap=h('div','fld');urlWrap.appendChild(ht('div','flabel','API 地址'));
+  var urlI=h('input');urlI.id='aiUrl';urlI.placeholder='https://…/v1/chat/completions';urlI.value=cfg.url||'';
+  urlWrap.appendChild(urlI);ov.p.appendChild(urlWrap);
+
+  var keyWrap=h('div','fld');keyWrap.appendChild(ht('div','flabel','API Key'));
+  var keyI=h('input');keyI.id='aiKey';keyI.type='password';keyI.placeholder='sk-…';keyI.value=cfg.key||'';
+  keyWrap.appendChild(keyI);ov.p.appendChild(keyWrap);
+
+  var proxWrap=h('div','fld');proxWrap.appendChild(ht('div','flabel','代理地址（可选）'));
+  var proxI=h('input');proxI.id='aiProxy';proxI.placeholder='跨域被拦时填中转地址';proxI.value=cfg.proxy||'';
+  proxWrap.appendChild(proxI);ov.p.appendChild(proxWrap);
+
+  var curPid='custom';
+  // 刷新模型下拉；keep 不在列表里时额外保留一项，避免手填过的模型被覆盖
+  function fillModels(pid,keep){
+    var p=aiPreset(pid),list=p.models.slice();
+    clearNode(modSel);
+    if(!list.length){modSel.style.display='none';modI.style.display='';modI.value=keep||'';return;}
+    modSel.style.display='';modI.style.display='none';
+    if(keep&&list.indexOf(keep)<0)list.push(keep);
+    list.forEach(function(m){var o=h('option');o.value=m;o.textContent=m;modSel.appendChild(o);});
+    var v=(keep&&list.indexOf(keep)>=0)?keep:list[0];
+    modSel.value=v;modI.value=v;
+  }
+  // 回显：地址命中某家预设就选中该家，否则「自定义」（旧配置一切原样）
+  var matched=aiPresetByUrl(cfg.url);
+  curPid=(matched||AI_PRESETS[0]).id;provI.value=curPid;
+  fillModels(curPid,cfg.model||'');
+
+  provI.onchange=function(){
+    var pid=provI.value,oldP=aiPreset(curPid),newP=aiPreset(pid);
+    var curUrl=urlI.value.trim(),curModel=modI.value.trim();
+    if(newP.url&&(!curUrl||curUrl===oldP.url))urlI.value=newP.url;
+    // 切到「自定义」保留手填内容，方便在现有地址上微调；
+    // 切到预设服务商时：下拉选出来的模型换成新服务商默认档，用户手打的模型名才保留
+    var keep=newP.models.length?(isPresetModel(curModel)?'':curModel):curModel;
+    fillModels(pid,keep);
+    curPid=pid;
+  };
+  modSel.onchange=function(){modI.value=modSel.value;};
+
   var testB=h('button','btn','🔌 测试连接');var testMsg=ht('div','hint','');ov.p.appendChild(testB);ov.p.appendChild(testMsg);
   testB.onclick=function(){var c={url:urlI.value.trim(),key:keyI.value.trim(),model:modI.value.trim(),proxy:proxI.value.trim()};if(!c.url||!c.key){testMsg.textContent='⚠️ 请先填 API 地址与 Key';return;}testMsg.textContent='测试中…';callAI(c,'ping',function(res){testMsg.textContent=res?'✅ 连接成功，返回 '+(res.length||0)+' 题':'❌ 未返回有效结果（检查地址/Key/模型）';});};
   var saveB=h('button','btn gold','💾 保存配置');saveB.onclick=function(){var c={url:urlI.value.trim(),key:keyI.value.trim(),model:modI.value.trim(),proxy:proxI.value.trim()};try{S.setItem('bt_qa_ai',JSON.stringify(c));}catch(e){}testMsg.textContent='✅ 已保存';};
   ov.p.appendChild(saveB);
-  ov.p.appendChild(ht('div','muted','提示：无 Key 也可走「🆓 免费搜索」用维基百科生成题；AI 通道质量更高。'));
+  ov.p.appendChild(ht('div','muted','提示：选服务商会自动填好接口地址，选模型会自动填模型名；接口需与 OpenAI 兼容（自定义可填中转地址）。无 Key 也可走「🆓 免费搜索」生成题。'));
   /* ---- 离线 / 安装 ---- */
   ov.p.appendChild(ht('div','section-title','📴 离线使用'));
   var pstate=ht('div','muted','');ov.p.appendChild(pstate);
