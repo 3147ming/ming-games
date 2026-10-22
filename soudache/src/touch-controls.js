@@ -44,17 +44,9 @@ const BUTTONS = [
   { a: 'reload', t: '换弹', size: 'combat' },
   { a: 'heal', t: '治疗', size: 'combat' },
   { a: 'ads', t: '瞄准', size: 'minor', toggle: 'ads' },
-  // 左下机动区
-  { a: 'crouch', t: '蹲', size: 'minor', toggle: 'crouch' },
-  { a: 'sprint', t: '冲', size: 'minor', toggle: 'sprint' },
-  { a: 'rope', t: '速降', size: 'minor' },
-  { a: 'vehicle', t: '载具', size: 'minor' },
   { a: 'switch', t: '切枪', size: 'minor' },
-  // 贴顶部边缘的系统钮：任务 / 背包 / 暂停（远离两个拇指作业区）
+  // 贴顶部边缘的系统钮：背包 / 暂停（远离两个拇指作业区）
   // 灵敏度**不放这里**：玩家反馈"暂停后调不了灵敏度"，所以改到暂停面板里用滑块调。
-  // 「任务」放第一个：它是三层架构里中层的开关，折叠时玩家看不到合约，
-  // 必须有一个常驻且不占拇指区的入口（默认折叠 = 视野优先，但待办不能消失）。
-  { a: 'tasks', t: '任务', size: 'minor', slot: 'top' },
   { a: 'bag', t: '背包', size: 'minor', slot: 'top' },
   { a: 'pause', t: '暂停', size: 'minor', slot: 'top' },
 ];
@@ -162,9 +154,67 @@ export function createTouchControls(opts) {
   let leftId = null;
   let rightId = null;
   const buttonIds = new Map(); // touch identifier -> action
+  // 面板触摸映射：identifier -> 面板根节点。落在面板内的触摸不接管为摇杆、
+  // 也不 preventDefault，交给浏览器原生滚动（列表 / 滑块）。
+  const panelTouch = new Map();
+  // 面板容器选择器：覆盖战前配置/暂停/商店/仓库/背包/战利品/结算等所有面板。
+  // 注意：战利品与背包是战斗内浮层，用 .battle-panel；其余 UI 屏用 .panel。
+  const PANEL_SEL = '.panel, .modal, .battle-panel, [data-scroll]';
+  // 是否有「面板式 UI」当前可见（非 3D 战斗界面）：
+  // 任一 .screen（非 battle）/ 任意 .battle-panel（战利品/背包）处于显示态。
+  function panelUIActive() {
+    const doc = typeof document !== 'undefined' ? document : null;
+    if (!doc || !doc.querySelector) return false; // 非浏览器环境（测试桩）直接视为无面板
+    const scr = doc.querySelector('.screen:not(.hidden)[data-screen]');
+    if (scr && scr.dataset.screen && scr.dataset.screen !== 'battle') return true;
+    if (doc.querySelector('.battle-panel:not(.hidden)')) return true;
+    return false;
+  }
   const lookSens = () => LOOK_BASE * (input.touchLookSens || 1);
   let lookPresetIdx = Math.max(0, LOOK_PRESETS.indexOf(input.touchLookSens || 1));
   let ctxShown = false;
+
+  // ---- 左摇杆推满自动冲刺（B：移除独立冲刺键后替代）----
+  // 归一化幅值（与 handleMoveAxis 同口径，1 = 推到底）：>SPRINT_ON 持续 SPRINT_HOLD 触发，
+  // 回落 <SPRINT_OFF 停止（滞回阈值，避免临界抖动反复触发/取消）。
+  const SPRINT_ON = 0.92;
+  const SPRINT_OFF = 0.80;
+  const SPRINT_HOLD = 250; // ms
+  let leftMag = 0;          // 当前左摇杆归一化幅值 [0,1]
+  let sprintPushStart = 0;  // 首次超过阈值的时刻（now()），0 = 未推满
+  let sprintRaf = 0;
+  const now = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
+  function clearSprintTimer() {
+    if (sprintRaf) {
+      if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(sprintRaf);
+      sprintRaf = 0;
+    }
+  }
+  // 用 rAF 按真实时间推进：即使手指"按死不动"（不再产生 touchmove）也能累计满 0.25s 触发冲刺。
+  function sprintTick() {
+    sprintRaf = 0;
+    if (!active || leftId === null) { sprintPushStart = 0; return; }
+    if (sprintPushStart > 0 && now() - sprintPushStart >= SPRINT_HOLD) input.sprint = true;
+    if (active && leftId !== null && typeof requestAnimationFrame === 'function') {
+      sprintRaf = requestAnimationFrame(sprintTick);
+    }
+  }
+  function evaluateSprint() {
+    if (leftMag > SPRINT_ON) {
+      if (!sprintPushStart) sprintPushStart = now();
+      if (typeof requestAnimationFrame === 'function' && !sprintRaf) sprintRaf = requestAnimationFrame(sprintTick);
+    } else if (leftMag < SPRINT_OFF) {
+      if (input.sprint) input.sprint = false;
+      sprintPushStart = 0;
+      clearSprintTimer();
+    }
+  }
+  function stopSprint() {
+    if (input.sprint) input.sprint = false;
+    sprintPushStart = 0;
+    leftMag = 0;
+    clearSprintTimer();
+  }
 
   function updateLookLabel() {
     if (lookLabel) lookLabel.textContent = `灵敏${LOOK_PRESETS[lookPresetIdx].toFixed(1)}`;
@@ -185,8 +235,20 @@ export function createTouchControls(opts) {
   // ---- 触摸处理 ----
   function onTouchStart(ev) {
     if (!active || editing) return; // 编辑布局时屏蔽游戏输入，只走拖拽
+    // 面板式 UI 激活时（暂停/商店/仓库/战前配置/结算/战利品/背包），
+    // 触摸只响应面板本身（点按 + 原生滚动），整体禁用局内摇杆与视角。
+    const panelMode = panelUIActive();
+    let panelInvolved = false;
     for (const touch of ev.changedTouches) {
       const tgt = touch.target;
+      const panelRoot = tgt && tgt.closest ? tgt.closest(PANEL_SEL) : null;
+      // 面板内（或面板激活态下的任意触摸）：不接管摇杆、不拦截默认行为，
+      // 交还浏览器原生处理（列表滚动 / 滑块拖动 / 按钮点击）。
+      if (panelRoot || panelMode) {
+        if (panelRoot) panelTouch.set(touch.identifier, panelRoot);
+        panelInvolved = true;
+        continue;
+      }
       const targetBtn = tgt && tgt.closest ? tgt.closest('.tc-btn') : null;
       if (targetBtn) {
         // 隐藏的上下文键不接收触摸
@@ -219,14 +281,23 @@ export function createTouchControls(opts) {
         hideLookHint();
       }
     }
-    // 归自己管时才 preventDefault（阻止页面滚动 / 双击缩放），
-    // 但不阻断其他监听器 —— 面板 / 弹窗的按钮仍能收到事件。
-    if (ev.cancelable) ev.preventDefault();
+    // 仅当本次触摸完全没有落在面板上时才 preventDefault（阻止页面滚动 / 双击缩放），
+    // 否则单指滚面板、另一指按摇杆时会被连带拦截，导致面板无法原生滚动。
+    // 面板内的原生滚动 / 滑块仍由浏览器处理，不阻断其他监听器。
+    if (!panelInvolved && ev.cancelable) ev.preventDefault();
   }
 
   function onTouchMove(ev) {
     if (!active) return;
+    // 面板激活态下整体禁用摇杆 / 视角（触摸只响应面板）。
+    const panelMode = panelUIActive();
+    let panelInvolved = false;
     for (const touch of ev.changedTouches) {
+      // 面板内触摸：交还浏览器原生滚动，不驱动摇杆、不拦截默认行为。
+      if (panelTouch.has(touch.identifier) || panelMode) {
+        panelInvolved = true;
+        continue;
+      }
       if (buttonIds.has(touch.identifier)) continue; // 按钮不驱动摇杆
       if (touch.identifier === leftId) {
         // 用落指瞬间的中心（已存进 left.cx/cy），不读 getBoundingClientRect，
@@ -245,12 +316,16 @@ export function createTouchControls(opts) {
         input.pitch = clampPitch(input.pitch - dy * s);
       }
     }
-    if (ev.cancelable) ev.preventDefault();
+    // 仅当本次触摸完全归摇杆管辖时才 preventDefault，面板内触摸放行原生滚动。
+    if (!panelInvolved && ev.cancelable) ev.preventDefault();
   }
 
   function onTouchEnd(ev) {
-    if (!active) return;
     for (const touch of ev.changedTouches) {
+      // 始终清理面板触摸映射，避免面板关闭后残留的 identifier
+      // 与后续新触摸复用同一编号，误把摇杆触摸当成面板触摸而放行。
+      panelTouch.delete(touch.identifier);
+      if (!active) continue;
       const action = buttonIds.get(touch.identifier);
       if (action) {
         buttonIds.delete(touch.identifier);
@@ -260,6 +335,7 @@ export function createTouchControls(opts) {
       if (touch.identifier === leftId) {
         leftId = null;
         left.base.classList.remove('tc-live');
+        stopSprint();
         resetMove();
       } else if (touch.identifier === rightId) {
         rightId = null;
@@ -282,6 +358,11 @@ export function createTouchControls(opts) {
     input.down = ny > DEADZONE;
     input.left = nx < -DEADZONE;
     input.right = nx > DEADZONE;
+    // 左摇杆：记录归一化幅值并据此评估自动冲刺（推满持续 0.25s → 冲刺）
+    if (stick === left) {
+      leftMag = Math.min(1, Math.hypot(nx, ny));
+      evaluateSprint();
+    }
   }
 
   function clampPitch(p) {
@@ -369,7 +450,9 @@ export function createTouchControls(opts) {
       input.ads = false;
       input.crouch = false;
       input.sprint = false;
+      stopSprint();
       buttonIds.clear();
+      panelTouch.clear();
       leftId = null; rightId = null;
       left.base.classList.remove('tc-live');
       setContext(null);
