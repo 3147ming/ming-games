@@ -2,9 +2,19 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta name="theme-color" content="#f3eefe">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#7c5cff">
+<meta name="description" content="知识问答 · 百词斩式分类刷题，支持离线使用与添加到主屏幕。">
 <title>知识问答 · 百词斩式刷题</title>
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="知识问答">
+<meta name="application-name" content="知识问答">
 <style>
 :root{
   --bg:#f3eefe; --card:#ffffff; --ink:#2f2748; --sub:#8a82a8;
@@ -958,12 +968,18 @@ function openNewCategory(){
   bFree.onclick=function(){var v=nm.value.trim();if(!v){alert('请输入分类名');return;}closeOverlay(ov);freeBuild(v);};
   bAI.onclick=function(){var v=nm.value.trim();if(!v){alert('请输入分类名');return;}var cfg=loadAICfg();if(!cfg||!cfg.url||!cfg.key){alert('尚未配置 API，请先到 ⚙️ 设置 里填写 API 地址与 Key');openSettings();return;}closeOverlay(ov);aiBuild(v);};
 }
+function offlineBlock(card,sp,what){
+  sp.textContent='📴 当前没有网络：'+what+'需要联网。已缓存的题库和刷题、错题本、成绩统计都不受影响，联网后再来即可（或改用「📝 手动录入」）。';
+  var back=h('button','btn ghost','← 返回书架');back.onclick=function(){renderShelf();};card.appendChild(back);
+  return true;
+}
 function freeBuild(name){
   showView('stage');clearNode(stageEl);
   var card=h('div','qcard');
   card.appendChild(ht('div','hud','🆓 免费搜索：'+name));
   var sp=ht('div','hint','正在抓取资料（百度百科优先，维基百科兜底）…');card.appendChild(sp);
   stageEl.appendChild(card);
+  if(navigator.onLine===false){offlineBlock(card,sp,'「免费搜索建题库」');return;}
   gatherMaterial(name,function(items){
     if(!items||items.length<4){sp.textContent='⚠️ 该主题抓不到足够资料（网络受限或词条太少），请手动录入或配置 AI（⚙️ 设置）。';var back=h('button','btn ghost','← 返回');back.onclick=function(){renderShelf();};card.appendChild(back);return;}
     finishFree(name,items,sp,card);
@@ -998,6 +1014,7 @@ function aiBuild(name){
   var card=h('div','qcard');card.appendChild(ht('div','hud','🌐 AI 生成：'+name));
   var sp=ht('div','hint','正在抓取素材并调用 AI 生成题库…');card.appendChild(sp);
   stageEl.appendChild(card);
+  if(navigator.onLine===false){offlineBlock(card,sp,'「AI 建题库」');return;}
   gatherMaterial(name,function(items){
     var material='';
     if(items&&items.length){material='参考素材：\n'+items.slice(0,12).map(function(x){return '· '+x.title+'：'+(x.desc||'').slice(0,90);}).join('\n')+'\n';}
@@ -1322,6 +1339,21 @@ function openSettings(){
   var saveB=h('button','btn gold','💾 保存配置');saveB.onclick=function(){var c={url:urlI.value.trim(),key:keyI.value.trim(),model:modI.value.trim(),proxy:proxI.value.trim()};try{S.setItem('bt_qa_ai',JSON.stringify(c));}catch(e){}testMsg.textContent='✅ 已保存';};
   ov.p.appendChild(saveB);
   ov.p.appendChild(ht('div','muted','提示：无 Key 也可走「🆓 免费搜索」用维基百科生成题；AI 通道质量更高。'));
+  /* ---- 离线 / 安装 ---- */
+  ov.p.appendChild(ht('div','section-title','📴 离线使用'));
+  var pstate=ht('div','muted','');ov.p.appendChild(pstate);
+  pstate.textContent=pwaState();
+  ov.p.appendChild(ht('div','muted','手机浏览器菜单里选「添加到主屏幕」，之后从图标打开就是独立窗口（无地址栏）。断网时照样能刷题、看错题本；🌐 联网题库会自动改用内置离线题池，🆓 搜索建题库 / 🤖 AI 建题库需要联网。'));
+  var clr=h('button','btn ghost','🔄 清除离线缓存并更新');
+  clr.onclick=function(){
+    try{
+      if(navigator.serviceWorker&&navigator.serviceWorker.controller){
+        navigator.serviceWorker.controller.postMessage({type:'CLEAR_CACHE'});
+      }
+    }catch(e){}
+    setTimeout(function(){location.reload();},260);
+  };
+  ov.p.appendChild(clr);
   var about=ht('div','section-title','关于');ov.p.appendChild(about);
   ov.p.appendChild(ht('div','muted','知识问答独立版 · 从 brain-gym 拆分 · 题库/成绩共用 bt_qa_ 存储前缀'));
 }
@@ -1385,7 +1417,39 @@ function init(){
   $('settingsBtn').onclick=function(){openSettings();};
   renderShelf();
   // 启动时不自动联网，避免首页卡顿；联网在书架「🔄 联网更新题库」触发
+  registerSW();
 }
+
+/* ---------- PWA：离线状态文案 ---------- */
+function pwaState(){
+  try{
+    if(!('serviceWorker' in navigator))return '⚠️ 当前浏览器不支持离线缓存，联网时照常可用。';
+    var proto=location.protocol,host=location.hostname;
+    var secure=(proto==='https:')||host==='localhost'||host==='127.0.0.1'||host==='[::1]';
+    if(!secure)return 'ℹ️ 当前是非 https 环境（如本地双击打开），不会启用离线缓存，这是正常的。';
+    if(navigator.serviceWorker.controller)return '✅ 已缓存到本机：断网也能打开、也能完整答题。';
+    return '⏳ 首次打开需要联网缓存资源，稍等片刻即可离线使用。';
+  }catch(e){return 'ℹ️ 无法读取离线状态，不影响正常使用。';}
+}
+
+/* ---------- PWA：Service Worker 注册 ----------
+   只在安全上下文（https / localhost / 127.0.0.1）注册；
+   file:// 双击打开或非 https 局域网地址会静默跳过，不抛错、不打断使用。 */
+function registerSW(){
+  try{
+    if(!('serviceWorker' in navigator))return;
+    var proto=location.protocol;
+    if(proto!=='https:'&&proto!=='http:')return;         // file: / 其他协议直接跳过
+    var host=location.hostname;
+    var secure=(proto==='https:')||host==='localhost'||host==='127.0.0.1'||host==='[::1]';
+    if(!secure)return;                                    // http://192.168.x 不是安全上下文
+    navigator.serviceWorker.register('./sw.js',{scope:'./'}).then(function(reg){
+      // 后台有新版 SW 时让它尽快接管（配合 sw.js 里的 skipWaiting）
+      try{if(reg&&reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});}catch(e){}
+    }).catch(function(){/* 注册失败（如隐私模式）静默忽略，应用照常可用 */});
+  }catch(e){/* 老浏览器 / 被策略禁用：静默忽略 */}
+}
+
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 
 })();

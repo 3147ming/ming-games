@@ -1,6 +1,11 @@
 # 开发期构建产物（从 brain-gym 抽取的引擎核心 + UI 分片 + 本地探针）
-# 站点只需要 quiz/index.html 这一个成品文件
+# 站点只需要 quiz/index.html 这一个成品 + manifest/sw/icons
 quiz/.build/
+
+# 音频文件体积大（flac/wav 单曲几十 MB），不进仓库
+# 想给 PWA 配乐：把 mp3 按 flower-dance/summer/luv-letter/canon 命名，
+# 直接放进发布目录 _deploy_gym/quiz/audio/ 即可（sw.js 会按体积挑选预缓存）
+quiz/audio/
 
 # 系统/编辑器噪音
 .DS_Store
