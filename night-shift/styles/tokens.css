@@ -1632,12 +1632,50 @@ html, body { overscroll-behavior: none; }
   .toasts { bottom: calc(68px + env(safe-area-inset-bottom)); }
   .toast { font-size: 12px; padding: 5px 11px; }
 }
+
+/* ---------- 手机竖屏紧凑适配（窄屏 ≤600px：HUD 整体收一号） ----------
+ * 放在 (pointer: coarse) 之后：手机同时命中两条时，这里更紧凑的字号/内边距压过 coarse 的默认。
+ * 注意：角块真实类名为 .corner.tl / .corner.tr（见 src/hud.mjs），不是 left/right；
+ *       .toasts 同时补 bottom:auto，否则会和 base / coarse 块的 bottom 一起把容器竖向拉伸。 */
+@media (max-width: 600px) {
+.topbar { font-size: 12px; padding: 6px 10px; }
+.topbar .segment { font-size: 11px; margin-left: 6px; }
+.corner { padding: 8px 10px; }
+.corner .label { font-size: 10px; }
+.corner .value { font-size: 15px; }
+.envline .env-row .label { font-size: 10px; }
+.envline .env-row .value { font-size: 12px; }
+.hintbar { font-size: 10px; padding: 5px 8px; bottom: 6px; }
+.prompt { font-size: 13px; padding: 8px 14px; }
+.toast { font-size: 12px; padding: 7px 12px; }
+.toasts { top: 70px; bottom: auto; }
+.queue .head { font-size: 10px; }
+/* 左右角数据块在手机上缩小宽度 */
+.corner.tl, .corner.tr { max-width: 42%; }
+}
+
 /* 手机横屏（高度紧张）：手机面板的 .phone-screen 有 320px 硬性最小高 + overflow:hidden，
  * 会把整个面板撑出屏幕上下两端 —— 关闭按钮在 .phone-actions（面板底部）就永远点不到（2026-10-05 实测）。
  * 横屏下让 screen 收缩到视口内 + 屏幕内滚动，关闭按钮恒可见。 */
 @media (pointer: coarse) and (orientation: landscape) {
   .phone { max-height: calc(100vh - 24px); }
   .phone-screen { min-height: 0; overflow-y: auto; }
+}
+
+/* 手机横屏·矮高度（逻辑高度 < 500px）：整体再收一号，腾出纵向空间 */
+@media (pointer: coarse) and (max-height: 500px) {
+.topbar { font-size: 11px; padding: 4px 8px; }
+.topbar .segment { font-size: 10px; margin-left: 5px; }
+.corner.tl, .corner.tr { padding: 5px 8px; max-width: 38%; }
+.corner .label { font-size: 9px; }
+.corner .value { font-size: 13px; }
+.envline { display: none; }  /* 环境行横屏太占高度，直接藏 */
+.hintbar { font-size: 9px; padding: 3px 6px; bottom: 4px; }
+.prompt { font-size: 12px; padding: 6px 12px; }
+.toast { font-size: 11px; padding: 5px 10px; }
+.toasts { top: 50px; bottom: auto; }
+.theme-banner, .promo-banner { font-size: 12px; padding: 5px 10px; }
+.theme-banner .tb-desc { font-size: 10px; }
 }
 
 /* 触屏点击反馈：桌面 :hover 在手机上不会触发，用 :active / :focus-visible 补 */
