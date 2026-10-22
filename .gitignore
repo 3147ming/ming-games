@@ -1,0 +1,7 @@
+# 开发期构建产物（从 brain-gym 抽取的引擎核心 + UI 分片 + 本地探针）
+# 站点只需要 quiz/index.html 这一个成品文件
+quiz/.build/
+
+# 系统/编辑器噪音
+.DS_Store
+Thumbs.db
