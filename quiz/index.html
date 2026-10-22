@@ -1314,6 +1314,7 @@ function bgmPlay(){
   if(p&&p.catch)p.catch(function(e){
     if(e&&e.name==='NotAllowedError'){musicPlaying=false;updateMusicPanel();return;} // 浏览器要求先有点击
     if(e&&e.name==='NotSupportedError')return;   // 交给 error 事件里的扩展名探测/缺失提示，别用兜底文案覆盖
+    if(e&&e.name==='AbortError')return;           // 换 src / load() 主动打断上一次 play()，属正常探测流程，别报成失败
     musicNote('⚠️ 播放失败：'+((e&&e.message)||(e&&e.name)||'未知原因'));
   });
 }
