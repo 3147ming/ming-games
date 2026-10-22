@@ -39,9 +39,18 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,s
   font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;
   transition:transform .1s,background .15s}
 #topbar .icobtn:active{transform:scale(.92);background:#e6dcff}
+/* PWA 新版本提示条（浮在顶栏下方，不参与书架布局） */
+#updateBar{position:fixed;left:50%;transform:translateX(-50%);top:calc(var(--hdh,64px) + 8px);z-index:80;
+  display:flex;align-items:center;gap:7px;max-width:calc(100vw - 28px);
+  padding:9px 15px;border-radius:99px;background:linear-gradient(135deg,#7c5cff,#9d80ff);color:#fff;
+  font-size:13.5px;font-weight:800;box-shadow:0 8px 22px rgba(124,92,255,.4);cursor:pointer;
+  animation:barIn .28s cubic-bezier(.2,.9,.3,1.2);white-space:nowrap}
+#updateBar:active{filter:brightness(.95)}
+@keyframes barIn{from{opacity:0;transform:translate(-50%,-10px)}to{opacity:1;transform:translate(-50%,0)}}
 #app{max-width:880px;margin:0 auto;padding:14px}
 .view{min-height:60vh}
-#stage{display:flex;flex-direction:column;justify-content:center;min-height:calc(100vh - 64px)}
+#stage{display:flex;flex-direction:column;justify-content:center;
+  min-height:calc(var(--vh,1vh)*100 - var(--hdh,64px) - 28px)}
 .quiztop{padding:4px 2px 0}
 [hidden]{display:none!important}
 
@@ -126,6 +135,11 @@ select:focus{outline:none;border-color:#c3b0ff;box-shadow:0 0 0 3px rgba(124,92,
   font-size:18px;font-weight:800;line-height:1.55;text-align:center;min-height:76px;
   display:flex;align-items:center;justify-content:center;
   box-shadow:inset 0 0 0 1px rgba(124,92,255,.08)}
+/* 全屏答题：题干吃掉中间剩余高度，选项固定贴底 */
+.qbox.fill{flex:1 1 auto;min-height:110px;margin-bottom:10px}
+/* 固定反馈区：一直占位，反馈条进出都不改变布局 */
+.fbzone{min-height:76px;display:flex;align-items:center;justify-content:center;margin:6px 0 2px}
+.fbzone .fb{margin:0;width:100%}
 .opts{display:grid;grid-template-columns:1fr 1fr;gap:9px}
 .opts .obtn{padding:15px 10px;font-size:15.5px;font-weight:800;background:#fff;border:1.5px solid var(--line);
   border-radius:13px;cursor:pointer;color:var(--ink);transition:transform .08s,background .12s,border-color .12s;
@@ -670,6 +684,21 @@ function startType(bk,cn,forceDiff){
   doStartType(bk,cn,bk?qaNormDiff((typeof forceDiff==='number'&&forceDiff>=0)?forceDiff:qaDiffDefault(bk)):-1);
 }
 function qaNormDiff(d){return (typeof d==='number'&&d>=0)?d:0;}
+/* 自定义题库出题：题量够时优先抽最近没出过的题，降低连开两局的重复率 */
+function loadRecent(k){try{var a=JSON.parse(S.getItem(k)||'[]');return (a&&a.length)?a:[];}catch(e){return[];}}
+function saveRecent(k,a){try{S.setItem(k,JSON.stringify(a.slice(0,15)));}catch(e){}}
+function makeCustomRound(tk,pairs){
+  var all=pairs.slice();
+  if(all.length>=15){
+    var rec=loadRecent('bt_qa_recent_'+tk);
+    var fresh=all.filter(function(p){return rec.indexOf(p.q)<0;});
+    var pool=(fresh.length>=10)?fresh:all;
+    var picked=shuffle(pool).slice(0,10);
+    saveRecent('bt_qa_recent_'+tk,picked.map(function(p){return p.q;}).concat(rec).slice(0,15));
+    return picked;
+  }
+  return shuffle(all).slice(0,Math.min(10,all.length));
+}
 function doStartType(bk,cn,d){
   var ds=bk?qaDiffs(bk):null;
   autoMode=(d==='auto');
@@ -682,7 +711,8 @@ function doStartType(bk,cn,d){
     else{var cnt=(curDiff>=0&&ds[curDiff].cnt)?ds[curDiff].cnt:10;qlist=QA_TYPES[bk].gen(cnt,Math.max(0,curDiff));total=qlist.length;}
   }else{
     var pairs=custom[cn]||[];if(!pairs.length){alert('该题库还没有题目，先去录入');return;}
-    qlist=shuffle(pairs.slice()).slice(0,Math.min(10,pairs.length)).map(function(p){
+    var picked=makeCustomRound(typeKey,pairs);
+    qlist=picked.map(function(p){
       // AI / 免费搜索生成的题带选项，手动录入的是填空 —— 两者都要保留
       var o=(p.opts&&p.opts.length>=2)?shuffle(p.opts.slice()):null;
       return {q:p.q,a:p.a,opts:o,custom:true};
@@ -699,7 +729,7 @@ function showQuestion(){
   var Q;
   if(autoMode){if(qlist.length<=qidx){qlist.push(genNextAuto());}Q=qlist[qidx];}else{Q=qlist[qidx];}
   if(!Q){endQuiz();return;}
-  var card=h('div','qcard');
+  var card=h('div','qcard quizfill');
   // 进度条 + HUD
   var pb=h('div','pbar');var pbi=h('i');pbi.style.width=Math.round((qidx+1)/Math.max(1,total)*100)+'%';pb.appendChild(pbi);card.appendChild(pb);
   var hud=h('div','hud');
@@ -711,8 +741,8 @@ function showQuestion(){
   hud.appendChild(ht('span','chip','✅ '+ok));
   card.appendChild(hud);
   if(typeKey==='b:online'&&Q&&Q.src==='offline')card.appendChild(ht('div','hint','📴 联网不可用，正在使用本地离线题库（返回书架点「🔄 联网更新题库」可重试）'));
-  // 题干
-  var qbox=h('div','qbox');qbox.textContent=Q.q;card.appendChild(qbox);
+  // 题干（全屏：吃掉中间剩余高度）
+  var qbox=h('div','qbox fill');qbox.textContent=Q.q;card.appendChild(qbox);
   // 选项
   if(Q.opts){
     var opts=h('div','opts');
@@ -726,6 +756,8 @@ function showQuestion(){
     ir.appendChild(ti);ir.appendChild(sb);card.appendChild(ir);
     var unk2=h('button','unkbtn','😵 不会 · 记入薄弱题');unk2.onclick=function(){markUnknown();};card.appendChild(unk2);
   }
+  // 固定反馈预留区：空着也占位，反馈条出现不会把选项往上顶
+  var fz=h('div','fbzone');fz.id='fbzone';card.appendChild(fz);
   // 底部操作
   var foot=h('div','quizfoot');foot.style.marginTop='12px';
   var quit=h('button','btn ghost','🏠 退出本局');quit.onclick=function(){if(confirm('退出本局？本局成绩不保存。'))renderShelf();};
@@ -733,8 +765,10 @@ function showQuestion(){
   stageEl.appendChild(card);
 }
 function lockOpts(){var bs=stageEl.querySelectorAll?stageEl.querySelectorAll('.obtn,.unkbtn'):[];try{[].slice.call(bs).forEach(function(b){b.disabled=true;});}catch(e){}}
-// 反馈条插到卡片内、底部按钮之前，避免飘到卡片外面
+// 反馈条进固定预留区（#fbzone）；没有预留区时（结算页等）回退到旧逻辑
 function appendFb(fb){
+  var z=stageEl.querySelector?stageEl.querySelector('#fbzone'):null;
+  if(z){clearNode(z);z.appendChild(fb);return;}
   var c=stageEl.querySelector?stageEl.querySelector('.qcard'):null;
   var f=c&&c.querySelector?c.querySelector('.quizfoot'):null;
   if(c&&f)c.insertBefore(fb,f);else stageEl.appendChild(fb);
@@ -993,27 +1027,38 @@ function freeBuild(name){
     finishFree(name,items,sp,card);
   });
 }
+// 干扰项：优先挑和正确答案长度接近的标题，选项才有迷惑性
+function pickDistractors(ansTitle,titles,n){
+  var cand=titles.filter(function(t){return t!==ansTitle;});
+  var near=cand.filter(function(t){return Math.abs(t.length-ansTitle.length)<=4;});
+  var rest=cand.filter(function(t){return near.indexOf(t)<0;}).sort(function(a,b){
+    return Math.abs(a.length-ansTitle.length)-Math.abs(b.length-ansTitle.length);
+  });
+  var pool=(near.length>=n?near:near.concat(rest.slice(0,8))).slice(0,10);
+  return shuffle(pool).slice(0,n);
+}
 function finishFree(name,items,sp,card){
-  var usable=items.filter(function(x){return x.desc&&x.desc.length>4;});
+  var usable=items.filter(function(x){return descOK(x.desc);});
   if(usable.length<4){sp.textContent='⚠️ 资料不足（有效条目 '+usable.length+' 条），无法生成选择题，请手动录入或配置 AI。';var back=h('button','btn ghost','← 返回');back.onclick=function(){renderShelf();};card.appendChild(back);return;}
   var qs=[],titles=usable.map(function(x){return x.title;});
   usable.forEach(function(ans){
-    var others=shuffle(titles.filter(function(t){return t!==ans.title;})).slice(0,3);
+    var others=pickDistractors(ans.title,titles,3);
     if(others.length<3)return;
     var opts=shuffle([ans.title].concat(others));
     var d=ans.desc;
     if(d.indexOf(ans.title)>=0){
       var stem=d.replace(ans.title,'____');
-      if(stem.length>58)stem=stem.slice(0,58)+'…';
+      if(stem.length>64)stem=stem.slice(0,64)+'…';
       qs.push({q:'补全词条：'+stem,a:ans.title,opts:opts});
-    }else{
-      var cut=d.length>46?d.slice(0,46)+'…':d;
+    }else if(d.length<=90&&!/^(该|其|它|这|他|她|此)/.test(d)){
+      // 摘要是一句完整介绍就用「描述的是哪项」；开头是「该/其/它」的指代句信息不全，跳过
+      var cut=d.length>60?d.slice(0,60)+'…':d;
       qs.push({q:'「'+cut+'」描述的是下列哪项？',a:ans.title,opts:opts});
     }
   });
-  qs=shuffle(qs).slice(0,12);
+  qs=shuffle(qs).slice(0,20);
   if(!qs.length){sp.textContent='⚠️ 素材太少，凑不出 4 个选项，请手动录入或配置 AI。';return;}
-  sp.textContent='已抓取 '+items.length+' 条素材，生成 '+qs.length+' 题';
+  sp.textContent='已抓取 '+items.length+' 条素材，生成 '+qs.length+' 题'+(qs.length<8?'（该主题免费资料有限，建议配置 AI 生成更高质量的题）':'');
   previewQuestions(name,qs,card);
 }
 function aiBuild(name){
@@ -1026,10 +1071,15 @@ function aiBuild(name){
   gatherMaterial(name,function(items){
     var material='';
     if(items&&items.length){material='参考素材：\n'+items.slice(0,12).map(function(x){return '· '+x.title+'：'+(x.desc||'').slice(0,90);}).join('\n')+'\n';}
-    var prompt='你是题库生成助手。请为分类「'+name+'」生成 12 道中文选择题。\n'+
-      material+'要求：每题一个事实正确的常识问题，给出 4 个选项（其中 1 个正确），并标注正确答案。\n'+
-      '严格只返回 JSON 数组，格式：[{"q":"问题","a":"正确答案","opts":["选项1","选项2","选项3","选项4"]}, ...]。\n'+
-      '如素材不足，可依据你自身知识补充，但务必事实正确。禁止生成任何政治敏感、色情、暴力、违法内容。';
+    var prompt='你是中文题库生成助手。请围绕主题「'+name+'」生成 18 道中文选择题（不少于 15 道）。\n'+
+      material+
+      '要求：\n'+
+      '1. 多义词消歧：若主题是多义词（如「三角洲」），默认指其中最知名的实体（如游戏《三角洲行动》），全部题目只围绕该实体，不要混入其它义项。\n'+
+      '2. 若主题是游戏 / 影视 / 动漫等作品，题目要考察「对该作品的理解与熟悉」：角色或干员及其技能与定位、地图与关卡、模式与玩法机制、武器与装备、背景设定与开发信息；不要出与作品无关的百科通识题。\n'+
+      '3. 每题恰好 4 个选项，必须同类别（都是干员名、都是地图名、都是武器名……），彼此相近、有迷惑性，正确项唯一；严禁混入不同类别的选项。\n'+
+      '4. 答案必须事实正确，拿不准的题宁可不出一律不要编造；同一个考点不要重复出两次。\n'+
+      '5. 禁止任何政治敏感、色情、暴力、违法内容。\n'+
+      '严格只返回 JSON 数组，不要解释文字、不要 Markdown 代码块，格式：[{"q":"问题","a":"正确答案","opts":["选项1","选项2","选项3","选项4"]}, ...]';
     callAI(cfg,prompt,function(res){
       if(!res||!res.length){sp.textContent='⚠️ AI 未返回有效题目（可能是网络/Key/跨域问题）。可改用「🆓 免费搜索」或手动录入。';var back=h('button','btn ghost','← 返回');back.onclick=function(){renderShelf();};card.appendChild(back);return;}
       sp.textContent='AI 已生成 '+res.length+' 题';previewQuestions(name,res,card);
@@ -1074,7 +1124,24 @@ function baiduSuggest(term,cb){
 }
 // 百度百科词条卡片：返回 {title, desc}
 var SPAM_RE=/视频大全|高清在线看|价目表|官网|下载|安装教程|旗舰店|专卖店|批发|加盟|经销商|4S|报价|二手|保养|维修|有限公司|股份有限公司|怎么样|多少钱|皮卡|摩托|香烟/i;
+// 联想词里的「异类词缀」：明显不是主题实体（保留下载/软件这类搜索词会把题库带偏）
+var NOISE_RE=/下载|软件|app|安卓|android|ios|电影|电视剧|演员|歌手|明星|小说|漫画|破解|外挂|辅助|代练|直播|视频|淘宝|京东|拼多多|什么意思/i;
+var BAD_DESC_RE=/https?:\/\/|www\.|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|\b1[3-9]\d{9}\b|[\u0000-\u0008\u000b\u000c\u000e-\u001f]/;
 function stripTags(v){return String(v==null?'':v).replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ').replace(/\s+/g,' ').trim();}
+// 素材质量闸门：太短 / 带网址邮箱电话 / 汉字太少（乱码）都不出题
+function descOK(d){
+  d=String(d||'').replace(/\s+/g,' ').trim();
+  if(d.length<8)return false;
+  if(BAD_DESC_RE.test(d))return false;
+  if((d.match(/[\u4e00-\u9fa5]/g)||[]).length<4)return false;
+  return true;
+}
+// 主题相关性：标题或摘要里必须出现主题词，挡掉百度联想带来的同名/跨义项词条
+function isRelated(item,topic){
+  if(!topic)return true;
+  var t=String((item&&item.title)||''),d=String((item&&item.desc)||'');
+  return t.indexOf(topic)>=0||d.indexOf(topic)>=0;
+}
 function baikeCard(term,cb){
   var u='https://baike.baidu.com/api/openapi/BaikeLemmaCardApi?scope=103&appid=379020&bk_length=600&format=json&bk_key='+encodeURIComponent(term)+'&callback=__CB__';
   jsonp(u,function(d){
@@ -1100,12 +1167,15 @@ function baikeCard(term,cb){
   },6000);
 }
 // 统一素材收集：百度百科主词条 → 联想词 → 信息框关联词条 → 维基兜底
-function fetchCards(terms,cb){
+function fetchCards(terms,cb,topic){
   if(!terms.length){cb([],[]);return;}
   var out=[],links=[],p=terms.length;
   terms.forEach(function(t){
     baikeCard(t,function(c){
-      if(c){if(c.desc&&c.desc.length>4)out.push(c);if(c.links&&c.links.length)links=links.concat(c.links);}
+      if(c){
+        if(descOK(c.desc)&&isRelated(c,topic))out.push(c);   // 质量 + 主题相关性双闸
+        if(c.links&&c.links.length)links=links.concat(c.links);
+      }
       p--;if(p<=0)cb(out,links);
     });
   });
@@ -1123,7 +1193,7 @@ function gatherMaterial(name,cb){
     seen[name]=1;list.push(name); // 主词条一定在
     (terms||[]).forEach(function(t){
       if(!t||seen[t])return;
-      if(SPAM_RE.test(t))return;   // 过滤明显广告/长尾搜索词
+      if(SPAM_RE.test(t)||NOISE_RE.test(t))return;   // 广告词 + 异类词缀（下载/安卓/电影…）
       if(t.length>12)return;
       seen[t]=1;list.push(t);
     });
@@ -1133,19 +1203,23 @@ function gatherMaterial(name,cb){
         if(final.length>=4)cb(final);else wikiFallback();
       }
       if(items.length>=10){finish(items);return;}
-      // 第二轮：用信息框里的关联词条补充（都是真实百科条目）
+      // 第二轮：用信息框里的关联词条补量（干员 / 地图 / 武器…都藏在 card 的链接里）
+      // 含主题词的优先；其余也作为种子去查，真伪交给卡片层的「摘要必须提到主题」把关，
+      // 这样既能收到《三角洲行动》的干员词条，也不会把「吴彦祖 / 虚幻引擎5」放进来。
       var more=[],ms={};
-      (links||[]).forEach(function(t){
+      function addSeed(t){
         if(!t||seen[t]||ms[t])return;
-        if(SPAM_RE.test(t))return;
+        if(SPAM_RE.test(t)||NOISE_RE.test(t))return;
         if(t.length<2||t.length>12)return;
         ms[t]=1;more.push(t);
-      });
-      more=more.slice(0,10);
+      }
+      (links||[]).forEach(function(t){if(t&&t.indexOf(name)>=0)addSeed(t);});
+      (links||[]).forEach(addSeed);
+      more=more.slice(0,12);
       if(!more.length){finish(items);return;}
       more.forEach(function(t){seen[t]=1;});
-      fetchCards(more,function(items2){finish(items.concat(items2));});
-    });
+      fetchCards(more,function(items2){finish(items.concat(items2));},name);
+    },name);
   });
 }
 // 免费素材源：中文维基 opensearch → 中文维基全文搜索 → Wikidata 实体（依次降级）
@@ -1202,22 +1276,66 @@ function callAI(cfg,prompt,cb){
 }
 
 /* ---------- 任务4：背景音乐 ---------- */
-var MUSIC_DEFAULT=[{name:'🎹 内置轻音乐（免文件）',synth:true},{name:'Flower Dance',file:'audio/flower-dance.mp3'},{name:'Summer',file:'audio/summer.mp3'},{name:'Luv Letter',file:'audio/luv-letter.mp3'},{name:'卡农（钢琴版）',file:'audio/canon.mp3'}];
+// 曲目按「基名 + 扩展名链」探测：放 flower-dance.flac / flower-dance.wav 都能认
+var AUDIO_EXTS=['mp3','flac','wav','m4a','ogg','aac'];
+var MUSIC_DEFAULT=[
+  {name:'🎹 内置轻音乐（免文件）',synth:true},
+  {name:'Flower Dance',base:'audio/flower-dance',exts:AUDIO_EXTS},
+  {name:'Windy Hill',base:'audio/windy-hill',exts:AUDIO_EXTS},
+  {name:'Summer',base:'audio/summer',exts:AUDIO_EXTS},
+  {name:'Luv Letter',base:'audio/luv-letter',exts:AUDIO_EXTS},
+  {name:'卡农（钢琴版）',base:'audio/canon',exts:AUDIO_EXTS}
+];
 var MUSIC_CFG_KEY='bt_qa_music';
-var bgm=null,musicList=[],musicIdx=0,musicLoop=true,musicVol=0.5,musicPlaying=false,musicFailStreak=0;
+var bgm=null,musicList=[],musicIdx=0,musicLoop=true,musicVol=0.5,musicPlaying=false,musicFailStreak=0,musicErrMsg='';
 function loadMusicCfg(){try{return JSON.parse(S.getItem(MUSIC_CFG_KEY)||'{}')||{};}catch(e){return{};}}
 function buildMusicList(){var cfg=loadMusicCfg();musicList=MUSIC_DEFAULT.slice();if(cfg.custom&&cfg.custom.length)musicList=musicList.concat(cfg.custom);musicIdx=cfg.idx||0;if(musicIdx>=musicList.length)musicIdx=0;musicLoop=cfg.loop!==false;musicVol=(cfg.vol==null?0.5:cfg.vol);}
 function saveMusicCfg(){var cfg=loadMusicCfg();cfg.idx=musicIdx;cfg.loop=musicLoop;cfg.vol=musicVol;try{S.setItem(MUSIC_CFG_KEY,JSON.stringify(cfg));}catch(e){}}
+/* 当前曲目该用哪个地址：在线 URL > 旧版 file 字段 > 基名+第 N 个扩展名 */
+function musicSrcOf(tr){
+  if(!tr)return '';
+  if(tr.url)return tr.url;
+  if(tr.file)return tr.file;
+  if(tr.base&&tr.exts&&tr.exts.length){
+    var k=Math.max(0,Math.min(tr._ext||0,tr.exts.length-1));
+    return tr.base+'.'+tr.exts[k];
+  }
+  return '';
+}
+function musicMissText(tr){
+  if(!tr||!tr.base)return '⚠️ 音频文件缺失，请用「➕ 添加」导入本地音乐';
+  return '⚠️ 未找到 '+tr.base+'.'+(tr.exts||['mp3']).slice(0,3).join('/.')+' 等文件 —— 请按「小写+连字符」命名放进 quiz/audio/，或用「➕ 添加」导入';
+}
+function musicNote(msg){musicErrMsg=msg||'';updateMusicPanel();}
+function bgmPlay(){
+  if(!bgm)return;
+  var p=null;
+  try{p=bgm.play();}catch(e){musicNote('⚠️ 播放失败：'+((e&&e.message)||(e&&e.name)||'未知原因'));return;}
+  if(p&&p.catch)p.catch(function(e){
+    if(e&&e.name==='NotAllowedError'){musicPlaying=false;updateMusicPanel();return;} // 浏览器要求先有点击
+    if(e&&e.name==='NotSupportedError')return;   // 交给 error 事件里的扩展名探测/缺失提示，别用兜底文案覆盖
+    musicNote('⚠️ 播放失败：'+((e&&e.message)||(e&&e.name)||'未知原因'));
+  });
+}
 function ensureBgm(){if(bgm)return bgm;bgm=new Audio();bgm.loop=false;bgm.volume=musicVol;
-  bgm.addEventListener('playing',function(){musicFailStreak=0;musicPlaying=true;updateMusicPanel();});
+  bgm.addEventListener('playing',function(){musicFailStreak=0;musicPlaying=true;musicErrMsg='';updateMusicPanel();});
   bgm.addEventListener('ended',function(){if(musicLoop)playMusic((musicIdx+1)%musicList.length);else{musicPlaying=false;updateMusicPanel();}});
-  bgm.addEventListener('error',function(){// 文件缺失：逐个跳过，全部缺失则停止（避免无限循环）
-    if(musicList[musicIdx]&&musicList[musicIdx].file)musicList[musicIdx].missing=true;
-    musicFailStreak++;
-    if(musicFailStreak>=musicList.length){musicPlaying=false;updateMusicPanel();var nmL=$('mpName');if(nmL)nmL.textContent='⚠️ 音频文件缺失，请导入本地 mp3';return;}
-    var nx=(musicIdx+1)%musicList.length;
-    if(nx===musicIdx){musicPlaying=false;updateMusicPanel();return;}
-    playMusic(nx);});
+  bgm.addEventListener('error',function(){
+    var tr=musicList[musicIdx]||{};
+    // 扩展名自动探测：还有候选就换下一个试（404 / 格式不支持都会走这里）
+    if(tr.base&&tr.exts&&(tr._ext||0)<tr.exts.length-1){
+      tr._ext=(tr._ext||0)+1;
+      bgm.src=musicSrcOf(tr);
+      try{bgm.load();}catch(e){}
+      bgmPlay();
+      return;
+    }
+    // 全部扩展名都失败：明确报错并停在这一首（自动乱跳会让提示串到别的曲目上）
+    if(!tr.synth)tr.missing=true;
+    musicPlaying=false;
+    musicNote(musicMissText(tr));
+    if(!tr._warned){tr._warned=1;toast(musicMissText(tr));}
+  });
   return bgm;}
 
 /* 内置合成音（无音频文件时也能听） */
@@ -1253,28 +1371,44 @@ function synthStart(){
     tick();synthTimer=setInterval(tick,340);return true;
   }catch(e){return false;}
 }
-function playMusic(i){
+function playMusic(i,keepMsg){
   musicIdx=i;var tr=musicList[i];if(!tr)return;
+  if(!keepMsg)musicErrMsg='';
   if(tr.synth){if(bgm)try{bgm.pause();}catch(e){}musicPlaying=synthStart();saveMusicCfg();updateMusicPanel();return;}
   synthStop();ensureBgm();
-  var src=null;
-  if(tr.url)src=tr.url;
-  else if(tr.blobKey){loadBlob(tr.blobKey,function(b){if(b){bgm.src=URL.createObjectURL(b);bgm.play().catch(function(){});}else{var nx=(i+1)%musicList.length;if(nx!==i)playMusic(nx);}});musicPlaying=true;saveMusicCfg();updateMusicPanel();return;}
-  else if(tr.file)src=tr.file;
-  if(src){bgm.src=src;bgm.play().catch(function(){});}
+  if(tr.blobKey){   // 本地导入：IndexedDB 里的 blob，无命名限制
+    loadBlob(tr.blobKey,function(b){
+      if(!b){musicNote('⚠️ 本地音频读取失败（可能已被清理），请重新导入');return;}
+      bgm.src=URL.createObjectURL(b);bgmPlay();
+    });
+    musicPlaying=true;saveMusicCfg();updateMusicPanel();return;
+  }
+  tr._ext=0;        // 从第一个扩展名开始探测，出错自动往后试
+  var src=musicSrcOf(tr);
+  if(src){bgm.src=src;bgmPlay();}
+  else{musicPlaying=false;musicNote('⚠️ 该曲目没有可用地址');return;}
   musicPlaying=true;saveMusicCfg();updateMusicPanel();
 }
-function toggleMusic(){if(musicPlaying){synthStop();if(bgm)try{bgm.pause();}catch(e){}musicPlaying=false;updateMusicPanel();}else{playMusic(musicIdx);}}
-function updateMusicPanel(){var p=$('musicPanel');if(!p)return;var tr=musicList[musicIdx]||{};var nm=$('mpName');if(nm)nm.textContent=(tr.name||'—')+(tr.missing?'（音频缺失）':'');var pp=$('mpPlay');if(pp)pp.textContent=musicPlaying?'⏸':'▶';}
+function toggleMusic(){if(musicPlaying){synthStop();if(bgm)try{bgm.pause();}catch(e){}musicPlaying=false;updateMusicPanel();}else{musicErrMsg='';playMusic(musicIdx);}}
+function updateMusicPanel(){
+  var p=$('musicPanel');if(!p)return;
+  var tr=musicList[musicIdx]||{};
+  var nm=$('mpName');if(nm)nm.textContent=(tr.name||'—')+(tr.missing?'（文件缺失）':'');
+  var pp=$('mpPlay');if(pp)pp.textContent=musicPlaying?'⏸':'▶';
+  var er=$('mpErr');if(er){er.textContent=musicErrMsg||'';er.style.display=musicErrMsg?'':'none';}
+}
 function openMusic(){
   buildMusicList();
   var ov=overlayPanel('🎵 背景音乐');
   ov.p.id='musicPanel';
-  ov.p.appendChild(ht('div','hint','「🎹 内置轻音乐」免音频文件即可播放；其余为占位曲目，把 mp3 放进 quiz/audio/ 后自动可用，缺失自动跳过。默认关闭，状态会被记住。'));
+  ov.p.appendChild(ht('div','hint','「🎹 内置轻音乐」免文件即可播放。其它曲目支持 mp3 / flac / wav / m4a / ogg / aac：把文件放进 quiz/audio/，命名成 flower-dance.flac、windy-hill.wav 这种「小写 + 连字符」即可自动识别（扩展名会自动探测）；文件名不规范就用「➕ 添加」导入（存本机，无命名限制，离线也能播）。默认关闭，状态会被记住。'));
   var now=h('div');now.style.textAlign='center';now.style.margin='10px 0 4px';
   var nameEl=ht('div',null,(musicList[musicIdx]||{}).name||'—');nameEl.id='mpName';
   nameEl.style.cssText='font-size:17px;font-weight:800;color:var(--purple-d)';
   now.appendChild(nameEl);
+  var errEl=ht('div','hint','');errEl.id='mpErr';
+  errEl.style.cssText='color:#b8233c;font-weight:700;font-size:12px;line-height:1.5;margin-top:7px;display:none';
+  now.appendChild(errEl);
   var ctrl=h('div');ctrl.style.cssText='display:flex;gap:12px;justify-content:center;align-items:center;margin:12px 0';
   var prev=h('button','btn ghost','⏮');prev.style.cssText='width:50px;padding:12px 0';
   prev.onclick=function(){playMusic((musicIdx-1+musicList.length)%musicList.length);openMusic();};
@@ -1304,6 +1438,8 @@ function openMusic(){
     else if(tr.synth)row.appendChild(ht('span','ms','内置'));
     else if(tr.url)row.appendChild(ht('span','ms','在线'));
     else if(tr.blobKey)row.appendChild(ht('span','ms','本地'));
+    else if(tr.base)row.appendChild(ht('span','ms','audio/'));
+    if(tr.missing)row.title=musicMissText(tr);
     row.onclick=function(){playMusic(i);openMusic();};
     ov.p.appendChild(row);
   });
@@ -1326,6 +1462,7 @@ function openMusic(){
     buildMusicList();closeOverlay(ov);openMusic();};
   urlWrap.appendChild(addUrl);ov.p.appendChild(urlWrap);
   ov.p.appendChild(ht('div','muted','版权说明：内置曲目为默认名，正式公开使用前请确保你拥有相应音频的授权。'));
+  updateMusicPanel();
 }
 
 /* ---------- AI 服务商预设（选服务商自动填地址 + 刷新模型） ---------- */
@@ -1487,8 +1624,17 @@ function overlayPanel(title){
 function closeOverlay(o){if(o&&o.ov&&o.ov.parentNode)o.ov.parentNode.removeChild(o.ov);}
 
 /* ---------- 启动 ---------- */
+function setVH(){
+  try{
+    var vh=(window.visualViewport&&window.visualViewport.height)||window.innerHeight||0;
+    if(vh)document.documentElement.style.setProperty('--vh',(vh/100)+'px');
+    var tb=document.getElementById('topbar');
+    if(tb)document.documentElement.style.setProperty('--hdh',tb.offsetHeight+'px');
+  }catch(e){}
+}
 function init(){
   shelfEl=$('shelf');stageEl=$('stage');overlayRoot=$('overlayRoot');
+  setVH();window.addEventListener('resize',setVH);window.addEventListener('orientationchange',setVH);
   buildMusicList();
   $('backBtn').onclick=function(){if(confirm('返回大厅？当前进度将丢失。'))window.location.href='../index.html';};
   $('statsBtn').onclick=function(){openStats();};
@@ -1511,6 +1657,19 @@ function pwaState(){
   }catch(e){return 'ℹ️ 无法读取离线状态，不影响正常使用。';}
 }
 
+/* ---------- PWA：新版本提示条 ---------- */
+var swWaiting=null;
+function showUpdateBar(){
+  if(document.getElementById('updateBar'))return;
+  var b=h('div',null,'🔄 发现新版本，点击刷新');
+  b.id='updateBar';
+  b.onclick=function(){
+    b.textContent='正在更新…';
+    try{if(swWaiting)swWaiting.postMessage({type:'SKIP_WAITING'});}catch(e){}
+    setTimeout(function(){location.reload();},350);
+  };
+  document.body.appendChild(b);
+}
 /* ---------- PWA：Service Worker 注册 ----------
    只在安全上下文（https / localhost / 127.0.0.1）注册；
    file:// 双击打开或非 https 局域网地址会静默跳过，不抛错、不打断使用。 */
@@ -1523,8 +1682,16 @@ function registerSW(){
     var secure=(proto==='https:')||host==='localhost'||host==='127.0.0.1'||host==='[::1]';
     if(!secure)return;                                    // http://192.168.x 不是安全上下文
     navigator.serviceWorker.register('./sw.js',{scope:'./'}).then(function(reg){
-      // 后台有新版 SW 时让它尽快接管（配合 sw.js 里的 skipWaiting）
-      try{if(reg&&reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});}catch(e){}
+      // 上次打开时已经下载好的新版本：直接提示，不偷偷替用户刷新
+      if(reg&&reg.waiting&&navigator.serviceWorker.controller){swWaiting=reg.waiting;showUpdateBar();}
+      reg.addEventListener('updatefound',function(){
+        var nw=reg.installing;
+        if(!nw)return;
+        nw.addEventListener('statechange',function(){
+          // installed 且页面仍被旧 SW 接管 = 新版在等待，给用户一个刷新入口
+          if(nw.state==='installed'&&navigator.serviceWorker.controller){swWaiting=nw;showUpdateBar();}
+        });
+      });
     }).catch(function(){/* 注册失败（如隐私模式）静默忽略，应用照常可用 */});
   }catch(e){/* 老浏览器 / 被策略禁用：静默忽略 */}
 }

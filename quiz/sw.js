@@ -14,16 +14,20 @@
    - 发布新版本时把 VERSION 加一（quiz-v1 → quiz-v2），旧缓存会在 activate 里被清掉。
    ============================================================= */
 
-var VERSION = 'quiz-v3';
+var VERSION = 'quiz-v4';
 var CACHE = VERSION;
 var BASE = self.registration ? self.registration.scope : self.location.href.replace(/sw\.js.*$/, '');
 
 /* 应用外壳：必须缓存成功 */
 var CORE = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
 
-/* 音频是可选资源：存在才缓存，且体积超限就跳过（避免几十 MB 的曲库把安装卡死） */
-var AUDIO_GUESS = ['./audio/flower-dance.mp3', './audio/summer.mp3', './audio/luv-letter.mp3', './audio/canon.mp3'];
-var AUDIO_MAX_BYTES = 6 * 1024 * 1024;
+/* 音频可选：按「基名 + 扩展名链」探测，哪个存在缓存哪个；超过上限跳过 */
+var AUDIO_BASES = ['./audio/flower-dance', './audio/windy-hill', './audio/summer', './audio/luv-letter', './audio/canon'];
+var AUDIO_EXTS = ['mp3', 'flac', 'wav', 'm4a', 'ogg', 'aac'];
+var AUDIO_MAX_BYTES = 60 * 1024 * 1024;
+/* 安装阶段只预热「小文件」：26MB flac / 54MB wav 这类大曲子等用户真的点了播放再缓存
+   （audioFirst 会把 ≤60MB 的都存下来），避免首次打开就偷跑几十 MB 流量。 */
+var AUDIO_WARM_MAX = 10 * 1024 * 1024;
 var AUDIO_RE = /\.(mp3|m4a|aac|ogg|oga|wav|flac|opus)$/i;
 
 function abs(p) {
@@ -60,24 +64,32 @@ self.addEventListener('install', function (event) {
     // 其余外壳并发抓（串行在冷 CDN 上要 8~10s，并发能压到 2~3s）
     await Promise.all(rest.map(grab));
 
-    // 可选音频：先 HEAD 探体积，超限就完全不下载（避免把几十 MB 的曲库拖进安装流程）
-    await Promise.all(AUDIO_GUESS.map(async function (p) {
-      try {
-        var u = abs(p);
-        var head = await fetch(new Request(u, { method: 'HEAD', cache: 'no-store' }));
-        if (!head || !head.ok) return;
-        var len = parseInt(head.headers.get('content-length') || '0', 10);
-        if (!len || len > AUDIO_MAX_BYTES) return;
-        var r = await fetch(new Request(u, { cache: 'reload' }));
-        if (!r || !r.ok) return;
-        await cache.put(u, r.clone());
-      } catch (e) { /* 占位文件缺失 = 正常情况，忽略 */ }
-    }));
+    // 可选音频：按「基名+扩展名」探测，最多给它 8s；没下完的曲子首次播放时由 audioFirst 补缓存
+    await Promise.race([
+      Promise.all(AUDIO_BASES.map(function (base) { return warmAudio(cache, base); })),
+      new Promise(function (res) { setTimeout(res, 8000); })
+    ]);
 
     if (!shellOK) throw new Error('quiz sw: precache shell failed');
     await self.skipWaiting();
   })(), 30000));
 });
+
+/* 逐个扩展名试，命中就缓存并停手（26MB flac / 54MB wav 也能进缓存，但绝不拖垮安装） */
+async function warmAudio(cache, base) {
+  for (var k = 0; k < AUDIO_EXTS.length; k++) {
+    var u = abs(base + '.' + AUDIO_EXTS[k]);
+    try {
+      var head = await fetch(new Request(u, { method: 'HEAD', cache: 'no-store' }));
+      if (!head || !head.ok) continue;
+      var len = parseInt(head.headers.get('content-length') || '0', 10);
+      if (!len || len > AUDIO_WARM_MAX) return;
+      var r = await fetch(new Request(u, { cache: 'reload' }));
+      if (r && r.ok) await cache.put(u, r.clone());
+      return;
+    } catch (e) { /* 该扩展名不存在，试下一个 */ }
+  }
+}
 
 /* ---------------- activate ---------------- */
 self.addEventListener('activate', function (event) {
