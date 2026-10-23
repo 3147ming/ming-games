@@ -844,6 +844,10 @@ function finish(sc){
   var rev=h('button','btn ghost','😵 错题回顾');rev.style.marginTop='9px';rev.style.width='100%';
   rev.onclick=function(){startReview();};card.appendChild(rev);
   stageEl.appendChild(card);
+  // 自定义题库：结算时若题量已不足，静默在后台补题（不打断结算页）
+  if(lastRun&&lastRun.cn&&typeKey&&typeKey.indexOf('c:')===0){
+    setTimeout(function(){autoRefill(lastRun.cn);},600);
+  }
 }
 
 /* ---------- 薄弱题回顾 ---------- */
@@ -1066,6 +1070,20 @@ function finishFree(name,items,sp,card){
   sp.textContent='已抓取 '+items.length+' 条素材，生成 '+qs.length+' 题'+(qs.length<8?'（该主题免费资料有限，建议配置 AI 生成更高质量的题）':'');
   previewQuestions(name,qs,card);
 }
+/* ---------- AI 出题 prompt（aiBuild 与「边刷边补」共用同一套要求） ---------- */
+function makeQuizPrompt(name,count,items){
+  var material='';
+  if(items&&items.length){material='参考素材：\n'+items.slice(0,12).map(function(x){return '· '+x.title+'：'+(x.desc||'').slice(0,90);}).join('\n')+'\n';}
+  return '你是中文题库生成助手。请围绕主题「'+name+'」生成 '+count+' 道中文选择题（不少于 '+Math.max(8,count-3)+' 道）。\n'+
+    material+
+    '要求：\n'+
+    '1. 多义词消歧：若主题是多义词（如「三角洲」），默认指其中最知名的实体（如游戏《三角洲行动》），全部题目只围绕该实体，不要混入其它义项。\n'+
+    '2. 若主题是游戏 / 影视 / 动漫等作品，题目要考察「对该作品的理解与熟悉」：角色或干员及其技能与定位、地图与关卡、模式与玩法机制、武器与装备、背景设定与开发信息；不要出与作品无关的百科通识题。\n'+
+    '3. 每题恰好 4 个选项，必须同类别（都是干员名、都是地图名、都是武器名……），彼此相近、有迷惑性，正确项唯一；严禁混入不同类别的选项。\n'+
+    '4. 答案必须事实正确，拿不准的题宁可不出一律不要编造；同一个考点不要重复出两次。\n'+
+    '5. 禁止任何政治敏感、色情、暴力、违法内容。\n'+
+    '严格只返回 JSON 数组，不要解释文字、不要 Markdown 代码块，格式：[{"q":"问题","a":"正确答案","opts":["选项1","选项2","选项3","选项4"]}, ...]';
+}
 function aiBuild(name){
   var cfg=loadAICfg();
   showView('stage');clearNode(stageEl);
@@ -1074,22 +1092,40 @@ function aiBuild(name){
   stageEl.appendChild(card);
   if(navigator.onLine===false){offlineBlock(card,sp,'「AI 建题库」');return;}
   gatherMaterial(name,function(items){
-    var material='';
-    if(items&&items.length){material='参考素材：\n'+items.slice(0,12).map(function(x){return '· '+x.title+'：'+(x.desc||'').slice(0,90);}).join('\n')+'\n';}
-    var free=isFreeAI(cfg.url);
-    var cntTxt=free?'15 道中文选择题（不少于 12 道）':'30 道中文选择题（不少于 25 道）';
-    var prompt='你是中文题库生成助手。请围绕主题「'+name+'」生成 '+cntTxt+'。\n'+
-      material+
-      '要求：\n'+
-      '1. 多义词消歧：若主题是多义词（如「三角洲」），默认指其中最知名的实体（如游戏《三角洲行动》），全部题目只围绕该实体，不要混入其它义项。\n'+
-      '2. 若主题是游戏 / 影视 / 动漫等作品，题目要考察「对该作品的理解与熟悉」：角色或干员及其技能与定位、地图与关卡、模式与玩法机制、武器与装备、背景设定与开发信息；不要出与作品无关的百科通识题。\n'+
-      '3. 每题恰好 4 个选项，必须同类别（都是干员名、都是地图名、都是武器名……），彼此相近、有迷惑性，正确项唯一；严禁混入不同类别的选项。\n'+
-      '4. 答案必须事实正确，拿不准的题宁可不出一律不要编造；同一个考点不要重复出两次。\n'+
-      '5. 禁止任何政治敏感、色情、暴力、违法内容。\n'+
-      '严格只返回 JSON 数组，不要解释文字、不要 Markdown 代码块，格式：[{"q":"问题","a":"正确答案","opts":["选项1","选项2","选项3","选项4"]}, ...]';
+    // 免费通道给 15 道（后端输出上限约 1500 token），付费通道翻倍
+    var prompt=makeQuizPrompt(name,isFreeAI(cfg.url)?15:30,items);
     callAI(cfg,prompt,function(res){
       if(!res||!res.length){sp.textContent='⚠️ AI 未返回有效题目（可能是网络/Key/跨域问题）。可改用「🆓 免费搜索」或手动录入。';var back=h('button','btn ghost','← 返回');back.onclick=function(){renderShelf();};card.appendChild(back);return;}
       sp.textContent='AI 已生成 '+res.length+' 题';previewQuestions(name,res,card);
+    });
+  });
+}
+/* ---------- 边刷边补：自定义题库总量不足时静默补题 ---------- */
+var REFILL_MIN=10;        // 题库总量 ≤ 此值才补（说明已经刷得差不多了）
+var REFILL_TARGET=20;     // 补到多少题左右
+var refillBusy=false;
+function autoRefill(cn){
+  if(refillBusy)return;
+  var arr=custom[cn]||[];
+  if(arr.length>REFILL_MIN)return;
+  var cfg=loadAICfg();
+  if(!cfg||!cfg.url)return;                 // 没配 AI 就不打扰
+  if(!isFreeAI(cfg.url)&&!cfg.key)return;   // 付费通道没 Key 也不打扰
+  refillBusy=true;
+  var per=isFreeAI(cfg.url)?15:30;
+  var count=Math.max(per,Math.min(per,REFILL_TARGET-arr.length));
+  if(count<5){refillBusy=false;return;}
+  gatherMaterial(cn,function(items){
+    callAI(cfg,makeQuizPrompt(cn,count,items),function(res){
+      refillBusy=false;
+      if(!res||!res.length)return;          // 失败静默，下局再试
+      var exist={};arr.forEach(function(x){exist[x.q]=1;});
+      var fresh=res.filter(function(x){return x&&x.q&&!exist[x.q];});
+      if(!fresh.length)return;
+      custom[cn]=arr.concat(fresh);saveCustom(custom);
+      // 书架正开着就就地刷新题量；答题/结算中绝不能调（renderShelf 里会 showView('shelf') 把用户弹回书架）
+      if(shelfEl&&!shelfEl.hidden)renderShelf();
+      toast('✨ 已自动补充 '+fresh.length+' 题（当前共 '+custom[cn].length+' 题）');
     });
   });
 }
