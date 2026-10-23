@@ -160,9 +160,14 @@ select:focus{outline:none;border-color:#c3b0ff;box-shadow:0 0 0 3px rgba(124,92,
 .fb .aibtn:disabled{opacity:.62;cursor:default}
 .fb .fbnext{display:inline-block;margin:7px 0 0 7px;font-size:12.5px;padding:6px 12px;border:none;cursor:pointer;
   background:#eef8f2;color:#177a4d;border-radius:14px;font-weight:800}
+.fb .fbretry{display:inline-block;margin:7px 0 0;font-size:12.5px;padding:6px 12px;border:none;cursor:pointer;
+  background:#1f9d63;color:#fff;border-radius:14px;font-weight:800}
+.fb .fbretry:disabled{opacity:.62;cursor:default}
 .unkbtn{padding:12px;font-size:14.5px;background:#fffaf0;color:#a86400;border:1px solid #ffe2b0;
   font-weight:800;border-radius:12px;cursor:pointer;margin-top:9px;width:100%}
 .unkbtn:active{background:#fff2da}
+/* 作答后「不会」会被禁用：现在答错停住不跳，留着看起来可点的灰按钮容易让人反复点 */
+.unkbtn:disabled{opacity:.55;cursor:default}
 .quizfoot{display:flex;gap:8px;margin-top:auto;padding-top:16px}
 .quizfoot .btn{flex:1;padding:11px;font-size:13.5px}
 
@@ -1182,7 +1187,9 @@ function showQuestion(){
 
   stageEl.appendChild(card);
 }
-function lockOpts(){var bs=stageEl.querySelectorAll?stageEl.querySelectorAll('.obtn,.unkbtn'):[];try{[].slice.call(bs).forEach(function(b){b.disabled=true;});}catch(e){}}
+/* 作答后锁死所有可点的东西：选项、不会、填空输入框与提交、手写输入框与 AI 提交。
+   现在答错会停住不跳，留着点了没反应的按钮比直接禁掉更让人困惑。 */
+function lockOpts(){var bs=stageEl.querySelectorAll?stageEl.querySelectorAll('.obtn,.unkbtn,.codeinp,.qcard .row .btn'):[];try{[].slice.call(bs).forEach(function(b){b.disabled=true;});}catch(e){}}
 // 反馈条进固定预留区（#fbzone）；没有预留区时（结算页等）回退到旧逻辑
 function appendFb(fb){
   var z=stageEl.querySelector?stageEl.querySelector('#fbzone'):null;
@@ -1234,7 +1241,7 @@ function appendExp(fb,Q){
       if(!t){b.disabled=false;b.textContent='💡 重试 AI 解析';return;}
       var d=ht('div','fexp','💡 解析：'+t);
       if(b.parentNode)b.parentNode.replaceChild(d,b);else fb.appendChild(d);
-      extendNext(5000);
+      /* 手动模式：答错后本来就不自动跳，解析回来直接替换即可，无需延长停留 */
     });
   };
   fb.appendChild(b);
@@ -1244,7 +1251,20 @@ function appendNextChip(fb){
   b.onclick=function(){goNext();};
   fb.appendChild(b);
 }
-/* 走题节奏：解析要看得见，所以答错/不会停久一点，并允许手动「下一题」跳过等待 */
+/* 「🔄 重试」：把同一题重新渲染出来再答一次。分数只认「首次 + 一次重试奖励」，杜绝反复刷分。
+   showQuestion 会重建选项/输入框，而 lockOpts 只在作答后锁 —— 重渲染天然解锁，不用额外处理。 */
+function retryQuestion(){
+  cancelPending();            /* 清掉任何残留的自动跳转计时 */
+  locked=false;               /* 解锁，允许再次作答 */
+  showQuestion();             /* qidx 不动；Q 还是同一对象，settled 标记保留 */
+}
+function appendRetryChip(fb){
+  var b=ht('button','chip fbretry','🔄 重试');
+  b.onclick=function(){retryQuestion();};
+  fb.appendChild(b);
+}
+/* 走题节奏：只有「答对」自动跳（800ms，保持流畅）；答错 / 不会一律停住，
+   由用户点「🔄 重试」或「下一题 ›」决定去向 —— 错题是学习时刻，不该被计时器抢走。 */
 var nextTimer=null;
 function cancelPending(){if(nextTimer){try{clearTimeout(nextTimer);}catch(e){}nextTimer=null;}}
 function advance(ms){
@@ -1252,11 +1272,6 @@ function advance(ms){
   nextTimer=later(function(){nextTimer=null;qidx++;showQuestion();},ms||800);
 }
 function goNext(){cancelPending();qidx++;showQuestion();}
-function extendNext(ms){
-  if(!nextTimer)return;
-  try{clearTimeout(nextTimer);}catch(e){}
-  nextTimer=later(function(){nextTimer=null;qidx++;showQuestion();},ms);
-}
 
 /* ---------- 页面层级：浏览器返回只回退一层（书架是根，根上再返回才退出网页） ---------- */
 var navStack=['shelf'];
@@ -1326,64 +1341,97 @@ function syncHudLevel(){
 function markUnknown(){
   if(locked)return;locked=true;
   var Q=qlist[qidx];
-  if(Q&&!reviewMode&&!Q.hand){addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,time:Date.now()});}
-  if(autoMode){
-    var _bk=(typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
-    selfWindow.push(0);if(selfWindow.length>WIN_CAP)selfWindow.shift();
-    selfRank=Math.max(0,selfRank-1);lvlCool=LEVEL_COOL;setRank(_bk,selfRank);
-    combo=0;wrongCombo=0;
-    if(QA_TYPES[_bk])curDiffLabel=QA_TYPES[_bk].diffs[selfRank].n;
-    syncHudLevel();
+  /* 首次作答才结算（记薄弱题 / 记自适应窗口）；重试后再按「不会」不再重复记 */
+  var first=!(Q&&Q.settled);
+  if(Q)Q.settled=true;
+  var recorded=false;
+  if(first){
+    if(Q&&!reviewMode&&!Q.hand){
+      addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,time:Date.now()});
+      recorded=true;
+    }
+    if(autoMode){
+      var _bk=(typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
+      selfWindow.push(0);if(selfWindow.length>WIN_CAP)selfWindow.shift();
+      selfRank=Math.max(0,selfRank-1);lvlCool=LEVEL_COOL;setRank(_bk,selfRank);
+      combo=0;wrongCombo=0;
+      if(QA_TYPES[_bk])curDiffLabel=QA_TYPES[_bk].diffs[selfRank].n;
+      syncHudLevel();
+    }
   }
   lockOpts();
   var fb=h('div','fb unk');
-  fb.appendChild(ht('div','fbm','😵 已跳过本题'+(reviewMode?'':'，已记入薄弱题')));
+  fb.appendChild(ht('div','fbm','😵 已跳过本题'+(recorded?'，已记入薄弱题':'')));
   if(Q&&!Q.hand&&Q.a!=null&&String(Q.a)!=='')fb.appendChild(ht('div','fba','正确答案：'+Q.a));
   appendExp(fb,Q);
+  if(Q&&!Q.hand)appendRetryChip(fb);
   appendNextChip(fb);
   appendFb(fb);
-  advance(2500);
+  /* 不再 advance()：错题是学习时刻，去留由用户点「重试」还是「下一题」决定 */
 }
 
 function answer(correct,given,ans,btn,opt){
   if(locked)return;locked=true;
   opt=opt||{};
   var _bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
+  var Q=qlist[qidx];
+  /* 首次 / 重试分层：重试只给 +5 学习奖励 —— 不扣分、不重复记薄弱题、不重复记窗口、不重复升降档 */
+  var first=!(Q&&Q.settled);
+  if(Q)Q.settled=true;
   if(reviewMode){
     if(btn)markChosen(btn,ans);else lockOpts();
     var fbR=h('div','fb '+(correct?'ok':'no'));
-    if(correct){var Qr=qlist[qidx];if(Qr&&Qr.weak)removeWeak(Qr.weak);fbR.textContent='✅ 答对了！已从薄弱题移除';}
-    else{fbR.textContent='❌ 正确答案：'+ans+'（保留在薄弱题）';appendExp(fbR,qlist[qidx]);appendNextChip(fbR);}
-    appendFb(fbR);advance(correct?800:2500);return;
+    if(correct){if(Q&&Q.weak)removeWeak(Q.weak);fbR.textContent='✅ 答对了！已从薄弱题移除';}
+    else{
+      fbR.textContent='❌ 正确答案：'+ans+'（保留在薄弱题）';
+      appendExp(fbR,Q);appendRetryChip(fbR);appendNextChip(fbR);
+    }
+    appendFb(fbR);
+    if(correct)advance(800);else cancelPending();
+    return;
   }
   var _pen=(curDiff>=2&&_bk&&QA_TYPES[_bk]&&QA_TYPES[_bk].pen)?5:0;
-  if(correct){ok++;score+=10;}else if(_pen){score-=5;}
-  if(autoMode&&_bk&&QA_TYPES[_bk]&&QA_TYPES[_bk].diffs){
-    /* 滑动窗口自适应（替换原来的连对/连错计数）：
-       最近 ≤12 题正确率 ≥75% 升一档、≤40% 降一档；满 6 题才判，升降后冷却 2 题，避免一波连对跳两级。
-       ⚠ 升档只在「这题答对」时判、降档只在「这题答错」时判：
-       否则连对 8 题后答错 1 题，窗口仍 89%，会出现「答错反而升档」（踩过）。 */
-    selfWindow.push(correct?1:0);if(selfWindow.length>WIN_CAP)selfWindow.shift();
-    var _acc=windowAcc(),_maxD=QA_TYPES[_bk].diffs.length-1;
-    if(lvlCool>0){lvlCool--;}
-    else if(selfWindow.length>=WIN_MIN){
-      if(correct&&_acc>=UP_ACC&&selfRank<_maxD){selfRank++;lvlCool=LEVEL_COOL;}
-      else if(!correct&&_acc<=DN_ACC&&selfRank>0){selfRank--;lvlCool=LEVEL_COOL;}
+  if(first){
+    if(correct){ok++;score+=10;}
+    else{
+      if(_pen){score-=5;}
+      /* 首次答错也沉淀进薄弱题（结算页文案一直说「错题会进薄弱题」，之前只有「😵 不会」会记）。
+         重试答错不重复记 —— 同一题只留一条。 */
+      if(Q&&!Q.hand)addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,time:Date.now()});
     }
-    setRank(_bk,selfRank);
-    curDiffLabel=QA_TYPES[_bk].diffs[selfRank].n;
-    syncHudLevel();
-  }
+    if(autoMode&&_bk&&QA_TYPES[_bk]&&QA_TYPES[_bk].diffs){
+      /* 滑动窗口自适应（替换原来的连对/连错计数）：
+         最近 ≤12 题正确率 ≥75% 升一档、≤40% 降一档；满 6 题才判，升降后冷却 2 题，避免一波连对跳两级。
+         ⚠ 升档只在「这题答对」时判、降档只在「这题答错」时判：
+         否则连对 8 题后答错 1 题，窗口仍 89%，会出现「答错反而升档」（踩过）。
+         ⚠ 重试不计入窗口：同一题只算一次，否则反复重试会把档位刷上去。 */
+      selfWindow.push(correct?1:0);if(selfWindow.length>WIN_CAP)selfWindow.shift();
+      var _acc=windowAcc(),_maxD=QA_TYPES[_bk].diffs.length-1;
+      if(lvlCool>0){lvlCool--;}
+      else if(selfWindow.length>=WIN_MIN){
+        if(correct&&_acc>=UP_ACC&&selfRank<_maxD){selfRank++;lvlCool=LEVEL_COOL;}
+        else if(!correct&&_acc<=DN_ACC&&selfRank>0){selfRank--;lvlCool=LEVEL_COOL;}
+      }
+      setRank(_bk,selfRank);
+      curDiffLabel=QA_TYPES[_bk].diffs[selfRank].n;
+      syncHudLevel();
+    }
+  }else if(correct){ok++;score+=5;}
   if(btn)markChosen(btn,ans);else lockOpts();
   var fb=h('div','fb '+(correct?'ok':'no'));
-  if(opt.note){fb.textContent=(correct?'✅ 判为正确 ＋10':('❌ 判为不正确'+(_pen?'　（−5 分）':'')))+'　'+opt.note;}
-  else{
-    fb.textContent=correct?'✅ 答对了！＋10':('❌ 正确答案：'+ans+(_pen?'　（−5 分）':''));
-    if(!correct){appendExp(fb,qlist[qidx]);appendNextChip(fb);}
+  if(opt.note){
+    fb.textContent=(correct?'✅ 判为正确 '+(first?'＋10':'＋5'):('❌ 判为不正确'+((first&&_pen)?'　（−5 分）':'')))+'　'+opt.note;
+    /* 手写题由 AI 评判（耗时、每次都要钱），不给「重试」；答错同样停住，等用户点「下一题 ›」 */
+    if(!correct)appendNextChip(fb);
+  }else{
+    fb.textContent=correct?(first?'✅ 答对了！＋10':'✅ 重试答对了！＋5')
+      :('❌ 正确答案：'+ans+((first&&_pen)?'　（−5 分）':''));
+    if(!correct){appendExp(fb,Q);if(Q&&!Q.hand)appendRetryChip(fb);appendNextChip(fb);}
   }
   appendFb(fb);
-  bumpStat(typeKey,correct);
-  advance(opt.wait||(correct?800:2500));
+  if(first)bumpStat(typeKey,correct);
+  /* 答对保持自动跳（800ms），不打断节奏；答错 / 不会一律停住，等用户决定重试还是下一题 */
+  if(correct)advance(opt.wait||800);else cancelPending();
 }
 
 function endQuiz(){
@@ -2893,6 +2941,7 @@ function parseJudge(t){
   return null;
 }
 function submitHand(Q,code,btn,msgEl){
+  if(locked)return;                 /* 已结算（答过 / 点过不会）：别让二次点击再烧一次 AI 调用 */
   if(!canJudge()){toast('✍️ 手写代码要先配置 AI（免费通道不用 Key）');return;}
   if(!String(code||'').trim()){msgEl.textContent='⚠️ 还没写代码';return;}
   var t=(Q&&Q.task)||{t:Q.q,ex:'',tip:''};
