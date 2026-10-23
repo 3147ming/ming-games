@@ -964,7 +964,7 @@ function showQuestion(){
   var hud=h('div','hud');
   var _tik='';if(typeKey.indexOf('b:')===0&&QA_TYPES[typeKey.slice(2)])_tik=QA_TYPES[typeKey.slice(2)].icon+' ';
   var _badge='';
-  if(typeKey==='b:code'){var _cp=getCodeProfile();if(_cp&&_cp.done&&_cp.langs&&_cp.langs.length){_badge=' · '+langName(_cp.langs[0])+(_cp.langs.length>1?(' 等'+_cp.langs.length+'种'):'')+' · '+levelName(_cp.rank);}}
+  if(typeKey==='b:code'){var _cp=getCodeProfile();if(_cp&&_cp.done&&_cp.langs&&_cp.langs.length){_badge=' · '+langName(_cp.langs[0])+(_cp.langs.length>1?(' 等'+_cp.langs.length+'种'):'');}}
   hud.appendChild(ht('div','hl',_tik+typeLabel+_badge+(autoMode&&curDiffLabel?(' · 实力：'+curDiffLabel):(curDiffLabel?(' · '+curDiffLabel):''))));
   hud.appendChild(ht('div','hr','第 '+(qidx+1)+'/'+total));
   hud.appendChild(ht('span','chip','✅ '+ok));
