@@ -1318,6 +1318,8 @@ function bgmPlay(){
     musicNote('⚠️ 播放失败：'+((e&&e.message)||(e&&e.name)||'未知原因'));
   });
 }
+/* 彻底断掉当前加载：只 pause() 不会取消在途下载，几十 MB 的曲子会继续占着连接，把下一首的 404 拖到几秒后才回来 */
+function bgmReset(){if(!bgm)return;try{bgm.pause();}catch(e){}try{bgm.removeAttribute('src');bgm.load();}catch(e){}}
 function ensureBgm(){if(bgm)return bgm;bgm=new Audio();bgm.loop=false;bgm.volume=musicVol;
   bgm.addEventListener('playing',function(){musicFailStreak=0;musicPlaying=true;musicErrMsg='';updateMusicPanel();});
   bgm.addEventListener('ended',function(){if(musicLoop)playMusic((musicIdx+1)%musicList.length);else{musicPlaying=false;updateMusicPanel();}});
@@ -1383,13 +1385,13 @@ function playMusic(i,keepMsg){
   if(tr.blobKey){   // 本地导入：IndexedDB 里的 blob，无命名限制
     loadBlob(tr.blobKey,function(b){
       if(!b){musicNote('⚠️ 本地音频读取失败（可能已被清理），请重新导入');return;}
-      bgm.src=URL.createObjectURL(b);bgmPlay();
+      bgmReset();bgm.src=URL.createObjectURL(b);bgmPlay();
     });
     musicPlaying=true;saveMusicCfg();updateMusicPanel();return;
   }
   tr._ext=0;        // 从第一个扩展名开始探测，出错自动往后试
   var src=musicSrcOf(tr);
-  if(src){bgm.src=src;bgmPlay();}
+  if(src){bgmReset();bgm.src=src;bgmPlay();}
   else{musicPlaying=false;musicNote('⚠️ 该曲目没有可用地址');return;}
   musicPlaying=true;saveMusicCfg();updateMusicPanel();
 }
