@@ -1,6 +1,8 @@
-/* 赵云与阿斗 · 无头 Edge + CDP 冒烟：控制台报错 / 布局 / 塔防交互 / 外部请求 — V5 原版对齐
+/* 赵云与阿斗 · 无头 Edge + CDP 冒烟：控制台报错 / 布局 / 塔防交互 / 外部请求 — V8.1
  * 用法：node tools/probe.mjs   （无头 Edge + CDP）
- * 覆盖：竖屏 375×667 无溢出 / 蛇形主路 37 格 + 右入口「斗」/ 征兵 10+2n 一次 5 张进军营(5 槽) /
+ * 覆盖：全端强制横屏（竖持旋转态 / 横屏 / PC 三档布局 + 旋转态坐标命中 + 无遮罩无暂停）/
+ *      蛇形主路 28 格 + 右入口 (0,7)「斗」/ 新数值面板（刀 4.40 · 敌 +25%）/ 武将名牌侧置 /
+ *      征兵 10+2n 一次 5 张进军营(5 槽) /
  *      军营→手牌拖拽 / 武将字对合成(2 格宽 + 合成武将提示) / 兵器面板装备铁剑(+3) /
  *      拖卡建塔 + 同字合成(刀²) / 拖塔换位(免费,等级/攻速计时保留) / 火球 3×3 / 神兵符 / 毛笔 / 铲子(道具栏) /
  *      波内剩余角标 / 关卡胜利结算(1-5 星) / 竞技双路双阿斗 / 无外部请求 / 无 console error
@@ -129,11 +131,11 @@ const g = await evalJs(`({
 })`);
 ok('对局界面显示', g.gameVisible);
 ok('棋盘 8×12 = 96 格', g.cells === 96, g.cells + '');
-ok('蛇形主路渲染（37 格，棕色地砖）', g.path === 37, g.path + '');
+ok('蛇形主路渲染（V8.1 缩短到 28 格）', g.path === 28, g.path + '');
 ok('入口格打入口标记（右侧 1 个）', g.enter === 1, g.enter + '');
 ok('开局塔位 = 17（绿色可放置格）', g.deploy === 17, g.deploy + '');
-ok('荆棘障碍（左右山脊 24 格）', g.obstacle === 24, g.obstacle + '');
-ok('荒地（可铲子开塔位）存在', g.wasteland >= 1, g.wasteland + '');
+ok('荆棘障碍（V8.1 随图派生 29 格：左右山脊 21 + 内部岩块 8）', g.obstacle === 29, g.obstacle + '');
+ok('荒地 ≥ 8（V8.1 重排后 9 格，可铲子开塔位）', g.wasteland >= 8, g.wasteland + '');
 ok('手牌区 8 格', g.handSlots === 8, g.handSlots + '');
 ok('军营栏 5 槽', g.barSlots === 5, g.barSlots + '');
 ok('阿斗 + 刷怪口「斗」都渲染', g.adou === 2 && g.spawnMark === 1, 'adou=' + g.adou + ' mark=' + g.spawnMark);
@@ -146,12 +148,15 @@ ok('波内剩余角标绝对定位在棋盘内', g.waveLeftPos === 'absolute', g
 console.log('\n== 棋盘自适应（375×667 竖屏）==');
 const box = await evalJs(`(() => {
   const b = document.getElementById('board').getBoundingClientRect();
+  const el = document.getElementById('board');
   const doc = document.documentElement;
-  return { w: Math.round(b.width), h: Math.round(b.height), top: Math.round(b.top), bottom: Math.round(b.bottom),
+  // 旋转态 bbox 宽高互换：比例用 offsetWidth/offsetHeight（布局尺寸），视口贴合仍用 bbox
+  return { w: Math.round(b.width), h: Math.round(b.height), lw: el.offsetWidth, lh: el.offsetHeight,
+           top: Math.round(b.top), bottom: Math.round(b.bottom),
            vh: window.innerHeight, overflowY: doc.scrollHeight - doc.clientHeight, overflowX: doc.scrollWidth - doc.clientWidth };
 })()`);
-console.log('   棋盘 ' + box.w + '×' + box.h + '  视口高 ' + box.vh + '  棋盘底部 ' + box.bottom);
-ok('棋盘贴合 8:12 比例', Math.abs(box.w / box.h - 8 / 12) < 0.02, (box.w / box.h).toFixed(3));
+console.log('   棋盘 ' + box.w + '×' + box.h + '  布局 ' + box.lw + '×' + box.lh + '  视口高 ' + box.vh + '  棋盘底部 ' + box.bottom);
+ok('棋盘贴合 8:12 比例', Math.abs(box.lw / box.lh - 8 / 12) < 0.02, (box.lw / box.lh).toFixed(3));
 ok('棋盘完整落在视口内', box.bottom <= box.vh + 1 && box.top >= -1, 'top=' + box.top + ' bottom=' + box.bottom);
 ok('无文档级滚动溢出', box.overflowY <= 0 && box.overflowX <= 0, 'y=' + box.overflowY + ' x=' + box.overflowX);
 
@@ -159,7 +164,11 @@ ok('无文档级滚动溢出', box.overflowY <= 0 && box.overflowX <= 0, 'y=' + 
 const DRAG_HELPERS = `
 window.__cellXY = (r, c) => {
   const br = document.getElementById('board').getBoundingClientRect();
-  return { x: br.left + (c + 0.5) * (br.width / 8), y: br.top + (r + 0.5) * (br.height / 12) };
+  const rot = document.querySelector('.stage').classList.contains('rot');
+  if (!rot) return { x: br.left + (c + 0.5) * (br.width / 8), y: br.top + (r + 0.5) * (br.height / 12) };
+  // V8.1 旋转态：bbox 宽 = 棋盘布局高（12 行），bbox 高 = 棋盘布局宽（8 列）；
+  //   布局 (x,y) → 视口 (bbox.right - y, bbox.top + x)
+  return { x: br.right - (r + 0.5) * (br.width / 12), y: br.top + (c + 0.5) * (br.height / 8) };
 };
 window.__dragFrom = async (sel, tx, ty) => {
   const el = document.querySelector(sel);
@@ -308,15 +317,15 @@ const heroPlace = await evalJs(`(async () => {
   const d = await window.__dragFrom('#hand .card.hero[data-uid="' + uid + '"]', p.x, p.y);
   await new Promise(r => setTimeout(r, 160));
   const el = document.querySelector('.unit.p.hero');
-  const br = document.getElementById('board').getBoundingClientRect();
-  const cellW = br.width / 8;
+  // 旋转态下 bbox 宽高互换，比例必须用 offsetWidth（布局尺寸，不受 transform 影响）
+  const cellW = document.getElementById('board').offsetWidth / 8;
   return {
     d: d,
     placed: !!(s.grid[1][5] && s.grid[1][5].cls === 'hero'),
     span2Booked: s.grid[1][6] === s.grid[1][5],
     unitEl: !!el,
     span2Cls: el ? el.classList.contains('span2') : false,
-    widthRatio: el ? (el.getBoundingClientRect().width / cellW) : 0,
+    widthRatio: el ? (el.offsetWidth / cellW) : 0,
     name: el ? (el.querySelector('.nm') || {}).textContent : null
   };
 })()`);
@@ -718,9 +727,10 @@ const art = await evalJs(`(async () => {
     hasSkillBanner: !!document.getElementById('skill-banner'),
     hasSkillFx: !!document.querySelector('.skill-fx'),
     bossCls: bEl ? bEl.className : '',
-    heroLeft: hEl ? Math.round(hEl.getBoundingClientRect().left - document.getElementById('board').getBoundingClientRect().left) : -1,
-    heroRight: hEl ? Math.round(hEl.getBoundingClientRect().right - document.getElementById('board').getBoundingClientRect().left) : -1,
-    boardW: Math.round(document.getElementById('board').getBoundingClientRect().width),
+    // V8.1：用布局宽 + transform 的 m41（%=已解析成 px）算逻辑位置 —— 不受 90° 旋转的 bbox 换轴影响
+    heroLeft: hEl ? Math.round(new DOMMatrix(getComputedStyle(hEl).transform).m41) : -1,
+    heroRight: hEl ? Math.round(new DOMMatrix(getComputedStyle(hEl).transform).m41 + hEl.offsetWidth) : -1,
+    boardW: Math.round(document.getElementById('board').offsetWidth),
     ids: { dao: dao.id, hero: hero.id, zei: zei.id, boss: boss.id }
   };
 })()`);
@@ -734,7 +744,7 @@ ok('V7 棋盘格子无重复斜纹纹理（repeating-linear-gradient）', art.gr
 ok('V7 新增 #skill-banner 与粒子层容器', art.hasSkillBanner && art.hasSkillFx);
 ok('V7 Boss 单位带 .boss 标记（金色泛光/放大）', /(^| )boss( |$)/.test(art.bossCls), art.bossCls);
 ok('V7 武将（span2）横向落在棋盘内（不再右移出界）',
-  art.heroLeft >= 0 && art.heroRight <= art.boardW + 1 && (art.heroRight - art.heroLeft) > art.boardW / 8 * 1.6,
+  art.heroLeft >= 0 && art.heroRight <= art.boardW + 2 && (art.heroRight - art.heroLeft) > art.boardW / 8 * 1.6,
   'left=' + art.heroLeft + ' right=' + art.heroRight + ' boardW=' + art.boardW);
 
 // —— V7.1 棋盘配色：白路 / 棕塔位 / 绿荒地 / 米底 ——
@@ -857,84 +867,136 @@ ok('V8 不能和自己合成', syn8.m3Ok);
 ok('V8 等级不同不可合成（仍为 3 级）', syn8.m4Ok && syn8.lvlFinal === 3);
 ok('V8 满级（5 级）不可再合成', syn8.m5Ok && syn8.eLv === 5);
 
-console.log('\n== V8 手机横屏锁定（遮罩 + orientLock 暂停）==');
-const rot = await evalJs(`(() => {
-  const ov = document.getElementById('rotate-overlay');
-  const mq = window.matchMedia('(orientation: portrait) and (max-width: 900px) and (pointer: coarse)');
-  return { exists: !!ov, mq: mq.matches, disp: ov ? getComputedStyle(ov).display : 'none',
-           tip: ov ? (ov.querySelector('.rotate-tip')||{}).textContent : '',
-           sub: ov ? (ov.querySelector('.rotate-sub')||{}).textContent : '' };
-})()`);
-ok('V8 横屏锁定遮罩存在（含「请横屏游玩」文案）', rot.exists && rot.tip.indexOf('请横屏游玩') >= 0, rot.tip + ' / ' + rot.sub);
-// 探针默认只有 mobile:true，不会让 (pointer: coarse) 成立 —— 必须显式开启触摸模拟，
-// 否则「竖屏 → 遮罩显示」会空过（disp 与 mq 同时为 false，断言恒真）。
-await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
-await sleep(250);
-const rotTouch = await evalJs(`(() => {
-  const ov = document.getElementById('rotate-overlay');
+console.log('\n== V8.1 全端强制横屏（无遮罩 · 竖持旋转态）==');
+const rotClean = await evalJs(`(() => {
   const st = ZY.UI.getState();
-  return { mq: window.matchMedia('(orientation: portrait) and (max-width: 900px) and (pointer: coarse)').matches,
-           disp: ov ? getComputedStyle(ov).display : 'none',
-           lock: !!(st && st.orientLock) };
-})()`);
-ok('V8 竖屏 + 触屏 → 遮罩全屏显示（display:flex）',
-  rotTouch.mq === true && rotTouch.disp === 'flex', 'mq=' + rotTouch.mq + ' disp=' + rotTouch.disp);
-ok('V8 竖屏 + 触屏 → 开局自动锁定暂停（orientLock=true）', rotTouch.lock, 'lock=' + rotTouch.lock);
-await send('Emulation.setTouchEmulationEnabled', { enabled: false });
-await sleep(200);
-await send('Emulation.setDeviceMetricsOverride', { width: 667, height: 375, deviceScaleFactor: 2, mobile: true });
-await sleep(300);
-const rotL = await evalJs(`(() => {
-  const ov = document.getElementById('rotate-overlay');
-  const mq = window.matchMedia('(orientation: portrait) and (max-width: 900px) and (pointer: coarse)');
-  return { disp: getComputedStyle(ov).display, mq: mq.matches };
-})()`);
-ok('V8 横屏（landscape）→ 遮罩隐藏、不锁定', rotL.disp === 'none' && rotL.mq === false, 'disp=' + rotL.disp + ' mq=' + rotL.mq);
-
-// V8 横屏「完整布局」：不能只是把 9:16 竖屏列居中（那样 HUD 右侧倍速键会被裁掉）
-const lay8 = await evalJs(`(() => {
-  const r = (sel) => { const e = document.querySelector(sel); return e ? e.getBoundingClientRect() : null; };
-  const stage = r('.stage'), board = r('#board'), dock = r('.dock'), hud = r('.hud');
   return {
-    vw: window.innerWidth, vh: window.innerHeight,
-    sw: document.documentElement.scrollWidth,
-    stage: stage ? { w: stage.width, h: stage.height } : null,
-    board: board ? { l: board.left, r: board.right, t: board.top, b: board.bottom, w: board.width } : null,
-    dock: dock ? { l: dock.left, r: dock.right, w: dock.width } : null,
-    hud: hud ? { l: hud.left, r: hud.right, b: hud.bottom } : null
+    overlayEl: !!document.getElementById('rotate-overlay'),
+    overlayCls: !!document.querySelector('.rotate-overlay'),
+    lockField: !!st && ('orientLock' in st),
+    deadCss: ((document.styleSheets[0] || {}).cssRules ? Array.prototype.some.call(document.styleSheets[0].cssRules, function (r) { return (r.cssText || '').indexOf('rotate-overlay') >= 0; }) : false)
   };
 })()`);
-ok('V8 横屏舞台铺满视口（不再压成 9:16 窄列）',
-  !!lay8.stage && lay8.stage.w >= lay8.vw * 0.97 && Math.abs(lay8.stage.w - lay8.vw) < 2,
-  'stage=' + (lay8.stage ? lay8.stage.w.toFixed(0) : 'null') + ' vw=' + lay8.vw);
-ok('V8 横屏操作栏在棋盘右侧（横向布局生效）',
-  !!lay8.board && !!lay8.dock && lay8.dock.l >= lay8.board.r - 1,
-  'board.r=' + (lay8.board ? lay8.board.r.toFixed(0) : 'null') + ' dock.l=' + (lay8.dock ? lay8.dock.l.toFixed(0) : 'null'));
-ok('V8 横屏无水平裁切（HUD 倍速键不被切掉）',
-  lay8.sw <= lay8.vw + 1 && (!lay8.hud || lay8.hud.r <= lay8.vw + 1),
-  'scrollW=' + lay8.sw + ' vw=' + lay8.vw);
-ok('V8 横屏棋盘完整可见（HUD 下方且不超出底部）',
-  !!lay8.board && !!lay8.hud && lay8.board.t >= lay8.hud.b - 1 && lay8.board.b <= lay8.vh + 1,
-  lay8.board ? ('board.t=' + lay8.board.t.toFixed(0) + ' hud.b=' + lay8.hud.b.toFixed(0) + ' board.b=' + lay8.board.b.toFixed(0)) : 'null');
+ok('V8.1 竖屏遮罩已删除（DOM / 样式类 / CSS 规则都不存在）',
+  !rotClean.overlayEl && !rotClean.overlayCls && !rotClean.deadCss, JSON.stringify(rotClean));
+ok('V8.1 状态机不再有 orientLock 字段（方向不再暂停）', !rotClean.lockField);
 
+// —— 手机竖持 375×667：舞台整体旋转 90°，铺满视口 ——
 await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 667, deviceScaleFactor: 2, mobile: true });
-await sleep(200);
-const lockT = await evalJs(`(async () => {
-  const s = ZY.UI.getState();
-  s.paused = false; s.over = false; s.orientLock = true;
-  const t0 = s.t;
-  await new Promise(r => setTimeout(r, 450));
-  const frozen = (s.t - t0) < 0.05;
-  s.orientLock = false;
-  return { frozen: frozen, dt: s.t - t0 };
+await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+await sleep(420);
+await evalJs(DRAG_HELPERS);   // 页面在 558/589/639 处重新导航过，拖拽辅助需重新注入
+const portrait = await evalJs(`(() => {
+  const st = document.querySelector('.stage');
+  const b = document.getElementById('board').getBoundingClientRect();
+  const d = document.documentElement;
+  return {
+    rot: st.classList.contains('rot'),
+    bodyRot: document.body.classList.contains('ui-rot'),
+    layout: [Math.round(st.offsetWidth), Math.round(st.offsetHeight)],
+    vw: innerWidth, vh: innerHeight,
+    board: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)],
+    tf: getComputedStyle(st).transform,
+    scrollX: d.scrollWidth - d.clientWidth,
+    scrollY: d.scrollHeight - d.clientHeight
+  };
 })()`);
-ok('V8 竖屏锁定 → 主循环暂停（仿真时间冻结）', lockT.frozen, 'Δt=' + lockT.dt.toFixed(3));
+ok('V8.1 竖持 → 舞台加 .rot（旋转态）', portrait.rot === true && portrait.bodyRot === true, JSON.stringify(portrait).slice(0, 120));
+ok('V8.1 竖持 → 舞台尺寸互换（宽 = 视口高 · 高 = 视口宽）',
+  Math.abs(portrait.layout[0] - portrait.vh) < 2 && Math.abs(portrait.layout[1] - portrait.vw) < 2,
+  portrait.layout.join('×') + ' vs vh/vw ' + portrait.vh + '/' + portrait.vw);
+ok('V8.1 竖持 → 已应用 90° 旋转矩阵（matrix(0,1,-1,0,·)）',
+  /^matrix\(0,\s*1,\s*-1,\s*0/.test(portrait.tf), portrait.tf);
+ok('V8.1 竖持 → 无文档级滚动（旋转后仍铺满，不出滚动条）',
+  portrait.scrollX <= 0 && portrait.scrollY <= 0, 'x=' + portrait.scrollX + ' y=' + portrait.scrollY);
+ok('V8.1 竖持 → 棋盘 8:12 不变形（bbox 宽高互换 = 布局高/宽）',
+  Math.abs(portrait.board[3] / portrait.board[2] - 8 / 12) < 0.03,
+  portrait.board[2] + '×' + portrait.board[3]);
+
+// —— 旋转态坐标命中：拖卡 → 必须落在 __cellXY 指定的那一格 ——
+const rotHit = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  s.paused = false; s.over = false;
+  s.player.hand = [{ uid: 93001, kind: 'unit', char: '刀', type: 'dao', level: 1 }];
+  await new Promise(r => setTimeout(r, 240));
+  const free = [...document.querySelectorAll('.cell.deploy')].find(c => {
+    const r = +c.dataset.r, col = +c.dataset.c; return !s.grid[r][col];
+  });
+  const r0 = +free.dataset.r, c0 = +free.dataset.c;
+  const p = window.__cellXY(r0, c0);
+  const res = await window.__dragFrom('#hand .card[data-uid="93001"]', p.x, p.y);
+  await new Promise(r => setTimeout(r, 260));
+  const g = s.grid[r0][c0];
+  return { r0: r0, c0: c0, px: Math.round(p.x), py: Math.round(p.y), ghosts: document.querySelectorAll('.ghost').length,
+           hit: !!g && g.type === 'dao', res: res && res.mid ? res.mid.hl : -1 };
+})()`);
+ok('V8.1 旋转态坐标命中：拖卡精确落到目标格', rotHit.hit === true, JSON.stringify(rotHit));
+ok('V8.1 旋转态拖拽无残影（ghost 已回收）', rotHit.ghosts === 0, rotHit.ghosts + '');
+
+// —— 手机横屏 667×375：不旋转，同一套横屏布局 ——
+await send('Emulation.setDeviceMetricsOverride', { width: 667, height: 375, deviceScaleFactor: 2, mobile: true });
+await sleep(420);
+const land = await evalJs(`(() => {
+  const r = (sel) => { const e = document.querySelector(sel); return e ? e.getBoundingClientRect() : null; };
+  const st = document.querySelector('.stage'), board = r('#board'), dock = r('.dock'), hud = r('.hud');
+  const d = document.documentElement;
+  return {
+    rot: st.classList.contains('rot'), vw: innerWidth, vh: innerHeight,
+    stage: [Math.round(st.offsetWidth), Math.round(st.offsetHeight)],
+    board: [Math.round(board.left), Math.round(board.top), Math.round(board.width), Math.round(board.height)],
+    dockL: Math.round(dock.left), hudR: Math.round(hud.right), hudB: Math.round(hud.bottom),
+    scrollX: d.scrollWidth - d.clientWidth, scrollY: d.scrollHeight - d.clientHeight
+  };
+})()`);
+ok('V8.1 手机横屏 → 不旋转（.rot 已移除）', land.rot === false);
+ok('V8.1 手机横屏 → 舞台铺满视口', Math.abs(land.stage[0] - land.vw) < 2 && Math.abs(land.stage[1] - land.vh) < 2,
+  land.stage.join('×') + ' / ' + land.vw + '×' + land.vh);
+ok('V8.1 手机横屏 → 操作栏在棋盘右侧（横向布局）', land.dockL >= land.board[0] + land.board[2] - 1,
+  'board.r=' + (land.board[0] + land.board[2]) + ' dock.l=' + land.dockL);
+ok('V8.1 手机横屏 → 棋盘在 HUD 下方且完整可见',
+  land.board[1] >= land.hudB - 2 && land.board[1] + land.board[3] <= land.vh + 1,
+  'board.t=' + land.board[1] + ' hud.b=' + land.hudB + ' board.b=' + (land.board[1] + land.board[3]));
+ok('V8.1 手机横屏 → 无水平裁切（HUD 倍速键不被切）', land.scrollX <= 0 && land.hudR <= land.vw + 1,
+  'scrollX=' + land.scrollX + ' hud.r=' + land.hudR + ' vw=' + land.vw);
+
+// —— PC 1280×800：同一套横屏布局等比放大 ——
+await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+await sleep(420);
+const pc = await evalJs(`(() => {
+  const r = (sel) => { const e = document.querySelector(sel); return e ? e.getBoundingClientRect() : null; };
+  const st = document.querySelector('.stage'), board = r('#board'), dock = r('.dock');
+  return {
+    rot: st.classList.contains('rot'),
+    board: [Math.round(board.width), Math.round(board.height)],
+    dockL: Math.round(dock.left), boardR: Math.round(board.right),
+    scrollX: document.documentElement.scrollWidth - document.documentElement.clientWidth
+  };
+})()`);
+ok('V8.1 PC 宽屏 → 不旋转且棋盘等比 8:12',
+  pc.rot === false && Math.abs(pc.board[0] / pc.board[1] - 8 / 12) < 0.02, pc.board.join('×'));
+ok('V8.1 PC 宽屏 → 操作栏在右、无横向溢出', pc.dockL >= pc.boardR - 1 && pc.scrollX <= 0,
+  'board.r=' + pc.boardR + ' dock.l=' + pc.dockL + ' scrollX=' + pc.scrollX);
+
+// —— 方向变化即时切换、不暂停：旋转态下仿真时间继续推进 ——
+await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 667, deviceScaleFactor: 2, mobile: true });
+await sleep(380);
+const live = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  s.paused = false; s.over = false;
+  const t0 = s.t;
+  await new Promise(r => setTimeout(r, 500));
+  return { dt: s.t - t0, paused: s.paused, rot: document.querySelector('.stage').classList.contains('rot') };
+})()`);
+ok('V8.1 旋转态不暂停：主循环继续推进仿真时间', live.rot === true && !live.paused && live.dt > 0.05,
+  'dt=' + live.dt.toFixed(2) + ' paused=' + live.paused);
+await send('Emulation.setTouchEmulationEnabled', { enabled: false });
+await sleep(200);
 
 console.log('\n== V8 倍速开关 1x ↔ 2x ==');
 const spBtn = await evalJs(`(() => {
   const s = ZY.UI.getState();
   const btn = document.getElementById('btn-speed');
-  s.paused = false; s.over = false; s.orientLock = false;
+  s.paused = false; s.over = false;
   const before = s.speed;
   btn.click(); const a1 = s.speed; const lab1 = btn.textContent;
   btn.click(); const a2 = s.speed;
@@ -946,7 +1008,7 @@ ok('V8 倍速 2x → 1x 复位（不存档）', spBtn.a2 === 1, spBtn.a2 + '');
 ok('V8 倍速按钮文案含倍速标识', /2/.test(spBtn.lab1) || /倍/.test(spBtn.lab1), spBtn.lab1);
 const spTim = await evalJs(`(async () => {
   const s = ZY.UI.getState();
-  s.paused = false; s.over = false; s.orientLock = false;
+  s.paused = false; s.over = false;
   s.speed = 1; await new Promise(r => setTimeout(r, 200));
   const t0 = s.t; await new Promise(r => setTimeout(r, 600)); const t1 = s.t; const d1 = t1 - t0;
   s.speed = 2; await new Promise(r => setTimeout(r, 200));
@@ -957,33 +1019,43 @@ const spTim = await evalJs(`(async () => {
 ok('V8 主循环在跑（1x 推进仿真时间）', spTim.d1 > 0.05, 'd1=' + spTim.d1.toFixed(2));
 ok('V8 倍速 2x 仿真推进约 2 倍（≥1.4×）', spTim.d1 > 0.05 && spTim.d2 > spTim.d1 * 1.4, 'd1=' + spTim.d1.toFixed(2) + ' d2=' + spTim.d2.toFixed(2));
 
-console.log('\n== V8 兵种机制 + 数值平衡 ==');
+console.log('\n== V8.1 兵种机制 + 敌我双向微调 ==');
 const nums = await evalJs(`(() => {
   const st = (t,l) => ZY.statsAt(t,l);
   const hs = (h,l) => ZY.heroStats(h,l);
   const mk = (type) => ZY.Game.makeUnit(ZY.UI.getState(),'player',{cls:'soldier',type,level:1,row:0,col:0,span:1,target:null});
   const q = mk('qiang'), k = mk('qi');
   return {
-    dao: st('dao',1), qiang: st('qiang',1), qi: st('qi',1), gong: st('gong',1), nong: st('nong',1),
+    dao: st('dao',1), qiang: st('qiang',1), qi: st('qi',1), gong: st('gong',1),
     zy: hs('zhaoyun',1), zf: hs('zhangfei',1), gy: hs('guanyu',1), mc: hs('machao',1),
     hz: hs('huangzhong',1), zgl: hs('zhugeliang',1), lb: hs('liubei',1),
-    qPierce: !!q.pierce, kSplash: k.splash
+    qPierce: !!q.pierce, kSplash: k.splash,
+    // 农民不参与战斗公式（statsAt 只回 hp/atk/aspd），面板要读原始表才有 produce
+    nongRaw: { atk: ZY.UNITS.nong.atk, aspd: ZY.UNITS.nong.aspd, produce: ZY.UNITS.nong.produce },
+    zei: ZY.UNITS.zei, boss: ZY.BOSS, elite: ZY.C.ELITE_MUL, bossHp: ZY.C.BOSS_HP_MUL, bossAtk: ZY.C.BOSS_ATK_MUL
   };
 })()`);
-ok('V8 刀兵面板 5.00 / 1.80', Math.abs(nums.dao.atk-5.00)<0.01 && Math.abs(nums.dao.aspd-1.80)<0.01, nums.dao.atk + '/' + nums.dao.aspd);
-ok('V8 枪兵面板 4.20 / 1.95（贯穿）', Math.abs(nums.qiang.atk-4.20)<0.01 && Math.abs(nums.qiang.aspd-1.95)<0.01 && nums.qPierce, nums.qiang.atk + '/' + nums.qiang.aspd);
-ok('V8 骑兵面板 3.60 / 1.85（溅射）', Math.abs(nums.qi.atk-3.60)<0.01 && Math.abs(nums.qi.aspd-1.85)<0.01 && nums.kSplash>0, nums.qi.atk + '/' + nums.kSplash);
-ok('V8 弓兵面板 3.20 / 1.60', Math.abs(nums.gong.atk-3.20)<0.01 && Math.abs(nums.gong.aspd-1.60)<0.01, nums.gong.atk + '/' + nums.gong.aspd);
-ok('V8 赵云 atk=17.25 · 攻速随枪系 1.95', Math.abs(nums.zy.atk-17.25)<0.01 && Math.abs(nums.zy.aspd-1.95)<0.01, nums.zy.atk + '/' + nums.zy.aspd);
-ok('V8 关张 atk=20.54（刀系公式）', Math.abs(nums.zf.atk-20.54)<0.01 && Math.abs(nums.gy.atk-20.54)<0.01, nums.zf.atk + '/' + nums.gy.atk);
-ok('V8 马超 atk=14.79 · 攻速随骑系 1.85', Math.abs(nums.mc.atk-14.79)<0.01 && Math.abs(nums.mc.aspd-1.85)<0.01, nums.mc.atk + '/' + nums.mc.aspd);
-ok('V8 黄忠/诸葛 atk=13.14 · 攻速随弓系 1.60', Math.abs(nums.hz.atk-13.14)<0.01 && Math.abs(nums.zgl.atk-13.14)<0.01 && Math.abs(nums.hz.aspd-1.60)<0.01, nums.hz.atk + '/' + nums.zgl.atk);
-ok('V8 刘备 atk=16.00（锚定不进公式）· 1.80', Math.abs(nums.lb.atk-16.00)<0.01 && Math.abs(nums.lb.aspd-1.80)<0.01, nums.lb.atk + '/' + nums.lb.aspd);
+ok('V8.1 刀兵面板 4.40 / 1.75', Math.abs(nums.dao.atk-4.40)<0.01 && Math.abs(nums.dao.aspd-1.75)<0.01, nums.dao.atk + '/' + nums.dao.aspd);
+ok('V8.1 枪兵面板 3.70 / 1.90（贯穿）', Math.abs(nums.qiang.atk-3.70)<0.01 && Math.abs(nums.qiang.aspd-1.90)<0.01 && nums.qPierce, nums.qiang.atk + '/' + nums.qiang.aspd);
+ok('V8.1 骑兵面板 3.20 / 1.80（溅射 0.70）', Math.abs(nums.qi.atk-3.20)<0.01 && Math.abs(nums.qi.aspd-1.80)<0.01 && Math.abs(nums.kSplash-0.70)<0.01, nums.qi.atk + '/' + nums.qi.aspd + ' s=' + nums.kSplash);
+ok('V8.1 弓兵面板 2.85 / 1.60', Math.abs(nums.gong.atk-2.85)<0.01 && Math.abs(nums.gong.aspd-1.60)<0.01, nums.gong.atk + '/' + nums.gong.aspd);
+ok('V8.1 农民面板不变 0 / 0（produce 0.4）', nums.nongRaw.atk === 0 && nums.nongRaw.aspd === 0 && nums.nongRaw.produce === 0.4,
+  nums.nongRaw.atk + '/' + nums.nongRaw.aspd + ' p=' + nums.nongRaw.produce);
+ok('V8.1 赵云 atk=15.20 · 攻速随枪系 1.90', Math.abs(nums.zy.atk-15.20)<0.01 && Math.abs(nums.zy.aspd-1.90)<0.01, nums.zy.atk + '/' + nums.zy.aspd);
+ok('V8.1 关张 atk=18.07（刀系公式）· 攻速 1.75', Math.abs(nums.zf.atk-18.07)<0.01 && Math.abs(nums.gy.atk-18.07)<0.01 && Math.abs(nums.zf.aspd-1.75)<0.01, nums.zf.atk + '/' + nums.gy.atk);
+ok('V8.1 马超 atk=13.14 · 攻速随骑系 1.80', Math.abs(nums.mc.atk-13.14)<0.01 && Math.abs(nums.mc.aspd-1.80)<0.01, nums.mc.atk + '/' + nums.mc.aspd);
+ok('V8.1 黄忠/诸葛 atk=11.70 · 攻速随弓系 1.60', Math.abs(nums.hz.atk-11.70)<0.01 && Math.abs(nums.zgl.atk-11.70)<0.01 && Math.abs(nums.hz.aspd-1.60)<0.01, nums.hz.atk + '/' + nums.zgl.atk);
+ok('V8.1 刘备 atk=16.00（锚定不进公式）· 1.75', Math.abs(nums.lb.atk-16.00)<0.01 && Math.abs(nums.lb.aspd-1.75)<0.01, nums.lb.atk + '/' + nums.lb.aspd);
+ok('V8.1 敌方 +25%：贼兵 30 / 2.40 / 1.25', nums.zei.hp===30 && Math.abs(nums.zei.atk-2.40)<0.01 && Math.abs(nums.zei.aspd-1.25)<0.01, nums.zei.hp + '/' + nums.zei.atk + '/' + nums.zei.aspd);
+ok('V8.1 精英倍率 1.25（与敌方同口径）', Math.abs(nums.elite-1.25)<0.01, nums.elite + '');
+ok('V8.1 Boss 张梁 30 / 2.40 · 倍率 ×12 / ×3.5',
+  nums.boss.hp===30 && Math.abs(nums.boss.atk-2.40)<0.01 && nums.bossHp===12 && Math.abs(nums.bossAtk-3.5)<0.01,
+  nums.boss.hp + '/' + nums.boss.atk + ' ×' + nums.bossHp + '/×' + nums.bossAtk);
 
 console.log('\n== V8 攻击动作分化（每兵种专属类 + 特效）==');
 const act8 = await evalJs(`(async () => {
   const s = ZY.UI.getState();
-  s.paused = false; s.over = false; s.orientLock = false;
+  s.paused = false; s.over = false;
   const G = ZY.Game;
   s.units = s.units.filter(u => u.side !== 'player');
   const slots = Object.keys(ZY.B.startSlots('endless','player')).map(k => k.split(',').map(Number));
@@ -1021,7 +1093,7 @@ ok('V8 骑攻击溅射弧光 .fx-slash-arc', act8.fxArc);
 console.log('\n== V8 特效密度（存活上限 80 + 同帧≤20）==');
 const part8 = await evalJs(`(async () => {
   const s = ZY.UI.getState();
-  s.paused = false; s.over = false; s.orientLock = false;
+  s.paused = false; s.over = false;
   const G = ZY.Game;
   s.units = s.units.filter(u => u.cls !== 'hero');
   const slots = Object.keys(ZY.B.startSlots('endless','player')).map(k => k.split(',').map(Number));
@@ -1040,9 +1112,21 @@ const part8 = await evalJs(`(async () => {
   mkE(slots[0][0] + 1, slots[0][1]);
   mkE(slots[0][0], slots[0][1] - 1);
   await new Promise(r => setTimeout(r, 120));
+  // 只数「这一发技能新增」的粒子：用 MutationObserver 统计 addedNodes。
+  // 上一场战斗的残留粒子最长要 700ms 才回收，直接 querySelectorAll 会把它们算进来（V8 时代的偶发误报）。
+  const fxLayer = document.querySelector('.skill-fx');
+  let single = 0;
+  // 旁路屏蔽：场上 Boss 也会放技能（14 粒）并落在同一层，会把「单次」计数抬高（实测 10+14=24）
+  const muted = [];
+  s.units.forEach(u => { if (u !== z && (u.heroId || u.cls === 'boss')) { muted.push([u, u.skillT]); u.skillT = 1e9; } });
+  const mo = new MutationObserver(list => list.forEach(m => m.addedNodes.forEach(n => {
+    if (n.nodeType === 1 && n.classList && n.classList.contains('fx-particle')) single++;
+  })));
+  mo.observe(fxLayer, { childList: true });
   z.skillT = 0;
-  await new Promise(r => setTimeout(r, 220));
-  const single = document.querySelectorAll('.skill-fx .fx-particle').length;
+  await new Promise(r => setTimeout(r, 200));
+  mo.disconnect();
+  muted.forEach(pair => { pair[0].skillT = pair[1]; });
   const g = mkH('guanyu',slots[1][0],slots[1][1]);
   const m = mkH('machao',slots[2][0],slots[2][1]);
   g.skillT = 99; m.skillT = 99;
@@ -1065,15 +1149,16 @@ ok('V8 单次技能粒子 ∈ [6,20]（同帧创建上限 20）', part8.single >
   'single=' + part8.single + ' fxW=' + Math.round(part8.fxW) + ' heroEls=' + part8.heroEls);
 ok('V8 粒子洪峰 ≤ 存活上限 80', part8.maxLive <= 80, 'maxLive=' + part8.maxLive);
 
-/* —— V8 六张验收截图（375×667 竖屏 + 横屏覆盖各要点） —— */
+/* —— V8.1 七张验收截图（横屏布局为主 + 竖持旋转态） —— */
 const SHOT_DIR = 'D:/Projects/_github_pages/ming-games/zhaoyun/tools/shots';
 fs.mkdirSync(SHOT_DIR, { recursive: true });
 async function capShot(name) { const r = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(SHOT_DIR, name), Buffer.from(r.result.data, 'base64')); }
-await send('Page.navigate', { url: URL }); await sleep(1200);
-await capShot('01-start.png');
+await send('Emulation.setDeviceMetricsOverride', { width: 667, height: 375, deviceScaleFactor: 2, mobile: true });
+await send('Page.navigate', { url: URL }); await sleep(1300);
+await capShot('01-start-landscape.png');
 await evalJs(DRAG_HELPERS);
-await evalJs(`document.querySelector('.mode-btn[data-mode="endless"]').click()`); await sleep(400);
-await capShot('02-endless-board.png');
+await evalJs(`document.querySelector('.mode-btn[data-mode="endless"]').click()`); await sleep(450);
+await capShot('02-new-map.png');
 await evalJs(`(async () => {
   const s = ZY.UI.getState(); s.player.bun = 300;
   s.player.hand.push({uid:91001,kind:'unit',char:'刀',type:'dao',level:1});
@@ -1085,25 +1170,51 @@ await evalJs(`(async () => {
   await new Promise(r=>setTimeout(r,260));
   await window.__dragFrom('#hand .card[data-uid="91002"]',p.x,p.y);
 })()`);
-await sleep(200);
+await sleep(220);
 await capShot('03-deploy-merge.png');
+// 黄忠（验收示例）：金字「黄」+「忠」→ 合成武将卡 → 拖到双塔位
 await evalJs(`(async () => {
   const s = ZY.UI.getState();
-  s.player.hand=[]; s.player.hand.push({uid:92001,kind:'gold',char:'赵',level:1}); s.player.hand.push({uid:92002,kind:'gold',char:'云',level:1});
+  s.player.hand=[]; s.player.hand.push({uid:92001,kind:'gold',char:'黄',level:1}); s.player.hand.push({uid:92002,kind:'gold',char:'忠',level:1});
   await new Promise(r=>setTimeout(r,260));
   await window.__tapEl('#hand .card[data-uid="92001"]');
-  await new Promise(r=>setTimeout(r,120));
+  await new Promise(r=>setTimeout(r,140));
   const hero=document.querySelector('#hand .card.hero');
   if(hero){const uid=+hero.dataset.uid; const p=window.__cellXY(1,5); await window.__dragFrom('#hand .card.hero[data-uid="'+uid+'"]',p.x,p.y);}
 })()`);
-await sleep(300);
-await capShot('04-hero-tower.png');
+await sleep(360);
+const nmBox = await evalJs(`(() => {
+  const u = document.querySelector('.unit.span2');
+  if (!u) return { has: false };
+  const nm = u.querySelector('.nm');
+  const fi = u.querySelector('.fig-img');
+  if (!nm || !fi) return { has: false };
+  const ur = u.getBoundingClientRect(), nr = nm.getBoundingClientRect(), fr = fi.getBoundingClientRect();
+  return {
+    has: true, txt: nm.textContent, wm: getComputedStyle(nm).writingMode,
+    unit: [Math.round(ur.width), Math.round(ur.height)],
+    leftRatio: +((nr.left - ur.left) / ur.width).toFixed(3),
+    vertical: nr.height > nr.width,
+    inUnit: nr.left >= ur.left - 1.5 && nr.right <= ur.right + 1.5 && nr.top >= ur.top - 2 && nr.bottom <= ur.bottom + 2,
+    overlapFig: !(nr.right <= fr.left + 1 || nr.left >= fr.right - 1)
+  };
+})()`);
+ok('V8.1 武将名牌侧置：竖排 · 贴左侧外沿（left ≤ 15% 塔宽）',
+  nmBox.has && nmBox.wm === 'vertical-rl' && nmBox.leftRatio <= 0.15, JSON.stringify(nmBox));
+ok('V8.1 武将名牌不遮立绘主体（横坐标与立绘零重叠）', nmBox.has && nmBox.overlapFig === false, JSON.stringify(nmBox && nmBox.overlapFig));
+ok('V8.1 武将名牌仍在塔格内（不溢出到邻格）', nmBox.has && nmBox.inUnit === true, JSON.stringify(nmBox && nmBox.inUnit));
+await capShot('04-hero-nameplate.png');
 await evalJs(`document.getElementById('btn-speed').click();`);
-await sleep(200);
+await sleep(220);
 await capShot('05-speed-2x.png');
+// 手机竖持：旋转态全屏
+await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 667, deviceScaleFactor: 2, mobile: true });
+await sleep(500);
+await capShot('06-portrait-rotated.png');
+// 手机横屏：同一套横屏布局
 await send('Emulation.setDeviceMetricsOverride', { width: 812, height: 375, deviceScaleFactor: 2, mobile: true });
-await sleep(400);
-await capShot('06-landscape.png');
+await sleep(420);
+await capShot('07-landscape-812.png');
 await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 667, deviceScaleFactor: 2, mobile: true });
 await sleep(200);
 console.log('   截图已存: ' + SHOT_DIR);
