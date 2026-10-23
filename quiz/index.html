@@ -1218,13 +1218,15 @@ function answer(correct,given,ans,btn,opt){
   if(correct){ok++;score+=10;}else if(_pen){score-=5;}
   if(autoMode&&_bk&&QA_TYPES[_bk]&&QA_TYPES[_bk].diffs){
     /* 滑动窗口自适应（替换原来的连对/连错计数）：
-       最近 ≤12 题正确率 ≥75% 升一档、≤40% 降一档；满 6 题才判，升降后冷却 2 题，避免一波连对跳两级。 */
+       最近 ≤12 题正确率 ≥75% 升一档、≤40% 降一档；满 6 题才判，升降后冷却 2 题，避免一波连对跳两级。
+       ⚠ 升档只在「这题答对」时判、降档只在「这题答错」时判：
+       否则连对 8 题后答错 1 题，窗口仍 89%，会出现「答错反而升档」（踩过）。 */
     selfWindow.push(correct?1:0);if(selfWindow.length>WIN_CAP)selfWindow.shift();
     var _acc=windowAcc(),_maxD=QA_TYPES[_bk].diffs.length-1;
     if(lvlCool>0){lvlCool--;}
     else if(selfWindow.length>=WIN_MIN){
-      if(_acc>=UP_ACC&&selfRank<_maxD){selfRank++;lvlCool=LEVEL_COOL;}
-      else if(_acc<=DN_ACC&&selfRank>0){selfRank--;lvlCool=LEVEL_COOL;}
+      if(correct&&_acc>=UP_ACC&&selfRank<_maxD){selfRank++;lvlCool=LEVEL_COOL;}
+      else if(!correct&&_acc<=DN_ACC&&selfRank>0){selfRank--;lvlCool=LEVEL_COOL;}
     }
     setRank(_bk,selfRank);
     curDiffLabel=QA_TYPES[_bk].diffs[selfRank].n;
