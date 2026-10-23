@@ -995,11 +995,16 @@ function codeTrial(langs,cb){
 }
 
 /* ---------- 任务3：新建分类（AI / 免费 / 手动） ---------- */
+// 已配置免费通道时，入口按钮直接说明「无需 Key」，别再把用户吓去设置里填 Key
+function aiEntryLabel(){
+  var cfg=loadAICfg();
+  return (cfg&&cfg.url&&isFreeAI(cfg.url))?'🌐 AI 生成题库（免费通道·无需 Key）':'🌐 AI 生成题库（需配置 API）';
+}
 function openNewCategory(){
   var ov=overlayPanel('➕ 新建题库');
   ov.p.appendChild(ht('div','hint','输入任意分类名，自动生成题目，不再只靠手动录入。'));
   var nm=h('input');nm.placeholder='分类名，如：三角洲 / 化学 / 三国';nm.style.margin='8px 0';ov.p.appendChild(nm);
-  var bAI=h('button','btn gold','🌐 AI 生成题库（需配置 API）');
+  var bAI=h('button','btn gold',aiEntryLabel());
   var bFree=h('button','btn','🆓 免费搜索生成（无需 Key）');
   var bManual=h('button','btn ghost','📝 手动录入');
   var bClose=h('button','btn ghost','取消');
@@ -1008,7 +1013,7 @@ function openNewCategory(){
   bClose.onclick=function(){closeOverlay(ov);};
   bManual.onclick=function(){var v=nm.value.trim();closeOverlay(ov);openEditor(v);};
   bFree.onclick=function(){var v=nm.value.trim();if(!v){alert('请输入分类名');return;}closeOverlay(ov);freeBuild(v);};
-  bAI.onclick=function(){var v=nm.value.trim();if(!v){alert('请输入分类名');return;}var cfg=loadAICfg();if(!cfg||!cfg.url||!cfg.key){alert('尚未配置 API，请先到 ⚙️ 设置 里填写 API 地址与 Key');openSettings();return;}closeOverlay(ov);aiBuild(v);};
+  bAI.onclick=function(){var v=nm.value.trim();if(!v){alert('请输入分类名');return;}var cfg=loadAICfg();if(!cfg||!cfg.url||(!cfg.key&&!isFreeAI(cfg.url))){alert('尚未配置 API，请先到 ⚙️ 设置 里填写 API 地址与 Key（免费 AI 通道无需 Key）');openSettings();return;}closeOverlay(ov);aiBuild(v);};
 }
 function offlineBlock(card,sp,what){
   sp.textContent='📴 当前没有网络：'+what+'需要联网。已缓存的题库和刷题、错题本、成绩统计都不受影响，联网后再来即可（或改用「📝 手动录入」）。';
@@ -1071,7 +1076,9 @@ function aiBuild(name){
   gatherMaterial(name,function(items){
     var material='';
     if(items&&items.length){material='参考素材：\n'+items.slice(0,12).map(function(x){return '· '+x.title+'：'+(x.desc||'').slice(0,90);}).join('\n')+'\n';}
-    var prompt='你是中文题库生成助手。请围绕主题「'+name+'」生成 18 道中文选择题（不少于 15 道）。\n'+
+    var free=isFreeAI(cfg.url);
+    var cntTxt=free?'15 道中文选择题（不少于 12 道）':'30 道中文选择题（不少于 25 道）';
+    var prompt='你是中文题库生成助手。请围绕主题「'+name+'」生成 '+cntTxt+'。\n'+
       material+
       '要求：\n'+
       '1. 多义词消歧：若主题是多义词（如「三角洲」），默认指其中最知名的实体（如游戏《三角洲行动》），全部题目只围绕该实体，不要混入其它义项。\n'+
@@ -1263,13 +1270,46 @@ function wikiSummaryFallback(title,cb){
   fetch(u2).then(function(r){return r.json();}).then(function(d){try{var pages=d.query.pages;for(var k in pages){if(pages[k].extract){cb(pages[k].extract);return;}}cb('');}catch(e){cb('');}}).catch(function(){cb('');});
 }
 function loadAICfg(){try{return JSON.parse(S.getItem('bt_qa_ai')||'null');}catch(e){return null;}}
+// 模型撞上输出上限时，JSON 数组会断在半空中。这里按字符串/转义状态往前找最后一个
+// 完整闭合的顶层对象，把已生成的题目打捞回来（原来只能整包扔掉、一题不剩）。
+function salvageArray(text){
+  var depth=0,inStr=false,esc=false,lastEnd=-1;
+  for(var i=0;i<text.length;i++){
+    var ch=text.charAt(i);
+    if(inStr){
+      if(esc)esc=false;
+      else if(ch==='\\')esc=true;
+      else if(ch==='"')inStr=false;
+      continue;
+    }
+    if(ch==='"'){inStr=true;continue;}
+    if(ch==='['||ch==='{'){depth++;continue;}
+    if(ch===']'||ch=='}'){
+      depth--;
+      if(depth===1&&ch==='}')lastEnd=i;
+      continue;
+    }
+  }
+  if(lastEnd<0)return null;
+  try{return JSON.parse(text.slice(0,lastEnd+1)+']');}catch(e){return null;}
+}
 function callAI(cfg,prompt,cb){
-  var body={model:cfg.model||'deepseek-chat',messages:[{role:'user',content:prompt}],temperature:0.7};
+  var free=isFreeAI(cfg.url);
+  var body={model:cfg.model||(free?'openai':'deepseek-chat'),messages:[{role:'user',content:prompt}],temperature:0.7};
+  if(free)body.reasoning_effort='low';   // 否则 1500 token 全烧在 reasoning 上，content 缺失、永远解析不出题
   var url=cfg.proxy?cfg.proxy:cfg.url;
   if(!/^https?:\/\//.test(url)){cb(null);return;}
-  fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.key},body:JSON.stringify(body)})
+  var hd={'Content-Type':'application/json'};
+  if(cfg.key)hd['Authorization']='Bearer '+cfg.key;
+  fetch(url,{method:'POST',headers:hd,body:JSON.stringify(body)})
     .then(function(r){return r.json();}).then(function(d){
-      try{var content=d.choices[0].message.content;var m=content.match(/\[[\s\S]*\]/);if(!m){cb(null);return;}var arr=JSON.parse(m[0]);
+      try{var content=d.choices[0].message.content;if(!content){cb(null);return;}var arr=null;
+        var m=content.match(/\[[\s\S]*\]/);
+        if(m){try{arr=JSON.parse(m[0]);}catch(e0){}}
+        // 注意：正则只到「最后一个 ]」，会把最后一个完整对象的 } 关在匹配区外，
+        // 所以打捞必须拿全文跑，不能拿 m[0] 跑（否则每局都少捞一题）。
+        if(!arr)arr=salvageArray(content);
+        if(!arr){cb(null);return;}
         var out=arr.filter(function(x){return x&&x.q&&x.a&&x.opts&&x.opts.length>=2;}).map(function(x){var opts=shuffle(x.opts.slice());return {q:x.q,a:x.a,opts:opts};});cb(out);}
       catch(e){cb(null);}
     }).catch(function(){cb(null);});
@@ -1278,12 +1318,16 @@ function callAI(cfg,prompt,cb){
    判定标准 = HTTP 2xx；失败时把状态码（如 401 / 403）或「网络错误 / 超时」回给调用方，
    便于区分是 Key 无效还是网络问题。callAI（题目生成）保持原样，不受影响。 */
 function testAI(cfg,cb){
+  var free=isFreeAI(cfg.url);
   var url=cfg.proxy?cfg.proxy:cfg.url;
   if(!/^https?:\/\//.test(url)){cb(false,'地址无效');return;}
-  var body={model:cfg.model||'deepseek-chat',messages:[{role:'user',content:'请只回复两个字：连接成功'}],temperature:0};
+  var body={model:cfg.model||(free?'openai':'deepseek-chat'),messages:[{role:'user',content:'请只回复两个字：连接成功'}],temperature:0};
+  if(free)body.reasoning_effort='low';
   var ctl=null,timer=null;
   try{ctl=new AbortController();timer=setTimeout(function(){try{ctl.abort();}catch(e){}},10000);}catch(e){}
-  fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.key},body:JSON.stringify(body),signal:ctl?ctl.signal:undefined})
+  var hd={'Content-Type':'application/json'};
+  if(cfg.key)hd['Authorization']='Bearer '+cfg.key;
+  fetch(url,{method:'POST',headers:hd,body:JSON.stringify(body),signal:ctl?ctl.signal:undefined})
     .then(function(r){
       if(timer)clearTimeout(timer);
       if(r&&r.ok){cb(true);return;}
@@ -1506,12 +1550,17 @@ var AI_PRESETS=[
   {id:'qwen',name:'通义千问',url:'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
    models:['qwen-turbo','qwen-plus','qwen-max']},
   {id:'openai',name:'OpenAI',url:'https://api.openai.com/v1/chat/completions',
-   models:['gpt-4o-mini','gpt-4o']}
+   models:['gpt-4o-mini','gpt-4o']},
+  {id:'free',name:'免费 AI（Pollinations·无需Key）',url:'https://text.pollinations.ai/openai',
+   models:['openai']}
 ];
 function aiPreset(id){for(var i=0;i<AI_PRESETS.length;i++){if(AI_PRESETS[i].id===id)return AI_PRESETS[i];}return AI_PRESETS[0];}
 function aiPresetByUrl(u){u=(u||'').trim();for(var i=1;i<AI_PRESETS.length;i++){if(AI_PRESETS[i].url===u)return AI_PRESETS[i];}return null;}
 // 是否属于任意一家的预置模型（用来区分「下拉选出来的」和「用户手打的」模型名）
 function isPresetModel(m){if(!m)return false;for(var i=1;i<AI_PRESETS.length;i++){if(AI_PRESETS[i].models.indexOf(m)>=0)return true;}return false;}
+// 免费通道（Pollinations）：无需 Key。注意它是推理模型，完成 token 上限约 1500，
+// 默认推理档会把预算全烧在 reasoning 上、content 整个缺失 —— 必须压低调 reasoning。
+function isFreeAI(url){return /pollinations\.ai/i.test(url||'');}
 
 /* ---------- 设置 ---------- */
 function openSettings(){
@@ -1568,22 +1617,26 @@ function openSettings(){
   provI.onchange=function(){
     var pid=provI.value,oldP=aiPreset(curPid),newP=aiPreset(pid);
     var curUrl=urlI.value.trim(),curModel=modI.value.trim();
-    if(newP.url&&(!curUrl||curUrl===oldP.url))urlI.value=newP.url;
+    // 切到免费通道时无条件填地址：它无需 Key、模型只有一档，
+    // 若沿用旧自定义地址会让通道静默失效（请求打到别人的接口上）
+    if(newP.url&&(!curUrl||curUrl===oldP.url||isFreeAI(newP.url)))urlI.value=newP.url;
     // 切到「自定义」保留手填内容，方便在现有地址上微调；
     // 切到预设服务商时：下拉选出来的模型换成新服务商默认档，用户手打的模型名才保留
     var keep=newP.models.length?(isPresetModel(curModel)?'':curModel):curModel;
+    if(isFreeAI(newP.url))keep='';   // 免费通道只有 openai 一档，别把手填模型名带进来
     fillModels(pid,keep);
     curPid=pid;
   };
   modSel.onchange=function(){modI.value=modSel.value;};
 
   var testB=h('button','btn','🔌 测试连接');var testMsg=ht('div','hint','');ov.p.appendChild(testB);ov.p.appendChild(testMsg);
-  testB.onclick=function(){var c={url:urlI.value.trim(),key:keyI.value.trim(),model:modI.value.trim(),proxy:proxI.value.trim()};if(!c.url||!c.key){testMsg.textContent='⚠️ 请先填 API 地址与 Key';return;}testMsg.textContent='测试中…';testAI(c,function(ok,why){
+  testB.onclick=function(){var c={url:urlI.value.trim(),key:keyI.value.trim(),model:modI.value.trim(),proxy:proxI.value.trim()};if(!c.url){testMsg.textContent='⚠️ 请先填 API 地址';return;}
+    if(!c.key&&!isFreeAI(c.url)){testMsg.textContent='⚠️ 请先填 API 地址与 Key';return;}testMsg.textContent='测试中…';testAI(c,function(ok,why){
       testMsg.textContent=ok?'✅ 连接成功':'❌ 失败：'+(why?(/^\d+$/.test(why)?'HTTP '+why:why):'未知错误');
     });};
   var saveB=h('button','btn gold','💾 保存配置');saveB.onclick=function(){var c={url:urlI.value.trim(),key:keyI.value.trim(),model:modI.value.trim(),proxy:proxI.value.trim()};try{S.setItem('bt_qa_ai',JSON.stringify(c));}catch(e){}testMsg.textContent='✅ 已保存';};
   ov.p.appendChild(saveB);
-  ov.p.appendChild(ht('div','muted','提示：选服务商会自动填好接口地址，选模型会自动填模型名；接口需与 OpenAI 兼容（自定义可填中转地址）。无 Key 也可走「🆓 免费搜索」生成题。'));
+  ov.p.appendChild(ht('div','muted','提示：选服务商会自动填好接口地址，选模型会自动填模型名；接口需与 OpenAI 兼容（自定义可填中转地址）。无 Key 可选「免费 AI（Pollinations）」或走「🆓 免费搜索」生成题。'));
   /* ---- 离线 / 安装 ---- */
   ov.p.appendChild(ht('div','section-title','📴 离线使用'));
   var pstate=ht('div','muted','');ov.p.appendChild(pstate);
