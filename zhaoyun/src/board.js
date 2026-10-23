@@ -16,31 +16,44 @@
   function key(r, c) { return r + ',' + c; }
   function inBoard(r, c) { return r >= 0 && r < ROWS && c >= 0 && c < COLS; }
 
-  /* ---------- 障碍：左右两列荆棘山脊（装饰路径边缘，不可建塔、敌人不走） ---------- */
-  const OBSTACLE = {};
-  for (let r = 0; r < ROWS; r++) { OBSTACLE[key(r, 0)] = true; OBSTACLE[key(r, COLS - 1)] = true; }
-  function isObstacle(r, c) { return !!OBSTACLE[key(r, c)]; }
+  /* ---------- 障碍：左右荆棘山脊 + 内部岩块 ----------
+   * V8.1：障碍随地图派生（buildMap 会一起镜像），不再全局固定 —— 这样入口/阿斗
+   * 镜像翻转后仍不会压到山脊上。
+   * 基础图留空两格：(0,0) 给左右翻转关、(11,7) 给上下翻转关的入口/终点让位。 */
+  const BASE_OBSTACLES = [];
+  (function () {
+    for (let r = 1; r < ROWS; r++) BASE_OBSTACLES.push(key(r, 0));              // 左山脊 11 格（(0,0) 留空）
+    for (let r = 1; r < ROWS - 1; r++) BASE_OBSTACLES.push(key(r, COLS - 1));   // 右山脊 10 格（(0,7)/(11,7) 留空）
+    ['2,4', '2,5', '3,4', '3,5', '6,2', '6,3', '7,2', '7,3'].forEach(function (k) { BASE_OBSTACLES.push(k); });   // 内部岩块 8 格
+  })();
+  // 竞技双路各宽 3 列、横跨 12 行 → 只剩左右两列山脊可用（24 格，与 V8 一致）
+  const VS_OBSTACLES = [];
+  (function () { for (let r = 0; r < ROWS; r++) { VS_OBSTACLES.push(key(r, 0)); VS_OBSTACLES.push(key(r, COLS - 1)); } })();
+  function toSet(arr) { const s = {}; arr.forEach(function (k) { s[k] = true; }); return s; }
+  const VS_OBS_SET = toSet(VS_OBSTACLES);
+  /** 该局地形障碍集合（竞技 / 单人各一张） */
+  function obstacleSet(mode, levelIdx) {
+    if (mode === 'versus') return VS_OBS_SET;
+    return resolveSoloMap(levelIdx).obsSet;
+  }
+  function isObstacle(r, c, mode, levelIdx) { return !!obstacleSet(mode, levelIdx)[key(r, c)]; }
 
   /* ---------- 单人蛇形主路（无尽 / 关卡） ----------
-   * 敌人右侧进入 (0,6) → 顶排左行 → 右岸下行 → 中排右行 → 左岸下行 →
-   * 中排左行 → 右岸下行 → 底排左行 → 阿斗 (11,1)。全长 37 格，与塔位/障碍无交叠。
+   * V8.1 重排：折返段数 6 → 4，全长 37 → 28 格（走完全程更快，但塔的射击窗口变窄）。
+   * 敌人右侧进入 (0,7) → 顶排左行 → 左岸下行 → 中排右行 → 右岸下行 →
+   * 下排左行 → 中列下行 → 底排左转 → 阿斗 (11,1)。与塔位/障碍无交叠。
    */
   const SOLO_PATH = [
-    [0, 6], [0, 5], [0, 4],
-    [1, 4], [2, 4],
-    [2, 3], [2, 2], [2, 1],
-    [3, 1], [4, 1],
-    [4, 2], [4, 3], [4, 4], [4, 5], [4, 6],
-    [5, 6], [6, 6],
-    [6, 5], [6, 4], [6, 3], [6, 2], [6, 1],
-    [7, 1], [8, 1],
-    [8, 2], [8, 3], [8, 4], [8, 5], [8, 6],
-    [9, 6], [10, 6],
-    [10, 5], [10, 4], [10, 3], [10, 2], [10, 1],
-    [11, 1],
+    [0, 7], [0, 6], [0, 5], [0, 4], [0, 3], [0, 2], [0, 1],
+    [1, 1], [2, 1], [3, 1],
+    [4, 1], [4, 2], [4, 3], [4, 4], [4, 5], [4, 6],
+    [5, 6], [6, 6], [7, 6],
+    [8, 6], [8, 5], [8, 4], [8, 3], [8, 2],
+    [9, 2], [10, 2],
+    [11, 2], [11, 1],
   ].map(function (p) { return { row: p[0], col: p[1] }; });
-  const SOLO_ENTRANCE = { row: 0, col: 6 };   // 右侧刷怪口
-  const SOLO_ADOU = { row: 11, col: 1 };      // 左侧阿斗（终点）
+  const SOLO_ENTRANCE = { row: 0, col: 7 };   // 右侧刷怪口（右上角，贴右山脊）
+  const SOLO_ADOU = { row: 11, col: 1 };      // 左侧阿斗（终点，贴左山脊）
 
   /* ---------- 竞技双路（左右镜像，各宽 3 列，互不交叠） ---------- */
   const VS_P_PATH = [
@@ -63,37 +76,42 @@
 
   /* ---------- 初始塔位（绿色可放置格，贴主路两侧） ---------- */
   // 单人：贴蛇形主路肩位 17 个（第 4 关起 +4 = 21）
+  // V8.1 重排：顶排下沿 5 格 · 左侧下行两侧 2 格 · 中排下沿 4 格 · 右岸两侧 2 格 ·
+  //             下排上沿 3 格 · 阿斗上方 1 格；横向相邻成对的塔位足够摆武将（span2）
   const SLOTS_SOLO_BASE = [
-    '1,3', '1,5', '1,6',            // 顶部入口段两侧
-    '3,2', '3,3', '3,4',            // 上排横路下方
-    '3,5', '3,6',                   // 中排右行路上方
-    '5,2', '5,4', '5,5',            // 中排右行路下方
-    '7,4', '7,5', '7,6',            // 下排横路两侧
-    '9,2', '9,5',                   // 底排右行路上方
-    '11,2',                         // 阿斗右侧
+    '1,2', '1,3', '1,4', '1,5', '1,6',   // 顶排主路下沿
+    '2,2', '3,2',                        // 左侧下行路东侧
+    '5,2', '5,3', '5,4', '5,5',          // 中排主路下沿
+    '6,5', '7,5',                        // 右岸下行路西侧
+    '9,3', '9,4', '10,3',                // 下排主路上沿
+    '11,3',                              // 阿斗右侧
   ];
-  const SLOTS_SOLO_BIG = SLOTS_SOLO_BASE.concat(['5,3', '7,3', '9,3', '11,3']);   // 第 4 关起 21 个
+  const SLOTS_SOLO_BIG = SLOTS_SOLO_BASE.concat(['3,3', '7,4', '9,5', '9,6']);   // 第 4 关起 21 个
 
   /* ---------- 关卡专属地图（per-level） ----------
-   * 0~5 关共用经实战验证的 37 格蛇形原图（levelIdx ≥ 3 起塔位升级为 21 格 BIG）。
+   * 0~5 关共用 V8.1 新版 28 格蛇形图（levelIdx ≥ 3 起塔位升级为 21 格 BIG）。
    * 6~7 关为「内容扩展」新增：以原图做双射镜像变换（左右翻转 / 上下翻转）派生，
-   *   保证路径 / 塔位 / 障碍三集合仍两两不交、且全部落在棋盘内（镜像保邻接、保不交）。
+   *   路径 / 塔位 / 障碍三集合一起镜像 → 仍两两不交、且全部落在棋盘内。
    *   —— 镜像后入口(阿斗)随之翻转，形成视觉与战术都不同的新布局。 */
   function tfV(p) { return { row: p.row, col: COLS - 1 - p.col }; }   // 左右翻转
   function tfH(p) { return { row: ROWS - 1 - p.row, col: p.col }; }   // 上下翻转
   function keyTf(k, fn) { const a = k.split(','); const p = fn({ row: +a[0], col: +a[1] }); return p.row + ',' + p.col; }
   function buildMap(fn) {
+    const obs = BASE_OBSTACLES.map(function (k) { return keyTf(k, fn); });
     return {
       path: SOLO_PATH.map(fn),
       entrance: fn(SOLO_ENTRANCE),
       adou: fn(SOLO_ADOU),
       slotsBase: SLOTS_SOLO_BASE.map(function (k) { return keyTf(k, fn); }),
       slotsBig: SLOTS_SOLO_BIG.map(function (k) { return keyTf(k, fn); }),
+      obstacles: obs,
+      obsSet: toSet(obs),
     };
   }
   const SOLO_BASE_MAP = {
     path: SOLO_PATH, entrance: SOLO_ENTRANCE, adou: SOLO_ADOU,
     slotsBase: SLOTS_SOLO_BASE, slotsBig: SLOTS_SOLO_BIG,
+    obstacles: BASE_OBSTACLES, obsSet: toSet(BASE_OBSTACLES),
   };
   const SOLO_MAPS = [
     SOLO_BASE_MAP, SOLO_BASE_MAP, SOLO_BASE_MAP, SOLO_BASE_MAP, SOLO_BASE_MAP, SOLO_BASE_MAP,
@@ -173,14 +191,14 @@
   function canPlace(state, side, r, c, span) {
     if (!inBoard(r, c)) return false;
     if (isPath(state.mode, r, c, state.levelIdx)) return false;
-    if (isObstacle(r, c)) return false;
+    if (isObstacle(r, c, state.mode, state.levelIdx)) return false;
     if (state.deploy[key(r, c)] !== side) return false;
     if (state.grid[r][c]) return false;
     if (span && span > 1) {
       const c2 = c + 1;
       if (!inBoard(r, c2)) return false;
       if (isPath(state.mode, r, c2, state.levelIdx)) return false;
-      if (isObstacle(r, c2)) return false;
+      if (isObstacle(r, c2, state.mode, state.levelIdx)) return false;
       if (state.deploy[key(r, c2)] !== side) return false;
       if (state.grid[r][c2]) return false;
     }
@@ -227,7 +245,7 @@
     const out = [];
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
-        if (isPath(state.mode, r, c, state.levelIdx) || isObstacle(r, c)) continue;
+        if (isPath(state.mode, r, c, state.levelIdx) || isObstacle(r, c, state.mode, state.levelIdx)) continue;
         if (state.deploy[key(r, c)]) continue;
         if (!adjacentToDeploy(state, side, r, c)) continue;
         out.push({ row: r, col: c });
@@ -250,8 +268,9 @@
     ROWS: ROWS, COLS: COLS,
     SOLO_PATH: SOLO_PATH, VS_P_PATH: VS_P_PATH, VS_E_PATH: VS_E_PATH,
     SOLO_ENTRANCE: SOLO_ENTRANCE, SOLO_ADOU: SOLO_ADOU,
+    BASE_OBSTACLES: BASE_OBSTACLES, VS_OBSTACLES: VS_OBSTACLES,
     resolveSoloMap: resolveSoloMap, SOLO_MAPS: SOLO_MAPS,
-    key: key, inBoard: inBoard, isObstacle: isObstacle,
+    key: key, inBoard: inBoard, isObstacle: isObstacle, obstacleSet: obstacleSet,
     isPath: isPath, pathSet: pathSet, pathSeq: pathSeq,
     entrances: entrances, adouAt: adouAt, warnCells: warnCells,
     createGrid: createGrid, canPlace: canPlace,

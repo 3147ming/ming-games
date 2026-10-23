@@ -62,7 +62,7 @@ export function createMobileControls({ player, interaction, panels = {} } = {}) 
       <button type="button" data-act="close" class="ns-menu-close">✕ 关闭</button>
     </div>
     <div id="ns-rotate">
-      <div class="ns-rotate-icon">📱 ↻</div>
+      <div class="ns-rotate-icon"></div>
       <div class="ns-rotate-text">横屏玩更顺手</div>
       <div class="ns-rotate-sub">把手机转成横向即可自动关闭本提示</div>
       <button id="ns-rotate-dismiss" type="button">知道了，直接进入</button>

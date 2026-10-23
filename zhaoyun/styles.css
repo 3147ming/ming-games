@@ -1,7 +1,13 @@
 /* =============================================================================
  * 赵云与阿斗 · 样式 (styles.css)
  * 水墨国风 · 米色纸底 / 墨色文字 / 朱红点缀 / 金字塔块 / 紫字武将
- * 竖屏 9:16 优先，桌面居中
+ *
+ * V8.1 全端强制横屏（唯一布局）：
+ *   · 舞台恒为「横屏画布」——HUD 顶部通栏 + 棋盘居左 + 手牌/军营/征兵右侧竖排；
+ *     桌面按视口等比放大，不再有竖屏 9:16 版式。
+ *   · 手机竖持时整个舞台 rotate(90deg) 铺满视口（.stage.rot），呈横屏形态；
+ *     无「请横屏」遮罩、无方向暂停，方向变化即时切换。
+ *   · 内部尺寸用容器查询单位（cqh / cqw）跟随舞台，旋转态与非旋转态同一套口径。
  * ========================================================================== */
 
 :root {
@@ -16,8 +22,7 @@
   --red: #b3352f;
   --green: #4c7a4a;
   --line: #cfc6b4;
-  --dock-h: 188px; /* 底栏（手牌 8 格 + 军营 5 格 + 征兵/道具行）总高，toast 定位用 */
-  --chrome: 232px; /* 顶栏 + 底栏占用高度，用于棋盘自适应 */
+  --dock-w: clamp(196px, 32%, 360px); /* 右侧操作栏宽度（横屏唯一布局） */
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -34,14 +39,20 @@ body {
 [hidden] { display: none !important; }
 
 /* ---------------------------------------------------------------- 舞台 */
+/* V8.1：舞台恒铺满视口，尺寸单位以舞台为容器（cqw / cqh 在旋转态口径一致） */
 .stage {
-  position: relative;
-  width: min(100vw, calc(100dvh * 9 / 16));
-  height: 100dvh;
-  margin: 0 auto;
+  position: fixed; left: 0; top: 0;
+  width: 100vw; height: 100dvh;
+  transform-origin: top left;
+  container-type: size;
   background:
     radial-gradient(120% 80% at 50% 0%, #f4efe6 0%, var(--paper) 55%, var(--paper-2) 100%);
   overflow: hidden;
+}
+/* 手机竖持（视口高 > 宽）：尺寸互换后绕左上角转 90°，正好铺满竖屏视口 */
+.stage.rot {
+  width: 100dvh; height: 100vw;
+  transform: rotate(90deg) translateY(-100%);
 }
 /* V7：移除页面背景细网格（原纸纹 repeating-linear-gradient），改纯净底色 */
 .ink-mount {
@@ -52,20 +63,33 @@ body {
 .screen { position: absolute; inset: 0; display: flex; flex-direction: column; }
 
 /* ================================================================ 开始界面 */
+/* V8.1：开始界面同样是横屏版式 —— 两列：左「标题 + 三种模式」，右「难度 / 存档 / 玩法速览」，
+   一屏放下，短屏（手机横屏 375 高）也不用滚动。纯 grid 区域分配，不改 DOM 结构。 */
 .start-wrap {
   position: relative; z-index: 2;
+  width: 100%; max-width: 860px; margin: 0 auto;
   height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch;
-  padding: 4% 7% 5%;
-  display: flex; flex-direction: column; gap: 14px;
+  padding: 2.4% 3% 2.2%;
+  display: grid;
+  grid-template-columns: minmax(0, 1.06fr) minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto auto;
+  align-content: start;
+  gap: 8px 18px;
 }
-.brand { text-align: center; padding-top: 6%; position: relative; }
+.brand { grid-column: 1 / -1; grid-row: 1; }
+.modes { grid-column: 1; grid-row: 2 / span 3; }
+.diff  { grid-column: 2; grid-row: 2; }
+.save  { grid-column: 2; grid-row: 3; }
+.rules { grid-column: 2; grid-row: 4; }
+.reset { grid-column: 1 / -1; grid-row: 5; }
+.brand { text-align: center; padding-top: 0; position: relative; }
 .title {
-  margin: 0; font-size: clamp(28px, 9.5vw, 46px);
+  margin: 0; font-size: clamp(24px, 5.4cqw, 44px);
   letter-spacing: .18em; font-weight: 700; color: var(--ink);
   text-shadow: 0 1px 0 rgba(255,255,255,.6);
 }
 .sub {
-  margin: 8px 0 0; font-size: 12px; letter-spacing: .34em;
+  margin: 6px 0 0; font-size: 12px; letter-spacing: .34em;
   color: var(--ink-3);
 }
 .seal {
@@ -77,10 +101,10 @@ body {
   box-shadow: 0 2px 6px rgba(120,30,26,.3);
 }
 
-.modes { display: flex; flex-direction: column; gap: 10px; margin-top: 6%; }
+.modes { display: flex; flex-direction: column; gap: 8px; margin-top: 0; justify-content: center; }
 .mode-btn {
   display: flex; align-items: center; gap: 12px;
-  padding: 13px 14px; border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 13px; border: 1px solid var(--line); border-radius: 12px;
   background: linear-gradient(180deg, rgba(255,255,255,.7), rgba(255,255,255,.25));
   color: var(--ink); text-align: left; cursor: pointer;
   transition: transform .12s, border-color .12s, box-shadow .12s;
@@ -97,7 +121,7 @@ body {
 .m-txt b { font-size: 16px; letter-spacing: .08em; }
 .m-txt i { font-style: normal; font-size: 11.5px; color: var(--ink-3); line-height: 1.5; }
 
-.diff { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.diff { display: flex; align-items: center; gap: 8px; margin-top: 0; }
 .d-lab { font-size: 12px; letter-spacing: .12em; color: var(--ink-3); margin-right: 2px; }
 .diff-btn {
   flex: 1; padding: 9px 0; font-size: 13px; font-family: inherit;
@@ -107,29 +131,43 @@ body {
 .diff-btn.active { background: var(--red); border-color: var(--red); color: #fff; }
 
 .save {
-  margin-top: 4px; padding: 12px 14px; border-radius: 12px;
+  margin-top: 0; padding: 10px 12px; border-radius: 12px;
   background: rgba(255,255,255,.45); border: 1px dashed var(--line);
   font-size: 12.5px; line-height: 1.9; color: var(--ink-2);
 }
 .save b { color: var(--ink-3); font-weight: 500; margin-right: 6px; }
 
-.rules { margin-top: 2px; font-size: 12px; color: var(--ink-2); }
+.rules { margin-top: 0; font-size: 12px; color: var(--ink-2); }
 .rules summary { cursor: pointer; letter-spacing: .1em; color: var(--red); padding: 6px 0; }
 .rules p { line-height: 1.85; margin: 6px 0; color: var(--ink-2); }
 
 .reset {
-  margin-top: auto; align-self: center;
+  margin-top: 2px; justify-self: center;
   background: none; border: none; color: var(--ink-3);
   font-size: 11.5px; font-family: inherit; cursor: pointer; padding: 8px;
   text-decoration: underline dotted;
 }
 
 /* ================================================================ 对局界面 */
-#screen-game { padding: 6px 8px 8px; gap: 6px; }
+/* V8.1：唯一布局 = 横屏三块 —— 顶部 HUD 通栏 / 左棋盘 / 右操作栏。
+   超宽屏限宽 1400 并居中，避免棋盘与操作栏被拉得过远。 */
+#screen-game {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--dock-w);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "hud   hud"
+    "board dock";
+  gap: 6px 10px;
+  width: 100%; max-width: 1120px;
+  margin: 0 auto;
+  padding: 4px 8px 8px;
+}
 
 .hud {
-  flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
-  padding: 4px 6px; border-bottom: 1px solid var(--line);
+  grid-area: hud;
+  display: flex; align-items: center; gap: 8px;
+  padding: 3px 6px; border-bottom: 1px solid var(--line);
 }
 .hud-l { min-width: 74px; }
 .hud-mode { font-size: 13px; letter-spacing: .08em; font-weight: 600; }
@@ -155,10 +193,17 @@ body {
 .icon-btn.off { opacity: .5; }
 
 /* ---------------------------------------------------------------- 棋盘 */
-.board-wrap { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+/* 棋盘严格保持 8:12：高度取「可用高」与「可用宽换算高」的较小值，永不拉伸变形 */
+.board-wrap {
+  grid-area: board;
+  display: flex; align-items: center; justify-content: center;
+  min-width: 0; min-height: 0;
+  container-type: size;
+}
 .board {
   position: relative;
-  width: min(100%, calc((100dvh - var(--chrome)) * 8 / 12));
+  width: min(100cqw, calc(100cqh * 2 / 3));
+  height: auto;
   aspect-ratio: 8 / 12;
   border: 2px solid var(--ink); border-radius: 6px;
   background: #f5f1e8;
@@ -471,11 +516,22 @@ body {
 .redflash.on { animation: redflash .26s ease-out; }
 @keyframes redflash { 0% { opacity: 0; } 45% { opacity: 1; } 100% { opacity: 0; } }
 
-/* ---------------------------------------------------------------- 底栏（三层：手牌 8 格 / 军营 5 格 / 征兵+道具） */
-.dock { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; padding-top: 2px; }
+/* ---------------------------------------------------------------- 右侧操作栏
+   三层：手牌 8 格（4×2）/ 军营 5 槽 / 征兵 + 道具。
+   高度一律 clamp(…cqh…) → 手机横屏不挤、桌面按视口等比放大。 */
+.dock {
+  grid-area: dock;
+  display: flex; flex-direction: column; gap: 6px;
+  min-width: 0; min-height: 0;
+  padding-top: 2px;
+  overflow-y: auto; overscroll-behavior: contain;
+}
 .hand {
-  display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px;
-  height: 66px; padding: 4px; touch-action: none;
+  flex: 0 0 auto;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  height: clamp(84px, 28cqh, 168px); padding: 5px; touch-action: none;
   border: 2px solid #6d5a3c; border-radius: 12px;
   background: rgba(255,255,255,.34);
   box-shadow: 0 2px 8px rgba(60,45,25,.16), 0 1px 0 rgba(255,255,255,.5) inset;
@@ -520,8 +576,9 @@ body {
 
 /* 军营 5 槽（征兵落点） */
 .barracks {
-  display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;
-  height: 50px; padding: 4px; touch-action: none;
+  flex: 0 0 auto;
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px;
+  height: clamp(40px, 12cqh, 84px); padding: 5px; touch-action: none;
   border: 2px solid #6d5a3c; border-radius: 11px;
   background: rgba(255,255,255,.34);
   box-shadow: 0 2px 8px rgba(60,45,25,.16), 0 1px 0 rgba(255,255,255,.5) inset;
@@ -531,12 +588,12 @@ body {
 .card.mini span { display: none; }
 .card.mini { border-radius: 7px; }
 
-/* 征兵按钮 + 道具栏 */
-.dock-row { display: flex; gap: 6px; align-items: stretch; }
+/* 征兵按钮 + 道具栏：竖排（按钮整行，道具横排同一行） */
+.dock-row { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
 .dock-row .recruit { flex: 1 1 auto; }
 .items { flex: 0 0 auto; display: flex; gap: 6px; }
 .item-slot {
-  width: 52px; height: 50px; border-radius: 10px;
+  flex: 1 1 0; width: auto; height: clamp(38px, 11cqh, 76px); border-radius: 10px;
   border: 1px solid var(--line); background: rgba(255,255,255,.5);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   font-size: 15px; font-weight: 700; color: #7a6a52; cursor: grab;
@@ -548,7 +605,7 @@ body {
 .item-slot:active { transform: scale(.97); }
 
 .recruit {
-  height: 50px; border: none; border-radius: 12px; cursor: pointer;
+  height: clamp(40px, 12cqh, 82px); border: none; border-radius: 12px; cursor: pointer;
   background: linear-gradient(180deg, #c4403a, var(--red));
   color: #fff; font-family: inherit;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
@@ -631,13 +688,14 @@ body {
 }
 
 .toast {
-  position: absolute; left: 8%; right: 8%; bottom: calc(var(--dock-h, 128px) + 8px);
+  position: absolute; left: 50%; bottom: 10px; width: max-content;
+  max-width: min(46ch, 52vw);
   background: rgba(36,33,28,.92); color: #f3eee3;
   font-size: 12px; line-height: 1.6; padding: 9px 12px; border-radius: 10px;
-  opacity: 0; transform: translateY(8px); transition: opacity .18s, transform .18s;
+  opacity: 0; transform: translate(-50%, 10px); transition: opacity .18s, transform .18s;
   pointer-events: none; z-index: 45;
 }
-.toast.show { opacity: 1; transform: translateY(0); }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 /* ---------------------------------------------------------------- 弹层 */
 .overlay {
@@ -667,14 +725,7 @@ body {
 .btn:active { transform: scale(.99); }
 
 /* ---------------------------------------------------------------- 窄屏微调 */
-@media (max-height: 640px) {
-  :root { --chrome: 212px; --dock-h: 172px; }
-  .hand { height: 58px; }
-  .slot { height: 58px; }
-  .barracks { height: 44px; }
-  .recruit { height: 44px; }
-  .item-slot { height: 44px; width: 46px; }
-}
+/* V8.1：尺寸已全部用 cqh clamp 跟随舞台，不再需要按视口高单独改一套 */
 @media (max-width: 360px) {
   .card b { font-size: 19px; }
 }
@@ -1152,7 +1203,7 @@ body {
 .item-slot:active { transform: translateY(1px) scale(.97); box-shadow: 0 1px 3px rgba(60,45,25,.18); }
 
 /* —— 开始界面：更有游戏感的头图与按钮 —— */
-.brand { padding-top: 4%; }
+.brand { padding-top: 0; }
 .title {
   background: linear-gradient(180deg, var(--ink) 0%, #4a4236 100%);
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
@@ -1187,88 +1238,30 @@ body {
 }
 
 /* =============================================================================
- * V8 · 手机竖屏「请横屏游玩」遮罩（仅竖屏触摸设备触发，桌面不强制）
- *   显示由媒体查询控制；暂停由 ui.js 的 orientLock 联动。
+ * V8.1 · 武将名牌侧置：span2 武将塔（占 2 格）的名牌不再压在立绘上，
+ *        改为贴左侧外沿、垂直居中的竖排小徽牌 —— 立绘主体（头/身/武器）不再被字压住。
+ *        单格兵种塔的兵种名照旧在立绘上方（.unit b 的常规流内布局）。
  * ========================================================================== */
-.rotate-overlay {
-  display: none;
-  position: absolute; inset: 0; z-index: 80;
-  flex-direction: column; align-items: center; justify-content: center; gap: 16px;
-  background: radial-gradient(120% 80% at 50% 38%, #2b2620 0%, #15120e 100%);
-  color: #f3eee3; text-align: center; padding: 8%;
+.unit.span2 .nm {
+  position: absolute;
+  left: 2px; top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  writing-mode: vertical-rl;
+  padding: 2px 1px;
+  border-radius: 5px;
+  background: rgba(26, 16, 38, .88);
+  color: #fff;
+  font-size: max(8px, 2.9cqw);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: 0;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.34) inset;
+  pointer-events: none;
 }
-.rotate-icon { width: 30%; max-width: 120px; height: auto; transform-origin: 50% 50%; animation: rotHint 2.4s ease-in-out infinite; }
-.rotate-tip { font-size: 22px; letter-spacing: .2em; font-weight: 700; }
-.rotate-sub { font-size: 13px; color: #b9b0a0; letter-spacing: .06em; }
-@keyframes rotHint { 0%,100% { transform: rotate(-90deg); } 50% { transform: rotate(0deg); } }
-@media (orientation: portrait) and (max-width: 900px) and (pointer: coarse) {
-  .rotate-overlay { display: flex; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .rotate-icon { animation: none; }
-}
+/* 武将塔的技能冷却小标本来在左下角，会被侧置名牌压住 → 右移一格避开 */
+.unit.span2 .sk { left: 20px; }
+/* 武将塔立绘改为铺满整格（名牌已移出流内，立绘可独占高度） */
+.unit.span2 .fig-wrap { height: 100%; }
 
-/* =============================================================================
- * V8 · 手机横屏「完整布局」：HUD 顶部通栏 + 棋盘居左 + 手牌/军营/征兵右侧竖排
- *   触发条件用「横屏 + 视口不超手机范围」，不依赖 pointer: coarse ——
- *   这样无头探针（仅 mobile:true、无触摸模拟）也能真实覆盖到该布局。
- *   桌面窄窗即使命中，也只是更合理的自适应，不会强制旋转（遮罩仍只对触屏显示）。
- *   此前 .stage 恒锁 9:16，横屏时宽度被压到 ~211px，HUD 右侧倍速键会被裁掉。
- * ========================================================================== */
-@media (orientation: landscape) and (max-width: 1000px) and (max-height: 560px) {
-  /* 横屏铺满，不再锁 9:16 竖屏比例 */
-  .stage { width: 100vw; height: 100dvh; }
-
-  #screen-game {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-content: flex-start;
-    justify-content: center;
-    padding: 4px 10px 6px;
-    column-gap: 12px;
-    row-gap: 0;
-  }
-  /* HUD 独占第一行通栏：把横屏宽度用满，左右两侧信息不再挤在窄列里。
-     border-box：flex-basis:100% 含内边距，否则会向右多出 12px 被裁。 */
-  #screen-game .hud { flex: 0 0 100%; box-sizing: border-box; padding: 2px 6px; }
-  #screen-game .hud-l { min-width: 96px; }
-
-  /* 棋盘：竖屏棋盘是 8:12，横屏高度受限 → 由可用高度反推宽度，保证整盘完整可见 */
-  #screen-game .board-wrap { flex: 0 0 auto; height: calc(100% - 44px); padding: 0; }
-  #screen-game .board {
-    width: calc((100dvh - 62px) * 8 / 12);
-    height: auto;
-  }
-
-  /* 右侧操作栏：手牌 4×2、军营 5 槽、征兵 + 道具竖排 */
-  #screen-game .dock {
-    flex: 0 0 262px;
-    height: calc(100% - 44px);
-    padding: 0;
-    gap: 8px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-  #screen-game .hand {
-    grid-template-columns: repeat(4, 1fr);
-    grid-auto-rows: 52px;
-    height: auto;
-    gap: 5px;
-  }
-  #screen-game .hand .slot { height: 52px; }
-  #screen-game .barracks {
-    height: auto;
-    padding: 4px;
-    gap: 5px;
-  }
-  #screen-game .barracks .slot { height: 44px; }
-  #screen-game .dock-row { flex-direction: column; gap: 8px; }
-  #screen-game .items { justify-content: space-between; }
-  #screen-game .recruit { height: 46px; }
-
-  /* 开始界面横屏：限宽居中，避免说明文字被拉成超长一行 */
-  .start-wrap { max-width: 640px; margin: 0 auto; padding: 2% 4% 3%; }
-  .brand { padding-top: 1%; }
-  .title { font-size: clamp(22px, 5vw, 34px); }
-  .modes { margin-top: 2%; }
-}

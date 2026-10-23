@@ -52,7 +52,7 @@
 
       <details class="rules">
         <summary>玩法速览</summary>
-        <p>· <b>保卫萝卜式塔防</b>（竖屏）：敌人从<b>右侧刷怪口</b>沿<b>蛇形主路</b>一路走向左侧<b>阿斗</b>（3 血，台词"护驾！护驾！"）。敌人不还手，只管走路 —— 你的任务是在路边<b>绿色塔位</b>建塔拦住它们。</p>
+        <p>· <b>保卫萝卜式塔防</b>（横屏，手机竖着拿会自动转成横屏）：敌人从<b>右侧刷怪口</b>沿<b>蛇形主路</b>一路走向左侧<b>阿斗</b>（3 血，台词"护驾！护驾！"）。敌人不还手，只管走路 —— 你的任务是在路边<b>绿色塔位</b>建塔拦住它们。</p>
         <p>· <b>征兵</b>（资源 <b>10</b> 起步，每次成功 <b>+2</b> 不封顶）一次出 <b>5 张</b>进<b>军营</b>（5 槽）；拖进军牌区（<b>8 格</b>，武将卡占 2 格），再拖到塔位建塔。资源每秒 +1，击杀普通敌人 +1。</p>
         <p>· <b>合成</b>：兵种卡拖到<b>同字塔</b>上 = <b>+1 级</b>（刀+刀=刀²，上限 5 级）；手牌里凑齐<b>武将字对</b>（赵+云 / 黄+忠 / 张+飞 / 刘+备 / 马+超）即弹<b>「合成武将」</b>提示，合成武将卡（占 2 格宽）。</p>
         <p>· <b>经验 / 装备</b>：单位击杀敌人攒经验（满 10 升 1 级，上限 5 级）；<b>武器背包</b>有<b>铁剑（攻击+3）</b>可装备给武将。</p>
@@ -111,18 +111,6 @@
   <div class="banner" id="banner"></div>
   <div class="toast" id="toast"></div>
   <div class="overlay" id="overlay" hidden></div>
-
-  <!-- V8 手机竖屏：请横屏游玩遮罩（仅竖屏触摸设备显示，桌面不强制） -->
-  <div class="rotate-overlay" id="rotate-overlay">
-    <svg class="rotate-icon" viewBox="0 0 64 64" aria-hidden="true">
-      <rect x="20" y="6" width="24" height="42" rx="5" fill="none" stroke="#f3eee3" stroke-width="3"/>
-      <circle cx="32" cy="43" r="2.6" fill="#f3eee3"/>
-      <path d="M46 26 a20 20 0 1 1 -13 -18" fill="none" stroke="#ffd86b" stroke-width="3" stroke-linecap="round"/>
-      <path d="M33 4 l-2 7 7 0 z" fill="#ffd86b"/>
-    </svg>
-    <div class="rotate-tip">请横屏游玩</div>
-    <div class="rotate-sub">将手机横置以获得最佳体验</div>
-  </div>
 </div>
 
 <script src="./src/units.js"></script>

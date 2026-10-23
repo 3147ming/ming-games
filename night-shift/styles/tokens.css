@@ -1485,7 +1485,8 @@ html, body {
 
 /* 尊重系统减弱动效偏好（美术圣经 §9.6） */
 @media (prefers-reduced-motion: reduce) {
-  .crosshair, .topbar .track > i, .toast { transition: none !important; animation: none !important; }
+  .crosshair, .topbar .track > i, .toast,
+  .ns-rotate-icon { transition: none !important; animation: none !important; }
   .acc-item { transition: none; }
   .questpanel.done { animation: none !important; }
   .tutorial { animation: none !important; }
@@ -1748,9 +1749,14 @@ html, body { overscroll-behavior: none; }
   flex-direction: column; align-items: center; justify-content: center; gap: 14px;
   background: rgba(8, 10, 16, .96); color: #f0ece2; text-align: center; padding: 24px;
 }
-#ns-rotate-icon { font-size: 64px; animation: ns-rotate-hint 1.6s ease-in-out infinite; }
-#ns-rotate-text { font-size: 18px; font-weight: 700; line-height: 1.6; max-width: 16em; }
-#ns-rotate-sub { font-size: 13px; line-height: 1.6; max-width: 18em; color: rgba(240, 236, 226, .68); }
+/* ⚠ 这三个子元素在 mobile-controls.mjs 里是 class，不是 id —— 此前写成 #id 选择器导致
+ * 整段字号/弱化色完全失效（2026-10-24 修正）。改这里务必保持 .class 写法。 */
+.ns-rotate-icon {
+  width: 40px; height: 70px; border: 3px solid #b15bd8; border-radius: 8px;
+  animation: ns-rotate-hint 1.6s ease-in-out infinite;
+}
+.ns-rotate-text { font-size: 18px; font-weight: 700; line-height: 1.6; max-width: 16em; }
+.ns-rotate-sub { font-size: 13px; line-height: 1.6; max-width: 18em; color: rgba(240, 236, 226, .68); }
 #ns-rotate-dismiss {
   min-width: 200px; min-height: 48px;              /* ≥44px 触控靶区是硬要求 */
   margin-top: 6px; padding: 0 20px;
@@ -1763,7 +1769,8 @@ html, body { overscroll-behavior: none; }
 #ns-rotate-dismiss:active { background: rgba(177, 91, 216, .5); }
 /* 隐藏态兜底：就算别处误把 display 改回来，也不允许它挡住下方 UI（要求③） */
 #ns-rotate[style*="display: none"], #ns-rotate[hidden] { pointer-events: none !important; }
+/* 「转过去并停住」比原对称摆动更直观：0~20% 竖着等，20~60% 转过去，60~100% 停在横屏 */
 @keyframes ns-rotate-hint {
-  0%, 100% { transform: rotate(0deg); }
-  50% { transform: rotate(90deg); }
+  0%, 20% { transform: rotate(0); }
+  60%, 100% { transform: rotate(90deg); }
 }

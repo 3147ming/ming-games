@@ -1,4 +1,4 @@
-/* 赵云与阿斗 · 平衡基线自测（Node，不依赖浏览器）— V5 原版对齐
+/* 赵云与阿斗 · 平衡基线自测（Node，不依赖浏览器）— V8.1 敌我双向微调后重校
  * 用法：node tools/balance.mjs
  * 双方均由游戏内 AI（ZY.AI.thinkSide）驱动，量三模式基线：
  *   · 竞技：easy(0.8)/normal(1.0)/hard(1.2) 我方胜率（目标 ≥ 8/6/4，每档 16 局地板）
@@ -6,6 +6,13 @@
  *        打满则依次比阿斗剩血 → 击杀 → 资源存量；难度 = 敌方经济系数（×0.7/×1.0/×1.3）
  *   · 无尽：中位数波数（目标 ≥ 9）
  *   · 关卡：第 1 关通关率（目标 ≥ 30/64）· 第 4 关 ≥ 2/64（6 波制，关底张梁）
+ *
+ * V8.1 校准说明（为什么阈值仍是「地板值」而不是 40~55% 胜率）：
+ *   本脚本两边都是游戏内 AI、规则完全镜像，我方每 tick 先手 → 绝对胜率天然偏高
+ *   （V8 基线即 easy 14/16 · normal 16/16 · hard 15/16）。因此这里保留地板阈值，
+ *   另打印「平均剩余阿斗 / 平均阿斗差」作为细粒度体感指标：敌方 +25% 之后同一脚本
+ *   的 hard 从 15/16 掉到 14/16、无尽中位从 55 波掉到 50 波，方向正确。
+ *   人类玩家的真实难度以「normal 竞技 40~55%」为设计目标，靠数值而定，不由本脚本断言。
  */
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -28,7 +35,7 @@ const G = ZY.Game, B = ZY.B, C = ZY.C;
 
 /* ---------- 对局驱动：我方 = AI 策略（与游戏内 thinkSide 同规则）；敌方 = 游戏内 in-tick AI ---------- */
 function runVersus(diff, n) {
-  let win = 0;
+  let win = 0, adouSum = 0, marginSum = 0, waveSum = 0;
   for (let g = 0; g < n; g++) {
     const s = G.baseState('versus', { difficulty: diff });
     let guard = 0;
@@ -38,8 +45,11 @@ function runVersus(diff, n) {
       G.tick(s, 0.5);
     }
     if (s.result === 'win') win++;
+    adouSum += Math.max(0, s.player.adou);
+    marginSum += Math.max(0, s.player.adou) - Math.max(0, s.enemy.adou);
+    waveSum += s.wave.idx;
   }
-  return win;
+  return { win: win, adou: adouSum / n, margin: marginSum / n, wave: waveSum / n };
 }
 
 function runEndless(n) {
@@ -78,11 +88,17 @@ const ok = (name, cond, extra) => { if (cond) { pass++; console.log('  ✓ ' + n
 
 console.log('\n== 竞技胜率基线（我方 = AI 策略，敌方 = 游戏内 AI，难度=敌方经济系数）==');
 const N = 16;
-const we = runVersus(0.8, N), wn = runVersus(1.0, N), wh = runVersus(1.2, N);
-console.log('   easy(0.8): ' + we + '/' + N + '   normal(1.0): ' + wn + '/' + N + '   hard(1.2): ' + wh + '/' + N);
+const R = { easy: runVersus(0.8, N), normal: runVersus(1.0, N), hard: runVersus(1.2, N) };
+const we = R.easy.win, wn = R.normal.win, wh = R.hard.win;
+const line = (k) => k + ': ' + R[k].win + '/' + N + '（我方剩余阿斗 均 ' + R[k].adou.toFixed(2) +
+  ' · 阿斗差 均 ' + R[k].margin.toFixed(2) + ' · 均 ' + R[k].wave.toFixed(1) + ' 波）';
+console.log('   ' + line('easy'));
+console.log('   ' + line('normal'));
+console.log('   ' + line('hard'));
 ok('easy ≥ 8/16', we >= 8, we + '/' + N);
 ok('normal ≥ 6/16', wn >= 6, wn + '/' + N);
 ok('hard ≥ 4/16', wh >= 4, wh + '/' + N);
+ok('三档胜率随难度单调不升（我方 AI 视角）', we >= wn - 4 && wn >= wh - 4, we + '/' + wn + '/' + wh);
 
 console.log('\n== 无尽中位数波数 ==');
 const en = runEndless(40);

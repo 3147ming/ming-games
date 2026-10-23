@@ -72,8 +72,9 @@
       if (!u.char && U[u.type]) u.char = U[u.type].char;
       const st = ZY.statsAt(u.type, u.level);
       const hpMul = num(spec.hpMul, 1), atkMul = num(spec.atkMul, 1);
-      u.maxHp = st.hp * hpMul; u.hp = u.maxHp;
-      u.atk = st.atk * atkMul;
+      const em = u.elite ? C.ELITE_MUL : 1;          // V8.1：精英基础 hp/atk ×1.25（与敌方 +25% 同一口径）
+      u.maxHp = st.hp * hpMul * em; u.hp = u.maxHp;
+      u.atk = st.atk * atkMul * em;
       u.aspd = st.aspd; u.range = U[u.type].range; u.move = U[u.type].move;
       u.pierce = !!U[u.type].pierce; u.splash = U[u.type].splash || 0;
       u.produce = U[u.type].produce || 0;
@@ -466,7 +467,8 @@
 
     if (state.mode === 'endless' || state.mode === 'versus') {
       // 无尽 / 竞技共用一套波次配方（竞技 = 公共波次，spawnEnemyNow 镜像进双方路）
-      count = Math.floor(T.endlessBase + w.idx * T.endlessStep);
+      // V8.1：每波 +1 起，后期再按波次微增（6 波 +1）—— 敌方波次压力整体上调
+      count = Math.floor(T.endlessBase + w.idx * T.endlessStep) + 1 + Math.floor(w.idx / 6);
       hpMul = Math.pow(T.endlessHp, w.idx);
       atkMul = Math.pow(T.endlessAtk, w.idx);
       level = clamp(1 + Math.floor(w.idx / 7), 1, 5);
@@ -492,8 +494,8 @@
     } else {                                          // 关卡：5 普通波 + 1 关底（第 6 波，强化波 + 张梁）
       const lv = ZY.LEVELS[state.levelIdx];
       isBoss = w.idx >= T.levelWaves;                 // 第 6 波 = 关底
-      count = isBoss ? Math.round((lv.count + (T.levelWaves - 2) * T.levelStep) * T.bossCountMul)
-                     : lv.count + (w.idx - 1) * T.levelStep;
+      count = isBoss ? Math.round((lv.count + (T.levelWaves - 2) * T.levelStep) * T.bossCountMul) + 1
+                     : lv.count + (w.idx - 1) * T.levelStep + 1;   // V8.1：每波 +1（关底 +1）
       hpMul = lv.hpMul * (1 + T.levelHpRamp * (w.idx - 1)) * (isBoss ? T.bossHpMul : 1);
       atkMul = lv.atkMul * (1 + T.levelAtkRamp * (w.idx - 1)) * (isBoss ? T.bossAtkMul : 1);
       level = clamp(1 + Math.floor(state.levelIdx / T.levelEnemyDiv) + (isBoss ? 1 : 0), 1, 5);
@@ -735,7 +737,7 @@
     const span = ZY.cardSpan(card);
     if (!B.canPlace(state, side, r, c, span)) {
       if (B.isPath(state.mode, r, c, state.levelIdx)) return { ok: false, msg: '这里是主路，不能建塔' };
-      if (B.isObstacle(r, c)) return { ok: false, msg: '这里是荆棘障碍，不能建塔' };
+      if (B.isObstacle(r, c, state.mode, state.levelIdx)) return { ok: false, msg: '这里是荆棘障碍，不能建塔' };
       if (state.deploy[B.key(r, c)] !== side) return { ok: false, msg: '只能放在自己的塔位上' };
       if (span > 1) return { ok: false, msg: '武将塔要横跨 2 格，右侧放不下' };
       return { ok: false, msg: '这里放不了' };
@@ -788,7 +790,7 @@
     if (u.row === r && u.col === c) return { ok: true, same: true, unit: u };   // 放回原地 = 无事发生
     if (!B.canPlace(state, side, r, c, u.span)) {
       if (B.isPath(state.mode, r, c, state.levelIdx)) return { ok: false, msg: '这里是主路，不能放塔' };
-      if (B.isObstacle(r, c)) return { ok: false, msg: '这里是荆棘障碍，不能放塔' };
+      if (B.isObstacle(r, c, state.mode, state.levelIdx)) return { ok: false, msg: '这里是荆棘障碍，不能放塔' };
       if (state.grid[r][c]) return { ok: false, msg: '这一格已经有单位了' };
       if (u.span > 1) return { ok: false, msg: '武将塔要横跨 2 格，右侧放不下' };
       if (state.deploy[B.key(r, c)] !== side) return { ok: false, msg: '只能放在自己的塔位上' };
@@ -817,7 +819,7 @@
     if (!s || !s.items || !(s.items.shovel > 0)) return { ok: false, msg: '没有铲子了' };
     if (!B.inBoard(r, c)) return { ok: false, msg: '超出棋盘' };
     if (B.isPath(state.mode, r, c, state.levelIdx)) return { ok: false, msg: '主路格不能建塔' };
-    if (B.isObstacle(r, c)) return { ok: false, msg: '障碍格不能扩' };
+    if (B.isObstacle(r, c, state.mode, state.levelIdx)) return { ok: false, msg: '障碍格不能扩' };
     if (state.deploy[B.key(r, c)]) return { ok: false, msg: '这一格已经是塔位' };
     if (!B.adjacentToDeploy(state, side, r, c)) return { ok: false, msg: '铲子只能扩与塔位相邻的荒地' };
     state.deploy[B.key(r, c)] = side;
@@ -915,7 +917,7 @@
       mode: mode, difficulty: num(opts.difficulty, 1),
       levelIdx: num(opts.levelIdx, 0),
       levelName: mode === 'level' ? ZY.LEVELS[num(opts.levelIdx, 0)].name : '',
-      t: 0, paused: false, over: false, result: null, speed: 1, orientLock: false,
+      t: 0, paused: false, over: false, result: null, speed: 1,
       grid: B.createGrid(), units: [], deploy: {},
       nextBreak: T.breakStart, levelBtDone: false,
       nextId: 1, nextCardId: 1,

@@ -13,8 +13,8 @@
 
   let state = null;
   let raf = 0, lastTs = 0, acc = 0;
-  let orientMq = null;             // V8：手机横屏锁定的媒体查询（竖屏 + 触摸 + 窄屏）
-  let frameRect = null;           // 棋盘（#fx）矩形缓存：仅在尺寸变化时重算（攻击/技能特效用棋盘几何推算中心，杜绝主循环内 getBoundingClientRect 强制重排）
+  let rotated = false;            // V8.1：竖持手机的 90° 旋转态（全端强制横屏，无方向遮罩/暂停）
+  let frameRect = null;           // 棋盘布局尺寸缓存 {w,h}：仅在尺寸变化时重算（与 transform 无关，旋转态同样准确）
   let activeAtkFx = 0;            // V8：攻击特效并发计数（上限封顶，避免满编塔阵同屏齐射时 DOM 抖动）
   let cellEls = [], unitEls = {}, adouEls = {};
   let cellStatic = null, cellStaticKey = '';   // V6：地形静态描述子缓存（对局内不变）
@@ -105,26 +105,54 @@
     bindGame();
     refreshSave();
     setMute(ZY.Save.getMuted());
-    setupOrientation();
+    syncRotate();
+    window.addEventListener('resize', syncRotate);
+    window.addEventListener('orientationchange', function () { setTimeout(syncRotate, 90); });
     loop();
   }
 
-  /* ======================================================== V8 手机横屏锁定 */
-  function setupOrientation() {
-    // 仅「竖屏 + 触摸设备 + 窄屏」触发；桌面（含窄窗口）不强制，符合 V8「桌面不强制」
-    orientMq = window.matchMedia('(orientation: portrait) and (max-width: 900px) and (pointer: coarse)');
-    const apply = function () { if (state) state.orientLock = orientMq.matches; };  // 竖屏 → 锁定暂停；横屏 → 恢复
-    if (orientMq.addEventListener) orientMq.addEventListener('change', apply);
-    else if (orientMq.addListener) orientMq.addListener(apply);            // 旧版 Safari 兜底
-    window.addEventListener('orientationchange', function () { setTimeout(apply, 80); });
-    apply();
+  /* ======================================================== V8.1 全端强制横屏
+   * 不再做任何方向判定 / 遮罩 / 暂停：唯一布局就是横屏布局。
+   *   · 横屏视口（宽 > 高，含手机横持 / PC）：舞台直接铺满视口，不旋转。
+   *   · 竖屏视口（高 > 宽，手机竖持）：舞台按 90° 顺时针旋转 + 尺寸互换铺满，
+   *     用户竖拿手机看到的就是横屏画面。旋转只发生在布局层（一次性 transform），
+   *     不引入任何每帧开销；指针坐标由 boardPoint() 统一换算。
+   */
+  function syncRotate() {
+    rotated = window.innerHeight > window.innerWidth;
+    const stage = document.querySelector('.stage');
+    if (stage) stage.classList.toggle('rot', rotated);
+    document.body.classList.toggle('ui-rot', rotated);
+    measureFrame();
   }
-  // 进入对局时把当前方向写入 state.orientLock，保证开局即按真实方向锁定（setupOrientation 早于 state 创建）
-  function syncOrientation() { if (state && orientMq) state.orientLock = orientMq.matches; }
 
-  // V8 性能：frameRect 只在棋盘尺寸真正变化时重算（ResizeObserver / window.resize），
-  // 不再放进主循环逐帧测量 —— 逐帧 getBoundingClientRect 会强制同步布局，是无头下帧耗时尖峰的根因。
-  function measureFrame() { if (el.fx) frameRect = el.fx.getBoundingClientRect(); }
+  // V8 性能：frameRect 只在棋盘尺寸真正变化时重算（ResizeObserver / window.resize）。
+  // 用 offsetWidth/Height 而不是 getBoundingClientRect：布局尺寸不受 90° 旋转影响，
+  // 且主循环内不测量 —— 逐帧测量会强制同步布局，是无头下帧耗时尖峰的根因。
+  function measureFrame() {
+    if (!el.fx) return;
+    frameRect = { width: el.fx.offsetWidth, height: el.fx.offsetHeight };
+  }
+
+  /** 视口坐标 → 棋盘本地坐标（格内换算用）。
+   *  旋转态下 90° 旋转的轴对齐包围盒恰好就是元素自身占位，故：
+   *    localX = clientY - bbox.top，localY = bbox.width - (clientX - bbox.left)。
+   *  非旋转态就是常规减法。两态共用，杜绝旋转后点击/拖拽错位。 */
+  function boardPoint(clientX, clientY) {
+    const r = el.board.getBoundingClientRect();
+    if (!rotated) return { x: clientX - r.left, y: clientY - r.top, w: r.width, h: r.height };
+    return { x: clientY - r.top, y: r.width - (clientX - r.left), w: r.height, h: r.width };
+  }
+
+  /** V8.1：指针是否落在某元素上 —— 用 elementFromPoint 判命中。
+   *  旋转态下元素的 getBoundingClientRect() 是「旋转后的轴对齐包围盒」，宽高互换，
+   *  再用 left/right/top/bottom 比较就会错位；elementFromPoint 始终是视口坐标，天然正确。
+   *  拖拽幽灵（.ghost）带 pointer-events:none，不会挡住判定。 */
+  function pointIn(elm, clientX, clientY) {
+    if (!elm) return false;
+    const under = document.elementFromPoint(clientX, clientY);
+    return !!(under && (under === elm || elm.contains(under)));
+  }
 
   /* ======================================================== 开始界面 */
   function bindStart() {
@@ -138,7 +166,6 @@
           startLevelRun(ZY.Save.getLevel(), null);
         } else {
           state = ZY.Game.baseState(mode, { difficulty: diff });
-          syncOrientation();
           enterGame();
         }
       });
@@ -251,7 +278,7 @@
       const row = [];
       for (let c = 0; c < B.COLS; c++) {
         const k = B.key(r, c);
-        row.push({ k: k, obs: B.isObstacle(r, c), path: B.isPath(mode, r, c, state.levelIdx), ent: !!entSet[k] });
+        row.push({ k: k, obs: B.isObstacle(r, c, mode, state.levelIdx), path: B.isPath(mode, r, c, state.levelIdx), ent: !!entSet[k] });
       }
       cellStatic.push(row);
     }
@@ -332,7 +359,7 @@
   function enterGame() {
     el.start.hidden = true;
     el.game.hidden = false;
-    requestAnimationFrame(measureFrame);   // V8 性能：布局落定后补测一次棋盘矩形（之后靠 ResizeObserver）
+    requestAnimationFrame(function () { syncRotate(); measureFrame(); });   // 布局落定后同步旋转态并补测棋盘尺寸
     el.midline.style.display = state.mode === 'versus' ? 'block' : 'none';
     el.hpEnemyLine.style.display = state.mode === 'versus' ? '' : 'none';
     el.overlay.hidden = true;
@@ -987,9 +1014,7 @@
 
     // —— 军营 → 手牌：拖到手牌区即转入 ——
     if (src === 'barracks') {
-      const hr = el.hand.getBoundingClientRect();
-      const overHand = ev.clientX >= hr.left && ev.clientX <= hr.right && ev.clientY >= hr.top && ev.clientY <= hr.bottom;
-      if (overHand) {
+      if (pointIn(el.hand, ev.clientX, ev.clientY)) {
         const r = ZY.Game.stageCard(state, 'player', uid);
         if (!r) { toast('手牌已满（8 格）'); return; }
         syncHand(); syncBarracks(); syncHud();
@@ -1032,8 +1057,7 @@
 
     // —— 金字：拖到另一张金字上 = 合成武将 ——
     if (card.kind === 'gold' && src === 'hand') {
-      const hr = el.hand.getBoundingClientRect();
-      if (ev.clientX >= hr.left && ev.clientX <= hr.right && ev.clientY >= hr.top && ev.clientY <= hr.bottom) {
+      if (pointIn(el.hand, ev.clientX, ev.clientY)) {
         const under = document.elementFromPoint(ev.clientX, ev.clientY);
         const target = under && under.closest ? under.closest('.card') : null;
         if (target && parseInt(target.dataset.uid, 10) !== uid) {
@@ -1088,7 +1112,7 @@
     if (drag.src !== 'hand' && drag.src !== 'barracks' && drag.src !== 'shovel') return;
     let ok = false;
     if (drag.src === 'shovel') {
-      ok = !B.isPath(state.mode, t.row, t.col, state.levelIdx) && !B.isObstacle(t.row, t.col) &&
+      ok = !B.isPath(state.mode, t.row, t.col, state.levelIdx) && !B.isObstacle(t.row, t.col, state.mode, state.levelIdx) &&
         !state.deploy[B.key(t.row, t.col)] && B.adjacentToDeploy(state, 'player', t.row, t.col);
     } else {
       const s = state.player;
@@ -1119,10 +1143,10 @@
   }
 
   function cellAt(x, y) {
-    const rect = el.board.getBoundingClientRect();
-    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
-    const r = Math.floor((y - rect.top) / (rect.height / B.ROWS));
-    const c = Math.floor((x - rect.left) / (rect.width / B.COLS));
+    const p = boardPoint(x, y);
+    if (p.x < 0 || p.x >= p.w || p.y < 0 || p.y >= p.h) return null;
+    const c = Math.floor(p.x / (p.w / B.COLS));
+    const r = Math.floor(p.y / (p.h / B.ROWS));
     if (r < 0 || r >= B.ROWS || c < 0 || c >= B.COLS) return null;
     return { row: r, col: c };
   }
@@ -1344,11 +1368,11 @@
     const now = (window.performance && performance.now) ? performance.now() : Date.now();
     if (now - lastTrailAt < 55) return;
     lastTrailAt = now;
-    const rect = el.board.getBoundingClientRect();
+    const p = boardPoint(x, y);
     const d = document.createElement('div');
     d.className = 'trail';
-    d.style.left = ((x - rect.left) / rect.width * 100) + '%';
-    d.style.top = ((y - rect.top) / rect.height * 100) + '%';
+    d.style.left = (p.x / p.w * 100) + '%';
+    d.style.top = (p.y / p.h * 100) + '%';
     spawnFx(d, 430);
   }
   function dmgFx(f) {
@@ -1385,10 +1409,10 @@
   }
   // V8 性能：单位中心完全用棋盘几何推算（与 place() 同算法），复用尺寸变化时缓存的 frameRect，
   // 杜绝攻击/技能时逐次 getBoundingClientRect 触发的强制同步重排（zy-perf 尾延迟根因）。
-  // 返回 fx 层坐标系下的中心 (cx,cy) 与单位像素尺寸 (uw,uh)。
+  // 返回 fx 层坐标系下的中心 (cx,cy) 与单位像素尺寸 (uw,uh) —— fx 层与棋盘同尺寸，旋转态不受影响。
   function unitCenter(u) {
     if (!frameRect || !frameRect.width) {
-      if (el.fx) frameRect = el.fx.getBoundingClientRect();   // 兜底：首帧/容器未就绪时退回一次实时测量
+      measureFrame();                                   // 兜底：首帧/容器未就绪时补测一次
       if (!frameRect || !frameRect.width) return null;
     }
     const span = u.span || 1;
@@ -1590,7 +1614,7 @@
     const sp = (state && state.speed) || 1;
     const gdt = dt * sp;
 
-    if (state && !state.paused && !state.orientLock && !state.over) {
+    if (state && !state.paused && !state.over) {
       acc += gdt;
       let steps = 0;
       while (acc >= ZY.Game.TICK && steps < 6 * sp) {
