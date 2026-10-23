@@ -1274,6 +1274,27 @@ function callAI(cfg,prompt,cb){
       catch(e){cb(null);}
     }).catch(function(){cb(null);});
 }
+/* 测试连接：只验证「地址 / Key / 模型」通不通，不要求 AI 返回题目 JSON。
+   判定标准 = HTTP 2xx；失败时把状态码（如 401 / 403）或「网络错误 / 超时」回给调用方，
+   便于区分是 Key 无效还是网络问题。callAI（题目生成）保持原样，不受影响。 */
+function testAI(cfg,cb){
+  var url=cfg.proxy?cfg.proxy:cfg.url;
+  if(!/^https?:\/\//.test(url)){cb(false,'地址无效');return;}
+  var body={model:cfg.model||'deepseek-chat',messages:[{role:'user',content:'请只回复两个字：连接成功'}],temperature:0};
+  var ctl=null,timer=null;
+  try{ctl=new AbortController();timer=setTimeout(function(){try{ctl.abort();}catch(e){}},10000);}catch(e){}
+  fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.key},body:JSON.stringify(body),signal:ctl?ctl.signal:undefined})
+    .then(function(r){
+      if(timer)clearTimeout(timer);
+      if(r&&r.ok){cb(true);return;}
+      cb(false,String((r&&r.status)||'未知'));
+    })
+    .catch(function(e){
+      if(timer)clearTimeout(timer);
+      if(e&&e.name==='AbortError'){cb(false,'超时');return;}
+      cb(false,'网络错误');
+    });
+}
 
 /* ---------- 任务4：背景音乐 ---------- */
 // 曲目按「基名 + 扩展名链」探测：放 flower-dance.flac / flower-dance.wav 都能认
@@ -1557,7 +1578,9 @@ function openSettings(){
   modSel.onchange=function(){modI.value=modSel.value;};
 
   var testB=h('button','btn','🔌 测试连接');var testMsg=ht('div','hint','');ov.p.appendChild(testB);ov.p.appendChild(testMsg);
-  testB.onclick=function(){var c={url:urlI.value.trim(),key:keyI.value.trim(),model:modI.value.trim(),proxy:proxI.value.trim()};if(!c.url||!c.key){testMsg.textContent='⚠️ 请先填 API 地址与 Key';return;}testMsg.textContent='测试中…';callAI(c,'ping',function(res){testMsg.textContent=res?'✅ 连接成功，返回 '+(res.length||0)+' 题':'❌ 未返回有效结果（检查地址/Key/模型）';});};
+  testB.onclick=function(){var c={url:urlI.value.trim(),key:keyI.value.trim(),model:modI.value.trim(),proxy:proxI.value.trim()};if(!c.url||!c.key){testMsg.textContent='⚠️ 请先填 API 地址与 Key';return;}testMsg.textContent='测试中…';testAI(c,function(ok,why){
+      testMsg.textContent=ok?'✅ 连接成功':'❌ 失败：'+(why?(/^\d+$/.test(why)?'HTTP '+why:why):'未知错误');
+    });};
   var saveB=h('button','btn gold','💾 保存配置');saveB.onclick=function(){var c={url:urlI.value.trim(),key:keyI.value.trim(),model:modI.value.trim(),proxy:proxI.value.trim()};try{S.setItem('bt_qa_ai',JSON.stringify(c));}catch(e){}testMsg.textContent='✅ 已保存';};
   ov.p.appendChild(saveB);
   ov.p.appendChild(ht('div','muted','提示：选服务商会自动填好接口地址，选模型会自动填模型名；接口需与 OpenAI 兼容（自定义可填中转地址）。无 Key 也可走「🆓 免费搜索」生成题。'));
