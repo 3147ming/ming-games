@@ -169,6 +169,39 @@ select:focus{outline:none;border-color:#c3b0ff;box-shadow:0 0 0 3px rgba(124,92,
 .diffbtn.sel{border-color:var(--purple);background:linear-gradient(180deg,#f7f3ff,#f1ebff)}
 .diffbtn.sel .dck{opacity:1}
 
+/* ---------- 三板块 · 程序编写 · 实力评级 ---------- */
+.chip.sec{background:#f1ecff;color:var(--purple-d);cursor:pointer;flex:none}
+.diffbtn.secbtn .dck{opacity:.5;font-weight:900}
+.pbar.inf > i{width:100%;background:linear-gradient(90deg,#9d80ff,#7c5cff,#9d80ff);
+  background-size:200% 100%;animation:pinf 1.6s linear infinite}
+@keyframes pinf{from{background-position:0 0}to{background-position:200% 0}}
+.swrow{display:flex;align-items:center;gap:8px;margin:0 0 8px;flex-wrap:wrap}
+.toggle{background:#fff;border:1.5px solid var(--line);border-radius:99px;padding:7px 13px;
+  font-size:12.5px;font-weight:800;color:var(--sub);cursor:pointer;font-family:inherit;flex:none}
+.toggle.on{background:#f3eeff;border-color:#c9b8ff;color:var(--purple-d)}
+.toggle:disabled{opacity:.55}
+.swrow .hint2{font-size:11.5px;color:var(--sub);font-weight:600;min-width:0}
+.qbox.hascode{display:block;text-align:left;font-weight:700;font-size:15px;padding:14px 13px;
+  align-items:stretch;justify-content:flex-start;overflow:auto}
+.qlead{font-weight:800;font-size:15px;margin:0 0 9px;line-height:1.5}
+.codeblk{margin:0;padding:11px 12px;border-radius:11px;background:#221d33;color:#eae4ff;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;
+  font-size:12.5px;line-height:1.62;white-space:pre;overflow:auto;max-height:42vh;
+  -webkit-overflow-scrolling:touch;tab-size:2}
+.codeinp{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;
+  font-size:13px;line-height:1.55;min-height:128px;resize:vertical;white-space:pre;tab-size:2}
+.lvlcard{background:linear-gradient(135deg,#f7f3ff,#eef7ff);border:1px solid var(--line);
+  border-radius:16px;padding:13px 14px;margin:14px 0 0;text-align:left}
+.lvlcard .lvlt{font-size:15.5px;font-weight:900;color:var(--purple-d)}
+.lvlcard .lvls{font-size:12px;color:var(--sub);font-weight:700;margin-top:4px}
+.lvlcard .lvld{font-size:12.5px;color:var(--ink);margin-top:7px;line-height:1.55}
+/* 窄屏：HUD 四个 chip 挤在一行会把「类型 · 实力」压成省略号，整体收一档 */
+@media (max-width:430px){
+  .hud{font-size:13px;gap:6px}
+  .hud .hr{font-size:11.5px}
+  .hud .chip{font-size:11px;padding:3px 6px}
+}
+
 /* ---------- 浮层 ---------- */
 .ov{position:fixed;inset:0;z-index:50;background:rgba(35,24,64,.45);display:flex;align-items:flex-end;
   justify-content:center;backdrop-filter:blur(2px);animation:fade .16s ease}
@@ -611,6 +644,9 @@ function neighbors(ans,extra){var num=Number(ans),c=[];
  (extra||[]).forEach(function(x){c.push(String(x))});return c}
 function mkQA(q,ans,cands){ans=String(ans);var seen={};seen[ans]=1;var ws=[];
  shuffle(cands.slice()).forEach(function(w){w=String(w);if(ws.length>=3)return;if(w===''||w==='NaN'||w==='undefined'||seen[w])return;seen[w]=1;ws.push(w)});
+ /* 参数巧合导致干扰项不足时，数值答案用邻居补足（保持 4 选项，不塌成 3 个） */
+ var _n=Number(ans);
+ if(ws.length<3&&isFinite(_n)&&String(_n)===ans){var _k=1;while(ws.length<3&&_k<40){var _d=Math.ceil(_k/2)*(_k%2?1:-1),_w=String(_n+_d);if(!seen[_w]){seen[_w]=1;ws.push(_w);}_k++;}}
  return {q:q,a:ans,opts:shuffle([ans].concat(ws))}}
 function genMathPrimary(n){var out=[];for(var i=0;i<n;i++){var t=ri(4),a,b,ans,q;
  if(t===0){a=ri(15)+1;b=ri(Math.max(1,20-a))+1;ans=a+b;q=a+' + '+b+' = ?'}
@@ -772,6 +808,19 @@ var $=function(id){return document.getElementById(id);};
 function ht(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
 var shelfEl,stageEl,overlayRoot;
 var lastRun=null; // 记录本局参数，供「再来一局」精确重放（自动匹配 / 薄弱回顾都不丢）
+/* ---------- 三板块（选择题 / 程序编写 / 填空题） ---------- */
+var SECTIONS=[{k:'choice',n:'🎯 选择题',d:'四个选项，选中即答'},
+              {k:'code',n:'⌨️ 程序编写',d:'读代码 / 补全 / 手写，考真本事'},
+              {k:'fill',n:'✍️ 填空题',d:'不给选项，自己写答案'}];
+var qaSection='choice';
+var lastSectionBk='';
+var handMode=false;
+var selfWindow=[];                              // auto 模式滑动窗口：最近 ≤12 题（1 对 / 0 错）
+var WIN_CAP=12,WIN_MIN=6,UP_ACC=0.75,DN_ACC=0.4,LEVEL_COOL=2,lvlCool=0;
+var lastAuto=null;                              // 结算页的实力评级快照
+var quizOver=false;                             // 本局是否已收尾（挡住答题后的延时切题把结算页顶掉）
+function sectionName(k){for(var i=0;i<SECTIONS.length;i++){if(SECTIONS[i].k===k)return SECTIONS[i].n;}return '🎯 选择题';}
+function windowAcc(){var a=selfWindow,i,n=0;if(!a.length)return 1;for(i=0;i<a.length;i++){if(a[i])n++;}return n/a.length;}
 /* 轻提示（替代阻塞式 alert） */
 var toastTimer=null;
 function toast(msg){
@@ -800,6 +849,7 @@ function shelfCount(bk,cn){
   var p=custom[cn]||[];return p.length+' 题';
 }
 function renderShelf(){
+  quizOver=true;
   showView('shelf');
   clearNode(shelfEl);
   // 顶部操作
@@ -868,17 +918,17 @@ function openCategory(bk,cn){
   afterDetect(bk,cn);
 }
 function afterDetect(bk,cn){
-  if(bk&&qaDiffs(bk)){pickDiffPanel(bk,function(d){doStartType(bk,cn,d);});}
-  else{doStartType(bk,cn,-1);}
+  if(bk){startType(bk,cn,null);return;}
+  doStartType(bk,cn,-1);
 }
 
 /* ---------- 难度面板 ---------- */
 function pickDiffPanel(bk,cb){
   var T=QA_TYPES[bk],ds=qaDiffs(bk);if(!ds){cb(-1);return;}
-  var PANEL=[{auto:true,n:'🤖 自动匹配',d:'按实力自动出题'}].concat(ds.map(function(x,i){return {n:x.n,d:x.d,idx:i};}));
+  var PANEL=[{auto:true,n:'🤖 自动匹配',d:'无限刷题 · 实时调难度'}].concat(ds.map(function(x,i){return {n:x.n,d:x.d,idx:i};}));
   var defSel=0;try{var sv=parseInt(S.getItem('bd_qa_diff_'+bk),10);if(sv>=0&&sv<ds.length)defSel=sv+1;}catch(e){}
   var ov=overlayPanel((T.icon||'')+' '+T.name+' · 选择难度');
-  ov.p.appendChild(ht('div','hint',(bk==='math'?'🎓 按学业阶段出题：':(bk==='code'?'💻 按学习进度出题（已按你掌握的语言过滤）：':'⚙️ 选择难度，题量与扣分随档位变化'))+'也可选「🤖 自动匹配」按实力动态出题'));
+  ov.p.appendChild(ht('div','hint',(bk==='math'?'🎓 按学业阶段出题：':(bk==='code'?'💻 按学习进度出题（已按你掌握的语言过滤）：':'⚙️ 选择难度，题量与扣分随档位变化'))+'也可选「🤖 自动匹配」无限刷题、难度实时跟着你走'));
   if(bk==='code'){var p=getCodeProfile();if(p&&p.done&&p.langs&&p.langs.length){ov.p.appendChild(ht('div','okmsg','已检测：'+p.langs.map(langName).join(' · ')+' · '+levelName(p.rank)));}}
   var dr=h('div','diffrow');
   PANEL.forEach(function(df,i){
@@ -900,10 +950,71 @@ function pickDiffPanel(bk,cb){
   ov.p.appendChild(backS);
 }
 
+/* ---------- 板块选择 / 出题套壳 / 切换 ---------- */
+function pickSection(bk,cb){
+  var T=QA_TYPES[bk];
+  var list=SECTIONS.filter(function(x){return bk==='code'||x.k!=='code';});
+  var ov=overlayPanel(((T&&T.icon)||'')+' '+((T&&T.name)||bk)+' · 选择板块');
+  ov.p.appendChild(ht('div','hint','同一分类有三种刷法：选择题最快，填空题最考记忆，程序编写只对编程分类开放。'));
+  var dr=h('div','diffrow');
+  list.forEach(function(sc){
+    var b=ht('button','diffbtn secbtn');
+    var tx=h('div','dtxt');
+    tx.appendChild(ht('div','dn',sc.n));
+    tx.appendChild(ht('div','dd',sc.d));
+    b.appendChild(tx);b.appendChild(ht('span','dck','›'));
+    b.onclick=function(){closeOverlay(ov);cb(sc.k);};
+    dr.appendChild(b);
+  });
+  ov.p.appendChild(dr);
+  var back=h('button','btn ghost','← 返回书架');back.style.width='100%';back.onclick=function(){closeOverlay(ov);renderShelf();};
+  ov.p.appendChild(back);
+}
+/* 填空板块：出题后统一摘掉选项，走输入框分支（norm 容错） */
+function applySection(qs){
+  qs=qs||[];
+  if(qaSection!=='fill')return qs;
+  return qs.map(function(x){
+    if(!x)return x;
+    return {q:x.q,a:x.a,opts:null,tag:x.tag,code:x.code,ai:x.ai,src:x.src,fillin:x.fillin,kind:x.kind};
+  });
+}
+function sectionGen(bk,n,diff){
+  var qs=null;
+  /* 编程的「程序编写 / 填空题」都走读代码题型（答案短，好判分） */
+  if(bk==='code'&&QA_TYPES.code.genSection&&(qaSection==='code'||qaSection==='fill'))qs=QA_TYPES.code.genSection(n,diff);
+  if(!qs||!qs.length)qs=QA_TYPES[bk].gen(n,diff);
+  return applySection(qs);
+}
+function switchSection(){
+  var bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
+  if(!bk||bk==='online'||bk==='weak')return;
+  var back=(lastRun&&lastRun.d!=null)?lastRun.d:(autoMode?'auto':curDiff);
+  pickSection(bk,function(k){
+    if(k===qaSection)return;
+    qaSection=k;handMode=false;lastSectionBk=bk;
+    doStartType(bk,null,back);
+  });
+}
+function setHandMode(on){
+  if(on&&!canJudge()){toast('✍️ 手写代码要先配置 AI（点右上角 ⚙️，免费通道不用 Key）');return;}
+  if(locked)return;
+  if(typeKey!=='b:code'||qaSection!=='code'){toast('手写代码只在「⌨️ 程序编写」板块可用');return;}
+  handMode=!!on;
+  if(handMode){qlist[qidx]=genHandTask(autoMode?selfRank:Math.max(0,curDiff));}
+  else{qlist[qidx]=sectionGen('code',1,Math.max(0,curDiff))[0];}
+  showQuestion();
+}
+
 /* ---------- 开始 / 出题 ---------- */
 function startType(bk,cn,forceDiff){
   if(bk==='online'){startOnline();return;}
   if(!bk&&!cn)return;
+  /* 三板块：同一分类首次进入先选板块（自定义题库固定选择题，不打扰） */
+  if(bk&&lastSectionBk!==bk){
+    pickSection(bk,function(k){qaSection=k;lastSectionBk=bk;startType(bk,cn,forceDiff);});
+    return;
+  }
   if(forceDiff==='auto'){doStartType(bk,cn,'auto');return;}
   if(bk&&qaDiffs(bk)&&forceDiff==null){pickDiffPanel(bk,function(d){doStartType(bk,cn,d);});return;}
   doStartType(bk,cn,bk?qaNormDiff((typeof forceDiff==='number'&&forceDiff>=0)?forceDiff:qaDiffDefault(bk)):-1);
@@ -926,14 +1037,16 @@ function makeCustomRound(tk,pairs){
 }
 function doStartType(bk,cn,d){
   var ds=bk?qaDiffs(bk):null;
+  quizOver=false;
   autoMode=(d==='auto');
   if(autoMode){selfRank=getRank(bk);curDiff=selfRank;}else{curDiff=(ds&&d>=0&&d<ds.length)?d:-1;}
   curDiffLabel=(curDiff>=0)?ds[curDiff].n:'';
   typeKey=bk?('b:'+bk):('c:'+cn);typeLabel=bk?QA_TYPES[bk].name:cn;
-  combo=0;wrongCombo=0;
+  combo=0;wrongCombo=0;selfWindow=[];lvlCool=0;handMode=false;lastAuto=null;
+  if(!bk)qaSection='choice';   // 自定义题库固定选择题，不弹板块面板
   if(bk){
-    if(autoMode){qlist=[];total=AUTO_TOTAL;}
-    else{var cnt=(curDiff>=0&&ds[curDiff].cnt)?ds[curDiff].cnt:10;qlist=QA_TYPES[bk].gen(cnt,Math.max(0,curDiff));total=qlist.length;}
+    if(autoMode){qlist=[];total=Infinity;}
+    else{var cnt=(curDiff>=0&&ds[curDiff].cnt)?ds[curDiff].cnt:10;qlist=sectionGen(bk,cnt,Math.max(0,curDiff));total=qlist.length;}
   }else{
     var pairs=custom[cn]||[];if(!pairs.length){alert('该题库还没有题目，先去录入');return;}
     var picked=makeCustomRound(typeKey,pairs);
@@ -953,27 +1066,79 @@ function doStartType(bk,cn,d){
 
 /* ---------- 答题页 ---------- */
 function showQuestion(){
+  if(quizOver)return;
   showView('stage');clearNode(stageEl);locked=false;
-  if(qidx>=total){endQuiz();return;}
+  if(qidx>=total&&!autoMode){endQuiz();return;}
   var Q;
-  if(autoMode){if(qlist.length<=qidx){qlist.push(genNextAuto());}Q=qlist[qidx];}else{Q=qlist[qidx];}
+  if(autoMode){
+    /* 无限自适应：题不够就现生成，qidx 永不触发结算，退出由用户决定 */
+    while(qlist.length<=qidx){
+      /* 每档内尽量不重复：生成时避开最近 30 题的题干（含代码块指纹） */
+      var _rk='bt_qa_recent_auto_'+(typeKey||'x').replace(/[^\w]/g,'_');
+      var _rec=loadRecent(_rk),_tries=0,_nq=null,_nk='';
+      do{
+        _nq=(typeKey==='b:code'&&qaSection==='code'&&handMode)?genHandTask(selfRank):genNextAuto();
+        _nk=_nq.q+(_nq.code?('|'+_nq.code):'');
+        _tries++;
+      }while(_tries<8&&_rec.indexOf(_nk)>=0);
+      try{_rec.unshift(_nk);S.setItem(_rk,JSON.stringify(_rec.slice(0,30)));}catch(e){}
+      qlist.push(applySection([_nq])[0]);
+    }
+    Q=qlist[qidx];
+  }else{Q=qlist[qidx];}
   if(!Q){endQuiz();return;}
   var card=h('div','qcard quizfill');
-  // 进度条 + HUD
-  var pb=h('div','pbar');var pbi=h('i');pbi.style.width=Math.round((qidx+1)/Math.max(1,total)*100)+'%';pb.appendChild(pbi);card.appendChild(pb);
+  // 进度条：自动匹配是无限模式，进度条固定满格（不打表，只做氛围）
+  var pb=h('div','pbar'+(autoMode?' inf':''));var pbi=h('i');pbi.style.width=(autoMode?'100%':(Math.round((qidx+1)/Math.max(1,total)*100)+'%'));pb.appendChild(pbi);card.appendChild(pb);
   var hud=h('div','hud');
+  var sec=ht('span','chip sec',sectionName(qaSection));
+  sec.title='点击切换板块';
+  if(typeKey&&typeKey.indexOf('b:')===0&&typeKey!=='b:online'&&typeKey!=='b:weak'){sec.onclick=function(){switchSection();};}
+  hud.appendChild(sec);
   var _tik='';if(typeKey.indexOf('b:')===0&&QA_TYPES[typeKey.slice(2)])_tik=QA_TYPES[typeKey.slice(2)].icon+' ';
   var _badge='';
   if(typeKey==='b:code'){var _cp=getCodeProfile();if(_cp&&_cp.done&&_cp.langs&&_cp.langs.length){_badge=' · '+langName(_cp.langs[0])+(_cp.langs.length>1?(' 等'+_cp.langs.length+'种'):'');}}
   hud.appendChild(ht('div','hl',_tik+typeLabel+_badge+(autoMode&&curDiffLabel?(' · 实力：'+curDiffLabel):(curDiffLabel?(' · '+curDiffLabel):''))));
-  hud.appendChild(ht('div','hr','第 '+(qidx+1)+'/'+total));
-  hud.appendChild(ht('span','chip','✅ '+ok));
+  hud.appendChild(ht('div','hr',autoMode?('第 '+(qidx+1)+' 题 · 无限模式'):('第 '+(qidx+1)+'/'+total)));
+  /* 无限模式没有「满分」，头顶只留实力与题数，得分放结算页，避免四个 chip 挤成省略号 */
+  if(!autoMode)hud.appendChild(ht('span','chip','✅ '+ok));
   card.appendChild(hud);
+  if(typeKey==='b:code'&&qaSection==='code'){
+    var swr=h('div','swrow');
+    var tg=h('button','toggle'+(handMode?' on':''),handMode?'✍️ 手写代码：开':'✍️ 手写代码：关');
+    tg.onclick=function(){setHandMode(!handMode);};
+    swr.appendChild(tg);
+    swr.appendChild(ht('span','hint2',canJudge()?'AI 当场评判，语言不限':'手写题需先配置 AI（免费通道即可）'));
+    card.appendChild(swr);
+  }
+
   if(typeKey==='b:online'&&Q&&Q.src==='offline')card.appendChild(ht('div','hint','📴 联网不可用，正在使用本地离线题库（返回书架点「🔄 联网更新题库」可重试）'));
-  // 题干（全屏：吃掉中间剩余高度）
-  var qbox=h('div','qbox fill');qbox.textContent=Q.q;card.appendChild(qbox);
-  // 选项
-  if(Q.opts){
+  // 题干（全屏：吃掉中间剩余高度）；带代码/手写标记的题用左对齐 + 代码块
+  var qbox=h('div','qbox fill');
+  if(Q.code||Q.hand){
+    qbox.className='qbox fill hascode';
+    qbox.appendChild(ht('div','qlead',Q.q));
+    if(Q.code){var pre=h('pre','codeblk');pre.textContent=Q.code;qbox.appendChild(pre);}
+    if(Q.hand&&Q.task){qbox.appendChild(ht('div','hint','样例：'+Q.task.ex+'　（'+Q.task.tip+'）'));}
+    if(Q.fillin)qbox.appendChild(ht('div','hint','✍️ 把空缺处该填的代码写进下面的输入框'));
+  }else{qbox.textContent=Q.q;}
+  card.appendChild(qbox);
+  // 选项 / 手写输入 / 填空
+  if(Q.hand){
+    var ta=document.createElement('textarea');ta.className='codeinp';ta.rows=6;
+    ta.placeholder='// 在这里写你的代码（语言不限，C / Python / JS 都行）';
+    ta.setAttribute('autocapitalize','off');ta.setAttribute('autocorrect','off');ta.setAttribute('spellcheck','false');
+    card.appendChild(ta);
+    var hr=h('div','row');
+    var hsb=h('button','btn gold','🤖 提交 AI 评判');hsb.style.flex='1';
+    var hmsg=h('div','hint','');
+    var canDo=canJudge();
+    if(!canDo)hsb.disabled=true;
+    hsb.onclick=function(){submitHand(Q,ta.value,hsb,hmsg);};
+    hr.appendChild(hsb);card.appendChild(hr);card.appendChild(hmsg);
+    if(!canDo)hmsg.textContent='⚠️ 未配置 AI：点右上角 ⚙️ 选服务商（免费通道不用 Key）后就能评判';
+    var unkH=h('button','unkbtn','😵 不会 · 跳过本题');unkH.onclick=function(){markUnknown();};card.appendChild(unkH);
+  }else if(Q.opts){
     var opts=h('div','opts');
     Q.opts.forEach(function(op){var b=h('button','obtn');b.textContent=op;b.onclick=function(){answer(op===Q.a,op,Q.a,b);};opts.appendChild(b);});
     card.appendChild(opts);
@@ -981,16 +1146,28 @@ function showQuestion(){
   }else{
     var ir=h('div','row');ir.style.marginTop='4px';
     var ti=h('input');ti.type='text';ti.placeholder='输入答案';ti.style.flex='1';
-    var sb=h('button','btn gold','提交');sb.onclick=function(){answer(norm(ti.value)===norm(Q.a),ti.value,Q.a);};
+    ti.setAttribute('autocapitalize','off');ti.setAttribute('autocorrect','off');ti.setAttribute('spellcheck','false');
+    var sb=h('button','btn gold','提交');sb.onclick=function(){answer(fillEqual(ti.value,Q.a),ti.value,Q.a);};
+    ti.onkeydown=function(e){if(e&&e.key==='Enter'){sb.click();}};
     ir.appendChild(ti);ir.appendChild(sb);card.appendChild(ir);
     var unk2=h('button','unkbtn','😵 不会 · 记入薄弱题');unk2.onclick=function(){markUnknown();};card.appendChild(unk2);
   }
+
   // 固定反馈预留区：空着也占位，反馈条出现不会把选项往上顶
   var fz=h('div','fbzone');fz.id='fbzone';card.appendChild(fz);
   // 底部操作
   var foot=h('div','quizfoot');foot.style.marginTop='12px';
-  var quit=h('button','btn ghost','🏠 退出本局');quit.onclick=function(){if(confirm('退出本局？本局成绩不保存。'))renderShelf();};
-  foot.appendChild(quit);card.appendChild(foot);
+  if(autoMode){
+    var quitA=h('button','btn ghost','🏁 结束并结算');
+    quitA.onclick=function(){endQuiz();};
+    foot.appendChild(quitA);
+  }else{
+    var quit=h('button','btn ghost','🏠 退出本局');
+    quit.onclick=function(){if(confirm('退出本局？本局成绩不保存。'))renderShelf();};
+    foot.appendChild(quit);
+  }
+  card.appendChild(foot);
+
   stageEl.appendChild(card);
 }
 function lockOpts(){var bs=stageEl.querySelectorAll?stageEl.querySelectorAll('.obtn,.unkbtn'):[];try{[].slice.call(bs).forEach(function(b){b.disabled=true;});}catch(e){}}
@@ -1013,14 +1190,22 @@ function markChosen(btn,ans){
 function markUnknown(){
   if(locked)return;locked=true;
   var Q=qlist[qidx];
-  if(Q&&!reviewMode){addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,time:Date.now()});}
-  if(autoMode){var _bk=(typeKey.indexOf('b:')===0)?typeKey.slice(2):'';selfRank=Math.max(0,selfRank-1);setRank(_bk,selfRank);combo=0;wrongCombo=0;if(QA_TYPES[_bk])curDiffLabel=QA_TYPES[_bk].diffs[selfRank].n;}
+  if(Q&&!reviewMode&&!Q.hand){addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,time:Date.now()});}
+  if(autoMode){
+    var _bk=(typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
+    selfWindow.push(0);if(selfWindow.length>WIN_CAP)selfWindow.shift();
+    selfRank=Math.max(0,selfRank-1);lvlCool=LEVEL_COOL;setRank(_bk,selfRank);
+    combo=0;wrongCombo=0;
+    if(QA_TYPES[_bk])curDiffLabel=QA_TYPES[_bk].diffs[selfRank].n;
+  }
   lockOpts();
-  var fb=h('div','fb unk');fb.textContent='😵 已记入薄弱题，跳过本题';appendFb(fb);
+  var fb=h('div','fb unk');fb.textContent='😵 已跳过本题'+(reviewMode?'':'，已记入薄弱题');appendFb(fb);
   qidx++;later(showQuestion,800);
 }
-function answer(correct,given,ans,btn){
+
+function answer(correct,given,ans,btn,opt){
   if(locked)return;locked=true;
+  opt=opt||{};
   var _bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
   if(reviewMode){
     if(btn)markChosen(btn,ans);else lockOpts();
@@ -1031,24 +1216,40 @@ function answer(correct,given,ans,btn){
   }
   var _pen=(curDiff>=2&&_bk&&QA_TYPES[_bk]&&QA_TYPES[_bk].pen)?5:0;
   if(correct){ok++;score+=10;}else if(_pen){score-=5;}
-  if(autoMode){
-    if(correct){combo++;wrongCombo=0;if(combo>=UP_COMBO){selfRank=Math.min(QA_TYPES[_bk].diffs.length-1,selfRank+1);combo=0;}}
-    else{wrongCombo++;combo=0;if(wrongCombo>=DOWN_COMBO){selfRank=Math.max(0,selfRank-1);wrongCombo=0;}}
+  if(autoMode&&_bk&&QA_TYPES[_bk]&&QA_TYPES[_bk].diffs){
+    /* 滑动窗口自适应（替换原来的连对/连错计数）：
+       最近 ≤12 题正确率 ≥75% 升一档、≤40% 降一档；满 6 题才判，升降后冷却 2 题，避免一波连对跳两级。 */
+    selfWindow.push(correct?1:0);if(selfWindow.length>WIN_CAP)selfWindow.shift();
+    var _acc=windowAcc(),_maxD=QA_TYPES[_bk].diffs.length-1;
+    if(lvlCool>0){lvlCool--;}
+    else if(selfWindow.length>=WIN_MIN){
+      if(_acc>=UP_ACC&&selfRank<_maxD){selfRank++;lvlCool=LEVEL_COOL;}
+      else if(_acc<=DN_ACC&&selfRank>0){selfRank--;lvlCool=LEVEL_COOL;}
+    }
     setRank(_bk,selfRank);
-    if(QA_TYPES[_bk])curDiffLabel=QA_TYPES[_bk].diffs[selfRank].n;
+    curDiffLabel=QA_TYPES[_bk].diffs[selfRank].n;
   }
   if(btn)markChosen(btn,ans);else lockOpts();
   var fb=h('div','fb '+(correct?'ok':'no'));
-  fb.textContent=correct?'✅ 答对了！＋10':('❌ 正确答案：'+ans+(_pen?'　（−5 分）':''));
+  if(opt.note){fb.textContent=(correct?'✅ 判为正确 ＋10':('❌ 判为不正确'+(_pen?'　（−5 分）':'')))+'　'+opt.note;}
+  else{fb.textContent=correct?'✅ 答对了！＋10':('❌ 正确答案：'+ans+(_pen?'　（−5 分）':''));}
   appendFb(fb);
   bumpStat(typeKey,correct);
-  qidx++;later(showQuestion,800);
+  qidx++;later(showQuestion,opt.wait||800);
 }
+
 function endQuiz(){
+  quizOver=true;
   if(reviewMode){reviewMode=false;finish(score);return;}
   var key=(autoMode&&typeKey.indexOf('b:')===0)?(typeKey+':auto'):((curDiff>=0)?(typeKey+':'+curDiff):typeKey);
+  if(autoMode){
+    /* 无限模式没有预设题量：用实际作答数当分母，并留一份实力快照给结算页 */
+    lastAuto={rank:selfRank,n:qidx,acc:windowAcc(),win:selfWindow.length,lab:curDiffLabel};
+    total=Math.max(1,qidx);
+  }
   autoMode=false;saveTypeBest(key,score);finish(score);
 }
+
 function finish(sc){
   showView('stage');clearNode(stageEl);
   var acc=total?(Math.round(ok/total*100)):0;
@@ -1060,6 +1261,15 @@ function finish(sc){
   card.appendChild(scoreBig);
   var accLine=ht('div','hint','正确率 '+acc+'%　（'+ok+' / '+total+'）');accLine.style.color='var(--sub)';accLine.style.fontWeight='700';
   card.appendChild(accLine);
+  if(lastAuto){
+    var lc=h('div','lvlcard');
+    lc.appendChild(ht('div','lvlt','🎯 当前实力：'+(lastAuto.lab||levelName(lastAuto.rank))));
+    lc.appendChild(ht('div','lvls','做了 '+lastAuto.n+' 题 · 正确 '+ok+' 题 · 最近 '+lastAuto.win+' 题正确率 '+Math.round(lastAuto.acc*100)+'%'));
+    var _A=lastAuto.acc;
+    lc.appendChild(ht('div','lvld',_A>=0.85?'状态在线，往上一档再试试。':(_A>=0.65?'基本稳住，这个档位可以继续刷。':(_A>=0.45?'还在爬坡，错题点「😵 不会」沉淀后回顾。':'这档偏难，先回低一档把基础打牢。'))));
+    card.appendChild(lc);
+    lastAuto=null;
+  }
   var row=h('div','row');row.style.marginTop='16px';
   var again=h('button','btn gold','🔄 再来一局');
   again.onclick=function(){
@@ -1083,8 +1293,8 @@ function finish(sc){
 function startReview(){
   var a=loadWeak();
   if(!a.length){toast('📚 暂无薄弱题：做题时点「😵 不会」就会沉淀到这里');return;}
-  reviewMode=true;autoMode=false;typeKey='b:weak';typeLabel='回顾薄弱题';
-  qlist=a.map(function(x){return {q:x.q,a:x.a,opts:(x.opts&&x.opts.length)?x.opts.slice():null,weak:x};});
+  reviewMode=true;autoMode=false;quizOver=false;typeKey='b:weak';typeLabel='回顾薄弱题';qaSection='choice';handMode=false;
+  qlist=a.map(function(x){return {q:x.q,a:x.a,opts:(x.opts&&x.opts.length)?x.opts.slice():null,code:x.code,fillin:x.fillin,weak:x};});
   ok=0;qidx=0;score=0;total=qlist.length;showQuestion();
 }
 
@@ -1102,11 +1312,11 @@ function startOnline(){
     var reason=(info&&info.reason)||'fail';
     if(info&&info.degraded&&ONLINE_BANK.length){beginOnline();return;}
     sp.textContent=netFailText(reason)+'，即将切换到本地题库';
-    later(function(){startType('common',null,qaDiffDefault('common'));},1200);
+    later(function(){doStartType('common',null,qaDiffDefault('common'));},1200);
   });
 }
 function beginOnline(){
-  typeKey='b:online';typeLabel=(ONLINE_SRC==='offline')?'📴 联网（离线兜底）':'🌐 联网';curDiff=-1;curDiffLabel='';
+  typeKey='b:online';typeLabel=(ONLINE_SRC==='offline')?'📴 联网（离线兜底）':'🌐 联网';curDiff=-1;curDiffLabel='';qaSection='choice';handMode=false;quizOver=false;
   qlist=shuffle(ONLINE_BANK.slice()).slice(0,Math.min(10,ONLINE_BANK.length)).map(function(it){return {q:it.q,a:it.a,opts:it.opts,src:it.src};});
   ok=0;qidx=0;score=0;total=qlist.length;showQuestion();
 }
@@ -1526,7 +1736,7 @@ python:{
  1:[
   function(){var W=['code','python','list','hello','data','test','java','web'],s=W[ri(W.length)];return mkQA('Python 中 len("'+s+'") 的结果是？',s.length,neighbors(s.length));},
   function(){var n=riN(3,10);return mkQA('Python 中 sum(range('+n+')) 的结果是？',n*(n-1)/2,neighbors(n*(n-1)/2));},
-  function(){var s='abcdefgh',i=riN(0,4),j=riN(i+1,7);return mkQA('Python 中 "'+s+'"['+i+':'+j+'] 的结果是？',s.slice(i,j),[s.slice(i,j+1),s.slice(i+1,j),s.slice(i+1,j+1),s.slice(Math.max(0,i-1),j)]);}
+  function(){var s='abcdefgh',i=riN(0,3),j=riN(i+2,7),ans=s.slice(i,j);return mkQA('Python 中 "'+s+'"['+i+':'+j+'] 的结果是？',ans,[s.slice(i,j+1),s.slice(i+1,j),s.slice(i+1,j+1),ans.toUpperCase()]);}
  ],
  2:[
   function(){var n=riN(10,99);return mkQA('Python 中 d={"a": '+n+'}，则 d["a"] 的值是？',n,neighbors(n));}
@@ -1713,6 +1923,274 @@ QA_TYPES.code.gen=function(n,diff){
   codeSaveRecent(rk,out.map(function(x){return x.q;}).concat(rec));
   return out;
 };
+/* ===== 程序编写板块：读代码 / 补全代码（答案当场算出，绝不写死） ===== */
+function mkCodeQ(prompt,code,ans,alts){
+  /* 选项去重后再按数值补足到 4 个，避免参数巧合时只剩 3 个选项 */
+  var a=String(ans),seen={},list=[];seen[a]=1;
+  (alts||[]).forEach(function(x){x=String(x);if(seen[x]||list.length>=3)return;seen[x]=1;list.push(x);});
+  var n=Number(a);
+  if(list.length<3&&isFinite(n)&&String(n)===a){
+    var k=1;
+    while(list.length<3&&k<60){
+      var d=Math.ceil(k/2)*(k%2?1:-1),w=String(n+d);
+      if(!seen[w]){seen[w]=1;list.push(w);}
+      k++;
+    }
+  }
+  var q=mkQA(prompt,a,list);
+  q.code=code;q.kind='out';
+  return q;
+}
+function mkCodeFill(prompt,code,ans,cands){
+  var q=mkQA(prompt,ans,cands||[]);
+  q.code=code;q.opts=null;q.fillin=1;q.kind='fill';
+  return q;
+}
+var CODE_GEN_CODE={};
+(function(){
+  /* ---- L0 入门：变量 / 运算 / 输出 ---- */
+  CODE_GEN_CODE['0']=[
+    tagGen(function(){
+      var a=riN(2,9),b=riN(2,9);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int x = '+a+';\nint y = '+b+';\nprintf("%d", x + y);',
+        String(a+b),[String(a*b),String(a-b),String(a+b+1)]);
+    },'c'),
+    tagGen(function(){
+      var a=riN(2,6),b=riN(2,6);
+      return mkCodeQ('这段 Python 代码输出什么？',
+        'a = '+a+'\nb = '+b+'\nprint(a * b)',
+        String(a*b),[String(a+b),String(a*10+b),String(a*b+1)]);
+    },'python'),
+    tagGen(function(){
+      var n=riN(2,4);
+      return mkCodeQ('这段 JavaScript 代码输出什么？',
+        'var s = "";\nfor (var i = 0; i < '+n+'; i++) {\n  s += i;\n}\nconsole.log(s);',
+        '012345'.slice(0,n),['123456'.slice(0,n),String(n),'9'.slice(0,n)]);
+    },'js'),
+    tagGen(function(){
+      var s=['abc','quiz','code'][riN(0,2)],i=riN(0,2);
+      return mkCodeQ('这段 Python 代码输出什么？',
+        's = "'+s+'"\nprint(s['+i+'])',
+        s.charAt(i),[s.charAt((i+1)%3),s.charAt((i+2)%3),String(s.length)]);
+    },'python'),
+    tagGen(function(){
+      return mkCodeFill('补全这段 Python 代码，让它输出 6：',
+        'nums = [1, 2, 3]\nprint(____(nums))',
+        'sum',['len','max','sorted']);
+    },'python')
+  ];
+  /* ---- L1 基础：控制流 / 常用 API ---- */
+  CODE_GEN_CODE['1']=[
+    tagGen(function(){
+      var n=riN(3,9);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int s = 0;\nfor (int i = 1; i <= '+n+'; i++) {\n    s += i;\n}\nprintf("%d", s);',
+        String(n*(n+1)/2),[String(n*n),String(n*(n-1)/2),String(n*(n+1))]);
+    },'c'),
+    tagGen(function(){
+      var n=riN(2,4),k=riN(2,3);
+      return mkCodeQ('这段 Python 代码输出什么？',
+        'a = [1, 2, 3, 4, 5][:'+n+']\nprint(len(a) * '+k+')',
+        String(n*k),[String(n+k),String(n),String(n*k+1)]);
+    },'python'),
+    tagGen(function(){
+      var s=['quiz','code','java','html'][riN(0,3)];
+      return mkCodeQ('这段 Java 代码输出什么？',
+        'String s = "'+s+'";\nSystem.out.println(s.length());',
+        String(s.length),[String(s.length-1),String(s.length+1),String(s.length*2)]);
+    },'java'),
+    tagGen(function(){
+      var n=riN(4,7);
+      return mkCodeQ('这段 JavaScript 代码输出什么？',
+        'var a = [];\nfor (var i = 1; i <= '+n+'; i++) {\n  if (i % 2 === 0) a.push(i);\n}\nconsole.log(a.length);',
+        String(Math.floor(n/2)),[String(Math.ceil(n/2)),String(n),String(n-1)]);
+    },'js'),
+    tagGen(function(){
+      return mkCodeFill('补全这段 C 代码，让它输出 hello 的长度 5：',
+        'char s[] = "hello";\nprintf("%d", (int)____(s));',
+        'strlen',['sizeof','len','length']);
+    },'c')
+  ];
+  /* ---- L2 进阶：指针与内存 / 引用 ---- */
+  CODE_GEN_CODE['2']=[
+    tagGen(function(){
+      var k=riN(1,2);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int a[3] = {1, 2, 3};\nint *p = a;\nprintf("%d", *(p + '+k+'));',
+        String(k+1),[String(k),String(3),String(k+2)]);
+    },'c'),
+    tagGen(function(){
+      var x=riN(3,9),v=riN(10,19);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int x = '+x+';\nint *p = &x;\n*p = '+v+';\nprintf("%d", x);',
+        String(v),[String(x),String(x+v),String(v-x)]);
+    },'c'),
+    tagGen(function(){
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int a[4] = {1, 2, 3, 4};\nint *p = a + 1;\nprintf("%d", p[1]);',
+        '3',['2','4','1']);
+    },'c'),
+    tagGen(function(){
+      return mkCodeQ('这段 Python 代码输出什么？',
+        'def f(t):\n    t.append(9)\n\nx = [1]\nf(x)\nprint(len(x))',
+        '2',['1','9','0']);
+    },'python'),
+    tagGen(function(){
+      return mkCodeFill('补全最后一行，让 p 指向 x（输出 5）：',
+        'int x = 5;\nint *p = ____;\nprintf("%d", *p);',
+        '&x',['x','*x','&&x']);
+    },'c')
+  ];
+  /* ---- L3 熟练：数据结构与算法 ---- */
+  CODE_GEN_CODE['3']=[
+    tagGen(function(){
+      var n=riN(4,6);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int f(int n) {\n    return n <= 1 ? 1 : n * f(n - 1);\n}\nprintf("%d", f('+n+'));',
+        String(fact(n)),[String(fact(n)+n),String(n*n),String(fact(n-1))]);
+    },'c'),
+    tagGen(function(){
+      var n=riN(6,11);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int f(int n) {\n    return n < 2 ? n : f(n - 1) + f(n - 2);\n}\nprintf("%d", f('+n+'));',
+        String(fibOf(n)),[String(fibOf(n)+1),String(fibOf(n-1)),String(n)]);
+    },'c'),
+    tagGen(function(){
+      return mkCodeQ('这段 Java 代码输出什么？',
+        'int[] a = {5, 2, 9};\nArrays.sort(a);\nSystem.out.println(a[0]);',
+        '2',['5','9','0']);
+    },'java'),
+    tagGen(function(){
+      return mkCodeQ('这段 JavaScript 代码输出什么？',
+        'var a = [3, 1, 2];\na.sort();\nconsole.log(a.join(""));',
+        '123',['321','312','132']);
+    },'js'),
+    tagGen(function(){
+      var n=riN(3,6);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int s = 0;\nfor (int i = 0; i < '+n+'; i++)\n    for (int j = 0; j < '+n+'; j++)\n        s++;\nprintf("%d", s);',
+        String(n*n),[String(n*2),String(n),String(n*n-1)]);
+    },'c')
+  ];
+  /* ---- L4 精通：陷阱 / 未定义行为规避 ---- */
+  CODE_GEN_CODE['4']=[
+    tagGen(function(){
+      var a=riN(1,4),b=riN(1,4);
+      return mkCodeQ('这段 C 代码输出什么？',
+        '#define SQ(x) x*x\n\nprintf("%d", SQ('+a+' + '+b+'));',
+        String(a+b*b),[String((a+b)*(a+b)),String(a*a+b*b),String(a+b*2)]);
+    },'c'),
+    tagGen(function(){
+      var k=riN(1,9);
+      return mkCodeQ('这段 C 代码输出什么（8 位 char）？',
+        'char c = -'+k+';\nprintf("%d", (unsigned char)c);',
+        String(256-k),[String(-k),String(k),String(256+k)]);
+    },'c'),
+    tagGen(function(){
+      var sv=riN(0,2),ops=['i++','++i','i--','--i'],op=ops[riN(0,3)];
+      var pre=/^[+-]{2}/.test(op),after=(op==='i++'||op==='++i');
+      var a=pre?(after?sv+1:sv-1):sv;
+      var iv=after?sv+1:sv-1;
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int i = '+sv+';\nint a = '+op+';\nprintf("%d %d", a, i);',
+        a+' '+iv,[(a+1)+' '+iv,a+' '+(iv+1),(a+1)+' '+(iv+1)]);
+    },'c'),
+    tagGen(function(){
+      var n=riN(3,9);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int a['+n+'];\nprintf("%d", (int)(sizeof(a) / sizeof(a[0])));',
+        String(n),[String(n-1),String(n*4),'1']);
+    },'c'),
+    tagGen(function(){
+      var t=riN(0,3),m=riN(3,9),body='';
+      for(var i=0;i<t;i++)body+='f('+(i+1)+')\n';
+      return mkCodeQ('这段 Python 代码输出什么？',
+        'def f(x, acc=[]):\n    acc.append(x)\n    return len(acc)\n\n'+body+'print(f('+m+'))',
+        String(t+1),[String(t),String(t+2),'1']);
+    },'python'),
+    tagGen(function(){
+      var X=[5,6,7,9,10,11,12,13,14,17,19,21,23,25,27,29],x=X[riN(0,15)];
+      var c=0,v=x;while(v){c+=v&1;v>>=1;}
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int n = '+x+';\nint c = 0;\nwhile (n) {\n    c += n & 1;\n    n >>= 1;\n}\nprintf("%d", c);',
+        String(c),[String(c+1),String(c-1),String(x%8)]);
+    },'c'),
+    tagGen(function(){
+      var a=riN(215,250),b=riN(10,45),r=(a+b)%256;
+      return mkCodeQ('这段 C 代码输出什么？',
+        'unsigned char c = '+a+';\nc += '+b+';\nprintf("%d", c);',
+        String(r),[String(a+b),String(255-r),String(256-r)]);
+    },'c'),
+    tagGen(function(){
+      var k=riN(2,6);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int a[8] = {0};\nint *p = &a['+k+'];\nprintf("%d", (int)(p - a));',
+        String(k),[String(k+1),String(k-1),String(k*4)]);
+    },'c')
+  ];
+})();
+/* 程序编写板块组题：按已掌握语言过滤，档位不够时相邻档补齐，绝不空题 */
+QA_TYPES.code.genSection=function(n,diff){
+  n=Math.max(1,n|0);
+  var dd=(typeof diff==='number'&&diff>=0&&diff<5)?diff:0;
+  var allowed=codeAllowedLangs();
+  function collect(d){
+    var arr=(CODE_GEN_CODE[String(d)]||[]).slice();
+    if(!allowed)return arr;
+    return arr.filter(function(g){return allowed.indexOf(g.lang)>=0;});
+  }
+  var pool=collect(dd);
+  if(pool.length<3){
+    var alt=[dd-1,dd+1,dd-2,dd+2];
+    for(var i=0;i<alt.length;i++){
+      if(alt[i]<0||alt[i]>4)continue;
+      pool=pool.concat(collect(alt[i]));
+      if(pool.length>=6)break;
+    }
+  }
+  var out=[],seen={},guard=0;
+  /* 去重键必须带上代码块：读代码题的题干是同一句，靠 code 区分 */
+  function qk(q){return q.q+'\u0001'+(q.code||'');}
+  while(out.length<n&&pool.length&&guard++<1200){
+    var g=pool[riN(0,pool.length-1)],q=null;
+    try{q=g();}catch(e){continue;}
+    if(!q||!q.q||q.a==null)continue;
+    if(seen[qk(q)])continue;
+    q.tag=q.tag||g.lang;
+    seen[qk(q)]=1;out.push(q);
+  }
+  /* 兜底：用常规编程题（带选项）补齐，保证题量 */
+  if(out.length<n){
+    var more=QA_TYPES.code.gen(n-out.length,dd);
+    more.forEach(function(q){
+      if(out.length>=n||!q||seen[qk(q)])return;
+      seen[qk(q)]=1;out.push(q);
+    });
+  }
+  return out.slice(0,n);
+};
+/* ===== 手写代码题（AI 评判用，题面与样例都在本地生成） ===== */
+var CODE_TASKS=[
+  {r:0,t:'写一个函数 sum(a, b)，返回两个数之和。',ex:'sum(2, 3) → 5',tip:'直接返回 a + b'},
+  {r:0,t:'写一个函数 maxOf(a, b)，返回较大的那个数。',ex:'maxOf(4, 9) → 9',tip:'比较两个数'},
+  {r:1,t:'写一个函数 isEven(n)，n 是偶数返回 true，否则返回 false。',ex:'isEven(7) → false',tip:'用取余判断'},
+  {r:1,t:'写一个函数 reverseStr(s)，返回反转后的字符串。',ex:'reverseStr("abc") → "cba"',tip:'循环或内置反转'},
+  {r:2,t:'写一个函数 countChar(s, c)，统计字符 c 在 s 中出现的次数。',ex:'countChar("banana", "a") → 3',tip:'遍历计数'},
+  {r:2,t:'写一个函数 fib(n)，返回斐波那契数列第 n 项（1, 1, 2, 3, 5 …）。',ex:'fib(6) → 8',tip:'递推或递归'},
+  {r:3,t:'写一个函数 twoSum(nums, target)，返回和为 target 的两个元素下标（数组返回）。',ex:'twoSum([2, 7, 11, 15], 9) → [0, 1]',tip:'哈希表可做到 O(n)'},
+  {r:3,t:'写一个函数 isPalindrome(s)，忽略大小写与非字母数字字符，判断是否回文。',ex:'isPalindrome("A man, a plan") → false',tip:'双指针或反转后比较'},
+  {r:4,t:'写一个函数 flatten(arr)，把任意层嵌套数组展平成一维数组。',ex:'flatten([1, [2, [3]]]) → [1, 2, 3]',tip:'递归处理嵌套'},
+  {r:4,t:'写一个函数 maxSubArray(nums)，返回连续子数组的最大和。',ex:'maxSubArray([-2, 1, -3, 4, -1, 2, 1]) → 6',tip:'Kadane 算法'}
+];
+function genHandTask(rank){
+  var r=(typeof rank==='number'&&rank>=0)?rank:0;
+  var near=CODE_TASKS.filter(function(x){return x.r===r;});
+  if(!near.length)near=CODE_TASKS.filter(function(x){return Math.abs(x.r-r)<=1;});
+  if(!near.length)near=CODE_TASKS;
+  var t=near[ri(near.length)];
+  return {q:t.t,a:'（AI 评判）',opts:null,hand:true,task:t,tag:'all'};
+}
 /*=== CODE_ENGINE_END ===*/
 function codeQuestionnaire(cb){
   var ov=overlayPanel('💻 编程 · 知识面检测');
@@ -2167,6 +2645,91 @@ function testAI(cfg,cb){
       if(e&&e.name==='AbortError'){cb(false,'超时');return;}
       cb(false,'网络错误');
     });
+}
+
+/* ---------- 填空判分容错 / 手写代码 AI 评判 ---------- */
+var SUP_MAP={'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9'};
+function fillNorm(s){
+  s=norm(s);
+  s=s.replace(/^[`'"“”‘’]+/,'').replace(/[`'"“”‘’]+$/,'');
+  s=s.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g,function(m){var o='^';for(var i=0;i<m.length;i++)o+=(SUP_MAP[m.charAt(i)]||'');return o;});
+  return s.replace(/⁻/g,'-');
+}
+function fillNum(s){
+  var t=String(s==null?'':s).trim().replace(/\s+/g,'');
+  var m=t.match(/^(-?\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/);
+  if(m)return Number(m[1])/Number(m[2]);
+  if(/^-?0x[0-9a-f]+$/i.test(t))return parseInt(t,16);
+  var n=Number(t);
+  return isFinite(n)?n:null;
+}
+/* 填空判分：忽略空格/大小写/标点，容忍上标写法（x⁴ = x^4）、分数与小数、十六进制前缀 */
+function fillEqual(given,ans){
+  var a=fillNorm(ans),b=fillNorm(given);
+  if(a===b)return true;
+  if(a.replace(/^0x/,'')===b.replace(/^0x/,''))return true;
+  var na=fillNum(a),nb=fillNum(b);
+  if(na!=null&&nb!=null&&Math.abs(na-nb)<1e-9)return true;
+  return false;
+}
+function canJudge(){var c=loadAICfg();return !!(c&&c.url&&(c.key||isFreeAI(c.url)));}
+function callAIRaw(cfg,prompt,cb,ms){
+  var free=isFreeAI(cfg.url);
+  var url=cfg.proxy?cfg.proxy:cfg.url;
+  if(!/^https?:\/\//.test(url)){cb(null,'地址无效');return;}
+  var body={model:cfg.model||(free?'openai':'deepseek-chat'),messages:[{role:'user',content:prompt}],temperature:0};
+  if(free)body.reasoning_effort='low';
+  var hd={'Content-Type':'application/json'};
+  if(cfg.key)hd['Authorization']='Bearer '+cfg.key;
+  var ctl=null,timer=null;
+  try{ctl=new AbortController();timer=setTimeout(function(){try{ctl.abort();}catch(e){}},ms||30000);}catch(e){}
+  fetch(url,{method:'POST',headers:hd,body:JSON.stringify(body),signal:ctl?ctl.signal:undefined})
+    .then(function(r){if(!r||!r.ok)throw new Error('HTTP '+((r&&r.status)||'?'));return r.json();})
+    .then(function(d){
+      if(timer)clearTimeout(timer);
+      var t='';
+      try{t=d.choices[0].message.content||'';}catch(e){}
+      if(!t){cb(null,'AI 返回空内容');return;}
+      cb(String(t),null);
+    })
+    .catch(function(e){
+      if(timer)clearTimeout(timer);
+      cb(null,(e&&e.name==='AbortError')?'AI 评判超时':((e&&e.message)||'AI 请求失败'));
+    });
+}
+function parseJudge(t){
+  t=String(t||'');
+  var m=t.match(/\{[\s\S]*?\}/);
+  if(m){try{var o=JSON.parse(m[0]);if(o&&typeof o.ok==='boolean')return {ok:o.ok,why:String(o.why||'').slice(0,80)};}catch(e){}}
+  if(/"ok"\s*:\s*true/.test(t))return {ok:true,why:''};
+  if(/"ok"\s*:\s*false/.test(t))return {ok:false,why:''};
+  if(/不正确|错误|有 bug/i.test(t))return {ok:false,why:''};
+  if(/正确|通过/i.test(t))return {ok:true,why:''};
+  return null;
+}
+function submitHand(Q,code,btn,msgEl){
+  if(!canJudge()){toast('✍️ 手写代码要先配置 AI（免费通道不用 Key）');return;}
+  if(!String(code||'').trim()){msgEl.textContent='⚠️ 还没写代码';return;}
+  var t=(Q&&Q.task)||{t:Q.q,ex:'',tip:''};
+  var cfg=loadAICfg();
+  btn.disabled=true;msgEl.textContent='🤖 AI 正在评判…（最多 30 秒，超时本题不计分）';
+  var prompt='你在批改一道编程练习题。\n题目：'+t.t+'\n样例：'+(t.ex||'')+'\n要点：'+(t.tip||'')+'\n\n学生的代码：\n```\n'+code+'\n```\n\n请判断这段代码在逻辑上是否正确完成了题目（语言不限，忽略大小写/格式/变量命名差异；明显语法错误判为不正确）。\n严格只返回一个 JSON 对象，不要任何解释文字：\n{"ok":true,"why":"一句中文原因"}';
+  callAIRaw(cfg,prompt,function(txt,err){
+    btn.disabled=false;
+    if(!txt){
+      msgEl.textContent='⚠️ '+(err||'AI 评判失败')+'，本题不计分，跳过';
+      later(function(){qidx++;showQuestion();},1600);
+      return;
+    }
+    var r=parseJudge(txt);
+    if(!r){
+      msgEl.textContent='⚠️ 没读懂 AI 的评判结果，本题不计分，跳过';
+      later(function(){qidx++;showQuestion();},1600);
+      return;
+    }
+    msgEl.textContent='';
+    answer(r.ok,code,'（AI 评判）',null,{wait:2200,note:r.why?('🤖 '+r.why):''});
+  },30000);
 }
 
 /* ---------- 任务4：背景音乐 ---------- */
