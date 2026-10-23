@@ -1323,6 +1323,9 @@ function ensureBgm(){if(bgm)return bgm;bgm=new Audio();bgm.loop=false;bgm.volume
   bgm.addEventListener('ended',function(){if(musicLoop)playMusic((musicIdx+1)%musicList.length);else{musicPlaying=false;updateMusicPanel();}});
   bgm.addEventListener('error',function(){
     var tr=musicList[musicIdx]||{};
+    // 切歌会打断上一次加载，也会抛一个 error（currentSrc 还是上一个地址）——那不是当前曲目失败，别参与探测
+    var want=musicSrcOf(tr);
+    if(bgm.currentSrc&&want&&bgm.currentSrc.indexOf(want)<0)return;
     // 扩展名自动探测：还有候选就换下一个试（404 / 格式不支持都会走这里）
     if(tr.base&&tr.exts&&(tr._ext||0)<tr.exts.length-1){
       tr._ext=(tr._ext||0)+1;
