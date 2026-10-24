@@ -3052,9 +3052,13 @@ var MUSIC_DEFAULT=[
   {name:'卡农（钢琴版）',base:'audio/canon',exts:AUDIO_EXTS}
 ];
 var MUSIC_CFG_KEY='bt_qa_music';
-var bgm=null,musicList=[],musicIdx=0,musicLoop=true,musicVol=0.5,musicPlaying=false,musicFailStreak=0,musicErrMsg='';
+var bgm=null,musicList=[],musicIdx=0,musicLoop=true,musicVol=0.5,musicPlaying=false,musicFailStreak=0,musicErrMsg='',musicOv=null;
 function loadMusicCfg(){try{return JSON.parse(S.getItem(MUSIC_CFG_KEY)||'{}')||{};}catch(e){return{};}}
-function buildMusicList(){var cfg=loadMusicCfg();musicList=MUSIC_DEFAULT.slice();if(cfg.custom&&cfg.custom.length)musicList=musicList.concat(cfg.custom);musicIdx=cfg.idx||0;if(musicIdx>=musicList.length)musicIdx=0;musicLoop=cfg.loop!==false;musicVol=(cfg.vol==null?0.5:cfg.vol);}
+function buildMusicList(){var cfg=loadMusicCfg();
+  // 深拷贝默认曲目，避免上一局 set 的 _ext/_gone/missing 等标记跨次打开残留（MUSIC_DEFAULT 是共享引用）
+  musicList=MUSIC_DEFAULT.map(function(t){var c={};for(var k in t){if(Object.prototype.hasOwnProperty.call(t,k))c[k]=t[k];}return c;});
+  if(cfg.custom&&cfg.custom.length)musicList=musicList.concat(cfg.custom);
+  musicIdx=cfg.idx||0;if(musicIdx>=musicList.length)musicIdx=0;musicLoop=cfg.loop!==false;musicVol=(cfg.vol==null?0.5:cfg.vol);}
 function saveMusicCfg(){var cfg=loadMusicCfg();cfg.idx=musicIdx;cfg.loop=musicLoop;cfg.vol=musicVol;try{S.setItem(MUSIC_CFG_KEY,JSON.stringify(cfg));}catch(e){}}
 /* 当前曲目该用哪个地址：在线 URL > 旧版 file 字段 > 基名+第 N 个扩展名 */
 function musicSrcOf(tr){
@@ -3070,6 +3074,24 @@ function musicSrcOf(tr){
 function musicMissText(tr){
   if(!tr||!tr.base)return '⚠️ 音频文件缺失，请用「➕ 添加」导入本地音乐';
   return '⚠️ 未找到 '+tr.base+' 下的文件（已尝试 '+(tr.exts||['mp3']).slice(0,6).join('/')+'）。请确认：① 文件已放进 quiz/audio/ 且命名小写+连字符；② 线上已同步部署 audio（_deploy_gym/quiz/audio/）；或用「➕ 添加」导入本地文件播放。';
+}
+/* 探测某个 base 曲目在 audio/ 下是否存在：HEAD 逐个扩展名试，命中即停。
+   用 HEAD（sw.js 只拦 GET，HEAD 直接走网络），不下载文件体。 */
+function probeTrack(tr,cb){
+  cb=cb||function(){};
+  if(!tr||!tr.base||!tr.exts||!tr.exts.length){cb(false);return;}
+  var i=0;
+  function next(){
+    if(i>=tr.exts.length){cb(false);return;}
+    var ex=tr.exts[i];
+    fetch(tr.base+'.'+ex,{method:'HEAD',cache:'no-store'})
+      .then(function(r){
+        if(r&&r.ok){cb(true,ex);return;}
+        i++;next();
+      })
+      .catch(function(){i++;next();});
+  }
+  next();
 }
 function musicNote(msg){musicErrMsg=msg||'';updateMusicPanel();}
 function bgmPlay(){
@@ -3154,7 +3176,7 @@ function playMusic(i,keepMsg){
     });
     musicPlaying=true;saveMusicCfg();updateMusicPanel();return;
   }
-  tr._ext=0;        // 从第一个扩展名开始探测，出错自动往后试
+  if(tr._ext==null)tr._ext=0;        // 已被面板探测命中就沿用该扩展名，否则从头探测
   var src=musicSrcOf(tr);
   if(src){bgmReset();bgm.src=src;bgmPlay();}
   else{musicPlaying=false;musicNote('⚠️ 该曲目没有可用地址');return;}
@@ -3172,6 +3194,7 @@ function openMusic(){
   buildMusicList();
   var ov=overlayPanel('🎵 背景音乐');
   ov.p.id='musicPanel';
+  musicOv=ov;
   ov.p.appendChild(ht('div','hint','「🎹 内置轻音乐」免文件即可播放。其它曲目支持 mp3 / flac / wav / m4a / ogg / aac：把文件放进 quiz/audio/，命名成 flower-dance.flac、windy-hill.wav 这种「小写 + 连字符」即可自动识别（扩展名会自动探测）；文件名不规范就用「➕ 添加」导入（存本机，无命名限制，离线也能播）。默认关闭，状态会被记住。　新增「📁 从 audio/ 添加」：把任意命名的文件放进 quiz/audio/ 后填文件名即可自动探测扩展名；注意音频文件不随代码发布，线上播放需同时把文件放进部署目录 _deploy_gym/quiz/audio/（或本机部署位置）。'));
   var now=h('div');now.style.textAlign='center';now.style.margin='10px 0 4px';
   var nameEl=ht('div',null,(musicList[musicIdx]||{}).name||'—');nameEl.id='mpName';
@@ -3199,21 +3222,11 @@ function openMusic(){
   loopChk.onchange=function(){musicLoop=loopChk.checked;saveMusicCfg();};
   loopRow.appendChild(loopChk);ov.p.appendChild(loopRow);
 
-  // 曲目列表
+  // 曲目列表（先渲染，再异步探测 audio/ 文件，无文件的自动消失）
   ov.p.appendChild(ht('div','section-title','曲目列表'));
-  musicList.forEach(function(tr,i){
-    var row=ht('div','mtrack'+(i===musicIdx?' sel':''));
-    row.appendChild(ht('span','mi',(i===musicIdx&&musicPlaying)?'▶':(tr.synth?'🎹':'♪')));
-    row.appendChild(ht('span','mn',tr.name));
-    if(tr.missing)row.appendChild(ht('span','ms','缺失'));
-    else if(tr.synth)row.appendChild(ht('span','ms','内置'));
-    else if(tr.url)row.appendChild(ht('span','ms','在线'));
-    else if(tr.blobKey)row.appendChild(ht('span','ms','本地'));
-    else if(tr.base)row.appendChild(ht('span','ms','audio/'));
-    if(tr.missing)row.title=musicMissText(tr);
-    row.onclick=function(){playMusic(i);openMusic();};
-    ov.p.appendChild(row);
-  });
+  var mtl=h('div');mtl.id='mtrackList';ov.p.appendChild(mtl);
+  renderMusicTracks(ov);
+  probeAndFilterMusic();   // 探测 base 型曲目，缺失的从列表移除
 
   var imp=ht('div','section-title','导入音乐');ov.p.appendChild(imp);
   var fileWrap=h('div','row');
@@ -3240,6 +3253,52 @@ function openMusic(){
   urlWrap.appendChild(addUrl);ov.p.appendChild(urlWrap);
   ov.p.appendChild(ht('div','muted','版权说明：内置曲目为默认名，正式公开使用前请确保你拥有相应音频的授权。'));
   updateMusicPanel();
+}
+
+/* 曲目列表渲染（抽出来，探测过滤后会重新调用） */
+function renderMusicTracks(ov){
+  var box=ov&&ov.p?ov.p.querySelector('#mtrackList'):null;
+  if(!box)return;
+  clearNode(box);
+  if(!musicList.length){box.appendChild(ht('div','hint','（无可播放曲目——把音乐文件放进 quiz/audio/ 后会自动出现）'));return;}
+  musicList.forEach(function(tr,i){
+    var row=ht('div','mtrack'+(i===musicIdx?' sel':''));
+    row.appendChild(ht('span','mi',(i===musicIdx&&musicPlaying)?'▶':(tr.synth?'🎹':'♪')));
+    row.appendChild(ht('span','mn',tr.name));
+    if(tr.missing)row.appendChild(ht('span','ms','缺失'));
+    else if(tr.synth)row.appendChild(ht('span','ms','内置'));
+    else if(tr.url)row.appendChild(ht('span','ms','在线'));
+    else if(tr.blobKey)row.appendChild(ht('span','ms','本地'));
+    else if(tr.base)row.appendChild(ht('span','ms','audio/'));
+    if(tr.missing)row.title=musicMissText(tr);
+    row.onclick=function(){playMusic(i);openMusic();};
+    box.appendChild(row);
+  });
+}
+/* 打开面板时探测 base 型曲目，缺失的从列表移除（synth/本地导入/在线 URL 永不探测） */
+function probeAndFilterMusic(){
+  var todo=musicList.map(function(tr,i){return tr&&tr.base&&!tr.synth&&!tr.url&&!tr.blobKey?i:-1;})
+                    .filter(function(i){return i>=0;});
+  if(!todo.length)return;
+  var left=todo.length;
+  todo.forEach(function(i){
+    probeTrack(musicList[i],function(ok,ex){
+      left--;
+      if(ok&&ex){musicList[i]._ext=musicList[i].exts.indexOf(ex);}
+      else{musicList[i]._gone=true;}
+      if(left<=0)applyFilteredMusic();
+    });
+  });
+  function applyFilteredMusic(){
+    var removed=musicList.filter(function(t){return t._gone;}).length;
+    if(!removed)return;
+    musicList=musicList.filter(function(t){if(t._gone){t._gone=false;return false;}return true;});
+    if(musicIdx>=musicList.length)musicIdx=Math.max(0,musicList.length-1);
+    if(musicOv)renderMusicTracks(musicOv);
+    updateMusicPanel();
+    var nm=document.getElementById('mpName');if(nm)nm.textContent=(musicList[musicIdx]||{}).name||'—';
+    toast('已隐藏 '+removed+' 首无文件的曲目');
+  }
 }
 
 /* 「📁 从 audio/ 添加」：填文件名即加入曲目列表，扩展名探测复用现有 musicSrcOf / error 逻辑 */
