@@ -1,0 +1,3513 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#7c5cff">
+<meta name="description" content="知识问答 · 百词斩式分类刷题，支持离线使用与添加到主屏幕。">
+<title>知识问答 · 百词斩式刷题</title>
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="知识问答">
+<meta name="application-name" content="知识问答">
+<style>
+:root{
+  --bg:#f3eefe; --card:#ffffff; --ink:#2f2748; --sub:#8a82a8;
+  --purple:#7c5cff; --purple-d:#5b3fd6; --purple-l:#f1ebff;
+  --gold:#f5a623; --green:#22a06b; --red:#e0556b;
+  --line:#e9e3fb; --shadow:0 6px 20px rgba(124,92,255,.13);
+  --shadow-sm:0 2px 10px rgba(124,92,255,.09);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif;
+  background:radial-gradient(120% 60% at 50% -10%,#e6dbff 0%,#f4efff 42%,#f3eefe 100%);
+  background-attachment:fixed;color:var(--ink);
+  min-height:100vh;-webkit-text-size-adjust:100%}
+#topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;
+  padding:10px 12px;background:rgba(255,255,255,.82);backdrop-filter:blur(12px);
+  border-bottom:1px solid rgba(233,227,251,.9)}
+#topbar .title{font-weight:800;font-size:17px;letter-spacing:.3px}
+#topbar .title small{display:block;font-weight:600;color:var(--sub);font-size:10.5px;letter-spacing:.6px;margin-top:1px}
+#topbar .spacer{flex:1}
+#topbar .icobtn{width:38px;height:38px;border:none;border-radius:12px;background:#f2edff;
+  font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:transform .1s,background .15s}
+#topbar .icobtn:active{transform:scale(.92);background:#e6dcff}
+/* PWA 新版本提示条（浮在顶栏下方，不参与书架布局） */
+#updateBar{position:fixed;left:50%;transform:translateX(-50%);top:calc(var(--hdh,64px) + 8px);z-index:80;
+  display:flex;align-items:center;gap:7px;max-width:calc(100vw - 28px);
+  padding:9px 15px;border-radius:99px;background:linear-gradient(135deg,#7c5cff,#9d80ff);color:#fff;
+  font-size:13.5px;font-weight:800;box-shadow:0 8px 22px rgba(124,92,255,.4);cursor:pointer;
+  animation:barIn .28s cubic-bezier(.2,.9,.3,1.2);white-space:nowrap}
+#updateBar:active{filter:brightness(.95)}
+@keyframes barIn{from{opacity:0;transform:translate(-50%,-10px)}to{opacity:1;transform:translate(-50%,0)}}
+#app{max-width:880px;margin:0 auto;padding:14px}
+.view{min-height:60vh}
+#stage{display:flex;flex-direction:column;justify-content:center;
+  min-height:calc(var(--vh,1vh)*100 - var(--hdh,64px) - 28px)}
+.quiztop{padding:4px 2px 0}
+[hidden]{display:none!important}
+
+/* ---------- 文本 ---------- */
+.hud{font-size:14px;font-weight:800;margin:2px 2px 8px;color:var(--ink);
+  display:flex;align-items:center;gap:8px}
+.hud .hl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hud .hr{color:var(--sub);font-weight:700;font-size:12.5px;white-space:nowrap}
+.hud .chip{background:#eef8f2;color:#177a4d;font-size:12px;padding:3px 8px;border-radius:8px;font-weight:800}
+.hud b{color:var(--purple-d)}
+.hint{font-size:12.5px;color:var(--sub);line-height:1.65;margin:2px 2px 8px}
+.hint b{color:var(--purple-d)}
+.muted{color:var(--sub);font-size:11.5px;line-height:1.6;margin-top:8px}
+.section-title{font-weight:800;font-size:14.5px;margin:18px 4px 10px;color:var(--ink);
+  display:flex;align-items:center;gap:8px}
+.section-title .act{margin-left:auto;font-size:12.5px;font-weight:800;color:var(--purple-d);
+  background:#efe8ff;padding:6px 12px;border-radius:10px;cursor:pointer;white-space:nowrap}
+.section-title .act:active{transform:scale(.96)}
+
+/* ---------- 书架 ---------- */
+.shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:11px}
+.book{background:var(--card);border-radius:18px;padding:13px;box-shadow:var(--shadow-sm);
+  cursor:pointer;border:1px solid var(--line);transition:transform .1s,box-shadow .15s;
+  display:flex;flex-direction:column;gap:8px;position:relative;overflow:hidden}
+.book::after{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;
+  background:linear-gradient(180deg,#b79bff,#7c5cff);opacity:0;transition:opacity .15s}
+.book:active{transform:translateY(2px) scale(.985);box-shadow:var(--shadow)}
+.book:active::after{opacity:1}
+.book .ic{width:42px;height:42px;border-radius:13px;display:flex;align-items:center;justify-content:center;
+  font-size:23px;line-height:1;background:linear-gradient(135deg,#f3edff,#ece3ff)}
+.book .nm{font-weight:800;font-size:14.5px;letter-spacing:.2px}
+.book .meta{font-size:11.5px;color:var(--sub);display:flex;justify-content:space-between;align-items:center;gap:6px}
+.book .star{color:var(--gold);font-weight:800}
+.book .star.none{color:#b3aac9;font-weight:600}
+.book.online{background:linear-gradient(135deg,#eafaf1,#fff)}
+.book.online .ic{background:linear-gradient(135deg,#d8f5e6,#c7efdc)}
+.book .del{position:absolute;top:7px;right:7px;background:#ffe9ee;color:var(--red);
+  border:none;border-radius:9px;font-size:11px;padding:3px 7px;cursor:pointer;z-index:2}
+.book.add{background:#f3eeff;border-style:dashed;align-items:center;justify-content:center;
+  color:var(--purple-d);font-weight:800;min-height:96px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.chip{background:#f0ebff;border:none;border-radius:20px;padding:8px 14px;font-size:14px;
+  color:var(--purple-d);font-weight:700;cursor:pointer}
+
+/* ---------- 按钮 / 输入 ---------- */
+.btn{border:none;border-radius:13px;padding:12px 16px;font-size:15px;font-weight:800;
+  background:linear-gradient(135deg,#8f6dff,#7c5cff);color:#fff;cursor:pointer;
+  box-shadow:0 4px 14px rgba(124,92,255,.28);transition:transform .1s,filter .15s}
+.btn:active{transform:scale(.975);filter:brightness(.96)}
+.btn.gold{background:linear-gradient(135deg,#ffc25c,#f5a623);color:#5a3b00;
+  box-shadow:0 4px 14px rgba(245,166,35,.3)}
+.btn.ghost{background:#f1ecff;color:var(--purple-d);box-shadow:none}
+.btn:disabled{opacity:.5;cursor:default;transform:none}
+.row{display:flex;gap:8px;margin:10px 0}
+.row > input{flex:1;min-width:0}
+input,textarea{width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--line);
+  font-size:15px;background:#fff;color:var(--ink);box-sizing:border-box;font-family:inherit}
+input:focus,textarea:focus{outline:none;border-color:#c3b0ff;box-shadow:0 0 0 3px rgba(124,92,255,.12)}
+input[type=file]{font-size:12.5px;padding:9px;color:var(--sub)}
+input[type=range]{-webkit-appearance:none;appearance:none;height:6px;padding:0;border:none;
+  border-radius:99px;background:#e9e3fb;flex:1;min-width:80px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;
+  background:var(--purple);box-shadow:0 2px 6px rgba(124,92,255,.45);cursor:pointer}
+input[type=checkbox]{width:20px;height:20px;flex:none;accent-color:var(--purple)}
+.fld{margin:9px 0}
+.flabel{font-size:12.5px;font-weight:700;color:var(--sub);margin:0 0 5px 2px;letter-spacing:.2px}
+select{width:100%;padding:11px 34px 11px 12px;border-radius:12px;border:1px solid var(--line);
+  font-size:15px;background:#fff;color:var(--ink);box-sizing:border-box;font-family:inherit;
+  -webkit-appearance:none;appearance:none;cursor:pointer;
+  background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237c5cff' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 13px center}
+select:focus{outline:none;border-color:#c3b0ff;box-shadow:0 0 0 3px rgba(124,92,255,.12)}
+
+/* ---------- 答题 ---------- */
+.qcard{background:var(--card);border-radius:20px;padding:16px;box-shadow:var(--shadow);margin:10px 0}
+.qcard.quizfill{flex:1;display:flex;flex-direction:column;margin:10px 0 12px}
+.qcard.center{text-align:center}
+.pbar{height:7px;background:#eee8ff;border-radius:99px;overflow:hidden;margin:0 0 12px}
+.pbar > i{display:block;height:100%;border-radius:99px;
+  background:linear-gradient(90deg,#9d80ff,#7c5cff);transition:width .28s ease}
+.qbox{background:linear-gradient(180deg,#fbf9ff,#f6f1ff);border-radius:16px;padding:20px 16px;margin:6px 0 14px;
+  font-size:18px;font-weight:800;line-height:1.55;text-align:center;min-height:76px;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:inset 0 0 0 1px rgba(124,92,255,.08)}
+/* 全屏答题：题干吃掉中间剩余高度，选项固定贴底 */
+.qbox.fill{flex:1 1 auto;min-height:110px;margin-bottom:10px}
+/* 固定反馈区：一直占位，反馈条进出都不改变布局 */
+.fbzone{min-height:76px;display:flex;align-items:center;justify-content:center;margin:6px 0 2px}
+.fbzone .fb{margin:0;width:100%}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.opts .obtn{padding:15px 10px;font-size:15.5px;font-weight:800;background:#fff;border:1.5px solid var(--line);
+  border-radius:13px;cursor:pointer;color:var(--ink);transition:transform .08s,background .12s,border-color .12s;
+  min-height:54px;line-height:1.3;word-break:break-word}
+.opts .obtn:active{background:#f3eeff;border-color:#c9b8ff;transform:scale(.985)}
+.opts .obtn.right{background:#e9f9f1;border-color:#8fdbb6;color:#177a4d}
+.opts .obtn.wrong{background:#ffeef1;border-color:#f3adba;color:#b8233c}
+.fb{margin:12px 0 2px;font-weight:800;font-size:14.5px;text-align:center;
+  padding:11px;border-radius:12px;background:#f7f5ff}
+.fb.ok{color:#177a4d;background:#eafaf1} .fb.no{color:#b8233c;background:#ffeef1} .fb.unk{color:#a86400;background:#fff6e6}
+/* 答案解析：正确答案一行 + 解析盒子 + AI 解析 / 下一题按钮 */
+.fb .fbm{display:block}
+.fb .fba{display:block;margin-top:3px;font-size:13.5px}
+.fb .fexp{display:block;margin-top:6px;font-size:12.6px;font-weight:600;line-height:1.55;text-align:left;
+  color:#4b4660;background:#fff;border:1px solid #ece7ff;border-radius:9px;padding:7px 9px}
+/* 英文题：译文一行 + 解析一行，同框两行 */
+.fb .fexp>div+div{margin-top:4px}
+.fb .aibtn{display:inline-block;margin:7px 0 0;font-size:12.5px;padding:6px 12px;border:none;cursor:pointer;
+  background:#f1ecff;color:var(--purple-d);border-radius:14px;font-weight:800}
+.fb .aibtn:disabled{opacity:.62;cursor:default}
+.fb .fbnext{display:inline-block;margin:7px 0 0 7px;font-size:12.5px;padding:6px 12px;border:none;cursor:pointer;
+  background:#eef8f2;color:#177a4d;border-radius:14px;font-weight:800}
+.fb .fbretry{display:inline-block;margin:7px 0 0;font-size:12.5px;padding:6px 12px;border:none;cursor:pointer;
+  background:#1f9d63;color:#fff;border-radius:14px;font-weight:800}
+.fb .fbretry:disabled{opacity:.62;cursor:default}
+.unkbtn{padding:12px;font-size:14.5px;background:#fffaf0;color:#a86400;border:1px solid #ffe2b0;
+  font-weight:800;border-radius:12px;cursor:pointer;margin-top:9px;width:100%}
+.unkbtn:active{background:#fff2da}
+/* 作答后「不会」会被禁用：现在答错停住不跳，留着看起来可点的灰按钮容易让人反复点 */
+.unkbtn:disabled{opacity:.55;cursor:default}
+.quizfoot{display:flex;gap:8px;margin-top:auto;padding-top:16px}
+.quizfoot .btn{flex:1;padding:11px;font-size:13.5px}
+
+/* ---------- 难度选择 ---------- */
+.diffrow{display:flex;flex-direction:column;gap:8px;margin:12px 0}
+.diffbtn{display:flex;align-items:center;gap:10px;width:100%;background:#fff;border:1.5px solid var(--line);
+  border-radius:14px;padding:12px 14px;cursor:pointer;text-align:left;color:var(--ink);flex:none;
+  transition:border-color .12s,background .12s,transform .08s}
+.diffbtn:active{transform:scale(.99)}
+.diffbtn .dtxt{flex:1;min-width:0}
+.diffbtn .dn{font-weight:800;font-size:15px;display:block}
+.diffbtn .dd{font-weight:600;color:var(--sub);font-size:11.5px;display:block;margin-top:2px}
+.diffbtn .dck{font-weight:900;color:var(--purple);opacity:0;font-size:16px}
+.diffbtn.sel{border-color:var(--purple);background:linear-gradient(180deg,#f7f3ff,#f1ebff)}
+.diffbtn.sel .dck{opacity:1}
+
+/* ---------- 三板块 · 程序编写 · 实力评级 ---------- */
+.chip.sec{background:#f1ecff;color:var(--purple-d);cursor:pointer;flex:none}
+.diffbtn.secbtn .dck{opacity:.5;font-weight:900}
+.pbar.inf > i{width:100%;background:linear-gradient(90deg,#9d80ff,#7c5cff,#9d80ff);
+  background-size:200% 100%;animation:pinf 1.6s linear infinite}
+@keyframes pinf{from{background-position:0 0}to{background-position:200% 0}}
+.swrow{display:flex;align-items:center;gap:8px;margin:0 0 8px;flex-wrap:wrap}
+.toggle{background:#fff;border:1.5px solid var(--line);border-radius:99px;padding:7px 13px;
+  font-size:12.5px;font-weight:800;color:var(--sub);cursor:pointer;font-family:inherit;flex:none}
+.toggle.on{background:#f3eeff;border-color:#c9b8ff;color:var(--purple-d)}
+.toggle:disabled{opacity:.55}
+.swrow .hint2{font-size:11.5px;color:var(--sub);font-weight:600;min-width:0}
+.qbox.hascode{display:block;text-align:left;font-weight:700;font-size:15px;padding:14px 13px;
+  align-items:stretch;justify-content:flex-start;overflow:auto}
+.qlead{font-weight:800;font-size:15px;margin:0 0 9px;line-height:1.5}
+.codeblk{margin:0;padding:11px 12px;border-radius:11px;background:#221d33;color:#eae4ff;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;
+  font-size:12.5px;line-height:1.62;white-space:pre;overflow:auto;max-height:42vh;
+  -webkit-overflow-scrolling:touch;tab-size:2}
+.codeinp{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;
+  font-size:13px;line-height:1.55;min-height:128px;resize:vertical;white-space:pre;tab-size:2}
+.lvlcard{background:linear-gradient(135deg,#f7f3ff,#eef7ff);border:1px solid var(--line);
+  border-radius:16px;padding:13px 14px;margin:14px 0 0;text-align:left}
+.lvlcard .lvlt{font-size:15.5px;font-weight:900;color:var(--purple-d)}
+.lvlcard .lvls{font-size:12px;color:var(--sub);font-weight:700;margin-top:4px}
+.lvlcard .lvld{font-size:12.5px;color:var(--ink);margin-top:7px;line-height:1.55}
+/* 窄屏：HUD 四个 chip 挤在一行会把「类型 · 实力」压成省略号，整体收一档 */
+@media (max-width:430px){
+  .hud{font-size:13px;gap:6px}
+  .hud .hr{font-size:11.5px}
+  .hud .chip{font-size:11px;padding:3px 6px}
+}
+
+/* ---------- 浮层 ---------- */
+.ov{position:fixed;inset:0;z-index:50;background:rgba(35,24,64,.45);display:flex;align-items:flex-end;
+  justify-content:center;backdrop-filter:blur(2px);animation:fade .16s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.panel{width:100%;max-width:560px;max-height:90vh;overflow:auto;background:#fff;border-radius:24px 24px 0 0;
+  padding:16px 16px 28px;box-shadow:0 -10px 40px rgba(38,24,70,.25);animation:up .2s ease}
+@keyframes up{from{transform:translateY(18px)}to{transform:none}}
+.panel h3{margin:2px 0 12px;font-size:17px;font-weight:800;letter-spacing:.3px}
+.panel .close{float:right;background:#f1ecff;border:none;border-radius:11px;padding:7px 11px;
+  font-size:13px;font-weight:800;color:var(--purple-d);cursor:pointer}
+.switch{display:flex;align-items:center;gap:12px;margin:12px 0}
+.switch > span{white-space:nowrap;font-size:13.5px;color:var(--sub);font-weight:700;flex:none}
+.switch input[type=range]{flex:1}
+.list-row{display:flex;align-items:center;gap:8px;margin:7px 0;font-size:13px}
+.muted{color:var(--sub);font-size:11.5px}
+.tagsel{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px}
+.tagbtn{background:#fff;border:1.5px solid var(--line);border-radius:20px;padding:9px 15px;
+  font-weight:700;cursor:pointer;font-size:13.5px;color:var(--ink);transition:all .12s}
+.tagbtn.sel{border-color:var(--purple);background:#f3eeff;color:var(--purple-d)}
+.warn{color:var(--red);font-size:12.5px;font-weight:700;margin:6px 0}
+.okmsg{color:#177a4d;background:#eafaf1;font-size:12.5px;font-weight:700;margin:6px 0;padding:8px 10px;border-radius:10px}
+
+/* ---------- 统计 ---------- */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.stat-card{background:#fff;border:1px solid var(--line);border-radius:15px;padding:12px 13px}
+.stat-card .t{font-weight:800;font-size:13.5px;display:flex;align-items:center;gap:6px}
+.stat-card .big{font-size:24px;font-weight:900;color:var(--purple-d);line-height:1.2;margin:6px 0 0}
+.stat-card .big.empty{color:#bdb4d4;font-size:14px;font-weight:700;margin-top:11px}
+.stat-card .sub{display:flex;gap:10px;margin-top:4px;font-size:11.5px;color:var(--sub);font-weight:600}
+.stat-card .sub b{color:var(--ink);font-weight:800}
+.src-line{font-size:11.5px;color:var(--sub);margin-top:6px}
+
+/* ---------- 音乐 ---------- */
+.mtrack{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:12px;
+  border:1px solid var(--line);margin:6px 0;cursor:pointer;font-size:13.5px;font-weight:700}
+.mtrack.sel{border-color:var(--purple);background:#f5f0ff;color:var(--purple-d)}
+.mtrack .mi{width:22px;text-align:center;font-size:13px}
+.mtrack .mn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mtrack .ms{font-size:11px;color:var(--sub);font-weight:600}
+
+@media(min-width:620px){.ov{align-items:center}.panel{border-radius:24px}#app{padding:18px}}
+
+/* toast */
+#toast{position:fixed;left:50%;bottom:86px;transform:translateX(-50%) translateY(10px);
+  background:rgba(47,39,72,.95);color:#fff;font-size:12.5px;font-weight:700;
+  padding:11px 16px;border-radius:12px;z-index:99;opacity:0;max-width:84vw;text-align:center;
+  transition:opacity .2s,transform .2s;pointer-events:none;line-height:1.5}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<header id="topbar">
+  <button class="icobtn" id="backBtn" title="返回大厅">🏠</button>
+  <div class="title">知识问答<small>百词斩式刷题</small></div>
+  <div class="spacer"></div>
+  <button class="icobtn" id="statsBtn" title="统计">📊</button>
+  <button class="icobtn" id="musicBtn" title="背景音乐">🎵</button>
+  <button class="icobtn" id="settingsBtn" title="设置">⚙️</button>
+</header>
+<main id="app">
+  <section id="shelf" class="view"></section>
+  <section id="stage" class="view" hidden></section>
+</main>
+<div id="overlayRoot"></div>
+<script>
+
+/* ===== 全局框架（引擎核心依赖，必须在引擎之前） ===== */
+var S=(function(){try{return window.localStorage;}catch(e){return {getItem:function(){return null},setItem:function(){},removeItem:function(){}};}})();
+function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),t=a[i];a[i]=a[j];a[j]=t;}return a;}
+function ri(n){return Math.floor(Math.random()*n);}
+function h(tag,cls,html){var e=document.createElement(tag);if(cls)e.className=cls;if(html!=null)e.innerHTML=html;return e;}
+function clearNode(n){while(n&&n.firstChild)n.removeChild(n.firstChild);}
+function later(fn,ms){return setTimeout(fn,ms||0);}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});}
+/* 共享答题状态（引擎的 genNextAuto/getRank 在全局作用域读取） */
+var score=0,total=0,ok=0,qidx=0,qlist=[],typeLabel="",typeKey="",locked=false,autoMode=false,selfRank=0,combo=0,wrongCombo=0,reviewMode=false,AUTO_TOTAL=10,UP_COMBO=2,DOWN_COMBO=2;
+var curDiff=-1,curDiffLabel="",netStat=null;
+function qaDiffs(bk){var T=QA_TYPES[bk];return (T&&T.diffs&&T.diffs.length)?T.diffs:null;}
+function qaDiffDefault(bk){var ds=qaDiffs(bk);if(!ds)return -1;var sv=parseInt(S.getItem("bd_qa_diff_"+bk),10);return (sv>=0&&sv<ds.length)?sv:0;}
+/* ===== 引擎核心（从 brain-gym 原样抽取） ===== */
+var POOLS={
+geo:[
+ ["法国的首都是？","巴黎"],
+ ["日本的首都是？","东京"],
+ ["美国的首都是？","华盛顿"],
+ ["英国的首都是？","伦敦"],
+ ["德国的首都是？","柏林"],
+ ["意大利的首都是？","罗马"],
+ ["加拿大的首都是？","渥太华"],
+ ["澳大利亚的首都是？","堪培拉"],
+ ["俄罗斯的首都是？","莫斯科"],
+ ["巴西的首都是？","巴西利亚"],
+ ["印度的首都是？","新德里"],
+ ["埃及的首都是？","开罗"],
+ ["韩国的首都是？","首尔"],
+ ["西班牙的首都是？","马德里"],
+ ["土耳其的首都是？","安卡拉"],
+ ["泰国的首都是？","曼谷"],
+ ["墨西哥的首都是？","墨西哥城"],
+ ["阿根廷的首都是？","布宜诺斯艾利斯"],
+ ["南非的首都是？","比勒陀利亚"],
+ ["希腊的首都是？","雅典"],
+ ["世界上面积最大的国家是？","俄罗斯"],
+ ["世界上人口最多的国家是？","印度"],
+ ["中国第一长河是？","长江"],
+ ["有\"母亲河\"之称的中国河流是？","黄河"]],
+history:[
+ ["第二次世界大战结束于哪一年？","1945"],
+ ["第一次世界大战爆发于哪一年？","1914"],
+ ["秦朝统一中国大约在公元前哪一年？","221"],
+ ["中国改革开放始于哪一年？","1978"],
+ ["美国《独立宣言》发表于哪一年？","1776"],
+ ["哥伦布到达美洲是哪一年？","1492"],
+ ["唐朝建立于哪一年？","618"],
+ ["中华人民共和国成立于哪一年？","1949"],
+ ["工业革命最早始于哪个国家？","英国"],
+ ["活字印刷术由谁发明？","毕昇"],
+ ["中国古代\"四大发明\"不包括下列哪项？","地动仪"],
+ ["拿破仑在哪场战役惨败后被流放？","滑铁卢"],
+ ["丝绸之路的起点一般认为是？","长安"],
+ ["新文化运动兴起于哪一年前后？","1915"],
+ ["美国第一任总统是？","华盛顿"],
+ ["第二次世界大战全面爆发的标志是德国入侵哪国？","波兰"],
+ ["中国第一个统一的封建王朝是？","秦朝"],
+ ["文艺复兴最早兴起于哪个国家？","意大利"],
+ ["郑和下西洋发生在哪个朝代？","明朝"],
+ ["中国古代\"丝绸之路\"连接中国与哪个地区？","中亚与欧洲"]],
+science:[
+ ["水的化学分子式是？","H₂O"],
+ ["氧气的化学符号是？","O₂"],
+ ["光合作用主要发生在植物的哪个部位？","叶"],
+ ["人体最大的器官是？","皮肤"],
+ ["光在真空中的速度约为每秒多少千米？","30万"],
+ ["地壳中含量最多的元素是？","氧"],
+ ["声音不能在什么环境中传播？","真空"],
+ ["DNA 的中文全称是？","脱氧核糖核酸"],
+ ["地球绕太阳公转一周约多少天？","365"],
+ ["牛顿第一定律又称？","惯性定律"],
+ ["人体血液中运输氧气的主要细胞是？","红细胞"],
+ ["水的沸点（常压）约为多少℃？","100"],
+ ["地球大气层中体积占比最高的气体是？","氮气"],
+ ["食盐的化学名称是？","氯化钠"],
+ ["蜜蜂主要通过什么方式传递食物位置信息？","舞蹈"],
+ ["彩虹是光发生了什么现象形成的？","折射与反射"],
+ ["人类大脑中负责高级思维的主要部位是？","大脑皮层"],
+ ["电流的国际单位是？","安培"]],
+english:[
+ ["\"苹果\"的英文是？","apple"],
+ ["\"书\"的英文是？","book"],
+ ["\"水\"的英文是？","water"],
+ ["\"太阳\"的英文是？","sun"],
+ ["\"朋友\"的英文是？","friend"],
+ ["\"城市\"的英文是？","city"],
+ ["\"红色\"的英文是？","red"],
+ ["\"学校\"的英文是？","school"],
+ ["\"快乐\"的英文是？","happy"],
+ ["\"时间\"的英文是？","time"],
+ ["\"电脑\"的英文是？","computer"],
+ ["\"猫\"的英文是？","cat"],
+ ["\"爱\"的英文是？","love"],
+ ["\"天空\"的英文是？","sky"]],
+common:[
+ ["一年有多少个月？","12"],
+ ["一周有多少天？","7"],
+ ["彩虹通常有几种颜色？","7"],
+ ["地球上有几大洲？","7"],
+ ["正方形有几条边？","4"],
+ ["三角形内角和是多少度？","180"],
+ ["中国的首都是？","北京"],
+ ["珠穆朗玛峰位于哪两国交界？","中国与尼泊尔"],
+ ["人体正常体温约多少℃？","37"],
+ ["一分钟等于多少秒？","60"],
+ ["平年一年有多少天？","365"],
+ ["一天有多少小时？","24"],
+ ["闰年有多少天？","366"],
+ ["牛通常有两条腿这个说法对吗？","不对（4条）"],
+ ["端午节是为了纪念哪位诗人？","屈原"],
+ ["中国国旗上有几颗五角星？","5"],
+ ["国际象棋棋盘每行有几格？","8"],
+ ["一周通常有几个工作日？","5"]],
+literature:[
+ ["《红楼梦》的作者是？","曹雪芹"],
+ ["中国首位获得诺贝尔文学奖的作家是？","莫言"],
+ ["莫言获得诺贝尔文学奖是在哪一年？","2012"],
+ ["《哈姆雷特》的作者是？","莎士比亚"],
+ ["\"诗仙\"指的是哪位唐代诗人？","李白"],
+ ["《三国演义》的作者是？","罗贯中"],
+ ["《西游记》的作者是？","吴承恩"],
+ ["\"床前明月光\"出自哪位诗人？","李白"],
+ ["《百年孤独》的作者是？","马尔克斯"],
+ ["\"但愿人长久，千里共婵娟\"的作者是？","苏轼"],
+ ["《论语》主要记录谁及其弟子的言行？","孔子"],
+ ["《呐喊》的作者是？","鲁迅"],
+ ["\"史家之绝唱，无韵之离骚\"评价的是哪部书？","史记"],
+ ["《骆驼祥子》的作者是？","老舍"],
+ ["《简·爱》的作者是？","夏洛蒂·勃朗特"],
+ ["\"卧薪尝胆\"说的是哪位君主？","越王勾践"]],
+sports:[
+ ["现代奥运会每隔几年举办一届？","4"],
+ ["2022 年卡塔尔世界杯冠军是？","阿根廷"],
+ ["篮球比赛每队上场几人？","5"],
+ ["足球比赛每队上场几人？","11"],
+ ["奥运会五环代表几大洲？","5"],
+ ["乒乓球被称为中国的什么球？","国球"],
+ ["马拉松全程约多少公里？","42"],
+ ["NBA 是哪类运动的职业联赛？","篮球"],
+ ["一场标准足球比赛常规时间多少分钟？","90"],
+ ["游泳中速度通常最快的泳姿是？","自由泳"],
+ ["北京奥运会举办于哪一年？","2008"],
+ ["网球\"大满贯\"不包括下列哪项？","世界杯"],
+ ["篮球比赛中投进三分线外算几分？","3"],
+ ["第一届现代奥运会于 1896 年在哪座城市举办？","雅典"],
+ ["羽毛球单打每方上场几人？","1"],
+ ["奥林匹克运动会的发源地是？","古希腊"]],
+animals:[
+ ["地球上现存最大的动物是？","蓝鲸"],
+ ["蓝鲸属于哪类动物？","哺乳动物"],
+ ["世界上跑得最快的陆地动物是？","猎豹"],
+ ["\"万兽之王\"通常指哪种动物？","狮子"],
+ ["蜜蜂采集什么来酿造蜂蜜？","花蜜"],
+ ["企鹅主要生活在哪个半球？","南半球"],
+ ["大熊猫主要以什么为食？","竹子"],
+ ["蝴蝶的幼虫阶段叫什么？","毛毛虫"],
+ ["蜘蛛有几条腿？","8"],
+ ["世界上现存最大的鸟是？","鸵鸟"],
+ ["青蛙的幼体叫什么？","蝌蚪"],
+ ["海豚属于哪类动物？","哺乳动物"],
+ ["变色龙最著名的能力是？","变色"],
+ ["蜜蜂群体中负责产卵的是？","蜂后"],
+ ["世界上牙齿最多的动物是？","蜗牛"],
+ ["北极熊主要生活在哪个地区？","北极"]],
+astronomy:[
+ ["太阳系中离太阳最近的行星是？","水星"],
+ ["太阳系中体积最大的行星是？","木星"],
+ ["地球在太阳系中由近及远排第几？","第3"],
+ ["月球是地球的什么？","卫星"],
+ ["太阳系中被称为\"红色星球\"的是？","火星"],
+ ["太阳系中唯一已知有生命的行星是？","地球"],
+ ["光年是用来衡量什么的单位？","距离"],
+ ["太阳系有几颗行星被归为\"八大行星\"？","8"],
+ ["太阳属于哪类天体？","恒星"],
+ ["地球自转一周大约多少小时？","24"],
+ ["哈雷彗星大约多少年回归一次？","76"],
+ ["银河系中心被认为是什么？","超大质量黑洞"],
+ ["土星最显著的特征是？","光环"],
+ ["日食发生时挡住太阳的是？","月球"],
+ ["距离地球最近的恒星是？","太阳"],
+ ["太阳系中自转方向与其他行星相反的是？","金星"]],
+food:[
+ ["\"寿司\"起源于哪个国家？","日本"],
+ ["意大利最著名的传统面食之一是？","意大利面"],
+ ["\"麻辣火锅\"起源于中国哪个菜系？","川菜"],
+ ["咖啡豆来自哪种植物？","咖啡树"],
+ ["巧克力的主要原料是？","可可"],
+ ["中国\"八大菜系\"不包括下列哪项？","西餐"],
+ ["葡萄酒是由什么发酵制成的？","葡萄"],
+ ["豆腐是由什么原料制成的？","黄豆"],
+ ["\"饺子\"是中国哪类节日的传统食物？","春节"],
+ ["啤酒的主要原料不包括下列哪项？","牛奶"],
+ ["\"提拉米苏\"是哪国甜点？","意大利"],
+ ["茶叶最早产于哪个国家？","中国"],
+ ["\"披萨\"起源于哪个国家？","意大利"],
+ ["蜂蜜主要由蜜蜂采集什么酿成？","花蜜"]],
+code:{
+ 0:[
+ ["JavaScript 中声明常量的关键字是？","const","js"],
+ ["HTML 的全称是？","超文本标记语言","web"],
+ ["CSS 的主要作用是？","控制样式","web"],
+ ["二进制 1010 等于十进制多少？","10","all"],
+ ["Python 中表示布尔值的关键字是？","True/False","python"],
+ ["以下哪个不是编程语言？","HTML","web"],
+ ["C 语言中用于循环的关键字是？","for","c"],
+ ["Python 中 List 的中文通常叫？","列表","python"],
+ ["“Bug” 在编程中一般指？","程序错误","all"],
+ ["JavaScript 中声明可重新赋值的变量通常用哪个关键字？","let","js"],
+ ["Python 中向控制台输出内容用哪个函数？","print","python"],
+ ["Python 单行注释用什么符号开头？","#","python"],
+ ["JavaScript 中用于条件判断的关键字是？","if","js"],
+ ["条件不成立时执行另一分支，通常用哪个关键字？","else","all"],
+ ["JavaScript 中 typeof 的作用是？","获取数据类型","js"],
+ ["表示整数的数据类型常写作？","int","all"],
+ ["布尔值中表示“真”的是？","true","all"],
+ ["大多数语言的数组下标从哪里开始？","0","all"],
+ ["JavaScript 中严格相等（值和类型都相等）的运算符是？","===","js"],
+ ["“编译”的主要作用是把源代码转换成什么？","可执行文件","all"],
+ ["多行/块注释在 C 系语言中用什么包裹？","/* */","c"],
+ ["以下哪个通常用于表示“并且”逻辑？","&&","all"]],
+ 1:[
+ ["Python 中定义函数用哪个关键字？","def","python"],
+ ["SQL 中查询数据用哪个关键字？","SELECT","sql"],
+ ["Git 中提交改动用哪个命令？","commit","all"],
+ ["HTTP 状态码 404 表示？","未找到","all"],
+ ["JSON 数据格式基于哪种语言？","JavaScript","all"],
+ ["在 Git 中查看当前状态用哪个命令？","status","all"],
+ ["HTTP 默认端口号是？","80","all"],
+ ["“API” 的中文含义近似于？","应用程序接口","all"],
+ ["函数中用于返回结果的关键字通常是？","return","all"],
+ ["数组的 push 操作通常表示？","在末尾添加元素","all"],
+ ["字符串中 slice 通常用于？","截取子串","all"],
+ ["对象（Object）中的数据通常以什么形式组织？","键值对","all"],
+ ["JSON 中键与值的分隔符是？","冒号","all"],
+ ["Git 中拉取远端更新的命令是？","pull","all"],
+ ["Git 中推送本地提交的命令是？","push","all"],
+ ["HTTP 状态码 500 通常表示？","服务器内部错误","all"],
+ ["HTTP 状态码 200 表示？","请求成功","all"],
+ ["SQL 中插入数据用哪个关键字？","INSERT","sql"],
+ ["SQL 中删除数据用哪个关键字？","DELETE","sql"],
+ ["Python 中 len() 的作用是？","获取长度","python"],
+ ["JavaScript 中获取数组长度的属性是？","length","js"],
+ ["递归指的是？","函数自己调用自己","all"],
+ ["HTTP 状态码 301 通常表示？","永久重定向","all"]],
+ 2:[
+ ["C 语言中，取变量 a 的内存地址用哪个运算符？","&a","c","&a|*a|a.|a->"],
+ ["C 语言中，若 p 是整型指针，*p 表示什么？","p 所指向变量的值","c","p 所指向变量的值|p 自身的内存地址|p 占用的字节数|p 的类型名"],
+ ["C 语言中，数组名在表达式中通常等价于什么？","数组首元素的地址","c","数组首元素的地址|数组的长度|数组最后一个元素|数组的一份副本"],
+ ["C 语言中，宏 NULL 通常表示什么？","空指针","c","空指针|字符串 \"0\"|未初始化的数组|字符串结束符"],
+ ["C 语言中，malloc 申请的内存应当用哪个函数释放？","free","c","free|delete|clear|release"],
+ ["C 语言中，访问结构体变量 s 的成员 x 用哪个写法？","s.x","c","s.x|s->x|s::x|s[x]"],
+ ["C 语言中，访问结构体指针 p 的成员 x 用哪个写法？","p->x","c","p->x|p.x|*p.x|p::x"],
+ ["C 语言中，sizeof 运算符返回的是什么？","占用的字节数","c","占用的字节数|元素个数|二进制位数|内存地址"],
+ ["C 语言中，释放后仍继续使用的指针称为？","悬空指针","c","悬空指针|野指针|空指针|函数指针"],
+ ["C 语言中，对同一块内存连续 free 两次通常会导致？","堆破坏（未定义行为）","c","堆破坏（未定义行为）|内存自动扩容|编译报错|返回错误码"],
+ ["C 语言中，指针变量本身占用的内存大小取决于什么？","平台的字长","c","平台的字长|它指向的类型|数组长度|编译优化等级"],
+ ["C 语言中，二维数组 a[3][4] 中 a[1] 表示什么？","第二行首元素的地址","c","第二行首元素的地址|第二行第一个元素的值|第一行第二个元素的值|数组总长度"]],
+ 3:[
+ ["“冒泡排序”属于哪类算法？","排序","all"],
+ ["冒泡排序的平均时间复杂度是？","O(n²)","all"],
+ ["二分查找的时间复杂度是？","O(log n)","all"],
+ ["快速排序的平均时间复杂度是？","O(n log n)","all"],
+ ["哈希表理想情况下的查找复杂度接近？","O(1)","all"],
+ ["数组按下标随机访问的复杂度是？","O(1)","all"],
+ ["C 语言中存放变量地址的变量称为？","指针","c"],
+ ["链表结点通常包含数据和什么？","指向下一结点的指针","all"],
+ ["深度优先搜索（DFS）常用的辅助结构是？","栈","all"],
+ ["广度优先搜索（BFS）常用的辅助结构是？","队列","all"],
+ ["平均 O(n log n) 且稳定的排序算法是？","归并排序","all"],
+ ["动态规划的核心思想是？","记录子问题的解避免重复计算","all"],
+ ["“空间换时间”通常指？","用更多内存换取更快速度","all"],
+ ["递归缺少终止条件通常会导致？","栈溢出","all"],
+ ["哈希冲突常用的解决方式之一是？","链地址法","all"],
+ ["MVC/MVVM 中的 V 指的是？","视图","all"],
+ ["现代前端框架普遍采用的组织方式是？","组件化","web"],
+ ["RESTful 接口中 GET 通常表示？","获取资源","all"],
+ ["数据库索引的主要作用是？","加快查询","sql"],
+ ["事务 ACID 中的 A 指？","原子性","sql"],
+ ["垃圾回收（GC）主要管理什么资源？","内存","all"],
+ ["多线程并发访问共享资源通常需要？","加锁同步","all"]],
+ 4:[
+ ["C 语言中 int (*fp)(int); 声明的是什么？","指向函数的指针","c","指向函数的指针|返回指针的函数|整型数组|指向 int 的指针"],
+ ["C 语言中 #define 的作用是什么？","预处理阶段的宏替换","c","预处理阶段的宏替换|定义普通变量|定义函数|引入头文件"],
+ ["C 语言中 typedef 的作用是什么？","为已有类型起别名","c","为已有类型起别名|定义新变量|申请堆内存|声明函数"],
+ ["C 语言中 union 的大小通常等于什么？","最大成员的大小","c","最大成员的大小|所有成员大小之和|最小成员的大小|固定 4 字节"],
+ ["结构体按成员最大对齐数对齐，主要目的是什么？","提高内存访问效率","c","提高内存访问效率|节省内存|兼容旧编译器|方便调试"],
+ ["C 语言中 int *p 指向数组元素，执行 p+1 实际前进多少字节？","sizeof(int) 个字节","c","sizeof(int) 个字节|1 个字节|4 个位|sizeof(int*) 个字节"],
+ ["C 语言中，8 位有符号 char 存储 200 会得到什么？","-56","c","-56|200|56|0"],
+ ["C 语言中，无符号数与有符号数比较时，有符号数会怎样？","被转换为无符号数","c","被转换为无符号数|保持有符号|编译报错|被截断为 0"],
+ ["C 语言中，宏 #define SQ(x) x*x 在 SQ(1+2) 展开后是什么？","1+2*1+2","c","1+2*1+2|(1+2)*(1+2)|9|1+2*1+2*1"],
+ ["C 语言中，volatile 关键字的主要作用是？","禁止编译器优化该变量的读写","c","禁止编译器优化该变量的读写|把变量放入寄存器|声明变量为只读|申请动态内存"]]}
+};
+var QA_DIFFS_MATH=[{n:'🎒 小学',d:'整数四则·口算',cnt:10},{n:'📘 初中',d:'负数/平方/方程',cnt:10},{n:'📗 高中',d:'根式/对数/函数',cnt:10},{n:'🎓 大学',d:'导数/积分基础',cnt:10}];
+var QA_DIFFS_CODE=[
+ {n:'🐣 入门',d:'语法与基础',cnt:10},
+ {n:'🚀 基础',d:'控制流与常用 API',cnt:10},
+ {n:'🔧 进阶',d:'指针与内存',cnt:10},
+ {n:'🧠 熟练',d:'数据结构与算法',cnt:10},
+ {n:'👑 精通',d:'深度陷阱',cnt:10}
+];
+var QA_DIFFS_STD=[{n:'🟢 简单',d:'20题',cnt:20},{n:'🟡 中等',d:'30题',cnt:30},{n:'🔴 困难',d:'40题·答错扣5',cnt:40}];
+function loadExtra(){try{var o=JSON.parse(S.getItem('bt_qa_extra')||'{}');return (o&&typeof o==='object')?o:{}}catch(e){return{}}}
+function saveExtra(o){try{S.setItem('bt_qa_extra',JSON.stringify(o))}catch(e){}}
+function extraPool(bk){var o=loadExtra(),a=o[bk];return Array.isArray(a)?a:[]}
+function addExtra(bk,list){var o=loadExtra(),cur=Array.isArray(o[bk])?o[bk]:[],seen={},add=[],man=POOLS[bk];
+ if(Array.isArray(man))man.forEach(function(it){if(it&&it[0])seen[it[0]]=1});
+ cur.forEach(function(x){if(x&&x.q)seen[x.q]=1});
+ (list||[]).forEach(function(x){if(!x||!x.q||!x.a||seen[x.q])return;seen[x.q]=1;add.push(x)});
+ if(add.length){o[bk]=cur.concat(add);saveExtra(o)}return add.length}
+function genStdPool(key){return function(n,diff){
+ var manual=POOLS[key]||[],extra=extraPool(key);
+ if(!extra.length||n<=manual.length)return genPool(n,manual,diff);
+ var out=genPool(Math.min(manual.length,n),manual,diff),seen={};
+ out.forEach(function(x){seen[x.q]=1});
+ var cand=extra.filter(function(x){return x.d==null||x.d===diff});
+ if(cand.length<n-out.length)cand=extra.slice();
+ shuffle(cand.slice()).forEach(function(e){if(out.length>=n)return;if(!e||!e.q||seen[e.q])return;seen[e.q]=1;
+  var op=(e.opts&&e.opts.length>=2)?e.opts.slice():[String(e.a)];
+  out.push({q:e.q,a:String(e.a),opts:shuffle(op),ai:1})});
+ return out}}
+var QA_TYPES={
+ math:{name:'数学',icon:'🔢',alias:['math','shuxue','suanshu','算术'],gen:genMath,diffs:QA_DIFFS_MATH},
+ geo:{name:'地理',icon:'🌍',alias:['geo','dili','geography','地理','首都'],gen:genStdPool('geo'),diffs:QA_DIFFS_STD,pen:1},
+ history:{name:'历史',icon:'📜',alias:['history','lishi','历史'],gen:genStdPool('history'),diffs:QA_DIFFS_STD,pen:1},
+ code:{name:'编程',icon:'💻',alias:['code','program','biancheng','coding','编程'],gen:genStdPool('code'),diffs:QA_DIFFS_CODE},
+ science:{name:'科学',icon:'🔬',alias:['science','kexue','科学'],gen:genStdPool('science'),diffs:QA_DIFFS_STD,pen:1},
+ english:{name:'英语',icon:'🔤',alias:['english','yingyu','en','英语'],gen:genStdPool('english'),diffs:QA_DIFFS_STD,pen:1},
+ common:{name:'常识',icon:'🧠',alias:['common','changshi','trivia','常识'],gen:genStdPool('common'),diffs:QA_DIFFS_STD,pen:1},
+ literature:{name:'文学',icon:'📚',alias:['literature','wenxue','文学','名著'],gen:genStdPool('literature'),diffs:QA_DIFFS_STD,pen:1},
+ sports:{name:'体育',icon:'⚽',alias:['sports','tiyu','体育','运动'],gen:genStdPool('sports'),diffs:QA_DIFFS_STD,pen:1},
+ animals:{name:'动物',icon:'🐾',alias:['animals','dongwu','动物','生物'],gen:genStdPool('animals'),diffs:QA_DIFFS_STD,pen:1},
+ astronomy:{name:'天文',icon:'🔭',alias:['astronomy','tianwen','天文','宇宙'],gen:genStdPool('astronomy'),diffs:QA_DIFFS_STD,pen:1},
+ food:{name:'美食',icon:'🍜',alias:['food','meishi','美食','食物'],gen:genStdPool('food'),diffs:QA_DIFFS_STD,pen:1},
+ online:{name:'🌐 联网',icon:'🌐',alias:['online','wanglian','联网','实时','internet'],gen:function(n){return []}}
+};
+// ===== 薄弱题 / 实力自适应 辅助 =====
+function loadWeak(){try{var a=JSON.parse(S.getItem('bt_qa_weak')||'[]');return Array.isArray(a)?a:[]}catch(e){return[]}}
+function saveWeak(a){try{S.setItem('bt_qa_weak',JSON.stringify(a.slice(-50)))}catch(e){}}
+function addWeak(item){var a=loadWeak();a.push(item);saveWeak(a)}
+function removeWeak(item){var a=loadWeak();a=a.filter(function(x){return !(x.type===item.type&&x.q===item.q&&x.a===item.a)});saveWeak(a)}
+function getRank(bk){var ds=qaDiffs(bk);if(!ds)return -1;var n=ds.length;var def=(bk==='math')?1:0;var sv=parseInt(S.getItem('bt_qa_rank_'+bk),10);return (sv>=0&&sv<n)?sv:def}
+function setRank(bk,r){try{S.setItem('bt_qa_rank_'+bk,r)}catch(e){}}
+function genNextAuto(){var _bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';var T=QA_TYPES[_bk];if(!T)return{q:'',a:'',opts:['']};var arr=T.gen(1,selfRank);return (arr&&arr.length)?arr[0]:{q:'',a:'',opts:['']}}
+function pickPoolByDiff(pool,diff){if(!pool)return [];
+ if(!Array.isArray(pool)){var g0=pool[String(diff==null?0:diff)];if(!Array.isArray(g0))g0=pool['0'];if(!Array.isArray(g0))g0=pool[0];return Array.isArray(g0)?g0:[]}
+ if(pool.length&&Array.isArray(pool[0])&&Array.isArray(pool[0][0])){var g1=pool[diff]||pool[0];return Array.isArray(g1)?g1:[]}
+ return pool}
+function fallbackWrongs(ans){var num=Number(ans);
+ if(ans!==''&&isFinite(num)&&String(num)===String(ans).trim())return [String(num+1),String(num-1),String(num+2),String(num-2),String(num+3),String(num-3)];
+ return ['以上都不对','不确定','其他答案']}
+function ansClass(s){s=String(s);
+ if(/^O\(/.test(s))return 'bigo';
+ if(/^-?\d+(\.\d+)?$/.test(s))return 'num';
+ return 'txt';}
+function mkFromPool(item,pool){var ans=String(item[1]),seen={};seen[ans]=1;var ws=[];
+ if(item[3]){String(item[3]).split('|').forEach(function(w){w=String(w).trim();if(ws.length>=3)return;if(!w||seen[w])return;seen[w]=1;ws.push(w)});}
+ if(ws.length<3){var cls=ansClass(ans),pref=[],rest=[];
+  shuffle(pool.slice()).forEach(function(p){var w=String(p[1]);if(w===ans||seen[w])return;(ansClass(w)===cls?pref:rest).push(w)});
+  pref.concat(rest).forEach(function(w){if(ws.length>=3)return;if(seen[w])return;seen[w]=1;ws.push(w)});}
+ fallbackWrongs(ans).forEach(function(w){if(ws.length>=3)return;if(seen[w])return;seen[w]=1;ws.push(w)});
+ return {q:item[0],a:ans,opts:shuffle([ans].concat(ws))}}
+function genPool(n,pool,diff){var src=pickPoolByDiff(pool,diff);if(!src.length)return [];
+ var out=[],idx=[],k=0;
+ while(out.length<n){if(k>=idx.length){idx=shuffle(src.map(function(_,i){return i}));k=0}
+  out.push(mkFromPool(src[idx[k]],src));k++}
+ return out}
+var SUPMAP={0:'⁰',1:'¹',2:'²',3:'³',4:'⁴',5:'⁵',6:'⁶',7:'⁷',8:'⁸',9:'⁹','-':'⁻'};
+function supNum(v){return String(v).split('').map(function(c){return SUPMAP[c]||c}).join('')}
+function xpow(c,e){return c+'x'+(e===1?'':supNum(e))}
+function neighbors(ans,extra){var num=Number(ans),c=[];
+ if(isFinite(num)&&String(num)===String(ans).trim()){[1,-1,2,-2,3,-3].forEach(function(d){c.push(String(num+d))})}
+ else{c=['以上都不对','不确定','其他答案']}
+ (extra||[]).forEach(function(x){c.push(String(x))});return c}
+function mkQA(q,ans,cands,exp){ans=String(ans);var seen={};seen[ans]=1;var ws=[];
+ /* ⚠ 别把字面量 'NaN' 当脏选项丢掉：有些题它本身就是合法选项（如 0.1+0.2===0.3 的结果），
+    丢掉会让这道题只剩 3 个选项。真空值只可能是 undefined / 空串。 */
+ shuffle(cands.slice()).forEach(function(w){w=String(w);if(ws.length>=3)return;if(w===''||w==='undefined'||seen[w])return;seen[w]=1;ws.push(w)});
+ /* 参数巧合导致干扰项不足时，数值答案用邻居补足（保持 4 选项，不塌成 3 个） */
+ var _n=Number(ans);
+ if(ws.length<3&&isFinite(_n)&&String(_n)===ans){var _k=1;while(ws.length<3&&_k<40){var _d=Math.ceil(_k/2)*(_k%2?1:-1),_w=String(_n+_d);if(!seen[_w]){seen[_w]=1;ws.push(_w);}_k++;}}
+ return {q:q,a:ans,opts:shuffle([ans].concat(ws)),exp:exp||''}}
+function genMathPrimary(n){var out=[];for(var i=0;i<n;i++){var t=ri(4),a,b,ans,q,exp;
+ if(t===0){a=ri(15)+1;b=ri(Math.max(1,20-a))+1;ans=a+b;q=a+' + '+b+' = ?';exp='把 '+a+' 和 '+b+' 合起来，得到 '+ans}
+ else if(t===1){a=ri(18)+2;b=ri(a-1)+1;ans=a-b;q=a+' − '+b+' = ?';exp='从 '+a+' 里去掉 '+b+'，还剩 '+ans}
+ else if(t===2){a=ri(8)+2;b=ri(8)+2;ans=a*b;q=a+' × '+b+' = ?';exp=a+' 个 '+b+' 相加（'+b+' 的 '+a+' 倍），得 '+ans}
+ else{b=ri(8)+2;ans=ri(8)+2;a=b*ans;q=a+' ÷ '+b+' = ?';exp='因为 '+b+' × '+ans+' = '+a+'，所以 '+a+' ÷ '+b+' = '+ans}
+ var c=neighbors(ans).filter(function(x){return Number(x)>=0});
+ if(c.length<3){c=['1','2','3'].filter(function(x){return x!==String(ans)})}
+ out.push(mkQA(q,ans,c,exp))}
+ return out}
+function genMathJunior(n){var out=[];for(var i=0;i<n;i++){var t=ri(6),a,b,ans,q,exp;
+ if(t===0){a=ri(60)+20;b=ri(60)+20;ans=a+b;q=a+' + '+b+' = ?';exp='两位数相加：个位加个位、十位加十位，得 '+ans}
+ else if(t===1){a=ri(70)+30;b=ri(a-10)+1;ans=a-b;q=a+' − '+b+' = ?';exp='列竖式相减，'+a+' − '+b+' = '+ans}
+ else if(t===2){a=ri(80)+11;b=ri(8)+2;ans=a*b;q=a+' × '+b+' = ?';exp='把 '+b+' 拆成整十数加零头分别相乘再相加，得 '+ans}
+ else if(t===3){a=ri(41)-20;b=ri(41)-20;ans=a+b;q='（'+a+'）+（'+b+'）= ?';exp='带符号相加，同号取绝对值相加、异号取绝对值相减，得 '+ans}
+ else if(t===4){a=ri(41)-20;b=ri(41)-20;ans=a-b;q='（'+a+'）−（'+b+'）= ?';exp='减去一个数等于加上它的相反数：'+a+' + ('+(-b)+') = '+ans}
+ else{if(ri(2)){a=-(ri(19)+1);ans=Math.abs(a);q='|'+a+'| = ?';exp='绝对值只去掉符号、不看正负，|'+a+'| = '+ans}else{a=ri(14)+2;ans=a*a;q=a+'² = ?';exp='平方就是自己乘自己：'+a+' × '+a+' = '+ans}}
+ out.push(mkQA(q,ans,neighbors(ans,[String(-Number(ans))]),exp))}
+ return out}
+function genMathSenior(n){var out=[];for(var i=0;i<n;i++){var t=ri(4),a,b,ans,q,c,exp;
+ if(t===0){a=ri(9)+1;b=ri(9)+1;ans=(a+b)*(a+b);q='（'+a+' + '+b+'）² = ?';c=neighbors(ans,[String(a*a+b*b)]);exp='先算括号：'+a+' + '+b+' = '+(a+b)+'，再平方得 '+ans}
+ else if(t===1){var m=ri(199)+2;ans=Math.round(Math.sqrt(m));q='√'+m+' 最接近哪个整数？';c=neighbors(ans);exp=ans+'² = '+(ans*ans)+'，与 '+m+' 最接近'}
+ else if(t===2){var x=ri(19)-9;if(x===0)x=3;a=ri(8)+2;b=ri(20)+1;var cc=a*x+b;ans=x;q='解方程 '+a+'x + '+b+' = '+cc+'，x = ?';c=neighbors(ans,[String(-x)]);exp='移项得 '+a+'x = '+(cc-b)+'，两边同除以 '+a+'，x = '+x}
+ else{var k=ri(9)+1;ans=k;q='log₂（'+Math.pow(2,k)+'）= ?';c=neighbors(ans);exp='2 的 '+k+' 次方是 '+Math.pow(2,k)+'，所以对数值是 '+k}
+ out.push(mkQA(q,ans,c,exp))}
+ return out}
+function genMathCollege(n){var out=[];for(var i=0;i<n;i++){var t=ri(4),ans,q,c,exp;
+ if(t===0){var e=ri(5)+2;ans=xpow(e,e-1);q='d/dx（x'+supNum(e)+'）= ?';c=[xpow(e-1,e-1),xpow(e+1,e),xpow(e,e),xpow(e*2,e-1)];exp='幂函数求导：指数移到系数、指数减一，得 '+ans}
+ else if(t===1){var p=ri(4)+1;ans='x'+supNum(p+1)+'/'+(p+1);q='∫ x'+supNum(p)+' dx 的一个原函数是？';c=['x'+supNum(p+1)+'/'+p,'x'+supNum(p)+'/'+(p+1),'x'+supNum(p+2)+'/'+(p+1),'x'+supNum(p+1)+'/'+p];exp='积分指数加一、再除以新指数，得 '+ans}
+ else if(t===2){var arr=[['sin(0)','0'],['cos(0)','1'],['sin(π/2)','1'],['cos(π/2)','0'],['sin(π)','0'],['cos(π)','-1']];var it=arr[ri(arr.length)];q=it[0]+' 的值是？';ans=it[1];c=['0','1','-1','√2/2','1/2'];exp='单位圆上该角的纵/横坐标就是它，'+it[0]+' = '+ans}
+ else{var tab=[['sin(π/6)','1/2'],['cos(π/3)','1/2'],['sin(π/3)','√3/2'],['cos(π/6)','√3/2'],['tan(π/4)','1'],['sin(π/4)','√2/2'],['cos(π/4)','√2/2'],['tan(π/6)','√3/3'],['tan(π/3)','√3']];var it2=tab[ri(tab.length)];q=it2[0]+' 的值是？';ans=it2[1];c=['1/2','√2/2','√3/2','√3/3','√3','1','0'];exp=it2[0]+' 是特殊角，其值为 '+ans}
+ out.push(mkQA(q,ans,c,exp))}
+ return out}
+function genMath(n,diff){var d=(typeof diff==='number'&&diff>=0)?diff:0;
+ if(d===1)return genMathJunior(n);if(d===2)return genMathSenior(n);if(d>=3)return genMathCollege(n);
+ return genMathPrimary(n)}
+// ================= 本地存储 =================
+function loadCustom(){try{return JSON.parse(S.getItem('bt_qa_custom')||'{}')||{}}catch(e){return {}}}
+function saveCustom(o){try{S.setItem('bt_qa_custom',JSON.stringify(o))}catch(e){}}
+function saveTypeBest(key,sc){try{var m=JSON.parse(S.getItem('bt_qa_best')||'{}');if(!(key in m)||sc>m[key])m[key]=sc;S.setItem('bt_qa_best',JSON.stringify(m))}catch(e){}}
+var custom=loadCustom();
+var ONLINE_BANK=[];
+try{var _oc=JSON.parse(S.getItem('bt_qa_online')||'null');if(_oc&&_oc.items&&_oc.items.length)ONLINE_BANK=_oc.items;}catch(e){}
+function decodeEntities(s){if(!s)return s;try{var ta=document.createElement('textarea');ta.innerHTML=s;return ta.textContent;}catch(e){return s;}}
+function updateOnlineStatus(){if(!netStat)return;
+ if(ONLINE_BANK.length){netStat.textContent=(ONLINE_SRC==='offline')?('📴 离线题库：'+ONLINE_BANK.length+' 题可玩（联网失败时的兜底）'):('🌐 已联网：'+ONLINE_BANK.length+' 题可玩（实时）');}
+ else{netStat.textContent='🌐 联网题库：点「🌐 联网」或「🔄 联网更新题库」实时获取最新题目';}}
+var ONLINE_SRC='online';
+var QA_NET_TIMEOUT=8000;
+var QA_MAIN_URL='https://opentdb.com/api.php?amount=20&type=multiple&encode=url3986';
+var OFFLINE_POOL=[
+{q:'中国的首都是？',a:'北京',opts:['北京','上海','广州','深圳'],cat:'常识'},
+{q:'一年有多少个月？',a:'12',opts:['12','10','11','13'],cat:'常识'},
+{q:'彩虹通常有几种颜色？',a:'7',opts:['7','5','6','8'],cat:'常识'},
+{q:'三角形的内角和是多少度？',a:'180',opts:['180','90','270','360'],cat:'常识'},
+{q:'人体正常体温约为多少摄氏度？',a:'37',opts:['37','35','40','42'],cat:'常识'},
+{q:'一分钟等于多少秒？',a:'60',opts:['60','30','100','120'],cat:'常识'},
+{q:'世界上面积最大的国家是？',a:'俄罗斯',opts:['俄罗斯','加拿大','中国','美国'],cat:'地理'},
+{q:'日本的首都是？',a:'东京',opts:['东京','大阪','京都','名古屋'],cat:'地理'},
+{q:'中国第一长河是？',a:'长江',opts:['长江','黄河','珠江','黑龙江'],cat:'地理'},
+{q:'世界上最大的洋是？',a:'太平洋',opts:['太平洋','大西洋','印度洋','北冰洋'],cat:'地理'},
+{q:'中华人民共和国成立于哪一年？',a:'1949',opts:['1949','1919','1978','1921'],cat:'历史'},
+{q:'第二次世界大战结束于哪一年？',a:'1945',opts:['1945','1939','1918','1950'],cat:'历史'},
+{q:'唐朝的建立者是谁？',a:'李渊',opts:['李渊','李世民','朱元璋','赵匡胤'],cat:'历史'},
+{q:'水的化学式是？',a:'H₂O',opts:['H₂O','CO₂','O₂','NaCl'],cat:'科学'},
+{q:'人体最大的器官是？',a:'皮肤',opts:['皮肤','肝脏','大脑','肺'],cat:'科学'},
+{q:'光在真空中的速度约为每秒多少千米？',a:'30万',opts:['30万','3万','300万','3000'],cat:'科学'},
+{q:'DNA 的中文全称是？',a:'脱氧核糖核酸',opts:['脱氧核糖核酸','核糖核酸','氨基酸','蛋白质'],cat:'科学'},
+{q:'半径为 r 的圆，周长公式是？',a:'2πr',opts:['2πr','πr²','πr','2πr²'],cat:'数学'},
+{q:'1 到 100 所有整数之和是？',a:'5050',opts:['5050','5000','4950','5100'],cat:'数学'},
+{q:'一个三角形最多有几个直角？',a:'1',opts:['1','2','3','0'],cat:'数学'},
+{q:'“水”的英文是？',a:'water',opts:['water','milk','juice','tea'],cat:'英语'},
+{q:'computer 的中文意思是？',a:'电脑',opts:['电脑','计算','计算器','键盘'],cat:'英语'},
+{q:'red 表示什么颜色？',a:'红色',opts:['红色','蓝色','绿色','黄色'],cat:'英语'},
+{q:'《红楼梦》的作者是？',a:'曹雪芹',opts:['曹雪芹','施耐庵','罗贯中','吴承恩'],cat:'文学'},
+{q:'“床前明月光”的下一句是？',a:'疑是地上霜',opts:['疑是地上霜','低头思故乡','举头望明月','处处闻啼鸟'],cat:'文学'},
+{q:'一支足球队场上队员有几人？',a:'11',opts:['11','9','10','12'],cat:'体育'},
+{q:'现代奥运会每隔几年举办一届？',a:'4',opts:['4','2','3','5'],cat:'体育'},
+{q:'地球上现存最大的动物是？',a:'蓝鲸',opts:['蓝鲸','大象','鲸鲨','长颈鹿'],cat:'动物'},
+{q:'太阳系中体积最大的行星是？',a:'木星',opts:['木星','土星','火星','地球'],cat:'天文'},
+{q:'月球是地球的什么？',a:'卫星',opts:['卫星','恒星','行星','彗星'],cat:'天文'},
+{q:'HTML 的全称是？',a:'超文本标记语言',opts:['超文本标记语言','高级文本语言','超链接语言','网页编程语言'],cat:'编程'},
+{q:'披萨起源于哪个国家？',a:'意大利',opts:['意大利','法国','美国','西班牙'],cat:'美食'}
+];
+function safeDecodeURI(s){s=String(s==null?'':s);try{return decodeURIComponent(s)}catch(e){try{return decodeURIComponent(s.replace(/%(?![0-9a-fA-F]{2})/g,'%25'))}catch(e2){return s}}}
+function netFailText(reason){
+ if(reason==='timeout')return '⚠️ 联网超时，已尝试备用源';
+ if(reason==='net')return '⚠️ 网络不可达，请检查网络后重试';
+ if(reason==='nofetch')return '⚠️ 当前环境不支持联网，已使用本地离线题库（'+OFFLINE_POOL.length+'题）';
+ return '⚠️ 联网获取失败，已使用本地离线题库（'+OFFLINE_POOL.length+'题）';}
+function onlineSourceList(){return [
+ {name:'main',url:QA_MAIN_URL},
+ {name:'proxy',url:'https://api.allorigins.win/raw?url='+encodeURIComponent(QA_MAIN_URL)}];}
+function parseOnlineData(d){try{var raw=d;if(raw==null)return null;
+ if(typeof raw==='string'){raw=raw.replace(/^\s+/,'');try{raw=JSON.parse(raw)}catch(e){return null}}
+ if(raw&&typeof raw.contents==='string'){try{raw=JSON.parse(raw.contents)}catch(e2){return null}}
+ if(!raw||!raw.results||!raw.results.length)return null;
+ var arr=[];for(var i=0;i<raw.results.length;i++){var it=raw.results[i];
+  if(!it||!it.question||!it.correct_answer||!it.incorrect_answers)continue;
+  var q=decodeEntities(safeDecodeURI(it.question)),a=decodeEntities(safeDecodeURI(it.correct_answer));
+  var opts=[];for(var j=0;j<it.incorrect_answers.length;j++){var w=decodeEntities(safeDecodeURI(it.incorrect_answers[j]));if(w&&w!==a&&opts.indexOf(w)<0)opts.push(w)}
+  if(q&&a)arr.push({q:q,a:a,opts:shuffle([a].concat(opts)),cat:it.category||'联网',src:'online'});}
+ return arr.length?arr:null;}catch(e){return null}}
+function useOfflinePool(){try{var arr=shuffle(OFFLINE_POOL.slice()).slice(0,Math.min(20,OFFLINE_POOL.length)).map(function(it){return {q:it.q,a:it.a,opts:shuffle((it.opts||[]).slice()),cat:it.cat||'离线题库',src:'offline'}});
+ if(!arr.length)return false;ONLINE_BANK=arr;ONLINE_SRC='offline';updateOnlineStatus();return true;}catch(e){return false}}
+function trySource(src,budget,cb){var done=false,timer=null,ac=null;
+ function finish(ok,arr,reason){if(done)return;done=true;try{if(timer)clearTimeout(timer)}catch(e){}cb(!!ok,arr||null,reason||'');}
+ try{var opt={};if(typeof AbortController==='function'){try{ac=new AbortController();opt.signal=ac.signal}catch(e){opt={}}}
+  var ms=Math.max(1200,Math.min(QA_NET_TIMEOUT,budget||QA_NET_TIMEOUT));
+  timer=setTimeout(function(){try{if(ac&&ac.abort)ac.abort()}catch(e){}finish(false,null,'timeout')},ms);
+  fetch(src.url,opt).then(function(r){if(!r||r.ok===false){finish(false,null,'http');return null}return r.json();})
+  .then(function(d){if(d==null)return;var arr=parseOnlineData(d);if(arr&&arr.length)finish(true,arr,'');else finish(false,null,'empty');})
+  .catch(function(e){finish(false,null,(e&&e.name&&String(e.name).indexOf('Abort')>=0)?'timeout':'net')});
+ }catch(e){finish(false,null,'net')}}
+function fetchOnline(cb){
+ cb=(typeof cb==='function'?cb:function(){});
+ var srcs=onlineSourceList(),t0=Date.now(),i=0,lastReason='';
+ function fallback(reason){if(useOfflinePool()){cb(true,{degraded:true,reason:reason||lastReason||'fail'})}else{cb(false,{degraded:false,reason:reason||lastReason||'fail'})}}
+ function nextSource(){
+  if(i>=srcs.length){fallback(lastReason||'fail');return}
+  var left=QA_NET_TIMEOUT-(Date.now()-t0);
+  if(left<1500){fallback(lastReason||'timeout');return}
+  var src=srcs[i++];
+  trySource(src,left,function(ok,arr,reason){
+   if(ok&&arr&&arr.length){try{ONLINE_BANK=arr;ONLINE_SRC='online';S.setItem('bt_qa_online',JSON.stringify({t:Date.now(),items:arr}));}catch(e){}updateOnlineStatus();cb(true,{degraded:false,source:src.name});return}
+   lastReason=reason||lastReason;nextSource();});}
+ try{nextSource();}catch(e){fallback(lastReason||'net')}}
+function startOnline(){typeKey='b:online';typeLabel='🌐 联网';if(ONLINE_BANK.length){beginOnline();return;}
+ st.innerHTML='';var c=h('div');c.style.cssText='max-width:560px;margin:0 auto;padding:20px;text-align:center';
+ c.appendChild(h('div','hud','🌐 正在联网获取最新题目…'));
+ var sp=h('div');sp.style.cssText='margin:16px 0;font-size:14px;color:#8a8';
+ sp.textContent='（首次获取需联网，之后会缓存到本地；失败会自动回退备用源与本地离线题库）';c.appendChild(sp);st.appendChild(c);
+ fetchOnline(function(ok,info){
+  if(ok&&ONLINE_BANK.length){beginOnline();return}
+  var reason=(info&&info.reason)||'fail';
+  if(info&&info.degraded&&ONLINE_BANK.length){beginOnline();return}
+  sp.textContent=netFailText(reason)+'，即将切换到本地题库';
+  later(function(){try{hint.innerHTML='⚠️ '+netFailText(reason);startType('common',null,qaDiffDefault('common'))}catch(e){startType('common',null)}},1200);});}
+function beginOnline(){typeKey='b:online';typeLabel=(ONLINE_SRC==='offline')?'📴 联网（离线兜底）':'🌐 联网';curDiff=-1;curDiffLabel='';
+ qlist=shuffle(ONLINE_BANK.slice()).slice(0,Math.min(10,ONLINE_BANK.length)).map(function(it){return {q:it.q,a:it.a,opts:it.opts,src:it.src}});
+ ok=0;qidx=0;score=0;total=qlist.length;showQuestion();}
+// ================= 工具 =================
+function norm(s){return (s||'').trim().toLowerCase().replace(/[\s.,，。！!?？、]/g,'')}
+function matchBuiltin(v){var s=v.trim().toLowerCase(),vt=v.trim();
+ for(var k in QA_TYPES){if(QA_TYPES[k].name===vt)return k;if(k===s)return k;if((QA_TYPES[k].alias||[]).indexOf(s)>=0)return k}
+ for(var k2 in QA_TYPES){if(QA_TYPES[k2].name.indexOf(vt)>=0)return k2}
+ return null}
+function matchCustom(v){var s=v.trim().toLowerCase();for(var name in custom){if(name.toLowerCase()===s)return name}return null}
+function openIDB(){return new Promise(function(res,rej){try{var r=indexedDB.open("bt_qa_music",1);r.onupgradeneeded=function(){r.result.createObjectStore("blobs");};r.onsuccess=function(){res(r.result);};r.onerror=function(){rej(r.error);};}catch(e){rej(e);}});}
+function storeBlob(file,cb){openIDB().then(function(db){var tx=db.transaction("blobs","readwrite");var key="b"+Date.now()+Math.floor(Math.random()*1e6);tx.objectStore("blobs").put(file,key);tx.oncomplete=function(){cb(key);};tx.onerror=function(){cb(null);};}).catch(function(){cb(null);});}
+function loadBlob(key,cb){openIDB().then(function(db){var tx=db.transaction("blobs","readonly");var rq=tx.objectStore("blobs").get(key);rq.onsuccess=function(){cb(rq.result||null);};rq.onerror=function(){cb(null);};}).catch(function(){cb(null);});}
+/* ===== 知识问答 独立应用 UI 层（书架式 + 实力检测 + AI/免费建题库 + 背景音乐） ===== */
+(function(){
+'use strict';
+// 共享全局状态与框架函数（S/shuffle/ri/h/clearNode/later/esc、score/total/ok/qidx/qlist/
+// typeLabel/typeKey/locked/autoMode/selfRank/combo/wrongCombo/reviewMode/AUTO_TOTAL/UP_COMBO/
+// DOWN_COMBO/curDiff/curDiffLabel/netStat、qaDiffs/qaDiffDefault）由 head 内联脚本在引擎之前定义。
+var $=function(id){return document.getElementById(id);};
+function ht(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
+var shelfEl,stageEl,overlayRoot;
+var lastRun=null; // 记录本局参数，供「再来一局」精确重放（自动匹配 / 薄弱回顾都不丢）
+/* ---------- 三板块（选择题 / 程序编写 / 填空题） ---------- */
+var SECTIONS=[{k:'choice',n:'🎯 选择题',d:'四个选项，选中即答'},
+              {k:'code',n:'⌨️ 程序编写',d:'读代码 / 补全 / 手写，考真本事'},
+              {k:'fill',n:'✍️ 填空题',d:'不给选项，自己写答案'}];
+var qaSection='choice';
+var lastSectionBk='';
+var handMode=false;
+var selfWindow=[];                              // auto 模式滑动窗口：最近 ≤12 题（1 对 / 0 错）
+var WIN_CAP=12,WIN_MIN=6,UP_ACC=0.75,DN_ACC=0.4,LEVEL_COOL=2,lvlCool=0;
+var lastAuto=null;                              // 结算页的实力评级快照
+var quizOver=false;                             // 本局是否已收尾（挡住答题后的延时切题把结算页顶掉）
+function sectionName(k){for(var i=0;i<SECTIONS.length;i++){if(SECTIONS[i].k===k)return SECTIONS[i].n;}return '🎯 选择题';}
+function windowAcc(){var a=selfWindow,i,n=0;if(!a.length)return 1;for(i=0;i<a.length;i++){if(a[i])n++;}return n/a.length;}
+/* 轻提示（替代阻塞式 alert） */
+var toastTimer=null;
+function toast(msg){
+  var t=$('toast');
+  if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t);}
+  t.textContent=msg;t.className='show';
+  if(toastTimer)clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){t.className='';},1900);
+}
+
+/* ---------- 成绩 / 统计 存储 ---------- */
+function loadBest(){try{return JSON.parse(S.getItem('bt_qa_best')||'{}')||{};}catch(e){return{};}}
+function bestFor(prefix){var m=loadBest(),best=0,found=false;for(var k in m){if(k.indexOf(prefix)===0&&m[k]>best){best=m[k];found=true;}}return found?best:0;}
+function loadStats(){try{return JSON.parse(S.getItem('bt_qa_stats')||'{}')||{};}catch(e){return{};}}
+function bumpStat(prefix,correct){var m=loadStats();var o=m[prefix]||{n:0,c:0};o.n++;if(correct)o.c++;m[prefix]=o;try{S.setItem('bt_qa_stats',JSON.stringify(m));}catch(e){}}
+
+/* ---------- 书架 ---------- */
+function showView(v){if(v==='shelf'){shelfEl.hidden=false;stageEl.hidden=true;}else{shelfEl.hidden=true;stageEl.hidden=false;}}
+
+function stdCount(key){return (POOLS[key]&&POOLS[key].length)?POOLS[key].length:0;}
+function codeCount(){var n=0;for(var d in POOLS.code){if(POOLS.code.hasOwnProperty(d))n+=POOLS.code[d].length;}return n;}
+function shelfCount(bk,cn){
+  if(bk==='math')return '动态生成';
+  if(bk==='code'){var e=codeEstimate();return '≥'+(e>=10000?Math.floor(e/10000)+'万':e)+'题';}
+  if(bk)return stdCount(bk)+' 题';
+  var p=custom[cn]||[];return p.length+' 题';
+}
+function renderShelf(){
+  quizOver=true;reviewMode=false;cancelPending();navReset();
+  showView('shelf');
+  clearNode(shelfEl);
+  // 顶部操作
+  var sec1=h('div','section-title',null);sec1.appendChild(ht('span',null,'📚 书架'));
+  var acts=h('span',null);acts.style.marginLeft='auto';acts.style.display='flex';acts.style.gap='8px';
+  var _wn=loadWeak().length;
+  var bWeak=ht('span','act','😵 薄弱题'+(_wn?(' · '+_wn):''));bWeak.onclick=function(){startReview();};
+  var bNew=ht('span','act','➕ 新建');bNew.onclick=function(){openNewCategory();};
+  acts.appendChild(bWeak);acts.appendChild(bNew);sec1.appendChild(acts);
+  shelfEl.appendChild(sec1);
+
+  var grid=h('div','shelf');
+  // 内置分类
+  Object.keys(QA_TYPES).forEach(function(bk){
+    if(bk==='online')return;
+    var T=QA_TYPES[bk];
+    grid.appendChild(makeBook(T.icon,T.name,bk,null,bestFor('b:'+bk),shelfCount(bk,null)));
+  });
+  // 自定义
+  var cks=Object.keys(custom);
+  cks.forEach(function(name){
+    grid.appendChild(makeBook('📝',name,null,name,bestFor('c:'+name),shelfCount(null,name),true));
+  });
+  // 联网
+  grid.appendChild(makeBook('🌐','联网题库','online',null,bestFor('b:online'),(ONLINE_BANK&&ONLINE_BANK.length?ONLINE_BANK.length:0)+' 题'));
+  shelfEl.appendChild(grid);
+  shelfEl.appendChild(ht('div','muted','💻 编程题量含程序化题库（模板 + 随机参数，答案当场计算，理论无上限）；其余分类为人工题 + AI 扩充题。'));
+
+  // 联网管理
+  var sec2=h('div','section-title',null);sec2.appendChild(ht('span',null,'🌐 联网题库'));shelfEl.appendChild(sec2);
+  var netWrap=h('div','qcard');netWrap.style.margin='6px 0';
+  netStat=ht('div','hint',(ONLINE_BANK.length?('已缓存 '+ONLINE_BANK.length+' 题（实时）'):'联网题库：点下方按钮实时获取最新题目'));
+  netStat.style.color='#27a567';netWrap.appendChild(netStat);
+  var rrow=h('div','row');
+  var rbtn=h('button','btn ghost','🔄 联网更新题库');
+  rbtn.onclick=function(){rbtn.disabled=true;netStat.textContent='🌐 正在联网获取…';fetchOnline(function(okf,info){rbtn.disabled=false;var why=(info&&info.reason)||'fail';if(!okf){netStat.textContent=netFailText(why);return;}if(info&&info.degraded){netStat.textContent=netFailText(why);renderShelf();return;}netStat.textContent='🌐 已联网更新：'+ONLINE_BANK.length+' 题（实时）';updateOnlineStatus();renderShelf();});};
+  rrow.appendChild(rbtn);netWrap.appendChild(rrow);
+  shelfEl.appendChild(netWrap);
+  shelfEl.appendChild(ht('div','muted','题库与成绩均存于本机浏览器（与 brain-gym 知识问答共用存储），换设备不继承。'));
+}
+function makeBook(icon,name,bk,cn,best,count,isCustom){
+  var b=h('div','book');
+  if(isCustom){var del=h('button','del','🗑');del.onclick=function(e){e.stopPropagation();delete custom[cn];saveCustom(custom);renderShelf();};b.appendChild(del);}
+  b.appendChild(ht('div','ic',icon));
+  b.appendChild(ht('div','nm',name));
+  var meta=h('div','meta');
+  meta.appendChild(ht('span','star'+(best>0?'':' none'),best>0?('⭐ '+best):'未挑战'));
+  meta.appendChild(ht('span',null,count));
+  b.appendChild(meta);
+  b.onclick=function(){openCategory(bk,cn);};
+  return b;
+}
+
+/* ---------- 进入分类（含 任务2：编程实力检测） ---------- */
+function openCategory(bk,cn){
+  if(bk==='online'){startOnline();return;}
+  if(!bk&&!cn)return;
+  // 编程：先做知识面检测
+  if(bk==='code'){
+    var prof=getCodeProfile();
+    if(!prof||!prof.done){
+      codeQuestionnaire(function(){afterDetect(bk,cn);});
+      return;
+    }
+  }
+  afterDetect(bk,cn);
+}
+function afterDetect(bk,cn){
+  if(bk){startType(bk,cn,null);return;}
+  doStartType(bk,cn,-1);
+}
+
+/* ---------- 难度面板 ---------- */
+function pickDiffPanel(bk,cb){
+  var T=QA_TYPES[bk],ds=qaDiffs(bk);if(!ds){cb(-1);return;}
+  var PANEL=[{auto:true,n:'🤖 自动匹配',d:'无限刷题 · 实时调难度'}].concat(ds.map(function(x,i){return {n:x.n,d:x.d,idx:i};}));
+  var defSel=0;try{var sv=parseInt(S.getItem('bd_qa_diff_'+bk),10);if(sv>=0&&sv<ds.length)defSel=sv+1;}catch(e){}
+  var ov=overlayPanel((T.icon||'')+' '+T.name+' · 选择难度','diff');
+  ov.p.appendChild(ht('div','hint',(bk==='math'?'🎓 按学业阶段出题：':(bk==='code'?'💻 按学习进度出题（已按你掌握的语言过滤）：':'⚙️ 选择难度，题量与扣分随档位变化'))+'也可选「🤖 自动匹配」无限刷题、难度实时跟着你走'));
+  if(bk==='code'){var p=getCodeProfile();if(p&&p.done&&p.langs&&p.langs.length){ov.p.appendChild(ht('div','okmsg','已检测：'+p.langs.map(langName).join(' · ')+' · '+levelName(p.rank)));}}
+  var dr=h('div','diffrow');
+  PANEL.forEach(function(df,i){
+    var b=ht('button','diffbtn'+(i===defSel?' sel':''));
+    var txt=h('div','dtxt');
+    txt.appendChild(ht('div','dn',df.n));
+    txt.appendChild(ht('div','dd',df.d));
+    b.appendChild(txt);
+    b.appendChild(ht('span','dck','✓'));
+    b.onclick=function(){[].slice.call(dr.children).forEach(function(x){try{x.classList.remove('sel');}catch(e){}});try{b.classList.add('sel');}catch(e){}};
+    dr.appendChild(b);});
+  ov.p.appendChild(dr);
+  var goS=h('button','btn gold','▶ 开始出题');goS.style.width='100%';goS.style.marginTop='4px';
+  goS.onclick=function(){var sel=0;[].slice.call(dr.children).forEach(function(x,i){if(x.classList&&x.classList.contains('sel'))sel=i;});closeOverlay(ov);
+    if(sel===0){cb('auto');return;}
+    var realIdx=PANEL[sel].idx;try{S.setItem('bd_qa_diff_'+bk,realIdx);}catch(e){}cb(realIdx);};
+  ov.p.appendChild(goS);
+  var backS=h('button','btn ghost','← 返回');backS.style.width='100%';backS.style.marginTop='8px';backS.onclick=function(){closeOverlay(ov);};
+  ov.p.appendChild(backS);
+}
+
+/* ---------- 板块选择 / 出题套壳 / 切换 ---------- */
+function pickSection(bk,cb){
+  var T=QA_TYPES[bk];
+  var list=SECTIONS.filter(function(x){return bk==='code'||x.k!=='code';});
+  var ov=overlayPanel(((T&&T.icon)||'')+' '+((T&&T.name)||bk)+' · 选择板块','section');
+  ov.p.appendChild(ht('div','hint','同一分类有三种刷法：选择题最快，填空题最考记忆，程序编写只对编程分类开放。'));
+  var dr=h('div','diffrow');
+  list.forEach(function(sc){
+    var b=ht('button','diffbtn secbtn');
+    var tx=h('div','dtxt');
+    tx.appendChild(ht('div','dn',sc.n));
+    tx.appendChild(ht('div','dd',sc.d));
+    b.appendChild(tx);b.appendChild(ht('span','dck','›'));
+    b.onclick=function(){closeOverlay(ov);cb(sc.k);};
+    dr.appendChild(b);
+  });
+  ov.p.appendChild(dr);
+  var back=h('button','btn ghost','← 返回书架');back.style.width='100%';back.onclick=function(){closeOverlay(ov);renderShelf();};
+  ov.p.appendChild(back);
+}
+/* 填空板块：出题后统一摘掉选项，走输入框分支（norm 容错） */
+function applySection(qs){
+  qs=qs||[];
+  if(qaSection!=='fill')return qs;
+  return qs.map(function(x){
+    if(!x)return x;
+    return {q:x.q,a:x.a,opts:null,tag:x.tag,code:x.code,ai:x.ai,src:x.src,fillin:x.fillin,kind:x.kind,exp:x.exp,hand:x.hand,task:x.task,weak:x.weak};
+  });
+}
+function sectionGen(bk,n,diff){
+  var qs=null;
+  /* 编程的「程序编写 / 填空题」都走读代码题型（答案短，好判分） */
+  if(bk==='code'&&QA_TYPES.code.genSection&&(qaSection==='code'||qaSection==='fill'))qs=QA_TYPES.code.genSection(n,diff);
+  if(!qs||!qs.length)qs=QA_TYPES[bk].gen(n,diff);
+  return applySection(qs);
+}
+function switchSection(){
+  var bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
+  if(!bk||bk==='online'||bk==='weak')return;
+  var back=(lastRun&&lastRun.d!=null)?lastRun.d:(autoMode?'auto':curDiff);
+  pickSection(bk,function(k){
+    if(k===qaSection)return;
+    qaSection=k;handMode=false;lastSectionBk=bk;
+    doStartType(bk,null,back);
+  });
+}
+function setHandMode(on){
+  if(on&&!canJudge()){toast('✍️ 手写代码要先配置 AI（点右上角 ⚙️，免费通道不用 Key）');return;}
+  if(locked)return;
+  if(typeKey!=='b:code'||qaSection!=='code'){toast('手写代码只在「⌨️ 程序编写」板块可用');return;}
+  handMode=!!on;
+  if(handMode){qlist[qidx]=genHandTask(autoMode?selfRank:Math.max(0,curDiff));}
+  else{qlist[qidx]=sectionGen('code',1,Math.max(0,curDiff))[0];}
+  showQuestion();
+}
+
+/* ---------- 开始 / 出题 ---------- */
+function startType(bk,cn,forceDiff){
+  if(bk==='online'){startOnline();return;}
+  if(!bk&&!cn)return;
+  /* 三板块：同一分类首次进入先选板块（自定义题库固定选择题，不打扰） */
+  if(bk&&lastSectionBk!==bk){
+    pickSection(bk,function(k){qaSection=k;lastSectionBk=bk;startType(bk,cn,forceDiff);});
+    return;
+  }
+  if(forceDiff==='auto'){doStartType(bk,cn,'auto');return;}
+  if(bk&&qaDiffs(bk)&&forceDiff==null){pickDiffPanel(bk,function(d){doStartType(bk,cn,d);});return;}
+  doStartType(bk,cn,bk?qaNormDiff((typeof forceDiff==='number'&&forceDiff>=0)?forceDiff:qaDiffDefault(bk)):-1);
+}
+function qaNormDiff(d){return (typeof d==='number'&&d>=0)?d:0;}
+/* 自定义题库出题：题量够时优先抽最近没出过的题，降低连开两局的重复率 */
+function loadRecent(k){try{var a=JSON.parse(S.getItem(k)||'[]');return (a&&a.length)?a:[];}catch(e){return[];}}
+function saveRecent(k,a){try{S.setItem(k,JSON.stringify(a.slice(0,15)));}catch(e){}}
+function makeCustomRound(tk,pairs){
+  var all=pairs.slice();
+  if(all.length>=15){
+    var rec=loadRecent('bt_qa_recent_'+tk);
+    var fresh=all.filter(function(p){return rec.indexOf(p.q)<0;});
+    var pool=(fresh.length>=10)?fresh:all;
+    var picked=shuffle(pool).slice(0,10);
+    saveRecent('bt_qa_recent_'+tk,picked.map(function(p){return p.q;}).concat(rec).slice(0,15));
+    return picked;
+  }
+  return shuffle(all).slice(0,Math.min(10,all.length));
+}
+function doStartType(bk,cn,d){
+  var ds=bk?qaDiffs(bk):null;
+  quizOver=false;reviewMode=false;cancelPending();navPush('quiz');
+  autoMode=(d==='auto');
+  if(autoMode){selfRank=getRank(bk);curDiff=selfRank;}else{curDiff=(ds&&d>=0&&d<ds.length)?d:-1;}
+  curDiffLabel=(curDiff>=0)?ds[curDiff].n:'';
+  typeKey=bk?('b:'+bk):('c:'+cn);typeLabel=bk?QA_TYPES[bk].name:cn;
+  combo=0;wrongCombo=0;selfWindow=[];lvlCool=0;handMode=false;lastAuto=null;
+  if(!bk)qaSection='choice';   // 自定义题库固定选择题，不弹板块面板
+  if(bk){
+    if(autoMode){qlist=[];total=Infinity;}
+    else{var cnt=(curDiff>=0&&ds[curDiff].cnt)?ds[curDiff].cnt:10;qlist=sectionGen(bk,cnt,Math.max(0,curDiff));total=qlist.length;}
+  }else{
+    var pairs=custom[cn]||[];if(!pairs.length){alert('该题库还没有题目，先去录入');return;}
+    var picked=makeCustomRound(typeKey,pairs);
+    qlist=picked.map(function(p){
+      // AI / 免费搜索生成的题带选项，手动录入的是填空 —— 两者都要保留
+      var o=(p.opts&&p.opts.length>=2)?shuffle(p.opts.slice()):null;
+      return {q:p.q,a:p.a,opts:o,custom:true};
+    });total=qlist.length;
+  }
+  ok=0;qidx=0;score=0;showQuestion();
+  lastRun={bk:bk,cn:cn,d:autoMode?'auto':curDiff};
+  if(bk&&bk!=='code'&&bk!=='online'){
+    var _rf=autoMode?selfRank:curDiff;
+    setTimeout(function(){autoRefillBuiltin(bk,_rf);},900);
+  }
+}
+
+/* ---------- 答题页 ---------- */
+function showQuestion(){
+  if(quizOver)return;
+  showView('stage');clearNode(stageEl);locked=false;
+  if(qidx>=total&&!autoMode){endQuiz();return;}
+  var Q;
+  if(autoMode){
+    /* 无限自适应：题不够就现生成，qidx 永不触发结算，退出由用户决定 */
+    while(qlist.length<=qidx){
+      /* 每档内尽量不重复：生成时避开最近 30 题的题干（含代码块指纹） */
+      var _rk='bt_qa_recent_auto_'+(typeKey||'x').replace(/[^\w]/g,'_');
+      var _rec=loadRecent(_rk),_tries=0,_nq=null,_nk='';
+      do{
+        _nq=(typeKey==='b:code'&&qaSection==='code'&&handMode)?genHandTask(selfRank):genNextAuto();
+        _nk=_nq.q+(_nq.code?('|'+_nq.code):'');
+        _tries++;
+      }while(_tries<8&&_rec.indexOf(_nk)>=0);
+      try{_rec.unshift(_nk);S.setItem(_rk,JSON.stringify(_rec.slice(0,30)));}catch(e){}
+      qlist.push(applySection([_nq])[0]);
+    }
+    Q=qlist[qidx];
+  }else{
+    Q=qlist[qidx];
+    /* 手写模式开关一旦打开，整局都出待手写题：以前只替换当前这一题，下一题又跳回读代码题，
+       开关还显示「✍️ 手写代码：开」，非常误导。 */
+    if(typeKey==='b:code'&&qaSection==='code'&&handMode&&Q&&!Q.hand){Q=genHandTask(Math.max(0,curDiff));qlist[qidx]=Q;}
+  }
+  if(!Q){endQuiz();return;}
+  var card=h('div','qcard quizfill');
+  // 进度条：自动匹配是无限模式，进度条固定满格（不打表，只做氛围）
+  var pb=h('div','pbar'+(autoMode?' inf':''));var pbi=h('i');pbi.style.width=(autoMode?'100%':(Math.round((qidx+1)/Math.max(1,total)*100)+'%'));pb.appendChild(pbi);card.appendChild(pb);
+  var hud=h('div','hud');
+  var sec=ht('span','chip sec',sectionName(qaSection));
+  sec.title='点击切换板块';
+  if(typeKey&&typeKey.indexOf('b:')===0&&typeKey!=='b:online'&&typeKey!=='b:weak'){sec.onclick=function(){switchSection();};}
+  hud.appendChild(sec);
+  var _tik='';if(typeKey.indexOf('b:')===0&&QA_TYPES[typeKey.slice(2)])_tik=QA_TYPES[typeKey.slice(2)].icon+' ';
+  var _badge='';
+  if(typeKey==='b:code'){var _cp=getCodeProfile();if(_cp&&_cp.done&&_cp.langs&&_cp.langs.length){_badge=' · '+langName(_cp.langs[0])+(_cp.langs.length>1?(' 等'+_cp.langs.length+'种'):'');}}
+  hud.appendChild(ht('div','hl',_tik+typeLabel+_badge+(autoMode&&curDiffLabel?(' · 实力：'+curDiffLabel):(curDiffLabel?(' · '+curDiffLabel):''))));
+  hud.appendChild(ht('div','hr',autoMode?('第 '+(qidx+1)+' 题 · 无限模式'):('第 '+(qidx+1)+'/'+total)));
+  /* 无限模式没有「满分」，头顶只留实力与题数，得分放结算页，避免四个 chip 挤成省略号 */
+  if(!autoMode)hud.appendChild(ht('span','chip','✅ '+ok));
+  card.appendChild(hud);
+  if(typeKey==='b:code'&&qaSection==='code'){
+    var swr=h('div','swrow');
+    var tg=h('button','toggle'+(handMode?' on':''),handMode?'✍️ 手写代码：开':'✍️ 手写代码：关');
+    tg.onclick=function(){setHandMode(!handMode);};
+    swr.appendChild(tg);
+    swr.appendChild(ht('span','hint2',canJudge()?'AI 当场评判，语言不限':'手写题需先配置 AI（免费通道即可）'));
+    card.appendChild(swr);
+  }
+
+  if(typeKey==='b:online'&&Q&&Q.src==='offline')card.appendChild(ht('div','hint','📴 联网不可用，正在使用本地离线题库（返回书架点「🔄 联网更新题库」可重试）'));
+  // 题干（全屏：吃掉中间剩余高度）；带代码/手写标记的题用左对齐 + 代码块
+  var qbox=h('div','qbox fill');
+  if(Q.code||Q.hand){
+    qbox.className='qbox fill hascode';
+    qbox.appendChild(ht('div','qlead',Q.q));
+    if(Q.code){var pre=h('pre','codeblk');pre.textContent=Q.code;qbox.appendChild(pre);}
+    if(Q.hand&&Q.task){qbox.appendChild(ht('div','hint','样例：'+Q.task.ex+'　（'+Q.task.tip+'）'));}
+    if(Q.fillin)qbox.appendChild(ht('div','hint','✍️ 把空缺处该填的代码写进下面的输入框'));
+  }else{qbox.textContent=Q.q;}
+  card.appendChild(qbox);
+  // 选项 / 手写输入 / 填空
+  if(Q.hand){
+    var ta=document.createElement('textarea');ta.className='codeinp';ta.rows=6;
+    ta.placeholder='// 在这里写你的代码（语言不限，C / Python / JS 都行）';
+    ta.setAttribute('autocapitalize','off');ta.setAttribute('autocorrect','off');ta.setAttribute('spellcheck','false');
+    card.appendChild(ta);
+    var hr=h('div','row');
+    var hsb=h('button','btn gold','🤖 提交 AI 评判');hsb.style.flex='1';
+    var hmsg=h('div','hint','');
+    var canDo=canJudge();
+    if(!canDo)hsb.disabled=true;
+    hsb.onclick=function(){submitHand(Q,ta.value,hsb,hmsg);};
+    hr.appendChild(hsb);card.appendChild(hr);card.appendChild(hmsg);
+    if(!canDo)hmsg.textContent='⚠️ 未配置 AI：点右上角 ⚙️ 选服务商（免费通道不用 Key）后就能评判';
+    var unkH=h('button','unkbtn','😵 不会 · 跳过本题');unkH.onclick=function(){markUnknown();};card.appendChild(unkH);
+  }else if(Q.opts){
+    var opts=h('div','opts');
+    Q.opts.forEach(function(op){var b=h('button','obtn');b.textContent=op;b.onclick=function(){answer(op===Q.a,op,Q.a,b);};opts.appendChild(b);});
+    card.appendChild(opts);
+    var unk=h('button','unkbtn','😵 不会 · 记入薄弱题');unk.onclick=function(){markUnknown();};card.appendChild(unk);
+  }else{
+    var ir=h('div','row');ir.style.marginTop='4px';
+    var ti=h('input');ti.type='text';ti.placeholder='输入答案';ti.style.flex='1';
+    ti.setAttribute('autocapitalize','off');ti.setAttribute('autocorrect','off');ti.setAttribute('spellcheck','false');
+    var sb=h('button','btn gold','提交');sb.onclick=function(){answer(fillEqual(ti.value,Q.a),ti.value,Q.a);};
+    ti.onkeydown=function(e){if(e&&e.key==='Enter'){sb.click();}};
+    ir.appendChild(ti);ir.appendChild(sb);card.appendChild(ir);
+    var unk2=h('button','unkbtn','😵 不会 · 记入薄弱题');unk2.onclick=function(){markUnknown();};card.appendChild(unk2);
+  }
+
+  // 固定反馈预留区：空着也占位，反馈条出现不会把选项往上顶
+  var fz=h('div','fbzone');fz.id='fbzone';card.appendChild(fz);
+  // 底部操作
+  var foot=h('div','quizfoot');foot.style.marginTop='12px';
+  if(autoMode){
+    var quitA=h('button','btn ghost','🏁 结束并结算');
+    quitA.onclick=function(){endQuiz();};
+    foot.appendChild(quitA);
+  }else{
+    var quit=h('button','btn ghost','🏠 退出本局');
+    quit.onclick=function(){if(confirm('退出本局？本局成绩不保存。'))backOneLayer();};
+    foot.appendChild(quit);
+  }
+  card.appendChild(foot);
+
+  stageEl.appendChild(card);
+}
+/* 作答后锁死所有可点的东西：选项、不会、填空输入框与提交、手写输入框与 AI 提交。
+   现在答错会停住不跳，留着点了没反应的按钮比直接禁掉更让人困惑。 */
+function lockOpts(){var bs=stageEl.querySelectorAll?stageEl.querySelectorAll('.obtn,.unkbtn,.codeinp,.qcard .row .btn'):[];try{[].slice.call(bs).forEach(function(b){b.disabled=true;});}catch(e){}}
+// 反馈条进固定预留区（#fbzone）；没有预留区时（结算页等）回退到旧逻辑
+function appendFb(fb){
+  var z=stageEl.querySelector?stageEl.querySelector('#fbzone'):null;
+  if(z){clearNode(z);z.appendChild(fb);return;}
+  var c=stageEl.querySelector?stageEl.querySelector('.qcard'):null;
+  var f=c&&c.querySelector?c.querySelector('.quizfoot'):null;
+  if(c&&f)c.insertBefore(fb,f);else stageEl.appendChild(fb);
+}
+function markChosen(btn,ans){
+  var bs=stageEl.querySelectorAll?stageEl.querySelectorAll('.obtn'):[];
+  try{[].slice.call(bs).forEach(function(b){
+    b.disabled=true;
+    if(String(b.textContent)===String(ans))b.classList.add('right');
+    else if(btn&&b===btn)b.classList.add('wrong');
+  });}catch(e){}
+}
+/* ---------- 题目解析：程序化题带 exp，人工题走 AI 兜底 ---------- */
+function expText(Q){return (Q&&Q.exp)?String(Q.exp):'';}
+/* 语言判定：ASCII 字母占字符数的比例（中文题通常 < 0.2，英文题接近 1） */
+function enRatio(s){
+  s=String(s==null?'':s);if(!s.length)return 0;
+  var a=0;for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);if((c>=65&&c<=90)||(c>=97&&c<=122))a++;}
+  return a/s.length;
+}
+function isEnText(s){return enRatio(s)>0.5;}
+function cnCount(s){
+  s=String(s==null?'':s);var n=0;
+  for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);if(c>=0x4e00&&c<=0x9fa5)n++;}
+  return n;
+}
+/* 单个词 / 代码片段（def、lambda、[x for x in a]、printf("%d")）不算「英文选项」：
+   「Python 中哪个关键字定义函数？」这类题的选项本来就是英文标识符，按字符占比会全部误杀。 */
+function isCodeish(s){
+  s=String(s==null?'':s).trim();
+  if(/[(){}\[\];:=<>+*\/%#&|!"']/.test(s))return true;   /* 含代码符号（冒号要有：lambda x: x 这类） */
+  return s.indexOf(' ')<0&&s.length<=16;               /* 单个词 / 标识符 */
+}
+/* 英文题：题干基本没有中文（汉字少于 4 个）且字母过半 —— 纯字母占比会误杀
+   「SQL 中 JOIN 的作用？」这种中文提问夹英文术语的正常题，所以先看有没有中文。
+   中文题干只可能因为「选项是成句英文」被判英文（单个词 / 代码片段放行）。 */
+function isEnglishQ(q){
+  if(!q)return false;
+  var stem=q.q||'';
+  if(cnCount(stem)<4&&isEnText(stem))return true;
+  /* 选项同理：夹着中文的（「len 是内置函数」）不算英文选项 */
+  return (q.opts||[]).some(function(o){return !isCodeish(o)&&cnCount(o)<2&&isEnText(o);});
+}
+/* 一句话解析（独立于 callAI：那个只认「题目 JSON 数组」，讲题走原始文本通道）。
+   英文题先让 AI 翻译再解析：解析永远用中文写，不翻译就会「中文解析配英文题干」。 */
+function aiExplain(Q,cb){
+  cb=cb||function(){};
+  var cfg=loadAICfg();
+  if(!cfg||!cfg.url||!(cfg.key||isFreeAI(cfg.url))){cb('');return;}
+  var q=String((Q&&Q.q)||'').slice(0,300),a=String((Q&&Q.a)||'').slice(0,100);
+  var code=Q&&Q.code?('\n代码：\n'+String(Q.code).slice(0,400)):'';
+  var en=isEnText(q)||((Q&&Q.opts)||[]).filter(function(o){return isEnText(o);}).length>=2;
+  var prompt=en
+    ?('你在讲题。题目：'+q+code+'\n正确答案：'+a+
+      '\n题目是英文。请先把题目和选项翻译成中文，再用不超过 40 字的一句话中文解析为什么是这个答案（讲清关键一步，别复述题目）。\n严格只返回 JSON：{"trans":"题目中文翻译","exp":"解析内容"}')
+    :('你在讲题。题目：'+q+code+'\n正确答案：'+a+
+      '\n请用不超过 40 字的一句话中文解析为什么是这个答案（讲清关键一步，别复述题目）。\n严格只返回 JSON：{"exp":"解析内容"}');
+  callAIRaw(cfg,prompt,function(txt){
+    if(!txt){cb('');return;}
+    var t=String(txt),m=t.match(/\{[\s\S]*?\}/);
+    if(m){
+      try{
+        var o=JSON.parse(m[0]);
+        if(o&&(o.exp||o.trans)){cb(o.exp?String(o.exp).slice(0,60):'',o.trans?String(o.trans).slice(0,140):'');return;}
+      }catch(e){}
+    }
+    var ex=t.match(/"exp"\s*:\s*"([^"]*)"/),tr=t.match(/"trans"\s*:\s*"([^"]*)"/);
+    if(ex||tr){cb(ex?ex[1].slice(0,60):'',tr?tr[1].slice(0,140):'');return;}
+    var plain=t.replace(/[{}"]/g,'').replace(/^\s*exp\s*:\s*/,'').trim();
+    if(plain&&plain.length<=70&&/[\u4e00-\u9fa5]/.test(plain)){cb(plain);return;}
+    cb('');
+  },20000);
+}
+/* 把解析挂到反馈条：有 exp 直接显示，没有就给一个「💡 AI 解析」按钮（手写题判错也走这里） */
+function appendExp(fb,Q){
+  var e=expText(Q);
+  if(e){fb.appendChild(ht('div','fexp','💡 解析：'+e));return;}
+  if(!Q)return;
+  var b=ht('button','chip aibtn','💡 AI 解析');
+  b.onclick=function(){
+    if(!canJudge()){toast('未配置 AI：点右上角 ⚙️ 选服务商（免费通道不用 Key）就能生成解析');return;}
+    b.disabled=true;b.textContent='💡 解析中…';
+    aiExplain(Q,function(t,tr){
+      if(!t&&!tr){b.disabled=false;b.textContent='💡 重试 AI 解析';return;}
+      /* 英文题：译文 + 解析一起给，先看懂题目再看懂为什么 */
+      var box=ht('div','fexp');
+      if(tr)box.appendChild(ht('div','fexpL','💬 译文：'+tr));
+      if(t)box.appendChild(ht('div','fexpL','💡 解析：'+t));
+      if(b.parentNode)b.parentNode.replaceChild(box,b);else fb.appendChild(box);
+    });
+  };
+  fb.appendChild(b);
+}
+function appendNextChip(fb){
+  var b=ht('button','chip fbnext','下一题 ›');
+  b.onclick=function(){goNext();};
+  fb.appendChild(b);
+}
+/* 「🔄 重试」：把同一题重新渲染出来再答一次。分数只认「首次 + 一次重试奖励」，杜绝反复刷分。
+   showQuestion 会重建选项/输入框，而 lockOpts 只在作答后锁 —— 重渲染天然解锁，不用额外处理。 */
+function retryQuestion(){
+  cancelPending();            /* 清掉任何残留的自动跳转计时 */
+  locked=false;               /* 解锁，允许再次作答 */
+  showQuestion();             /* qidx 不动；Q 还是同一对象，settled 标记保留 */
+}
+function appendRetryChip(fb){
+  var b=ht('button','chip fbretry','🔄 重试');
+  b.onclick=function(){retryQuestion();};
+  fb.appendChild(b);
+}
+/* 走题节奏：只有「答对」自动跳（800ms，保持流畅）；答错 / 不会一律停住，
+   由用户点「🔄 重试」或「下一题 ›」决定去向 —— 错题是学习时刻，不该被计时器抢走。 */
+var nextTimer=null;
+function cancelPending(){if(nextTimer){try{clearTimeout(nextTimer);}catch(e){}nextTimer=null;}}
+function advance(ms){
+  cancelPending();
+  nextTimer=later(function(){nextTimer=null;qidx++;showQuestion();},ms||800);
+}
+function goNext(){cancelPending();qidx++;showQuestion();}
+
+/* ---------- 页面层级：浏览器返回只回退一层（书架是根，根上再返回才退出网页） ---------- */
+var navStack=['shelf'];
+var NAV_BUSY=false,NAV_DRAIN=0;
+function navTop(){return navStack[navStack.length-1]||'shelf';}
+/* 回书架：只把栈归零。⚠ 这里绝不能动 history —— 一旦当前站在历史首页，
+   history.back() 会把整个页面顶出去（踩过：退出薄弱题回顾直接跳回 about:blank）。 */
+function navReset(){navStack=['shelf'];NAV_DRAIN=0;}
+/* 进深层：栈里记一层，同时压一帧，保证浏览器返回键有东西可 pop */
+function navPush(k){
+  if(navTop()===k)return;
+  navStack.push(k);NAV_DRAIN=0;
+  try{history.pushState({qnav:1},'');}catch(e){}
+}
+function navDrop(k){
+  for(var i=navStack.length-1;i>=0;i--){if(navStack[i]===k){navStack.splice(i,1);return;}}
+}
+/* 应用内回退一层：按栈顶决定退回哪个界面 */
+function backOneLayer(){
+  var top=navTop();
+  if(top==='quiz'){
+    navStack.pop();
+    if(autoMode){endQuiz();return;}                 /* 无限模式：返回 = 结束并结算 */
+    if(reviewMode){reviewMode=false;cancelPending();navReset();renderShelf();return;}
+    var bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
+    if(lastRun&&lastRun.bk&&bk===lastRun.bk&&bk!=='online'){
+      quizOver=true;cancelPending();
+      renderShelf();                                  /* 先把书架铺回去，面板取消后落回书架 */
+      startType(lastRun.bk,lastRun.cn,null);return;  /* 回到上次的难度面板 */
+    }
+    cancelPending();navReset();renderShelf();return;
+  }
+  if(top==='finish'){cancelPending();navReset();renderShelf();return;}
+  if(top==='diff'||top==='section'||top==='overlay'){
+    var ov=document.getElementById('curOverlay');
+    if(ov)closeOverlay({ov:ov});
+    if(top!=='overlay'){cancelPending();navReset();renderShelf();}
+    return;
+  }
+}
+function navInit(){
+  try{history.replaceState({qnav:0},'');}catch(e){}
+  window.addEventListener('popstate',function(){
+    if(NAV_BUSY){NAV_BUSY=false;return;}
+    NAV_BUSY=true;
+    try{
+      if(navTop()==='shelf'){
+        /* 书架是根：这一下就是「退出网页」。历史里若还留着我们压过的帧，一路排空到真正离开 */
+        /* 上限放宽到 80：一次会话里每进一层就压一帧，长会话积几十帧，20 会排不干净（实测卡在书架退不出去） */
+        if(history.length>1&&NAV_DRAIN<80){NAV_DRAIN++;try{history.back();}catch(e){NAV_DRAIN=0;}}
+        return;
+      }
+      backOneLayer();
+    }finally{NAV_BUSY=false;}
+  });
+}
+
+/* 自适应升降档是「立刻生效」的：答错 / 不会要停留 2.5s 让玩家读解析，
+   不能让 HUD 的实力档等下一题才变（玩家会以为没生效）。 */
+function syncHudLevel(){
+  if(!autoMode||!curDiffLabel)return;
+  var el=document.querySelector('#stage .hud .hl');
+  if(!el)return;
+  var t=el.textContent||'';
+  el.textContent=/实力：/.test(t)?t.replace(/实力：[^·]*$/,'实力：'+curDiffLabel):t;
+}
+function markUnknown(){
+  if(locked)return;locked=true;
+  var Q=qlist[qidx];
+  /* 首次作答才结算（记薄弱题 / 记自适应窗口）；重试后再按「不会」不再重复记 */
+  var first=!(Q&&Q.settled);
+  if(Q)Q.settled=true;
+  var recorded=false;
+  if(first){
+    if(Q&&!reviewMode&&!Q.hand){
+      addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,time:Date.now()});
+      recorded=true;
+    }
+    if(autoMode){
+      var _bk=(typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
+      selfWindow.push(0);if(selfWindow.length>WIN_CAP)selfWindow.shift();
+      selfRank=Math.max(0,selfRank-1);lvlCool=LEVEL_COOL;setRank(_bk,selfRank);
+      combo=0;wrongCombo=0;
+      if(QA_TYPES[_bk])curDiffLabel=QA_TYPES[_bk].diffs[selfRank].n;
+      syncHudLevel();
+    }
+  }
+  lockOpts();
+  var fb=h('div','fb unk');
+  fb.appendChild(ht('div','fbm','😵 已跳过本题'+(recorded?'，已记入薄弱题':'')));
+  if(Q&&!Q.hand&&Q.a!=null&&String(Q.a)!=='')fb.appendChild(ht('div','fba','正确答案：'+Q.a));
+  appendExp(fb,Q);
+  if(Q&&!Q.hand)appendRetryChip(fb);
+  appendNextChip(fb);
+  appendFb(fb);
+  /* 不再 advance()：错题是学习时刻，去留由用户点「重试」还是「下一题」决定 */
+}
+
+function answer(correct,given,ans,btn,opt){
+  if(locked)return;locked=true;
+  opt=opt||{};
+  var _bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
+  var Q=qlist[qidx];
+  /* 首次 / 重试分层：重试只给 +5 学习奖励 —— 不扣分、不重复记薄弱题、不重复记窗口、不重复升降档 */
+  var first=!(Q&&Q.settled);
+  if(Q)Q.settled=true;
+  if(reviewMode){
+    if(btn)markChosen(btn,ans);else lockOpts();
+    var fbR=h('div','fb '+(correct?'ok':'no'));
+    if(correct){if(Q&&Q.weak)removeWeak(Q.weak);fbR.textContent='✅ 答对了！已从薄弱题移除';}
+    else{
+      fbR.textContent='❌ 正确答案：'+ans+'（保留在薄弱题）';
+      appendExp(fbR,Q);appendRetryChip(fbR);appendNextChip(fbR);
+    }
+    appendFb(fbR);
+    if(correct)advance(800);else cancelPending();
+    return;
+  }
+  var _pen=(curDiff>=2&&_bk&&QA_TYPES[_bk]&&QA_TYPES[_bk].pen)?5:0;
+  if(first){
+    if(correct){ok++;score+=10;}
+    else{
+      if(_pen){score-=5;}
+      /* 首次答错也沉淀进薄弱题（结算页文案一直说「错题会进薄弱题」，之前只有「😵 不会」会记）。
+         重试答错不重复记 —— 同一题只留一条。 */
+      if(Q&&!Q.hand)addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,time:Date.now()});
+    }
+    if(autoMode&&_bk&&QA_TYPES[_bk]&&QA_TYPES[_bk].diffs){
+      /* 滑动窗口自适应（替换原来的连对/连错计数）：
+         最近 ≤12 题正确率 ≥75% 升一档、≤40% 降一档；满 6 题才判，升降后冷却 2 题，避免一波连对跳两级。
+         ⚠ 升档只在「这题答对」时判、降档只在「这题答错」时判：
+         否则连对 8 题后答错 1 题，窗口仍 89%，会出现「答错反而升档」（踩过）。
+         ⚠ 重试不计入窗口：同一题只算一次，否则反复重试会把档位刷上去。 */
+      selfWindow.push(correct?1:0);if(selfWindow.length>WIN_CAP)selfWindow.shift();
+      var _acc=windowAcc(),_maxD=QA_TYPES[_bk].diffs.length-1;
+      if(lvlCool>0){lvlCool--;}
+      else if(selfWindow.length>=WIN_MIN){
+        if(correct&&_acc>=UP_ACC&&selfRank<_maxD){selfRank++;lvlCool=LEVEL_COOL;}
+        else if(!correct&&_acc<=DN_ACC&&selfRank>0){selfRank--;lvlCool=LEVEL_COOL;}
+      }
+      setRank(_bk,selfRank);
+      curDiffLabel=QA_TYPES[_bk].diffs[selfRank].n;
+      syncHudLevel();
+    }
+  }else if(correct){ok++;score+=5;}
+  if(btn)markChosen(btn,ans);else lockOpts();
+  var fb=h('div','fb '+(correct?'ok':'no'));
+  if(opt.note){
+    var noteTxt=(correct?'✅ 判为正确 '+(first?'＋10':'＋5'):('❌ 判为不正确'+((first&&_pen)?'　（−5 分）':'')))+'　'+opt.note;
+    if(correct)fb.textContent=noteTxt;
+    else{
+      fb.appendChild(ht('div','fbm',noteTxt));
+      /* 手写题由 AI 评判（耗时、每次都要钱），不给「重试」；但必须给解析 ——
+         只说「判为不正确」等于什么都没教，题目旁边就是「要点 + 样例」。 */
+      appendExp(fb,Q);appendNextChip(fb);
+    }
+  }else{
+    fb.textContent=correct?(first?'✅ 答对了！＋10':'✅ 重试答对了！＋5')
+      :('❌ 正确答案：'+ans+((first&&_pen)?'　（−5 分）':''));
+    if(!correct){appendExp(fb,Q);if(Q&&!Q.hand)appendRetryChip(fb);appendNextChip(fb);}
+  }
+  appendFb(fb);
+  if(first)bumpStat(typeKey,correct);
+  /* 答对保持自动跳（800ms），不打断节奏；答错 / 不会一律停住，等用户决定重试还是下一题 */
+  if(correct)advance(opt.wait||800);else cancelPending();
+}
+
+function endQuiz(){
+  quizOver=true;
+  if(reviewMode){reviewMode=false;finish(score);return;}
+  var key=(autoMode&&typeKey.indexOf('b:')===0)?(typeKey+':auto'):((curDiff>=0)?(typeKey+':'+curDiff):typeKey);
+  if(autoMode){
+    /* 无限模式没有预设题量：用实际作答数当分母，并留一份实力快照给结算页 */
+    lastAuto={rank:selfRank,n:qidx,acc:windowAcc(),win:selfWindow.length,lab:curDiffLabel};
+    total=Math.max(1,qidx);
+  }
+  autoMode=false;saveTypeBest(key,score);finish(score);
+}
+
+function finish(sc){
+  navPush('finish');
+  showView('stage');clearNode(stageEl);
+  var acc=total?(Math.round(ok/total*100)):0;
+  var card=h('div','qcard');card.style.textAlign='center';card.style.paddingTop='24px';card.style.margin='auto 0';
+  var emo=ht('div',null,acc>=80?'🎉':acc>=60?'👍':'💪');emo.style.cssText='font-size:40px;line-height:1';
+  card.appendChild(emo);
+  card.appendChild(ht('div','hint',acc>=80?'太棒了，这轮很稳！':(acc>=60?'不错，继续保持～':'别急，错题会进薄弱题，多刷两轮就起来了')));
+  var scoreBig=ht('div',null,String(sc));scoreBig.style.cssText='font-size:52px;font-weight:900;color:var(--purple-d);line-height:1.15;margin:6px 0 2px';
+  card.appendChild(scoreBig);
+  var accLine=ht('div','hint','正确率 '+acc+'%　（'+ok+' / '+total+'）');accLine.style.color='var(--sub)';accLine.style.fontWeight='700';
+  card.appendChild(accLine);
+  if(lastAuto){
+    var lc=h('div','lvlcard');
+    lc.appendChild(ht('div','lvlt','🎯 当前实力：'+(lastAuto.lab||levelName(lastAuto.rank))));
+    lc.appendChild(ht('div','lvls','做了 '+lastAuto.n+' 题 · 正确 '+ok+' 题 · 最近 '+lastAuto.win+' 题正确率 '+Math.round(lastAuto.acc*100)+'%'));
+    var _A=lastAuto.acc;
+    lc.appendChild(ht('div','lvld',_A>=0.85?'状态在线，往上一档再试试。':(_A>=0.65?'基本稳住，这个档位可以继续刷。':(_A>=0.45?'还在爬坡，错题点「😵 不会」沉淀后回顾。':'这档偏难，先回低一档把基础打牢。'))));
+    card.appendChild(lc);
+    lastAuto=null;
+  }
+  var row=h('div','row');row.style.marginTop='16px';
+  var again=h('button','btn gold','🔄 再来一局');
+  again.onclick=function(){
+    if(typeKey==='b:weak'){startReview();return;}
+    if(typeKey==='b:online'){startOnline();return;}
+    if(lastRun){doStartType(lastRun.bk,lastRun.cn,lastRun.d);return;}
+    renderShelf();
+  };
+  var back=h('button','btn ghost','📚 返回书架');back.onclick=function(){renderShelf();};
+  row.appendChild(again);row.appendChild(back);card.appendChild(row);
+  var rev=h('button','btn ghost','😵 错题回顾');rev.style.marginTop='9px';rev.style.width='100%';
+  rev.onclick=function(){startReview();};card.appendChild(rev);
+  stageEl.appendChild(card);
+  // 自定义题库：结算时若题量已不足，静默在后台补题（不打断结算页）
+  if(lastRun&&lastRun.cn&&typeKey&&typeKey.indexOf('c:')===0){
+    setTimeout(function(){autoRefill(lastRun.cn);},600);
+  }
+}
+
+/* ---------- 薄弱题回顾 ---------- */
+function startReview(){
+  var a=loadWeak();
+  if(!a.length){toast('📚 暂无薄弱题：做题时点「😵 不会」就会沉淀到这里');return;}
+  reviewMode=true;autoMode=false;quizOver=false;typeKey='b:weak';typeLabel='回顾薄弱题';qaSection='choice';handMode=false;
+  navPush('quiz');
+  qlist=a.map(function(x){return {q:x.q,a:x.a,opts:(x.opts&&x.opts.length)?x.opts.slice():null,code:x.code,exp:x.exp,fillin:x.fillin,weak:x};});
+  ok=0;qidx=0;score=0;total=qlist.length;showQuestion();
+}
+
+/* ---------- 联网 ---------- */
+function startOnline(){
+  typeKey='b:online';typeLabel='🌐 联网';
+  if(ONLINE_BANK.length){beginOnline();return;}
+  showView('stage');clearNode(stageEl);
+  var c=h('div','qcard');c.style.textAlign='center';
+  c.appendChild(ht('div','hud','🌐 正在联网获取最新题目…'));
+  var sp=ht('div','hint','（首次获取需联网，之后会缓存到本地；失败会自动回退备用源与本地离线题库）');c.appendChild(sp);
+  stageEl.appendChild(c);
+  fetchOnline(function(okf,info){
+    if(okf&&ONLINE_BANK.length){beginOnline();return;}
+    var reason=(info&&info.reason)||'fail';
+    if(info&&info.degraded&&ONLINE_BANK.length){beginOnline();return;}
+    sp.textContent=netFailText(reason)+'，即将切换到本地题库';
+    later(function(){doStartType('common',null,qaDiffDefault('common'));},1200);
+  });
+}
+function beginOnline(){
+  typeKey='b:online';typeLabel=(ONLINE_SRC==='offline')?'📴 联网（离线兜底）':'🌐 联网';curDiff=-1;curDiffLabel='';qaSection='choice';handMode=false;quizOver=false;reviewMode=false;
+  navPush('quiz');
+  qlist=shuffle(ONLINE_BANK.slice()).slice(0,Math.min(10,ONLINE_BANK.length)).map(function(it){return {q:it.q,a:it.a,opts:it.opts,src:it.src};});
+  ok=0;qidx=0;score=0;total=qlist.length;showQuestion();
+}
+
+/* ---------- 自定义题库编辑器 ---------- */
+function openEditor(preset){
+  showView('stage');clearNode(stageEl);
+  var card=h('div','qcard');
+  card.appendChild(ht('div','hud','➕ 新增自定义题库'));
+  var em=h('div','hint','');card.appendChild(em);
+  var nm=h('input');nm.type='text';nm.value=preset||'';nm.placeholder='题库名称（如：化学）';nm.style.margin='8px 0';card.appendChild(nm);
+  var list=h('div');card.appendChild(list);var pairs=[];
+  function renderList(){clearNode(list);if(!pairs.length){list.appendChild(ht('div','hint','还没有题目，下面添加'));return;}
+    pairs.forEach(function(p,i){var r=h('div','list-row');r.appendChild(ht('span',null,p.q+' → '+p.a));
+      var del=h('button','chip','✕');del.onclick=function(){pairs.splice(i,1);renderList();};r.appendChild(del);list.appendChild(r);});}
+  renderList();
+  var qinp=h('input');qinp.placeholder='问题';
+  var ainp=h('input');ainp.placeholder='答案';
+  var addQ=h('button','btn','＋ 添加题目');var ar=h('div','row');ar.appendChild(qinp);ar.appendChild(ainp);ar.appendChild(addQ);card.appendChild(ar);
+  addQ.onclick=function(){var q=qinp.value.trim(),a=ainp.value.trim();if(!q||!a){em.textContent='⚠️ 问题和答案都要填';return;}em.textContent='';pairs.push({q:q,a:a});qinp.value='';ainp.value='';renderList();};
+  var saveB=h('button','btn gold','💾 保存并开始');saveB.onclick=function(){var name=nm.value.trim();if(!name){em.textContent='⚠️ 请输入题库名称';return;}if(!pairs.length){em.textContent='⚠️ 至少录入一题';return;}custom[name]=pairs;saveCustom(custom);renderShelf();startType(null,name);};
+  card.appendChild(saveB);
+  var backB=h('button','btn ghost','← 返回');backB.onclick=function(){renderShelf();};card.appendChild(backB);
+  stageEl.appendChild(card);
+}
+
+/* ---------- 任务2：编程实力检测 ---------- */
+var CODE_PROFILE_KEY='bt_qa_profile_code';
+var CODE_LANGS=[{k:'c',n:'C / C++'},{k:'python',n:'Python'},{k:'java',n:'Java'},{k:'js',n:'JavaScript'},{k:'sql',n:'SQL'},{k:'web',n:'HTML·CSS'},{k:'all',n:'计算机通用'}];
+function langName(k){for(var i=0;i<CODE_LANGS.length;i++)if(CODE_LANGS[i].k===k)return CODE_LANGS[i].n;return k;}
+function levelName(r){return ['🐣 入门','🚀 基础','🔧 进阶','🧠 熟练','👑 精通'][r||0]||'🐣 入门';}
+function getCodeProfile(){try{return JSON.parse(S.getItem(CODE_PROFILE_KEY)||'null');}catch(e){return null;}}
+function codeProfileDone(){var p=getCodeProfile();return !!(p&&p.done);}
+function bkIsCode(key){return key==='b:code';}
+// 编程题的语言标签内联在题目第 3 位（c/python/java/js/sql/web/all），题库调整不再需要同步标签表
+var CODE_TAGS=null;
+function buildCodeTags(){
+  if(CODE_TAGS)return CODE_TAGS;
+  CODE_TAGS={};
+  for(var d in POOLS.code){if(POOLS.code.hasOwnProperty(d))CODE_TAGS[d]=(POOLS.code[d]||[]).map(function(it){return (it&&it[2])||'all';});}
+  return CODE_TAGS;
+}
+buildCodeTags();
+/*=== CODE_ENGINE_START ===*/
+/* ================= 全语言程序化题库（五档：模板 + 随机参数 / 知识点池） =================
+   语言键：c / python / java / js / sql / web / all（all = 语言无关）
+   知识点池格式：[问题, 正确答案, '选项1|选项2|选项3|选项4']（四个选项同类相近，含正确答案）
+   参数化生成器：返回 {q,a,opts}，答案当场计算，题量不设上限 */
+function riN(a,b){return a+Math.floor(Math.random()*(b-a+1));}
+function binOf(n,w){var s=n.toString(2);while(w&&s.length<w)s='0'+s;return s;}
+function binWrongs(s,n){
+  var out=[];
+  for(var i=0;i<s.length;i++)out.push(s.slice(0,i)+(s[i]==='1'?'0':'1')+s.slice(i+1));
+  return shuffle(out).slice(0,n||3);
+}
+function hexOf(n){return n.toString(16).toUpperCase();}
+/* 位运算的同类候选：保证能凑出 3 个不重复且非负的干扰项 */
+function bitCands(a,b,ans){
+  var all=[a&b,a|b,a+b,a*b,Math.abs(a-b),a+1,b+1],out=[],seen={};
+  seen[ans]=1;
+  all.forEach(function(v){if(out.length>=4)return;if(!isFinite(v)||seen[v])return;seen[v]=1;out.push(v);});
+  return out;
+}
+function shiftCands(a,k,ans){
+  var all=[a*k,a<<(k+1),a>>k,a+k,a*(k+1),ans+1,ans-1],out=[],seen={};
+  seen[ans]=1;
+  all.forEach(function(v){if(out.length>=4)return;if(!isFinite(v)||seen[v])return;seen[v]=1;out.push(v);});
+  return out;
+}
+function fact(n){var r=1;for(var i=2;i<=n;i++)r*=i;return r;}
+function fibOf(n){var a=1,b=1;for(var i=3;i<=n;i++){var c=a+b;a=b;b=c;}return b;}
+
+var CODE_KB={
+all:{
+ 0:[
+  ['1 KB 等于多少字节？','1024','1024|1000|512|2048'],
+  ['1 字节（Byte）等于多少位（bit）？','8','8|4|16|32']
+ ],
+ 1:[
+  ['逻辑运算 true && false 的结果是？','false','false|true|null|空字符串'],
+  ['程序中的变量本质上是什么？','一块有名字的内存空间','一块有名字的内存空间|一个数字|一个函数|一个文件']
+ ],
+ 2:[
+  ['位运算符 & 表示什么运算？','按位与','按位与|按位或|按位异或|按位取反'],
+  ['一个字节最多能表示多少个不同的值？','256','256|128|255|512']
+ ],
+ 3:[
+  ['冒泡排序的平均时间复杂度是？','O(n²)','O(n²)|O(n log n)|O(log n)|O(1)'],
+  ['快速排序的平均时间复杂度是？','O(n log n)','O(n log n)|O(n²)|O(log n)|O(n)'],
+  ['二分查找的时间复杂度是？','O(log n)','O(log n)|O(n)|O(n log n)|O(1)'],
+  ['哈希表理想情况下的查找复杂度是？','O(1)','O(1)|O(log n)|O(n)|O(n²)'],
+  ['深度优先搜索（DFS）常用的辅助结构是？','栈','栈|队列|堆|链表'],
+  ['广度优先搜索（BFS）常用的辅助结构是？','队列','队列|栈|树|哈希表'],
+  ['数组按下标随机访问的复杂度是？','O(1)','O(1)|O(n)|O(log n)|O(n²)'],
+  ['归并排序相对冒泡排序的优势是？','平均复杂度更低','平均复杂度更低|不需要额外空间|实现更简单|比较次数恒定'],
+  ['递归缺少终止条件通常会导致？','栈溢出','栈溢出|内存泄漏|死循环但不会崩溃|编译失败'],
+  ['链表相比数组的优势是？','插入删除不需要移动元素','插入删除不需要移动元素|随机访问更快|占用内存更少|支持下标直接访问']
+ ],
+ 4:[
+  ['8 位有符号整数能表示的范围是？','-128 ~ 127','-128 ~ 127|-127 ~ 127|-128 ~ 128|0 ~ 255'],
+  ['8 位补码相加产生溢出时，最高位的进位会怎样？','被丢弃','被丢弃|自动扩展到 16 位|触发异常|存入标志位并保留'],
+  ['多数语言中 0.1 + 0.2 不等于 0.3，原因是？','二进制无法精确表示 0.1','二进制无法精确表示 0.1|运算顺序错误|编译器缺陷|0.2 被舍入为 0.25'],
+  ['面试常问的「时间复杂度」衡量的是什么？','随输入规模增长的趋势','随输入规模增长的趋势|程序运行的确切秒数|代码行数|内存占用字节数']
+ ]
+},
+c:{
+ 0:[
+  ['C 语言中用于声明整型变量的关键字是？','int','int|char|float|double'],
+  ['C 语言中用于声明单精度浮点数的关键字是？','float','float|int|double|char'],
+  ['C 语言中字符类型 char 通常占几个字节？','1','1|2|4|8'],
+  ['C 语言程序的入口函数是？','main','main|start|init|begin'],
+  ['C 语言中单行注释用什么符号开头？','//','//|#|/*|--'],
+  ['C 语言中 for 循环括号里的三个部分依次是？','初始化;条件;更新','初始化;条件;更新|条件;初始化;更新|更新;条件;初始化|初始化;更新;条件'],
+  ['C 语言中 printf 函数的作用是？','格式化输出','格式化输出|读取输入|分配内存|打开文件'],
+  ['C 语言中每条语句通常以什么符号结束？','分号 ;','分号 ;|冒号 :|逗号 ,|句号 .']
+ ],
+ 1:[
+  ['C 语言中，int a[5] 的合法下标范围是？','0~4','0~4|1~5|0~5|1~4'],
+  ['C 语言中 while 条件一开始就为假时，循环体执行几次？','0 次','0 次|1 次|无限次|编译错误'],
+  ['C 语言中 break 在循环里的作用是？','立即结束整个循环','立即结束整个循环|跳过本次进入下一次|重新开始循环|结束整个程序'],
+  ['C 语言中 continue 的作用是？','跳过本次剩余语句，进入下一次循环','跳过本次剩余语句，进入下一次循环|结束整个循环|结束程序|跳出当前函数'],
+  ['C 语言中三目运算符的写法是？','条件 ? 值1 : 值2','条件 ? 值1 : 值2|条件 : 值1 ? 值2|条件 ? 值1 ; 值2|条件 ? 值1 , 值2'],
+  ['C 语言中 if 的条件表达式值为 0 时表示？','假','假|真|语法错误|未定义'],
+  ['C 语言中 do-while 与 while 的关键区别是？','do-while 至少执行一次','do-while 至少执行一次|while 至少执行一次|两者完全相同|do-while 不能带条件']
+ ],
+ 2:[
+  ['C 语言中，取变量 a 的内存地址用哪个运算符？','&a','&a|*a|a.|a->'],
+  ['C 语言中，若 p 是整型指针，*p 表示什么？','p 所指向变量的值','p 所指向变量的值|p 自身的内存地址|p 占用的字节数|p 的类型名'],
+  ['C 语言中，数组名在表达式中通常等价于什么？','数组首元素的地址','数组首元素的地址|数组的长度|数组最后一个元素|数组的一份副本'],
+  ['C 语言中，宏 NULL 通常表示什么？','空指针','空指针|字符串 "0"|未初始化的数组|字符串结束符'],
+  ['C 语言中，malloc 申请的内存应当用哪个函数释放？','free','free|delete|clear|release'],
+  ['C 语言中，访问结构体变量 s 的成员 x 用哪个写法？','s.x','s.x|s->x|s::x|s[x]'],
+  ['C 语言中，访问结构体指针 p 的成员 x 用哪个写法？','p->x','p->x|p.x|*p.x|p::x'],
+  ['C 语言中，sizeof 运算符返回的是什么？','占用的字节数','占用的字节数|元素个数|二进制位数|内存地址'],
+  ['C 语言中，释放后仍继续使用的指针称为？','悬空指针','悬空指针|野指针|空指针|函数指针'],
+  ['C 语言中，对同一块内存连续 free 两次通常会导致？','堆破坏（未定义行为）','堆破坏（未定义行为）|内存自动扩容|编译报错|返回错误码'],
+  ['C 语言中，指针变量本身占用的内存大小取决于什么？','平台的字长','平台的字长|它指向的类型|数组长度|编译优化等级'],
+  ['C 语言中，二维数组 a[3][4] 中 a[1] 表示什么？','第二行首元素的地址','第二行首元素的地址|第二行第一个元素的值|第一行第二个元素的值|数组总长度']
+ ],
+ 3:[
+  ['冒泡排序的平均时间复杂度是？','O(n²)','O(n²)|O(n log n)|O(log n)|O(1)'],
+  ['快速排序的平均时间复杂度是？','O(n log n)','O(n log n)|O(n²)|O(log n)|O(n)'],
+  ['二分查找的时间复杂度是？','O(log n)','O(log n)|O(n)|O(n log n)|O(1)'],
+  ['单链表结点的典型组成是？','数据域 + 指向下一结点的指针','数据域 + 指向下一结点的指针|只有数据域|两个数据域|数据域 + 数组长度'],
+  ['栈的访问特点是？','后进先出','后进先出|先进先出|随机访问|按优先级出'],
+  ['队列的访问特点是？','先进先出','先进先出|后进先出|随机访问|按大小排序出'],
+  ['二叉树前序遍历的顺序是？','根 → 左 → 右','根 → 左 → 右|左 → 根 → 右|左 → 右 → 根|右 → 左 → 根'],
+  ['在有序数组中查找目标值，效率更高的是？','二分查找','二分查找|顺序查找|冒泡查找|哈希查找']
+ ],
+ 4:[
+  ['C 语言中 int (*fp)(int); 声明的是什么？','指向函数的指针','指向函数的指针|返回指针的函数|整型数组|指向 int 的指针'],
+  ['C 语言中 #define 的作用是什么？','预处理阶段的宏替换','预处理阶段的宏替换|定义普通变量|定义函数|引入头文件'],
+  ['C 语言中 typedef 的作用是什么？','为已有类型起别名','为已有类型起别名|定义新变量|申请堆内存|声明函数'],
+  ['C 语言中 union 的大小通常等于什么？','最大成员的大小','最大成员的大小|所有成员大小之和|最小成员的大小|固定 4 字节'],
+  ['结构体按成员最大对齐数对齐，主要目的是什么？','提高内存访问效率','提高内存访问效率|节省内存|兼容旧编译器|方便调试'],
+  ['C 语言中 int *p 指向数组元素，执行 p+1 实际前进多少字节？','sizeof(int) 个字节','sizeof(int) 个字节|1 个字节|4 个位|sizeof(int*) 个字节'],
+  ['C 语言中，8 位有符号 char 存储 200 会得到什么？','-56','-56|200|56|0'],
+  ['C 语言中，无符号数与有符号数比较时，有符号数会怎样？','被转换为无符号数','被转换为无符号数|保持有符号|编译报错|被截断为 0'],
+  ['C 语言中，宏 #define SQ(x) x*x 在 SQ(1+2) 展开后是什么？','1+2*1+2','1+2*1+2|(1+2)*(1+2)|9|3*3'],
+  ['C 语言中，volatile 关键字的主要作用是？','禁止编译器优化该变量的读写','禁止编译器优化该变量的读写|把变量放入寄存器|声明变量为只读|申请动态内存']
+ ]
+},
+python:{
+ 0:[
+  ['Python 中向控制台输出内容用哪个函数？','print','print|echo|printf|write'],
+  ['Python 中单行注释以什么符号开头？','#','#|//|--|/*'],
+  ['Python 中定义函数用哪个关键字？','def','def|function|func|lambda'],
+  ['Python 中定义列表使用哪对符号？','方括号 []','方括号 []|花括号 {}|圆括号 ()|尖括号 <>'],
+  ['Python 中表示布尔真值的字面量是？','True','True|true|TRUE|Yes'],
+  ['Python 中缩进的作用是？','表示代码块层级','表示代码块层级|仅为了好看|分隔语句|声明变量'],
+  ['Python 3 中 print 属于什么？','内置函数','内置函数|关键字|标准库模块|类']
+ ],
+ 1:[
+  ['Python 中 len("hello") 的结果是？','5','5|4|6|报错'],
+  ['Python 中 range(5) 生成的整数是？','0,1,2,3,4','0,1,2,3,4|1,2,3,4,5|0,1,2,3,4,5|1,2,3,4'],
+  ['Python 中 "abc".upper() 的结果是？','ABC','ABC|abc|Abc|报错'],
+  ['Python 中 s="hello"，s[1:3] 的结果是？','el','el|ell|he|lo'],
+  ['Python 中 if 之后继续判断分支用哪个关键字？','elif','elif|else if|elseif|otherwise'],
+  ['Python 中 for x in [1,2,3] 会循环几次？','3 次','3 次|2 次|4 次|1 次'],
+  ['Python 中 int("12") 得到什么？','整数 12','整数 12|字符串 12|浮点数 12|布尔值']
+ ],
+ 2:[
+  ['Python 中字典 dict 存储的是什么？','键值对','键值对|有序整数|仅字符串|集合元素'],
+  ['Python 中 [x*x for x in range(3)] 的结果是？','[0, 1, 4]','[0, 1, 4]|[0, 1, 2]|[1, 4, 9]|[0, 4, 9]'],
+  ['Python 中捕获异常用哪个关键字？','except','except|catch|rescue|handler'],
+  ['Python 中判断元素是否在列表里用哪个运算符？','in','in|has|contains|within'],
+  ['Python 中 tuple 与 list 的主要区别是？','tuple 创建后不可修改','tuple 创建后不可修改|tuple 不能遍历|tuple 只能存数字|两者没有区别'],
+  ['Python 中 set 的主要特点是？','元素不重复','元素不重复|元素有序|只能存字符串|不可遍历'],
+  ['Python 中 d={"a":1}，d["a"] 的值是？','1','1|"a"|None|报错']
+ ],
+ 3:[
+  ['Python 中 sorted([3,1,2]) 的结果是？','[1, 2, 3]','[1, 2, 3]|[3, 2, 1]|None|报错'],
+  ['Python 中 list.sort() 的返回值是？','None','None|排序后的列表|原列表的副本|布尔值'],
+  ['Python 中 lambda x: x+1 表示什么？','匿名函数','匿名函数|循环|条件表达式|类'],
+  ['Python 中递归函数必须有什么？','终止条件','终止条件|全局变量|返回值|装饰器'],
+  ['Python 中 sum([1,2,3]) 的结果是？','6','6|5|123|报错'],
+  ['Python 中 2**3 的结果是？','8','8|6|9|5'],
+  ['Python 中 max([4,9,2]) 的结果是？','9','9|4|2|15']
+ ],
+ 4:[
+  ['Python 中 @decorator 这种写法的作用是？','装饰器，包装原函数','装饰器，包装原函数|声明变量|导入模块|定义子类'],
+  ['Python 中含 yield 的函数返回的是？','生成器','生成器|列表|元组|None'],
+  ['Python 中属于不可变类型的是？','tuple','tuple|list|dict|set'],
+  ['Python 中在函数内修改全局变量需要先声明什么？','global','global|public|extern|var'],
+  ['Python 中做深拷贝应使用哪个函数？','copy.deepcopy','copy.deepcopy|copy.copy|list()|dict()'],
+  ['Python 中把 list 用作函数默认参数可能导致什么？','默认值在多次调用间共享','默认值在多次调用间共享|每次调用都重建|无法传参|运行时报错'],
+  ['Python 中 GIL 限制了同一时刻只有几个线程执行字节码？','1 个','1 个|2 个|4 个|不受限制'],
+  ['Python 中小整数与字符串的缓存机制主要影响什么？','is 比较的结果','is 比较的结果|== 比较的结果|内存回收速度|import 速度']
+ ]
+},
+java:{
+ 0:[
+  ['Java 程序入口方法的签名是？','public static void main(String[] args)','public static void main(String[] args)|public void main(String[] args)|static void Main()|public static main(String[] args)'],
+  ['Java 中向控制台输出一行用哪个写法？','System.out.println','System.out.println|console.log|printf|echo'],
+  ['Java 中定义类用哪个关键字？','class','class|struct|object|def'],
+  ['Java 中基本的整型类型是？','int','int|integer|Int|long int'],
+  ['Java 中字符串类型是？','String','String|string|str|char[]']
+ ],
+ 1:[
+  ['Java 中声明整型数组的正确写法是？','int[] a = new int[5];','int[] a = new int[5];|int a[5];|int a = new int[5];|array int a[5];'],
+  ['Java 中 switch 不支持下列哪种类型？','double','double|int|char|String'],
+  ['Java 中从方法返回结果用哪个关键字？','return','return|yield|give|out'],
+  ['Java 中 else 后面继续判断分支写作？','else if','else if|elif|elseif|else when'],
+  ['Java 中 for(int i=0;i<5;i++) 循环体执行几次？','5 次','5 次|4 次|6 次|0 次']
+ ],
+ 2:[
+  ['Java 中比较两个字符串内容是否相等应使用？','equals()','equals()|==|hashCode()|toString()'],
+  ['Java 中 String 的 length() 返回什么？','字符个数','字符个数|字节数|内存占用|数组长度'],
+  ['Java 中创建对象使用哪个关键字？','new','new|create|make|alloc'],
+  ['Java 中 ArrayList 的特点是什么？','可变长度的列表','可变长度的列表|定长数组|键值对集合|线程安全队列'],
+  ['Java 中 s.substring(1,3) 取的是？','下标 1 到 2 的字符','下标 1 到 2 的字符|下标 1 到 3 的字符|前 3 个字符|最后 3 个字符']
+ ],
+ 3:[
+  ['Java 中继承父类用哪个关键字？','extends','extends|implements|inherits|super'],
+  ['Java 中实现接口用哪个关键字？','implements','implements|extends|interface|abstract'],
+  ['Java 中捕获异常用哪组关键字？','try-catch','try-catch|try-except|do-catch|catch-finally'],
+  ['Java 中重写父类方法通常加什么注解？','@Override','@Override|@Overload|@Rewrite|@Super'],
+  ['Java 中父类引用指向子类对象体现了什么特性？','多态','多态|封装|继承|重载'],
+  ['Java 中 final 修饰的类有什么特点？','不能被继承','不能被继承|不能被实例化|不能被引用|不能被编译']
+ ],
+ 4:[
+  ['Java 中泛型 List<String> 的作用是？','限定元素类型','限定元素类型|限定列表长度|提高运行速度|自动排序'],
+  ['Java 中启动线程通常调用哪个方法？','start()','start()|run()|exec()|begin()'],
+  ['Java 中垃圾回收主要回收什么？','不再被引用的对象占用的内存','不再被引用的对象占用的内存|磁盘文件|线程栈|类定义'],
+  ['Java 中 static 成员属于？','类本身','类本身|每个对象|父类|接口'],
+  ['Java 中接口里的方法默认修饰符是？','public abstract','public abstract|private|protected|static final']
+ ]
+},
+js:{
+ 0:[
+  ['JavaScript 中声明块级作用域变量用哪个关键字？','let','let|var|const|def'],
+  ['JavaScript 中向控制台输出用哪个写法？','console.log','console.log|print|printf|System.out.println'],
+  ['JavaScript 中 typeof 返回的是什么？','数据类型的字符串','数据类型的字符串|变量的值|内存地址|布尔值'],
+  ['JavaScript 中严格相等运算符是？','===','===|==|=|!=='],
+  ['JavaScript 中声明常量的关键字是？','const','const|let|var|final']
+ ],
+ 1:[
+  ['JavaScript 中向数组末尾添加元素用哪个方法？','push()','push()|pop()|shift()|unshift()'],
+  ['JavaScript 中获取数组长度的属性是？','length','length|size|count|len'],
+  ['JavaScript 中移除数组最后一个元素用哪个方法？','pop()','pop()|push()|shift()|slice()'],
+  ['JavaScript 中模板字符串用哪对符号包裹？','反引号','反引号|单引号|双引号|圆括号'],
+  ['JavaScript 中声明函数的传统关键字是？','function','function|func|def|fn']
+ ],
+ 2:[
+  ['JavaScript 中箭头函数的写法是？','() => {}','() => {}|function(){}|def(){}|fn(){}'],
+  ['JavaScript 中数组的 map 方法返回什么？','一个新数组','一个新数组|原数组|单个元素|布尔值'],
+  ['JavaScript 中 JSON.stringify 的作用是？','对象转 JSON 字符串','对象转 JSON 字符串|字符串转对象|深拷贝对象|格式化日期'],
+  ['JavaScript 中 JSON.parse 的作用是？','JSON 字符串转对象','JSON 字符串转对象|对象转字符串|校验 JSON|压缩 JSON'],
+  ['JavaScript 中 filter 方法返回什么？','满足条件的元素组成的新数组','满足条件的元素组成的新数组|第一个匹配元素|布尔值|原数组']
+ ],
+ 3:[
+  ['JavaScript 中 Promise 注册完成回调用哪个方法？','then','then|done|success|resolve'],
+  ['JavaScript 中 await 只能用在哪种函数里？','async 函数','async 函数|普通函数|箭头函数|构造函数'],
+  ['JavaScript 中闭包指的是什么？','函数与其引用的外部变量的组合','函数与其引用的外部变量的组合|立即执行函数|箭头函数|递归函数'],
+  ['JavaScript 中按 id 获取元素用哪个方法？','document.getElementById','document.getElementById|document.querySelectorAll|document.getElementsByClassName|document.getElementsByTagName'],
+  ['JavaScript 中 async 函数一定返回什么？','Promise','Promise|回调函数|生成器|布尔值']
+ ],
+ 4:[
+  ['JavaScript 中原型链的主要作用是？','实现对象间的属性继承','实现对象间的属性继承|管理内存|处理事件|解析 JSON'],
+  ['JavaScript 中 setTimeout(fn,0) 的回调会在何时执行？','当前同步代码执行完后','当前同步代码执行完后|立即同步执行|下一帧绘制前|页面卸载时'],
+  ['JavaScript 中普通函数的 this 取决于什么？','调用方式','调用方式|定义位置|函数名|参数个数'],
+  ['JavaScript 中 let 与 var 的关键区别是？','let 具有块级作用域','let 具有块级作用域|let 不能重新赋值|var 不能声明函数|两者没有区别'],
+  ['JavaScript 中 0.1 + 0.2 === 0.3 的结果是？','false','false|true|NaN|报错']
+ ]
+},
+sql:{
+ 0:[
+  ['SQL 中查询数据用哪个关键字？','SELECT','SELECT|GET|FIND|QUERY'],
+  ['SQL 中指定查询的表用哪个关键字？','FROM','FROM|IN|TABLE|WHERE'],
+  ['SQL 中筛选条件用哪个关键字？','WHERE','WHERE|IF|HAVING|WHEN'],
+  ['SQL 中插入数据用哪组关键字？','INSERT INTO','INSERT INTO|ADD INTO|PUT INTO|APPEND TO'],
+  ['SQL 语句结尾通常用哪个符号？','分号 ;','分号 ;|句号 .|冒号 :|斜杠 /']
+ ],
+ 1:[
+  ['SQL 中删除表中数据用哪个关键字？','DELETE','DELETE|REMOVE|DROP|CLEAR'],
+  ['SQL 中修改数据用哪个关键字？','UPDATE','UPDATE|MODIFY|ALTER|SET'],
+  ['SQL 中排序用哪组关键字？','ORDER BY','ORDER BY|SORT BY|GROUP BY|ARRANGE BY'],
+  ['SQL 中限制返回行数用哪个关键字？','LIMIT','LIMIT|TOP|MAX|ROWS'],
+  ['SQL 中模糊匹配用哪个关键字？','LIKE','LIKE|MATCH|REGEX|SIMILAR'],
+  ['SQL 中降序排列用哪个关键字？','DESC','DESC|ASC|DOWN|REVERSE']
+ ],
+ 2:[
+  ['SQL 中连接两张表用哪个关键字？','JOIN','JOIN|LINK|MERGE|COMBINE'],
+  ['SQL 中分组统计用哪组关键字？','GROUP BY','GROUP BY|ORDER BY|PARTITION BY|SPLIT BY'],
+  ['SQL 中对分组结果筛选用哪个关键字？','HAVING','HAVING|WHERE|FILTER|ON'],
+  ['SQL 中统计行数用哪个函数？','COUNT(*)','COUNT(*)|SUM(*)|TOTAL(*)|ROWS(*)'],
+  ['SQL 中左连接的关键字是？','LEFT JOIN','LEFT JOIN|LEFT MERGE|JOIN LEFT|OUTER LEFT']
+ ],
+ 3:[
+  ['SQL 中子查询指的是什么？','嵌套在另一条语句中的查询','嵌套在另一条语句中的查询|并行执行的查询|被缓存的查询|一张视图'],
+  ['数据库索引的主要作用是？','加快查询速度','加快查询速度|节省磁盘空间|保证事务完整|加密数据'],
+  ['事务 ACID 中的 I 指什么？','隔离性','隔离性|完整性|独立性|幂等性'],
+  ['SQL 中唯一约束的关键字是？','UNIQUE','UNIQUE|ONLY|DISTINCT|SINGLE'],
+  ['SQL 中主键的特点是什么？','唯一且非空','唯一且非空|可以重复|可以为空|只能为数字']
+ ],
+ 4:[
+  ['SQL 中视图 VIEW 本质上是什么？','保存下来的查询','保存下来的查询|一张物理表|一个索引|一个触发器'],
+  ['防止 SQL 注入最有效的做法是？','使用参数化查询','使用参数化查询|过滤单引号|隐藏表名|限制返回行数'],
+  ['数据库第一范式要求什么？','每个字段不可再分','每个字段不可再分|必须有主键|不能有外键|必须有索引'],
+  ['SQL 中存储过程的主要优点是什么？','预编译并可重复调用','预编译并可重复调用|自动创建索引|自动备份数据|自动加密字段'],
+  ['SQL 中 TRUNCATE 与 DELETE 的主要区别是？','TRUNCATE 不能带条件且更快','TRUNCATE 不能带条件且更快|TRUNCATE 可以回滚|DELETE 会删除表结构|两者没有区别']
+ ]
+},
+web:{
+ 0:[
+  ['HTML 的全称是？','超文本标记语言','超文本标记语言|高级文本语言|超链接语言|网页编程语言'],
+  ['HTML 中最大的标题标签是？','h1','h1|h6|title|head'],
+  ['HTML 中定义段落的标签是？','p','p|div|span|br'],
+  ['HTML 中定义超链接的标签是？','a','a|link|href|url'],
+  ['HTML 中图片地址写在哪个属性里？','src','src|href|alt|url'],
+  ['HTML 中定义无序列表的标签是？','ul','ul|ol|li|dl']
+ ],
+ 1:[
+  ['CSS 中选择 class 为 box 的元素用哪个写法？','.box','.box|#box|box|*box'],
+  ['CSS 中选择 id 为 box 的元素用哪个写法？','#box','#box|.box|box|@box'],
+  ['CSS 中设置文字颜色的属性是？','color','color|font-color|text-color|foreground'],
+  ['CSS 中设置元素显示方式的属性是？','display','display|show|visible|layout'],
+  ['CSS 中设置外边距的属性是？','margin','margin|padding|border|gap'],
+  ['CSS 中设置内边距的属性是？','padding','padding|margin|border|spacing']
+ ],
+ 2:[
+  ['CSS 中开启弹性布局用哪个声明？','display:flex','display:flex|display:grid|position:flex|layout:flex'],
+  ['CSS 中开启网格布局用哪个声明？','display:grid','display:grid|display:flex|display:table|display:block'],
+  ['CSS 中让元素相对定位并保留原占位用？','position:relative','position:relative|position:absolute|position:fixed|position:static'],
+  ['CSS 中让元素固定在视口用？','position:fixed','position:fixed|position:absolute|position:relative|position:sticky'],
+  ['CSS 中媒体查询用哪个规则？','@media','@media|@query|@screen|@responsive'],
+  ['CSS 中 flex 布局的主轴对齐用哪个属性？','justify-content','justify-content|align-items|flex-wrap|flex-direction']
+ ],
+ 3:[
+  ['CSS 盒模型由内到外依次是？','content → padding → border → margin','content → padding → border → margin|content → border → padding → margin|margin → padding → border → content|padding → content → border → margin'],
+  ['CSS 中鼠标悬停的伪类是？',':hover',':hover|:focus|:active|:visited'],
+  ['下列 CSS 选择器中优先级最高的是？','行内样式','行内样式|类选择器|标签选择器|后代选择器'],
+  ['响应式页面通常需要在 head 里加什么？','viewport meta','viewport meta|charset meta|base 标签|link 标签'],
+  ['CSS 中 box-sizing:border-box 的作用是？','宽高包含 padding 和 border','宽高包含 padding 和 border|宽高只包含内容|去掉边框|禁用盒模型'],
+  ['CSS 中 :nth-child(2) 表示什么？','父元素下的第 2 个子元素','父元素下的第 2 个子元素|第 2 个 class 元素|第 2 个兄弟中的任意元素|最后一个子元素']
+ ],
+ 4:[
+  ['CSS 中定义关键帧动画用哪个规则？','@keyframes','@keyframes|@animation|@transition|@frames'],
+  ['CSS 变量的声明方式是？','--name: value','--name: value|$name: value|@name: value|var name: value'],
+  ['浏览器渲染流程的正确顺序是？','解析 → 布局 → 绘制 → 合成','解析 → 布局 → 绘制 → 合成|布局 → 解析 → 合成 → 绘制|解析 → 绘制 → 布局 → 合成|绘制 → 布局 → 解析 → 合成'],
+  ['图片懒加载的主要目的是什么？','减少首屏请求与流量','减少首屏请求与流量|提升图片清晰度|加快服务器编译|避免浏览器缓存'],
+  ['防抖（debounce）的作用是什么？','频繁触发时只执行最后一次','频繁触发时只执行最后一次|立即执行第一次|按固定间隔执行|并行执行所有调用']
+ ]
+}
+};
+
+/* ---------- 参数化生成器（每题答案当场计算，解析与答案同源） ---------- */
+function binExp(n){var s=binOf(n),p=[];for(var i=0;i<s.length;i++){if(s.charAt(i)==='1')p.push(String(Math.pow(2,s.length-1-i)));}return '按位权展开：'+s+'₂ = '+p.join(' + ')+' = '+n;}
+function bitExp(a,b,ans,op){
+  var name={and:'按位与',or:'按位或',xor:'按位异或'}[op];
+  var rule={and:'同为 1 才得 1',or:'有一位是 1 就得 1',xor:'两位不同才得 1'}[op];
+  return name+'：'+rule+'，'+binOf(a)+' '+({and:'&',or:'|',xor:'^'}[op])+' '+binOf(b)+' = '+binOf(ans)+' = '+ans;
+}
+function factSeq(n){var a=[];for(var i=1;i<=n;i++)a.push(i);return a.join(' × ');}
+var CODE_GENX={
+all:{
+ 0:[
+  function(){var n=riN(5,63);return mkQA('二进制 '+binOf(n)+' 等于十进制多少？',n,neighbors(n),binExp(n));},
+  function(){var n=riN(5,63),s=binOf(n);return mkQA('十进制 '+n+' 的二进制是？',s,binWrongs(s),'用 2 不断除取余、余数倒序排列：'+n+' = '+s+'₂');},
+  function(){var n=riN(16,255);return mkQA('十六进制 0x'+hexOf(n)+' 等于十进制多少？',n,neighbors(n),'按 16 的幂展开：0x'+hexOf(n)+' 每位乘 16⁰、16¹… 累加得 '+n);},
+  function(){var n=riN(16,255);return mkQA('十进制 '+n+' 的十六进制是？',hexOf(n),[hexOf(n^1),hexOf(n^2),hexOf(n^4)],'用 16 不断除取余、余数倒序排列：'+n+' = 0x'+hexOf(n));},
+  function(){var i=riN(0,25),ch=String.fromCharCode(65+i);return mkQA('大写字母 '+ch+' 的 ASCII 码是？',65+i,neighbors(65+i),'A 从 65 起按字母表递增，'+ch+' 是第 '+(i+1)+' 个：65 + '+i+' = '+(65+i));}
+ ],
+ 1:[
+  function(){var a=riN(20,99),b=riN(3,9);return mkQA(a+' % '+b+'（取余）的结果是？',a%b,neighbors(a%b),a+' ÷ '+b+' = '+Math.floor(a/b)+' 余 '+(a%b)+'，取余只看余数');},
+  function(){var a=riN(2,9),b=riN(2,9),c=riN(2,9);return mkQA('表达式 '+a+' + '+b+' × '+c+' 的值是？',a+b*c,[(a+b)*c,a*b+c,a+b+c].concat(neighbors(a+b*c)),'先乘除后加减：'+b+' × '+c+' = '+(b*c)+'，再加 '+a+' 得 '+(a+b*c));},
+  function(){var a=riN(11,99),b=riN(2,9);return mkQA('整数除法 '+a+' / '+b+'（向下取整）的结果是？',Math.floor(a/b),neighbors(Math.floor(a/b)),b+' × '+Math.floor(a/b)+' = '+(b*Math.floor(a/b))+'，整数除法把余数丢掉，得 '+Math.floor(a/b));}
+ ],
+ 2:[
+  function(){var a=riN(1,15),b=riN(1,15);return mkQA(a+' & '+b+'（按位与）的结果是？',a&b,bitCands(a,b,a&b),bitExp(a,b,a&b,'and'));},
+  function(){var a=riN(1,15),b=riN(1,15);return mkQA(a+' | '+b+'（按位或）的结果是？',a|b,bitCands(a,b,a|b),bitExp(a,b,a|b,'or'));},
+  function(){var a=riN(1,15),b=riN(1,15);return mkQA(a+' ^ '+b+'（按位异或）的结果是？',a^b,bitCands(a,b,a^b),bitExp(a,b,a^b,'xor'));},
+  function(){var a=riN(1,9),k=riN(1,3);return mkQA(a+' << '+k+'（左移）的结果是？',a<<k,shiftCands(a,k,a<<k),'左移 '+k+' 位等于乘 '+Math.pow(2,k)+'：'+a+' × '+Math.pow(2,k)+' = '+(a<<k));}
+ ],
+ 3:[],
+ 4:[
+  function(){var v=riN(1,63);return mkQA('8 位补码中，-'+v+' 的二进制表示是？',binOf(256-v,8),[binOf(v,8),binOf(v|128,8),binOf(255-v,8)],'补码 = 256 − '+v+' = '+(256-v)+'，写成 8 位二进制就是 '+binOf(256-v,8));}
+ ]
+},
+c:{
+ 0:[],
+ 1:[
+  function(){var a=riN(2,9),b=riN(2,9),c=riN(2,9);return mkQA('C 语言中，表达式 '+a+' + '+b+' * '+c+' 的值是？',a+b*c,[(a+b)*c,a*b+c,a+b+c].concat(neighbors(a+b*c)),'C 里 * 优先级高于 +：先算 '+b+' * '+c+' = '+(b*c)+'，再加 '+a+' 得 '+(a+b*c));},
+  function(){var x=riN(1,9);return mkQA('C 语言中 int x='+x+'; 执行 printf("%d", x++); 输出的是？',x,neighbors(x),'x++ 是后置自增：先取用旧值 '+x+' 打印，之后 x 才变成 '+(x+1));},
+  function(){var n=riN(2,12);return mkQA('C 语言中 for(int i=0;i<'+n+';i++) 的循环体执行几次？',n,neighbors(n),'i 从 0 开始、取到 '+(n-1)+' 为止，一共 '+n+' 次');},
+  function(){var n=riN(3,10);return mkQA('C 语言中 int a['+n+']; 最后一个元素的下标是？',n-1,neighbors(n-1),'C 数组下标从 0 开始，'+n+' 个元素的下标是 0 ~ '+(n-1));},
+  function(){var a=riN(1,9),b=riN(1,9);return mkQA('C 语言中 (a>b)?a:b，当 a='+a+'、b='+b+' 时结果是？',Math.max(a,b),neighbors(Math.max(a,b)),'三目运算符先判条件：'+(a>b?'a>b 成立，取 a = ':'a>b 不成立，取 b = ')+Math.max(a,b));}
+ ],
+ 2:[
+  function(){var T=[['char',1],['short',2],['int',4],['float',4],['double',8]],it=T[ri(T.length)];return mkQA('C 语言中，在常见 64 位平台上 sizeof('+it[0]+') 的值通常是？',it[1],neighbors(it[1]),'在 64 位平台上 '+it[0]+' 占 '+it[1]+' 个字节');},
+  function(){var a=riN(1,15),b=riN(1,15);return mkQA('C 语言中，'+a+' & '+b+' 的结果是？',a&b,bitCands(a,b,a&b),bitExp(a,b,a&b,'and'));},
+  function(){var a=riN(1,20),k=riN(1,3);return mkQA('C 语言中，'+a+' << '+k+' 的结果是？',a<<k,shiftCands(a,k,a<<k),'左移 '+k+' 位等于乘 '+Math.pow(2,k)+'：'+a+' × '+Math.pow(2,k)+' = '+(a<<k));}
+ ],
+ 3:[
+  function(){var n=riN(3,6);return mkQA('C 语言中，递归计算 '+n+'! 的结果是？',fact(n),neighbors(fact(n)),'阶乘连乘：'+n+'! = '+factSeq(n)+' = '+fact(n));},
+  function(){var n=riN(5,9);return mkQA('斐波那契数列 F(1)=1、F(2)=1，则 F('+n+') 的值是？',fibOf(n),neighbors(fibOf(n)),'按 F(n)=F(n−1)+F(n−2) 逐项递推，F('+n+') = '+fibOf(n));}
+ ],
+ 4:[
+  function(){var v=riN(128,255);return mkQA('C 语言中，8 位有符号 char 存储 '+v+' 会得到？',v-256,neighbors(v-256),'8 位有符号 char 上限 127，'+v+' 越界后按补码回绕：'+v+' − 256 = '+(v-256));}
+ ]
+},
+python:{
+ 0:[],
+ 1:[
+  function(){var W=['code','python','list','hello','data','test','java','web'],s=W[ri(W.length)];return mkQA('Python 中 len("'+s+'") 的结果是？',s.length,neighbors(s.length),'len() 数字符个数，"'+s+'" 一共 '+s.length+' 个字符');},
+  function(){var n=riN(3,10);return mkQA('Python 中 sum(range('+n+')) 的结果是？',n*(n-1)/2,neighbors(n*(n-1)/2),'range('+n+') 是 0 ~ '+(n-1)+'，首尾相加乘项数除以 2，得 '+(n*(n-1)/2));},
+  function(){var s='abcdefgh',i=riN(0,3),j=riN(i+2,7),ans=s.slice(i,j);return mkQA('Python 中 "'+s+'"['+i+':'+j+'] 的结果是？',ans,[s.slice(i,j+1),s.slice(i+1,j),s.slice(i+1,j+1),ans.toUpperCase()],'切片含头不含尾，取下标 '+i+' 到 '+(j-1)+'，得 "'+ans+'"');}
+ ],
+ 2:[
+  function(){var n=riN(10,99);return mkQA('Python 中 d={"a": '+n+'}，则 d["a"] 的值是？',n,neighbors(n),'字典按键取值，d["a"] 就是构造时写进去的 '+n);}
+ ],
+ 3:[
+  function(){var n=riN(3,9);return mkQA('Python 中 max(list(range('+n+'))) 的结果是？',n-1,neighbors(n-1),'range('+n+') 是 0 ~ '+(n-1)+'，最大值是 '+(n-1));}
+ ],
+ 4:[]
+},
+java:{
+ 0:[],
+ 1:[
+  function(){var n=riN(2,12);return mkQA('Java 中 for(int i=0;i<'+n+';i++) 的循环体执行几次？',n,neighbors(n),'i 从 0 走到 '+(n-1)+'，共 '+n+' 次');},
+  function(){var n=riN(2,9);return mkQA('Java 中 int[] a = new int['+n+']; 该数组的 length 是？',n,neighbors(n),'new int['+n+'] 申请 '+n+' 个元素，length 就是 '+n);}
+ ],
+ 2:[
+  function(){var W=['hello','java','code','world','array'],s=W[ri(W.length)];return mkQA('Java 中 "'+s+'".length() 的结果是？',s.length,neighbors(s.length),'length() 数字符个数，"'+s+'" 有 '+s.length+' 个字符');},
+  function(){var s='abcdef',i=riN(0,3);return mkQA('Java 中 "'+s+'".substring('+i+') 的结果是？',s.slice(i),[s.slice(i+1),s.slice(Math.max(0,i-1)),s.slice(0,i+1),s.slice(i,i+2)],'substring(n) 从下标 n 取到末尾，结果是 "'+s.slice(i)+'"');}
+ ],
+ 3:[],
+ 4:[]
+},
+js:{
+ 0:[],
+ 1:[
+  function(){var n=riN(2,9),arr=[];for(var i=0;i<n;i++)arr.push(i+1);return mkQA('JavaScript 中 ['+arr.join(',')+'].length 的值是？',n,neighbors(n),'length 是元素个数，数组里有 '+n+' 个元素');},
+  function(){var n=riN(1,5),x=riN(1,9),arr=[];for(var i=0;i<n;i++)arr.push(i+1);return mkQA('JavaScript 中 var a=['+arr.join(',')+']; a.push('+x+'); 之后 a.length 的值是？',n+1,neighbors(n+1),'push 在末尾追加一个元素：'+n+' + 1 = '+(n+1));}
+ ],
+ 2:[
+  function(){var n=riN(2,4),k=riN(2,3),arr=[];for(var i=0;i<n;i++)arr.push(riN(1,5));var out=arr.map(function(x){return x*k});return mkQA('JavaScript 中 ['+arr.join(',')+'].map(x => x * '+k+') 的结果是？','['+out.join(', ')+']',['['+arr.join(', ')+']','['+out.map(function(x){return x+1}).join(', ')+']','['+out.concat([out[0]]).join(', ')+']','['+arr.map(function(x){return x+k}).join(', ')+']'],'map 逐个元素乘以 '+k+'：'+arr.join("、")+' 分别变成 '+out.join("、"));}
+ ],
+ 3:[],
+ 4:[]
+},
+sql:{
+ 0:[],
+ 1:[
+  function(){var n=riN(5,100);return mkQA('SQL 中 SELECT * FROM t LIMIT '+n+' 最多返回多少行？',n,neighbors(n),'LIMIT '+n+' 限制结果集最多 '+n+' 行');}
+ ],
+ 2:[],
+ 3:[],
+ 4:[]
+},
+web:{
+ 0:[],
+ 1:[],
+ 2:[
+  function(){var w=riN(50,300),p=riN(5,20);return mkQA('CSS 中 width:'+w+'px; padding:'+p+'px;（box-sizing 为默认 content-box）该元素实际占宽多少 px？',w+p*2,neighbors(w+p*2),'content-box 下 width 只是内容宽，左右各加 '+p+' 的内边距：'+w+' + '+p+'×2 = '+(w+p*2));},
+  function(){var w=riN(50,300),p=riN(5,20);return mkQA('CSS 中 width:'+w+'px; padding:'+p+'px; 且 box-sizing:border-box，内容区宽度是多少 px？',w-p*2,neighbors(w-p*2),'border-box 下 width 含内边距，内容宽 = '+w+' − '+p+'×2 = '+(w-p*2));}
+ ],
+ 3:[],
+ 4:[]
+}
+};
+/* ---------- 知识点池生成器 ---------- */
+function kbGen(list){
+  var g=function(){
+    var it=list[ri(list.length)];
+    return mkQA(it[0],it[1],String(it[2]||'').split('|'));
+  };
+  g.kb=list.length;
+  return g;
+}
+function tagGen(g,L){
+  var w=function(){
+    var q=g();
+    if(q&&!q.tag)q.tag=L;
+    return q;
+  };
+  w.kb=g.kb;w.lang=L;
+  return w;
+}
+
+var CODE_LANG_KEYS=['c','python','java','js','sql','web','all'];
+var CODE_GEN={};
+(function(){
+  CODE_LANG_KEYS.forEach(function(L){
+    CODE_GEN[L]={};
+    for(var d=0;d<5;d++){
+      var arr=[],ks=(CODE_KB[L]||{})[String(d)]||[];
+      if(ks.length)arr.push(tagGen(kbGen(ks),L));
+      var xs=(CODE_GENX[L]||{})[String(d)]||[];
+      for(var i=0;i<xs.length;i++)arr.push(tagGen(xs[i],L));
+      CODE_GEN[L][String(d)]=arr;
+    }
+  });
+})();
+/* 题量估算口径：知识点池按实际条数计，参数化生成器按 600 种参数组合计 */
+function codeEstimate(){
+  var n=0,k,L;
+  for(k in POOLS.code)if(POOLS.code.hasOwnProperty(k))n+=POOLS.code[k].length;
+  for(L in CODE_GEN)if(CODE_GEN.hasOwnProperty(L)){
+    for(k in CODE_GEN[L])if(CODE_GEN[L].hasOwnProperty(k)){
+      CODE_GEN[L][k].forEach(function(g){n+=(g&&g.kb)?g.kb:600;});
+    }
+  }
+  return n;
+}
+/* 语言过滤：读过实力检测档案就只出勾选语言 + 通用题 */
+function codeAllowedLangs(){
+  try{
+    var p=JSON.parse(S.getItem('bt_qa_profile_code')||'null');
+    if(p&&p.done&&p.langs&&p.langs.length)return p.langs.concat(['all']);
+  }catch(e){}
+  return null;
+}
+/* 出题：人工题限量（保证不把生成器饿死）+ 近期去重（跨局不撞题）+ 生成器补齐 */
+function codeLoadRecent(k){
+  try{var a=JSON.parse(S.getItem(k)||'[]');return Array.isArray(a)?a:[];}catch(e){return [];}
+}
+function codeSaveRecent(k,a){
+  try{S.setItem(k,JSON.stringify(a.slice(0,80)));}catch(e){}
+}
+QA_TYPES.code.gen=function(n,diff){
+  n=Math.max(1,n|0);
+  var dd=(typeof diff==='number'&&diff>=0&&diff<5)?diff:0;
+  var pool=POOLS.code[String(dd)]||POOLS.code['0']||[];
+  var allowed=codeAllowedLangs();
+  var filtered=[];
+  pool.forEach(function(it){
+    if(allowed&&allowed.indexOf(it[2]||'all')<0)return;
+    filtered.push(it);
+  });
+  var rk='bt_qa_recent_code_'+dd;
+  var rec=codeLoadRecent(rk),recSet={};
+  rec.forEach(function(x){if(x)recSet[x]=1;});
+  var seen={};
+  if(n===1&&typeof qlist!=='undefined'&&qlist&&qlist.length){
+    qlist.forEach(function(x){if(x&&x.q)seen[x.q]=1;});
+  }
+  var langs=allowed||CODE_LANG_KEYS;
+  var gens=[];
+  langs.forEach(function(L){
+    var g=(CODE_GEN[L]||{})[String(dd)]||[];
+    g.forEach(function(x){gens.push(x);});
+  });
+  /* 人工题每局最多占一半，且保证连刷 5 局不重复（按人工题总数反推本局上限） */
+  var cap=Math.max(1,Math.min(Math.round(n*0.5),Math.floor(filtered.length/5)));
+  if(n>=4&&cap<2)cap=2;
+  var out=[];
+  var order=filtered.slice().sort(function(a,b){
+    var ra=recSet[a[0]]?1:0,rb=recSet[b[0]]?1:0;
+    if(ra!==rb)return ra-rb;
+    return Math.random()-0.5;
+  });
+  order.forEach(function(it){
+    if(out.length>=cap)return;
+    if(seen[it[0]])return;
+    var q=mkFromPool(it,filtered);
+    if(!q||seen[q.q])return;
+    q.tag=it[2]||'all';
+    seen[q.q]=1;out.push(q);
+  });
+  var guard=0,relaxed=false;
+  while(out.length<n&&gens.length&&guard++<900){
+    if(guard>380)relaxed=true;
+    var g=gens[riN(0,gens.length-1)],q=null;
+    try{q=g();}catch(e){continue;}
+    if(!q||!q.q||q.a==null)continue;
+    if(q.tag&&allowed&&allowed.indexOf(q.tag)<0)continue;
+    if(seen[q.q])continue;
+    if(!relaxed&&recSet[q.q])continue;
+    seen[q.q]=1;out.push(q);
+  }
+  /* 单语言档位题量不够时，用 all 的相邻档补齐（规格允许，避免无题可出） */
+  if(out.length<n){
+    var alt=[dd,dd-1,dd+1,dd-2,dd+2];
+    for(var ai=0;ai<alt.length&&out.length<n;ai++){
+      var ad=alt[ai];
+      if(ad<0||ad>4)continue;
+      var ag=(CODE_GEN.all||{})[String(ad)]||[];
+      if(!ag.length)continue;
+      guard=0;
+      while(out.length<n&&guard++<300){
+        var aq=null;
+        try{aq=ag[riN(0,ag.length-1)]();}catch(e){continue;}
+        if(!aq||!aq.q||aq.a==null||seen[aq.q])continue;
+        aq.tag='all';seen[aq.q]=1;out.push(aq);
+      }
+    }
+  }
+  out=out.slice(0,n);
+  codeSaveRecent(rk,out.map(function(x){return x.q;}).concat(rec));
+  return out;
+};
+/* ===== 程序编写板块：读代码 / 补全代码（答案当场算出，绝不写死） ===== */
+function mkCodeQ(prompt,code,ans,alts,exp){
+  /* 选项去重后再按数值补足到 4 个，避免参数巧合时只剩 3 个选项 */
+  var a=String(ans),seen={},list=[];seen[a]=1;
+  (alts||[]).forEach(function(x){x=String(x);if(seen[x]||list.length>=3)return;seen[x]=1;list.push(x);});
+  var n=Number(a);
+  if(list.length<3&&isFinite(n)&&String(n)===a){
+    var k=1;
+    while(list.length<3&&k<60){
+      var d=Math.ceil(k/2)*(k%2?1:-1),w=String(n+d);
+      if(!seen[w]){seen[w]=1;list.push(w);}
+      k++;
+    }
+  }
+  var q=mkQA(prompt,a,list,exp);
+  q.code=code;q.kind='out';
+  return q;
+}
+function mkCodeFill(prompt,code,ans,cands,exp){
+  var q=mkQA(prompt,ans,cands||[],exp);
+  q.code=code;q.opts=null;q.fillin=1;q.kind='fill';
+  return q;
+}
+var CODE_GEN_CODE={};
+(function(){
+  /* ---- L0 入门：变量 / 运算 / 输出 ---- */
+  CODE_GEN_CODE['0']=[
+    tagGen(function(){
+      var a=riN(2,9),b=riN(2,9);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int x = '+a+';\nint y = '+b+';\nprintf("%d", x + y);',
+        String(a+b),[String(a*b),String(a-b),String(a+b+1)],
+        'x='+a+'、y='+b+'，printf 里算 x + y，输出 '+(a+b));
+    },'c'),
+    tagGen(function(){
+      var a=riN(2,6),b=riN(2,6);
+      return mkCodeQ('这段 Python 代码输出什么？',
+        'a = '+a+'\nb = '+b+'\nprint(a * b)',
+        String(a*b),[String(a+b),String(a*10+b),String(a*b+1)],
+        'Python 里数字的 * 是乘法，'+a+' × '+b+' = '+(a*b));
+    },'python'),
+    tagGen(function(){
+      var n=riN(2,4);
+      return mkCodeQ('这段 JavaScript 代码输出什么？',
+        'var s = "";\nfor (var i = 0; i < '+n+'; i++) {\n  s += i;\n}\nconsole.log(s);',
+        '012345'.slice(0,n),['123456'.slice(0,n),String(n),'9'.slice(0,n)],
+        'i 取 0 到 '+(n-1)+'，字符串依次拼接，得 "'+'012345'.slice(0,n)+'"');
+    },'js'),
+    tagGen(function(){
+      var s=['abc','quiz','code'][riN(0,2)],i=riN(0,2);
+      return mkCodeQ('这段 Python 代码输出什么？',
+        's = "'+s+'"\nprint(s['+i+'])',
+        s.charAt(i),[s.charAt((i+1)%3),s.charAt((i+2)%3),String(s.length)],
+        '字符串下标从 0 开始，s['+i+'] 是第 '+(i+1)+' 个字符 "'+s.charAt(i)+'"');
+    },'python'),
+    tagGen(function(){
+      return mkCodeFill('补全这段 Python 代码，让它输出 6：',
+        'nums = [1, 2, 3]\nprint(____(nums))',
+        'sum',['len','max','sorted'],
+        '1+2+3=6，要求的是求和，用内置函数 sum()');
+    },'python')
+  ];
+  /* ---- L1 基础：控制流 / 常用 API ---- */
+  CODE_GEN_CODE['1']=[
+    tagGen(function(){
+      var n=riN(3,9);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int s = 0;\nfor (int i = 1; i <= '+n+'; i++) {\n    s += i;\n}\nprintf("%d", s);',
+        String(n*(n+1)/2),[String(n*n),String(n*(n-1)/2),String(n*(n+1))],
+        '累加 1 到 '+n+'，用等差数列求和 '+(n*(n+1))+'÷2 = '+(n*(n+1)/2));
+    },'c'),
+    tagGen(function(){
+      var n=riN(2,4),k=riN(2,3);
+      return mkCodeQ('这段 Python 代码输出什么？',
+        'a = [1, 2, 3, 4, 5][:'+n+']\nprint(len(a) * '+k+')',
+        String(n*k),[String(n+k),String(n),String(n*k+1)],
+        '切片 [:'+n+'] 取前 '+n+' 个元素，len 得 '+n+'，再乘 '+k+' = '+(n*k));
+    },'python'),
+    tagGen(function(){
+      var s=['quiz','code','java','html'][riN(0,3)];
+      return mkCodeQ('这段 Java 代码输出什么？',
+        'String s = "'+s+'";\nSystem.out.println(s.length());',
+        String(s.length),[String(s.length-1),String(s.length+1),String(s.length*2)],
+        'Java 的 length() 返回字符个数，"'+s+'" 有 '+s.length+' 个字符');
+    },'java'),
+    tagGen(function(){
+      var n=riN(4,7);
+      return mkCodeQ('这段 JavaScript 代码输出什么？',
+        'var a = [];\nfor (var i = 1; i <= '+n+'; i++) {\n  if (i % 2 === 0) a.push(i);\n}\nconsole.log(a.length);',
+        String(Math.floor(n/2)),[String(Math.ceil(n/2)),String(n),String(n-1)],
+        '1 到 '+n+' 里偶数有 '+(Math.floor(n/2))+' 个，只有偶数被 push 进数组');
+    },'js'),
+    tagGen(function(){
+      return mkCodeFill('补全这段 C 代码，让它输出 hello 的长度 5：',
+        'char s[] = "hello";\nprintf("%d", (int)____(s));',
+        'strlen',['sizeof','len','length'],
+        '求字符串长度用 strlen(s)；sizeof(s) 会把末尾的 \\0 也算进去，得 6');
+    },'c')
+  ];
+  /* ---- L2 进阶：指针与内存 / 引用 ---- */
+  CODE_GEN_CODE['2']=[
+    tagGen(function(){
+      var k=riN(1,2);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int a[3] = {1, 2, 3};\nint *p = a;\nprintf("%d", *(p + '+k+'));',
+        String(k+1),[String(k),String(3),String(k+2)],
+        'p 指向 a[0]，p + '+k+' 指向 a['+k+']（下标从 0 算），解引用得 '+(k+1));
+    },'c'),
+    tagGen(function(){
+      var x=riN(3,9),v=riN(10,19);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int x = '+x+';\nint *p = &x;\n*p = '+v+';\nprintf("%d", x);',
+        String(v),[String(x),String(x+v),String(v-x)],
+        'p 存的是 x 的地址，*p = '+v+' 就是直接改 x 本身，所以输出 '+v);
+    },'c'),
+    tagGen(function(){
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int a[4] = {1, 2, 3, 4};\nint *p = a + 1;\nprintf("%d", p[1]);',
+        '3',['2','4','1'],
+        'p 指向 a[1]，p[1] 相当于 a[2]，值是 3');
+    },'c'),
+    tagGen(function(){
+      return mkCodeQ('这段 Python 代码输出什么？',
+        'def f(t):\n    t.append(9)\n\nx = [1]\nf(x)\nprint(len(x))',
+        '2',['1','9','0'],
+        '列表是可变对象、按引用传入，append 改的是原列表，长度从 1 变 2');
+    },'python'),
+    tagGen(function(){
+      return mkCodeFill('补全最后一行，让 p 指向 x（输出 5）：',
+        'int x = 5;\nint *p = ____;\nprintf("%d", *p);',
+        '&x',['x','*x','&&x'],
+        '指针要存变量的地址，取地址用 &，所以是 &x');
+    },'c')
+  ];
+  /* ---- L3 熟练：数据结构与算法 ---- */
+  CODE_GEN_CODE['3']=[
+    tagGen(function(){
+      var n=riN(4,6);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int f(int n) {\n    return n <= 1 ? 1 : n * f(n - 1);\n}\nprintf("%d", f('+n+'));',
+        String(fact(n)),[String(fact(n)+n),String(n*n),String(fact(n-1))],
+        '这是阶乘递归：'+n+'! = '+factSeq(n)+' = '+fact(n));
+    },'c'),
+    tagGen(function(){
+      var n=riN(6,11);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int f(int n) {\n    return n < 2 ? n : f(n - 1) + f(n - 2);\n}\nprintf("%d", f('+n+'));',
+        String(fibOf(n)),[String(fibOf(n)+1),String(fibOf(n-1)),String(n)],
+        '斐波那契递推 F(n)=F(n−1)+F(n−2)，逐项算到 F('+n+') = '+fibOf(n));
+    },'c'),
+    tagGen(function(){
+      return mkCodeQ('这段 Java 代码输出什么？',
+        'int[] a = {5, 2, 9};\nArrays.sort(a);\nSystem.out.println(a[0]);',
+        '2',['5','9','0'],
+        'Arrays.sort 升序排成 {2, 5, 9}，a[0] 是最小的 2');
+    },'java'),
+    tagGen(function(){
+      return mkCodeQ('这段 JavaScript 代码输出什么？',
+        'var a = [3, 1, 2];\na.sort();\nconsole.log(a.join(""));',
+        '123',['321','312','132'],
+        '默认 sort 按字符串升序排列，得到 [1, 2, 3]，拼接成 "123"');
+    },'js'),
+    tagGen(function(){
+      var n=riN(3,6);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int s = 0;\nfor (int i = 0; i < '+n+'; i++)\n    for (int j = 0; j < '+n+'; j++)\n        s++;\nprintf("%d", s);',
+        String(n*n),[String(n*2),String(n),String(n*n-1)],
+        '双层循环各跑 '+n+' 次，内层总共执行 '+n+' × '+n+' = '+(n*n)+' 次');
+    },'c')
+  ];
+  /* ---- L4 精通：陷阱 / 未定义行为规避 ---- */
+  CODE_GEN_CODE['4']=[
+    tagGen(function(){
+      var a=riN(1,4),b=riN(1,4);
+      return mkCodeQ('这段 C 代码输出什么？',
+        '#define SQ(x) x*x\n\nprintf("%d", SQ('+a+' + '+b+'));',
+        String(a+b*b),[String((a+b)*(a+b)),String(a*a+b*b),String(a+b*2)],
+        '宏只是文本替换，SQ('+a+' + '+b+') 展开成 '+a+' + '+b+' * '+b+'，先乘后加得 '+(a+b*b));
+    },'c'),
+    tagGen(function(){
+      var k=riN(1,9);
+      return mkCodeQ('这段 C 代码输出什么（8 位 char）？',
+        'char c = -'+k+';\nprintf("%d", (unsigned char)c);',
+        String(256-k),[String(-k),String(k),String(256+k)],
+        '负数按补码存，转成无符号就是 256 − '+k+' = '+(256-k));
+    },'c'),
+    tagGen(function(){
+      var sv=riN(0,2),ops=['i++','++i','i--','--i'],op=ops[riN(0,3)];
+      var pre=/^[+-]{2}/.test(op),after=(op==='i++'||op==='++i');
+      var a=pre?(after?sv+1:sv-1):sv;
+      var iv=after?sv+1:sv-1;
+      var why=pre?('前置 '+op+' 先自增/自减再赋值，a 拿到新值 '+a):('后置 '+op+' 先取值 '+sv+' 赋给 a，i 之后才变 '+iv);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int i = '+sv+';\nint a = '+op+';\nprintf("%d %d", a, i);',
+        a+' '+iv,[(a+1)+' '+iv,a+' '+(iv+1),(a+1)+' '+(iv+1)],why);
+    },'c'),
+    tagGen(function(){
+      var n=riN(3,9);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int a['+n+'];\nprintf("%d", (int)(sizeof(a) / sizeof(a[0])));',
+        String(n),[String(n-1),String(n*4),'1'],
+        'sizeof(a) 是整个数组的字节数，除以单个元素的字节数就是元素个数 '+n);
+    },'c'),
+    tagGen(function(){
+      var t=riN(0,3),m=riN(3,9),body='';
+      for(var i=0;i<t;i++)body+='f('+(i+1)+')\n';
+      return mkCodeQ('这段 Python 代码输出什么？',
+        'def f(x, acc=[]):\n    acc.append(x)\n    return len(acc)\n\n'+body+'print(f('+m+'))',
+        String(t+1),[String(t),String(t+2),'1'],
+        '默认参数 acc=[] 只在定义时创建一次，前面调用已累积 '+t+' 个，再 append 变 '+(t+1)+' 个');
+    },'python'),
+    tagGen(function(){
+      var X=[5,6,7,9,10,11,12,13,14,17,19,21,23,25,27,29],x=X[riN(0,15)];
+      var c=0,v=x;while(v){c+=v&1;v>>=1;}
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int n = '+x+';\nint c = 0;\nwhile (n) {\n    c += n & 1;\n    n >>= 1;\n}\nprintf("%d", c);',
+        String(c),[String(c+1),String(c-1),String(x%8)],
+        '这段在数二进制里 1 的个数：'+x+' = '+binOf(x)+'₂，共有 '+c+' 个 1');
+    },'c'),
+    tagGen(function(){
+      var a=riN(215,250),b=riN(10,45),r=(a+b)%256;
+      return mkCodeQ('这段 C 代码输出什么？',
+        'unsigned char c = '+a+';\nc += '+b+';\nprintf("%d", c);',
+        String(r),[String(a+b),String(255-r),String(256-r)],
+        'unsigned char 只存 8 位、上限 255，'+(a+b)+' 溢出后回绕：'+(a+b)+' − 256 = '+r);
+    },'c'),
+    tagGen(function(){
+      var k=riN(2,6);
+      return mkCodeQ('这段 C 代码输出什么？',
+        'int a[8] = {0};\nint *p = &a['+k+'];\nprintf("%d", (int)(p - a));',
+        String(k),[String(k+1),String(k-1),String(k*4)],
+        '指针相减得到相隔的元素个数，p 指向 a['+k+']，与 a 相差 '+k);
+    },'c')
+  ];
+})();
+/* 程序编写板块组题：按已掌握语言过滤，档位不够时相邻档补齐，绝不空题 */
+QA_TYPES.code.genSection=function(n,diff){
+  n=Math.max(1,n|0);
+  var dd=(typeof diff==='number'&&diff>=0&&diff<5)?diff:0;
+  var allowed=codeAllowedLangs();
+  function collect(d){
+    var arr=(CODE_GEN_CODE[String(d)]||[]).slice();
+    if(!allowed)return arr;
+    return arr.filter(function(g){return allowed.indexOf(g.lang)>=0;});
+  }
+  var pool=collect(dd);
+  if(pool.length<3){
+    var alt=[dd-1,dd+1,dd-2,dd+2];
+    for(var i=0;i<alt.length;i++){
+      if(alt[i]<0||alt[i]>4)continue;
+      pool=pool.concat(collect(alt[i]));
+      if(pool.length>=6)break;
+    }
+  }
+  var out=[],seen={},guard=0;
+  /* 去重键必须带上代码块：读代码题的题干是同一句，靠 code 区分 */
+  function qk(q){return q.q+'\u0001'+(q.code||'');}
+  while(out.length<n&&pool.length&&guard++<1200){
+    var g=pool[riN(0,pool.length-1)],q=null;
+    try{q=g();}catch(e){continue;}
+    if(!q||!q.q||q.a==null)continue;
+    if(seen[qk(q)])continue;
+    q.tag=q.tag||g.lang;
+    seen[qk(q)]=1;out.push(q);
+  }
+  /* 兜底：用常规编程题（带选项）补齐，保证题量 */
+  if(out.length<n){
+    var more=QA_TYPES.code.gen(n-out.length,dd);
+    more.forEach(function(q){
+      if(out.length>=n||!q||seen[qk(q)])return;
+      seen[qk(q)]=1;out.push(q);
+    });
+  }
+  return out.slice(0,n);
+};
+/* ===== 手写代码题（AI 评判用，题面与样例都在本地生成） ===== */
+var CODE_TASKS=[
+  {r:0,t:'写一个函数 sum(a, b)，返回两个数之和。',ex:'sum(2, 3) → 5',tip:'直接返回 a + b'},
+  {r:0,t:'写一个函数 maxOf(a, b)，返回较大的那个数。',ex:'maxOf(4, 9) → 9',tip:'比较两个数'},
+  {r:0,t:'写一个函数 minOf(a, b)，返回较小的那个数。',ex:'minOf(4, 9) → 4',tip:'比较两个数、保留较小的那个'},
+  {r:0,t:'写一个函数 absVal(n)，返回 n 的绝对值。',ex:'absVal(-7) → 7',tip:'负数取相反数、非负原样返回'},
+  {r:0,t:'写一个函数 isPositive(n)，n 为正数返回 true，否则返回 false。',ex:'isPositive(-3) → false',tip:'与 0 比较'},
+  {r:1,t:'写一个函数 isEven(n)，n 是偶数返回 true，否则返回 false。',ex:'isEven(7) → false',tip:'用取余判断'},
+  {r:1,t:'写一个函数 reverseStr(s)，返回反转后的字符串。',ex:'reverseStr("abc") → "cba"',tip:'循环或内置反转'},
+  {r:1,t:'写一个函数 repeatStr(s, n)，返回把 s 重复 n 次的字符串。',ex:'repeatStr("ab", 3) → "ababab"',tip:'循环拼接或字符串乘法'},
+  {r:1,t:'写一个函数 countVowels(s)，统计元音字母 a/e/i/o/u 的个数。',ex:'countVowels("hello") → 2',tip:'遍历每个字符逐个判断'},
+  {r:1,t:'写一个函数 factorial(n)，返回 n 的阶乘（0 的阶乘是 1）。',ex:'factorial(5) → 120',tip:'递推 n × (n−1)!，边界 0! = 1'},
+  {r:2,t:'写一个函数 countChar(s, c)，统计字符 c 在 s 中出现的次数。',ex:'countChar("banana", "a") → 3',tip:'遍历计数'},
+  {r:2,t:'写一个函数 fib(n)，返回斐波那契数列第 n 项（1, 1, 2, 3, 5 …）。',ex:'fib(6) → 8',tip:'递推或递归'},
+  {r:2,t:'写一个函数 isPrime(n)，n 是素数返回 true，否则返回 false。',ex:'isPrime(7) → true',tip:'从 2 试除到 √n，小于 2 直接 false'},
+  {r:2,t:'写一个函数 reverseArr(a)，返回反转后的数组。',ex:'reverseArr([1,2,3]) → [3,2,1]',tip:'首尾交换或倒序复制'},
+  {r:2,t:'写一个函数 gcd(a, b)，返回 a 与 b 的最大公约数。',ex:'gcd(12, 18) → 6',tip:'辗转相除法：gcd(a,b)=gcd(b,a%b)'},
+  {r:3,t:'写一个函数 twoSum(nums, target)，返回和为 target 的两个元素下标（数组返回）。',ex:'twoSum([2, 7, 11, 15], 9) → [0, 1]',tip:'哈希表可做到 O(n)'},
+  {r:3,t:'写一个函数 isPalindrome(s)，忽略大小写与非字母数字字符，判断是否回文。',ex:'isPalindrome("A man, a plan") → false',tip:'双指针或反转后比较'},
+  {r:3,t:'写一个函数 firstUnique(s)，返回第一个只出现一次的字符，没有则返回 null。',ex:'firstUnique("aabcc") → "b"',tip:'先计数，再按原顺序找第一个计数为 1 的'},
+  {r:3,t:'写一个函数 mySqrt(n)，返回 n 的整数平方根（向下取整）。',ex:'mySqrt(8) → 2',tip:'二分或从 0 递增到 i*i>n'},
+  {r:3,t:'写一个函数 longestWord(s)，返回句子中最长的单词（长度相同取靠前的）。',ex:'longestWord("I love coding") → "coding"',tip:'按空格拆分后逐个比长度'},
+  {r:4,t:'写一个函数 flatten(arr)，把任意层嵌套数组展平成一维数组。',ex:'flatten([1, [2, [3]]]) → [1, 2, 3]',tip:'递归处理嵌套'},
+  {r:4,t:'写一个函数 maxSubArray(nums)，返回连续子数组的最大和。',ex:'maxSubArray([-2, 1, -3, 4, -1, 2, 1]) → 6',tip:'Kadane 算法：当前和转负就重新起头'},
+  {r:4,t:'写一个函数 mergeSorted(a, b)，合并两个已升序排列的数组，结果仍升序。',ex:'mergeSorted([1,3,5],[2,4]) → [1,2,3,4,5]',tip:'双指针归并，比到一方走完再补齐'},
+  {r:4,t:'写一个函数 evalRPN(tokens)，计算逆波兰表达式（数组里是数字字符串与 + - * / 运算符）。',ex:'evalRPN(["2","1","+","3","*"]) → 9',tip:'栈：遇数入栈、遇运算符弹出两个数'},
+  {r:4,t:'写一个函数 hasDupe(a)，数组里有重复元素返回 true，否则返回 false。',ex:'hasDupe([1,2,1]) → true',tip:'哈希集合或双重循环'}
+];
+function genHandTask(rank){
+  var r=(typeof rank==='number'&&rank>=0)?rank:0;
+  var near=CODE_TASKS.filter(function(x){return x.r===r;});
+  if(!near.length)near=CODE_TASKS.filter(function(x){return Math.abs(x.r-r)<=1;});
+  if(!near.length)near=CODE_TASKS;
+  var t=near[ri(near.length)];
+  /* 解析 = 该题的「要点 + 样例」，本地拼、不调 AI：判错时至少能知道该往哪儿想。
+     有 AI 的手写题还能再点「AI 解析」拿更细的讲法，没 AI 也不至于一片空白。 */
+  return {q:t.t,a:'（AI 评判）',opts:null,hand:true,task:t,tag:'all',
+          exp:'要点：'+(t.tip||'')+(t.ex?('　样例：'+t.ex):'')};
+}
+/*=== CODE_ENGINE_END ===*/
+function codeQuestionnaire(cb){
+  var ov=overlayPanel('💻 编程 · 知识面检测');
+  ov.p.appendChild(ht('div','hint','告诉我们你学过哪些语言、大概什么水平，后面只出你勾选语言相关的题（语言无关的通用题一直都在）。可跳过。'));
+  ov.p.appendChild(ht('div','section-title','① 你学过哪些语言（可多选）'));
+  var sel=h('div','tagsel');var chosen={};
+  CODE_LANGS.filter(function(l){return l.k!=='all';}).forEach(function(l){
+    var b=ht('button','tagbtn',l.n);b.onclick=function(){if(chosen[l.k]){delete chosen[l.k];b.classList.remove('sel');}else{chosen[l.k]=1;b.classList.add('sel');}};sel.appendChild(b);});
+  ov.p.appendChild(sel);
+  ov.p.appendChild(ht('div','section-title','② 你的水平（单选）'));
+  var lvRow=h('div','tagsel');var level=0;
+  ['🐣 入门','🚀 基础','🔧 进阶','🧠 熟练','👑 精通'].forEach(function(n,i){
+    var b=ht('button','tagbtn'+(i===0?' sel':''),n);
+    b.onclick=function(){level=i;[].slice.call(lvRow.children).forEach(function(x){try{x.classList.remove('sel');}catch(e){}});b.classList.add('sel');};
+    lvRow.appendChild(b);
+  });
+  ov.p.appendChild(lvRow);
+  var em=ht('div','hint','');ov.p.appendChild(em);
+  var skip=h('button','btn ghost','⏭ 跳过（出全部题）');skip.style.cssText='width:100%;margin-top:6px';
+  skip.onclick=function(){closeOverlay(ov);try{S.setItem(CODE_PROFILE_KEY,JSON.stringify({done:true,skipped:true,langs:[],level:0,rank:0}));}catch(e){}cb();};
+  var go=h('button','btn gold','下一步：试水测试');go.style.cssText='width:100%;margin-top:8px';
+  go.onclick=function(){
+    var langs=Object.keys(chosen);
+    if(!langs.length){em.textContent='⚠️ 没勾选语言 → 将出全部题（含 Java/Python 等）';return;}
+    try{S.setItem(CODE_PROFILE_KEY,JSON.stringify({done:true,langs:langs,level:level,rank:level}));}catch(e){}
+    closeOverlay(ov);codeTrial(langs,cb);
+  };
+  ov.p.appendChild(go);ov.p.appendChild(skip);
+}
+function codeTrial(langs,cb){
+  var prof=getCodeProfile()||{done:true,langs:langs,rank:0};
+  var allowed=langs.concat(['all']);
+  var pool=POOLS.code['0']||[];var tags=CODE_TAGS['0']||[];
+  var filtered=[];pool.forEach(function(it,i){if(allowed.indexOf(tags[i])>=0)filtered.push(it);});
+  if(filtered.length<5)filtered=pool;
+  var qs=shuffle(filtered.slice()).slice(0,Math.min(5,filtered.length)).map(function(p){return {q:p[0],a:String(p[1]),opts:null};});
+  var idx=0,right=0;
+  function ask(){
+    if(idx>=qs.length){var r=0;if(right>=5)r=4;else if(right>=4)r=3;else if(right>=3)r=2;else if(right>=2)r=1;else r=0;prof.rank=r;try{S.setItem(CODE_PROFILE_KEY,JSON.stringify(prof));setRank('code',r);}catch(e){}var ov2=overlayPanel('🎯 检测完成');
+      ov2.p.appendChild(ht('div','okmsg','试水 '+qs.length+' 题答对 '+right+' 题 → 初始档位：'+levelName(r)));
+      ov2.p.appendChild(ht('div','hint','（可在 ⚙️ 设置里「重新检测」）'));
+      var okb=h('button','btn gold','开始答题');okb.onclick=function(){closeOverlay(ov2);cb();};ov2.p.appendChild(okb);return;}
+    var Q=qs[idx];var ov3=overlayPanel('🤔 试水 '+(idx+1)+'/'+qs.length);
+    ov3.p.appendChild(ht('div','qbox',esc(Q.q)));
+    var ti=h('input');ti.placeholder='输入答案';ti.style.margin='8px 0';ov3.p.appendChild(ti);
+    var sb=h('button','btn gold','提交');sb.onclick=function(){if(String(ti.value).trim()===Q.a)right++;idx++;closeOverlay(ov3);ask();};
+    ov3.p.appendChild(sb);
+  }
+  ask();
+}
+
+/* ---------- 任务3：新建分类（AI / 免费 / 手动） ---------- */
+// 已配置免费通道时，入口按钮直接说明「无需 Key」，别再把用户吓去设置里填 Key
+function aiEntryLabel(){
+  var cfg=loadAICfg();
+  return (cfg&&cfg.url&&isFreeAI(cfg.url))?'🌐 AI 生成题库（免费通道·无需 Key）':'🌐 AI 生成题库（需配置 API）';
+}
+function openNewCategory(){
+  var ov=overlayPanel('➕ 新建题库');
+  ov.p.appendChild(ht('div','hint','输入任意分类名，自动生成题目，不再只靠手动录入。'));
+  var nm=h('input');nm.placeholder='分类名，如：三角洲 / 化学 / 三国';nm.style.margin='8px 0';ov.p.appendChild(nm);
+  var bAI=h('button','btn gold',aiEntryLabel());
+  var bFree=h('button','btn','🆓 免费搜索生成（无需 Key）');
+  var bManual=h('button','btn ghost','📝 手动录入');
+  var bClose=h('button','btn ghost','取消');
+  [bAI,bFree,bManual,bClose].forEach(function(b){b.style.width='100%';b.style.marginTop='8px';b.style.display='block';});
+  ov.p.appendChild(bAI);ov.p.appendChild(bFree);ov.p.appendChild(bManual);ov.p.appendChild(bClose);
+  bClose.onclick=function(){closeOverlay(ov);};
+  bManual.onclick=function(){var v=nm.value.trim();closeOverlay(ov);openEditor(v);};
+  bFree.onclick=function(){var v=nm.value.trim();if(!v){alert('请输入分类名');return;}closeOverlay(ov);freeBuild(v);};
+  bAI.onclick=function(){var v=nm.value.trim();if(!v){alert('请输入分类名');return;}var cfg=loadAICfg();if(!cfg||!cfg.url||(!cfg.key&&!isFreeAI(cfg.url))){alert('尚未配置 API，请先到 ⚙️ 设置 里填写 API 地址与 Key（免费 AI 通道无需 Key）');openSettings();return;}closeOverlay(ov);aiBuild(v);};
+}
+function offlineBlock(card,sp,what){
+  sp.textContent='📴 当前没有网络：'+what+'需要联网。已缓存的题库和刷题、错题本、成绩统计都不受影响，联网后再来即可（或改用「📝 手动录入」）。';
+  var back=h('button','btn ghost','← 返回书架');back.onclick=function(){renderShelf();};card.appendChild(back);
+  return true;
+}
+function freeBuild(name){
+  showView('stage');clearNode(stageEl);
+  var card=h('div','qcard');
+  card.appendChild(ht('div','hud','🆓 免费搜索：'+name));
+  var sp=ht('div','hint','正在抓取资料（百度百科优先，维基百科兜底）…');card.appendChild(sp);
+  stageEl.appendChild(card);
+  if(navigator.onLine===false){offlineBlock(card,sp,'「免费搜索建题库」');return;}
+  gatherMaterial(name,function(items){
+    if(!items||items.length<4){sp.textContent='⚠️ 该主题抓不到足够资料（网络受限或词条太少），请手动录入或配置 AI（⚙️ 设置）。';var back=h('button','btn ghost','← 返回');back.onclick=function(){renderShelf();};card.appendChild(back);return;}
+    finishFree(name,items,sp,card);
+  });
+}
+// 干扰项：优先挑和正确答案长度接近的标题，选项才有迷惑性
+function pickDistractors(ansTitle,titles,n){
+  var cand=titles.filter(function(t){return t!==ansTitle;});
+  var near=cand.filter(function(t){return Math.abs(t.length-ansTitle.length)<=4;});
+  var rest=cand.filter(function(t){return near.indexOf(t)<0;}).sort(function(a,b){
+    return Math.abs(a.length-ansTitle.length)-Math.abs(b.length-ansTitle.length);
+  });
+  var pool=(near.length>=n?near:near.concat(rest.slice(0,8))).slice(0,10);
+  return shuffle(pool).slice(0,n);
+}
+function finishFree(name,items,sp,card){
+  var usable=items.filter(function(x){return descOK(x.desc);});
+  if(usable.length<4){sp.textContent='⚠️ 资料不足（有效条目 '+usable.length+' 条），无法生成选择题，请手动录入或配置 AI。';var back=h('button','btn ghost','← 返回');back.onclick=function(){renderShelf();};card.appendChild(back);return;}
+  var qs=[],titles=usable.map(function(x){return x.title;});
+  usable.forEach(function(ans){
+    var others=pickDistractors(ans.title,titles,3);
+    if(others.length<3)return;
+    var opts=shuffle([ans.title].concat(others));
+    var d=ans.desc;
+    if(d.indexOf(ans.title)>=0){
+      var stem=d.replace(ans.title,'____');
+      if(stem.length>64)stem=stem.slice(0,64)+'…';
+      qs.push({q:'补全词条：'+stem,a:ans.title,opts:opts});
+    }else if(d.length<=90&&!/^(该|其|它|这|他|她|此)/.test(d)){
+      // 摘要是一句完整介绍就用「描述的是哪项」；开头是「该/其/它」的指代句信息不全，跳过
+      var cut=d.length>60?d.slice(0,60)+'…':d;
+      qs.push({q:'「'+cut+'」描述的是下列哪项？',a:ans.title,opts:opts});
+    }
+  });
+  qs=shuffle(qs).slice(0,20);
+  if(!qs.length){sp.textContent='⚠️ 素材太少，凑不出 4 个选项，请手动录入或配置 AI。';return;}
+  sp.textContent='已抓取 '+items.length+' 条素材，生成 '+qs.length+' 题'+(qs.length<8?'（该主题免费资料有限，建议配置 AI 生成更高质量的题）':'');
+  previewQuestions(name,qs,card);
+}
+/* ---------- AI 出题 prompt（aiBuild 与「边刷边补」共用同一套要求） ---------- */
+function makeQuizPrompt(name,count,items){
+  var material='';
+  if(items&&items.length){material='参考素材：\n'+items.slice(0,12).map(function(x){return '· '+x.title+'：'+(x.desc||'').slice(0,90);}).join('\n')+'\n';}
+  return '你是中文题库生成助手。请围绕主题「'+name+'」生成 '+count+' 道中文选择题（不少于 '+Math.max(8,count-3)+' 道）。\n'+
+    material+
+    '要求：\n'+
+    '0. 题干、4 个选项、答案必须全部使用简体中文；禁止英文题干与英文选项。仅允许代码、函数名、专有名词（如 Python、JSON、ASCII）保留英文；若主题本身是英文词（如 "Python"），题干必须用中文提问（如 "Python 中，哪个关键字用于定义函数？"）。\n'+
+    '1. 多义词消歧：若主题是多义词（如「三角洲」），默认指其中最知名的实体（如游戏《三角洲行动》），全部题目只围绕该实体，不要混入其它义项。\n'+
+    '2. 若主题是游戏 / 影视 / 动漫等作品，题目要考察「对该作品的理解与熟悉」：角色或干员及其技能与定位、地图与关卡、模式与玩法机制、武器与装备、背景设定与开发信息；不要出与作品无关的百科通识题。\n'+
+    '3. 每题恰好 4 个选项，必须同类别（都是干员名、都是地图名、都是武器名……），彼此相近、有迷惑性，正确项唯一；严禁混入不同类别的选项。\n'+
+    '4. 答案必须事实正确，拿不准的题宁可不出一律不要编造；同一个考点不要重复出两次。\n'+
+    '5. 禁止任何政治敏感、色情、暴力、违法内容。\n'+
+    '严格只返回 JSON 数组，不要解释文字、不要 Markdown 代码块，格式：[{"q":"问题","a":"正确答案","opts":["选项1","选项2","选项3","选项4"]}, ...]';
+}
+function aiBuild(name){
+  var cfg=loadAICfg();
+  showView('stage');clearNode(stageEl);
+  var card=h('div','qcard');card.appendChild(ht('div','hud','🌐 AI 生成：'+name));
+  var sp=ht('div','hint','正在抓取素材并调用 AI 生成题库…');card.appendChild(sp);
+  stageEl.appendChild(card);
+  if(navigator.onLine===false){offlineBlock(card,sp,'「AI 建题库」');return;}
+  gatherMaterial(name,function(items){
+    // 免费通道给 15 道（后端输出上限约 1500 token），付费通道翻倍
+    var prompt=makeQuizPrompt(name,isFreeAI(cfg.url)?15:30,items);
+    callAI(cfg,prompt,function(res){
+      if(!res||!res.length){sp.textContent='⚠️ AI 未返回有效题目（可能是网络/Key/跨域问题）。可改用「🆓 免费搜索」或手动录入。';var back=h('button','btn ghost','← 返回');back.onclick=function(){renderShelf();};card.appendChild(back);return;}
+      sp.textContent='AI 已生成 '+res.length+' 题';previewQuestions(name,res,card);
+    });
+  });
+}
+/* ---------- 边刷边补：自定义题库总量不足时静默补题 ---------- */
+var REFILL_MIN=10;        // 题库总量 ≤ 此值才补（说明已经刷得差不多了）
+var REFILL_TARGET=20;     // 补到多少题左右
+var refillBusy=false;
+function autoRefill(cn){
+  if(refillBusy)return;
+  var arr=custom[cn]||[];
+  if(arr.length>REFILL_MIN)return;
+  var cfg=loadAICfg();
+  if(!cfg||!cfg.url)return;                 // 没配 AI 就不打扰
+  if(!isFreeAI(cfg.url)&&!cfg.key)return;   // 付费通道没 Key 也不打扰
+  refillBusy=true;
+  var per=isFreeAI(cfg.url)?15:30;
+  var count=Math.max(per,Math.min(per,REFILL_TARGET-arr.length));
+  if(count<5){refillBusy=false;return;}
+  gatherMaterial(cn,function(items){
+    callAI(cfg,makeQuizPrompt(cn,count,items),function(res){
+      refillBusy=false;
+      if(!res||!res.length)return;          // 失败静默，下局再试
+      var exist={};arr.forEach(function(x){exist[x.q]=1;});
+      var fresh=res.filter(function(x){return x&&x.q&&!exist[x.q];});
+      if(!fresh.length)return;
+      custom[cn]=arr.concat(fresh);saveCustom(custom);
+      // 书架正开着就就地刷新题量；答题/结算中绝不能调（renderShelf 里会 showView('shelf') 把用户弹回书架）
+      if(shelfEl&&!shelfEl.hidden)renderShelf();
+      toast('✨ 已自动补充 '+fresh.length+' 题（当前共 '+custom[cn].length+' 题）');
+    });
+  });
+}
+/* ---------- 内置分类扩充：题量不够时静默让 AI 补一批 ---------- */
+var BUILTIN_EXTRA_TARGET=30;
+var builtinRefillBusy=false;
+function autoRefillBuiltin(bk,diff){
+  if(!bk||bk==='code'||bk==='online')return;
+  if(builtinRefillBusy||refillBusy)return;
+  var T=QA_TYPES[bk];if(!T)return;
+  var ds=qaDiffs(bk),cnt=(ds&&diff>=0&&ds[diff])?ds[diff].cnt:20;
+  var have=(POOLS[bk]||[]).length+extraPool(bk).length;
+  var target=Math.max(BUILTIN_EXTRA_TARGET,cnt);
+  if(have>=target)return;                       // 本轮题量够用，不打扰
+  var cfg=loadAICfg();
+  if(!cfg||!cfg.url)return;                     // 没配 AI 就不打扰
+  if(!isFreeAI(cfg.url)&&!cfg.key)return;       // 付费通道没 Key 也不打扰
+  if(navigator.onLine===false)return;
+  builtinRefillBusy=true;refillBusy=true;
+  var per=isFreeAI(cfg.url)?15:30;
+  var count=Math.max(6,Math.min(per,target-have));
+  callAI(cfg,makeQuizPrompt(T.name,count,[]),function(res){
+    builtinRefillBusy=false;refillBusy=false;
+    if(!res||!res.length)return;                // 失败静默，下次再试
+    var n=addExtra(bk,res.map(function(x){return {q:x.q,a:x.a,opts:(x.opts||[]).slice(0,4),d:diff};}));
+    if(!n)return;
+    toast('✨ 已为「'+T.name+'」补充 '+n+' 题');
+    if(shelfEl&&!shelfEl.hidden)renderShelf();
+  });
+}
+function previewQuestions(name,qs,card){
+  clearNode(card);card.appendChild(ht('div','hud','📝 预览：'+name+'（'+qs.length+' 题）'));
+  var keep=[];
+  qs.forEach(function(Q,i){keep[i]=true;var row=h('div','list-row');row.style.flexWrap='wrap';
+    var chk=h('input');chk.type='checkbox';chk.checked=true;chk.style.width='auto';chk.onchange=function(){keep[i]=chk.checked;};
+    var lab=ht('span',null,(i+1)+'. '+Q.q+' 〔答：'+Q.a+'〕');lab.style.flex='1';lab.style.minWidth='200px';
+    row.appendChild(chk);row.appendChild(lab);card.appendChild(row);});
+  var saveB=h('button','btn gold','💾 入库并开始');saveB.onclick=function(){
+    var final=[];qs.forEach(function(Q,i){if(keep[i])final.push(Q);});
+    if(!final.length){alert('请至少保留一题');return;}
+    custom[name]=final;saveCustom(custom);renderShelf();startType(null,name);};
+  card.appendChild(saveB);
+  var backB=h('button','btn ghost','← 返回书架');backB.onclick=function(){renderShelf();};card.appendChild(backB);
+}
+/* ---------- 免费素材收集：JSONP 通道（百度百科优先，国内可用） ---------- */
+function jsonp(url, cb, timeout){
+  var name='__jp'+Math.floor(Math.random()*1e9)+'_'+Math.floor(Math.random()*1e6);
+  var sc=document.createElement('script');
+  var done=false;
+  function cleanup(){
+    try{delete window[name];}catch(e){window[name]=null;}
+    if(sc.parentNode)sc.parentNode.removeChild(sc);
+  }
+  window[name]=function(d){if(done)return;done=true;cleanup();cb(d);};
+  sc.onerror=function(){if(done)return;done=true;cleanup();cb(null);};
+  sc.src=url.replace('__CB__',name);
+  sc.charset='utf-8';
+  document.head.appendChild(sc);
+  setTimeout(function(){if(done)return;done=true;cleanup();cb(null);},timeout||6000);
+}
+// 百度联想词：返回相关词条名（JSONP，无需 CORS）
+function baiduSuggest(term,cb){
+  jsonp('https://suggestion.baidu.com/su?wd='+encodeURIComponent(term)+'&cb=__CB__',function(d){
+    cb((d&&d.s&&d.s.length)?d.s:[]);
+  },5000);
+}
+// 百度百科词条卡片：返回 {title, desc}
+var SPAM_RE=/视频大全|高清在线看|价目表|官网|下载|安装教程|旗舰店|专卖店|批发|加盟|经销商|4S|报价|二手|保养|维修|有限公司|股份有限公司|怎么样|多少钱|皮卡|摩托|香烟/i;
+// 联想词里的「异类词缀」：明显不是主题实体（保留下载/软件这类搜索词会把题库带偏）
+var NOISE_RE=/下载|软件|app|安卓|android|ios|电影|电视剧|演员|歌手|明星|小说|漫画|破解|外挂|辅助|代练|直播|视频|淘宝|京东|拼多多|什么意思/i;
+var BAD_DESC_RE=/https?:\/\/|www\.|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|\b1[3-9]\d{9}\b|[\u0000-\u0008\u000b\u000c\u000e-\u001f]/;
+function stripTags(v){return String(v==null?'':v).replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ').replace(/\s+/g,' ').trim();}
+// 素材质量闸门：太短 / 带网址邮箱电话 / 汉字太少（乱码）都不出题
+function descOK(d){
+  d=String(d||'').replace(/\s+/g,' ').trim();
+  if(d.length<8)return false;
+  if(BAD_DESC_RE.test(d))return false;
+  if((d.match(/[\u4e00-\u9fa5]/g)||[]).length<4)return false;
+  return true;
+}
+// 主题相关性：标题或摘要里必须出现主题词，挡掉百度联想带来的同名/跨义项词条
+function isRelated(item,topic){
+  if(!topic)return true;
+  var t=String((item&&item.title)||''),d=String((item&&item.desc)||'');
+  return t.indexOf(topic)>=0||d.indexOf(topic)>=0;
+}
+function baikeCard(term,cb){
+  var u='https://baike.baidu.com/api/openapi/BaikeLemmaCardApi?scope=103&appid=379020&bk_length=600&format=json&bk_key='+encodeURIComponent(term)+'&callback=__CB__';
+  jsonp(u,function(d){
+    if(!d)return cb(null);
+    var desc=stripTags(d.desc||'');
+    try{(d.card||[]).forEach(function(c){if(c&&(c.key==='abstract'||c.name==='摘要')&&c.value&&String(c.value).length>desc.length)desc=stripTags(c.value);});}catch(e){}
+    if(desc.length<6&&d.abstract)desc=stripTags(d.abstract);          // 摘要兜底
+    if(desc.length<6){                                                  // 用信息框拼一句
+      var bits=[];
+      (d.card||[]).forEach(function(c){
+        if(bits.length>=3)return;
+        var v=stripTags((c.format&&c.format[0])||(c.value&&c.value[0])||'');
+        if(v&&v.length>=2&&v.length<=26&&v!==stripTags(d.title))bits.push(c.name+'：'+v);
+      });
+      if(bits.length)desc=bits.join('；');
+    }
+    var links=[];
+    try{(d.card||[]).forEach(function(c){(c.value||[]).forEach(function(v){
+      var str=String(v),m=str.match(/>([^<>]{2,12})<\/a>/g);
+      if(m)m.forEach(function(seg){var t=seg.slice(1).replace(/<\/a>$/,'');if(t&&links.indexOf(t)<0)links.push(t);});
+    });});}catch(e){}
+    cb({title:stripTags(d.title||term),desc:desc,links:links});
+  },6000);
+}
+// 统一素材收集：百度百科主词条 → 联想词 → 信息框关联词条 → 维基兜底
+function fetchCards(terms,cb,topic){
+  if(!terms.length){cb([],[]);return;}
+  var out=[],links=[],p=terms.length;
+  terms.forEach(function(t){
+    baikeCard(t,function(c){
+      if(c){
+        if(descOK(c.desc)&&isRelated(c,topic))out.push(c);   // 质量 + 主题相关性双闸
+        if(c.links&&c.links.length)links=links.concat(c.links);
+      }
+      p--;if(p<=0)cb(out,links);
+    });
+  });
+}
+function gatherMaterial(name,cb){
+  function wikiFallback(){
+    wikiSearch(name,function(titles){
+      if(!titles||!titles.length){cb([]);return;}
+      var pick=titles.slice(0,12),g=[],p=pick.length;
+      pick.forEach(function(t){wikiSummary(t,function(x){g.push({title:t,desc:x||''});p--;if(p<=0)cb(g);});});
+    });
+  }
+  baiduSuggest(name,function(terms){
+    var list=[],seen={};
+    seen[name]=1;list.push(name); // 主词条一定在
+    (terms||[]).forEach(function(t){
+      if(!t||seen[t])return;
+      if(SPAM_RE.test(t)||NOISE_RE.test(t))return;   // 广告词 + 异类词缀（下载/安卓/电影…）
+      if(t.length>12)return;
+      seen[t]=1;list.push(t);
+    });
+    list=list.slice(0,12);
+    fetchCards(list,function(items,links){
+      function finish(final){
+        if(final.length>=4)cb(final);else wikiFallback();
+      }
+      if(items.length>=10){finish(items);return;}
+      // 第二轮：用信息框里的关联词条补量（干员 / 地图 / 武器…都藏在 card 的链接里）
+      // 含主题词的优先；其余也作为种子去查，真伪交给卡片层的「摘要必须提到主题」把关，
+      // 这样既能收到《三角洲行动》的干员词条，也不会把「吴彦祖 / 虚幻引擎5」放进来。
+      var more=[],ms={};
+      function addSeed(t){
+        if(!t||seen[t]||ms[t])return;
+        if(SPAM_RE.test(t)||NOISE_RE.test(t))return;
+        if(t.length<2||t.length>12)return;
+        ms[t]=1;more.push(t);
+      }
+      (links||[]).forEach(function(t){if(t&&t.indexOf(name)>=0)addSeed(t);});
+      (links||[]).forEach(addSeed);
+      more=more.slice(0,12);
+      if(!more.length){finish(items);return;}
+      more.forEach(function(t){seen[t]=1;});
+      fetchCards(more,function(items2){finish(items.concat(items2));},name);
+    },name);
+  });
+}
+// 免费素材源：中文维基 opensearch → 中文维基全文搜索 → Wikidata 实体（依次降级）
+function wikiSearch(term,cb){
+  var q=encodeURIComponent(term);
+  var srcs=[
+    {u:'https://zh.wikipedia.org/w/api.php?action=opensearch&search='+q+'&limit=10&format=json&origin=*',
+      pick:function(d){return (d&&d[1])||[];}},
+    {u:'https://zh.wikipedia.org/w/api.php?action=query&list=search&srsearch='+q+'&srlimit=8&format=json&origin=*',
+      pick:function(d){var o=[];try{(d.query.search||[]).forEach(function(x){o.push(x.title);});}catch(e){}return o;}},
+    {u:'https://www.wikidata.org/w/api.php?action=wbsearchentities&search='+q+'&language=zh&uselang=zh&limit=8&format=json&origin=*',
+      pick:function(d){var o=[];try{(d.search||[]).forEach(function(x){if(x.label)o.push(x.label);});}catch(e){}return o;}}
+  ];
+  var best=[];
+  (function step(i){
+    if(i>=srcs.length){cb(best.length?best:null);return;}
+    var ctl=null,timer=null;
+    try{ctl=new AbortController();timer=setTimeout(function(){try{ctl.abort();}catch(e){}},6000);}catch(e){}
+    fetch(srcs[i].u,ctl?{signal:ctl.signal}:undefined)
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if(timer)clearTimeout(timer);
+        var t=srcs[i].pick(d)||[];
+        if(t.length>best.length)best=t;
+        if(best.length>=4){cb(best);return;}
+        step(i+1);
+      })
+      .catch(function(){if(timer)clearTimeout(timer);step(i+1);});
+  })(0);
+}
+function wikiSummary(title,cb){
+  var u1='https://zh.wikipedia.org/api/rest_v1/page/summary/'+encodeURIComponent(title);
+  var ctl=null,timer=null;
+  try{ctl=new AbortController();timer=setTimeout(function(){try{ctl.abort();}catch(e){}},7000);}catch(e){}
+  fetch(u1,ctl?{signal:ctl.signal}:undefined).then(function(r){return r.json();})
+    .then(function(d){if(timer)clearTimeout(timer);if(d&&d.extract)cb(d.extract);else wikiSummaryFallback(title,cb);})
+    .catch(function(){if(timer)clearTimeout(timer);wikiSummaryFallback(title,cb);});
+}
+function wikiSummaryFallback(title,cb){
+  var u2='https://zh.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&titles='+encodeURIComponent(title)+'&format=json&origin=*';
+  fetch(u2).then(function(r){return r.json();}).then(function(d){try{var pages=d.query.pages;for(var k in pages){if(pages[k].extract){cb(pages[k].extract);return;}}cb('');}catch(e){cb('');}}).catch(function(){cb('');});
+}
+function loadAICfg(){try{return JSON.parse(S.getItem('bt_qa_ai')||'null');}catch(e){return null;}}
+// 模型撞上输出上限时，JSON 数组会断在半空中。这里按字符串/转义状态往前找最后一个
+// 完整闭合的顶层对象，把已生成的题目打捞回来（原来只能整包扔掉、一题不剩）。
+function salvageArray(text){
+  var depth=0,inStr=false,esc=false,lastEnd=-1;
+  for(var i=0;i<text.length;i++){
+    var ch=text.charAt(i);
+    if(inStr){
+      if(esc)esc=false;
+      else if(ch==='\\')esc=true;
+      else if(ch==='"')inStr=false;
+      continue;
+    }
+    if(ch==='"'){inStr=true;continue;}
+    if(ch==='['||ch==='{'){depth++;continue;}
+    if(ch===']'||ch=='}'){
+      depth--;
+      if(depth===1&&ch==='}')lastEnd=i;
+      continue;
+    }
+  }
+  if(lastEnd<0)return null;
+  try{return JSON.parse(text.slice(0,lastEnd+1)+']');}catch(e){return null;}
+}
+function callAI(cfg,prompt,cb){
+  var free=isFreeAI(cfg.url);
+  var body={model:cfg.model||(free?'openai':'deepseek-chat'),messages:[{role:'user',content:prompt}],temperature:0.7};
+  if(free)body.reasoning_effort='low';   // 否则 1500 token 全烧在 reasoning 上，content 缺失、永远解析不出题
+  var url=cfg.proxy?cfg.proxy:cfg.url;
+  if(!/^https?:\/\//.test(url)){cb(null);return;}
+  var hd={'Content-Type':'application/json'};
+  if(cfg.key)hd['Authorization']='Bearer '+cfg.key;
+  fetch(url,{method:'POST',headers:hd,body:JSON.stringify(body)})
+    .then(function(r){return r.json();}).then(function(d){
+      try{var content=d.choices[0].message.content;if(!content){cb(null);return;}var arr=null;
+        var m=content.match(/\[[\s\S]*\]/);
+        if(m){try{arr=JSON.parse(m[0]);}catch(e0){}}
+        // 注意：正则只到「最后一个 ]」，会把最后一个完整对象的 } 关在匹配区外，
+        // 所以打捞必须拿全文跑，不能拿 m[0] 跑（否则每局都少捞一题）。
+        if(!arr)arr=salvageArray(content);
+        if(!arr){cb(null);return;}
+        /* 英文题（题干或选项成句英文）直接挡在题库外：解析固定用中文写，英文题进来必然错配。
+           单个词 / 代码标识符放行，否则「Python 哪个关键字定义函数」这类正常题会被连坐。 */
+        var out=arr.filter(function(x){return x&&x.q&&x.a&&x.opts&&x.opts.length>=2&&!isEnglishQ(x);}).map(function(x){var opts=shuffle(x.opts.slice());return {q:x.q,a:x.a,opts:opts};});cb(out);}
+      catch(e){cb(null);}
+    }).catch(function(){cb(null);});
+}
+/* 测试连接：只验证「地址 / Key / 模型」通不通，不要求 AI 返回题目 JSON。
+   判定标准 = HTTP 2xx；失败时把状态码（如 401 / 403）或「网络错误 / 超时」回给调用方，
+   便于区分是 Key 无效还是网络问题。callAI（题目生成）保持原样，不受影响。 */
+function testAI(cfg,cb){
+  var free=isFreeAI(cfg.url);
+  var url=cfg.proxy?cfg.proxy:cfg.url;
+  if(!/^https?:\/\//.test(url)){cb(false,'地址无效');return;}
+  var body={model:cfg.model||(free?'openai':'deepseek-chat'),messages:[{role:'user',content:'请只回复两个字：连接成功'}],temperature:0};
+  if(free)body.reasoning_effort='low';
+  var ctl=null,timer=null;
+  try{ctl=new AbortController();timer=setTimeout(function(){try{ctl.abort();}catch(e){}},10000);}catch(e){}
+  var hd={'Content-Type':'application/json'};
+  if(cfg.key)hd['Authorization']='Bearer '+cfg.key;
+  fetch(url,{method:'POST',headers:hd,body:JSON.stringify(body),signal:ctl?ctl.signal:undefined})
+    .then(function(r){
+      if(timer)clearTimeout(timer);
+      if(r&&r.ok){cb(true);return;}
+      cb(false,String((r&&r.status)||'未知'));
+    })
+    .catch(function(e){
+      if(timer)clearTimeout(timer);
+      if(e&&e.name==='AbortError'){cb(false,'超时');return;}
+      cb(false,'网络错误');
+    });
+}
+
+/* ---------- 填空判分容错 / 手写代码 AI 评判 ---------- */
+var SUP_MAP={'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9'};
+function fillNorm(s){
+  s=norm(s);
+  s=s.replace(/^[`'"“”‘’]+/,'').replace(/[`'"“”‘’]+$/,'');
+  s=s.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g,function(m){var o='^';for(var i=0;i<m.length;i++)o+=(SUP_MAP[m.charAt(i)]||'');return o;});
+  return s.replace(/⁻/g,'-');
+}
+function fillNum(s){
+  var t=String(s==null?'':s).trim().replace(/\s+/g,'');
+  var m=t.match(/^(-?\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/);
+  if(m)return Number(m[1])/Number(m[2]);
+  if(/^-?0x[0-9a-f]+$/i.test(t))return parseInt(t,16);
+  var n=Number(t);
+  return isFinite(n)?n:null;
+}
+/* 填空判分：忽略空格/大小写/标点，容忍上标写法（x⁴ = x^4）、分数与小数、十六进制前缀 */
+function fillEqual(given,ans){
+  var a=fillNorm(ans),b=fillNorm(given);
+  if(a===b)return true;
+  if(a.replace(/^0x/,'')===b.replace(/^0x/,''))return true;
+  var na=fillNum(a),nb=fillNum(b);
+  if(na!=null&&nb!=null&&Math.abs(na-nb)<1e-9)return true;
+  return false;
+}
+function canJudge(){var c=loadAICfg();return !!(c&&c.url&&(c.key||isFreeAI(c.url)));}
+function callAIRaw(cfg,prompt,cb,ms){
+  var free=isFreeAI(cfg.url);
+  var url=cfg.proxy?cfg.proxy:cfg.url;
+  if(!/^https?:\/\//.test(url)){cb(null,'地址无效');return;}
+  var body={model:cfg.model||(free?'openai':'deepseek-chat'),messages:[{role:'user',content:prompt}],temperature:0};
+  if(free)body.reasoning_effort='low';
+  var hd={'Content-Type':'application/json'};
+  if(cfg.key)hd['Authorization']='Bearer '+cfg.key;
+  var ctl=null,timer=null;
+  try{ctl=new AbortController();timer=setTimeout(function(){try{ctl.abort();}catch(e){}},ms||30000);}catch(e){}
+  fetch(url,{method:'POST',headers:hd,body:JSON.stringify(body),signal:ctl?ctl.signal:undefined})
+    .then(function(r){if(!r||!r.ok)throw new Error('HTTP '+((r&&r.status)||'?'));return r.json();})
+    .then(function(d){
+      if(timer)clearTimeout(timer);
+      var t='';
+      try{t=d.choices[0].message.content||'';}catch(e){}
+      if(!t){cb(null,'AI 返回空内容');return;}
+      cb(String(t),null);
+    })
+    .catch(function(e){
+      if(timer)clearTimeout(timer);
+      cb(null,(e&&e.name==='AbortError')?'AI 评判超时':((e&&e.message)||'AI 请求失败'));
+    });
+}
+function parseJudge(t){
+  t=String(t||'');
+  var m=t.match(/\{[\s\S]*?\}/);
+  if(m){try{var o=JSON.parse(m[0]);if(o&&typeof o.ok==='boolean')return {ok:o.ok,why:String(o.why||'').slice(0,80)};}catch(e){}}
+  if(/"ok"\s*:\s*true/.test(t))return {ok:true,why:''};
+  if(/"ok"\s*:\s*false/.test(t))return {ok:false,why:''};
+  if(/不正确|错误|有 bug/i.test(t))return {ok:false,why:''};
+  if(/正确|通过/i.test(t))return {ok:true,why:''};
+  return null;
+}
+function submitHand(Q,code,btn,msgEl){
+  if(locked)return;                 /* 已结算（答过 / 点过不会）：别让二次点击再烧一次 AI 调用 */
+  if(!canJudge()){toast('✍️ 手写代码要先配置 AI（免费通道不用 Key）');return;}
+  if(!String(code||'').trim()){msgEl.textContent='⚠️ 还没写代码';return;}
+  var t=(Q&&Q.task)||{t:Q.q,ex:'',tip:''};
+  var cfg=loadAICfg();
+  btn.disabled=true;msgEl.textContent='🤖 AI 正在评判…（最多 30 秒，超时本题不计分）';
+  var prompt='你在批改一道编程练习题。\n题目：'+t.t+'\n样例：'+(t.ex||'')+'\n要点：'+(t.tip||'')+'\n\n学生的代码：\n```\n'+code+'\n```\n\n请判断这段代码在逻辑上是否正确完成了题目（语言不限，忽略大小写/格式/变量命名差异；明显语法错误判为不正确）。\n严格只返回一个 JSON 对象，不要任何解释文字：\n{"ok":true,"why":"一句中文原因"}';
+  callAIRaw(cfg,prompt,function(txt,err){
+    btn.disabled=false;
+    if(!txt){
+      msgEl.textContent='⚠️ '+(err||'AI 评判失败')+'，本题不计分，跳过';
+      later(function(){qidx++;showQuestion();},1600);
+      return;
+    }
+    var r=parseJudge(txt);
+    if(!r){
+      msgEl.textContent='⚠️ 没读懂 AI 的评判结果，本题不计分，跳过';
+      later(function(){qidx++;showQuestion();},1600);
+      return;
+    }
+    msgEl.textContent='';
+    answer(r.ok,code,'（AI 评判）',null,{wait:2200,note:r.why?('🤖 '+r.why):''});
+  },30000);
+}
+
+/* ---------- 任务4：背景音乐 ---------- */
+// 曲目按「基名 + 扩展名链」探测：放 flower-dance.flac / flower-dance.wav 都能认
+var AUDIO_EXTS=['mp3','flac','wav','m4a','ogg','aac'];
+var MUSIC_DEFAULT=[
+  {name:'🎹 内置轻音乐（免文件）',synth:true},
+  {name:'Flower Dance',base:'audio/flower-dance',exts:AUDIO_EXTS},
+  {name:'Windy Hill',base:'audio/windy-hill',exts:AUDIO_EXTS},
+  {name:'Summer',base:'audio/summer',exts:AUDIO_EXTS},
+  {name:'Luv Letter',base:'audio/luv-letter',exts:AUDIO_EXTS},
+  {name:'卡农（钢琴版）',base:'audio/canon',exts:AUDIO_EXTS}
+];
+var MUSIC_CFG_KEY='bt_qa_music';
+var bgm=null,musicList=[],musicIdx=0,musicLoop=true,musicVol=0.5,musicPlaying=false,musicFailStreak=0,musicErrMsg='';
+function loadMusicCfg(){try{return JSON.parse(S.getItem(MUSIC_CFG_KEY)||'{}')||{};}catch(e){return{};}}
+function buildMusicList(){var cfg=loadMusicCfg();musicList=MUSIC_DEFAULT.slice();if(cfg.custom&&cfg.custom.length)musicList=musicList.concat(cfg.custom);musicIdx=cfg.idx||0;if(musicIdx>=musicList.length)musicIdx=0;musicLoop=cfg.loop!==false;musicVol=(cfg.vol==null?0.5:cfg.vol);}
+function saveMusicCfg(){var cfg=loadMusicCfg();cfg.idx=musicIdx;cfg.loop=musicLoop;cfg.vol=musicVol;try{S.setItem(MUSIC_CFG_KEY,JSON.stringify(cfg));}catch(e){}}
+/* 当前曲目该用哪个地址：在线 URL > 旧版 file 字段 > 基名+第 N 个扩展名 */
+function musicSrcOf(tr){
+  if(!tr)return '';
+  if(tr.url)return tr.url;
+  if(tr.file)return tr.file;
+  if(tr.base&&tr.exts&&tr.exts.length){
+    var k=Math.max(0,Math.min(tr._ext||0,tr.exts.length-1));
+    return tr.base+'.'+tr.exts[k];
+  }
+  return '';
+}
+function musicMissText(tr){
+  if(!tr||!tr.base)return '⚠️ 音频文件缺失，请用「➕ 添加」导入本地音乐';
+  return '⚠️ 未找到 '+tr.base+' 下的文件（已尝试 '+(tr.exts||['mp3']).slice(0,6).join('/')+'）。请确认：① 文件已放进 quiz/audio/ 且命名小写+连字符；② 线上已同步部署 audio（_deploy_gym/quiz/audio/）；或用「➕ 添加」导入本地文件播放。';
+}
+function musicNote(msg){musicErrMsg=msg||'';updateMusicPanel();}
+function bgmPlay(){
+  if(!bgm)return;
+  var p=null;
+  try{p=bgm.play();}catch(e){musicNote('⚠️ 播放失败：'+((e&&e.message)||(e&&e.name)||'未知原因'));return;}
+  if(p&&p.catch)p.catch(function(e){
+    if(e&&e.name==='NotAllowedError'){musicPlaying=false;updateMusicPanel();return;} // 浏览器要求先有点击
+    if(e&&e.name==='NotSupportedError')return;   // 交给 error 事件里的扩展名探测/缺失提示，别用兜底文案覆盖
+    if(e&&e.name==='AbortError')return;           // 换 src / load() 主动打断上一次 play()，属正常探测流程，别报成失败
+    musicNote('⚠️ 播放失败：'+((e&&e.message)||(e&&e.name)||'未知原因'));
+  });
+}
+/* 彻底断掉当前加载：只 pause() 不会取消在途下载，几十 MB 的曲子会继续占着连接，把下一首的 404 拖到几秒后才回来 */
+function bgmReset(){if(!bgm)return;try{bgm.pause();}catch(e){}try{bgm.removeAttribute('src');bgm.load();}catch(e){}}
+function ensureBgm(){if(bgm)return bgm;bgm=new Audio();bgm.loop=false;bgm.volume=musicVol;
+  bgm.addEventListener('playing',function(){musicFailStreak=0;musicPlaying=true;musicErrMsg='';updateMusicPanel();});
+  bgm.addEventListener('ended',function(){if(musicLoop)playMusic((musicIdx+1)%musicList.length);else{musicPlaying=false;updateMusicPanel();}});
+  bgm.addEventListener('error',function(){
+    var tr=musicList[musicIdx]||{};
+    // 切歌会打断上一次加载，也会抛一个 error（currentSrc 还是上一个地址）——那不是当前曲目失败，别参与探测
+    var want=musicSrcOf(tr);
+    if(bgm.currentSrc&&want&&bgm.currentSrc.indexOf(want)<0)return;
+    // 扩展名自动探测：还有候选就换下一个试（404 / 格式不支持都会走这里）
+    if(tr.base&&tr.exts&&(tr._ext||0)<tr.exts.length-1){
+      tr._ext=(tr._ext||0)+1;
+      bgm.src=musicSrcOf(tr);
+      try{bgm.load();}catch(e){}
+      bgmPlay();
+      return;
+    }
+    // 全部扩展名都失败：明确报错并停在这一首（自动乱跳会让提示串到别的曲目上）
+    if(!tr.synth)tr.missing=true;
+    musicPlaying=false;
+    musicNote(musicMissText(tr));
+    if(!tr._warned){tr._warned=1;toast(musicMissText(tr));}
+  });
+  return bgm;}
+
+/* 内置合成音（无音频文件时也能听） */
+var synthCtx=null,synthTimer=null,synthMaster=null,synthStep=0;
+var SYNTH_CHORDS=[[0,4,7,11],[-3,2,5,9],[-5,0,4,7],[2,5,9,12]];
+function synthStop(){if(synthTimer){clearInterval(synthTimer);synthTimer=null;}if(synthMaster){try{synthMaster.disconnect();}catch(e){}synthMaster=null;}}
+function synthStart(){
+  var AC=window.AudioContext||window.webkitAudioContext;if(!AC)return false;
+  try{
+    if(!synthCtx)synthCtx=new AC();
+    if(synthCtx.state==='suspended')synthCtx.resume();
+    synthStop();
+    synthMaster=synthCtx.createGain();synthMaster.gain.value=Math.max(0.001,musicVol*0.28);synthMaster.connect(synthCtx.destination);
+    synthStep=0;
+    var NOTE=function(freq,at,dur,amp,type){
+      var o=synthCtx.createOscillator(),g=synthCtx.createGain();
+      o.type=type||'sine';o.frequency.value=freq;
+      g.gain.setValueAtTime(0.0001,at);
+      g.gain.linearRampToValueAtTime(amp,at+0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001,at+dur);
+      o.connect(g);g.connect(synthMaster);o.start(at);o.stop(at+dur+0.05);
+    };
+    var tick=function(){
+      if(!synthCtx||!synthMaster)return;
+      var t=synthCtx.currentTime+0.02;
+      var ch=SYNTH_CHORDS[Math.floor(synthStep/8)%SYNTH_CHORDS.length];
+      var idx=synthStep%8;
+      var semi=ch[idx%ch.length]+(idx>=4?12:0);
+      NOTE(220*Math.pow(2,semi/12),t,1.6,0.12,'triangle');
+      if(idx===0)NOTE(110*Math.pow(2,ch[0]/12),t,3.4,0.1,'sine');
+      synthStep++;
+    };
+    tick();synthTimer=setInterval(tick,340);return true;
+  }catch(e){return false;}
+}
+function playMusic(i,keepMsg){
+  musicIdx=i;var tr=musicList[i];if(!tr)return;
+  if(!keepMsg)musicErrMsg='';
+  if(tr.synth){if(bgm)try{bgm.pause();}catch(e){}musicPlaying=synthStart();saveMusicCfg();updateMusicPanel();return;}
+  synthStop();ensureBgm();
+  if(tr.blobKey){   // 本地导入：IndexedDB 里的 blob，无命名限制
+    loadBlob(tr.blobKey,function(b){
+      if(!b){musicNote('⚠️ 本地音频读取失败（可能已被清理），请重新导入');return;}
+      bgmReset();bgm.src=URL.createObjectURL(b);bgmPlay();
+    });
+    musicPlaying=true;saveMusicCfg();updateMusicPanel();return;
+  }
+  tr._ext=0;        // 从第一个扩展名开始探测，出错自动往后试
+  var src=musicSrcOf(tr);
+  if(src){bgmReset();bgm.src=src;bgmPlay();}
+  else{musicPlaying=false;musicNote('⚠️ 该曲目没有可用地址');return;}
+  musicPlaying=true;saveMusicCfg();updateMusicPanel();
+}
+function toggleMusic(){if(musicPlaying){synthStop();if(bgm)try{bgm.pause();}catch(e){}musicPlaying=false;updateMusicPanel();}else{musicErrMsg='';playMusic(musicIdx);}}
+function updateMusicPanel(){
+  var p=$('musicPanel');if(!p)return;
+  var tr=musicList[musicIdx]||{};
+  var nm=$('mpName');if(nm)nm.textContent=(tr.name||'—')+(tr.missing?'（文件缺失）':'');
+  var pp=$('mpPlay');if(pp)pp.textContent=musicPlaying?'⏸':'▶';
+  var er=$('mpErr');if(er){er.textContent=musicErrMsg||'';er.style.display=musicErrMsg?'':'none';}
+}
+function openMusic(){
+  buildMusicList();
+  var ov=overlayPanel('🎵 背景音乐');
+  ov.p.id='musicPanel';
+  ov.p.appendChild(ht('div','hint','「🎹 内置轻音乐」免文件即可播放。其它曲目支持 mp3 / flac / wav / m4a / ogg / aac：把文件放进 quiz/audio/，命名成 flower-dance.flac、windy-hill.wav 这种「小写 + 连字符」即可自动识别（扩展名会自动探测）；文件名不规范就用「➕ 添加」导入（存本机，无命名限制，离线也能播）。默认关闭，状态会被记住。　新增「📁 从 audio/ 添加」：把任意命名的文件放进 quiz/audio/ 后填文件名即可自动探测扩展名；注意音频文件不随代码发布，线上播放需同时把文件放进部署目录 _deploy_gym/quiz/audio/（或本机部署位置）。'));
+  var now=h('div');now.style.textAlign='center';now.style.margin='10px 0 4px';
+  var nameEl=ht('div',null,(musicList[musicIdx]||{}).name||'—');nameEl.id='mpName';
+  nameEl.style.cssText='font-size:17px;font-weight:800;color:var(--purple-d)';
+  now.appendChild(nameEl);
+  var errEl=ht('div','hint','');errEl.id='mpErr';
+  errEl.style.cssText='color:#b8233c;font-weight:700;font-size:12px;line-height:1.5;margin-top:7px;display:none';
+  now.appendChild(errEl);
+  var ctrl=h('div');ctrl.style.cssText='display:flex;gap:12px;justify-content:center;align-items:center;margin:12px 0';
+  var prev=h('button','btn ghost','⏮');prev.style.cssText='width:50px;padding:12px 0';
+  prev.onclick=function(){playMusic((musicIdx-1+musicList.length)%musicList.length);openMusic();};
+  var play=h('button','btn gold',musicPlaying?'⏸':'▶');play.id='mpPlay';
+  play.style.cssText='width:64px;padding:14px 0;font-size:18px';
+  play.onclick=function(){toggleMusic();play.textContent=musicPlaying?'⏸':'▶';};
+  var next=h('button','btn ghost','⏭');next.style.cssText='width:50px;padding:12px 0';
+  next.onclick=function(){playMusic((musicIdx+1)%musicList.length);openMusic();};
+  ctrl.appendChild(prev);ctrl.appendChild(play);ctrl.appendChild(next);now.appendChild(ctrl);
+  ov.p.appendChild(now);
+  var volRow=h('div','switch');volRow.appendChild(ht('span',null,'🔊 音量'));
+  var vol=h('input');vol.type='range';vol.min='0';vol.max='100';vol.value=Math.round(musicVol*100);
+  vol.oninput=function(){musicVol=vol.value/100;if(bgm)bgm.volume=musicVol;if(synthMaster)synthMaster.gain.value=Math.max(0.001,musicVol*0.28);saveMusicCfg();};
+  volRow.appendChild(vol);ov.p.appendChild(volRow);
+  var loopRow=h('div','switch');loopRow.appendChild(ht('span',null,'🔁 循环播放'));
+  var loopChk=h('input');loopChk.type='checkbox';loopChk.checked=musicLoop;
+  loopChk.onchange=function(){musicLoop=loopChk.checked;saveMusicCfg();};
+  loopRow.appendChild(loopChk);ov.p.appendChild(loopRow);
+
+  // 曲目列表
+  ov.p.appendChild(ht('div','section-title','曲目列表'));
+  musicList.forEach(function(tr,i){
+    var row=ht('div','mtrack'+(i===musicIdx?' sel':''));
+    row.appendChild(ht('span','mi',(i===musicIdx&&musicPlaying)?'▶':(tr.synth?'🎹':'♪')));
+    row.appendChild(ht('span','mn',tr.name));
+    if(tr.missing)row.appendChild(ht('span','ms','缺失'));
+    else if(tr.synth)row.appendChild(ht('span','ms','内置'));
+    else if(tr.url)row.appendChild(ht('span','ms','在线'));
+    else if(tr.blobKey)row.appendChild(ht('span','ms','本地'));
+    else if(tr.base)row.appendChild(ht('span','ms','audio/'));
+    if(tr.missing)row.title=musicMissText(tr);
+    row.onclick=function(){playMusic(i);openMusic();};
+    ov.p.appendChild(row);
+  });
+
+  var imp=ht('div','section-title','导入音乐');ov.p.appendChild(imp);
+  var fileWrap=h('div','row');
+  var fileIn=h('input');fileIn.type='file';fileIn.accept='audio/*';fileWrap.appendChild(fileIn);
+  var addLocal=h('button','btn','➕ 添加');
+  addLocal.onclick=function(){var f=fileIn.files&&fileIn.files[0];if(!f){alert('请先选择 mp3 文件');return;}
+    storeBlob(f,function(key){if(!key){alert('导入失败：浏览器不支持本地存储或空间不足');return;}
+      var cfg=loadMusicCfg();cfg.custom=cfg.custom||[];cfg.custom.push({name:f.name.replace(/\.[^.]+$/,''),blobKey:key});
+      try{S.setItem(MUSIC_CFG_KEY,JSON.stringify(cfg));}catch(e){}
+      buildMusicList();closeOverlay(ov);openMusic();});};
+  fileWrap.appendChild(addLocal);ov.p.appendChild(fileWrap);
+  // 「📁 从 audio/ 添加」：把任意命名的文件放进 quiz/audio/ 后，填文件名即加入列表（自动探测扩展名）
+  var baseWrap=h('div','row');
+  var audioBaseIn=h('input');audioBaseIn.placeholder='如 my-song（自动探测 mp3/flac/wav/m4a/ogg/aac）';baseWrap.appendChild(audioBaseIn);
+  var addBase=h('button','btn','＋');
+  addBase.onclick=function(){addAudioBase(audioBaseIn,ov);};
+  baseWrap.appendChild(addBase);ov.p.appendChild(baseWrap);
+  var urlWrap=h('div','row');var urlIn=h('input');urlIn.placeholder='或填在线音频 URL 添加';urlWrap.appendChild(urlIn);
+  var addUrl=h('button','btn','＋');
+  addUrl.onclick=function(){var u=urlIn.value.trim();if(!/^https?:\/\//.test(u)){alert('请输入有效的 http(s) URL');return;}
+    var cfg=loadMusicCfg();cfg.custom=cfg.custom||[];cfg.custom.push({name:u.split('/').pop()||'在线音乐',url:u});
+    try{S.setItem(MUSIC_CFG_KEY,JSON.stringify(cfg));}catch(e){}
+    buildMusicList();closeOverlay(ov);openMusic();};
+  urlWrap.appendChild(addUrl);ov.p.appendChild(urlWrap);
+  ov.p.appendChild(ht('div','muted','版权说明：内置曲目为默认名，正式公开使用前请确保你拥有相应音频的授权。'));
+  updateMusicPanel();
+}
+
+/* 「📁 从 audio/ 添加」：填文件名即加入曲目列表，扩展名探测复用现有 musicSrcOf / error 逻辑 */
+function addAudioBase(inp,ov){
+  var v=(inp.value||'').trim().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/gi,'');
+  if(!v){alert('请填写文件名（小写字母/数字/连字符）');return;}
+  var cfg=loadMusicCfg();cfg.custom=cfg.custom||[];
+  var dup=cfg.custom.some(function(t){return t.base&&t.base==='audio/'+v;});
+  if(dup){toast('该曲目已在列表');return;}
+  cfg.custom.push({name:v,base:'audio/'+v,exts:AUDIO_EXTS.slice()});
+  try{S.setItem(MUSIC_CFG_KEY,JSON.stringify(cfg));}catch(e){}
+  buildMusicList();
+  var idx=musicList.length-1;
+  if(musicList[idx]&&musicList[idx].base==='audio/'+v){closeOverlay(ov);playMusic(idx);}
+  openMusic();
+}
+
+/* ---------- AI 服务商预设（选服务商自动填地址 + 刷新模型） ---------- */
+var AI_PRESETS=[
+  {id:'custom',name:'自定义（手填地址与模型）',url:'',models:[]},
+  {id:'doubao',name:'豆包 Ark（火山方舟）',url:'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+   models:['doubao-seed-1-6-250615','doubao-1-5-pro-32k-250115','doubao-1-5-lite-32k-250115']},
+  {id:'deepseek',name:'DeepSeek',url:'https://api.deepseek.com/v1/chat/completions',
+   models:['deepseek-chat','deepseek-reasoner']},
+  {id:'kimi',name:'Kimi（Moonshot）',url:'https://api.moonshot.cn/v1/chat/completions',
+   models:['moonshot-v1-8k','moonshot-v1-32k']},
+  {id:'zhipu',name:'智谱 GLM',url:'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+   models:['glm-4','glm-4-plus','glm-3-turbo']},
+  {id:'qwen',name:'通义千问',url:'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+   models:['qwen-turbo','qwen-plus','qwen-max']},
+  {id:'openai',name:'OpenAI',url:'https://api.openai.com/v1/chat/completions',
+   models:['gpt-4o-mini','gpt-4o']},
+  {id:'free',name:'免费 AI（Pollinations·无需Key）',url:'https://text.pollinations.ai/openai',
+   models:['openai']}
+];
+function aiPreset(id){for(var i=0;i<AI_PRESETS.length;i++){if(AI_PRESETS[i].id===id)return AI_PRESETS[i];}return AI_PRESETS[0];}
+function aiPresetByUrl(u){u=(u||'').trim();for(var i=1;i<AI_PRESETS.length;i++){if(AI_PRESETS[i].url===u)return AI_PRESETS[i];}return null;}
+// 是否属于任意一家的预置模型（用来区分「下拉选出来的」和「用户手打的」模型名）
+function isPresetModel(m){if(!m)return false;for(var i=1;i<AI_PRESETS.length;i++){if(AI_PRESETS[i].models.indexOf(m)>=0)return true;}return false;}
+// 免费通道（Pollinations）：无需 Key。注意它是推理模型，完成 token 上限约 1500，
+// 默认推理档会把预算全烧在 reasoning 上、content 整个缺失 —— 必须压低调 reasoning。
+function isFreeAI(url){return /pollinations\.ai/i.test(url||'');}
+
+/* ---------- 设置 ---------- */
+function openSettings(){
+  var ov=overlayPanel('⚙️ 设置');
+  // 重新检测
+  var sec1=ht('div','section-title','实力检测');ov.p.appendChild(sec1);
+  var redetect=h('button','btn ghost','🔄 重新编程实力检测');redetect.onclick=function(){try{S.removeItem(CODE_PROFILE_KEY);S.removeItem('bt_qa_rank_code');}catch(e){}closeOverlay(ov);codeQuestionnaire(function(){renderShelf();});};
+  ov.p.appendChild(redetect);
+  // AI 配置
+  var sec2=ht('div','section-title','🌐 AI 建题库（OpenAI 兼容）');ov.p.appendChild(sec2);
+  var cfg=loadAICfg()||{};
+
+  // 服务商：选中即自动填接口地址
+  var provWrap=h('div','fld');provWrap.appendChild(ht('div','flabel','服务商'));
+  var provI=h('select');provI.id='aiProvider';
+  AI_PRESETS.forEach(function(p){var o=h('option');o.value=p.id;o.textContent=p.name;provI.appendChild(o);});
+  provWrap.appendChild(provI);ov.p.appendChild(provWrap);
+
+  // 模型：预设服务商给下拉，自定义给手填框（表单里始终有一个真实的模型名）
+  var modWrap=h('div','fld');modWrap.appendChild(ht('div','flabel','模型'));
+  var modSel=h('select');modSel.id='aiModel';
+  var modI=h('input');modI.id='aiModelInput';modI.placeholder='模型名，如 deepseek-chat';modI.value=cfg.model||'';
+  modWrap.appendChild(modSel);modWrap.appendChild(modI);ov.p.appendChild(modWrap);
+
+  var urlWrap=h('div','fld');urlWrap.appendChild(ht('div','flabel','API 地址'));
+  var urlI=h('input');urlI.id='aiUrl';urlI.placeholder='https://…/v1/chat/completions';urlI.value=cfg.url||'';
+  urlWrap.appendChild(urlI);ov.p.appendChild(urlWrap);
+
+  var keyWrap=h('div','fld');keyWrap.appendChild(ht('div','flabel','API Key'));
+  var keyI=h('input');keyI.id='aiKey';keyI.type='password';keyI.placeholder='sk-…';keyI.value=cfg.key||'';
+  keyWrap.appendChild(keyI);ov.p.appendChild(keyWrap);
+
+  var proxWrap=h('div','fld');proxWrap.appendChild(ht('div','flabel','代理地址（可选）'));
+  var proxI=h('input');proxI.id='aiProxy';proxI.placeholder='跨域被拦时填中转地址';proxI.value=cfg.proxy||'';
+  proxWrap.appendChild(proxI);ov.p.appendChild(proxWrap);
+
+  var curPid='custom';
+  // 刷新模型下拉；keep 不在列表里时额外保留一项，避免手填过的模型被覆盖
+  function fillModels(pid,keep){
+    var p=aiPreset(pid),list=p.models.slice();
+    clearNode(modSel);
+    if(!list.length){modSel.style.display='none';modI.style.display='';modI.value=keep||'';return;}
+    modSel.style.display='';modI.style.display='none';
+    if(keep&&list.indexOf(keep)<0)list.push(keep);
+    list.forEach(function(m){var o=h('option');o.value=m;o.textContent=m;modSel.appendChild(o);});
+    var v=(keep&&list.indexOf(keep)>=0)?keep:list[0];
+    modSel.value=v;modI.value=v;
+  }
+  // 回显：地址命中某家预设就选中该家，否则「自定义」（旧配置一切原样）
+  var matched=aiPresetByUrl(cfg.url);
+  curPid=(matched||AI_PRESETS[0]).id;provI.value=curPid;
+  fillModels(curPid,cfg.model||'');
+
+  provI.onchange=function(){
+    var pid=provI.value,oldP=aiPreset(curPid),newP=aiPreset(pid);
+    var curUrl=urlI.value.trim(),curModel=modI.value.trim();
+    // 切到免费通道时无条件填地址：它无需 Key、模型只有一档，
+    // 若沿用旧自定义地址会让通道静默失效（请求打到别人的接口上）
+    if(newP.url&&(!curUrl||curUrl===oldP.url||isFreeAI(newP.url)))urlI.value=newP.url;
+    // 切到「自定义」保留手填内容，方便在现有地址上微调；
+    // 切到预设服务商时：下拉选出来的模型换成新服务商默认档，用户手打的模型名才保留
+    var keep=newP.models.length?(isPresetModel(curModel)?'':curModel):curModel;
+    if(isFreeAI(newP.url))keep='';   // 免费通道只有 openai 一档，别把手填模型名带进来
+    fillModels(pid,keep);
+    curPid=pid;
+  };
+  modSel.onchange=function(){modI.value=modSel.value;};
+
+  var testB=h('button','btn','🔌 测试连接');var testMsg=ht('div','hint','');ov.p.appendChild(testB);ov.p.appendChild(testMsg);
+  testB.onclick=function(){var c={url:urlI.value.trim(),key:keyI.value.trim(),model:modI.value.trim(),proxy:proxI.value.trim()};if(!c.url){testMsg.textContent='⚠️ 请先填 API 地址';return;}
+    if(!c.key&&!isFreeAI(c.url)){testMsg.textContent='⚠️ 请先填 API 地址与 Key';return;}testMsg.textContent='测试中…';testAI(c,function(ok,why){
+      testMsg.textContent=ok?'✅ 连接成功':'❌ 失败：'+(why?(/^\d+$/.test(why)?'HTTP '+why:why):'未知错误');
+    });};
+  var saveB=h('button','btn gold','💾 保存配置');saveB.onclick=function(){var c={url:urlI.value.trim(),key:keyI.value.trim(),model:modI.value.trim(),proxy:proxI.value.trim()};try{S.setItem('bt_qa_ai',JSON.stringify(c));}catch(e){}testMsg.textContent='✅ 已保存';};
+  ov.p.appendChild(saveB);
+  ov.p.appendChild(ht('div','muted','提示：选服务商会自动填好接口地址，选模型会自动填模型名；接口需与 OpenAI 兼容（自定义可填中转地址）。无 Key 可选「免费 AI（Pollinations）」或走「🆓 免费搜索」生成题。'));
+  /* ---- 离线 / 安装 ---- */
+  ov.p.appendChild(ht('div','section-title','📴 离线使用'));
+  var pstate=ht('div','muted','');ov.p.appendChild(pstate);
+  pstate.textContent=pwaState();
+  ov.p.appendChild(ht('div','muted','手机浏览器菜单里选「添加到主屏幕」，之后从图标打开就是独立窗口（无地址栏）。断网时照样能刷题、看错题本；🌐 联网题库会自动改用内置离线题池，🆓 搜索建题库 / 🤖 AI 建题库需要联网。'));
+  var clr=h('button','btn ghost','🔄 清除离线缓存并更新');
+  clr.onclick=function(){
+    try{
+      if(navigator.serviceWorker&&navigator.serviceWorker.controller){
+        navigator.serviceWorker.controller.postMessage({type:'CLEAR_CACHE'});
+      }
+    }catch(e){}
+    setTimeout(function(){location.reload();},260);
+  };
+  ov.p.appendChild(clr);
+  var about=ht('div','section-title','关于');ov.p.appendChild(about);
+  ov.p.appendChild(ht('div','muted','知识问答独立版 · 从 brain-gym 拆分 · 题库/成绩共用 bt_qa_ 存储前缀'));
+}
+
+/* ---------- 统计 ---------- */
+function openStats(){
+  var ov=overlayPanel('📊 成绩统计');
+  var m=loadStats(),best=loadBest();
+  function cardFor(prefix,label,icon){
+    var s=m[prefix]||{n:0,c:0},b=bestFor(prefix);
+    var c=h('div','stat-card');
+    c.appendChild(ht('div','t',(icon?icon+' ':'')+label));
+    c.appendChild(ht('div','big'+(b?'':' empty'),b?('⭐ '+b):'未挑战'));
+    var sub=h('div','sub');
+    var s1=ht('span',null,'做题 ');s1.appendChild(ht('b',null,String(s.n)));sub.appendChild(s1);
+    var s2=ht('span',null,'正确率 ');s2.appendChild(ht('b',null,(s.n?Math.round(s.c/s.n*100):0)+'%'));sub.appendChild(s2);
+    c.appendChild(sub);
+    return c;
+  }
+  // 总览
+  var tn=0,tc=0;for(var k in m){if(m.hasOwnProperty(k)){tn+=m[k].n||0;tc+=m[k].c||0;}}
+  var tot=h('div','stat-grid');tot.style.marginBottom='12px';
+  var c1=h('div','stat-card');c1.appendChild(ht('div','t','🧮 累计做题'));
+  c1.appendChild(ht('div','big',String(tn)));c1.appendChild(ht('div','sub','正确率 '+(tn?Math.round(tc/tn*100):0)+'%'));
+  var c2=h('div','stat-card');c2.appendChild(ht('div','t','😵 薄弱题'));
+  c2.appendChild(ht('div','big'+(loadWeak().length?'':' empty'),String(loadWeak().length)));
+  c2.appendChild(ht('div','sub','「😵 不会」自动沉淀'));
+  tot.appendChild(c1);tot.appendChild(c2);ov.p.appendChild(tot);
+
+  var sec=ht('div','section-title','分类战绩');ov.p.appendChild(sec);
+  var grid=h('div','stat-grid');
+  Object.keys(QA_TYPES).forEach(function(bk){if(bk==='online')return;var T=QA_TYPES[bk];grid.appendChild(cardFor('b:'+bk,T.name,T.icon));});
+  Object.keys(custom).forEach(function(name){grid.appendChild(cardFor('c:'+name,name,'📝'));});
+  grid.appendChild(cardFor('b:online','联网题库','🌐'));
+  ov.p.appendChild(grid);
+  ov.p.appendChild(ht('div','muted','成绩按「分类 + 难度」分别记录；🤖 自动匹配有独立档位。数据存于本机浏览器。'));
+}
+
+/* ---------- 通用 overlay ---------- */
+function overlayPanel(title,kind){
+  // 同一时刻只保留一个浮层，避免出现重复 id="curOverlay"
+  if(overlayRoot){var olds=overlayRoot.querySelectorAll('.ov');for(var i=0;i<olds.length;i++){if(olds[i].__nav)navDrop(olds[i].__nav);if(olds[i].parentNode)olds[i].parentNode.removeChild(olds[i]);}}
+  var ov=h('div','ov');ov.id='curOverlay';ov.__nav=kind||'overlay';navPush(ov.__nav);
+  var p=h('div','panel');
+  var close=h('button','close','✕');close.onclick=function(){closeOverlay({ov:ov,p:p});};
+  var h3=h('h3');h3.textContent=title;
+  p.appendChild(close);p.appendChild(h3);
+  ov.appendChild(p);
+  overlayRoot.appendChild(ov);
+  return {ov:ov,p:p};
+}
+function closeOverlay(o){
+  if(!o||!o.ov)return;
+  if(o.ov.__nav)navDrop(o.ov.__nav);
+  if(o.ov.parentNode)o.ov.parentNode.removeChild(o.ov);
+}
+
+/* ---------- 启动 ---------- */
+function setVH(){
+  try{
+    var vh=(window.visualViewport&&window.visualViewport.height)||window.innerHeight||0;
+    if(vh)document.documentElement.style.setProperty('--vh',(vh/100)+'px');
+    var tb=document.getElementById('topbar');
+    if(tb)document.documentElement.style.setProperty('--hdh',tb.offsetHeight+'px');
+  }catch(e){}
+}
+function init(){
+  shelfEl=$('shelf');stageEl=$('stage');overlayRoot=$('overlayRoot');
+  setVH();window.addEventListener('resize',setVH);window.addEventListener('orientationchange',setVH);
+  buildMusicList();
+  $('backBtn').onclick=function(){if(confirm('返回大厅？当前进度将丢失。'))window.location.href='../index.html';};
+  $('statsBtn').onclick=function(){openStats();};
+  $('musicBtn').onclick=function(){openMusic();};
+  $('settingsBtn').onclick=function(){openSettings();};
+  navInit();
+  renderShelf();
+  // 启动时不自动联网，避免首页卡顿；联网在书架「🔄 联网更新题库」触发
+  registerSW();
+}
+
+/* ---------- PWA：离线状态文案 ---------- */
+function pwaState(){
+  try{
+    if(!('serviceWorker' in navigator))return '⚠️ 当前浏览器不支持离线缓存，联网时照常可用。';
+    var proto=location.protocol,host=location.hostname;
+    var secure=(proto==='https:')||host==='localhost'||host==='127.0.0.1'||host==='[::1]';
+    if(!secure)return 'ℹ️ 当前是非 https 环境（如本地双击打开），不会启用离线缓存，这是正常的。';
+    if(navigator.serviceWorker.controller)return '✅ 已缓存到本机：断网也能打开、也能完整答题。';
+    return '⏳ 首次打开需要联网缓存资源，稍等片刻即可离线使用。';
+  }catch(e){return 'ℹ️ 无法读取离线状态，不影响正常使用。';}
+}
+
+/* ---------- PWA：新版本提示条 ---------- */
+var swWaiting=null;
+function showUpdateBar(){
+  if(document.getElementById('updateBar'))return;
+  var b=h('div',null,'🔄 发现新版本，点击刷新');
+  b.id='updateBar';
+  b.onclick=function(){
+    b.textContent='正在更新…';
+    try{if(swWaiting)swWaiting.postMessage({type:'SKIP_WAITING'});}catch(e){}
+    setTimeout(function(){location.reload();},350);
+  };
+  document.body.appendChild(b);
+}
+/* ---------- PWA：Service Worker 注册 ----------
+   只在安全上下文（https / localhost / 127.0.0.1）注册；
+   file:// 双击打开或非 https 局域网地址会静默跳过，不抛错、不打断使用。 */
+function registerSW(){
+  try{
+    if(!('serviceWorker' in navigator))return;
+    var proto=location.protocol;
+    if(proto!=='https:'&&proto!=='http:')return;         // file: / 其他协议直接跳过
+    var host=location.hostname;
+    var secure=(proto==='https:')||host==='localhost'||host==='127.0.0.1'||host==='[::1]';
+    if(!secure)return;                                    // http://192.168.x 不是安全上下文
+    navigator.serviceWorker.register('./sw.js',{scope:'./'}).then(function(reg){
+      // 上次打开时已经下载好的新版本：直接提示，不偷偷替用户刷新
+      if(reg&&reg.waiting&&navigator.serviceWorker.controller){swWaiting=reg.waiting;showUpdateBar();}
+      reg.addEventListener('updatefound',function(){
+        var nw=reg.installing;
+        if(!nw)return;
+        nw.addEventListener('statechange',function(){
+          // installed 且页面仍被旧 SW 接管 = 新版在等待，给用户一个刷新入口
+          if(nw.state==='installed'&&navigator.serviceWorker.controller){swWaiting=nw;showUpdateBar();}
+        });
+      });
+    }).catch(function(){/* 注册失败（如隐私模式）静默忽略，应用照常可用 */});
+  }catch(e){/* 老浏览器 / 被策略禁用：静默忽略 */}
+}
+
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+
+})();
+
+</script>
+</body>
+</html>

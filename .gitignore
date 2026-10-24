@@ -6,6 +6,8 @@ quiz/.build/
 # 想给 PWA 配乐：把 mp3 按 flower-dance/summer/luv-letter/canon 命名，
 # 直接放进发布目录 _deploy_gym/quiz/audio/ 即可（sw.js 会按体积挑选预缓存）
 quiz/audio/
+# 发布目录里的音频同样不进仓库（由 surge 部署带上，避免 80MB+ 入库）
+_deploy_gym/quiz/audio/
 
 # 系统/编辑器噪音
 .DS_Store

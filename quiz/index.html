@@ -3069,7 +3069,7 @@ function musicSrcOf(tr){
 }
 function musicMissText(tr){
   if(!tr||!tr.base)return '⚠️ 音频文件缺失，请用「➕ 添加」导入本地音乐';
-  return '⚠️ 未找到 '+tr.base+'.'+(tr.exts||['mp3']).slice(0,3).join('/.')+' 等文件 —— 请按「小写+连字符」命名放进 quiz/audio/，或用「➕ 添加」导入';
+  return '⚠️ 未找到 '+tr.base+' 下的文件（已尝试 '+(tr.exts||['mp3']).slice(0,6).join('/')+'）。请确认：① 文件已放进 quiz/audio/ 且命名小写+连字符；② 线上已同步部署 audio（_deploy_gym/quiz/audio/）；或用「➕ 添加」导入本地文件播放。';
 }
 function musicNote(msg){musicErrMsg=msg||'';updateMusicPanel();}
 function bgmPlay(){
@@ -3172,7 +3172,7 @@ function openMusic(){
   buildMusicList();
   var ov=overlayPanel('🎵 背景音乐');
   ov.p.id='musicPanel';
-  ov.p.appendChild(ht('div','hint','「🎹 内置轻音乐」免文件即可播放。其它曲目支持 mp3 / flac / wav / m4a / ogg / aac：把文件放进 quiz/audio/，命名成 flower-dance.flac、windy-hill.wav 这种「小写 + 连字符」即可自动识别（扩展名会自动探测）；文件名不规范就用「➕ 添加」导入（存本机，无命名限制，离线也能播）。默认关闭，状态会被记住。'));
+  ov.p.appendChild(ht('div','hint','「🎹 内置轻音乐」免文件即可播放。其它曲目支持 mp3 / flac / wav / m4a / ogg / aac：把文件放进 quiz/audio/，命名成 flower-dance.flac、windy-hill.wav 这种「小写 + 连字符」即可自动识别（扩展名会自动探测）；文件名不规范就用「➕ 添加」导入（存本机，无命名限制，离线也能播）。默认关闭，状态会被记住。　新增「📁 从 audio/ 添加」：把任意命名的文件放进 quiz/audio/ 后填文件名即可自动探测扩展名；注意音频文件不随代码发布，线上播放需同时把文件放进部署目录 _deploy_gym/quiz/audio/（或本机部署位置）。'));
   var now=h('div');now.style.textAlign='center';now.style.margin='10px 0 4px';
   var nameEl=ht('div',null,(musicList[musicIdx]||{}).name||'—');nameEl.id='mpName';
   nameEl.style.cssText='font-size:17px;font-weight:800;color:var(--purple-d)';
@@ -3225,6 +3225,12 @@ function openMusic(){
       try{S.setItem(MUSIC_CFG_KEY,JSON.stringify(cfg));}catch(e){}
       buildMusicList();closeOverlay(ov);openMusic();});};
   fileWrap.appendChild(addLocal);ov.p.appendChild(fileWrap);
+  // 「📁 从 audio/ 添加」：把任意命名的文件放进 quiz/audio/ 后，填文件名即加入列表（自动探测扩展名）
+  var baseWrap=h('div','row');
+  var audioBaseIn=h('input');audioBaseIn.placeholder='如 my-song（自动探测 mp3/flac/wav/m4a/ogg/aac）';baseWrap.appendChild(audioBaseIn);
+  var addBase=h('button','btn','＋');
+  addBase.onclick=function(){addAudioBase(audioBaseIn,ov);};
+  baseWrap.appendChild(addBase);ov.p.appendChild(baseWrap);
   var urlWrap=h('div','row');var urlIn=h('input');urlIn.placeholder='或填在线音频 URL 添加';urlWrap.appendChild(urlIn);
   var addUrl=h('button','btn','＋');
   addUrl.onclick=function(){var u=urlIn.value.trim();if(!/^https?:\/\//.test(u)){alert('请输入有效的 http(s) URL');return;}
@@ -3234,6 +3240,21 @@ function openMusic(){
   urlWrap.appendChild(addUrl);ov.p.appendChild(urlWrap);
   ov.p.appendChild(ht('div','muted','版权说明：内置曲目为默认名，正式公开使用前请确保你拥有相应音频的授权。'));
   updateMusicPanel();
+}
+
+/* 「📁 从 audio/ 添加」：填文件名即加入曲目列表，扩展名探测复用现有 musicSrcOf / error 逻辑 */
+function addAudioBase(inp,ov){
+  var v=(inp.value||'').trim().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/gi,'');
+  if(!v){alert('请填写文件名（小写字母/数字/连字符）');return;}
+  var cfg=loadMusicCfg();cfg.custom=cfg.custom||[];
+  var dup=cfg.custom.some(function(t){return t.base&&t.base==='audio/'+v;});
+  if(dup){toast('该曲目已在列表');return;}
+  cfg.custom.push({name:v,base:'audio/'+v,exts:AUDIO_EXTS.slice()});
+  try{S.setItem(MUSIC_CFG_KEY,JSON.stringify(cfg));}catch(e){}
+  buildMusicList();
+  var idx=musicList.length-1;
+  if(musicList[idx]&&musicList[idx].base==='audio/'+v){closeOverlay(ov);playMusic(idx);}
+  openMusic();
 }
 
 /* ---------- AI 服务商预设（选服务商自动填地址 + 刷新模型） ---------- */
