@@ -267,6 +267,15 @@ select:focus{outline:none;border-color:#c3b0ff;box-shadow:0 0 0 3px rgba(124,92,
   padding:11px 16px;border-radius:12px;z-index:99;opacity:0;max-width:84vw;text-align:center;
   transition:opacity .2s,transform .2s;pointer-events:none;line-height:1.5}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+/* 参考代码块与答题思路：答错/不会时的「学习时刻」组件 */
+.fsol{width:100%;margin:8px 0 4px;text-align:left}
+.fsol-t{font-size:12px;font-weight:800;color:var(--purple-d,#7c5cff);margin-bottom:3px}
+.fsol-code{background:#f2efff;border:1px solid #d9d2ff;border-radius:8px;padding:8px 10px;
+  font-family:Consolas,Menlo,monospace;font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-all;
+  color:#3b3660;margin:0;max-height:180px;overflow:auto;-webkit-overflow-scrolling:touch}
+.fsteps{width:100%;margin:6px 0 2px;text-align:left}
+.fsteps-t{font-size:12px;font-weight:800;color:#2f8f4e;margin-bottom:3px}
+.fstep{font-size:12.5px;color:#444;line-height:1.65;padding-left:2px}
 </style>
 </head>
 <body>
@@ -1311,6 +1320,27 @@ function appendRetryChip(fb){
   b.onclick=function(){retryQuestion();};
   fb.appendChild(b);
 }
+/* 参考代码块：手写题答错/不会时展示正确实现 —— 错题是学习时刻，光说「错了」没用，
+   得让用户看到正确写法。sol 只存在于手写题（CODE_TASKS），其它题型自动跳过。 */
+function appendSol(fb,Q){
+  if(!Q||!Q.sol)return;
+  var box=h('div','fsol');
+  box.appendChild(ht('div','fsol-t','✅ 参考代码'));
+  var pre=h('pre','fsol-code');pre.textContent=Q.sol;
+  box.appendChild(pre);
+  fb.appendChild(box);
+}
+/* 答题思路步骤列表：分步讲清「先干什么后干什么」，手写题的 steps 来自 CODE_TASKS */
+function appendSteps(fb,Q){
+  var st=Q&&Q.steps;
+  if(!st||!st.length)return;
+  var box=h('div','fsteps');
+  box.appendChild(ht('div','fsteps-t','🧭 答题思路'));
+  st.forEach(function(s,i){
+    box.appendChild(ht('div','fstep',(i+1)+'. '+s));
+  });
+  fb.appendChild(box);
+}
 /* 走题节奏：只有「答对」自动跳（800ms，保持流畅）；答错 / 不会一律停住，
    由用户点「🔄 重试」或「下一题 ›」决定去向 —— 错题是学习时刻，不该被计时器抢走。 */
 var nextTimer=null;
@@ -1395,7 +1425,7 @@ function markUnknown(){
   var recorded=false;
   if(first){
     if(Q&&!reviewMode&&!Q.hand){
-      addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,time:Date.now()});
+      addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,time:Date.now()});
       recorded=true;
     }
     if(autoMode){
@@ -1410,9 +1440,13 @@ function markUnknown(){
   lockOpts();
   var fb=h('div','fb unk');
   fb.appendChild(ht('div','fbm','😵 已跳过本题'+(recorded?'，已记入薄弱题':'')));
-  if(Q&&!Q.hand&&Q.a!=null&&String(Q.a)!=='')fb.appendChild(ht('div','fba','正确答案：'+Q.a));
-  appendExp(fb,Q);
-  if(Q&&!Q.hand)appendRetryChip(fb);
+  if(Q&&Q.a!=null&&String(Q.a)!=='')fb.appendChild(ht('div','fba','正确答案：'+Q.a));
+  appendSol(fb,Q);      // 手写题：✅ 参考代码
+  appendSteps(fb,Q);    // 手写题：🧭 答题思路
+  appendExp(fb,Q);      // 解析（手写题有要点，选择题有 exp / AI 解析按钮）
+  /* 重试对所有题型开放：看过参考代码后自己再写一遍，正是「学习时刻」的意义。
+     手写题此时并未提交过，重试不会多烧 AI 调用。 */
+  appendRetryChip(fb);
   appendNextChip(fb);
   appendFb(fb);
   /* 不再 advance()：错题是学习时刻，去留由用户点「重试」还是「下一题」决定 */
@@ -1432,7 +1466,7 @@ function answer(correct,given,ans,btn,opt){
     if(correct){if(Q&&Q.weak)removeWeak(Q.weak);fbR.textContent='✅ 答对了！已从薄弱题移除';}
     else{
       fbR.textContent='❌ 正确答案：'+ans+'（保留在薄弱题）';
-      appendExp(fbR,Q);appendRetryChip(fbR);appendNextChip(fbR);
+      appendSol(fbR,Q);appendSteps(fbR,Q);appendExp(fbR,Q);appendRetryChip(fbR);appendNextChip(fbR);
     }
     appendFb(fbR);
     if(correct)advance(800);else cancelPending();
@@ -1445,7 +1479,7 @@ function answer(correct,given,ans,btn,opt){
       if(_pen){score-=5;}
       /* 首次答错也沉淀进薄弱题（结算页文案一直说「错题会进薄弱题」，之前只有「😵 不会」会记）。
          重试答错不重复记 —— 同一题只留一条。 */
-      if(Q&&!Q.hand)addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,time:Date.now()});
+      if(Q&&!Q.hand)addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,time:Date.now()});
     }
     if(autoMode&&_bk&&QA_TYPES[_bk]&&QA_TYPES[_bk].diffs){
       /* 滑动窗口自适应（替换原来的连对/连错计数）：
@@ -1472,14 +1506,14 @@ function answer(correct,given,ans,btn,opt){
     if(correct)fb.textContent=noteTxt;
     else{
       fb.appendChild(ht('div','fbm',noteTxt));
-      /* 手写题由 AI 评判（耗时、每次都要钱），不给「重试」；但必须给解析 ——
-         只说「判为不正确」等于什么都没教，题目旁边就是「要点 + 样例」。 */
-      appendExp(fb,Q);appendNextChip(fb);
+      /* 手写题由 AI 评判（耗时、每次都要钱），不给「重试」；但必须给解析与正确写法 ——
+         只说「判为不正确」等于什么都没教，参考代码 + 思路才是学习时刻。 */
+      appendSol(fb,Q);appendSteps(fb,Q);appendExp(fb,Q);appendNextChip(fb);
     }
   }else{
     fb.textContent=correct?(first?'✅ 答对了！＋10':'✅ 重试答对了！＋5')
       :('❌ 正确答案：'+ans+((first&&_pen)?'　（−5 分）':''));
-    if(!correct){appendExp(fb,Q);if(Q&&!Q.hand)appendRetryChip(fb);appendNextChip(fb);}
+    if(!correct){appendSol(fb,Q);appendSteps(fb,Q);appendExp(fb,Q);if(Q&&!Q.hand)appendRetryChip(fb);appendNextChip(fb);}
   }
   appendFb(fb);
   if(first)bumpStat(typeKey,correct);
@@ -1545,7 +1579,7 @@ function startReview(){
   if(!a.length){toast('📚 暂无薄弱题：做题时点「😵 不会」就会沉淀到这里');return;}
   reviewMode=true;autoMode=false;quizOver=false;typeKey='b:weak';typeLabel='回顾薄弱题';qaSection='choice';handMode=false;
   navPush('quiz');
-  qlist=a.map(function(x){return {q:x.q,a:x.a,opts:(x.opts&&x.opts.length)?x.opts.slice():null,code:x.code,exp:x.exp,fillin:x.fillin,weak:x};});
+  qlist=a.map(function(x){return {q:x.q,a:x.a,opts:(x.opts&&x.opts.length)?x.opts.slice():null,code:x.code,exp:x.exp,sol:x.sol,steps:x.steps,fillin:x.fillin,weak:x};});
   ok=0;qidx=0;score=0;total=qlist.length;showQuestion();
 }
 
@@ -2458,31 +2492,81 @@ QA_TYPES.code.genSection=function(n,diff){
 };
 /* ===== 手写代码题（AI 评判用，题面与样例都在本地生成） ===== */
 var CODE_TASKS=[
-  {r:0,t:'写一个函数 sum(a, b)，返回两个数之和。',ex:'sum(2, 3) → 5',tip:'直接返回 a + b'},
-  {r:0,t:'写一个函数 maxOf(a, b)，返回较大的那个数。',ex:'maxOf(4, 9) → 9',tip:'比较两个数'},
-  {r:0,t:'写一个函数 minOf(a, b)，返回较小的那个数。',ex:'minOf(4, 9) → 4',tip:'比较两个数、保留较小的那个'},
-  {r:0,t:'写一个函数 absVal(n)，返回 n 的绝对值。',ex:'absVal(-7) → 7',tip:'负数取相反数、非负原样返回'},
-  {r:0,t:'写一个函数 isPositive(n)，n 为正数返回 true，否则返回 false。',ex:'isPositive(-3) → false',tip:'与 0 比较'},
-  {r:1,t:'写一个函数 isEven(n)，n 是偶数返回 true，否则返回 false。',ex:'isEven(7) → false',tip:'用取余判断'},
-  {r:1,t:'写一个函数 reverseStr(s)，返回反转后的字符串。',ex:'reverseStr("abc") → "cba"',tip:'循环或内置反转'},
-  {r:1,t:'写一个函数 repeatStr(s, n)，返回把 s 重复 n 次的字符串。',ex:'repeatStr("ab", 3) → "ababab"',tip:'循环拼接或字符串乘法'},
-  {r:1,t:'写一个函数 countVowels(s)，统计元音字母 a/e/i/o/u 的个数。',ex:'countVowels("hello") → 2',tip:'遍历每个字符逐个判断'},
-  {r:1,t:'写一个函数 factorial(n)，返回 n 的阶乘（0 的阶乘是 1）。',ex:'factorial(5) → 120',tip:'递推 n × (n−1)!，边界 0! = 1'},
-  {r:2,t:'写一个函数 countChar(s, c)，统计字符 c 在 s 中出现的次数。',ex:'countChar("banana", "a") → 3',tip:'遍历计数'},
-  {r:2,t:'写一个函数 fib(n)，返回斐波那契数列第 n 项（1, 1, 2, 3, 5 …）。',ex:'fib(6) → 8',tip:'递推或递归'},
-  {r:2,t:'写一个函数 isPrime(n)，n 是素数返回 true，否则返回 false。',ex:'isPrime(7) → true',tip:'从 2 试除到 √n，小于 2 直接 false'},
-  {r:2,t:'写一个函数 reverseArr(a)，返回反转后的数组。',ex:'reverseArr([1,2,3]) → [3,2,1]',tip:'首尾交换或倒序复制'},
-  {r:2,t:'写一个函数 gcd(a, b)，返回 a 与 b 的最大公约数。',ex:'gcd(12, 18) → 6',tip:'辗转相除法：gcd(a,b)=gcd(b,a%b)'},
-  {r:3,t:'写一个函数 twoSum(nums, target)，返回和为 target 的两个元素下标（数组返回）。',ex:'twoSum([2, 7, 11, 15], 9) → [0, 1]',tip:'哈希表可做到 O(n)'},
-  {r:3,t:'写一个函数 isPalindrome(s)，忽略大小写与非字母数字字符，判断是否回文。',ex:'isPalindrome("A man, a plan") → false',tip:'双指针或反转后比较'},
-  {r:3,t:'写一个函数 firstUnique(s)，返回第一个只出现一次的字符，没有则返回 null。',ex:'firstUnique("aabcc") → "b"',tip:'先计数，再按原顺序找第一个计数为 1 的'},
-  {r:3,t:'写一个函数 mySqrt(n)，返回 n 的整数平方根（向下取整）。',ex:'mySqrt(8) → 2',tip:'二分或从 0 递增到 i*i>n'},
-  {r:3,t:'写一个函数 longestWord(s)，返回句子中最长的单词（长度相同取靠前的）。',ex:'longestWord("I love coding") → "coding"',tip:'按空格拆分后逐个比长度'},
-  {r:4,t:'写一个函数 flatten(arr)，把任意层嵌套数组展平成一维数组。',ex:'flatten([1, [2, [3]]]) → [1, 2, 3]',tip:'递归处理嵌套'},
-  {r:4,t:'写一个函数 maxSubArray(nums)，返回连续子数组的最大和。',ex:'maxSubArray([-2, 1, -3, 4, -1, 2, 1]) → 6',tip:'Kadane 算法：当前和转负就重新起头'},
-  {r:4,t:'写一个函数 mergeSorted(a, b)，合并两个已升序排列的数组，结果仍升序。',ex:'mergeSorted([1,3,5],[2,4]) → [1,2,3,4,5]',tip:'双指针归并，比到一方走完再补齐'},
-  {r:4,t:'写一个函数 evalRPN(tokens)，计算逆波兰表达式（数组里是数字字符串与 + - * / 运算符）。',ex:'evalRPN(["2","1","+","3","*"]) → 9',tip:'栈：遇数入栈、遇运算符弹出两个数'},
-  {r:4,t:'写一个函数 hasDupe(a)，数组里有重复元素返回 true，否则返回 false。',ex:'hasDupe([1,2,1]) → true',tip:'哈希集合或双重循环'}
+  {r:0,t:'写一个函数 sum(a, b)，返回两个数之和。',ex:'sum(2, 3) → 5',tip:'直接返回 a + b',
+   sol:'function sum(a, b) { return a + b; }',
+   steps:['函数需要把两个参数加起来','直接 return a + b 即可']},
+  {r:0,t:'写一个函数 maxOf(a, b)，返回较大的那个数。',ex:'maxOf(4, 9) → 9',tip:'比较两个数',
+   sol:'function maxOf(a, b) { return a > b ? a : b; }',
+   steps:['比较 a 和 b 的大小','哪个大返回哪个：a > b 则返回 a，否则返回 b']},
+  {r:0,t:'写一个函数 minOf(a, b)，返回较小的那个数。',ex:'minOf(4, 9) → 4',tip:'比较两个数、保留较小的那个',
+   sol:'function minOf(a, b) { return a < b ? a : b; }',
+   steps:['比较 a 和 b 的大小','哪个小返回哪个：a < b 则返回 a，否则返回 b']},
+  {r:0,t:'写一个函数 absVal(n)，返回 n 的绝对值。',ex:'absVal(-7) → 7',tip:'负数取相反数、非负原样返回',
+   sol:'function absVal(n) { return n < 0 ? -n : n; }',
+   steps:['绝对值：负数取相反数，非负数不变','判断 n < 0 时返回 -n，否则返回 n']},
+  {r:0,t:'写一个函数 isPositive(n)，n 为正数返回 true，否则返回 false。',ex:'isPositive(-3) → false',tip:'与 0 比较',
+   sol:'function isPositive(n) { return n > 0; }',
+   steps:['正数就是大于 0','直接返回 n > 0 的结果']},
+  {r:1,t:'写一个函数 isEven(n)，n 是偶数返回 true，否则返回 false。',ex:'isEven(7) → false',tip:'用取余判断',
+   sol:'function isEven(n) { return n % 2 === 0; }',
+   steps:['偶数能被 2 整除','n % 2 === 0 就是偶数，直接返回']},
+  {r:1,t:'写一个函数 reverseStr(s)，返回反转后的字符串。',ex:'reverseStr("abc") → "cba"',tip:'循环或内置反转',
+   sol:'function reverseStr(s) { return s.split("").reverse().join(""); }',
+   steps:['字符串不能直接反转','先 split("") 拆成字符数组','reverse() 反转','join("") 拼回字符串']},
+  {r:1,t:'写一个函数 repeatStr(s, n)，返回把 s 重复 n 次的字符串。',ex:'repeatStr("ab", 3) → "ababab"',tip:'循环拼接或字符串乘法',
+   sol:'function repeatStr(s, n) { var r = ""; for (var i = 0; i < n; i++) r += s; return r; }',
+   steps:['准备一个空字符串','循环 n 次，每次都把 s 拼进去','返回拼接结果']},
+  {r:1,t:'写一个函数 countVowels(s)，统计元音字母 a/e/i/o/u 的个数。',ex:'countVowels("hello") → 2',tip:'遍历每个字符逐个判断',
+   sol:'function countVowels(s) { var n = 0; for (var i = 0; i < s.length; i++) { if ("aeiou".indexOf(s[i].toLowerCase()) >= 0) n++; } return n; }',
+   steps:['准备计数器 n=0','遍历每个字符（先转小写）','是 a/e/i/o/u 之一就 n++','返回 n']},
+  {r:1,t:'写一个函数 factorial(n)，返回 n 的阶乘（0 的阶乘是 1）。',ex:'factorial(5) → 120',tip:'递推 n × (n−1)!，边界 0! = 1',
+   sol:'function factorial(n) { if (n <= 1) return 1; return n * factorial(n - 1); }',
+   steps:['阶乘：n! = n × (n-1)!','边界：0! = 1，1! = 1','n <= 1 返回 1','否则递归 n * factorial(n-1)']},
+  {r:2,t:'写一个函数 countChar(s, c)，统计字符 c 在 s 中出现的次数。',ex:'countChar("banana", "a") → 3',tip:'遍历计数',
+   sol:'function countChar(s, c) { var n = 0; for (var i = 0; i < s.length; i++) { if (s[i] === c) n++; } return n; }',
+   steps:['准备计数器 n=0','遍历 s 的每个字符','与 c 相等就 n++','返回 n']},
+  {r:2,t:'写一个函数 fib(n)，返回斐波那契数列第 n 项（1, 1, 2, 3, 5 …）。',ex:'fib(6) → 8',tip:'递推或递归',
+   sol:'function fib(n) { var a = 1, b = 1; for (var i = 3; i <= n; i++) { var t = a + b; a = b; b = t; } return b; }',
+   steps:['斐波那契：每一项 = 前两项之和','第 1、2 项都是 1','从第 3 项起循环递推 a+b','循环到第 n 项返回']},
+  {r:2,t:'写一个函数 isPrime(n)，n 是素数返回 true，否则返回 false。',ex:'isPrime(7) → true',tip:'从 2 试除到 √n，小于 2 直接 false',
+   sol:'function isPrime(n) { if (n < 2) return false; for (var i = 2; i * i <= n; i++) { if (n % i === 0) return false; } return true; }',
+   steps:['小于 2 不是素数','从 2 试除到 √n（i*i <= n）','能整除就不是素数','都除不尽就是素数']},
+  {r:2,t:'写一个函数 reverseArr(a)，返回反转后的数组。',ex:'reverseArr([1,2,3]) → [3,2,1]',tip:'首尾交换或倒序复制',
+   sol:'function reverseArr(a) { return a.slice().reverse(); }',
+   steps:['注意别改原数组','先 slice() 复制一份','reverse() 反转后返回']},
+  {r:2,t:'写一个函数 gcd(a, b)，返回 a 与 b 的最大公约数。',ex:'gcd(12, 18) → 6',tip:'辗转相除法：gcd(a,b)=gcd(b,a%b)',
+   sol:'function gcd(a, b) { while (b) { var t = a % b; a = b; b = t; } return a; }',
+   steps:['辗转相除法：gcd(a,b)=gcd(b, a%b)','循环到 b 为 0','每轮：t=a%b，a=b，b=t','b 为 0 时 a 就是答案']},
+  {r:3,t:'写一个函数 twoSum(nums, target)，返回和为 target 的两个元素下标（数组返回）。',ex:'twoSum([2, 7, 11, 15], 9) → [0, 1]',tip:'哈希表可做到 O(n)',
+   sol:'function twoSum(nums, target) { var m = {}; for (var i = 0; i < nums.length; i++) { var d = target - nums[i]; if (m[d] != null) return [m[d], i]; m[nums[i]] = i; } return []; }',
+   steps:['遍历时记录每个数的下标','对当前数求补数 d = target - nums[i]','补数在记录里就返回两个下标','不在就把当前数记进去']},
+  {r:3,t:'写一个函数 isPalindrome(s)，忽略大小写与非字母数字字符，判断是否回文。',ex:'isPalindrome("A man, a plan") → false',tip:'双指针或反转后比较',
+   sol:'function isPalindrome(s) { s = s.toLowerCase().replace(/[^a-z0-9]/g, ""); for (var i = 0, j = s.length - 1; i < j; i++, j--) { if (s[i] !== s[j]) return false; } return true; }',
+   steps:['先清洗：转小写、去掉非字母数字','用双指针 i 从前往后、j 从后往前','对应字符不等就不是回文','走完都是相等的就是回文']},
+  {r:3,t:'写一个函数 firstUnique(s)，返回第一个只出现一次的字符，没有则返回 null。',ex:'firstUnique("aabcc") → "b"',tip:'先计数，再按原顺序找第一个计数为 1 的',
+   sol:'function firstUnique(s) { var c = {}; for (var i = 0; i < s.length; i++) c[s[i]] = (c[s[i]] || 0) + 1; for (var i = 0; i < s.length; i++) { if (c[s[i]] === 1) return s[i]; } return null; }',
+   steps:['第一遍遍历统计每个字符出现次数','第二遍按原顺序找','第一个计数为 1 的字符就是答案','没有就返回 null']},
+  {r:3,t:'写一个函数 mySqrt(n)，返回 n 的整数平方根（向下取整）。',ex:'mySqrt(8) → 2',tip:'二分或从 0 递增到 i*i>n',
+   sol:'function mySqrt(n) { var x = 0; while ((x + 1) * (x + 1) <= n) x++; return x; }',
+   steps:['从 0 开始递增','下一个数的平方还 <= n 就继续','第一个平方超过 n 的数减 1','或直接用二分更高效']},
+  {r:3,t:'写一个函数 longestWord(s)，返回句子中最长的单词（长度相同取靠前的）。',ex:'longestWord("I love coding") → "coding"',tip:'按空格拆分后逐个比长度',
+   sol:'function longestWord(s) { var w = ""; s.split(" ").forEach(function(t) { if (t.length > w.length) w = t; }); return w; }',
+   steps:['按空格拆分成单词数组','逐个比较长度','只更新比当前更长的（长度相同不动）','返回最长单词']},
+  {r:4,t:'写一个函数 flatten(arr)，把任意层嵌套数组展平成一维数组。',ex:'flatten([1, [2, [3]]]) → [1, 2, 3]',tip:'递归处理嵌套',
+   sol:'function flatten(arr) { var out = []; arr.forEach(function(x) { if (Array.isArray(x)) out = out.concat(flatten(x)); else out.push(x); }); return out; }',
+   steps:['遍历每个元素','是数组就递归展平后拼接','不是数组直接放进结果','递归出口：元素不是数组']},
+  {r:4,t:'写一个函数 maxSubArray(nums)，返回连续子数组的最大和。',ex:'maxSubArray([-2, 1, -3, 4, -1, 2, 1]) → 6',tip:'Kadane 算法：当前和转负就重新起头',
+   sol:'function maxSubArray(nums) { var best = nums[0], cur = 0; for (var i = 0; i < nums.length; i++) { cur = Math.max(nums[i], cur + nums[i]); best = Math.max(best, cur); } return best; }',
+   steps:['Kadane 算法：边遍历边累加','当前和加这个数反而变小就重新从它开始','每步更新历史最大和','遍历完的最大和就是答案']},
+  {r:4,t:'写一个函数 mergeSorted(a, b)，合并两个已升序排列的数组，结果仍升序。',ex:'mergeSorted([1,3,5],[2,4]) → [1,2,3,4,5]',tip:'双指针归并，比到一方走完再补齐',
+   sol:'function mergeSorted(a, b) { var out = [], i = 0, j = 0; while (i < a.length && j < b.length) { if (a[i] < b[j]) out.push(a[i++]); else out.push(b[j++]); } while (i < a.length) out.push(a[i++]); while (j < b.length) out.push(b[j++]); return out; }',
+   steps:['双指针 i、j 分别指向两个数组','谁小谁先放进结果并前进','一方走完后把另一方剩余全部拼上','结果自然有序']},
+  {r:4,t:'写一个函数 evalRPN(tokens)，计算逆波兰表达式（数组里是数字字符串与 + - * / 运算符）。',ex:'evalRPN(["2","1","+","3","*"]) → 9',tip:'栈：遇数入栈、遇运算符弹出两个数',
+   sol:'function evalRPN(tokens) { var st = []; tokens.forEach(function(t) { if (t === "+" || t === "-" || t === "*" || t === "/") { var b = +st.pop(), a = +st.pop(); st.push(t === "+" ? a + b : t === "-" ? a - b : t === "*" ? a * b : Math.trunc(a / b)); } else { st.push(t); } }); return st[0]; }',
+   steps:['准备一个栈','遇到数字就入栈','遇到运算符弹出栈顶两个数（注意顺序：a 是先入的）','算出结果再入栈，最后栈顶就是答案']},
+  {r:4,t:'写一个函数 hasDupe(a)，数组里有重复元素返回 true，否则返回 false。',ex:'hasDupe([1,2,1]) → true',tip:'哈希集合或双重循环',
+   sol:'function hasDupe(a) { var s = {}; for (var i = 0; i < a.length; i++) { if (s[a[i]]) return true; s[a[i]] = 1; } return false; }',
+   steps:['用哈希记录见过的元素','遍历时先查是否已存在','存在就是重复，返回 true','没有重复返回 false']}
 ];
 function genHandTask(rank){
   var r=(typeof rank==='number'&&rank>=0)?rank:0;
@@ -2493,6 +2577,7 @@ function genHandTask(rank){
   /* 解析 = 该题的「要点 + 样例」，本地拼、不调 AI：判错时至少能知道该往哪儿想。
      有 AI 的手写题还能再点「AI 解析」拿更细的讲法，没 AI 也不至于一片空白。 */
   return {q:t.t,a:'（AI 评判）',opts:null,hand:true,task:t,tag:'all',
+          sol:t.sol,steps:t.steps||[],
           exp:'要点：'+(t.tip||'')+(t.ex?('　样例：'+t.ex):'')};
 }
 /*=== CODE_ENGINE_END ===*/
