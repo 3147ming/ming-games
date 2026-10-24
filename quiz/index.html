@@ -155,6 +155,8 @@ select:focus{outline:none;border-color:#c3b0ff;box-shadow:0 0 0 3px rgba(124,92,
 .fb .fba{display:block;margin-top:3px;font-size:13.5px}
 .fb .fexp{display:block;margin-top:6px;font-size:12.6px;font-weight:600;line-height:1.55;text-align:left;
   color:#4b4660;background:#fff;border:1px solid #ece7ff;border-radius:9px;padding:7px 9px}
+/* 英文题：译文一行 + 解析一行，同框两行 */
+.fb .fexp>div+div{margin-top:4px}
 .fb .aibtn{display:inline-block;margin:7px 0 0;font-size:12.5px;padding:6px 12px;border:none;cursor:pointer;
   background:#f1ecff;color:var(--purple-d);border-radius:14px;font-weight:800}
 .fb .aibtn:disabled{opacity:.62;cursor:default}
@@ -1102,7 +1104,12 @@ function showQuestion(){
       qlist.push(applySection([_nq])[0]);
     }
     Q=qlist[qidx];
-  }else{Q=qlist[qidx];}
+  }else{
+    Q=qlist[qidx];
+    /* 手写模式开关一旦打开，整局都出待手写题：以前只替换当前这一题，下一题又跳回读代码题，
+       开关还显示「✍️ 手写代码：开」，非常误导。 */
+    if(typeKey==='b:code'&&qaSection==='code'&&handMode&&Q&&!Q.hand){Q=genHandTask(Math.max(0,curDiff));qlist[qidx]=Q;}
+  }
   if(!Q){endQuiz();return;}
   var card=h('div','qcard quizfill');
   // 进度条：自动匹配是无限模式，进度条固定满格（不打表，只做氛围）
@@ -1208,40 +1215,81 @@ function markChosen(btn,ans){
 }
 /* ---------- 题目解析：程序化题带 exp，人工题走 AI 兜底 ---------- */
 function expText(Q){return (Q&&Q.exp)?String(Q.exp):'';}
-/* 一句话解析（独立于 callAI：那个只认「题目 JSON 数组」，讲题走原始文本通道） */
+/* 语言判定：ASCII 字母占字符数的比例（中文题通常 < 0.2，英文题接近 1） */
+function enRatio(s){
+  s=String(s==null?'':s);if(!s.length)return 0;
+  var a=0;for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);if((c>=65&&c<=90)||(c>=97&&c<=122))a++;}
+  return a/s.length;
+}
+function isEnText(s){return enRatio(s)>0.5;}
+function cnCount(s){
+  s=String(s==null?'':s);var n=0;
+  for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);if(c>=0x4e00&&c<=0x9fa5)n++;}
+  return n;
+}
+/* 单个词 / 代码片段（def、lambda、[x for x in a]、printf("%d")）不算「英文选项」：
+   「Python 中哪个关键字定义函数？」这类题的选项本来就是英文标识符，按字符占比会全部误杀。 */
+function isCodeish(s){
+  s=String(s==null?'':s).trim();
+  if(/[(){}\[\];:=<>+*\/%#&|!"']/.test(s))return true;   /* 含代码符号（冒号要有：lambda x: x 这类） */
+  return s.indexOf(' ')<0&&s.length<=16;               /* 单个词 / 标识符 */
+}
+/* 英文题：题干基本没有中文（汉字少于 4 个）且字母过半 —— 纯字母占比会误杀
+   「SQL 中 JOIN 的作用？」这种中文提问夹英文术语的正常题，所以先看有没有中文。
+   中文题干只可能因为「选项是成句英文」被判英文（单个词 / 代码片段放行）。 */
+function isEnglishQ(q){
+  if(!q)return false;
+  var stem=q.q||'';
+  if(cnCount(stem)<4&&isEnText(stem))return true;
+  /* 选项同理：夹着中文的（「len 是内置函数」）不算英文选项 */
+  return (q.opts||[]).some(function(o){return !isCodeish(o)&&cnCount(o)<2&&isEnText(o);});
+}
+/* 一句话解析（独立于 callAI：那个只认「题目 JSON 数组」，讲题走原始文本通道）。
+   英文题先让 AI 翻译再解析：解析永远用中文写，不翻译就会「中文解析配英文题干」。 */
 function aiExplain(Q,cb){
   cb=cb||function(){};
   var cfg=loadAICfg();
   if(!cfg||!cfg.url||!(cfg.key||isFreeAI(cfg.url))){cb('');return;}
   var q=String((Q&&Q.q)||'').slice(0,300),a=String((Q&&Q.a)||'').slice(0,100);
   var code=Q&&Q.code?('\n代码：\n'+String(Q.code).slice(0,400)):'';
-  var prompt='你在讲题。题目：'+q+code+'\n正确答案：'+a+
-    '\n请用不超过 40 字的一句话中文解析为什么是这个答案（讲清关键一步，别复述题目）。\n严格只返回 JSON：{"exp":"解析内容"}';
+  var en=isEnText(q)||((Q&&Q.opts)||[]).filter(function(o){return isEnText(o);}).length>=2;
+  var prompt=en
+    ?('你在讲题。题目：'+q+code+'\n正确答案：'+a+
+      '\n题目是英文。请先把题目和选项翻译成中文，再用不超过 40 字的一句话中文解析为什么是这个答案（讲清关键一步，别复述题目）。\n严格只返回 JSON：{"trans":"题目中文翻译","exp":"解析内容"}')
+    :('你在讲题。题目：'+q+code+'\n正确答案：'+a+
+      '\n请用不超过 40 字的一句话中文解析为什么是这个答案（讲清关键一步，别复述题目）。\n严格只返回 JSON：{"exp":"解析内容"}');
   callAIRaw(cfg,prompt,function(txt){
     if(!txt){cb('');return;}
     var t=String(txt),m=t.match(/\{[\s\S]*?\}/);
-    if(m){try{var o=JSON.parse(m[0]);if(o&&o.exp){cb(String(o.exp).slice(0,60));return;}}catch(e){}}
-    var m2=t.match(/"exp"\s*:\s*"([^"]*)"/);
-    if(m2){cb(m2[1].slice(0,60));return;}
+    if(m){
+      try{
+        var o=JSON.parse(m[0]);
+        if(o&&(o.exp||o.trans)){cb(o.exp?String(o.exp).slice(0,60):'',o.trans?String(o.trans).slice(0,140):'');return;}
+      }catch(e){}
+    }
+    var ex=t.match(/"exp"\s*:\s*"([^"]*)"/),tr=t.match(/"trans"\s*:\s*"([^"]*)"/);
+    if(ex||tr){cb(ex?ex[1].slice(0,60):'',tr?tr[1].slice(0,140):'');return;}
     var plain=t.replace(/[{}"]/g,'').replace(/^\s*exp\s*:\s*/,'').trim();
     if(plain&&plain.length<=70&&/[\u4e00-\u9fa5]/.test(plain)){cb(plain);return;}
     cb('');
   },20000);
 }
-/* 把解析挂到反馈条：有 exp 直接显示，没有就给一个「💡 AI 解析」按钮 */
+/* 把解析挂到反馈条：有 exp 直接显示，没有就给一个「💡 AI 解析」按钮（手写题判错也走这里） */
 function appendExp(fb,Q){
   var e=expText(Q);
   if(e){fb.appendChild(ht('div','fexp','💡 解析：'+e));return;}
-  if(!Q||Q.hand)return;
+  if(!Q)return;
   var b=ht('button','chip aibtn','💡 AI 解析');
   b.onclick=function(){
     if(!canJudge()){toast('未配置 AI：点右上角 ⚙️ 选服务商（免费通道不用 Key）就能生成解析');return;}
     b.disabled=true;b.textContent='💡 解析中…';
-    aiExplain(Q,function(t){
-      if(!t){b.disabled=false;b.textContent='💡 重试 AI 解析';return;}
-      var d=ht('div','fexp','💡 解析：'+t);
-      if(b.parentNode)b.parentNode.replaceChild(d,b);else fb.appendChild(d);
-      /* 手动模式：答错后本来就不自动跳，解析回来直接替换即可，无需延长停留 */
+    aiExplain(Q,function(t,tr){
+      if(!t&&!tr){b.disabled=false;b.textContent='💡 重试 AI 解析';return;}
+      /* 英文题：译文 + 解析一起给，先看懂题目再看懂为什么 */
+      var box=ht('div','fexp');
+      if(tr)box.appendChild(ht('div','fexpL','💬 译文：'+tr));
+      if(t)box.appendChild(ht('div','fexpL','💡 解析：'+t));
+      if(b.parentNode)b.parentNode.replaceChild(box,b);else fb.appendChild(box);
     });
   };
   fb.appendChild(b);
@@ -1420,9 +1468,14 @@ function answer(correct,given,ans,btn,opt){
   if(btn)markChosen(btn,ans);else lockOpts();
   var fb=h('div','fb '+(correct?'ok':'no'));
   if(opt.note){
-    fb.textContent=(correct?'✅ 判为正确 '+(first?'＋10':'＋5'):('❌ 判为不正确'+((first&&_pen)?'　（−5 分）':'')))+'　'+opt.note;
-    /* 手写题由 AI 评判（耗时、每次都要钱），不给「重试」；答错同样停住，等用户点「下一题 ›」 */
-    if(!correct)appendNextChip(fb);
+    var noteTxt=(correct?'✅ 判为正确 '+(first?'＋10':'＋5'):('❌ 判为不正确'+((first&&_pen)?'　（−5 分）':'')))+'　'+opt.note;
+    if(correct)fb.textContent=noteTxt;
+    else{
+      fb.appendChild(ht('div','fbm',noteTxt));
+      /* 手写题由 AI 评判（耗时、每次都要钱），不给「重试」；但必须给解析 ——
+         只说「判为不正确」等于什么都没教，题目旁边就是「要点 + 样例」。 */
+      appendExp(fb,Q);appendNextChip(fb);
+    }
   }else{
     fb.textContent=correct?(first?'✅ 答对了！＋10':'✅ 重试答对了！＋5')
       :('❌ 正确答案：'+ans+((first&&_pen)?'　（−5 分）':''));
@@ -2407,14 +2460,29 @@ QA_TYPES.code.genSection=function(n,diff){
 var CODE_TASKS=[
   {r:0,t:'写一个函数 sum(a, b)，返回两个数之和。',ex:'sum(2, 3) → 5',tip:'直接返回 a + b'},
   {r:0,t:'写一个函数 maxOf(a, b)，返回较大的那个数。',ex:'maxOf(4, 9) → 9',tip:'比较两个数'},
+  {r:0,t:'写一个函数 minOf(a, b)，返回较小的那个数。',ex:'minOf(4, 9) → 4',tip:'比较两个数、保留较小的那个'},
+  {r:0,t:'写一个函数 absVal(n)，返回 n 的绝对值。',ex:'absVal(-7) → 7',tip:'负数取相反数、非负原样返回'},
+  {r:0,t:'写一个函数 isPositive(n)，n 为正数返回 true，否则返回 false。',ex:'isPositive(-3) → false',tip:'与 0 比较'},
   {r:1,t:'写一个函数 isEven(n)，n 是偶数返回 true，否则返回 false。',ex:'isEven(7) → false',tip:'用取余判断'},
   {r:1,t:'写一个函数 reverseStr(s)，返回反转后的字符串。',ex:'reverseStr("abc") → "cba"',tip:'循环或内置反转'},
+  {r:1,t:'写一个函数 repeatStr(s, n)，返回把 s 重复 n 次的字符串。',ex:'repeatStr("ab", 3) → "ababab"',tip:'循环拼接或字符串乘法'},
+  {r:1,t:'写一个函数 countVowels(s)，统计元音字母 a/e/i/o/u 的个数。',ex:'countVowels("hello") → 2',tip:'遍历每个字符逐个判断'},
+  {r:1,t:'写一个函数 factorial(n)，返回 n 的阶乘（0 的阶乘是 1）。',ex:'factorial(5) → 120',tip:'递推 n × (n−1)!，边界 0! = 1'},
   {r:2,t:'写一个函数 countChar(s, c)，统计字符 c 在 s 中出现的次数。',ex:'countChar("banana", "a") → 3',tip:'遍历计数'},
   {r:2,t:'写一个函数 fib(n)，返回斐波那契数列第 n 项（1, 1, 2, 3, 5 …）。',ex:'fib(6) → 8',tip:'递推或递归'},
+  {r:2,t:'写一个函数 isPrime(n)，n 是素数返回 true，否则返回 false。',ex:'isPrime(7) → true',tip:'从 2 试除到 √n，小于 2 直接 false'},
+  {r:2,t:'写一个函数 reverseArr(a)，返回反转后的数组。',ex:'reverseArr([1,2,3]) → [3,2,1]',tip:'首尾交换或倒序复制'},
+  {r:2,t:'写一个函数 gcd(a, b)，返回 a 与 b 的最大公约数。',ex:'gcd(12, 18) → 6',tip:'辗转相除法：gcd(a,b)=gcd(b,a%b)'},
   {r:3,t:'写一个函数 twoSum(nums, target)，返回和为 target 的两个元素下标（数组返回）。',ex:'twoSum([2, 7, 11, 15], 9) → [0, 1]',tip:'哈希表可做到 O(n)'},
   {r:3,t:'写一个函数 isPalindrome(s)，忽略大小写与非字母数字字符，判断是否回文。',ex:'isPalindrome("A man, a plan") → false',tip:'双指针或反转后比较'},
+  {r:3,t:'写一个函数 firstUnique(s)，返回第一个只出现一次的字符，没有则返回 null。',ex:'firstUnique("aabcc") → "b"',tip:'先计数，再按原顺序找第一个计数为 1 的'},
+  {r:3,t:'写一个函数 mySqrt(n)，返回 n 的整数平方根（向下取整）。',ex:'mySqrt(8) → 2',tip:'二分或从 0 递增到 i*i>n'},
+  {r:3,t:'写一个函数 longestWord(s)，返回句子中最长的单词（长度相同取靠前的）。',ex:'longestWord("I love coding") → "coding"',tip:'按空格拆分后逐个比长度'},
   {r:4,t:'写一个函数 flatten(arr)，把任意层嵌套数组展平成一维数组。',ex:'flatten([1, [2, [3]]]) → [1, 2, 3]',tip:'递归处理嵌套'},
-  {r:4,t:'写一个函数 maxSubArray(nums)，返回连续子数组的最大和。',ex:'maxSubArray([-2, 1, -3, 4, -1, 2, 1]) → 6',tip:'Kadane 算法'}
+  {r:4,t:'写一个函数 maxSubArray(nums)，返回连续子数组的最大和。',ex:'maxSubArray([-2, 1, -3, 4, -1, 2, 1]) → 6',tip:'Kadane 算法：当前和转负就重新起头'},
+  {r:4,t:'写一个函数 mergeSorted(a, b)，合并两个已升序排列的数组，结果仍升序。',ex:'mergeSorted([1,3,5],[2,4]) → [1,2,3,4,5]',tip:'双指针归并，比到一方走完再补齐'},
+  {r:4,t:'写一个函数 evalRPN(tokens)，计算逆波兰表达式（数组里是数字字符串与 + - * / 运算符）。',ex:'evalRPN(["2","1","+","3","*"]) → 9',tip:'栈：遇数入栈、遇运算符弹出两个数'},
+  {r:4,t:'写一个函数 hasDupe(a)，数组里有重复元素返回 true，否则返回 false。',ex:'hasDupe([1,2,1]) → true',tip:'哈希集合或双重循环'}
 ];
 function genHandTask(rank){
   var r=(typeof rank==='number'&&rank>=0)?rank:0;
@@ -2422,7 +2490,10 @@ function genHandTask(rank){
   if(!near.length)near=CODE_TASKS.filter(function(x){return Math.abs(x.r-r)<=1;});
   if(!near.length)near=CODE_TASKS;
   var t=near[ri(near.length)];
-  return {q:t.t,a:'（AI 评判）',opts:null,hand:true,task:t,tag:'all'};
+  /* 解析 = 该题的「要点 + 样例」，本地拼、不调 AI：判错时至少能知道该往哪儿想。
+     有 AI 的手写题还能再点「AI 解析」拿更细的讲法，没 AI 也不至于一片空白。 */
+  return {q:t.t,a:'（AI 评判）',opts:null,hand:true,task:t,tag:'all',
+          exp:'要点：'+(t.tip||'')+(t.ex?('　样例：'+t.ex):'')};
 }
 /*=== CODE_ENGINE_END ===*/
 function codeQuestionnaire(cb){
@@ -2554,6 +2625,7 @@ function makeQuizPrompt(name,count,items){
   return '你是中文题库生成助手。请围绕主题「'+name+'」生成 '+count+' 道中文选择题（不少于 '+Math.max(8,count-3)+' 道）。\n'+
     material+
     '要求：\n'+
+    '0. 题干、4 个选项、答案必须全部使用简体中文；禁止英文题干与英文选项。仅允许代码、函数名、专有名词（如 Python、JSON、ASCII）保留英文；若主题本身是英文词（如 "Python"），题干必须用中文提问（如 "Python 中，哪个关键字用于定义函数？"）。\n'+
     '1. 多义词消歧：若主题是多义词（如「三角洲」），默认指其中最知名的实体（如游戏《三角洲行动》），全部题目只围绕该实体，不要混入其它义项。\n'+
     '2. 若主题是游戏 / 影视 / 动漫等作品，题目要考察「对该作品的理解与熟悉」：角色或干员及其技能与定位、地图与关卡、模式与玩法机制、武器与装备、背景设定与开发信息；不要出与作品无关的百科通识题。\n'+
     '3. 每题恰好 4 个选项，必须同类别（都是干员名、都是地图名、都是武器名……），彼此相近、有迷惑性，正确项唯一；严禁混入不同类别的选项。\n'+
@@ -2850,7 +2922,9 @@ function callAI(cfg,prompt,cb){
         // 所以打捞必须拿全文跑，不能拿 m[0] 跑（否则每局都少捞一题）。
         if(!arr)arr=salvageArray(content);
         if(!arr){cb(null);return;}
-        var out=arr.filter(function(x){return x&&x.q&&x.a&&x.opts&&x.opts.length>=2;}).map(function(x){var opts=shuffle(x.opts.slice());return {q:x.q,a:x.a,opts:opts};});cb(out);}
+        /* 英文题（题干或选项成句英文）直接挡在题库外：解析固定用中文写，英文题进来必然错配。
+           单个词 / 代码标识符放行，否则「Python 哪个关键字定义函数」这类正常题会被连坐。 */
+        var out=arr.filter(function(x){return x&&x.q&&x.a&&x.opts&&x.opts.length>=2&&!isEnglishQ(x);}).map(function(x){var opts=shuffle(x.opts.slice());return {q:x.q,a:x.a,opts:opts};});cb(out);}
       catch(e){cb(null);}
     }).catch(function(){cb(null);});
 }
