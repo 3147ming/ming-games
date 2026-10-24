@@ -14,7 +14,7 @@
    - 发布新版本时把 VERSION 加一（quiz-v1 → quiz-v2），旧缓存会在 activate 里被清掉。
    ============================================================= */
 
-var VERSION = 'quiz-v16';
+var VERSION = 'quiz-v17';
 var CACHE = VERSION;
 var BASE = self.registration ? self.registration.scope : self.location.href.replace(/sw\.js.*$/, '');
 

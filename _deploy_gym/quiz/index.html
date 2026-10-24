@@ -276,6 +276,36 @@ select:focus{outline:none;border-color:#c3b0ff;box-shadow:0 0 0 3px rgba(124,92,
 .fsteps{width:100%;margin:6px 0 2px;text-align:left}
 .fsteps-t{font-size:12px;font-weight:800;color:#2f8f4e;margin-bottom:3px}
 .fstep{font-size:12.5px;color:#444;line-height:1.65;padding-left:2px}
+/* ---------- 轻量代码编辑器（手写题） ---------- */
+.edwrap{position:relative;display:flex;width:100%;height:176px;background:#f8f6ff;
+  border:1px solid #d9d2ff;border-radius:10px;overflow:hidden;margin:8px 0 6px;box-sizing:border-box}
+.edwrap:focus-within{border-color:#b9a8ff;box-shadow:0 0 0 3px rgba(124,92,255,.12)}
+.edline{flex:0 0 34px;width:34px;padding:10px 6px 10px 0;text-align:right;color:#b3aad8;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;
+  font-size:13px;line-height:1.6;white-space:pre;overflow:hidden;background:#f2effc;
+  border-right:1px solid #e4defb;user-select:none;box-sizing:border-box}
+.edbody{position:relative;flex:1;min-width:0;overflow:hidden}
+.edhl{position:absolute;top:0;left:0;right:0;bottom:0;margin:0;padding:10px 12px;
+  overflow:hidden;pointer-events:none;white-space:pre;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;
+  font-size:13px;line-height:1.6;color:#3b3660;box-sizing:border-box}
+.edwrap textarea.codeinp{position:absolute;top:0;left:0;width:100%;height:100%;min-height:0;
+  margin:0;padding:10px 12px;border:0;border-radius:0;background:transparent;box-shadow:none;
+  resize:none;color:transparent;caret-color:#7c5cff;outline:none;overflow:auto;
+  white-space:pre;tab-size:2;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;
+  font-size:13px;line-height:1.6;box-sizing:border-box}
+.edwrap textarea.codeinp:focus{border:0;box-shadow:none}
+.edwrap textarea::selection{background:rgba(124,92,255,.22)}
+.t-com{color:#8a8f98}.t-str{color:#c76b29}.t-kw{color:#7c3aed;font-weight:700}
+.t-num{color:#0e7ac4}.t-fn{color:#0e9f6e}
+.btn.runbtn{background:linear-gradient(135deg,#63d3a6,#2fa87a);color:#04361f;
+  box-shadow:0 4px 14px rgba(47,168,122,.26)}
+.runout{width:100%;margin:6px 0 2px;padding:8px 10px;background:#f1f8f1;border:1px solid #cde7cd;
+  border-radius:8px;font-size:12.5px;color:#2f4a2f;line-height:1.6;white-space:pre-wrap;
+  word-break:break-word;box-sizing:border-box;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace}
+@media(max-height:720px){.edwrap{height:150px}}
 </style>
 </head>
 <body>
@@ -1158,18 +1188,24 @@ function showQuestion(){
   card.appendChild(qbox);
   // 选项 / 手写输入 / 填空
   if(Q.hand){
-    var ta=document.createElement('textarea');ta.className='codeinp';ta.rows=6;
-    ta.placeholder='// 在这里写你的代码（语言不限，C / Python / JS 都行）';
+    var ta=document.createElement('textarea');
+    ta.className='codeinp';ta.rows=6;
+    ta.placeholder='// 写你的代码（JS 可直接自测）';
     ta.setAttribute('autocapitalize','off');ta.setAttribute('autocorrect','off');ta.setAttribute('spellcheck','false');
-    card.appendChild(ta);
+    var edWrap=h('div');card.appendChild(edWrap);
+    codeEditor(edWrap,ta);        /* textarea 由 codeEditor 挂进高亮层，别再 card.appendChild(ta) */
     var hr=h('div','row');
-    var hsb=h('button','btn gold','🤖 提交 AI 评判');hsb.style.flex='1';
+    var runB=h('button','btn runbtn','▶ 运行自测');runB.style.flex='1';
+    runB.title='本地执行题目样例、对比期望值（Ctrl+Shift+Enter）';
+    var hsb=h('button','btn gold submitbtn','🤖 提交 AI 评判');hsb.style.flex='1';
+    hsb.title='交给 AI 判分，语言不限（Ctrl+Enter）';
     var hmsg=h('div','hint','');
     var canDo=canJudge();
     if(!canDo)hsb.disabled=true;
+    runB.onclick=function(){runSelfTest(Q,ta.value,hmsg);};
     hsb.onclick=function(){submitHand(Q,ta.value,hsb,hmsg);};
-    hr.appendChild(hsb);card.appendChild(hr);card.appendChild(hmsg);
-    if(!canDo)hmsg.textContent='⚠️ 未配置 AI：点右上角 ⚙️ 选服务商（免费通道不用 Key）后就能评判';
+    hr.appendChild(runB);hr.appendChild(hsb);card.appendChild(hr);card.appendChild(hmsg);
+    if(!canDo)hmsg.textContent='⚠️ 未配 AI：「▶ 运行自测」照样能用（JS 写法本地跑），要 AI 判分请点右上角 ⚙️';
     var unkH=h('button','unkbtn','😵 不会 · 跳过本题');unkH.onclick=function(){markUnknown();};card.appendChild(unkH);
   }else if(Q.opts){
     var opts=h('div','opts');
@@ -3099,6 +3135,190 @@ function parseJudge(t){
   if(/正确|通过/i.test(t))return {ok:true,why:''};
   return null;
 }
+/* ============ 轻量代码编辑器（行号 + 高亮层 + 透明 textarea） ============
+   不引 Monaco / CodeMirror：一块 <pre> 高亮层垫在 textarea 底下，textarea 自己的字设成透明、
+   只留光标；input 时重绘高亮与行号，scroll 时把滚动量同步给高亮层和行号列。纯内联、离线可用。 */
+function escH(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+/* 简化分词：注释 / 字符串 / 关键字 / 数字 / 函数名。够看懂，不做语法分析。 */
+function hlCode(code){
+  code=String(code==null?'':code);
+  var re=/(\/\/[^\n]*|\/\*[\s\S]*?\*\/|#[^\n]*)|('(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`)|\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|new|class|extends|import|from|export|default|true|false|null|undefined|this|typeof|instanceof|void|async|await|try|catch|finally|throw|yield|delete|def|lambda|elif|print|int|char|float|double|long|main|include|printf|scanf|True|False|None|and|or|not|in|is|static|public|private|struct|using)\b|\b(\d+(?:\.\d+)?)\b|([A-Za-z_$][\w$]*)(?=\s*\()/g;
+  var out='',last=0,m;
+  while((m=re.exec(code))!==null){
+    out+=escH(code.slice(last,m.index));
+    if(m[1])out+='<span class="t-com">'+escH(m[1])+'</span>';
+    else if(m[2])out+='<span class="t-str">'+escH(m[2])+'</span>';
+    else if(m[3])out+='<span class="t-kw">'+escH(m[3])+'</span>';
+    else if(m[4])out+='<span class="t-num">'+escH(m[4])+'</span>';
+    else out+='<span class="t-fn">'+escH(m[5])+'</span>';
+    last=m.index+m[0].length;
+  }
+  out+=escH(code.slice(last));
+  return out;
+}
+function codeEditor(container,ta){
+  container.className='edwrap';
+  var ln=h('div','edline');
+  var body=h('div','edbody');
+  var hl=h('pre','edhl');hl.setAttribute('aria-hidden','true');
+  body.appendChild(hl);body.appendChild(ta);
+  container.appendChild(ln);container.appendChild(body);
+  function syncScroll(){
+    try{hl.scrollTop=ta.scrollTop;ln.scrollTop=ta.scrollTop;hl.scrollLeft=ta.scrollLeft;}catch(e){}
+  }
+  function setCaret(pos){try{ta.selectionStart=ta.selectionEnd=pos;}catch(e){}}
+  function paint(){
+    var v=ta.value||'';
+    /* 值以换行结尾时高亮层要多留一行，否则最后一行空行与 textarea 差一行、行号也会错位 */
+    hl.innerHTML=hlCode(v)+(v.charAt(v.length-1)==='\n'?'\n':'');
+    var n=v.split('\n').length,s='';
+    for(var i=1;i<=n;i++)s+=i+(i<n?'\n':'');
+    ln.textContent=s;
+    syncScroll();
+  }
+  function replaceRange(a,b,txt,caret){
+    ta.value=ta.value.slice(0,a)+txt+ta.value.slice(b);
+    setCaret(caret);paint();
+  }
+  /* 多行选区整块缩进 / 反缩进（两个空格） */
+  function indentBlock(on){
+    var a=ta.value.lastIndexOf('\n',ta.selectionStart-1)+1;
+    var b=ta.value.indexOf('\n',ta.selectionEnd);
+    if(b<0)b=ta.value.length;
+    var seg=ta.value.slice(a,b).split('\n');
+    for(var i=0;i<seg.length;i++){
+      var L=seg[i];
+      if(on)seg[i]='  '+L;
+      else if(L.slice(0,2)==='  ')seg[i]=L.slice(2);
+      else if(L.charAt(0)===' ')seg[i]=L.slice(1);
+    }
+    var txt=seg.join('\n');
+    ta.value=ta.value.slice(0,a)+txt+ta.value.slice(b);
+    setCaret(a+txt.length);paint();
+  }
+  function outdentLine(){
+    var st=ta.selectionStart,ls=ta.value.lastIndexOf('\n',st-1)+1;
+    var head=ta.value.slice(ls,st);
+    var cut=head.length>=2&&head.slice(-2)==='  '?2:(head.length>=1&&head.charAt(head.length-1)===' '?1:0);
+    if(!cut)return;
+    replaceRange(st-cut,st,'',st-cut);
+  }
+  ta.addEventListener('input',paint);
+  ta.addEventListener('scroll',syncScroll);
+  ta.addEventListener('keydown',function(e){
+    if(!e)return;
+    var st=ta.selectionStart,en=ta.selectionEnd;
+    if(e.key==='Tab'){
+      e.preventDefault();
+      if(st!==en&&ta.value.slice(st,en).indexOf('\n')>=0){indentBlock(!e.shiftKey);return;}
+      if(e.shiftKey){outdentLine();return;}
+      replaceRange(st,en,'  ',st+2);return;
+    }
+    /* 自动补出来的右括号：光标正好停在一个 ), ], } 前面时直接跳过，别叠成两个 */
+    if((e.key===')'||e.key===']'||e.key==='}')&&st===en&&ta.value.charAt(st)===e.key){
+      e.preventDefault();setCaret(st+1);return;
+    }
+    if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){
+      e.preventDefault();
+      var btn=container.querySelector(e.shiftKey?'.runbtn':'.submitbtn');
+      if(btn&&!btn.disabled)btn.click();
+    }
+  });
+  ta.addEventListener('keyup',function(e){
+    if(!e||e.ctrlKey||e.metaKey||e.altKey)return;
+    var pairs={'(' :')','[':']','{':'}'};
+    var p=pairs[e.key];
+    if(!p)return;
+    var st=ta.selectionStart;
+    if(ta.value.charAt(st)===p)return;      /* 后面已经站着一个右括号，不重复插 */
+    ta.value=ta.value.slice(0,st)+p+ta.value.slice(st);
+    setCaret(st);paint();
+  });
+  paint();
+  return ta;
+}
+
+/* ---------- JS 本地运行自测 ---------- */
+/* 归一化：数组转紧凑 JSON，其余转字符串，全部去空白后再比对 */
+function normOut(v){
+  if(Array.isArray(v))return JSON.stringify(v).replace(/\s/g,'');
+  return String(v==null?'':v).replace(/\s/g,'');
+}
+/* 在 Worker 里跑用户代码：死循环能被打断（4 秒），主线程不卡。
+   normOut 直接取函数源码内联进去，避免两份实现走偏。 */
+var RUN_WORKER_SRC='var normOut='+normOut.toString()+';'
+ +'self.onmessage=function(e){var d=e.data,logs=[],old=console.log;'
+ +'console.log=function(){logs.push([].slice.call(arguments).join(" "));};'
+ +'var out,err="";'
+ +'try{out=new Function(d.code+"\\n;return ("+d.call+");")();}catch(x){err=String((x&&x.message)||x);}'
+ +'console.log=old;'
+ +'var disp="";try{disp=normOut(out);}catch(y){}'
+ +'self.postMessage({disp:disp,err:err,logs:logs});};';
+/* 「▶ 运行自测」：取样例里「→」左边的调用注入执行，与右边期望值对比。
+   只对 JS 写法有效（浏览器里只能跑 JS）；C / Python 报错时提示改用 AI 评判，不阻塞提交。 */
+function runSelfTest(Q,code,msgEl){
+  if(!msgEl)return;
+  clearNode(msgEl);msgEl.className='hint';
+  code=String(code==null?'':code);
+  if(!code.trim()){msgEl.appendChild(ht('div','hint2','⚠️ 还没写代码'));return;}
+  var ex=(Q&&Q.task&&Q.task.ex)||'';
+  var m=ex.match(/^([\s\S]+?)\s*→\s*([\s\S]+)$/);
+  var call=m?m[1].trim():'',want=m?m[2].trim():'',wantNorm=null;
+  if(m){
+    try{wantNorm=normOut(new Function('return ('+want+');')());}
+    catch(e){wantNorm=normOut(want.replace(/^["']|["']$/g,''));}
+  }
+  function render(disp,err,logs){
+    var box,show=disp===''?'（无返回 / undefined）':disp;
+    if(err){
+      /* 「xxx is not defined」且正是样例要调用的函数名 —— 十有八九是压根没写这个名字，
+         别拿「只支持 JS 写法」去误导（写了 C 的 int main 是另一回事）。 */
+      var nd=err.match(/^([A-Za-z_$][\w$]*) is not defined/);
+      var fname=(call.match(/^([A-Za-z_$][\w$]*)/)||[])[1]||'';
+      var tail;
+      if(/运行超时/.test(err))tail='（检查是不是有 while / for 少了终止条件）';
+      else if(nd&&nd[1]===fname)tail='（样例要调用 '+fname+'(…)，但代码里还没定义叫 '+fname+' 的函数）';
+      else tail='（浏览器自测只支持 JS 写法，C / Python 请点「🤖 提交 AI 评判」）';
+      box='❌ 本地运行失败：'+escH(err)+'\n\n'+tail;
+    }else if(!m){
+      box='✅ 已执行完毕（本题没有「样例 → 期望值」，只看返回值）\n返回值：'+escH(show);
+    }else if(disp===wantNorm){
+      box='✅ 运行通过：'+escH(show)+'　（期望 '+escH(want)+'）';
+    }else{
+      box='⚠️ 运行结果：'+escH(show)+'　（期望 '+escH(want)+'）\n—— 与期望不一致，检查实现后再试';
+    }
+    if(logs&&logs.length)box+='\n📤 console 输出：\n'+escH(logs.join('\n'));
+    var d=ht('pre','runout',null);d.innerHTML=box;
+    msgEl.appendChild(d);
+  }
+  var done=false,timer=null,w=null;
+  function finish(disp,err,logs){
+    if(done)return;
+    done=true;
+    if(timer){clearTimeout(timer);timer=null;}
+    if(w){try{w.terminate();}catch(e){}w=null;}
+    render(disp,err,logs);
+  }
+  /* 首选 Worker（能中断死循环）；file:// 打开时 blob worker 会被浏览器拦，退回同步执行 */
+  try{
+    var url=URL.createObjectURL(new Blob([RUN_WORKER_SRC],{type:'text/javascript'}));
+    w=new Worker(url);
+    try{URL.revokeObjectURL(url);}catch(e){}
+    w.onmessage=function(e){var d=e.data||{};finish(d.disp==null?'':String(d.disp),d.err||'',d.logs||[]);};
+    w.onerror=function(){finish('','代码里抛了未捕获的异常',[]);};
+    w.postMessage({code:code,call:call||'undefined'});
+    timer=setTimeout(function(){finish('','运行超时（多半是死循环），已中断',[]);},4000);
+    return;
+  }catch(e){if(w){try{w.terminate();}catch(x){}w=null;}}
+  var logs=[],oldLog=console.log;
+  try{console.log=function(){logs.push([].slice.call(arguments).join(' '));};}catch(e){}
+  var disp='',err='';
+  try{disp=normOut(new Function(code+'\n;return ('+(call||'undefined')+');')());}
+  catch(e2){err=String((e2&&e2.message)||e2);}
+  try{console.log=oldLog;}catch(e){}
+  finish(disp,err,logs);
+}
+
 function submitHand(Q,code,btn,msgEl){
   if(locked)return;                 /* 已结算（答过 / 点过不会）：别让二次点击再烧一次 AI 调用 */
   if(!canJudge()){toast('✍️ 手写代码要先配置 AI（免费通道不用 Key）');return;}
