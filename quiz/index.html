@@ -340,199 +340,198 @@ function qaDiffDefault(bk){var ds=qaDiffs(bk);if(!ds)return -1;var sv=parseInt(S
 /* ===== 引擎核心（从 brain-gym 原样抽取） ===== */
 var POOLS={
 geo:[
-  ["法国的首都是？","巴黎","geo","东京|伦敦|柏林"],
-  ["日本的首都是？","东京","geo","巴黎|伦敦|柏林"],
-  ["美国的首都是？","华盛顿","geo","渥太华|堪培拉|莫斯科"],
-  ["英国的首都是？","伦敦","geo","巴黎|东京|柏林"],
-  ["德国的首都是？","柏林","geo","巴黎|东京|伦敦"],
-  ["意大利的首都是？","罗马","geo","巴黎|东京|伦敦"],
-  ["加拿大的首都是？","渥太华","geo","华盛顿|堪培拉|莫斯科"],
-  ["澳大利亚的首都是？","堪培拉","geo","华盛顿|渥太华|莫斯科"],
-  ["俄罗斯的首都是？","莫斯科","geo","华盛顿|渥太华|堪培拉"],
-  ["巴西的首都是？","巴西利亚","geo","墨西哥城|华盛顿|渥太华"],
-  ["印度的首都是？","新德里","geo","华盛顿|渥太华|堪培拉"],
-  ["埃及的首都是？","开罗","geo","巴黎|东京|伦敦"],
-  ["韩国的首都是？","首尔","geo","巴黎|东京|伦敦"],
-  ["西班牙的首都是？","马德里","geo","华盛顿|渥太华|堪培拉"],
-  ["土耳其的首都是？","安卡拉","geo","华盛顿|渥太华|堪培拉"],
-  ["泰国的首都是？","曼谷","geo","巴黎|东京|伦敦"],
-  ["墨西哥的首都是？","墨西哥城","geo","巴西利亚|华盛顿|渥太华"],
-  ["阿根廷的首都是？","布宜诺斯艾利斯","geo","比勒陀利亚|巴西利亚|墨西哥城"],
-  ["南非的首都是？","比勒陀利亚","geo","巴西利亚|墨西哥城|华盛顿"],
-  ["希腊的首都是？","雅典","geo","巴黎|东京|伦敦"],
-  ["世界上面积最大的国家是？","俄罗斯","geo","华盛顿|渥太华|堪培拉"],
-  ["世界上人口最多的国家是？","印度","geo","巴黎|东京|伦敦"],
-  ["中国第一长河是？","长江","geo","巴黎|东京|伦敦"],
-  ["有\"母亲河\"之称的中国河流是？","黄河","geo","巴黎|东京|伦敦"]
- ],
+  ["法国的首都是？","巴黎","geo","里昂|马赛|尼斯"],
+  ["日本的首都是？","东京","geo","大阪|横滨|名古屋"],
+  ["美国的首都是？","华盛顿","geo","纽约|洛杉矶|芝加哥"],
+  ["英国的首都是？","伦敦","geo","曼彻斯特|利物浦|伯明翰"],
+  ["德国的首都是？","柏林","geo","慕尼黑|汉堡|法兰克福"],
+  ["意大利的首都是？","罗马","geo","米兰|那不勒斯|威尼斯"],
+  ["加拿大的首都是？","渥太华","geo","多伦多|温哥华|蒙特利尔"],
+  ["澳大利亚的首都是？","堪培拉","geo","悉尼|墨尔本|布里斯班"],
+  ["俄罗斯的首都是？","莫斯科","geo","圣彼得堡|新西伯利亚|叶卡捷琳堡"],
+  ["巴西的首都是？","巴西利亚","geo","里约热内卢|圣保罗|萨尔瓦多"],
+  ["印度的首都是？","新德里","geo","孟买|加尔各答|班加罗尔"],
+  ["埃及的首都是？","开罗","geo","亚历山大|卢克索|阿斯旺"],
+  ["韩国的首都是？","首尔","geo","釜山|仁川|大邱"],
+  ["西班牙的首都是？","马德里","geo","巴塞罗那|瓦伦西亚|塞维利亚"],
+  ["土耳其的首都是？","安卡拉","geo","伊斯坦布尔|伊兹密尔|安塔利亚"],
+  ["泰国的首都是？","曼谷","geo","清迈|普吉|芭提雅"],
+  ["墨西哥的首都是？","墨西哥城","geo","瓜达拉哈拉|蒙特雷|坎昆"],
+  ["阿根廷的首都是？","布宜诺斯艾利斯","geo","科尔多瓦|罗萨里奥|门多萨"],
+  ["南非的行政首都是？","比勒陀利亚","geo","开普敦|布隆方丹|约翰内斯堡"],
+  ["希腊的首都是？","雅典","geo","塞萨洛尼基|帕特雷|斯巴达"],
+  ["世界上面积最大的国家是？","俄罗斯","geo","加拿大|中国|美国"],
+  ["截至 2023 年，世界上人口最多的国家是？","印度","geo","中国|美国|印度尼西亚"],
+  ["中国第一长河是？","长江","geo","黄河|珠江|黑龙江"],
+  ["有\"母亲河\"之称的中国河流是？","黄河","geo","长江|珠江|淮河"]
+],
 history:[
-  ["第二次世界大战结束于哪一年？","1945","history","1914|221|1978"],
-  ["第一次世界大战爆发于哪一年？","1914","history","1945|221|1978"],
-  ["秦朝统一中国大约在公元前哪一年？","221","history","1945|1914|1978"],
-  ["中国改革开放始于哪一年？","1978","history","1945|1914|221"],
-  ["美国《独立宣言》发表于哪一年？","1776","history","1945|1914|221"],
-  ["哥伦布到达美洲是哪一年？","1492","history","1945|1914|221"],
-  ["唐朝建立于哪一年？","618","history","1945|1914|221"],
-  ["中华人民共和国成立于哪一年？","1949","history","1945|1914|221"],
-  ["工业革命最早始于哪个国家？","英国","history","毕昇|长安|波兰"],
-  ["活字印刷术由谁发明？","毕昇","history","英国|长安|波兰"],
-  ["拿破仑在哪场战役惨败后被流放？","滑铁卢","history","地动仪|华盛顿|意大利"],
-  ["丝绸之路的起点一般认为是？","长安","history","英国|毕昇|波兰"],
-  ["新文化运动兴起于哪一年前后？","1915","history","1945|1914|221"],
-  ["美国第一任总统是？","华盛顿","history","地动仪|滑铁卢|意大利"],
-  ["第二次世界大战全面爆发的标志是德国入侵哪国？","波兰","history","英国|毕昇|长安"],
-  ["中国第一个统一的封建王朝是？","秦朝","history","英国|毕昇|长安"],
-  ["文艺复兴最早兴起于哪个国家？","意大利","history","地动仪|滑铁卢|华盛顿"],
-  ["郑和下西洋发生在哪个朝代？","明朝","history","英国|毕昇|长安"],
-  ["中国古代\"丝绸之路\"连接中国与哪个地区？","中亚与欧洲","history","地动仪|滑铁卢|华盛顿"]
- ],
+  ["第二次世界大战结束于哪一年？","1945","history","1918|1939|1949"],
+  ["第一次世界大战爆发于哪一年？","1914","history","1918|1939|1900"],
+  ["秦朝统一中国大约在公元前哪一年？","221","history","206|256|475"],
+  ["中国改革开放始于哪一年？","1978","history","1949|1966|1992"],
+  ["美国《独立宣言》发表于哪一年？","1776","history","1789|1812|1861"],
+  ["哥伦布到达美洲是哪一年？","1492","history","1453|1498|1519"],
+  ["唐朝建立于哪一年？","618","history","581|589|755"],
+  ["中华人民共和国成立于哪一年？","1949","history","1921|1945|1978"],
+  ["工业革命最早始于哪个国家？","英国","history","法国|德国|美国"],
+  ["活字印刷术由谁发明？","毕昇","history","蔡伦|张衡|祖冲之"],
+  ["拿破仑在哪场战役惨败后被流放？","滑铁卢","history","奥斯特里茨|博罗季诺|莱比锡"],
+  ["丝绸之路的起点一般认为是？","长安","history","洛阳|敦煌|开封"],
+  ["新文化运动兴起于哪一年前后？","1915","history","1911|1919|1921"],
+  ["美国第一任总统是？","华盛顿","history","林肯|杰斐逊|富兰克林"],
+  ["第二次世界大战全面爆发的标志是德国入侵哪国？","波兰","history","法国|苏联|捷克斯洛伐克"],
+  ["中国第一个统一的封建王朝是？","秦朝","history","汉朝|周朝|隋朝"],
+  ["文艺复兴最早兴起于哪个国家？","意大利","history","法国|英国|德国"],
+  ["郑和下西洋发生在哪个朝代？","明朝","history","唐朝|宋朝|元朝"],
+  ["中国古代\"丝绸之路\"连接中国与哪个地区？","中亚与欧洲","history","东南亚|非洲东海岸|美洲"]
+],
 science:[
-  ["水的化学分子式是？","H₂O","science","30万|红细胞|氯化钠"],
-  ["氧气的化学符号是？","O₂","science","皮肤|真空|氮气"],
-  ["光合作用主要发生在植物的哪个部位？","叶","science","氧|O₂|皮肤"],
-  ["人体最大的器官是？","皮肤","science","O₂|真空|氮气"],
-  ["光在真空中的速度约为每秒多少千米？","30万","science","H₂O|红细胞|氯化钠"],
-  ["地壳中含量最多的元素是？","氧","science","叶|O₂|皮肤"],
-  ["声音不能在什么环境中传播？","真空","science","O₂|皮肤|氮气"],
-  ["DNA 的中文全称是？","脱氧核糖核酸","science","折射与反射|惯性定律|大脑皮层"],
-  ["地球绕太阳公转一周约多少天？","365","science","100|H₂O|30万"],
-  ["牛顿第一定律又称？","惯性定律","science","大脑皮层|H₂O|30万"],
-  ["人体血液中运输氧气的主要细胞是？","红细胞","science","H₂O|30万|氯化钠"],
-  ["水的沸点（常压）约为多少℃？","100","science","365|H₂O|30万"],
-  ["地球大气层中体积占比最高的气体是？","氮气","science","O₂|皮肤|真空"],
-  ["食盐的化学名称是？","氯化钠","science","H₂O|30万|红细胞"],
-  ["蜜蜂主要通过什么方式传递食物位置信息？","舞蹈","science","O₂|皮肤|真空"],
-  ["彩虹是光发生了什么现象形成的？","折射与反射","science","脱氧核糖核酸|惯性定律|大脑皮层"],
-  ["人类大脑中负责高级思维的主要部位是？","大脑皮层","science","惯性定律|H₂O|30万"],
-  ["电流的国际单位是？","安培","science","O₂|皮肤|真空"]
- ],
+  ["水的化学分子式是？","H₂O","science","CO₂|NaCl|O₂"],
+  ["氧气的化学符号是？","O₂","science","N₂|H₂|CO₂"],
+  ["光合作用主要发生在植物的哪个部位？","叶","science","根|茎|花"],
+  ["人体最大的器官是？","皮肤","science","肝脏|肺|心脏"],
+  ["光在真空中的速度约为每秒多少千米？","30万","science","3万|300万|3000"],
+  ["地壳中含量最多的元素是？","氧","science","硅|铝|铁"],
+  ["声音不能在什么环境中传播？","真空","science","水中|空气中|钢铁中"],
+  ["DNA 的中文全称是？","脱氧核糖核酸","science","核糖核酸|氨基酸|蛋白质"],
+  ["地球绕太阳公转一周约多少天？","365","science","24|30|366"],
+  ["牛顿第一定律又称？","惯性定律","science","万有引力定律|作用力与反作用力定律|能量守恒定律"],
+  ["人体血液中运输氧气的主要细胞是？","红细胞","science","白细胞|血小板|血浆"],
+  ["水的沸点（常压）约为多少℃？","100","science","0|37|212"],
+  ["地球大气层中体积占比最高的气体是？","氮气","science","氧气|二氧化碳|氢气"],
+  ["食盐的化学名称是？","氯化钠","science","碳酸钠|硫酸钠|氯化钾"],
+  ["蜜蜂主要通过什么方式传递食物位置信息？","舞蹈","science","气味|声音|触角触碰"],
+  ["彩虹是光发生了什么现象形成的？","折射与反射","science","衍射|散射|干涉"],
+  ["人类大脑中负责高级思维的主要部位是？","大脑皮层","science","小脑|脑干|脊髓"],
+  ["电流的国际单位是？","安培","science","伏特|瓦特|欧姆"]
+],
 english:[
-  ["\"苹果\"的英文是？","apple","english","water|happy|book"],
-  ["\"书\"的英文是？","book","english","city|time|love"],
-  ["\"水\"的英文是？","water","english","apple|happy|book"],
-  ["\"太阳\"的英文是？","sun","english","red|cat|sky"],
-  ["\"朋友\"的英文是？","friend","english","school|apple|water"],
-  ["\"城市\"的英文是？","city","english","book|time|love"],
-  ["\"红色\"的英文是？","red","english","sun|cat|sky"],
-  ["\"学校\"的英文是？","school","english","friend|apple|water"],
-  ["\"快乐\"的英文是？","happy","english","apple|water|book"],
-  ["\"时间\"的英文是？","time","english","book|city|love"],
-  ["\"电脑\"的英文是？","computer","english","friend|school|apple"],
-  ["\"猫\"的英文是？","cat","english","sun|red|sky"],
-  ["\"爱\"的英文是？","love","english","book|city|time"],
-  ["\"天空\"的英文是？","sky","english","sun|red|cat"]
- ],
+  ["\"苹果\"的英文是？","apple","english","orange|banana|grape"],
+  ["\"书\"的英文是？","book","english","pen|desk|paper"],
+  ["\"水\"的英文是？","water","english","milk|juice|tea"],
+  ["\"太阳\"的英文是？","sun","english","moon|star|cloud"],
+  ["\"朋友\"的英文是？","friend","english","brother|teacher|neighbor"],
+  ["\"城市\"的英文是？","city","english","country|village|street"],
+  ["\"红色\"的英文是？","red","english","blue|green|yellow"],
+  ["\"学校\"的英文是？","school","english","hospital|library|office"],
+  ["\"快乐\"的英文是？","happy","english","sad|angry|tired"],
+  ["\"时间\"的英文是？","time","english","date|day|hour"],
+  ["\"电脑\"的英文是？","computer","english","phone|screen|keyboard"],
+  ["\"猫\"的英文是？","cat","english","dog|bird|fish"],
+  ["\"爱\"的英文是？","love","english","hate|like|hope"],
+  ["\"天空\"的英文是？","sky","english","sea|land|cloud"]
+],
 common:[
-  ["一年有多少个月？","12","common","7|4|180"],
-  ["一周有多少天？","7","common","12|4|180"],
-  ["彩虹通常有几种颜色？","7","common","12|4|180"],
-  ["地球上有几大洲？","7","common","12|4|180"],
-  ["正方形有几条边？","4","common","12|7|180"],
-  ["三角形内角和是多少度？","180","common","12|7|4"],
-  ["中国的首都是？","北京","common","屈原|中国与尼泊尔|不对（4条）"],
-  ["珠穆朗玛峰位于哪两国交界？","中国与尼泊尔","common","不对（4条）|北京|屈原"],
-  ["人体正常体温约多少℃？","37","common","12|7|4"],
-  ["一分钟等于多少秒？","60","common","12|7|4"],
-  ["平年一年有多少天？","365","common","12|7|4"],
-  ["一天有多少小时？","24","common","12|7|4"],
-  ["闰年有多少天？","366","common","12|7|4"],
-  ["牛通常有两条腿这个说法对吗？","不对（4条）","common","中国与尼泊尔|北京|屈原"],
-  ["端午节是为了纪念哪位诗人？","屈原","common","北京|中国与尼泊尔|不对（4条）"],
-  ["中国国旗上有几颗五角星？","5","common","12|7|4"],
-  ["国际象棋棋盘每行有几格？","8","common","12|7|4"],
-  ["一周通常有几个工作日？","5","common","12|7|4"]
- ],
+  ["一年有多少个月？","12","common","10|11|24"],
+  ["一周有多少天？","7","common","5|6|8"],
+  ["彩虹通常有几种颜色？","7","common","5|6|9"],
+  ["地球上有几大洲？","7","common","5|6|8"],
+  ["正方形有几条边？","4","common","3|5|6"],
+  ["三角形内角和是多少度？","180","common","90|270|360"],
+  ["中国的首都是？","北京","common","上海|广州|南京"],
+  ["珠穆朗玛峰位于哪两国交界？","中国与尼泊尔","common","中国与印度|印度与尼泊尔|中国与不丹"],
+  ["人体正常体温约多少℃？","37","common","34|35|39"],
+  ["一分钟等于多少秒？","60","common","30|100|120"],
+  ["平年一年有多少天？","365","common","360|364|366"],
+  ["一天有多少小时？","24","common","12|20|48"],
+  ["闰年有多少天？","366","common","364|365|367"],
+  ["端午节是为了纪念哪位诗人？","屈原","common","李白|杜甫|司马迁"],
+  ["中国国旗上有几颗五角星？","5","common","4|6|7"],
+  ["国际象棋棋盘每行有几格？","8","common","6|7|9"],
+  ["在中国大陆，一周通常有几个工作日？","5","common","4|6|7"]
+],
 literature:[
-  ["《红楼梦》的作者是？","曹雪芹","literature","罗贯中|吴承恩|莫言"],
-  ["中国首位获得诺贝尔文学奖的作家是？","莫言","literature","李白|苏轼|孔子"],
-  ["莫言获得诺贝尔文学奖是在哪一年？","2012","literature","莎士比亚|马尔克斯|越王勾践"],
-  ["《哈姆雷特》的作者是？","莎士比亚","literature","马尔克斯|越王勾践|曹雪芹"],
-  ["\"诗仙\"指的是哪位唐代诗人？","李白","literature","莫言|苏轼|孔子"],
-  ["《三国演义》的作者是？","罗贯中","literature","曹雪芹|吴承恩|莫言"],
-  ["《西游记》的作者是？","吴承恩","literature","曹雪芹|罗贯中|莫言"],
-  ["\"床前明月光\"出自哪位诗人？","李白","literature","莫言|苏轼|孔子"],
-  ["《百年孤独》的作者是？","马尔克斯","literature","莎士比亚|越王勾践|曹雪芹"],
-  ["\"但愿人长久，千里共婵娟\"的作者是？","苏轼","literature","莫言|李白|孔子"],
-  ["《论语》主要记录谁及其弟子的言行？","孔子","literature","莫言|李白|苏轼"],
-  ["《呐喊》的作者是？","鲁迅","literature","莫言|李白|苏轼"],
-  ["\"史家之绝唱，无韵之离骚\"评价的是哪部书？","史记","literature","莫言|李白|苏轼"],
-  ["《骆驼祥子》的作者是？","老舍","literature","莫言|李白|苏轼"],
-  ["《简·爱》的作者是？","夏洛蒂·勃朗特","literature","莎士比亚|马尔克斯|越王勾践"],
-  ["\"卧薪尝胆\"说的是哪位君主？","越王勾践","literature","莎士比亚|马尔克斯|曹雪芹"]
- ],
+  ["《红楼梦》的作者是？","曹雪芹","literature","施耐庵|罗贯中|吴承恩"],
+  ["中国首位获得诺贝尔文学奖的作家是？","莫言","literature","鲁迅|巴金|老舍"],
+  ["莫言获得诺贝尔文学奖是在哪一年？","2012","literature","2008|2010|2015"],
+  ["《哈姆雷特》的作者是？","莎士比亚","literature","狄更斯|雨果|托尔斯泰"],
+  ["\"诗仙\"指的是哪位唐代诗人？","李白","literature","杜甫|白居易|王维"],
+  ["《三国演义》的作者是？","罗贯中","literature","施耐庵|曹雪芹|吴承恩"],
+  ["《西游记》的作者是？","吴承恩","literature","罗贯中|施耐庵|曹雪芹"],
+  ["\"床前明月光\"出自哪位诗人？","李白","literature","杜甫|孟浩然|王昌龄"],
+  ["《百年孤独》的作者是？","马尔克斯","literature","博尔赫斯|略萨|聂鲁达"],
+  ["\"但愿人长久，千里共婵娟\"的作者是？","苏轼","literature","辛弃疾|李清照|柳永"],
+  ["《论语》主要记录谁及其弟子的言行？","孔子","literature","老子|孟子|庄子"],
+  ["《呐喊》的作者是？","鲁迅","literature","巴金|老舍|沈从文"],
+  ["\"史家之绝唱，无韵之离骚\"评价的是哪部书？","史记","literature","汉书|资治通鉴|左传"],
+  ["《骆驼祥子》的作者是？","老舍","literature","巴金|沈从文|鲁迅"],
+  ["《简·爱》的作者是？","夏洛蒂·勃朗特","literature","简·奥斯汀|艾米莉·勃朗特|伍尔夫"],
+  ["\"卧薪尝胆\"说的是哪位君主？","越王勾践","literature","吴王夫差|齐桓公|秦始皇"]
+],
 sports:[
-  ["现代奥运会每隔几年举办一届？","4","sports","5|11|42"],
-  ["2022 年卡塔尔世界杯冠军是？","阿根廷","sports","自由泳|世界杯|古希腊"],
-  ["篮球比赛每队上场几人？","5","sports","4|11|42"],
-  ["足球比赛每队上场几人？","11","sports","4|5|42"],
-  ["奥运会五环代表几大洲？","5","sports","4|11|42"],
-  ["乒乓球被称为中国的什么球？","国球","sports","篮球|雅典|阿根廷"],
-  ["马拉松全程约多少公里？","42","sports","4|5|11"],
-  ["NBA 是哪类运动的职业联赛？","篮球","sports","国球|雅典|阿根廷"],
-  ["一场标准足球比赛常规时间多少分钟？","90","sports","4|5|11"],
-  ["游泳中速度通常最快的泳姿是？","自由泳","sports","阿根廷|世界杯|古希腊"],
-  ["北京奥运会举办于哪一年？","2008","sports","4|5|11"],
-  ["篮球比赛中投进三分线外算几分？","3","sports","4|5|11"],
-  ["第一届现代奥运会于 1896 年在哪座城市举办？","雅典","sports","国球|篮球|阿根廷"],
-  ["羽毛球单打每方上场几人？","1","sports","4|5|11"],
-  ["奥林匹克运动会的发源地是？","古希腊","sports","阿根廷|自由泳|世界杯"]
- ],
+  ["现代奥运会每隔几年举办一届？","4","sports","2|3|5"],
+  ["2022 年卡塔尔世界杯冠军是？","阿根廷","sports","法国|巴西|德国"],
+  ["篮球比赛每队上场几人？","5","sports","6|7|11"],
+  ["足球比赛每队上场几人？","11","sports","9|10|12"],
+  ["奥运会五环代表几大洲？","5","sports","4|6|7"],
+  ["乒乓球被称为中国的什么球？","国球","sports","国粹|国技|国术"],
+  ["马拉松全程约多少公里？","42.195","sports","21.0975|40|50"],
+  ["NBA 是哪类运动的职业联赛？","篮球","sports","橄榄球|棒球|冰球"],
+  ["一场标准足球比赛常规时间多少分钟？","90","sports","60|80|100"],
+  ["游泳中速度通常最快的泳姿是？","自由泳","sports","蛙泳|蝶泳|仰泳"],
+  ["北京奥运会举办于哪一年？","2008","sports","2000|2004|2012"],
+  ["篮球比赛中投进三分线外算几分？","3","sports","1|2|4"],
+  ["第一届现代奥运会于 1896 年在哪座城市举办？","雅典","sports","巴黎|伦敦|罗马"],
+  ["羽毛球单打每方上场几人？","1","sports","2|3|4"],
+  ["奥林匹克运动会的发源地是？","古希腊","sports","古罗马|古埃及|古巴比伦"]
+],
 animals:[
-  ["地球上现存最大的动物是？","蓝鲸","animals","猎豹|狮子|花蜜"],
-  ["蓝鲸属于哪类动物？","哺乳动物","animals","南半球|毛毛虫|蓝鲸"],
-  ["世界上跑得最快的陆地动物是？","猎豹","animals","蓝鲸|狮子|花蜜"],
-  ["\"万兽之王\"通常指哪种动物？","狮子","animals","蓝鲸|猎豹|花蜜"],
-  ["蜜蜂采集什么来酿造蜂蜜？","花蜜","animals","蓝鲸|猎豹|狮子"],
-  ["企鹅主要生活在哪个半球？","南半球","animals","毛毛虫|蓝鲸|哺乳动物"],
-  ["大熊猫主要以什么为食？","竹子","animals","蓝鲸|猎豹|狮子"],
-  ["蝴蝶的幼虫阶段叫什么？","毛毛虫","animals","南半球|蓝鲸|哺乳动物"],
-  ["蜘蛛有几条腿？","8","animals","蓝鲸|猎豹|狮子"],
-  ["世界上现存最大的鸟是？","鸵鸟","animals","蓝鲸|猎豹|狮子"],
-  ["青蛙的幼体叫什么？","蝌蚪","animals","蓝鲸|猎豹|狮子"],
-  ["海豚属于哪类动物？","哺乳动物","animals","南半球|毛毛虫|蓝鲸"],
-  ["变色龙最著名的能力是？","变色","animals","蓝鲸|猎豹|狮子"],
-  ["蜜蜂群体中负责产卵的是？","蜂后","animals","蓝鲸|猎豹|狮子"],
-  ["世界上牙齿最多的动物是？","蜗牛","animals","蓝鲸|猎豹|狮子"],
-  ["北极熊主要生活在哪个地区？","北极","animals","蓝鲸|猎豹|狮子"]
- ],
+  ["地球上现存最大的动物是？","蓝鲸","animals","非洲象|长颈鹿|抹香鲸"],
+  ["蓝鲸属于哪类动物？","哺乳动物","animals","鱼类|爬行动物|两栖动物"],
+  ["世界上跑得最快的陆地动物是？","猎豹","animals","狮子|羚羊|马"],
+  ["\"万兽之王\"通常指哪种动物？","狮子","animals","老虎|大象|棕熊"],
+  ["蜜蜂采集什么来酿造蜂蜜？","花蜜","animals","露水|树汁|腐果"],
+  ["企鹅主要生活在哪个半球？","南半球","animals","北半球|赤道附近|两极都有"],
+  ["大熊猫主要以什么为食？","竹子","animals","鱼类|蜂蜜|树叶"],
+  ["蝴蝶的幼虫阶段叫什么？","毛毛虫","animals","蚕|蛆|蝌蚪"],
+  ["蜘蛛有几条腿？","8","animals","4|6|10"],
+  ["世界上现存最大的鸟是？","鸵鸟","animals","企鹅|鹰|天鹅"],
+  ["青蛙的幼体叫什么？","蝌蚪","animals","幼虫|幼蛙|水螈"],
+  ["海豚属于哪类动物？","哺乳动物","animals","鱼类|爬行动物|软体动物"],
+  ["变色龙最著名的能力是？","变色","animals","喷毒|断尾再生|放电"],
+  ["蜜蜂群体中负责产卵的是？","蜂后","animals","工蜂|雄蜂|幼蜂"],
+  ["世界上牙齿最多的动物是？","蜗牛","animals","鲨鱼|鳄鱼|老鼠"],
+  ["北极熊主要生活在哪个地区？","北极","animals","南极|赤道|温带"]
+],
 astronomy:[
-  ["太阳系中离太阳最近的行星是？","水星","astronomy","木星|第3|卫星"],
-  ["太阳系中体积最大的行星是？","木星","astronomy","水星|第3|卫星"],
-  ["地球在太阳系中由近及远排第几？","第3","astronomy","水星|木星|卫星"],
-  ["月球是地球的什么？","卫星","astronomy","水星|木星|第3"],
-  ["太阳系中被称为\"红色星球\"的是？","火星","astronomy","水星|木星|第3"],
-  ["太阳系中唯一已知有生命的行星是？","地球","astronomy","水星|木星|第3"],
-  ["光年是用来衡量什么的单位？","距离","astronomy","水星|木星|第3"],
-  ["太阳系有几颗行星被归为\"八大行星\"？","8","astronomy","24|76|水星"],
-  ["太阳属于哪类天体？","恒星","astronomy","水星|木星|第3"],
-  ["地球自转一周大约多少小时？","24","astronomy","8|76|水星"],
-  ["哈雷彗星大约多少年回归一次？","76","astronomy","8|24|水星"],
-  ["银河系中心被认为是什么？","超大质量黑洞","astronomy","水星|木星|第3"],
-  ["土星最显著的特征是？","光环","astronomy","水星|木星|第3"],
-  ["日食发生时挡住太阳的是？","月球","astronomy","水星|木星|第3"],
-  ["距离地球最近的恒星是？","太阳","astronomy","水星|木星|第3"],
-  ["太阳系中自转方向与其他行星相反的是？","金星","astronomy","水星|木星|第3"]
- ],
+  ["太阳系中离太阳最近的行星是？","水星","astronomy","金星|地球|火星"],
+  ["太阳系中体积最大的行星是？","木星","astronomy","土星|海王星|地球"],
+  ["地球在太阳系中由近及远排第几？","第3","astronomy","第2|第4|第5"],
+  ["月球是地球的什么？","卫星","astronomy","行星|恒星|彗星"],
+  ["太阳系中被称为\"红色星球\"的是？","火星","astronomy","金星|木星|水星"],
+  ["太阳系中唯一已知有生命的行星是？","地球","astronomy","火星|金星|土卫六"],
+  ["光年是用来衡量什么的单位？","距离","astronomy","时间|速度|亮度"],
+  ["太阳系有几颗行星被归为\"八大行星\"？","8","astronomy","7|9|10"],
+  ["太阳属于哪类天体？","恒星","astronomy","行星|卫星|星云"],
+  ["地球自转一周大约多少小时？","24","astronomy","12|36|48"],
+  ["哈雷彗星大约多少年回归一次？","76","astronomy","24|50|100"],
+  ["银河系中心被认为是什么？","超大质量黑洞","astronomy","一颗超新星|密集的星团|暗物质空洞"],
+  ["土星最显著的特征是？","光环","astronomy","大红斑|极地冰盖|剧烈火山"],
+  ["日食发生时挡住太阳的是？","月球","astronomy","地球|水星|金星"],
+  ["距离地球最近的恒星是？","太阳","astronomy","比邻星|天狼星|北极星"],
+  ["太阳系中自转方向与其他行星相反的是？","金星","astronomy","火星|木星|海王星"]
+],
 food:[
-  ["\"寿司\"起源于哪个国家？","日本","food","川菜|可可|西餐"],
-  ["意大利最著名的传统面食之一是？","意大利面","food","咖啡树|意大利|日本"],
-  ["\"麻辣火锅\"起源于中国哪个菜系？","川菜","food","日本|可可|西餐"],
-  ["咖啡豆来自哪种植物？","咖啡树","food","意大利|日本|意大利面"],
-  ["巧克力的主要原料是？","可可","food","日本|川菜|西餐"],
-  ["葡萄酒是由什么发酵制成的？","葡萄","food","日本|川菜|可可"],
-  ["豆腐是由什么原料制成的？","黄豆","food","日本|川菜|可可"],
-  ["\"饺子\"是中国哪类节日的传统食物？","春节","food","日本|川菜|可可"],
-  ["\"提拉米苏\"是哪国甜点？","意大利","food","咖啡树|日本|意大利面"],
-  ["茶叶最早产于哪个国家？","中国","food","日本|川菜|可可"],
-  ["\"披萨\"起源于哪个国家？","意大利","food","咖啡树|日本|意大利面"],
-  ["蜂蜜主要由蜜蜂采集什么酿成？","花蜜","food","日本|川菜|可可"]
- ],
+  ["\"寿司\"起源于哪个国家？","日本","food","韩国|中国|泰国"],
+  ["意大利最著名的传统面食之一是？","意大利面","food","汉堡|寿司|咖喱饭"],
+  ["\"麻辣火锅\"起源于中国哪个菜系？","川菜","food","粤菜|湘菜|鲁菜"],
+  ["咖啡豆来自哪种植物？","咖啡树","food","可可树|茶树|橡胶树"],
+  ["巧克力的主要原料是？","可可","food","咖啡|牛奶|蜂蜜"],
+  ["葡萄酒是由什么发酵制成的？","葡萄","food","苹果|梨|大麦"],
+  ["豆腐是由什么原料制成的？","黄豆","food","绿豆|红豆|豌豆"],
+  ["\"饺子\"是中国哪类节日的传统食物？","春节","food","中秋节|端午节|元宵节"],
+  ["\"提拉米苏\"是哪国甜点？","意大利","food","法国|奥地利|希腊"],
+  ["茶叶最早产于哪个国家？","中国","food","印度|日本|斯里兰卡"],
+  ["\"披萨\"起源于哪个国家？","意大利","food","法国|希腊|美国"],
+  ["蜂蜜主要由蜜蜂采集什么酿成？","花蜜","food","露水|花粉|树汁"]
+],
 code:{
  "0":[["JavaScript 中声明常量的关键字是？","const","js"],["HTML 的全称是？","超文本标记语言","web"],["CSS 的主要作用是？","控制样式","web"],["二进制 1010 等于十进制多少？","10","all"],["Python 中表示布尔值的关键字是？","True/False","python"],["C 语言中用于循环的关键字是？","for","c"],["Python 中 List 的中文通常叫？","列表","python"],["“Bug” 在编程中一般指？","程序错误","all"],["JavaScript 中声明可重新赋值的变量通常用哪个关键字？","let","js"],["Python 中向控制台输出内容用哪个函数？","print","python"],["Python 单行注释用什么符号开头？","#","python"],["JavaScript 中用于条件判断的关键字是？","if","js"],["条件不成立时执行另一分支，通常用哪个关键字？","else","all"],["JavaScript 中 typeof 的作用是？","获取数据类型","js"],["表示整数的数据类型常写作？","int","all"],["布尔值中表示“真”的是？","true","all"],["大多数语言的数组下标从哪里开始？","0","all"],["JavaScript 中严格相等（值和类型都相等）的运算符是？","===","js"],["“编译”的主要作用是把源代码转换成什么？","可执行文件","all"],["多行/块注释在 C 系语言中用什么包裹？","/* */","c"],["以下哪个通常用于表示“并且”逻辑？","&&","all"]],
  "1":[["Python 中定义函数用哪个关键字？","def","python"],["SQL 中查询数据用哪个关键字？","SELECT","sql"],["Git 中提交改动用哪个命令？","commit","all"],["HTTP 状态码 404 表示？","未找到","all"],["JSON 数据格式基于哪种语言？","JavaScript","all"],["在 Git 中查看当前状态用哪个命令？","status","all"],["HTTP 默认端口号是？","80","all"],["“API” 的中文含义近似于？","应用程序接口","all"],["函数中用于返回结果的关键字通常是？","return","all"],["数组的 push 操作通常表示？","在末尾添加元素","all"],["字符串中 slice 通常用于？","截取子串","all"],["对象（Object）中的数据通常以什么形式组织？","键值对","all"],["JSON 中键与值的分隔符是？","冒号","all"],["Git 中拉取远端更新的命令是？","pull","all"],["Git 中推送本地提交的命令是？","push","all"],["HTTP 状态码 500 通常表示？","服务器内部错误","all"],["HTTP 状态码 200 表示？","请求成功","all"],["SQL 中插入数据用哪个关键字？","INSERT","sql"],["SQL 中删除数据用哪个关键字？","DELETE","sql"],["Python 中 len() 的作用是？","获取长度","python"],["JavaScript 中获取数组长度的属性是？","length","js"],["递归指的是？","函数自己调用自己","all"],["HTTP 状态码 301 通常表示？","永久重定向","all"]],
  "2":[["C 语言中，取变量 a 的内存地址用哪个运算符？","&a","c","&a|*a|a.|a->"],["C 语言中，若 p 是整型指针，*p 表示什么？","p 所指向变量的值","c","p 所指向变量的值|p 自身的内存地址|p 占用的字节数|p 的类型名"],["C 语言中，数组名在表达式中通常等价于什么？","数组首元素的地址","c","数组首元素的地址|数组的长度|数组最后一个元素|数组的一份副本"],["C 语言中，宏 NULL 通常表示什么？","空指针","c","空指针|字符串 \"0\"|未初始化的数组|字符串结束符"],["C 语言中，malloc 申请的内存应当用哪个函数释放？","free","c","free|delete|clear|release"],["C 语言中，访问结构体变量 s 的成员 x 用哪个写法？","s.x","c","s.x|s->x|s::x|s[x]"],["C 语言中，访问结构体指针 p 的成员 x 用哪个写法？","p->x","c","p->x|p.x|*p.x|p::x"],["C 语言中，sizeof 运算符返回的是什么？","占用的字节数","c","占用的字节数|元素个数|二进制位数|内存地址"],["C 语言中，释放后仍继续使用的指针称为？","悬空指针","c","悬空指针|野指针|空指针|函数指针"],["C 语言中，对同一块内存连续 free 两次通常会导致？","堆破坏（未定义行为）","c","堆破坏（未定义行为）|内存自动扩容|编译报错|返回错误码"],["C 语言中，指针变量本身占用的内存大小取决于什么？","平台的字长","c","平台的字长|它指向的类型|数组长度|编译优化等级"],["C 语言中，二维数组 a[3][4] 中 a[1] 表示什么？","第二行首元素的地址","c","第二行首元素的地址|第二行第一个元素的值|第一行第二个元素的值|数组总长度"]],
  "3":[["“冒泡排序”属于哪类算法？","排序","all"],["冒泡排序的平均时间复杂度是？","O(n²)","all"],["二分查找的时间复杂度是？","O(log n)","all"],["快速排序的平均时间复杂度是？","O(n log n)","all"],["哈希表理想情况下的查找复杂度接近？","O(1)","all"],["数组按下标随机访问的复杂度是？","O(1)","all"],["C 语言中存放变量地址的变量称为？","指针","c"],["链表结点通常包含数据和什么？","指向下一结点的指针","all"],["深度优先搜索（DFS）常用的辅助结构是？","栈","all"],["广度优先搜索（BFS）常用的辅助结构是？","队列","all"],["平均 O(n log n) 且稳定的排序算法是？","归并排序","all"],["动态规划的核心思想是？","记录子问题的解避免重复计算","all"],["“空间换时间”通常指？","用更多内存换取更快速度","all"],["递归缺少终止条件通常会导致？","栈溢出","all"],["哈希冲突常用的解决方式之一是？","链地址法","all"],["MVC/MVVM 中的 V 指的是？","视图","all"],["现代前端框架普遍采用的组织方式是？","组件化","web"],["RESTful 接口中 GET 通常表示？","获取资源","all"],["数据库索引的主要作用是？","加快查询","sql"],["事务 ACID 中的 A 指？","原子性","sql"],["垃圾回收（GC）主要管理什么资源？","内存","all"],["多线程并发访问共享资源通常需要？","加锁同步","all"]],
- "4":[["C 语言中 int (*fp)(int); 声明的是什么？","指向函数的指针","c","指向函数的指针|返回指针的函数|整型数组|指向 int 的指针"],["C 语言中 #define 的作用是什么？","预处理阶段的宏替换","c","预处理阶段的宏替换|定义普通变量|定义函数|引入头文件"],["C 语言中 typedef 的作用是什么？","为已有类型起别名","c","为已有类型起别名|定义新变量|申请堆内存|声明函数"],["C 语言中 union 的大小通常等于什么？","最大成员的大小","c","最大成员的大小|所有成员大小之和|最小成员的大小|固定 4 字节"],["结构体按成员最大对齐数对齐，主要目的是什么？","提高内存访问效率","c","提高内存访问效率|节省内存|兼容旧编译器|方便调试"],["C 语言中 int *p 指向数组元素，执行 p+1 实际前进多少字节？","sizeof(int) 个字节","c","sizeof(int) 个字节|1 个字节|4 个位|sizeof(int*) 个字节"],["C 语言中，8 位有符号 char 存储 200 会得到什么？","-56","c","-56|200|56|0"],["C 语言中，无符号数与有符号数比较时，有符号数会怎样？","被转换为无符号数","c","被转换为无符号数|保持有符号|编译报错|被截断为 0"],["C 语言中，宏 #define SQ(x) x*x 在 SQ(1+2) 展开后是什么？","1+2*1+2","c","1+2*1+2|(1+2)*(1+2)|9|1+2*1+2*1"],["C 语言中，volatile 关键字的主要作用是？","禁止编译器优化该变量的读写","c","禁止编译器优化该变量的读写|把变量放入寄存器|声明变量为只读|申请动态内存"]]}
+ "4":[["C 语言中 int (*fp)(int); 声明的是什么？","指向函数的指针","c","指向函数的指针|返回指针的函数|整型数组|指向 int 的指针"],["C 语言中 #define 的作用是什么？","预处理阶段的宏替换","c","预处理阶段的宏替换|定义普通变量|定义函数|引入头文件"],["C 语言中 typedef 的作用是什么？","为已有类型起别名","c","为已有类型起别名|定义新变量|申请堆内存|声明函数"],["C 语言中 union 的大小通常等于什么？","最大成员的大小","c","最大成员的大小|所有成员大小之和|最小成员的大小|固定 4 字节"],["结构体按成员最大对齐数对齐，主要目的是什么？","提高内存访问效率","c","提高内存访问效率|节省内存|兼容旧编译器|方便调试"],["C 语言中 int *p 指向数组元素，执行 p+1 实际前进多少字节？","sizeof(int) 个字节","c","sizeof(int) 个字节|1 个字节|4 个位|sizeof(int*) 个字节"],["在常见补码平台上，C 语言里 8 位有符号 char 存储 200 会得到什么？","-56","c","-56|200|56|0"],["C 语言中，无符号数与有符号数比较时，有符号数会怎样？","被转换为无符号数","c","被转换为无符号数|保持有符号|编译报错|被截断为 0"],["C 语言中，宏 #define SQ(x) x*x 在 SQ(1+2) 展开后是什么？","1+2*1+2","c","1+2*1+2|(1+2)*(1+2)|9|1+2*1+2*1"],["C 语言中，volatile 关键字的主要作用是？","禁止编译器优化该变量的读写","c","禁止编译器优化该变量的读写|把变量放入寄存器|声明变量为只读|申请动态内存"]]}
 };;
 var QA_DIFFS_MATH=[{n:'🎒 小学',d:'整数四则·口算',cnt:10},{n:'📘 初中',d:'负数/平方/方程',cnt:10},{n:'📗 高中',d:'根式/对数/函数',cnt:10},{n:'🎓 大学',d:'导数/积分基础',cnt:10}];
 var QA_DIFFS_CODE=[
@@ -590,10 +589,55 @@ var QA_TYPES={
  online:{name:'🌐 联网',icon:'🌐',alias:['online','wanglian','联网','实时','internet'],gen:function(n){return []}}
 };
 // ===== 薄弱题 / 实力自适应 辅助 =====
-function loadWeak(){try{var a=JSON.parse(S.getItem('bt_qa_weak')||'[]');return Array.isArray(a)?a:[]}catch(e){return[]}}
-function saveWeak(a){try{S.setItem('bt_qa_weak',JSON.stringify(a.slice(-50)))}catch(e){}}
-function addWeak(item){var a=loadWeak();a.push(item);saveWeak(a)}
-function removeWeak(item){var a=loadWeak();a=a.filter(function(x){return !(x.type===item.type&&x.q===item.q&&x.a===item.a)});saveWeak(a)}
+var WEAK_CAP=150;
+function loadWeak(){
+  var a;
+  try{a=JSON.parse(S.getItem('bt_qa_weak')||'[]')}catch(e){a=[]}
+  if(!Array.isArray(a))a=[];
+  /* 自愈：旧版本上限是 50，历史数据或异常写入可能超出 150，读的时候顺手裁一次 */
+  if(a.length>WEAK_CAP){saveWeak(a);a=loadWeak();}
+  return a;
+}
+/* P1-2：上限 50 → 150；满了按「错误次数降序 + 时间升序」裁剪，
+   高频错题不会被一条只错 1 次的新题挤掉（旧版 slice(-50) 是直接砍最老的）。 */
+function saveWeak(a){
+  if(a.length>WEAK_CAP){
+    a=a.slice().sort(function(x,y){
+      var dn=(y.n||1)-(x.n||1);
+      if(dn)return dn;
+      return (x.t||0)-(y.t||0);
+    }).slice(0,WEAK_CAP);
+  }
+  try{S.setItem('bt_qa_weak',JSON.stringify(a));}catch(e){}
+}
+/* P1-2：同一题（type + q 相同）只留一条，重复错只累加次数 n 与最后时间 t */
+function addWeak(item){
+  if(!item||!item.q)return;
+  var a=loadWeak(),ex=null,i;
+  for(i=0;i<a.length;i++){if(a[i]&&a[i].type===item.type&&a[i].q===item.q){ex=a[i];break;}}
+  if(ex){
+    ex.n=(ex.n||1)+1;ex.t=Date.now();
+    if(item.pick)ex.pick=item.pick;
+    if(!ex.a&&item.a)ex.a=item.a;
+    if(!ex.opts&&item.opts)ex.opts=item.opts.slice();
+    if(!ex.code&&item.code)ex.code=item.code;
+    if(!ex.exp&&item.exp)ex.exp=item.exp;
+    if(!ex.sol&&item.sol)ex.sol=item.sol;
+    if(!ex.steps&&item.steps)ex.steps=item.steps;
+    if(ex.diff==null&&item.diff!=null)ex.diff=item.diff;
+  }else{
+    a.push({n:1,t:Date.now(),type:item.type,diff:item.diff,q:item.q,a:item.a,
+      opts:item.opts?item.opts.slice():null,code:item.code,exp:item.exp,sol:item.sol,steps:item.steps,
+      fillin:item.fillin,pick:item.pick||null,src:item.src||null});
+  }
+  saveWeak(a);
+}
+/* 移除：口径与去重一致（type + q），不再要求 a 也相同 —— 老记录 a 可能为空 */
+function removeWeak(item){
+  if(!item)return;
+  var a=loadWeak().filter(function(x){return !(x&&x.type===item.type&&x.q===item.q)});
+  saveWeak(a);
+}
 function getRank(bk){var ds=qaDiffs(bk);if(!ds)return -1;var n=ds.length;var def=(bk==='math')?1:0;var sv=parseInt(S.getItem('bt_qa_rank_'+bk),10);return (sv>=0&&sv<n)?sv:def}
 function setRank(bk,r){try{S.setItem('bt_qa_rank_'+bk,r)}catch(e){}}
 function genNextAuto(){var _bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';var T=QA_TYPES[_bk];if(!T)return{q:'',a:'',opts:['']};var arr=T.gen(1,selfRank);return (arr&&arr.length)?arr[0]:{q:'',a:'',opts:['']}}
@@ -845,6 +889,7 @@ var handMode=false;
 var selfWindow=[];                              // auto 模式滑动窗口：最近 ≤12 题（1 对 / 0 错）
 var WIN_CAP=12,WIN_MIN=6,UP_ACC=0.75,DN_ACC=0.4,LEVEL_COOL=2,lvlCool=0;
 var lastAuto=null;                              // 结算页的实力评级快照
+var reviewOne=false;                            // 薄弱题本里的「单题练」：结算页返回题本而不是重开整局
 var quizOver=false;                             // 本局是否已收尾（挡住答题后的延时切题把结算页顶掉）
 function sectionName(k){for(var i=0;i<SECTIONS.length;i++){if(SECTIONS[i].k===k)return SECTIONS[i].n;}return '🎯 选择题';}
 function windowAcc(){var a=selfWindow,i,n=0;if(!a.length)return 0;for(i=0;i<a.length;i++){if(a[i])n++;}return n/a.length;}
@@ -871,19 +916,19 @@ function stdCount(key){return (POOLS[key]&&POOLS[key].length)?POOLS[key].length:
 function codeCount(){var n=0;for(var d in POOLS.code){if(POOLS.code.hasOwnProperty(d))n+=POOLS.code[d].length;}return n;}
 function shelfCount(bk,cn){
   if(bk==='math')return '动态生成';
-  if(bk==='code'){var e=codeEstimate();return '≥'+(e>=10000?Math.floor(e/10000)+'万':e)+'题';}
+  if(bk==='code'){var e=codeEstimate();return (e>=10000?Math.floor(e/10000)+'万+':e)+' 题（模板生成，理论组合数）';}
   if(bk)return stdCount(bk)+' 题';
   var p=custom[cn]||[];return p.length+' 题';
 }
 function renderShelf(){
-  quizOver=true;reviewMode=false;cancelPending();navReset();
+  quizOver=true;reviewMode=false;reviewOne=false;cancelPending();navReset();
   showView('shelf');
   clearNode(shelfEl);
   // 顶部操作
   var sec1=h('div','section-title',null);sec1.appendChild(ht('span',null,'📚 书架'));
   var acts=h('span',null);acts.style.marginLeft='auto';acts.style.display='flex';acts.style.gap='8px';
   var _wn=loadWeak().length;
-  var bWeak=ht('span','act','😵 薄弱题'+(_wn?(' · '+_wn):''));bWeak.onclick=function(){startReview();};
+  var bWeak=ht('span','act','😵 薄弱题'+(_wn?(' · '+_wn):''));bWeak.onclick=function(){openWeakBook();};
   var bNew=ht('span','act','➕ 新建');bNew.onclick=function(){openNewCategory();};
   acts.appendChild(bWeak);acts.appendChild(bNew);sec1.appendChild(acts);
   shelfEl.appendChild(sec1);
@@ -901,14 +946,15 @@ function renderShelf(){
     grid.appendChild(makeBook('📝',name,null,name,bestFor('c:'+name),shelfCount(null,name),true));
   });
   // 联网
-  grid.appendChild(makeBook('🌐','联网题库','online',null,bestFor('b:online'),(ONLINE_BANK&&ONLINE_BANK.length?ONLINE_BANK.length:0)+' 题'));
+  grid.appendChild(makeBook('🌐','联网题库·英文','online',null,bestFor('b:online'),(ONLINE_BANK&&ONLINE_BANK.length?ONLINE_BANK.length:0)+' 题'));
   shelfEl.appendChild(grid);
-  shelfEl.appendChild(ht('div','muted','💻 编程题量含程序化题库（模板 + 随机参数，答案当场计算，理论无上限）；其余分类为人工题 + AI 扩充题。'));
+  shelfEl.appendChild(ht('div','muted','💻 编程题量为「人工题 + 模板生成（理论组合数）」，参数空间有限，实际不重复体验以出题引擎去重为准；其余分类为人工题 + AI 扩充题。'));
 
   // 联网管理
   var sec2=h('div','section-title',null);sec2.appendChild(ht('span',null,'🌐 联网题库'));shelfEl.appendChild(sec2);
   var netWrap=h('div','qcard');netWrap.style.margin='6px 0';
   netStat=ht('div','hint',(ONLINE_BANK.length?('已缓存 '+ONLINE_BANK.length+' 题（实时）'):'联网题库：点下方按钮实时获取最新题目'));
+  netWrap.appendChild(ht('div','hint2','题源：Open Trivia DB（英文题库，CC BY-SA 4.0）· 中文题库请看其他分类'));
   netStat.style.color='#27a567';netWrap.appendChild(netStat);
   var rrow=h('div','row');
   var rbtn=h('button','btn ghost','🔄 联网更新题库');
@@ -933,6 +979,7 @@ function makeBook(icon,name,bk,cn,best,count,isCustom){
   b.appendChild(ht('div','ic',icon));
   b.appendChild(ht('div','nm',name));
   var meta=h('div','meta');
+  if(count&&String(count).length>8)meta.style.flexWrap='wrap';
   meta.appendChild(ht('span','star'+(best>0?'':' none'),best>0?('⭐ '+best):'未挑战'));
   meta.appendChild(ht('span',null,count));
   b.appendChild(meta);
@@ -1390,7 +1437,7 @@ function backOneLayer(){
   if(top==='quiz'){
     navStack.pop();
     if(autoMode){endQuiz();return;}                 /* 无限模式：返回 = 结束并结算 */
-    if(reviewMode){reviewMode=false;cancelPending();navReset();renderShelf();return;}
+    if(reviewMode){var _ro=reviewOne;reviewMode=false;reviewOne=false;cancelPending();navReset();renderShelf();if(_ro)openWeakBook();return;}
     var bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
     if(lastRun&&lastRun.bk&&bk===lastRun.bk&&bk!=='online'){
       quizOver=true;cancelPending();
@@ -1442,7 +1489,7 @@ function markUnknown(){
   var recorded=false;
   if(first){
     if(Q&&!reviewMode&&!Q.hand){
-      addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,time:Date.now()});
+      addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:'（不会）',src:Q.src,time:Date.now()});
       recorded=true;
     }
     if(autoMode){
@@ -1480,9 +1527,13 @@ function answer(correct,given,ans,btn,opt){
   if(reviewMode){
     if(btn)markChosen(btn,ans);else lockOpts();
     var fbR=h('div','fb '+(correct?'ok':'no'));
-    if(correct){if(Q&&Q.weak)removeWeak(Q.weak);fbR.textContent='✅ 答对了！已从薄弱题移除';}
+    if(correct){if(Q&&Q.weak)removeWeak(Q.weak);ok++;fbR.textContent='✅ 答对了！已从薄弱题移除';}
     else{
-      fbR.textContent='❌ 正确答案：'+ans+'（保留在薄弱题）';
+      /* P1-2：回顾里答错要计数 +1（此前只提示「保留」，次数不会涨） */
+      var _wk=(Q&&Q.weak)||{};
+      addWeak({type:_wk.type||typeKey,diff:_wk.diff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,
+        code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:given||null,src:Q.src});
+      fbR.textContent='❌ 正确答案：'+ans+'（保留在薄弱题，错误次数 +1）';
       appendSol(fbR,Q);appendSteps(fbR,Q);appendExp(fbR,Q);appendRetryChip(fbR);appendNextChip(fbR);
     }
     appendFb(fbR);
@@ -1496,7 +1547,7 @@ function answer(correct,given,ans,btn,opt){
       if(_pen){score-=5;}
       /* 首次答错也沉淀进薄弱题（结算页文案一直说「错题会进薄弱题」，之前只有「😵 不会」会记）。
          重试答错不重复记 —— 同一题只留一条。 */
-      if(Q&&!Q.hand)addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,time:Date.now()});
+      if(Q&&!Q.hand)addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:(given==null?null:String(given)),src:Q.src,time:Date.now()});
     }
     if(autoMode&&_bk&&QA_TYPES[_bk]&&QA_TYPES[_bk].diffs){
       /* 滑动窗口自适应（替换原来的连对/连错计数）：
@@ -1558,8 +1609,11 @@ function finish(sc){
   var emo=ht('div',null,acc>=80?'🎉':acc>=60?'👍':'💪');emo.style.cssText='font-size:40px;line-height:1';
   card.appendChild(emo);
   card.appendChild(ht('div','hint',acc>=80?'太棒了，这轮很稳！':(acc>=60?'不错，继续保持～':'别急，错题会进薄弱题，多刷两轮就起来了')));
-  var scoreBig=ht('div',null,String(sc));scoreBig.style.cssText='font-size:52px;font-weight:900;color:var(--purple-d);line-height:1.15;margin:6px 0 2px';
+  /* 回顾模式不计分：大数字显示「已掌握几题」，别把 0 分摆在一个「太棒了」旁边 */
+  var _isRev=(typeKey==='b:weak');
+  var scoreBig=ht('div',null,_isRev?String(ok):String(sc));scoreBig.style.cssText='font-size:52px;font-weight:900;color:var(--purple-d);line-height:1.15;margin:6px 0 2px';
   card.appendChild(scoreBig);
+  if(_isRev)card.appendChild(ht('div','hint','已掌握 '+ok+' 题 · 答对的已从薄弱题移除'));
   var accLine=ht('div','hint','正确率 '+acc+'%　（'+ok+' / '+total+'）');accLine.style.color='var(--sub)';accLine.style.fontWeight='700';
   card.appendChild(accLine);
   if(lastAuto){
@@ -1572,8 +1626,9 @@ function finish(sc){
     lastAuto=null;
   }
   var row=h('div','row');row.style.marginTop='16px';
-  var again=h('button','btn gold','🔄 再来一局');
+  var again=h('button','btn gold',reviewOne?'📚 返回薄弱题本':'🔄 再来一局');
   again.onclick=function(){
+    if(reviewOne){reviewOne=false;openWeakBook();return;}
     if(typeKey==='b:weak'){startReview();return;}
     if(typeKey==='b:online'){startOnline();return;}
     if(lastRun){doStartType(lastRun.bk,lastRun.cn,lastRun.d);return;}
@@ -1591,13 +1646,122 @@ function finish(sc){
 }
 
 /* ---------- 薄弱题回顾 ---------- */
+function weakToQ(x){
+  return {q:x.q,a:x.a,opts:(x.opts&&x.opts.length)?x.opts.slice():null,code:x.code,
+          exp:x.exp,sol:x.sol,steps:x.steps,fillin:x.fillin,weak:x};
+}
+function weakCatName(t){
+  var k=String(t||'');
+  if(k.indexOf('c:')===0)return '📝 '+k.slice(2);
+  var b=(k.indexOf('b:')===0)?k.slice(2):k;
+  if(QA_TYPES[b])return QA_TYPES[b].icon+' '+QA_TYPES[b].name;
+  if(k==='b:weak')return '📚 回顾';
+  return '📦 其他';
+}
+function weakAgo(ts){
+  if(!ts)return '—';
+  var d=Date.now()-ts;if(d<0)d=0;
+  if(d<60000)return '刚刚';
+  if(d<3600000)return Math.floor(d/60000)+' 分钟前';
+  if(d<86400000)return Math.floor(d/3600000)+' 小时前';
+  if(d<2592000000)return Math.floor(d/86400000)+' 天前';
+  return Math.floor(d/2592000000)+' 个月前';
+}
+function weakSort(a){
+  return a.slice().sort(function(x,y){var dn=(y.n||1)-(x.n||1);if(dn)return dn;return (y.t||0)-(x.t||0);});
+}
+var weakFilter='';
+/* P1-2：薄弱题本 —— 先看列表（错误次数 / 分类 / 最后时间），再决定练哪一题 */
+function openWeakBook(cat){
+  var all=weakSort(loadWeak());
+  if(!all.length){toast('📚 暂无薄弱题：做题时点「😵 不会」或答错就会沉淀到这里');return;}
+  if(cat!=null)weakFilter=cat;
+  var ov=overlayPanel('📚 薄弱题本');
+  var top=h('div','row');top.style.gap='8px';top.style.marginBottom='8px';
+  var allB=h('button','btn gold','▶ 全部回顾（'+all.length+'）');allB.style.flex='1';
+  allB.onclick=function(){closeOverlay(ov);startReview();};
+  var sel=document.createElement('select');sel.style.flex='1';
+  var cats={},order=[];
+  all.forEach(function(x){var c=String(x.type||'other');if(!cats[c]){cats[c]=0;order.push(c);}cats[c]++;});
+  (function(){
+    var o0=document.createElement('option');o0.value='';o0.textContent='全部分类（'+all.length+'）';sel.appendChild(o0);
+    order.forEach(function(c){
+      var o=document.createElement('option');o.value=c;o.textContent=weakCatName(c)+'（'+cats[c]+'）';
+      if(c===weakFilter)o.selected=true;sel.appendChild(o);
+    });
+  })();
+  sel.onchange=function(){weakFilter=sel.value;renderRows();};
+  top.appendChild(sel);top.appendChild(allB);ov.p.appendChild(top);
+  var listBox=h('div');ov.p.appendChild(listBox);
+  var hint=ht('div','hint','掌握标准：回顾中答对即移除；答错继续保留并计数。');
+  hint.style.marginTop='10px';ov.p.appendChild(hint);
+
+  function renderRows(){
+    clearNode(listBox);
+    var rows=weakFilter?all.filter(function(x){return String(x.type||'other')===weakFilter;}):all;
+    if(!rows.length){listBox.appendChild(ht('div','hint','该分类下暂无错题'));return;}
+    rows.forEach(function(x){
+      var row=h('div','list-row');row.style.flexWrap='wrap';row.style.cursor='pointer';
+      row.style.padding='6px 0';row.style.borderBottom='1px solid #f2eefc';
+      var badge=ht('span',null,'×'+(x.n||1));
+      badge.style.cssText='min-width:32px;text-align:center;font-weight:800;color:#d94b57;background:#fdecee;border-radius:9px;padding:2px 6px;font-size:12px';
+      row.appendChild(badge);
+      var qs=String(x.q||'');
+      var t=ht('span',null,(qs.length>40?qs.slice(0,40)+'…':qs));
+      t.style.flex='1';t.style.minWidth='140px';
+      row.appendChild(t);
+      var catEl=ht('span','hint2',weakCatName(x.type));catEl.style.cssText='font-size:11px;opacity:.9';
+      row.appendChild(catEl);
+      var ago=ht('span','hint2',weakAgo(x.t));ago.style.cssText='font-size:11px;opacity:.7';
+      row.appendChild(ago);
+      var det=h('div');
+      det.style.cssText='display:none;width:100%;margin:6px 0 2px;padding:9px 10px;background:#faf8ff;border-radius:12px;font-size:13px;line-height:1.6';
+      det.appendChild(ht('div','fbm',qs));
+      if(x.pick)det.appendChild(ht('div','hint','你选的是：'+x.pick));
+      det.appendChild(ht('div','hint','正确答案：'+(x.a==null?'—':String(x.a))));
+      if(x.exp)det.appendChild(ht('div','hint','解析：'+x.exp));
+      if(x.sol){var sl=h('pre','codeblk');sl.textContent=x.sol;det.appendChild(sl);}
+      if(x.steps)det.appendChild(ht('div','hint','思路：'+x.steps));
+      if(x.src)det.appendChild(ht('div','hint2','来源：'+x.src));
+      row.appendChild(det);
+      var btns=h('div');
+      btns.style.cssText='display:none;width:100%;gap:8px;margin-top:6px';
+      var pb=h('button','btn gold','▶ 练这题');pb.style.flex='1';
+      pb.onclick=function(e){if(e&&e.stopPropagation)e.stopPropagation();closeOverlay(ov);startReviewOne(x);};
+      var db=h('button','btn ghost','🗑 移除');db.style.flex='1';
+      db.onclick=function(e){
+        if(e&&e.stopPropagation)e.stopPropagation();
+        if(!confirm('从薄弱题本移除这道题？'))return;
+        removeWeak({type:x.type,q:x.q});
+        var i=all.indexOf(x);if(i>=0)all.splice(i,1);
+        if(!all.length){closeOverlay(ov);renderShelf();toast('📚 薄弱题本已空');return;}
+        renderRows();renderShelf();
+      };
+      btns.appendChild(pb);btns.appendChild(db);row.appendChild(btns);
+      row.onclick=function(){
+        var open=det.style.display!=='none';
+        det.style.display=open?'none':'block';
+        btns.style.display=open?'none':'flex';
+      };
+      listBox.appendChild(row);
+    });
+  }
+  renderRows();
+}
 function startReview(){
   var a=loadWeak();
   if(!a.length){toast('📚 暂无薄弱题：做题时点「😵 不会」就会沉淀到这里');return;}
-  reviewMode=true;autoMode=false;quizOver=false;typeKey='b:weak';typeLabel='回顾薄弱题';qaSection='choice';handMode=false;
+  reviewMode=true;reviewOne=false;autoMode=false;quizOver=false;typeKey='b:weak';typeLabel='回顾薄弱题';qaSection='choice';handMode=false;
   navPush('quiz');
-  qlist=a.map(function(x){return {q:x.q,a:x.a,opts:(x.opts&&x.opts.length)?x.opts.slice():null,code:x.code,exp:x.exp,sol:x.sol,steps:x.steps,fillin:x.fillin,weak:x};});
+  qlist=weakSort(a).map(weakToQ);
   ok=0;qidx=0;score=0;total=qlist.length;showQuestion();
+}
+/* 单题练：只做这一道，答对移除、答错计数 +1，结算页回题本 */
+function startReviewOne(x){
+  if(!x)return;
+  reviewMode=true;reviewOne=true;autoMode=false;quizOver=false;typeKey='b:weak';typeLabel='回顾薄弱题';qaSection='choice';handMode=false;
+  navPush('quiz');
+  qlist=[weakToQ(x)];ok=0;qidx=0;score=0;total=1;showQuestion();
 }
 
 /* ---------- 联网 ---------- */
@@ -1613,8 +1777,20 @@ function startOnline(){
     if(okf&&ONLINE_BANK.length){beginOnline();return;}
     var reason=(info&&info.reason)||'fail';
     if(info&&info.degraded&&ONLINE_BANK.length){beginOnline();return;}
-    sp.textContent=netFailText(reason)+'，即将切换到本地题库';
-    later(function(){doStartType('common',null,qaDiffDefault('common'));},1200);
+    /* P1-6：失败不再「1200ms 后静默跳进常识分类」——用户会以为点的是联网题。
+       改成明确告知 + 两个选项，由用户决定做本地题还是回书架。 */
+    clearNode(stageEl);
+    var cc=h('div','qcard');cc.style.textAlign='center';
+    cc.appendChild(ht('div','hud','📴 联网题库暂时不可用'));
+    cc.appendChild(ht('div','hint',netFailText(reason)));
+    cc.appendChild(ht('div','hint2','联网题库用的是海外公开题库（英文题 · Open Trivia DB）。网络受限时可先做本地题库，成绩与错题本不受影响。'));
+    var r1=h('div','row');r1.style.marginTop='14px';
+    var b1=h('button','btn gold','📚 先做本地常识题');b1.style.flex='1';
+    b1.onclick=function(){doStartType('common',null,qaDiffDefault('common'));};
+    var b2=h('button','btn ghost','← 返回书架');b2.style.flex='1';
+    b2.onclick=function(){renderShelf();};
+    r1.appendChild(b1);r1.appendChild(b2);cc.appendChild(r1);
+    stageEl.appendChild(cc);
   });
 }
 function beginOnline(){
@@ -1667,7 +1843,7 @@ buildCodeTags();
 /* ================= 全语言程序化题库（五档：模板 + 随机参数 / 知识点池） =================
    语言键：c / python / java / js / sql / web / all（all = 语言无关）
    知识点池格式：[问题, 正确答案, '选项1|选项2|选项3|选项4']（四个选项同类相近，含正确答案）
-   参数化生成器：返回 {q,a,opts}，答案当场计算，题量不设上限 */
+   参数化生成器：返回 {q,a,opts}，答案当场计算，题量 = 模板参数空间（P1-4 逐条标 kb） */
 function riN(a,b){return a+Math.floor(Math.random()*(b-a+1));}
 function binOf(n,w){var s=n.toString(2);while(w&&s.length<w)s='0'+s;return s;}
 function binWrongs(s,n){
@@ -1776,7 +1952,7 @@ c:{
   ['C 语言中 union 的大小通常等于什么？','最大成员的大小','最大成员的大小|所有成员大小之和|最小成员的大小|固定 4 字节'],
   ['结构体按成员最大对齐数对齐，主要目的是什么？','提高内存访问效率','提高内存访问效率|节省内存|兼容旧编译器|方便调试'],
   ['C 语言中 int *p 指向数组元素，执行 p+1 实际前进多少字节？','sizeof(int) 个字节','sizeof(int) 个字节|1 个字节|4 个位|sizeof(int*) 个字节'],
-  ['C 语言中，8 位有符号 char 存储 200 会得到什么？','-56','-56|200|56|0'],
+  ['在常见补码平台上，C 语言里 8 位有符号 char 存储 200 会得到什么？','-56','-56|200|56|0'],
   ['C 语言中，无符号数与有符号数比较时，有符号数会怎样？','被转换为无符号数','被转换为无符号数|保持有符号|编译报错|被截断为 0'],
   ['C 语言中，宏 #define SQ(x) x*x 在 SQ(1+2) 展开后是什么？','1+2*1+2','1+2*1+2|(1+2)*(1+2)|9|3*3'],
   ['C 语言中，volatile 关键字的主要作用是？','禁止编译器优化该变量的读写','禁止编译器优化该变量的读写|把变量放入寄存器|声明变量为只读|申请动态内存']
@@ -2038,7 +2214,7 @@ c:{
   function(){var n=riN(5,9);return mkQA('斐波那契数列 F(1)=1、F(2)=1，则 F('+n+') 的值是？',fibOf(n),neighbors(fibOf(n)),'按 F(n)=F(n−1)+F(n−2) 逐项递推，F('+n+') = '+fibOf(n));}
  ],
  4:[
-  function(){var v=riN(128,255);return mkQA('C 语言中，8 位有符号 char 存储 '+v+' 会得到？',v-256,neighbors(v-256),'8 位有符号 char 上限 127，'+v+' 越界后按补码回绕：'+v+' − 256 = '+(v-256));}
+  function(){var v=riN(128,255);return mkQA('在常见补码平台上，8 位有符号 char 存储 '+v+' 会得到？',v-256,neighbors(v-256),'8 位有符号 char 上限 127，'+v+' 越界后按补码回绕：'+v+' − 256 = '+(v-256));}
  ]
 },
 python:{
@@ -2121,6 +2297,23 @@ function tagGen(g,L){
 }
 
 var CODE_LANG_KEYS=['c','python','java','js','sql','web','all'];
+/* P1-4：CODE_GENX 每个生成器的参数空间（kb = 随机变量取值数之积，固定题记 1）。
+   由 tagGen 抄到 CODE_GEN 的包装函数上，codeEstimate 才能按真实参数空间统计（旧版一律按 600 估）。 */
+var CODE_GENX_KB={
+ all:{0:[59,59,240,240,26],1:[560,512,712],2:[225,225,225,27],4:[63]},
+ c:{1:[512,9,11,8,81],2:[5,225,60],3:[4,5],4:[128]},
+ python:{1:[8,8,18],2:[90],3:[7]},
+ java:{1:[11,8],2:[5,4]},
+ js:{1:[8,45],2:[30]},
+ sql:{1:[96]},
+ web:{2:[4016,4016]}
+};
+(function(){for(var L in CODE_GENX_KB){if(!CODE_GENX_KB.hasOwnProperty(L))continue;
+  for(var d in CODE_GENX_KB[L]){if(!CODE_GENX_KB[L].hasOwnProperty(d))continue;
+    var ks=CODE_GENX_KB[L][d],fs=(CODE_GENX[L]||{})[d]||[];
+    for(var i=0;i<fs.length&&i<ks.length;i++){if(fs[i]&&ks[i]!=null)fs[i].kb=ks[i];}
+  }}})();
+
 var CODE_GEN={};
 (function(){
   CODE_LANG_KEYS.forEach(function(L){
@@ -2134,16 +2327,23 @@ var CODE_GEN={};
     }
   });
 })();
-/* 题量估算口径：知识点池按实际条数计，参数化生成器按 600 种参数组合计 */
+/* 题量估算口径（P1-4）：人工题按实际条数、模板生成器按自己的参数空间（kb）累加。
+   旧版对没有 kb 的生成器一律按 600 估，书架会显示「≥X 万题」，实际参数空间远小于此。 */
 function codeEstimate(){
-  var n=0,k,L;
-  for(k in POOLS.code)if(POOLS.code.hasOwnProperty(k))n+=POOLS.code[k].length;
+  var manual=0,gen=0,k,L;
+  for(k in POOLS.code)if(POOLS.code.hasOwnProperty(k))manual+=POOLS.code[k].length;
   for(L in CODE_GEN)if(CODE_GEN.hasOwnProperty(L)){
     for(k in CODE_GEN[L])if(CODE_GEN[L].hasOwnProperty(k)){
-      CODE_GEN[L][k].forEach(function(g){n+=(g&&g.kb)?g.kb:600;});
+      CODE_GEN[L][k].forEach(function(g){gen+=(g&&g.kb)?g.kb:60;});
     }
   }
-  return n;
+  return manual+gen;
+}
+/* 分项给人看：[人工题, 模板题] */
+function codeEstimateParts(){
+  var n=codeEstimate(),manual=0,k;
+  for(k in POOLS.code)if(POOLS.code.hasOwnProperty(k))manual+=POOLS.code[k].length;
+  return {manual:manual,gen:Math.max(0,n-manual),total:n};
 }
 /* 语言过滤：读过实力检测档案就只出勾选语言 + 通用题 */
 function codeAllowedLangs(){
@@ -2262,35 +2462,35 @@ function mkCodeFill(prompt,code,ans,cands,exp){
    中档 = 循环/数组/字符串   高档 = 函数/指针/递归/算法    */
 var CODE_TOPICS=[
   /* ---- rank 0 · 数制与码制（C 基础第一章） ---- */
-  {k:'十进制转二进制',lang:'c',ranks:[0],gen:function(){
+  {k:'十进制转二进制',lang:'c',ranks:[0],kb:11,gen:function(){
     var n=riN(5,15),b=n.toString(2);
     return mkCodeQ('把十进制 '+n+' 转成二进制，结果是？',
       '// 手算或除 2 取余',b,
       [bitsFlip(b),bitsFlip2(b),String(n+1)],
       n+' 转二进制：'+n+' = '+b.split('').join('+')+'₂（除 2 取余倒序排列）');
   }},
-  {k:'二进制转十进制',lang:'c',ranks:[0],gen:function(){
+  {k:'二进制转十进制',lang:'c',ranks:[0],kb:16,gen:function(){
     var b=randBits(4),d=parseInt(b,2);
     return mkCodeQ('二进制 '+b+'₂ 对应的十进制是？',
       '// 按位权展开',String(d),
       [String(d+1),String(d+2),String(d-1)],
       b+'₂ = 按权展开：'+b.split('').map(function(ch,i){return ch+'×2^'+(3-i);}).join(' + ')+' = '+d);
   }},
-  {k:'十六进制转十进制',lang:'c',ranks:[0],gen:function(){
+  {k:'十六进制转十进制',lang:'c',ranks:[0],kb:14,gen:function(){
     var n=riN(2,15),h=n.toString(16).toUpperCase();
     return mkCodeQ('十六进制 0x'+h+' 对应的十进制是？',
       '// 0x 前缀表示十六进制',String(n),
       [String(n+1),String(n+2),String(n*2)],
       '0x'+h+' = '+n+'（十六进制位权是 16，A=10…F=15）');
   }},
-  {k:'十进制转十六进制',lang:'c',ranks:[0],gen:function(){
+  {k:'十进制转十六进制',lang:'c',ranks:[0],kb:21,gen:function(){
     var n=riN(10,30),h=n.toString(16).toUpperCase();
     return mkCodeQ('十进制 '+n+' 转成十六进制，结果是？',
       '// 除 16 取余',h,
       pickAlts(h,['0x'+h,String(n+1),String(n+2),String(n*2)]),
       n+' 转十六进制 = 0x'+h+'（除 16 取余倒序）');
   }},
-  {k:'原码补码概念',lang:'c',ranks:[0],gen:function(){
+  {k:'原码补码概念',lang:'c',ranks:[0],kb:5,gen:function(){
     var n=riN(3,7);
     return mkCodeQ('int 类型里，负数通常用什么码存储？',
       '// C 语言整型负数存储方式','补码',
@@ -2298,56 +2498,56 @@ var CODE_TOPICS=[
       'C 里 int 负数用补码存储：符号位不变、其余取反再加 1（例：-'+n+' 的补码由 '+n+' 的二进制取反+1 得到）');
   }},
   /* ---- rank 0 · 基本数据类型 ---- */
-  {k:'sizeof 类型大小',lang:'c',ranks:[0],gen:function(){
+  {k:'sizeof 类型大小',lang:'c',ranks:[0],kb:4,gen:function(){
     var ts=[['char',1],['int',4],['float',4],['double',8]],t=ts[riN(0,3)];
     return mkCodeQ('在 32 位体系下，sizeof('+t[0]+') 的值是？',
       'printf("%d", sizeof('+t[0]+'));',String(t[1]),
       [String(t[1]+1),String(t[1]+4),String(t[1]*2)],
       'sizeof('+t[0]+') 返回该类型占的字节数：'+t[0]+' 占 '+t[1]+' 字节（int 按 4 字节计）');
   }},
-  {k:'整数除法',lang:'c',ranks:[0],gen:function(){
+  {k:'整数除法',lang:'c',ranks:[0],kb:10,gen:function(){
     var a=riN(5,9),b=riN(2,3);
     return mkCodeQ('这段 C 代码输出什么？',
       'int a = '+a+', b = '+b+';\nprintf("%d", a / b);',
       String(Math.floor(a/b)),[String(a/b),String(Math.ceil(a/b)),String(a-b)],
       '两个 int 相除结果是整数（向零取整）：'+a+'÷'+b+' = '+(a/b)+'，取整得 '+Math.floor(a/b));
   }},
-  {k:'ASCII 与字符',lang:'c',ranks:[0],gen:function(){
+  {k:'ASCII 与字符',lang:'c',ranks:[0],kb:4,gen:function(){
     var c=['A','B','C','D'][riN(0,3)],d=c.charCodeAt(0);
     return mkCodeQ('这段 C 代码输出什么？',
       'char c = \''+c+'\';\nprintf("%d", c);',
       String(d),[String(d+1),String(d-1),String(d+32)],
       '字符 \''+c+'\' 的 ASCII 码是 '+d+'，%d 按整数输出');
   }},
-  {k:'类型隐式转换',lang:'c',ranks:[0],gen:function(){
+  {k:'类型隐式转换',lang:'c',ranks:[0],kb:1,gen:function(){
     return mkCodeQ('这段 C 代码输出什么？',
       'printf("%f", 7.0 / 2);',
       '3.500000',['3','3.5','4'],
       '7.0 是浮点数，7.0/2 结果是浮点 3.5，%f 默认保留 6 位小数输出 3.500000');
   }},
   /* ---- rank 0-1 · 运算符与表达式 ---- */
-  {k:'后置自增',lang:'c',ranks:[0,1],gen:function(){
+  {k:'后置自增',lang:'c',ranks:[0,1],kb:7,gen:function(){
     var a=riN(2,8);
     return mkCodeQ('这段 C 代码输出什么？',
       'int a = '+a+';\nint b = a++;\nprintf("%d", b);',
       String(a),[String(a+1),String(a+2),String(a-1)],
       'a++ 是先取 a 的值赋给 b、再让 a 自增，所以 b = '+a+'（a 变成 '+(a+1)+'）');
   }},
-  {k:'前置自增',lang:'c',ranks:[0,1],gen:function(){
+  {k:'前置自增',lang:'c',ranks:[0,1],kb:7,gen:function(){
     var a=riN(2,8);
     return mkCodeQ('这段 C 代码输出什么？',
       'int a = '+a+';\nint b = ++a;\nprintf("%d", b);',
       String(a+1),[String(a),String(a+2),String(a-1)],
       '++a 是先把 a 自增再赋值，所以 b = '+(a+1));
   }},
-  {k:'取余运算',lang:'c',ranks:[0,1],gen:function(){
+  {k:'取余运算',lang:'c',ranks:[0,1],kb:52,gen:function(){
     var a=riN(7,19),b=riN(3,6);
     return mkCodeQ('这段 C 代码输出什么？',
       'int a = '+a+', b = '+b+';\nprintf("%d", a % b);',
       String(a%b),[String(b),String(Math.floor(a/b)),String(a%b+b)],
       'a % b 是取余数：'+a+' ÷ '+b+' 商 '+Math.floor(a/b)+' 余 '+(a%b));
   }},
-  {k:'变量相加输出',lang:'c',ranks:[0],gen:function(){
+  {k:'变量相加输出',lang:'c',ranks:[0],kb:64,gen:function(){
     var a=riN(2,9),b=riN(2,9);
     return mkCodeQ('这段 C 代码输出什么？',
       'int x = '+a+';\nint y = '+b+';\nprintf("%d", x + y);',
@@ -2355,14 +2555,14 @@ var CODE_TOPICS=[
       'x='+a+'、y='+b+'，printf 里算 x + y，输出 '+(a+b));
   }},
   /* ---- rank 0 · 顺序结构 / printf 格式 ---- */
-  {k:'printf 格式符',lang:'c',ranks:[0],gen:function(){
+  {k:'printf 格式符',lang:'c',ranks:[0],kb:8,gen:function(){
     var v=riN(2,9);
     return mkCodeQ('这段 C 代码输出什么？',
       'printf("%d", '+v+');',
       String(v),[String(v+1),String(v*2),String(v+10)],
       '%d 按十进制整数输出，直接打印 '+v);
   }},
-  {k:'printf 连续输出',lang:'c',ranks:[0],gen:function(){
+  {k:'printf 连续输出',lang:'c',ranks:[0],kb:25,gen:function(){
     var a=riN(1,5),b=riN(1,5);
     return mkCodeQ('这段 C 代码输出什么？',
       'printf("%d%d", '+a+', '+b+');',
@@ -2370,28 +2570,28 @@ var CODE_TOPICS=[
       '%d%d 是两个占位符、中间没有分隔符，所以两个数直接拼在一起：'+a+b);
   }},
   /* ---- rank 1 · 运算符与表达式 ---- */
-  {k:'运算优先级',lang:'c',ranks:[1],gen:function(){
+  {k:'运算优先级',lang:'c',ranks:[1],kb:27,gen:function(){
     var a=riN(2,4),b=riN(2,4),c=riN(2,4);
     return mkCodeQ('这段 C 代码输出什么？',
       'printf("%d", '+a+' + '+b+' * '+c+');',
       String(a+b*c),[String((a+b)*c),String(a+b+c),String(a*b+c)],
       '乘除优先于加减：'+a+' + '+b+' × '+c+' = '+(b*c)+'，再加 '+a+' = '+(a+b*c));
   }},
-  {k:'复合赋值',lang:'c',ranks:[1],gen:function(){
+  {k:'复合赋值',lang:'c',ranks:[1],kb:20,gen:function(){
     var a=riN(3,7),b=riN(2,5);
     return mkCodeQ('这段 C 代码输出什么？',
       'int x = '+a+';\nx += '+b+';\nprintf("%d", x);',
       String(a+b),[String(a-b),String(a*b),String(a+b+1)],
       'x += '+b+' 等价于 x = x + '+b+'，所以 x = '+(a+b));
   }},
-  {k:'三目运算',lang:'c',ranks:[1],gen:function(){
+  {k:'三目运算',lang:'c',ranks:[1],kb:7,gen:function(){
     var a=riN(3,9),b=a>=5?'A':'B';
     return mkCodeQ('这段 C 代码输出什么？',
       'int x = '+a+';\nprintf("%c", x >= 5 ? \'A\' : \'B\');',
       b,[b==='A'?'B':'A','C','5'],
       '三目运算：x>=5 成立输出 A，不成立输出 B；x='+a+'，所以输出 '+b);
   }},
-  {k:'位运算',lang:'c',ranks:[1,2],gen:function(){
+  {k:'位运算',lang:'c',ranks:[1,2],kb:147,gen:function(){
     var a=riN(1,7),b=riN(1,7),op=['&','|','^'][riN(0,2)];
     var r=op==='&'?(a&b):op==='|'?(a|b):(a^b);
     return mkCodeQ('这段 C 代码输出什么？',
@@ -2399,7 +2599,7 @@ var CODE_TOPICS=[
       String(r),[String(a+b),String(a*b),String(r+1)],
       a+' '+op+' '+b+' = '+r+'（按二进制逐位运算：'+a.toString(2)+' '+op+' '+b.toString(2)+' = '+r.toString(2)+'₂）');
   }},
-  {k:'保留小数位数',lang:'c',ranks:[1],gen:function(){
+  {k:'保留小数位数',lang:'c',ranks:[1],kb:81,gen:function(){
     var a=riN(1,9),b=riN(1,9),f=parseFloat('3.'+a+b);
     return mkCodeQ('这段 C 代码输出什么？',
       'printf("%.1f", '+f.toFixed(2)+');',
@@ -2407,28 +2607,28 @@ var CODE_TOPICS=[
       '%.1f 表示保留 1 位小数并四舍五入：'+f.toFixed(2)+' → '+f.toFixed(1));
   }},
   /* ---- rank 1 · 选择结构 ---- */
-  {k:'if-else 判断',lang:'c',ranks:[1],gen:function(){
+  {k:'if-else 判断',lang:'c',ranks:[1],kb:9,gen:function(){
     var x=riN(1,9),hit=x>3;
     return mkCodeQ('这段 C 代码输出什么？',
       'int x = '+x+';\nif (x > 3) printf("A");\nelse printf("B");',
       hit?'A':'B',[hit?'B':'A','C','3'],
       'x='+x+'，条件 x>3 是'+(hit?'真':'假')+'，'+(hit?'走 if 输出 A':'走 else 输出 B'));
   }},
-  {k:'if-else 链',lang:'c',ranks:[1],gen:function(){
+  {k:'if-else 链',lang:'c',ranks:[1],kb:9,gen:function(){
     var x=riN(1,9),r=x>=7?'大':(x>=4?'中':'小');
     return mkCodeQ('这段 C 代码输出什么？',
       'int x = '+x+';\nif (x >= 7) printf("大");\nelse if (x >= 4) printf("中");\nelse printf("小");',
       r,[r==='大'?'中':'大',r==='小'?'中':'小','零'],
       '从上往下找第一个成立的条件：x='+x+'，'+(r==='大'?'x>=7 成立':(r==='中'?'x>=7 不成立，x>=4 成立':'x>=7 与 x>=4 都不成立'))+'，输出「'+r+'」');
   }},
-  {k:'逻辑与或非',lang:'c',ranks:[1],gen:function(){
+  {k:'逻辑与或非',lang:'c',ranks:[1],kb:12,gen:function(){
     var a=riN(2,4),b=riN(6,9),hit=(a>1&&b<5);
     return mkCodeQ('这段 C 代码输出什么？',
       'int a = '+a+', b = '+b+';\nif (a > 1 && b < 5) printf("Y");\nelse printf("N");',
       hit?'Y':'N',[hit?'N':'Y','1','0'],
       'a>1 是'+(a>1?'真':'假')+'，b<5 是'+(b<5?'真':'假')+'，&& 要求两边都真：'+(hit?'输出 Y':'输出 N'));
   }},
-  {k:'switch 分支',lang:'c',ranks:[1,2],gen:function(){
+  {k:'switch 分支',lang:'c',ranks:[1,2],kb:3,gen:function(){
     var x=riN(1,3);
     return mkCodeQ('这段 C 代码输出什么？',
       'int x = '+x+';\nswitch (x) {\n  case 1: printf("A"); break;\n  case 2: printf("B"); break;\n  default: printf("C");\n}',
@@ -2436,21 +2636,21 @@ var CODE_TOPICS=[
       'switch 按 x 的值匹配 case：x='+x+'，'+(x===1?'匹配 case 1 输出 A':(x===2?'匹配 case 2 输出 B':'没有匹配项走 default 输出 C')));
   }},
   /* ---- rank 1-2 · 循环结构 ---- */
-  {k:'for 循环次数',lang:'c',ranks:[1],gen:function(){
+  {k:'for 循环次数',lang:'c',ranks:[1],kb:6,gen:function(){
     var n=riN(3,8);
     return mkCodeQ('这段 C 代码循环体执行多少次？',
       'for (int i = 0; i < '+n+'; i++) { }',
       String(n),[String(n-1),String(n+1),String(n*2)],
       'i 从 0 到 '+(n-1)+'，共 '+n+' 次（i<n 时执行，i='+n+' 时退出）');
   }},
-  {k:'while 累加',lang:'c',ranks:[1],gen:function(){
+  {k:'while 累加',lang:'c',ranks:[1],kb:7,gen:function(){
     var n=riN(3,9);
     return mkCodeQ('这段 C 代码输出什么？',
       'int i = 1, s = 0;\nwhile (i <= '+n+') { s += i; i++; }\nprintf("%d", s);',
       String(n*(n+1)/2),[String(n*n),String(n*(n-1)/2),String(n+1)],
       '循环把 1 到 '+n+' 全加起来，等差数列求和 '+(n*(n+1))+'÷2 = '+(n*(n+1)/2));
   }},
-  {k:'for 累加',lang:'c',ranks:[1],gen:function(){
+  {k:'for 累加',lang:'c',ranks:[1],kb:7,gen:function(){
     var n=riN(3,9);
     return mkCodeQ('这段 C 代码输出什么？',
       'int s = 0;\nfor (int i = 1; i <= '+n+'; i++) s += i;\nprintf("%d", s);',
@@ -2458,28 +2658,28 @@ var CODE_TOPICS=[
       'for 循环把 1 到 '+n+' 累加到 s，等差数列求和 '+(n*(n+1))+'÷2 = '+(n*(n+1)/2));
   }},
   /* ---- rank 2 · 循环结构进阶 ---- */
-  {k:'break 中断',lang:'c',ranks:[2],gen:function(){
+  {k:'break 中断',lang:'c',ranks:[2],kb:4,gen:function(){
     var k=riN(3,6);
     return mkCodeQ('这段 C 代码输出什么？',
       'for (int i = 0; i < 10; i++) {\n  if (i == '+k+') break;\n}\nprintf("%d", i);',
       String(k),[String(k+1),String(k-1),String(10)],
       'i 到 '+k+' 时命中 if 触发 break，立即跳出循环，此时 i = '+k);
   }},
-  {k:'continue 跳过',lang:'c',ranks:[2],gen:function(){
+  {k:'continue 跳过',lang:'c',ranks:[2],kb:5,gen:function(){
     var n=riN(4,8);
     return mkCodeQ('这段 C 代码输出什么？',
       'int s = 0;\nfor (int i = 1; i <= '+n+'; i++) {\n  if (i % 2 == 0) continue;\n  s += i;\n}\nprintf("%d", s);',
       String(squareSumOdd(n)),[String(n*(n+1)/2),String(squareSumOdd(n)+1),String(n)],
       'continue 跳过偶数，只加奇数：1+3+… 到 '+n+' = '+squareSumOdd(n));
   }},
-  {k:'do-while 至少一次',lang:'c',ranks:[2],gen:function(){
+  {k:'do-while 至少一次',lang:'c',ranks:[2],kb:12,gen:function(){
     var a=riN(2,5),b=riN(2,4),r=Math.min(a+1,b);
     return mkCodeQ('这段 C 代码输出什么？',
       'int i = '+a+';\ndo { i++; } while (i < '+b+');\nprintf("%d", i);',
       String(r),[String(a),String(b),String(a+b)],
       'do-while 先执行一次再判断：i 先变成 '+(a+1)+'，再判断是否 <'+b+'，'+(r===(a+1)?'满足则退出':'继续循环到 '+r));
   }},
-  {k:'双重循环计数',lang:'c',ranks:[2,3],gen:function(){
+  {k:'双重循环计数',lang:'c',ranks:[2,3],kb:4,gen:function(){
     var n=riN(3,6);
     return mkCodeQ('这段 C 代码输出什么？',
       'int s = 0;\nfor (int i = 0; i < '+n+'; i++)\n  for (int j = 0; j < '+n+'; j++)\n    s++;\nprintf("%d", s);',
@@ -2487,7 +2687,7 @@ var CODE_TOPICS=[
       '外层 '+n+' 次、内层每次 '+n+' 次，s 共加 '+n+'×'+n+' = '+(n*n)+' 次');
   }},
   /* ---- rank 2-3 · 数组（C） ---- */
-  {k:'数组下标',lang:'c',ranks:[2],gen:function(){
+  {k:'数组下标',lang:'c',ranks:[2],kb:36000,gen:function(){
     var v=[riN(1,9),riN(10,19),riN(20,29),riN(30,39)],i=riN(0,3);
     var others=v.filter(function(x){return x!==v[i];});
     return mkCodeQ('这段 C 代码输出什么？',
@@ -2495,7 +2695,7 @@ var CODE_TOPICS=[
       String(v[i]),pickAlts(String(v[i]),others.map(String)),
       '数组下标从 0 开始，a['+i+'] 是第 '+(i+1)+' 个元素 '+v[i]);
   }},
-  {k:'数组遍历求和',lang:'c',ranks:[2],gen:function(){
+  {k:'数组遍历求和',lang:'c',ranks:[2],kb:27,gen:function(){
     var n=riN(3,5),arr=[],s=0;
     for(var i=0;i<n;i++){var v=riN(1,9);arr.push(v);s+=v;}
     return mkCodeQ('这段 C 代码输出什么？',
@@ -2503,7 +2703,7 @@ var CODE_TOPICS=[
       String(s),[String(s+1),String(s-1),String(s*n)],
       '循环把数组每个元素加起来：'+arr.join('+')+' = '+s);
   }},
-  {k:'sizeof 数组长度',lang:'c',ranks:[2,3],gen:function(){
+  {k:'sizeof 数组长度',lang:'c',ranks:[2,3],kb:7,gen:function(){
     var n=riN(3,9);
     return mkCodeQ('这段 C 代码输出什么？',
       'int a['+n+'];\nprintf("%d", (int)(sizeof(a) / sizeof(a[0])));',
@@ -2511,7 +2711,7 @@ var CODE_TOPICS=[
       'sizeof(a) 是整个数组的字节数，除以单个元素的字节数就是元素个数 '+n);
   }},
   /* ---- rank 2-3 · 字符串（C） ---- */
-  {k:'字符串下标字符',lang:'c',ranks:[2],gen:function(){
+  {k:'字符串下标字符',lang:'c',ranks:[2],kb:9,gen:function(){
     var s=['hello','world','abcde'][riN(0,2)],i=riN(0,2);
     var cands=[];
     for(var j=0;j<s.length;j++){var ch=s.charAt(j);if(ch!==s.charAt(i)&&cands.indexOf(ch)<0)cands.push(ch);}
@@ -2521,7 +2721,7 @@ var CODE_TOPICS=[
       s.charAt(i),pickAlts(s.charAt(i),cands),
       '字符数组下标从 0 开始，s['+i+'] 是第 '+(i+1)+' 个字符 "'+s.charAt(i)+'"');
   }},
-  {k:'strlen 字符串长度',lang:'c',ranks:[2],gen:function(){
+  {k:'strlen 字符串长度',lang:'c',ranks:[2],kb:3,gen:function(){
     var s=['abc','hello','program'][riN(0,2)];
     return mkCodeQ('这段 C 代码输出什么？',
       '#include <string.h>\nchar s[] = "'+s+'";\nprintf("%d", (int)strlen(s));',
@@ -2529,7 +2729,7 @@ var CODE_TOPICS=[
       'strlen 统计字符串长度（不含结尾 \\0）："'+s+'" 有 '+s.length+' 个字符');
   }},
   /* ---- rank 3-4 · 函数（C） ---- */
-  {k:'函数调用返回值',lang:'c',ranks:[3],gen:function(){
+  {k:'函数调用返回值',lang:'c',ranks:[3],kb:8,gen:function(){
     var a=riN(2,9);
     return mkCodeQ('这段 C 代码输出什么？',
       'int f(int x) { return x * 2; }\nprintf("%d", f('+a+'));',
@@ -2537,42 +2737,42 @@ var CODE_TOPICS=[
       '调用 f('+a+')，形参 x='+a+'，函数体 return x*2，返回 '+(a*2));
   }},
   /* ---- rank 2-3 · 指针基础（C，保留并搬入） ---- */
-  {k:'指针下标访问',lang:'c',ranks:[2,3],gen:function(){
+  {k:'指针下标访问',lang:'c',ranks:[2,3],kb:2,gen:function(){
     var k=riN(1,2);
     return mkCodeQ('这段 C 代码输出什么？',
       'int a[3] = {1, 2, 3};\nint *p = a;\nprintf("%d", *(p + '+k+'));',
       String(k+1),[String(k),String(3),String(k+2)],
       'p 指向 a[0]，p + '+k+' 指向 a['+k+']（下标从 0 算），解引用得 '+(k+1));
   }},
-  {k:'指针解引用赋值',lang:'c',ranks:[2,3],gen:function(){
+  {k:'指针解引用赋值',lang:'c',ranks:[2,3],kb:70,gen:function(){
     var x=riN(3,9),v=riN(10,19);
     return mkCodeQ('这段 C 代码输出什么？',
       'int x = '+x+';\nint *p = &x;\n*p = '+v+';\nprintf("%d", x);',
       String(v),[String(x),String(x+v),String(v-x)],
       'p 存的是 x 的地址，*p = '+v+' 就是直接改 x 本身，所以输出 '+v);
   }},
-  {k:'指针数组语法',lang:'c',ranks:[2,3],gen:function(){
+  {k:'指针数组语法',lang:'c',ranks:[2,3],kb:1,gen:function(){
     return mkCodeQ('这段 C 代码输出什么？',
       'int a[4] = {1, 2, 3, 4};\nint *p = a + 1;\nprintf("%d", p[1]);',
       '3',['2','4','1'],
       'p 指向 a[1]，p[1] 相当于 a[2]，值是 3');
   }},
   /* ---- rank 3-4 · 递归与算法（C，保留并搬入） ---- */
-  {k:'递归阶乘',lang:'c',ranks:[3,4],gen:function(){
+  {k:'递归阶乘',lang:'c',ranks:[3,4],kb:3,gen:function(){
     var n=riN(4,6);
     return mkCodeQ('这段 C 代码输出什么？',
       'int f(int n) {\n    return n <= 1 ? 1 : n * f(n - 1);\n}\nprintf("%d", f('+n+'));',
       String(fact(n)),[String(fact(n)+n),String(n*n),String(fact(n-1))],
       '这是阶乘递归：'+n+'! = '+factSeq(n)+' = '+fact(n));
   }},
-  {k:'递归斐波那契',lang:'c',ranks:[3,4],gen:function(){
+  {k:'递归斐波那契',lang:'c',ranks:[3,4],kb:6,gen:function(){
     var n=riN(6,11);
     return mkCodeQ('这段 C 代码输出什么？',
       'int f(int n) {\n    return n < 2 ? n : f(n - 1) + f(n - 2);\n}\nprintf("%d", f('+n+'));',
       String(fibOf(n)),[String(fibOf(n)+1),String(fibOf(n-1)),String(n)],
       '斐波那契递推 F(n)=F(n−1)+F(n−2)，逐项算到 F('+n+') = '+fibOf(n));
   }},
-  {k:'二进制1的个数',lang:'c',ranks:[3,4],gen:function(){
+  {k:'二进制1的个数',lang:'c',ranks:[3,4],kb:16,gen:function(){
     var X=[5,6,7,9,10,11,12,13,14,17,19,21,23,25,27,29],x=X[riN(0,15)];
     var c=0,v=x;while(v){c+=v&1;v>>=1;}
     return mkCodeQ('这段 C 代码输出什么？',
@@ -2580,7 +2780,7 @@ var CODE_TOPICS=[
       String(c),[String(c+1),String(c+2),String(c+3)],
       '这段在数二进制里 1 的个数：'+x+' = '+binOf(x)+'₂，共有 '+c+' 个 1');
   }},
-  {k:'指针相减',lang:'c',ranks:[3,4],gen:function(){
+  {k:'指针相减',lang:'c',ranks:[3,4],kb:5,gen:function(){
     var k=riN(2,6);
     return mkCodeQ('这段 C 代码输出什么？',
       'int a[8] = {0};\nint *p = &a['+k+'];\nprintf("%d", (int)(p - a));',
@@ -2588,21 +2788,21 @@ var CODE_TOPICS=[
       '指针相减得到相隔的元素个数，p 指向 a['+k+']，与 a 相差 '+k);
   }},
   /* ---- rank 4 · 陷阱 / 未定义行为（C，保留并搬入） ---- */
-  {k:'宏文本替换陷阱',lang:'c',ranks:[4],gen:function(){
+  {k:'宏文本替换陷阱',lang:'c',ranks:[4],kb:16,gen:function(){
     var a=riN(1,4),b=riN(1,4);
     return mkCodeQ('这段 C 代码输出什么？',
       '#define SQ(x) x*x\n\nprintf("%d", SQ('+a+' + '+b+'));',
       String(a+b*b),[String((a+b)*(a+b)),String(a*a+b*b),String(a+b*2)],
       '宏只是文本替换，SQ('+a+' + '+b+') 展开成 '+a+' + '+b+' * '+b+'，先乘后加得 '+(a+b*b));
   }},
-  {k:'补码转无符号',lang:'c',ranks:[4],gen:function(){
+  {k:'补码转无符号',lang:'c',ranks:[4],kb:9,gen:function(){
     var k=riN(1,9);
     return mkCodeQ('这段 C 代码输出什么（8 位 char）？',
       'char c = -'+k+';\nprintf("%d", (unsigned char)c);',
       String(256-k),[String(-k),String(k),String(256+k)],
       '负数按补码存，转成无符号就是 256 − '+k+' = '+(256-k));
   }},
-  {k:'前置后置综合',lang:'c',ranks:[3,4],gen:function(){
+  {k:'前置后置综合',lang:'c',ranks:[3,4],kb:12,gen:function(){
     var sv=riN(0,2),ops=['i++','++i','i--','--i'],op=ops[riN(0,3)];
     var pre=/^[+-]{2}/.test(op),after=(op==='i++'||op==='++i');
     var a=pre?(after?sv+1:sv-1):sv;
@@ -2612,7 +2812,7 @@ var CODE_TOPICS=[
       'int i = '+sv+';\nint a = '+op+';\nprintf("%d %d", a, i);',
       a+' '+iv,[(a+1)+' '+iv,a+' '+(iv+1),(a+1)+' '+(iv+1)],why);
   }},
-  {k:'无符号溢出回绕',lang:'c',ranks:[4],gen:function(){
+  {k:'无符号溢出回绕',lang:'c',ranks:[4],kb:1296,gen:function(){
     var a=riN(215,250),b=riN(10,45),r=(a+b)%256;
     return mkCodeQ('这段 C 代码输出什么？',
       'unsigned char c = '+a+';\nc += '+b+';\nprintf("%d", c);',
@@ -2620,34 +2820,34 @@ var CODE_TOPICS=[
       'unsigned char 只存 8 位、上限 255，'+(a+b)+' 溢出后回绕：'+(a+b)+' − 256 = '+r);
   }},
   /* ---- 以下为其他语言（lang 标注，仅当用户勾选对应语言且档位≥2 时出现） ---- */
-  {k:'Python 乘法输出',lang:'python',ranks:[2,3,4],gen:function(){
+  {k:'Python 乘法输出',lang:'python',ranks:[2,3,4],kb:25,gen:function(){
     var a=riN(2,6),b=riN(2,6);
     return mkCodeQ('这段 Python 代码输出什么？',
       'a = '+a+'\nb = '+b+'\nprint(a * b)',
       String(a*b),[String(a+b),String(a*10+b),String(a*b+1)],
       'Python 里数字的 * 是乘法，'+a+' × '+b+' = '+(a*b));
   }},
-  {k:'Python 字符串下标',lang:'python',ranks:[2,3,4],gen:function(){
+  {k:'Python 字符串下标',lang:'python',ranks:[2,3,4],kb:9,gen:function(){
     var s=['abc','quiz','code'][riN(0,2)],i=riN(0,2);
     return mkCodeQ('这段 Python 代码输出什么？',
       's = "'+s+'"\nprint(s['+i+'])',
       s.charAt(i),[s.charAt((i+1)%3),s.charAt((i+2)%3),String(s.length)],
       '字符串下标从 0 开始，s['+i+'] 是第 '+(i+1)+' 个字符 "'+s.charAt(i)+'"');
   }},
-  {k:'Python 切片长度',lang:'python',ranks:[2,3,4],gen:function(){
+  {k:'Python 切片长度',lang:'python',ranks:[2,3,4],kb:6,gen:function(){
     var n=riN(2,4),k=riN(2,3);
     return mkCodeQ('这段 Python 代码输出什么？',
       'a = [1, 2, 3, 4, 5][:'+n+']\nprint(len(a) * '+k+')',
       String(n*k),[String(n+k),String(n),String(n*k+1)],
       '切片 [:'+n+'] 取前 '+n+' 个元素，len 得 '+n+'，再乘 '+k+' = '+(n*k));
   }},
-  {k:'Python 可变参数',lang:'python',ranks:[2,3,4],gen:function(){
+  {k:'Python 可变参数',lang:'python',ranks:[2,3,4],kb:1,gen:function(){
     return mkCodeQ('这段 Python 代码输出什么？',
       'def f(t):\n    t.append(9)\n\nx = [1]\nf(x)\nprint(len(x))',
       '2',['1','9','0'],
       '列表是可变对象、按引用传入，append 改的是原列表，长度从 1 变 2');
   }},
-  {k:'Python 默认参数陷阱',lang:'python',ranks:[3,4],gen:function(){
+  {k:'Python 默认参数陷阱',lang:'python',ranks:[3,4],kb:28,gen:function(){
     var t=riN(0,3),m=riN(3,9),body='';
     for(var i=0;i<t;i++)body+='f('+(i+1)+')\n';
     return mkCodeQ('这段 Python 代码输出什么？',
@@ -2655,33 +2855,33 @@ var CODE_TOPICS=[
       String(t+1),[String(t),String(t+2),'1'],
       '默认参数 acc=[] 只在定义时创建一次，前面调用已累积 '+t+' 个，再 append 变 '+(t+1)+' 个');
   }},
-  {k:'Java 字符串长度',lang:'java',ranks:[2,3,4],gen:function(){
+  {k:'Java 字符串长度',lang:'java',ranks:[2,3,4],kb:4,gen:function(){
     var s=['quiz','code','java','html'][riN(0,3)];
     return mkCodeQ('这段 Java 代码输出什么？',
       'String s = "'+s+'";\nSystem.out.println(s.length());',
       String(s.length),[String(s.length-1),String(s.length+1),String(s.length*2)],
       'Java 的 length() 返回字符个数，"'+s+'" 有 '+s.length+' 个字符');
   }},
-  {k:'Java 数组排序',lang:'java',ranks:[3,4],gen:function(){
+  {k:'Java 数组排序',lang:'java',ranks:[3,4],kb:1,gen:function(){
     return mkCodeQ('这段 Java 代码输出什么？',
       'int[] a = {5, 2, 9};\nArrays.sort(a);\nSystem.out.println(a[0]);',
       '2',['5','9','0'],
       'Arrays.sort 升序排成 {2, 5, 9}，a[0] 是最小的 2');
   }},
-  {k:'JS 偶数计数',lang:'js',ranks:[2,3,4],gen:function(){
+  {k:'JS 偶数计数',lang:'js',ranks:[2,3,4],kb:4,gen:function(){
     var n=riN(4,7);
     return mkCodeQ('这段 JavaScript 代码输出什么？',
       'var a = [];\nfor (var i = 1; i <= '+n+'; i++) {\n  if (i % 2 === 0) a.push(i);\n}\nconsole.log(a.length);',
       String(Math.floor(n/2)),[String(Math.ceil(n/2)),String(n),String(n-1)],
       '1 到 '+n+' 里偶数有 '+(Math.floor(n/2))+' 个，只有偶数被 push 进数组');
   }},
-  {k:'JS 数组排序拼接',lang:'js',ranks:[3,4],gen:function(){
+  {k:'JS 数组排序拼接',lang:'js',ranks:[3,4],kb:1,gen:function(){
     return mkCodeQ('这段 JavaScript 代码输出什么？',
       'var a = [3, 1, 2];\na.sort();\nconsole.log(a.join(""));',
       '123',['321','312','132'],
       '默认 sort 按字符串升序排列，得到 [1, 2, 3]，拼接成 "123"');
   }},
-  {k:'JS 字符串拼接',lang:'js',ranks:[2,3,4],gen:function(){
+  {k:'JS 字符串拼接',lang:'js',ranks:[2,3,4],kb:3,gen:function(){
     var n=riN(2,4);
     return mkCodeQ('这段 JavaScript 代码输出什么？',
       'var s = "";\nfor (var i = 0; i < '+n+'; i++) {\n  s += i;\n}\nconsole.log(s);',
@@ -2689,67 +2889,67 @@ var CODE_TOPICS=[
       'i 取 0 到 '+(n-1)+'，字符串依次拼接，得 "'+      '012345'.slice(0,n)+'"');
   }},
   /* ---- 代码补全题（kind:'fill'）：读代码 + 填空，补全关键符号 / 关键字 / 表达式 ---- */
-  {k:'C 补全·比较运算符',lang:'c',ranks:[0],gen:function(){
+  {k:'C 补全·比较运算符',lang:'c',ranks:[0],kb:1,gen:function(){
     return mkCodeFill('补全下面 C 代码的空白处，使它表示“a 大于 b 时输出 a 大”。',
       'int a = 7, b = 3;\nif (a ___ b) { printf("a 大"); } /* 判断 a 是否大于 b */',
       '>','',
       '> 是大于比较运算符，a > b 为真时进入 if 分支。');
   }},
-  {k:'C 补全·变量赋值',lang:'c',ranks:[0],gen:function(){
+  {k:'C 补全·变量赋值',lang:'c',ranks:[0],kb:1,gen:function(){
     return mkCodeFill('补全下面 C 代码的空白处，使 x 的值等于 5。',
       'int x = ___; /* x 应为 5 */',
       '5','',
       '直接写 5 即可：int x = 5;');
   }},
-  {k:'JS 补全·数组反转',lang:'js',ranks:[0,1],gen:function(){
+  {k:'JS 补全·数组反转',lang:'js',ranks:[0,1],kb:1,gen:function(){
     return mkCodeFill('补全下面 JavaScript 代码的空白处，使 r 成为 a 的反转数组。',
       'var a = [1, 2, 3];\nvar r = a.______(); // 反转数组',
       'reverse','',
       '数组方法 reverse() 会原地反转并返回该数组。');
   }},
-  {k:'C 补全·累加赋值',lang:'c',ranks:[1],gen:function(){
+  {k:'C 补全·累加赋值',lang:'c',ranks:[1],kb:1,gen:function(){
     return mkCodeFill('补全下面 C 代码的空白处，使 sum 成为 1 到 5 的累加和。',
       'int sum = 0;\nfor (int i = 1; i <= 5; i++) { sum = sum ___ i; } /* 累加 1..5 */',
       '+=','',
       '+= 是复合赋值，sum += i 等价于 sum = sum + i。');
   }},
-  {k:'C 补全·循环条件',lang:'c',ranks:[1],gen:function(){
+  {k:'C 补全·循环条件',lang:'c',ranks:[1],kb:1,gen:function(){
     return mkCodeFill('补全下面 C 代码的空白处，使循环打印 0 到 9。',
       'for (int i = 0; i ___ 10; i++) { printf("%d ", i); } /* 打印 0..9 */',
       '<','',
       'i < 10 时循环继续，打印 0,1,...,9 共 10 个数。');
   }},
-  {k:'JS 补全·函数返回',lang:'js',ranks:[1,2],gen:function(){
+  {k:'JS 补全·函数返回',lang:'js',ranks:[1,2],kb:1,gen:function(){
     return mkCodeFill('补全下面 JavaScript 代码的空白处，使 add 返回两数之和。',
       'function add(a, b) {\n  return a ___ b;\n}',
       '+','',
       '+ 把两个参数相加后返回。');
   }},
-  {k:'C 补全·数组下标',lang:'c',ranks:[2],gen:function(){
+  {k:'C 补全·数组下标',lang:'c',ranks:[2],kb:1,gen:function(){
     return mkCodeFill('补全下面 C 代码的空白处，使循环正序打印数组每个元素。',
       'int arr[] = {3, 1, 4};\nfor (int i = 0; i < 3; i++) { printf("%d ", arr[___]); }',
       'i','',
       '用下标 i 访问元素 arr[i]，i 从 0 到 2 正序遍历。');
   }},
-  {k:'JS 补全·字符串长度',lang:'js',ranks:[2,3],gen:function(){
+  {k:'JS 补全·字符串长度',lang:'js',ranks:[2,3],kb:1,gen:function(){
     return mkCodeFill('补全下面 JavaScript 代码的空白处，使 n 等于字符串 s 的长度。',
       'var s = "hello";\nvar n = s.______; // 字符串长度',
       'length','',
       '字符串的 length 属性给出字符个数。');
   }},
-  {k:'C 补全·取地址',lang:'c',ranks:[3],gen:function(){
+  {k:'C 补全·取地址',lang:'c',ranks:[3],kb:1,gen:function(){
     return mkCodeFill('补全下面 C 代码的空白处，使指针 p 指向变量 x。',
       'int x = 10;\nint *p = ___; /* p 指向 x */',
       '&x','',
       '& 是取地址符，&x 得到 x 的地址赋给指针 p。');
   }},
-  {k:'JS 补全·对象属性',lang:'js',ranks:[3,4],gen:function(){
+  {k:'JS 补全·对象属性',lang:'js',ranks:[3,4],kb:1,gen:function(){
     return mkCodeFill('补全下面 JavaScript 代码的空白处，使 v 等于对象 o 的 name 属性值。',
       'var o = { name: "Tom" };\nvar v = o.______; // 取出 name 的值',
       'name','',
       '用点号 o.name 访问对象属性。');
   }},
-  {k:'C 补全·阶乘递归',lang:'c',ranks:[4],gen:function(){
+  {k:'C 补全·阶乘递归',lang:'c',ranks:[4],kb:1,gen:function(){
     return mkCodeFill('补全下面 C 代码的空白处，使 fact 正确计算 n 的阶乘。',
       'int fact(int n) {\n  if (n <= 1) return 1;\n  return n ___ fact(n - 1);\n} /* 阶乘 */',
       '*','',
@@ -2964,20 +3164,47 @@ function codeQuestionnaire(cb){
 function codeTrial(langs,cb){
   var prof=getCodeProfile()||{done:true,langs:langs,rank:0};
   var allowed=langs.concat(['all']);
-  var pool=POOLS.code['0']||[];var tags=CODE_TAGS['0']||[];
-  var filtered=[];pool.forEach(function(it,i){if(allowed.indexOf(tags[i])>=0)filtered.push(it);});
-  if(filtered.length<5)filtered=pool;
-  var qs=shuffle(filtered.slice()).slice(0,Math.min(5,filtered.length)).map(function(p){return {q:p[0],a:String(p[1]),opts:null};});
-  var idx=0,right=0;
+  /* P1-3：从入门/基础/进阶三档各抽 2 题（共 6 题，低档在前、难度递增）。
+     旧版只考 POOLS.code['0'] 的 5 道入门题 —— 只要背过基础语法就能拿「精通」。 */
+  var qs=[];
+  [0,1,2].forEach(function(d){
+    var pool=POOLS.code[String(d)]||[],tags=CODE_TAGS[String(d)]||[];
+    var f=[];pool.forEach(function(it,i){if(allowed.indexOf(tags[i])>=0)f.push(it);});
+    if(f.length<2)f=pool;
+    shuffle(f.slice()).slice(0,2).forEach(function(p){qs.push({q:p[0],a:String(p[1]),opts:null,d:d});});
+  });
+  if(qs.length<6){
+    qs=shuffle((POOLS.code['0']||[]).slice()).slice(0,6).map(function(p){return {q:p[0],a:String(p[1]),opts:null,d:0};});
+  }
+  var idx=0,answeredOK=[];
   function ask(){
-    if(idx>=qs.length){var r=0;if(right>=5)r=4;else if(right>=4)r=3;else if(right>=3)r=2;else if(right>=2)r=1;else r=0;prof.rank=r;try{S.setItem(CODE_PROFILE_KEY,JSON.stringify(prof));setRank('code',r);}catch(e){}var ov2=overlayPanel('🎯 检测完成');
-      ov2.p.appendChild(ht('div','okmsg','试水 '+qs.length+' 题答对 '+right+' 题 → 初始档位：'+levelName(r)));
+    if(idx>=qs.length){
+      /* 按难度加权：答对入门题算 1 分、基础 2 分、进阶 3 分，再映射到 5 个档位 */
+      var w=0,tw=0;
+      qs.forEach(function(q,i){tw+=(q.d+1);if(answeredOK[i])w+=(q.d+1);});
+      var ratio=tw?w/tw:0;
+      var r=ratio>=0.8?4:ratio>=0.6?3:ratio>=0.4?2:ratio>=0.2?1:0;
+      prof.rank=r;
+      try{
+        S.setItem(CODE_PROFILE_KEY,JSON.stringify(prof));
+        setRank('code',r);
+        /* 难度面板默认档读的是 bd_qa_diff_code，只写 setRank 检测结果不会生效（踩过） */
+        S.setItem('bd_qa_diff_code',r);
+      }catch(e){}
+      var ov2=overlayPanel('🎯 检测完成');
+      ov2.p.appendChild(ht('div','okmsg','试水 '+qs.length+' 题（入门/基础/进阶各 2 题）答对 '+answeredOK.filter(Boolean).length+' 题 · 加权得分 '+Math.round(ratio*100)+'%'));
+      ov2.p.appendChild(ht('div','okmsg','已把默认难度设为「'+levelName(r)+'」，下次进编程板块会默认停在这一档。'));
       ov2.p.appendChild(ht('div','hint','（可在 ⚙️ 设置里「重新检测」）'));
-      var okb=h('button','btn gold','开始答题');okb.onclick=function(){closeOverlay(ov2);cb();};ov2.p.appendChild(okb);return;}
-    var Q=qs[idx];var ov3=overlayPanel('🤔 试水 '+(idx+1)+'/'+qs.length);
+      var okb=h('button','btn gold','开始答题');okb.onclick=function(){closeOverlay(ov2);cb();};ov2.p.appendChild(okb);return;
+    }
+    var Q=qs[idx];var ov3=overlayPanel('🤔 试水 '+(idx+1)+'/'+qs.length+'（'+['入门','基础','进阶','熟练','精通'][Q.d]+'档）');
     ov3.p.appendChild(ht('div','qbox',esc(Q.q)));
     var ti=h('input');ti.placeholder='输入答案';ti.style.margin='8px 0';ov3.p.appendChild(ti);
-    var sb=h('button','btn gold','提交');sb.onclick=function(){if(String(ti.value).trim()===Q.a)right++;idx++;closeOverlay(ov3);ask();};
+    var sb=h('button','btn gold','提交');
+    sb.onclick=function(){
+      if(fillEqual(ti.value,Q.a))answeredOK[idx]=1;else answeredOK[idx]=0;
+      idx++;closeOverlay(ov3);ask();
+    };
     ov3.p.appendChild(sb);
   }
   ask();
@@ -3469,7 +3696,15 @@ function fillNum(s){
 function fillEqual(given,ans){
   var a=fillNorm(ans),b=fillNorm(given);
   if(a===b)return true;
-  if(a.replace(/^0x/,'')===b.replace(/^0x/,''))return true;
+  /* P1-1：十六进制必须「两边都显式写 0x」才按十六进制比较，且值要相同。
+     旧写法 a.replace(/^0x/,'')===b.replace(/^0x/,'') 会把答案 0x10 和输入 10 判成相等。 */
+  var _ax=/^0x/i.test(a),_bx=/^0x/i.test(b);
+  if(_ax&&_bx){
+    var _av=parseInt(a,16),_bv=parseInt(b,16);
+    if(!isNaN(_av)&&!isNaN(_bv)&&_av===_bv)return true;
+    return false;
+  }
+  if(_ax!==_bx)return false;   /* 一边带 0x 一边不带：格式不一致，判错（不落到数值比较） */
   var na=fillNum(a),nb=fillNum(b);
   if(na!=null&&nb!=null&&Math.abs(na-nb)<1e-9)return true;
   return false;
