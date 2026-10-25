@@ -147,6 +147,10 @@ select:focus{outline:none;border-color:#c3b0ff;box-shadow:0 0 0 3px rgba(124,92,
 .opts .obtn:active{background:#f3eeff;border-color:#c9b8ff;transform:scale(.985)}
 .opts .obtn.right{background:#e9f9f1;border-color:#8fdbb6;color:#177a4d}
 .opts .obtn.wrong{background:#ffeef1;border-color:#f3adba;color:#b8233c}
+/* P2-A4：键盘序号角标（伪元素，不进 textContent，不影响判分与探针） */
+.opts .obtn{position:relative}
+.opts .obtn[data-k]::before{content:attr(data-k);position:absolute;left:7px;top:5px;font-size:10px;
+  line-height:1;color:#c9c0e0;font-weight:700;pointer-events:none}
 .fb{margin:12px 0 2px;font-weight:800;font-size:14.5px;text-align:center;
   padding:11px;border-radius:12px;background:#f7f5ff}
 .fb.ok{color:#177a4d;background:#eafaf1} .fb.no{color:#b8233c;background:#ffeef1} .fb.unk{color:#a86400;background:#fff6e6}
@@ -276,6 +280,26 @@ select:focus{outline:none;border-color:#c3b0ff;box-shadow:0 0 0 3px rgba(124,92,
 .fsteps{width:100%;margin:6px 0 2px;text-align:left}
 .fsteps-t{font-size:12px;font-weight:800;color:#2f8f4e;margin-bottom:3px}
 .fstep{font-size:12.5px;color:#444;line-height:1.65;padding-left:2px}
+/* P2-A1：结算页「本局错题」折叠块 */
+.round-wrong{margin-top:8px;text-align:left}
+.rw-row{border:1px solid var(--line);border-radius:12px;background:#fff;margin-bottom:8px;overflow:hidden}
+.rw-q{position:relative;padding:10px 26px 10px 12px;font-size:13.5px;font-weight:800;color:var(--ink);
+  line-height:1.5;cursor:pointer;word-break:break-word}
+.rw-q::after{content:'▾';position:absolute;right:11px;top:9px;color:#b9aee0;font-size:12px}
+.rw-row.open .rw-q::after{content:'▴'}
+.rw-d{display:none;padding:0 12px 10px;font-size:12.5px;line-height:1.65;text-align:left}
+.rw-row.open .rw-d{display:block}
+.rw-line{color:#555}
+.rw-exp{margin-top:5px;color:#555;background:#faf8ff;border-radius:8px;padding:7px 9px}
+.rw-d .fsol-code{margin-top:6px;max-height:150px}
+/* P2-A3：最近 30 天趋势条 */
+.trend{display:flex;align-items:flex-end;gap:3px;height:64px;background:#faf8ff;
+  border:1px solid var(--line);border-radius:12px;padding:8px 10px;box-sizing:border-box}
+.trend .tcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;gap:1px}
+.trend .tbar{width:100%;border-radius:3px;min-height:2px}
+.trend .tbar.ok{background:#8fdbb6}
+.trend .tbar.bad{background:#ffc46b}
+.trend .tbar.zero{background:#ece7f9}
 /* ---------- 轻量代码编辑器（手写题） ---------- */
 .edwrap{position:relative;display:flex;width:100%;height:176px;background:#f8f6ff;
   border:1px solid #d9d2ff;border-radius:10px;overflow:hidden;margin:8px 0 6px;box-sizing:border-box}
@@ -338,6 +362,16 @@ var curDiff=-1,curDiffLabel="",netStat=null;
 function qaDiffs(bk){var T=QA_TYPES[bk];return (T&&T.diffs&&T.diffs.length)?T.diffs:null;}
 function qaDiffDefault(bk){var ds=qaDiffs(bk);if(!ds)return -1;var sv=parseInt(S.getItem("bd_qa_diff_"+bk),10);return (sv>=0&&sv<ds.length)?sv:0;}
 /* ===== 引擎核心（从 brain-gym 原样抽取） ===== */
+/* P2-A2：本地存储写入统一走 safeSet —— 配额满时提示一次（不再静默丢数据）
+   ⚠ 不要给 localStorage 实例挂方法（Storage 会把属性当 key 写进去），只能自己包一层。 */
+var quotaWarned=false;
+function safeSet(k,v){
+  try{S.setItem(k,v);return true;}
+  catch(e){
+    try{if(!quotaWarned){quotaWarned=true;if(typeof window!=='undefined'&&window.__quotaWarn)window.__quotaWarn();}}catch(_){}
+    return false;
+  }
+}
 var POOLS={
 geo:[
   ["法国的首都是？","巴黎","geo","里昂|马赛|尼斯"],
@@ -543,7 +577,7 @@ var QA_DIFFS_CODE=[
 ];
 var QA_DIFFS_STD=[{n:'🟢 简单',d:'20题',cnt:20},{n:'🟡 中等',d:'30题',cnt:30},{n:'🔴 困难',d:'40题·答错扣5',cnt:40}];
 function loadExtra(){try{var o=JSON.parse(S.getItem('bt_qa_extra')||'{}');return (o&&typeof o==='object')?o:{}}catch(e){return{}}}
-function saveExtra(o){try{S.setItem('bt_qa_extra',JSON.stringify(o))}catch(e){}}
+function saveExtra(o){try{safeSet('bt_qa_extra',JSON.stringify(o))}catch(e){}}
 function extraPool(bk){var o=loadExtra(),a=o[bk];return Array.isArray(a)?a:[]}
 function addExtra(bk,list){var o=loadExtra(),cur=Array.isArray(o[bk])?o[bk]:[],seen={},add=[],man=POOLS[bk];
  if(Array.isArray(man))man.forEach(function(it){if(it&&it[0])seen[it[0]]=1});
@@ -571,7 +605,7 @@ function genStdPool(key){return function(n,diff){
   recFirst.sort(function(a,b){return (a.rec===b.rec)?0:(a.rec?1:-1)});
   recFirst.forEach(function(c){if(out.length>=n)return;qseen[String(c.e.q)]=1;out.push({q:c.e.q,a:String(c.e.a),opts:shuffle(c.e.opts.slice()),ai:1});});
  }
- try{var nr=recent.slice();out.forEach(function(o){nr.unshift(String(o.q));});S.setItem(_rk,JSON.stringify(nr.slice(0,50)));}catch(e){}
+ try{var nr=recent.slice();out.forEach(function(o){nr.unshift(String(o.q));});safeSet(_rk,JSON.stringify(nr.slice(0,50)));}catch(e){}
  return out}}
 var QA_TYPES={
  math:{name:'数学',icon:'🔢',alias:['math','shuxue','suanshu','算术'],gen:genMath,diffs:QA_DIFFS_MATH},
@@ -608,7 +642,7 @@ function saveWeak(a){
       return (x.t||0)-(y.t||0);
     }).slice(0,WEAK_CAP);
   }
-  try{S.setItem('bt_qa_weak',JSON.stringify(a));}catch(e){}
+  try{safeSet('bt_qa_weak',JSON.stringify(a));}catch(e){}
 }
 /* P1-2：同一题（type + q 相同）只留一条，重复错只累加次数 n 与最后时间 t */
 function addWeak(item){
@@ -639,7 +673,7 @@ function removeWeak(item){
   saveWeak(a);
 }
 function getRank(bk){var ds=qaDiffs(bk);if(!ds)return -1;var n=ds.length;var def=(bk==='math')?1:0;var sv=parseInt(S.getItem('bt_qa_rank_'+bk),10);return (sv>=0&&sv<n)?sv:def}
-function setRank(bk,r){try{S.setItem('bt_qa_rank_'+bk,r)}catch(e){}}
+function setRank(bk,r){try{safeSet('bt_qa_rank_'+bk,r)}catch(e){}}
 function genNextAuto(){var _bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';var T=QA_TYPES[_bk];if(!T)return{q:'',a:'',opts:['']};var arr=T.gen(1,selfRank);return (arr&&arr.length)?arr[0]:{q:'',a:'',opts:['']}}
 function pickPoolByDiff(pool,diff){if(!pool)return [];
  var out;
@@ -756,8 +790,8 @@ function genMath(n,diff){var d=(typeof diff==='number'&&diff>=0)?diff:0;
  return genMathPrimary(n)}
 // ================= 本地存储 =================
 function loadCustom(){try{return JSON.parse(S.getItem('bt_qa_custom')||'{}')||{}}catch(e){return {}}}
-function saveCustom(o){try{S.setItem('bt_qa_custom',JSON.stringify(o))}catch(e){}}
-function saveTypeBest(key,sc){try{var m=JSON.parse(S.getItem('bt_qa_best')||'{}');if(!(key in m)||sc>m[key])m[key]=sc;S.setItem('bt_qa_best',JSON.stringify(m))}catch(e){}}
+function saveCustom(o){try{safeSet('bt_qa_custom',JSON.stringify(o))}catch(e){}}
+function saveTypeBest(key,sc){try{var m=JSON.parse(S.getItem('bt_qa_best')||'{}');if(!(key in m)||sc>m[key])m[key]=sc;safeSet('bt_qa_best',JSON.stringify(m))}catch(e){}}
 var custom=loadCustom();
 var ONLINE_BANK=[];
 try{var _oc=JSON.parse(S.getItem('bt_qa_online')||'null');if(_oc&&_oc.items&&_oc.items.length)ONLINE_BANK=_oc.items;}catch(e){}
@@ -842,7 +876,7 @@ function fetchOnline(cb){
   if(left<1500){fallback(lastReason||'timeout');return}
   var src=srcs[i++];
   trySource(src,left,function(ok,arr,reason){
-   if(ok&&arr&&arr.length){try{ONLINE_BANK=arr;ONLINE_SRC='online';S.setItem('bt_qa_online',JSON.stringify({t:Date.now(),items:arr}));}catch(e){}updateOnlineStatus();cb(true,{degraded:false,source:src.name});return}
+   if(ok&&arr&&arr.length){try{ONLINE_BANK=arr;ONLINE_SRC='online';safeSet('bt_qa_online',JSON.stringify({t:Date.now(),items:arr}));}catch(e){}updateOnlineStatus();cb(true,{degraded:false,source:src.name});return}
    lastReason=reason||lastReason;nextSource();});}
  try{nextSource();}catch(e){fallback(lastReason||'net')}}
 function startOnline(){typeKey='b:online';typeLabel='🌐 联网';if(ONLINE_BANK.length){beginOnline();return;}
@@ -890,6 +924,7 @@ var selfWindow=[];                              // auto 模式滑动窗口：最
 var WIN_CAP=12,WIN_MIN=6,UP_ACC=0.75,DN_ACC=0.4,LEVEL_COOL=2,lvlCool=0;
 var lastAuto=null;                              // 结算页的实力评级快照
 var reviewOne=false;                            // 薄弱题本里的「单题练」：结算页返回题本而不是重开整局
+var roundWrong=[];                              // P2-A1：本局首次结算的错题（重试答对不追加、不重复）
 var quizOver=false;                             // 本局是否已收尾（挡住答题后的延时切题把结算页顶掉）
 function sectionName(k){for(var i=0;i<SECTIONS.length;i++){if(SECTIONS[i].k===k)return SECTIONS[i].n;}return '🎯 选择题';}
 function windowAcc(){var a=selfWindow,i,n=0;if(!a.length)return 0;for(i=0;i<a.length;i++){if(a[i])n++;}return n/a.length;}
@@ -907,7 +942,37 @@ function toast(msg){
 function loadBest(){try{return JSON.parse(S.getItem('bt_qa_best')||'{}')||{};}catch(e){return{};}}
 function bestFor(prefix){var m=loadBest(),best=0,found=false;for(var k in m){if(k.indexOf(prefix)===0&&m[k]>best){best=m[k];found=true;}}return found?best:0;}
 function loadStats(){try{return JSON.parse(S.getItem('bt_qa_stats')||'{}')||{};}catch(e){return{};}}
-function bumpStat(prefix,correct){var m=loadStats();var o=m[prefix]||{n:0,c:0};o.n++;if(correct)o.c++;m[prefix]=o;try{S.setItem('bt_qa_stats',JSON.stringify(m));}catch(e){}}
+/* P2-A3：统计页专用 —— 「键存在即已挑战」，0 分 / 负分也算成绩。
+   bestFor 保留旧口径（只看 >0），因为书架徽标一直是那个语义。 */
+function bestInfo(prefix){
+  var m=loadBest(),best=null,found=false;
+  for(var k in m){if(k.indexOf(prefix)===0){found=true;if(best===null||m[k]>best)best=m[k];}}
+  return {best:found?best:0,found:found};
+}
+function bumpStat(prefix,correct){
+  var m=loadStats();var o=m[prefix]||{n:0,c:0};o.n++;if(correct)o.c++;m[prefix]=o;
+  safeSet('bt_qa_stats',JSON.stringify(m));
+  bumpDaily(!!correct);
+}
+/* P2-A3：每天做题数 / 正确数，只留最近 30 天（用本地日期，UTC 在东八区会串日） */
+function bumpDaily(correct){
+  var dl={};try{dl=JSON.parse(S.getItem('bt_qa_daily')||'{}')||{};}catch(e){dl={};}
+  if(!dl||typeof dl!=='object')dl={};
+  var tk=dayKey(new Date());
+  var td=dl[tk]||{n:0,c:0};td.n++;if(correct)td.c++;dl[tk]=td;
+  var ks=Object.keys(dl).sort();
+  while(ks.length>30){delete dl[ks.shift()];}
+  safeSet('bt_qa_daily',JSON.stringify(dl));
+}
+function trendDays(n){
+  var dl={};try{dl=JSON.parse(S.getItem('bt_qa_daily')||'{}')||{};}catch(e){dl={};}
+  var out=[],base=new Date();base.setHours(12,0,0,0);
+  for(var i=n-1;i>=0;i--){
+    var d=new Date(base.getTime()-i*86400000),k=dayKey(d),o=dl[k]||{n:0,c:0};
+    out.push({k:k,n:o.n||0,c:o.c||0});
+  }
+  return out;
+}
 
 /* ---------- 书架 ---------- */
 function showView(v){if(v==='shelf'){shelfEl.hidden=false;stageEl.hidden=true;}else{shelfEl.hidden=true;stageEl.hidden=false;}}
@@ -1028,7 +1093,7 @@ function pickDiffPanel(bk,cb){
   var goS=h('button','btn gold','▶ 开始出题');goS.style.width='100%';goS.style.marginTop='4px';
   goS.onclick=function(){var sel=0;[].slice.call(dr.children).forEach(function(x,i){if(x.classList&&x.classList.contains('sel'))sel=i;});closeOverlay(ov);
     if(sel===0){cb('auto');return;}
-    var realIdx=PANEL[sel].idx;try{S.setItem('bd_qa_diff_'+bk,realIdx);}catch(e){}cb(realIdx);};
+    var realIdx=PANEL[sel].idx;try{safeSet('bd_qa_diff_'+bk,realIdx);}catch(e){}cb(realIdx);};
   ov.p.appendChild(goS);
   var backS=h('button','btn ghost','← 返回');backS.style.width='100%';backS.style.marginTop='8px';backS.onclick=function(){closeOverlay(ov);};
   ov.p.appendChild(backS);
@@ -1106,7 +1171,7 @@ function startType(bk,cn,forceDiff){
 function qaNormDiff(d){return (typeof d==='number'&&d>=0)?d:0;}
 /* 自定义题库出题：题量够时优先抽最近没出过的题，降低连开两局的重复率 */
 function loadRecent(k){try{var a=JSON.parse(S.getItem(k)||'[]');return (a&&a.length)?a:[];}catch(e){return[];}}
-function saveRecent(k,a){try{S.setItem(k,JSON.stringify(a.slice(0,15)));}catch(e){}}
+function saveRecent(k,a){try{safeSet(k,JSON.stringify(a.slice(0,15)));}catch(e){}}
 function makeCustomRound(tk,pairs){
   var all=pairs.slice();
   if(all.length>=15){
@@ -1143,7 +1208,7 @@ function doStartType(bk,cn,d){
       return {q:p.q,a:p.a,opts:o,custom:true};
     });total=qlist.length;
   }
-  ok=0;qidx=0;score=0;showQuestion();
+  ok=0;qidx=0;score=0;roundWrong=[];showQuestion();
   lastRun={bk:bk,cn:cn,d:autoMode?'auto':curDiff};
   /* P0-5：移除静默 AI 补题（原本 900ms 后偷偷塞题进库）。题量不足不再自动写库，改由上面 toast 提示。 */
 }
@@ -1165,7 +1230,7 @@ function showQuestion(){
         _nk=_nq.q+(_nq.code?('|'+_nq.code):'');
         _tries++;
       }while(_tries<8&&_rec.indexOf(_nk)>=0);
-      try{_rec.unshift(_nk);S.setItem(_rk,JSON.stringify(_rec.slice(0,30)));}catch(e){}
+      try{_rec.unshift(_nk);safeSet(_rk,JSON.stringify(_rec.slice(0,30)));}catch(e){}
       qlist.push(applySection([_nq])[0]);
     }
     Q=qlist[qidx];
@@ -1237,7 +1302,7 @@ function showQuestion(){
     var unkH=h('button','unkbtn','😵 不会 · 跳过本题');unkH.onclick=function(){markUnknown();};card.appendChild(unkH);
   }else if(Q.opts){
     var opts=h('div','opts');
-    Q.opts.forEach(function(op){var b=h('button','obtn');b.textContent=op;b.onclick=function(){answer(op===Q.a,op,Q.a,b);};opts.appendChild(b);});
+    Q.opts.forEach(function(op,i){var b=h('button','obtn');b.textContent=op;b.setAttribute('data-k',String(i+1));b.onclick=function(){answer(op===Q.a,op,Q.a,b);};opts.appendChild(b);});
     card.appendChild(opts);
     var unk=h('button','unkbtn','😵 不会 · 记入薄弱题');unk.onclick=function(){markUnknown();};card.appendChild(unk);
   }else{
@@ -1492,6 +1557,10 @@ function markUnknown(){
       addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:'（不会）',src:Q.src,time:Date.now()});
       recorded=true;
     }
+    /* P2-A1：本局错题（回顾局不记，回顾本身就是错题本） */
+    if(Q&&!reviewMode&&Q.q){
+      roundWrong.push({q:Q.q,a:Q.a,given:'（未作答）',opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps});
+    }
     if(autoMode){
       var _bk=(typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
       selfWindow.push(0);if(selfWindow.length>WIN_CAP)selfWindow.shift();
@@ -1527,13 +1596,23 @@ function answer(correct,given,ans,btn,opt){
   if(reviewMode){
     if(btn)markChosen(btn,ans);else lockOpts();
     var fbR=h('div','fb '+(correct?'ok':'no'));
-    if(correct){if(Q&&Q.weak)removeWeak(Q.weak);ok++;fbR.textContent='✅ 答对了！已从薄弱题移除';}
+    var _roundR=(typeKey==='b:round');
+    if(correct){
+      if(Q&&Q.weak)removeWeak(Q.weak);
+      if(_roundR)dropRoundWrong(Q&&Q.q);
+      ok++;fbR.textContent=_roundR?'✅ 答对了！已从本轮错题移除':'✅ 答对了！已从薄弱题移除';
+    }
     else{
-      /* P1-2：回顾里答错要计数 +1（此前只提示「保留」，次数不会涨） */
-      var _wk=(Q&&Q.weak)||{};
-      addWeak({type:_wk.type||typeKey,diff:_wk.diff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,
-        code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:given||null,src:Q.src});
-      fbR.textContent='❌ 正确答案：'+ans+'（保留在薄弱题，错误次数 +1）';
+      if(_roundR){
+        /* 「只练这几题」不是薄弱题本：答错只是原地保留，别往 bt_qa_weak 里塞一条 b:round */
+        fbR.textContent='❌ 正确答案：'+ans+'（仍在本轮错题里，稍后可再练）';
+      }else{
+        /* P1-2：回顾里答错要计数 +1（此前只提示「保留」，次数不会涨） */
+        var _wk=(Q&&Q.weak)||{};
+        addWeak({type:_wk.type||typeKey,diff:_wk.diff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,
+          code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:given||null,src:Q.src});
+        fbR.textContent='❌ 正确答案：'+ans+'（保留在薄弱题，错误次数 +1）';
+      }
       appendSol(fbR,Q);appendSteps(fbR,Q);appendExp(fbR,Q);appendRetryChip(fbR);appendNextChip(fbR);
     }
     appendFb(fbR);
@@ -1548,6 +1627,8 @@ function answer(correct,given,ans,btn,opt){
       /* 首次答错也沉淀进薄弱题（结算页文案一直说「错题会进薄弱题」，之前只有「😵 不会」会记）。
          重试答错不重复记 —— 同一题只留一条。 */
       if(Q&&!Q.hand)addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:(given==null?null:String(given)),src:Q.src,time:Date.now()});
+      /* P2-A1：本局错题回顾（手写题不进来：重练要再烧一次 AI 评判） */
+      if(Q&&!Q.hand&&Q.q)roundWrong.push({q:Q.q,a:Q.a,given:(given==null?'（未作答）':String(given)),opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps});
     }
     if(autoMode&&_bk&&QA_TYPES[_bk]&&QA_TYPES[_bk].diffs){
       /* 滑动窗口自适应（替换原来的连对/连错计数）：
@@ -1601,6 +1682,22 @@ function endQuiz(){
   autoMode=false;saveTypeBest(key,score);finish(score);
 }
 
+/* ---------- P2-A1：本局错题回顾 ---------- */
+function dropRoundWrong(q){
+  if(!q)return;
+  for(var i=0;i<roundWrong.length;i++){if(roundWrong[i].q===q){roundWrong.splice(i,1);return;}}
+}
+function retryRoundWrong(){
+  if(!roundWrong.length){toast('✅ 本轮错题都练完了');return;}
+  reviewMode=true;reviewOne=false;autoMode=false;quizOver=false;
+  typeKey='b:round';typeLabel='重练本局错题';qaSection='choice';handMode=false;
+  navPush('quiz');
+  qlist=roundWrong.map(function(w){
+    return {q:w.q,a:w.a,opts:(w.opts&&w.opts.length)?w.opts.slice():null,
+            code:w.code,exp:w.exp,sol:w.sol,steps:w.steps,weak:null};
+  });
+  ok=0;qidx=0;score=0;total=qlist.length;showQuestion();
+}
 function finish(sc){
   navPush('finish');
   showView('stage');clearNode(stageEl);
@@ -1610,10 +1707,10 @@ function finish(sc){
   card.appendChild(emo);
   card.appendChild(ht('div','hint',acc>=80?'太棒了，这轮很稳！':(acc>=60?'不错，继续保持～':'别急，错题会进薄弱题，多刷两轮就起来了')));
   /* 回顾模式不计分：大数字显示「已掌握几题」，别把 0 分摆在一个「太棒了」旁边 */
-  var _isRev=(typeKey==='b:weak');
+  var _isRev=(typeKey==='b:weak'||typeKey==='b:round');
   var scoreBig=ht('div',null,_isRev?String(ok):String(sc));scoreBig.style.cssText='font-size:52px;font-weight:900;color:var(--purple-d);line-height:1.15;margin:6px 0 2px';
   card.appendChild(scoreBig);
-  if(_isRev)card.appendChild(ht('div','hint','已掌握 '+ok+' 题 · 答对的已从薄弱题移除'));
+  if(_isRev)card.appendChild(ht('div','hint',(typeKey==='b:round'?'本轮掌握 ':'已掌握 ')+ok+' 题 · 答对的已从'+(typeKey==='b:round'?'本轮错题':'薄弱题')+'移除'));
   var accLine=ht('div','hint','正确率 '+acc+'%　（'+ok+' / '+total+'）');accLine.style.color='var(--sub)';accLine.style.fontWeight='700';
   card.appendChild(accLine);
   if(lastAuto){
@@ -1625,10 +1722,36 @@ function finish(sc){
     card.appendChild(lc);
     lastAuto=null;
   }
+  /* P2-A1：本局错题（折叠，点题干展开；回顾局不显示 —— 回顾本身就是在过错题） */
+  if(roundWrong.length&&typeKey!=='b:weak'&&typeKey!=='b:round'){
+    var wsec=ht('div','section-title','❌ 本局错题（'+roundWrong.length+' 道）');
+    wsec.style.marginTop='16px';card.appendChild(wsec);
+    var wlist=h('div','round-wrong');card.appendChild(wlist);
+    roundWrong.forEach(function(w){
+      var rw=h('div','rw-row');
+      var head=ht('div','rw-q',String(w.q||''));
+      var det=h('div','rw-d');
+      det.appendChild(ht('div','rw-line','你的答案：'+(w.given==null?'—':String(w.given))));
+      var ansLine=ht('div','rw-line','正确答案：'+(w.a==null?'—':String(w.a)));ansLine.style.color='#177a4d';
+      det.appendChild(ansLine);
+      if(w.exp)det.appendChild(ht('div','rw-exp',String(w.exp)));
+      if(w.sol){var sl=h('pre','fsol-code');sl.textContent=w.sol;det.appendChild(sl);}
+      if(w.steps&&w.steps.length){w.steps.forEach(function(s){det.appendChild(ht('div','fstep',s));});}
+      head.onclick=function(){rw.classList.toggle('open');};
+      rw.appendChild(head);rw.appendChild(det);
+      wlist.appendChild(rw);
+    });
+    var retryBtn=h('button','btn gold','🔁 只练这 '+roundWrong.length+' 题');
+    retryBtn.style.marginTop='8px';retryBtn.style.width='100%';
+    retryBtn.onclick=function(){retryRoundWrong();};
+    card.appendChild(retryBtn);
+  }
   var row=h('div','row');row.style.marginTop='16px';
-  var again=h('button','btn gold',reviewOne?'📚 返回薄弱题本':'🔄 再来一局');
+  var again=h('button','btn gold',reviewOne?'📚 返回薄弱题本':
+    (typeKey==='b:round'?(roundWrong.length?('🔁 再练这 '+roundWrong.length+' 题'):'📚 返回书架'):'🔄 再来一局'));
   again.onclick=function(){
     if(reviewOne){reviewOne=false;openWeakBook();return;}
+    if(typeKey==='b:round'){if(roundWrong.length){retryRoundWrong();}else{renderShelf();}return;}
     if(typeKey==='b:weak'){startReview();return;}
     if(typeKey==='b:online'){startOnline();return;}
     if(lastRun){doStartType(lastRun.bk,lastRun.cn,lastRun.d);return;}
@@ -1754,14 +1877,14 @@ function startReview(){
   reviewMode=true;reviewOne=false;autoMode=false;quizOver=false;typeKey='b:weak';typeLabel='回顾薄弱题';qaSection='choice';handMode=false;
   navPush('quiz');
   qlist=weakSort(a).map(weakToQ);
-  ok=0;qidx=0;score=0;total=qlist.length;showQuestion();
+  ok=0;qidx=0;score=0;total=qlist.length;roundWrong=[];showQuestion();
 }
 /* 单题练：只做这一道，答对移除、答错计数 +1，结算页回题本 */
 function startReviewOne(x){
   if(!x)return;
   reviewMode=true;reviewOne=true;autoMode=false;quizOver=false;typeKey='b:weak';typeLabel='回顾薄弱题';qaSection='choice';handMode=false;
   navPush('quiz');
-  qlist=[weakToQ(x)];ok=0;qidx=0;score=0;total=1;showQuestion();
+  qlist=[weakToQ(x)];ok=0;qidx=0;score=0;total=1;roundWrong=[];showQuestion();
 }
 
 /* ---------- 联网 ---------- */
@@ -1797,7 +1920,7 @@ function beginOnline(){
   typeKey='b:online';typeLabel=(ONLINE_SRC==='offline')?'📴 联网（离线兜底）':'🌐 联网';curDiff=-1;curDiffLabel='';qaSection='choice';handMode=false;quizOver=false;reviewMode=false;
   navPush('quiz');
   qlist=shuffle(ONLINE_BANK.slice()).slice(0,Math.min(10,ONLINE_BANK.length)).map(function(it){return {q:it.q,a:it.a,opts:it.opts,src:it.src};});
-  ok=0;qidx=0;score=0;total=qlist.length;showQuestion();
+  ok=0;qidx=0;score=0;total=qlist.length;roundWrong=[];showQuestion();
 }
 
 /* ---------- 自定义题库编辑器 ---------- */
@@ -2358,7 +2481,7 @@ function codeLoadRecent(k){
   try{var a=JSON.parse(S.getItem(k)||'[]');return Array.isArray(a)?a:[];}catch(e){return [];}
 }
 function codeSaveRecent(k,a){
-  try{S.setItem(k,JSON.stringify(a.slice(0,80)));}catch(e){}
+  try{safeSet(k,JSON.stringify(a.slice(0,80)));}catch(e){}
 }
 QA_TYPES.code.gen=function(n,diff){
   n=Math.max(1,n|0);
@@ -3151,12 +3274,12 @@ function codeQuestionnaire(cb){
   ov.p.appendChild(lvRow);
   var em=ht('div','hint','');ov.p.appendChild(em);
   var skip=h('button','btn ghost','⏭ 跳过（出全部题）');skip.style.cssText='width:100%;margin-top:6px';
-  skip.onclick=function(){closeOverlay(ov);try{S.setItem(CODE_PROFILE_KEY,JSON.stringify({done:true,skipped:true,langs:[],level:0,rank:0}));}catch(e){}cb();};
+  skip.onclick=function(){closeOverlay(ov);try{safeSet(CODE_PROFILE_KEY,JSON.stringify({done:true,skipped:true,langs:[],level:0,rank:0}));}catch(e){}cb();};
   var go=h('button','btn gold','下一步：试水测试');go.style.cssText='width:100%;margin-top:8px';
   go.onclick=function(){
     var langs=Object.keys(chosen);
     if(!langs.length){em.textContent='⚠️ 没勾选语言 → 将出全部题（含 Java/Python 等）';return;}
-    try{S.setItem(CODE_PROFILE_KEY,JSON.stringify({done:true,langs:langs,level:level,rank:level}));}catch(e){}
+    try{safeSet(CODE_PROFILE_KEY,JSON.stringify({done:true,langs:langs,level:level,rank:level}));}catch(e){}
     closeOverlay(ov);codeTrial(langs,cb);
   };
   ov.p.appendChild(go);ov.p.appendChild(skip);
@@ -3186,10 +3309,10 @@ function codeTrial(langs,cb){
       var r=ratio>=0.8?4:ratio>=0.6?3:ratio>=0.4?2:ratio>=0.2?1:0;
       prof.rank=r;
       try{
-        S.setItem(CODE_PROFILE_KEY,JSON.stringify(prof));
+        safeSet(CODE_PROFILE_KEY,JSON.stringify(prof));
         setRank('code',r);
         /* 难度面板默认档读的是 bd_qa_diff_code，只写 setRank 检测结果不会生效（踩过） */
-        S.setItem('bd_qa_diff_code',r);
+        safeSet('bd_qa_diff_code',r);
       }catch(e){}
       var ov2=overlayPanel('🎯 检测完成');
       ov2.p.appendChild(ht('div','okmsg','试水 '+qs.length+' 题（入门/基础/进阶各 2 题）答对 '+answeredOK.filter(Boolean).length+' 题 · 加权得分 '+Math.round(ratio*100)+'%'));
@@ -3982,7 +4105,7 @@ function buildMusicList(){var cfg=loadMusicCfg();
   musicList=MUSIC_DEFAULT.map(function(t){var c={};for(var k in t){if(Object.prototype.hasOwnProperty.call(t,k))c[k]=t[k];}return c;});
   if(cfg.custom&&cfg.custom.length)musicList=musicList.concat(cfg.custom);
   musicIdx=cfg.idx||0;if(musicIdx>=musicList.length)musicIdx=0;musicLoop=cfg.loop!==false;musicVol=(cfg.vol==null?0.5:cfg.vol);}
-function saveMusicCfg(){var cfg=loadMusicCfg();cfg.idx=musicIdx;cfg.loop=musicLoop;cfg.vol=musicVol;try{S.setItem(MUSIC_CFG_KEY,JSON.stringify(cfg));}catch(e){}}
+function saveMusicCfg(){var cfg=loadMusicCfg();cfg.idx=musicIdx;cfg.loop=musicLoop;cfg.vol=musicVol;try{safeSet(MUSIC_CFG_KEY,JSON.stringify(cfg));}catch(e){}}
 /* 当前曲目该用哪个地址：在线 URL > 旧版 file 字段 > 基名+第 N 个扩展名 */
 function musicSrcOf(tr){
   if(!tr)return '';
@@ -4171,7 +4294,7 @@ function openMusic(){
   addLocal.onclick=function(){var f=fileIn.files&&fileIn.files[0];if(!f){alert('请先选择 mp3 文件');return;}
     storeBlob(f,function(key){if(!key){alert('导入失败：浏览器不支持本地存储或空间不足');return;}
       var cfg=loadMusicCfg();cfg.custom=cfg.custom||[];cfg.custom.push({name:f.name.replace(/\.[^.]+$/,''),blobKey:key});
-      try{S.setItem(MUSIC_CFG_KEY,JSON.stringify(cfg));}catch(e){}
+      try{safeSet(MUSIC_CFG_KEY,JSON.stringify(cfg));}catch(e){}
       buildMusicList();closeOverlay(ov);openMusic();});};
   fileWrap.appendChild(addLocal);ov.p.appendChild(fileWrap);
   // 「📁 从 audio/ 添加」：把任意命名的文件放进 quiz/audio/ 后，填文件名即加入列表（自动探测扩展名）
@@ -4184,7 +4307,7 @@ function openMusic(){
   var addUrl=h('button','btn','＋');
   addUrl.onclick=function(){var u=urlIn.value.trim();if(!/^https?:\/\//.test(u)){alert('请输入有效的 http(s) URL');return;}
     var cfg=loadMusicCfg();cfg.custom=cfg.custom||[];cfg.custom.push({name:u.split('/').pop()||'在线音乐',url:u});
-    try{S.setItem(MUSIC_CFG_KEY,JSON.stringify(cfg));}catch(e){}
+    try{safeSet(MUSIC_CFG_KEY,JSON.stringify(cfg));}catch(e){}
     buildMusicList();closeOverlay(ov);openMusic();};
   urlWrap.appendChild(addUrl);ov.p.appendChild(urlWrap);
   ov.p.appendChild(ht('div','muted','版权说明：内置曲目为默认名，正式公开使用前请确保你拥有相应音频的授权。'));
@@ -4249,7 +4372,7 @@ function addAudioBase(inp,ov){
   var dup=cfg.custom.some(function(t){return t.base&&t.base==='audio/'+v;});
   if(dup){toast('该曲目已在列表');return;}
   cfg.custom.push({name:v,base:'audio/'+v,exts:AUDIO_EXTS.slice()});
-  try{S.setItem(MUSIC_CFG_KEY,JSON.stringify(cfg));}catch(e){}
+  try{safeSet(MUSIC_CFG_KEY,JSON.stringify(cfg));}catch(e){}
   buildMusicList();
   var idx=musicList.length-1;
   if(musicList[idx]&&musicList[idx].base==='audio/'+v){closeOverlay(ov);playMusic(idx);}
@@ -4354,7 +4477,7 @@ function openSettings(){
     if(!c.key&&!isFreeAI(c.url)){testMsg.textContent='⚠️ 请先填 API 地址与 Key';return;}testMsg.textContent='测试中…';testAI(c,function(ok,why){
       testMsg.textContent=ok?'✅ 连接成功':'❌ 失败：'+(why?(/^\d+$/.test(why)?'HTTP '+why:why):'未知错误');
     });};
-  var saveB=h('button','btn gold','💾 保存配置');saveB.onclick=function(){var c={url:urlI.value.trim(),key:keyI.value.trim(),model:modI.value.trim(),proxy:proxI.value.trim()};try{S.setItem('bt_qa_ai',JSON.stringify(c));}catch(e){}testMsg.textContent='✅ 已保存';};
+  var saveB=h('button','btn gold','💾 保存配置');saveB.onclick=function(){var c={url:urlI.value.trim(),key:keyI.value.trim(),model:modI.value.trim(),proxy:proxI.value.trim()};try{safeSet('bt_qa_ai',JSON.stringify(c));}catch(e){}testMsg.textContent='✅ 已保存';};
   ov.p.appendChild(saveB);
   ov.p.appendChild(ht('div','muted','提示：选服务商会自动填好接口地址，选模型会自动填模型名；接口需与 OpenAI 兼容（自定义可填中转地址）。无 Key 可选「免费 AI（Pollinations）」或走「🆓 免费搜索」生成题。'));
   /* ---- 离线 / 安装 ---- */
@@ -4376,19 +4499,82 @@ function openSettings(){
   ov.p.appendChild(ht('div','muted','知识问答独立版 · 从 brain-gym 拆分 · 题库/成绩共用 bt_qa_ 存储前缀'));
 }
 
+/* ---------- P2-A2：数据导出 / 导入 ---------- */
+var BACKUP_KEYS=['bt_qa_stats','bt_qa_best','bt_qa_weak','bt_qa_custom','bt_qa_ai','bt_qa_extra','bt_qa_daily','bt_qa_profile_code'];
+function dayKey(d){return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
+function backupKeys(){
+  var ks=BACKUP_KEYS.slice();
+  try{for(var i=0;i<S.length;i++){var k=S.key(i);if(k&&k.indexOf('bt_qa_rank_')===0&&ks.indexOf(k)<0)ks.push(k);}}catch(e){}
+  return ks;
+}
+function buildBackup(){
+  var keys=backupKeys(),values={};
+  keys.forEach(function(k){try{var v=S.getItem(k);if(v!=null)values[k]=v;}catch(e){}});
+  return {exported_at:new Date().toISOString(),app:'ming-quiz',v:1,keys:Object.keys(values),values:values};
+}
+function exportAllData(){
+  var data=buildBackup(),n=Object.keys(data.values).length;
+  try{
+    var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download='ming-quiz-backup-'+dayKey(new Date())+'.json';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(function(){try{URL.revokeObjectURL(a.href);}catch(e){}},1000);
+    toast('💾 已导出备份（'+n+' 项）');
+  }catch(e){toast('❌ 导出失败：当前浏览器不支持文件下载');}
+}
+/* 返回 -1 = 未写入（结构不对 / 用户取消）；返回 {n,bad} = 已写入 */
+function applyBackup(text){
+  var data=null;
+  try{data=JSON.parse(String(text==null?'':text));}catch(e){toast('❌ 备份文件不是合法 JSON，现有数据未改动');return -1;}
+  if(!data||data.app!=='ming-quiz'||!data.values||typeof data.values!=='object'){toast('❌ 这不是「知识问答」的备份文件，现有数据未改动');return -1;}
+  var ks=Object.keys(data.values).filter(function(k){return k.indexOf('bt_qa_')===0;});
+  if(!ks.length){toast('❌ 备份里没有可导入的数据，现有数据未改动');return -1;}
+  if(!confirm('导入会覆盖当前的成绩 / 薄弱题 / 自定义题库（共 '+ks.length+' 项），继续？'))return -1;
+  var n=0,bad=0;
+  ks.forEach(function(k){var v=data.values[k];if(v==null)return;if(safeSet(k,String(v)))n++;else bad++;});
+  return {n:n,bad:bad};
+}
+function importAllData(done){
+  var inp=document.createElement('input');
+  inp.type='file';inp.accept='application/json,.json';inp.style.display='none';
+  inp.onchange=function(){
+    var f=inp.files&&inp.files[0];
+    if(!f)return;
+    var r=new FileReader();
+    r.onload=function(){
+      var res=applyBackup(r.result);
+      if(res&&res.n){
+        custom=loadCustom();            /* 内存里的题库是启动时读的，导入后必须重读，否则书架不变 */
+        toast('✅ 已导入 '+res.n+' 项数据'+(res.bad?('，'+res.bad+' 项写入失败'):''));
+        renderShelf();
+        if(done)done();
+      }
+    };
+    r.onerror=function(){toast('❌ 读取文件失败');};
+    try{r.readAsText(f);}catch(e){toast('❌ 读取文件失败');}
+  };
+  document.body.appendChild(inp);inp.click();
+}
+
 /* ---------- 统计 ---------- */
 function openStats(){
   var ov=overlayPanel('📊 成绩统计');
-  var m=loadStats(),best=loadBest();
-  function cardFor(prefix,label,icon){
-    var s=m[prefix]||{n:0,c:0},b=bestFor(prefix);
+  var m=loadStats();
+  function cardFor(prefix,label,icon,bk){
+    var s=m[prefix]||{n:0,c:0},bi=bestInfo(prefix);
     var c=h('div','stat-card');
     c.appendChild(ht('div','t',(icon?icon+' ':'')+label));
-    c.appendChild(ht('div','big'+(b?'':' empty'),b?('⭐ '+b):'未挑战'));
+    /* P2-A3：键存在即「已挑战」——0 分、负分也是成绩，不能显示成「未挑战」 */
+    c.appendChild(ht('div','big'+(bi.found?'':' empty'),bi.found?('⭐ '+bi.best):'未挑战'));
     var sub=h('div','sub');
     var s1=ht('span',null,'做题 ');s1.appendChild(ht('b',null,String(s.n)));sub.appendChild(s1);
     var s2=ht('span',null,'正确率 ');s2.appendChild(ht('b',null,(s.n?Math.round(s.c/s.n*100):0)+'%'));sub.appendChild(s2);
     c.appendChild(sub);
+    var ds=bk?qaDiffs(bk):null;
+    var tier=ht('div','sub','难度 ');
+    tier.appendChild(ht('b',null,ds?ds[getRank(bk)].n:'—'));
+    c.appendChild(tier);
     return c;
   }
   // 总览
@@ -4401,13 +4587,39 @@ function openStats(){
   c2.appendChild(ht('div','sub','「😵 不会」自动沉淀'));
   tot.appendChild(c1);tot.appendChild(c2);ov.p.appendChild(tot);
 
+  /* P2-A3：最近 30 天趋势（纯 div 条状图，不引库） */
+  var days=trendDays(30),maxN=1,totN=0,act=0;
+  days.forEach(function(d){if(d.n>maxN)maxN=d.n;if(d.n){act++;totN+=d.n;}});
+  var secT=ht('div','section-title','📈 最近 30 天');ov.p.appendChild(secT);
+  var trend=h('div','trend');
+  days.forEach(function(d){
+    var col=h('div','tcol');
+    col.title=d.k+(d.n?('：做 '+d.n+' 题 · 对 '+d.c+' 题'):'：无记录');
+    if(d.n){
+      var pct=Math.round(d.c/d.n*100),hAll=Math.max(4,Math.round(d.n/maxN*100));
+      if(pct<100){var bad=h('div','tbar bad');bad.style.height=Math.round(hAll*(100-pct)/100)+'%';col.appendChild(bad);}
+      if(pct>0){var good=h('div','tbar ok');good.style.height=Math.max(2,Math.round(hAll*pct/100))+'%';col.appendChild(good);}
+    }else{
+      var z=h('div','tbar zero');z.style.height='3px';col.appendChild(z);
+    }
+    trend.appendChild(col);
+  });
+  ov.p.appendChild(trend);
+  ov.p.appendChild(ht('div','muted',act?('最近 30 天有 '+act+' 天有记录 · 共 '+totN+' 题'):'最近 30 天还没有记录，做几题就会出现趋势'));
+
   var sec=ht('div','section-title','分类战绩');ov.p.appendChild(sec);
   var grid=h('div','stat-grid');
-  Object.keys(QA_TYPES).forEach(function(bk){if(bk==='online')return;var T=QA_TYPES[bk];grid.appendChild(cardFor('b:'+bk,T.name,T.icon));});
-  Object.keys(custom).forEach(function(name){grid.appendChild(cardFor('c:'+name,name,'📝'));});
-  grid.appendChild(cardFor('b:online','联网题库','🌐'));
+  Object.keys(QA_TYPES).forEach(function(bk){if(bk==='online')return;var T=QA_TYPES[bk];grid.appendChild(cardFor('b:'+bk,T.name,T.icon,bk));});
+  Object.keys(custom).forEach(function(name){grid.appendChild(cardFor('c:'+name,name,'📝',null));});
+  grid.appendChild(cardFor('b:online','联网题库','🌐',null));
   ov.p.appendChild(grid);
-  ov.p.appendChild(ht('div','muted','成绩按「分类 + 难度」分别记录；🤖 自动匹配有独立档位。数据存于本机浏览器。'));
+  /* P2-A2：备份入口 */
+  var io=h('div','row');io.style.marginTop='14px';io.style.gap='8px';
+  var exB=h('button','btn gold','💾 导出数据');exB.style.flex='1';exB.onclick=function(){exportAllData();};
+  var imB=h('button','btn ghost','📥 导入备份');imB.style.flex='1';
+  imB.onclick=function(){importAllData(function(){closeOverlay(ov);openStats();});};
+  io.appendChild(exB);io.appendChild(imB);ov.p.appendChild(io);
+  ov.p.appendChild(ht('div','muted','成绩按「分类 + 难度」记录；⭐ 最佳分可为 0 或负分，出现即代表已挑战；数据存于本机浏览器，可用「导出/导入」备份。'));
 }
 
 /* ---------- 通用 overlay ---------- */
@@ -4440,6 +4652,8 @@ function setVH(){
 }
 function init(){
   shelfEl=$('shelf');stageEl=$('stage');overlayRoot=$('overlayRoot');
+  /* P2-A2：存储写满时由引擎的 safeSet 调这里（只提示一次，不弹窗） */
+  window.__quotaWarn=function(){toast('⚠️ 本地存储已满：请到「📊 统计」→「💾 导出数据」备份后清理旧数据');};
   setVH();window.addEventListener('resize',setVH);window.addEventListener('orientationchange',setVH);
   buildMusicList();
   $('backBtn').onclick=function(){
@@ -4451,6 +4665,33 @@ function init(){
   $('statsBtn').onclick=function(){openStats();};
   $('musicBtn').onclick=function(){openMusic();};
   $('settingsBtn').onclick=function(){openSettings();};
+  /* P2-A4：键盘 1-4 选选项、输入框 Enter 提交。
+     只在答题界面生效：书架/浮层/结算页按数字键无副作用；手写题（textarea）里 Enter 是换行，不提交。 */
+  document.addEventListener('keydown',function(e){
+    try{
+      if(e.ctrlKey||e.metaKey||e.altKey)return;
+      if(!stageEl||stageEl.hidden)return;
+      if(document.getElementById('curOverlay'))return;
+      if(quizOver)return;
+      var ae=document.activeElement,tag=ae&&ae.tagName?String(ae.tagName).toUpperCase():'';
+      if(tag==='TEXTAREA')return;                                  /* 手写/代码：Enter 与数字都是编辑 */
+      var k=String(e.key||'');
+      if(k==='Enter'){
+        var ti=stageEl.querySelector('input[type=text]');
+        if(!ti||!String(ti.value||'').trim())return;
+        var sb=stageEl.querySelector('.row .btn.gold')||stageEl.querySelector('.btn.gold');
+        if(sb&&!sb.disabled){e.preventDefault();sb.click();}
+        return;
+      }
+      if(k>='1'&&k<='4'){
+        if(tag==='INPUT')return;                                   /* 输入框里数字是打字 */
+        var opts=stageEl.querySelectorAll?stageEl.querySelectorAll('.obtn'):[];
+        if(!opts||!opts.length)return;
+        var i=k.charCodeAt(0)-49;
+        if(opts[i]&&!opts[i].disabled){e.preventDefault();opts[i].click();}
+      }
+    }catch(err){}
+  });
   navInit();
   renderShelf();
   // 启动时不自动联网，避免首页卡顿；联网在书架「🔄 联网更新题库」触发
