@@ -2887,28 +2887,28 @@ var CODE_TASKS=[
   {r:4,t:'写一个函数 hasDupe(a)，数组里有重复元素返回 true，否则返回 false。',ex:'hasDupe([1,2,1]) → true',tip:'哈希集合或双重循环',
    sol:'function hasDupe(a) { var s = {}; for (var i = 0; i < a.length; i++) { if (s[a[i]]) return true; s[a[i]] = 1; } return false; }',
    steps:['用哈希记录见过的元素','遍历时先查是否已存在','存在就是重复，返回 true','没有重复返回 false']},
-  {r:0,t:'写一行 C 代码，用 printf 输出数字 5。',ex:'输出：5',tip:'printf + %d',
+  {r:0,t:'写一行 C 代码，用 printf 输出数字 5。',ex:'输出：5',c:1,tip:'printf + %d',
    sol:'printf("%d", 5);',
    steps:['printf 的 %d 占位符对应一个整数','把 5 填进去：printf("%d", 5);']},
-  {r:0,t:'写一行 C 代码，声明 int 变量 x 并赋值为 3。',ex:'x 的值是 3',tip:'类型 变量名 = 值;',
+  {r:0,t:'写一行 C 代码，声明 int 变量 x 并赋值为 3。',ex:'x 的值是 3',c:1,tip:'类型 变量名 = 值;',
    sol:'int x = 3;',
    steps:['先写类型 int','再写变量名 x，用 = 赋初值 3，结尾分号']},
-  {r:0,t:'写一行 C 代码，让 int 变量 a 自增 1。',ex:'a 的值 +1',tip:'a++ 或 a+=1',
+  {r:0,t:'写一行 C 代码，让 int 变量 a 自增 1。',ex:'a 的值 +1',c:1,tip:'a++ 或 a+=1',
    sol:'a++;',
    steps:['自增就是 a = a + 1','简写 a++ 或 a += 1 都行']},
-  {r:0,t:'写一段 C 代码：x 大于 0 时输出 "正数"。',ex:'x=1 时输出 正数',tip:'if (x > 0)',
+  {r:0,t:'写一段 C 代码：x 大于 0 时输出 "正数"。',ex:'x=1 时输出 正数',c:1,tip:'if (x > 0)',
    sol:'if (x > 0) { printf("正数"); }',
    steps:['if 条件判断 x > 0','成立就执行花括号里的 printf']},
-  {r:0,t:'写一段 C 代码：x 是偶数时输出 "偶"，否则输出 "奇"。',ex:'x=4 输出 偶，x=3 输出 奇',tip:'x % 2 == 0 判断奇偶',
+  {r:0,t:'写一段 C 代码：x 是偶数时输出 "偶"，否则输出 "奇"。',ex:'x=4 输出 偶，x=3 输出 奇',c:1,tip:'x % 2 == 0 判断奇偶',
    sol:'if (x % 2 == 0) printf("偶"); else printf("奇");',
    steps:['x % 2 == 0 是偶数、== 1 是奇数','if 处理偶数，else 处理奇数']},
-  {r:1,t:'写一段 C 代码：用 for 循环打印 1 到 5。',ex:'输出 12345',tip:'for (int i=1; i<=5; i++)',
+  {r:1,t:'写一段 C 代码：用 for 循环打印 1 到 5。',ex:'输出 12345',c:1,tip:'for (int i=1; i<=5; i++)',
    sol:'for (int i = 1; i <= 5; i++) printf("%d", i);',
    steps:['for 三部分：初值 i=1、条件 i<=5、步进 i++','循环体 printf 打印 i']},
-  {r:1,t:'写一段 C 代码：用 while 循环把 1 加到 n（n 已声明），结果存 sum。',ex:'n=3 时 sum=6',tip:'while (i <= n)',
+  {r:1,t:'写一段 C 代码：用 while 循环把 1 加到 n（n 已声明），结果存 sum。',ex:'n=3 时 sum=6',c:1,tip:'while (i <= n)',
    sol:'int i = 1; int sum = 0; while (i <= n) { sum += i; i++; }',
    steps:['计数器 i 从 1 开始','sum 累加 i 后 i 自增','i > n 时循环结束']},
-  {r:1,t:'写一段 C 代码：x 在 60 到 100 之间（含）输出 "及格"。',ex:'x=70 输出 及格',tip:'x >= 60 && x <= 100',
+  {r:1,t:'写一段 C 代码：x 在 60 到 100 之间（含）输出 "及格"。',ex:'x=70 输出 及格',c:1,tip:'x >= 60 && x <= 100',
    sol:'if (x >= 60 && x <= 100) printf("及格");',
    steps:['两个条件都要满足，用 && 连接','x >= 60 且 x <= 100']}
 ];
@@ -3637,6 +3637,13 @@ function runSelfTest(Q,code,msgEl){
   clearNode(msgEl);msgEl.className='hint';
   code=String(code==null?'':code);
   if(!code.trim()){msgEl.appendChild(ht('div','hint2','⚠️ 还没写代码'));return;}
+  /* C 题没有「调用 → 期望值」样例，硬跑只会得到 `Function statements require a function name`
+     这种 JS 语法错，纯误导。直接给出正确指引。 */
+  if(Q&&Q.task&&Q.task.c){
+    var dc=ht('pre','runout',null);
+    dc.innerHTML='ℹ️ 本题是 C 写法，浏览器的「▶ 运行自测」只支持 JS。\n请点「🤖 提交 AI 评判」由 AI 判分（看得出思路对不对）。';
+    msgEl.appendChild(dc);return;
+  }
   var ex=(Q&&Q.task&&Q.task.ex)||'';
   var m=ex.match(/^([\s\S]+?)\s*→\s*([\s\S]+)$/);
   var call=m?m[1].trim():'',want=m?m[2].trim():'',wantNorm=null;
