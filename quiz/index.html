@@ -598,9 +598,15 @@ function getRank(bk){var ds=qaDiffs(bk);if(!ds)return -1;var n=ds.length;var def
 function setRank(bk,r){try{S.setItem('bt_qa_rank_'+bk,r)}catch(e){}}
 function genNextAuto(){var _bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';var T=QA_TYPES[_bk];if(!T)return{q:'',a:'',opts:['']};var arr=T.gen(1,selfRank);return (arr&&arr.length)?arr[0]:{q:'',a:'',opts:['']}}
 function pickPoolByDiff(pool,diff){if(!pool)return [];
- if(!Array.isArray(pool)){var g0=pool[String(diff==null?0:diff)];if(!Array.isArray(g0))g0=pool['0'];if(!Array.isArray(g0))g0=pool[0];return Array.isArray(g0)?g0:[]}
- if(pool.length&&Array.isArray(pool[0])&&Array.isArray(pool[0][0])){var g1=pool[diff]||pool[0];return Array.isArray(g1)?g1:[]}
- return pool}
+ var out;
+ if(!Array.isArray(pool)){var g0=pool[String(diff==null?0:diff)];if(!Array.isArray(g0))g0=pool['0'];if(!Array.isArray(g0))g0=pool[0];out=Array.isArray(g0)?g0:[]}
+ else if(pool.length&&Array.isArray(pool[0])&&Array.isArray(pool[0][0])){var g1=pool[diff]||pool[0];out=Array.isArray(g1)?g1:[]}
+ else out=pool;
+ /* P0-1：否定式题（不包括/不属于/…）没有定制干扰项就直接不出 ——
+    随机补出来的选项必然有多个都成立，是「多选题当单选做」的根源。 */
+ return out.filter(function(it){
+   return !(it&&NEG_Q_RE.test(String(it[0]))&&!(it[3]||it.opts));
+ });}
 function fallbackWrongs(ans){var num=Number(ans);
  if(ans!==''&&isFinite(num)&&String(num)===String(ans).trim())return [String(num+1),String(num-1),String(num+2),String(num-2),String(num+3),String(num-3)];
  return ['以上都不对','不确定','其他答案']}
@@ -608,13 +614,30 @@ function ansClass(s){s=String(s);
  if(/^O\(/.test(s))return 'bigo';
  if(/^-?\d+(\.\d+)?$/.test(s))return 'num';
  return 'txt';}
+/* P0-1：否定式题干（「不包括 / 不属于 / 以下哪个不是 …」）。
+   这类题没有定制干扰项时随机补选项 ⇒ 多个选项都可能成立（多解），一律不许兜底。 */
+var NEG_Q_RE=/不包括|不属于|以下哪个不是|以下哪项不是|错误的是|不正确的是|不正确的|不是.*的是/;
 function mkFromPool(item,pool){var ans=String(item[1]),seen={};seen[ans]=1;var ws=[];
- if(item[3]){String(item[3]).split('|').forEach(function(w){w=String(w).trim();if(ws.length>=3)return;if(!w||seen[w])return;seen[w]=1;ws.push(w)});}
- if(ws.length<3){var cls=ansClass(ans),pref=[],rest=[];
-  shuffle(pool.slice()).forEach(function(p){var w=String(p[1]);if(w===ans||seen[w])return;(ansClass(w)===cls?pref:rest).push(w)});
-  pref.concat(rest).forEach(function(w){if(ws.length>=3)return;if(seen[w])return;seen[w]=1;ws.push(w)});}
+ /* P0-1：定制干扰项优先（item[3] 管道串 / item.opts） */
+ var custom=item[3]||item.opts;
+ if(custom){
+  var srcArr=Array.isArray(custom)?custom.map(function(x){return String(x);}):String(custom).split('|');
+  srcArr.forEach(function(w){w=String(w).trim();if(ws.length>=3)return;if(!w||seen[w])return;seen[w]=1;ws.push(w)});
+ }
+ /* P0-1：没有定制干扰项时，只允许非否定题走随机兜底 —— 否定题随机补选项必然多解 */
+ if(ws.length<3&&!NEG_Q_RE.test(String(item[0]))){
+  var cls=ansClass(ans),pref=[],rest=[];
+  shuffle(pool.slice()).forEach(function(p){var w=String(p[1]);if(w===ans||seen[w])return;if(p===item)return;(ansClass(w)===cls?pref:rest).push(w)});
+  /* 长度相近的优先：同类且字数接近，才不像「首都→屈原」这种明显异物 */
+  function lenGap(w){return Math.abs(String(w).length-ans.length);}
+  pref.sort(function(a,b){return lenGap(a)-lenGap(b);});
+  pref.concat(rest).forEach(function(w){if(ws.length>=3)return;if(seen[w])return;seen[w]=1;ws.push(w)});
+ }
  fallbackWrongs(ans).forEach(function(w){if(ws.length>=3)return;if(seen[w])return;seen[w]=1;ws.push(w)});
- return {q:item[0],a:ans,opts:shuffle([ans].concat(ws))}}
+ var o={q:item[0],a:ans,opts:shuffle([ans].concat(ws))};
+ /* 兜底出来的题干扰项质量不可控，打标记方便后台筛出来返修 */
+ if(!custom)o.review=false;
+ return o}
 /* P0-2：无放回抽样 —— 池子不够就只出 src.length 题，绝不复用凑数（题量不足由调用方/UI 提示兜底） */
 function genPool(n,pool,diff){
  var src=pickPoolByDiff(pool,diff);
@@ -3738,18 +3761,31 @@ function musicMissText(tr){
 function probeTrack(tr,cb){
   cb=cb||function(){};
   if(!tr||!tr.base||!tr.exts||!tr.exts.length){cb(false);return;}
-  var i=0;
-  function next(){
-    if(i>=tr.exts.length){cb(false);return;}
-    var ex=tr.exts[i];
+  /* 6 个扩展名并发探测（原来是串行，最坏 6 个往返；线上慢网实测要十几秒，
+     面板会一直挂着不存在的曲目）。任一 2xx 即命中，命中后留 220ms 给更靠前的
+     扩展名（同一曲目若同时有 mp3/flac，优先用靠前的，别去拉 54MB 的 wav）。
+     全部失败才算缺失；总预算 7s，超时按缺失处理。 */
+  var hits={},done=false,pending=tr.exts.length,timer=null,hard=null;
+  function best(){for(var i=0;i<tr.exts.length;i++){if(hits[i])return i;}return -1;}
+  function finish(){
+    if(done)return;done=true;
+    if(timer){clearTimeout(timer);timer=null;}
+    if(hard){clearTimeout(hard);hard=null;}
+    var b=best();cb(b>=0,b>=0?tr.exts[b]:null);
+  }
+  hard=setTimeout(finish,7000);
+  tr.exts.forEach(function(ex,idx){
     fetch(tr.base+'.'+ex,{method:'HEAD',cache:'no-store'})
       .then(function(r){
-        if(r&&r.ok){cb(true,ex);return;}
-        i++;next();
+        if(r&&r.ok&&!done){
+          hits[idx]=1;
+          if(idx===0){finish();return;}
+          if(!timer)timer=setTimeout(finish,220);
+        }
       })
-      .catch(function(){i++;next();});
-  }
-  next();
+      .catch(function(){})
+      .then(function(){if(--pending<=0)finish();});
+  });
 }
 function musicNote(msg){musicErrMsg=msg||'';updateMusicPanel();}
 function bgmPlay(){
@@ -3938,25 +3974,29 @@ function probeAndFilterMusic(){
   var todo=musicList.map(function(tr,i){return tr&&tr.base&&!tr.synth&&!tr.url&&!tr.blobKey?i:-1;})
                     .filter(function(i){return i>=0;});
   if(!todo.length)return;
-  var left=todo.length;
-  todo.forEach(function(i){
-    probeTrack(musicList[i],function(ok,ex){
-      left--;
-      if(ok&&ex){musicList[i]._ext=musicList[i].exts.indexOf(ex);}
-      else{musicList[i]._gone=true;}
-      if(left<=0)applyFilteredMusic();
-    });
-  });
-  function applyFilteredMusic(){
-    var removed=musicList.filter(function(t){return t._gone;}).length;
-    if(!removed)return;
-    musicList=musicList.filter(function(t){if(t._gone){t._gone=false;return false;}return true;});
+  var left=todo.length,removedTotal=0;
+  /* 每确认一首缺失就立刻摘掉一首：慢网下面板不会挂着死曲目等十几秒才一次性消失 */
+  function prune(){
+    var keep=[],gone=0;
+    musicList.forEach(function(t){if(t._gone){gone++;t._gone=false;}else keep.push(t);});
+    if(!gone)return 0;
+    musicList=keep;
     if(musicIdx>=musicList.length)musicIdx=Math.max(0,musicList.length-1);
     if(musicOv)renderMusicTracks(musicOv);
     updateMusicPanel();
     var nm=document.getElementById('mpName');if(nm)nm.textContent=(musicList[musicIdx]||{}).name||'—';
-    toast('已隐藏 '+removed+' 首无文件的曲目');
+    return gone;
   }
+  todo.forEach(function(i){
+    var tr=musicList[i];   // 先抓住对象引用：prune 会重建 musicList，下标会变
+    probeTrack(tr,function(ok,ex){
+      if(ok&&ex)tr._ext=tr.exts.indexOf(ex);
+      else tr._gone=true;
+      left--;
+      removedTotal+=prune();
+      if(left<=0&&removedTotal)toast('已隐藏 '+removedTotal+' 首无文件的曲目');
+    });
+  });
 }
 
 /* 「📁 从 audio/ 添加」：填文件名即加入曲目列表，扩展名探测复用现有 musicSrcOf / error 逻辑 */
