@@ -4492,7 +4492,9 @@ function previewQuestions(name,qs,card,aiOk){
     _tb.appendChild(_b1);_tb.appendChild(_b2);card.appendChild(_tb);
     qs.forEach(function(Q,i){
       if(Q==null)return;
-      if(keep[i]==null)keep[i]=!!(aiOk&&(Q.exp||Q.src));
+      /* C6 修正：默认勾选只看有没有解析/来源 —— 免费搜索建的题 aiOk=false，
+         但固定带「百科速记 + 百度百科摘要」，不该让用户逐题手勾 */
+      if(keep[i]==null)keep[i]=!!(Q.exp||Q.src);
       var row=h('div','list-row');row.style.flexWrap='wrap';
       var chk=h('input');chk.type='checkbox';chk.checked=!!keep[i];chk.style.width='auto';
       chk.onchange=function(){keep[i]=chk.checked;};
