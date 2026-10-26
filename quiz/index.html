@@ -2038,12 +2038,14 @@ function appendNextChip(fb){
 /* 「🔄 重试」：把同一题重新渲染出来再答一次。分数只认「首次 + 一次重试奖励」，杜绝反复刷分。
    showQuestion 会重建选项/输入框，而 lockOpts 只在作答后锁 —— 重渲染天然解锁，不用额外处理。 */
 function retryQuestion(){
+  var _Q=qlist[qidx];if(!canRewrite(_Q))return;   /* 选项/填空永远不能重写，避免误触把非手写题重渲染 */
   cancelPending();            /* 清掉任何残留的自动跳转计时 */
   locked=false;               /* 解锁，允许再次作答 */
   showQuestion();             /* qidx 不动；Q 还是同一对象，settled 标记保留 */
 }
-function appendRetryChip(fb){
-  var b=ht('button','chip fbretry','🔄 重试');
+function canRewrite(Q){return !!(Q&&Q.hand===true);}
+function appendRewriteChip(fb){
+  var b=ht('button','chip fbretry','✍️ 重写代码');
   b.onclick=function(){retryQuestion();};
   fb.appendChild(b);
 }
@@ -2178,7 +2180,7 @@ function markUnknown(){
   appendSrc(fb,Q);      // 来源（C1）
   /* 重试对所有题型开放：看过参考代码后自己再写一遍，正是「学习时刻」的意义。
      手写题此时并未提交过，重试不会多烧 AI 调用。 */
-  appendRetryChip(fb);
+  if(canRewrite(Q))appendRewriteChip(fb);
   appendNextChip(fb);
   appendFb(fb);
   /* 不再 advance()：错题是学习时刻，去留由用户点「重试」还是「下一题」决定 */
@@ -2231,7 +2233,7 @@ function answer(correct,given,ans,btn,opt){
           code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:given||null,src:Q.src});
         fbR.textContent='❌ 正确答案：'+ans+'（保留在薄弱题，错误次数 +1）';
       }
-      appendSol(fbR,Q);appendSteps(fbR,Q);appendExp(fbR,Q);appendSrc(fbR,Q);appendRetryChip(fbR);appendNextChip(fbR);
+      appendSol(fbR,Q);appendSteps(fbR,Q);appendExp(fbR,Q);appendSrc(fbR,Q);if(canRewrite(Q))appendRewriteChip(fbR);appendNextChip(fbR);
     }
     appendFb(fbR);
     if(correct)advance(800);else cancelPending();
@@ -2276,17 +2278,17 @@ function answer(correct,given,ans,btn,opt){
   var fb=h('div','fb '+(correct?'ok':'no'));
   if(opt.note){
     var noteTxt=(correct?'✅ 判为正确 '+(first?'＋10':'＋5'):('❌ 判为不正确'+((first&&_pen)?'　（−5 分）':'')))+'　'+opt.note;
-    if(correct)fb.textContent=noteTxt;
-    else{
-      fb.appendChild(ht('div','fbm',noteTxt));
-      /* 手写题由 AI 评判（耗时、每次都要钱），不给「重试」；但必须给解析与正确写法 ——
-         只说「判为不正确」等于什么都没教，参考代码 + 思路才是学习时刻。 */
-      appendSol(fb,Q);appendSteps(fb,Q);appendExp(fb,Q);appendSrc(fb,Q);appendNextChip(fb);
-    }
+      if(correct){fb.textContent=noteTxt;appendNextChip(fb);}
+      else{
+        fb.appendChild(ht('div','fbm',noteTxt));
+        /* 手写题由 AI 评判（耗时、每次都要钱），不给「重试」；但必须给解析与正确写法 ——
+           只说「判为不正确」等于什么都没教，参考代码 + 思路才是学习时刻。 */
+        appendSol(fb,Q);appendSteps(fb,Q);appendExp(fb,Q);appendSrc(fb,Q);if(canRewrite(Q))appendRewriteChip(fb);appendNextChip(fb);
+      }
   }else{
     fb.textContent=correct?(first?'✅ 答对了！＋10':'✅ 重试答对了！＋5')
       :('❌ 正确答案：'+ans+((first&&_pen)?'　（−5 分）':''));
-    if(!correct){appendSol(fb,Q);appendSteps(fb,Q);appendExp(fb,Q);appendSrc(fb,Q);if(Q&&!Q.hand)appendRetryChip(fb);appendNextChip(fb);}
+    if(!correct){appendSol(fb,Q);appendSteps(fb,Q);appendExp(fb,Q);appendSrc(fb,Q);if(canRewrite(Q))appendRewriteChip(fb);appendNextChip(fb);}
   }
   appendFb(fb);
   if(first)bumpStat(typeKey,correct);
