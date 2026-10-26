@@ -1536,10 +1536,12 @@ function toast(msg){
 
 /* ---------- 成绩 / 统计 存储 ---------- */
 function loadBest(){try{return JSON.parse(S.getItem('bt_qa_best')||'{}')||{};}catch(e){return{};}}
-function bestFor(prefix){var m=loadBest(),best=0,found=false;for(var k in m){if(k.indexOf(prefix)===0&&m[k]>best){best=m[k];found=true;}}return found?best:0;}
+/* C6：书架徽标统一走 bestInfo 的 found 语义 —— 0 分 / 负分也算「挑战过」，不再显示「未挑战」。
+   返回 null = 没挑战过；数字（含 0 / 负数）= 已挑战的最佳分。 */
+function bestFor(prefix){var i=bestInfo(prefix);return i.found?i.best:null;}
 function loadStats(){try{return JSON.parse(S.getItem('bt_qa_stats')||'{}')||{};}catch(e){return{};}}
 /* P2-A3：统计页专用 —— 「键存在即已挑战」，0 分 / 负分也算成绩。
-   bestFor 保留旧口径（只看 >0），因为书架徽标一直是那个语义。 */
+   C6 起书架徽标也走这套语义（bestFor 直接包它），统计页与书架不再互相矛盾。 */
 function bestInfo(prefix){
   var m=loadBest(),best=null,found=false;
   for(var k in m){if(k.indexOf(prefix)===0){found=true;if(best===null||m[k]>best)best=m[k];}}
@@ -1624,7 +1626,7 @@ function renderShelf(){
   // 联网
   grid.appendChild(makeBook('🌐','联网题库·英文','online',null,bestFor('b:online'),(ONLINE_BANK&&ONLINE_BANK.length?ONLINE_BANK.length:0)+' 题'));
   shelfEl.appendChild(grid);
-  shelfEl.appendChild(ht('div','muted','💻 编程题量为「人工题 + 模板生成（理论组合数）」，参数空间有限，实际不重复体验以出题引擎去重为准；其余分类为人工题 + AI 扩充题。'));
+  shelfEl.appendChild(ht('div','muted','💻 编程题量为「人工题 + 模板生成（理论组合数）」，参数空间有限，实际不重复体验以出题引擎去重为准；其余分类为人工题库，题量以卡片上的实际题数为准（不再自动扩充）。'));
 
   // 联网管理
   var sec2=h('div','section-title',null);sec2.appendChild(ht('span',null,'🌐 联网题库'));shelfEl.appendChild(sec2);
@@ -1651,12 +1653,15 @@ function renderShelf(){
 }
 function makeBook(icon,name,bk,cn,best,count,isCustom){
   var b=h('div','book');
-  if(isCustom){var del=h('button','del','🗑');del.onclick=function(e){e.stopPropagation();delete custom[cn];saveCustom(custom);renderShelf();};b.appendChild(del);}
+  if(isCustom){var del=h('button','del','🗑');del.onclick=function(e){e.stopPropagation();
+    if(!confirm('删除整个题库「'+cn+'」？删除后不可恢复（该题库的成绩记录会保留）。'))return;
+    delete custom[cn];saveCustom(custom);renderShelf();toast('🗑 已删除题库「'+cn+'」');};b.appendChild(del);}
   b.appendChild(ht('div','ic',icon));
   b.appendChild(ht('div','nm',name));
   var meta=h('div','meta');
   if(count&&String(count).length>8)meta.style.flexWrap='wrap';
-  meta.appendChild(ht('span','star'+(best>0?'':' none'),best>0?('⭐ '+best):'未挑战'));
+  var _hasBest=(best!=null&&best!=='');   /* C6：0 / 负分也是成绩，只有 null 才是未挑战 */
+  meta.appendChild(ht('span','star'+(_hasBest?'':' none'),_hasBest?('⭐ '+best):'未挑战'));
   meta.appendChild(ht('span',null,count));
   b.appendChild(meta);
   b.onclick=function(){openCategory(bk,cn);};
@@ -2234,6 +2239,7 @@ function goNext(){cancelPending();qidx++;showQuestion();}
 /* ---------- 页面层级：浏览器返回只回退一层（书架是根，根上再返回才退出网页） ---------- */
 var navStack=['shelf'];
 var NAV_BUSY=false,NAV_DRAIN=0;
+var NAV_SEQ=0;   /* C6：给每个 pushState 帧盖序号，关浮层时只弹自己那一帧 */
 function navTop(){return navStack[navStack.length-1]||'shelf';}
 /* 回书架：只把栈归零。⚠ 这里绝不能动 history —— 一旦当前站在历史首页，
    history.back() 会把整个页面顶出去（踩过：退出薄弱题回顾直接跳回 about:blank）。 */
@@ -2242,7 +2248,7 @@ function navReset(){navStack=['shelf'];NAV_DRAIN=0;}
 function navPush(k){
   if(navTop()===k)return;
   navStack.push(k);NAV_DRAIN=0;
-  try{history.pushState({qnav:1},'');}catch(e){}
+  try{history.pushState({qnav:1,seq:++NAV_SEQ},'');}catch(e){}
 }
 function navDrop(k){
   for(var i=navStack.length-1;i>=0;i--){if(navStack[i]===k){navStack.splice(i,1);return;}}
@@ -2842,7 +2848,7 @@ function openEditor(preset){
   var ainp=h('input');ainp.placeholder='答案';
   var addQ=h('button','btn','＋ 添加题目');var ar=h('div','row');ar.appendChild(qinp);ar.appendChild(ainp);ar.appendChild(addQ);card.appendChild(ar);
   addQ.onclick=function(){var q=qinp.value.trim(),a=ainp.value.trim();if(!q||!a){em.textContent='⚠️ 问题和答案都要填';return;}em.textContent='';pairs.push({q:q,a:a});qinp.value='';ainp.value='';renderList();};
-  var saveB=h('button','btn gold','💾 保存并开始');saveB.onclick=function(){var name=nm.value.trim();if(!name){em.textContent='⚠️ 请输入题库名称';return;}if(!pairs.length){em.textContent='⚠️ 至少录入一题';return;}custom[name]=pairs;saveCustom(custom);renderShelf();startType(null,name);};
+  var saveB=h('button','btn gold','💾 保存并开始');saveB.onclick=function(){var name=nm.value.trim();if(!name){em.textContent='⚠️ 请输入题库名称';return;}if(!pairs.length){em.textContent='⚠️ 至少录入一题';return;}if(custom[name]&&!confirm('已存在同名题库「'+name+'」，覆盖它？')){em.textContent='⚠️ 已有同名题库「'+name+'」，未覆盖';return;}custom[name]=pairs;saveCustom(custom);renderShelf();startType(null,name);};
   card.appendChild(saveB);
   var backB=h('button','btn ghost','← 返回');backB.onclick=function(){renderShelf();};card.appendChild(backB);
   stageEl.appendChild(card);
@@ -4395,7 +4401,11 @@ function aiBuild(name){
 var REFILL_MIN=10;        // 题库总量 ≤ 此值才补（说明已经刷得差不多了）
 var REFILL_TARGET=20;     // 补到多少题左右
 var refillBusy=false;
+/* C6：静默补题默认关闭 —— 只有用户在 ⚙️ 设置里显式打开「✨ 题库不足时自动补题」才会跑，
+   否则补进去的 AI 题用户根本不知道从哪来（以前是结算后 600ms 偷偷写库）。 */
+function autoRefillOn(){try{return JSON.parse(S.getItem('bt_qa_autorefill')||'false')===true;}catch(e){return false;}}
 function autoRefill(cn){
+  if(!autoRefillOn())return;
   if(refillBusy)return;
   var arr=custom[cn]||[];
   if(arr.length>REFILL_MIN)return;
@@ -4523,6 +4533,7 @@ function previewQuestions(name,qs,card,aiOk){
       if(filtered){alert('已过滤 '+filtered+' 道不合规题（缺解析/来源或含书名/专业/词条），未入库。');}
       if(bad){alert('有 '+bad+' 题选项不合规（必须 4 个互不相同、且包含答案），请「✏️ 改」或取消勾选后再入库。');return;}
       if(!final.length){alert('请至少保留一题');return;}
+      if(custom[name]&&!confirm('已存在同名题库「'+name+'」，覆盖它？'))return;
       custom[name]=final;saveCustom(custom);renderShelf();startType(null,name);
     };
     card.appendChild(saveB);
@@ -5400,6 +5411,12 @@ function openSettings(){
   _qjL.appendChild(_qjC);_qjL.appendChild(ht('span',null,'⏩ 答对自动跳题（快速模式）'));
   ov.p.appendChild(_qjL);
   ov.p.appendChild(ht('div','muted','默认关闭：答对也会显示解析/来源，需要点「下一题」再走；打开后答对 800ms 自动跳。'));
+  var _arL=document.createElement('label');_arL.style.cssText='display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-top:6px';
+  var _arC=document.createElement('input');_arC.type='checkbox';_arC.checked=autoRefillOn();
+  _arC.onchange=function(){safeSet('bt_qa_autorefill',_arC.checked?'true':'false');};
+  _arL.appendChild(_arC);_arL.appendChild(ht('span',null,'✨ 题库不足时自动补题（调用 AI）'));
+  ov.p.appendChild(_arL);
+  ov.p.appendChild(ht('div','muted','默认关闭：打开后，自定义题库不足 10 题时会在结算后调用 AI 补到约 20 题（需先配好 AI）。'));
   // AI 配置
   var sec2=ht('div','section-title','🌐 AI 建题库（OpenAI 兼容）');ov.p.appendChild(sec2);
   var cfg=loadAICfg()||{};
@@ -5496,9 +5513,16 @@ function backupKeys(){
   return ks;
 }
 function buildBackup(){
-  var keys=backupKeys(),values={};
-  keys.forEach(function(k){try{var v=S.getItem(k);if(v!=null)values[k]=v;}catch(e){}});
-  return {exported_at:new Date().toISOString(),app:'ming-quiz',v:1,keys:Object.keys(values),values:values};
+  var keys=backupKeys(),values={},keyStripped=false;
+  keys.forEach(function(k){try{
+    var v=S.getItem(k);if(v==null)return;
+    /* C6：备份默认剔除 API Key —— 备份文件常被丢进网盘或发给别人，Key 不该跟着走 */
+    if(k==='bt_qa_ai'){try{var cfg=JSON.parse(v);if(cfg&&cfg.key){cfg.key='';keyStripped=true;v=JSON.stringify(cfg);}}catch(e){}}
+    values[k]=v;
+  }catch(e){}});
+  var out={exported_at:new Date().toISOString(),app:'ming-quiz',v:1,keys:Object.keys(values),values:values};
+  if(keyStripped)out.key_stripped=true;
+  return out;
 }
 function exportAllData(){
   var data=buildBackup(),n=Object.keys(data.values).length;
@@ -5508,7 +5532,7 @@ function exportAllData(){
     a.download='ming-quiz-backup-'+dayKey(new Date())+'.json';
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(function(){try{URL.revokeObjectURL(a.href);}catch(e){}},1000);
-    toast('💾 已导出备份（'+n+' 项）');
+    toast('💾 已导出备份（'+n+' 项'+(data.key_stripped?'，已剔除 API Key':'')+'）');
   }catch(e){toast('❌ 导出失败：当前浏览器不支持文件下载');}
 }
 /* 返回 -1 = 未写入（结构不对 / 用户取消）；返回 {n,bad} = 已写入 */
@@ -5614,7 +5638,7 @@ function openStats(){
 function overlayPanel(title,kind){
   // 同一时刻只保留一个浮层，避免出现重复 id="curOverlay"
   if(overlayRoot){var olds=overlayRoot.querySelectorAll('.ov');for(var i=0;i<olds.length;i++){if(olds[i].__nav)navDrop(olds[i].__nav);if(olds[i].parentNode)olds[i].parentNode.removeChild(olds[i]);}}
-  var ov=h('div','ov');ov.id='curOverlay';ov.__nav=kind||'overlay';navPush(ov.__nav);
+  var ov=h('div','ov');ov.id='curOverlay';ov.__nav=kind||'overlay';navPush(ov.__nav);ov.__seq=NAV_SEQ;
   var p=h('div','panel');
   var close=h('button','close','✕');close.onclick=function(){closeOverlay({ov:ov,p:p});};
   var h3=h('h3');h3.textContent=title;
@@ -5625,8 +5649,15 @@ function overlayPanel(title,kind){
 }
 function closeOverlay(o){
   if(!o||!o.ov)return;
-  if(o.ov.__nav)navDrop(o.ov.__nav);
+  var _wasTop=false;
+  if(o.ov.__nav){_wasTop=(navTop()===o.ov.__nav);navDrop(o.ov.__nav);}
   if(o.ov.parentNode)o.ov.parentNode.removeChild(o.ov);
+  /* C6：浮层开的时候压过一帧，关掉时顺手弹回去，返回键不用点好几次才退出。
+     NAV_BUSY=true 说明正处在「返回键」引发的回退里，那一帧已经被 popstate 吃掉了，别再补一次。
+     setTimeout 兜底：history 只剩一帧时 back() 不触发 popstate，NAV_BUSY 不能卡在 true。 */
+  var _curState=null;try{_curState=history.state;}catch(e){}
+  var _ownFrame=!!(_curState&&_curState.qnav&&_curState.seq!=null&&_curState.seq===o.ov.__seq);
+  if(_wasTop&&_ownFrame&&!NAV_BUSY){try{NAV_BUSY=true;history.back();setTimeout(function(){NAV_BUSY=false;},300);}catch(e){NAV_BUSY=false;}}
 }
 
 /* ---------- 启动 ---------- */
