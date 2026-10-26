@@ -1238,6 +1238,7 @@ function addWeak(item){
   for(i=0;i<a.length;i++){if(a[i]&&a[i].type===item.type&&a[i].q===item.q){ex=a[i];break;}}
   if(ex){
     ex.n=(ex.n||1)+1;ex.t=Date.now();
+    srsAdvance(ex,false);   /* C2：已有记录再答错 → 重置复习间隔（明天再复习） */
     if(item.pick)ex.pick=item.pick;
     if(!ex.a&&item.a)ex.a=item.a;
     if(!ex.opts&&item.opts)ex.opts=item.opts.slice();
@@ -1740,7 +1741,7 @@ function sectionGen(bk,n,diff){
 }
 function switchSection(){
   var bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
-  if(!bk||bk==='online'||bk==='weak')return;
+  if(!bk||bk==='online'||bk==='weak'||bk==='srs'||bk==='round')return;
   var back=(lastRun&&lastRun.d!=null)?lastRun.d:(autoMode?'auto':curDiff);
   pickSection(bk,function(k){
     if(k===qaSection)return;
@@ -1934,7 +1935,7 @@ function showQuestion(){
   var hud=h('div','hud');
   var sec=ht('span','chip sec',sectionName(qaSection));
   sec.title='点击切换板块';
-  if(typeKey&&typeKey.indexOf('b:')===0&&typeKey!=='b:online'&&typeKey!=='b:weak'){sec.onclick=function(){switchSection();};}
+  if(typeKey&&typeKey.indexOf('b:')===0&&typeKey!=='b:online'&&typeKey!=='b:weak'&&typeKey!=='b:srs'&&typeKey!=='b:round'){sec.onclick=function(){switchSection();};}
   hud.appendChild(sec);
   var _tik='';if(typeKey.indexOf('b:')===0&&QA_TYPES[typeKey.slice(2)])_tik=QA_TYPES[typeKey.slice(2)].icon+' ';
   var _badge='';
@@ -2261,6 +2262,8 @@ function markUnknown(){
       addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:'（不会）',src:Q.src,time:Date.now()});
       recorded=true;
     }
+    /* C2：SRS 复习里点「不会」—— 该题间隔重置，due 改为明天，不再连续出现 */
+    if(typeKey==='b:srs'&&Q&&Q.weak){srsAdvance(Q.weak,false);Q.weak.t=Date.now();srsTouch(Q.weak);}
     /* P2-A1：本局错题（回顾局不记，回顾本身就是错题本） */
     if(Q&&!reviewMode&&Q.q){
       roundWrong.push({q:Q.q,a:Q.a,given:'（未作答）',opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,src:Q.src});
@@ -2276,7 +2279,9 @@ function markUnknown(){
   }
   lockOpts();
   var fb=h('div','fb unk');
-  fb.appendChild(ht('div','fbm','😵 已跳过本题'+(recorded?'，已记入薄弱题':'')));
+  var _unkMsg='😵 已跳过本题'+(recorded?'，已记入薄弱题':'');
+  if(typeKey==='b:srs')_unkMsg='😵 已跳过本题 · 明天再复习一次';
+  fb.appendChild(ht('div','fbm',_unkMsg));
   if(Q&&Q.a!=null&&String(Q.a)!=='')fb.appendChild(ht('div','fba','正确答案：'+Q.a));
   appendSol(fb,Q);      // 手写题：✅ 参考代码
   appendSteps(fb,Q);    // 手写题：🧭 答题思路
@@ -2309,12 +2314,13 @@ function answer(correct,given,ans,btn,opt){
     /* B 批：SRS 复习局 —— 走间隔升档/重置，不复用 b:weak「答对即移除」语义 */
     if(typeKey==='b:srs'){
       if(correct){
+        ok++;   /* C2：SRS 答对也要计入 ok，否则结算 0/N */
         var _rec=Q&&Q.weak;
         if(_rec){
           var _mastered=srsAdvance(_rec,true);
           if(_mastered){removeWeak(_rec);fbR.textContent='✅ 答对了！连续 30 天档答对，已掌握并移出复习队列';}
           else{_rec.t=Date.now();srsTouch(_rec);var _iv=SRS_INTERVALS[_rec.srs.lv];fbR.textContent='✅ 答对了！下次复习：'+_iv+' 天后';}
-        }else{ok++;fbR.textContent='✅ 答对了！';}
+        }else{fbR.textContent='✅ 答对了！';}
         /* C1：答对也讲清楚 —— 解析/来源 + 下一题（默认不自动跳） */
         appendExp(fbR,Q);appendSrc(fbR,Q);appendNextChip(fbR);
       }else{
@@ -2328,9 +2334,20 @@ function answer(correct,given,ans,btn,opt){
       return;
     }
     if(correct){
-      if(Q&&Q.weak)removeWeak(Q.weak);
-      if(_roundR)dropRoundWrong(Q&&Q.q);
-      ok++;fbR.textContent=_roundR?'✅ 答对了！已从本轮错题移除':'✅ 答对了！已从薄弱题移除';
+      ok++;
+      if(_roundR){
+        /* 本局错题回顾：答对即从本轮错题移除（不是薄弱题本，不参与 SRS） */
+        dropRoundWrong(Q&&Q.q);
+        fbR.textContent='✅ 答对了！已从本轮错题移除';
+      }else{
+        /* C2：掌握标准统一 —— 薄弱题本答对推进 SRS 间隔，30 天档答对才算掌握（不再一次移除） */
+        var _recW=Q&&Q.weak;
+        if(_recW){
+          var _masteredW=srsAdvance(_recW,true);
+          if(_masteredW){removeWeak(_recW);fbR.textContent='✅ 答对了！连续 30 天档答对，已掌握并移出薄弱题本';}
+          else{_recW.t=Date.now();srsTouch(_recW);fbR.textContent='✅ 答对了！下次复习：'+SRS_INTERVALS[_recW.srs.lv]+' 天后（30 天档答对才算掌握）';}
+        }else{fbR.textContent='✅ 答对了！';}
+      }
       /* C1：答对也讲清楚 —— 解析/来源 + 下一题（默认不自动跳） */
       appendExp(fbR,Q);appendSrc(fbR,Q);appendNextChip(fbR);
     }
@@ -2447,10 +2464,21 @@ function finish(sc){
   card.appendChild(emo);
   card.appendChild(ht('div','hint',acc>=80?'太棒了，这轮很稳！':(acc>=60?'不错，继续保持～':'别急，错题会进薄弱题，多刷两轮就起来了')));
   /* 回顾模式不计分：大数字显示「已掌握几题」，别把 0 分摆在一个「太棒了」旁边 */
-  var _isRev=(typeKey==='b:weak'||typeKey==='b:round');
+  var _isRev=(typeKey==='b:weak'||typeKey==='b:round'||typeKey==='b:srs');
   var scoreBig=ht('div',null,_isRev?String(ok):String(sc));scoreBig.style.cssText='font-size:52px;font-weight:900;color:var(--purple-d);line-height:1.15;margin:6px 0 2px';
   card.appendChild(scoreBig);
-  if(_isRev)card.appendChild(ht('div','hint',(typeKey==='b:round'?'本轮掌握 ':'已掌握 ')+ok+' 题 · 答对的已从'+(typeKey==='b:round'?'本轮错题':'薄弱题')+'移除'));
+  if(_isRev){
+    var _revMsg;
+    if(typeKey==='b:srs'){
+      var _nd=srsNextDueDays();
+      _revMsg='已复习 '+ok+' 题 · 下次到期：'+(_nd==null?'暂无':(_nd<=0?'今天':_nd+' 天后'))+' · 答对会推进复习间隔，30 天档答对才算掌握';
+    }else if(typeKey==='b:round'){
+      _revMsg='本轮掌握 '+ok+' 题 · 答对的已从本轮错题移除';
+    }else{
+      _revMsg='本次回顾答对 '+ok+' 题 · 答对会推进复习间隔，30 天档答对才算掌握';
+    }
+    card.appendChild(ht('div','hint',_revMsg));
+  }
   var accLine=ht('div','hint','正确率 '+acc+'%　（'+ok+' / '+total+'）');accLine.style.color='var(--sub)';accLine.style.fontWeight='700';
   card.appendChild(accLine);
   if(lastAuto){
@@ -2489,11 +2517,13 @@ function finish(sc){
   }
   var row=h('div','row');row.style.marginTop='16px';
   var again=h('button','btn gold',reviewOne?'📚 返回薄弱题本':
-    (typeKey==='b:round'?(roundWrong.length?('🔁 再练这 '+roundWrong.length+' 题'):'📚 返回书架'):'🔄 再来一局'));
+    (typeKey==='b:round'?(roundWrong.length?('🔁 再练这 '+roundWrong.length+' 题'):'📚 返回书架'):
+    (typeKey==='b:srs'?'🔁 再复习一轮':'🔄 再来一局')));
   again.onclick=function(){
     if(reviewOne){reviewOne=false;openWeakBook();return;}
     if(typeKey==='b:round'){if(roundWrong.length){retryRoundWrong();}else{renderShelf();}return;}
     if(typeKey==='b:weak'){startReview();return;}
+    if(typeKey==='b:srs'){startSrs();return;}
     if(typeKey==='b:online'){startOnline();return;}
     if(lastRun){doStartType(lastRun.bk,lastRun.cn,lastRun.d);return;}
     renderShelf();
@@ -2680,6 +2710,13 @@ function maybeShowCard(bk,start){
   ov.p.appendChild(skip);
 }
 /* SRS 复习局入口（书架空格「⏰ 待复习」） */
+/* C2：结算页「下次到期」—— 薄弱题本里最近一条 srs due 折成天 */
+function srsNextDueDays(){
+  var a=loadWeak(),best=null;
+  for(var i=0;i<a.length;i++){var s=a[i]&&a[i].srs;if(!s||typeof s.due!=='number')continue;var d=s.due-Date.now();if(best==null||d<best)best=d;}
+  if(best==null)return null;
+  return Math.max(0,Math.ceil(best/86400000));
+}
 function startSrs(){
   var a=loadWeak().filter(srsDue);
   if(!a.length){toast('⏰ 今天没有到期复习题：错题会按 1/2/4/7/15/30 天间隔安排复习');return;}
