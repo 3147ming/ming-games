@@ -333,6 +333,20 @@ select:focus{outline:none;border-color:#c3b0ff;box-shadow:0 0 0 3px rgba(124,92,
   word-break:break-word;box-sizing:border-box;
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace}
 @media(max-height:720px){.edwrap{height:150px}}
+/* ---------- 批次 B：草稿板（数学 / 科学计算题；底部浮层，仅本机，不参与判分） ---------- */
+.scratchbar{display:flex;justify-content:flex-end;margin:0 0 6px}
+.chip.scratchchip{background:#eef2ff;color:#4a3ac2;font-weight:800;cursor:pointer;font-size:13px;padding:6px 12px}
+.scratchpad{position:fixed;left:0;right:0;bottom:0;z-index:60;display:none;
+  background:rgba(255,255,255,.98);border-top:1px solid #e6e2f5;
+  box-shadow:0 -8px 28px rgba(60,40,120,.16);
+  padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));}
+.sphead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 6px}
+.sptitle{font-size:12.5px;font-weight:800;color:var(--sub)}
+.sphead .spbtn{background:#f3efff;border:none;border-radius:16px;padding:5px 12px;
+  font-size:12.5px;font-weight:800;color:var(--purple-d);cursor:pointer;margin-left:6px}
+.spcv{display:block;width:100%;height:220px;background:#fff;border:1px dashed #d9d2f0;
+  border-radius:12px;touch-action:none;cursor:crosshair}
+@media(max-height:720px){.spcv{height:180px}}
 </style>
 </head>
 <body>
@@ -1797,7 +1811,7 @@ function doStartType(bk,cn,d){
       return {q:p.q,a:p.a,opts:o,custom:true};
     });total=qlist.length;
   }
-  ok=0;qidx=0;score=0;roundWrong=[];
+  ok=0;qidx=0;score=0;roundWrong=[];scratchMap.clear();  /* 批次 B：开新局草稿不串题 */
   /* B 批：先学后练 —— 开启开关且该分类有知识卡时，开局前先弹知识卡覆盖层 */
   if(bk&&KNOW_CARDS[bk]&&JSON.parse(S.getItem('bt_qa_learn_before')||'false')){maybeShowCard(bk,function(){showQuestion();});}
   else{showQuestion();}
@@ -1805,9 +1819,89 @@ function doStartType(bk,cn,d){
   /* P0-5：移除静默 AI 补题（原本 900ms 后偷偷塞题进库）。题量不足不再自动写库，改由上面 toast 提示。 */
 }
 
+/* ---------- 批次 B：草稿板（数学全部 + 科学计算题；按题独立、仅本机、不参与判分） ---------- */
+var scratchMap = new Map();   /* key = typeKey|qidx|Q.q → dataURL；内存态，不写 localStorage */
+var scratchOpen = false, scratchCanvas = null, scratchKey = '', scratchPainting = false, scratchLast = null;
+function needScratch(Q, bk) {
+  if (!Q) return false;
+  if (Q.scratch === true) return true;   /* 单题标记优先 */
+  if (Q.hand || Q.code) return false;    /* 代码手写 / 读代码 / 补全：已有编辑器或会遮挡代码 */
+  if (bk === 'math') return true;        /* 数学全部 */
+  if (bk === 'science' && /计算|多少|等于|求|速度|压强|电流|电压|电阻|功率|面积|体积|浓度|质量|密度|浮力|热量|公式|路程|时间/.test(String(Q.q))) return true;
+  return false;
+}
+function scratchKeyOf(Q) { return (typeKey || '') + '|' + qidx + '|' + String((Q && Q.q) || ''); }
+function scratchPad() {
+  var el = document.getElementById('scratchPad');
+  if (el) { scratchCanvas = el.querySelector('canvas'); return el; }
+  el = h('div'); el.id = 'scratchPad'; el.className = 'scratchpad';
+  var head = h('div', 'sphead');
+  head.appendChild(ht('div', 'sptitle', '📝 草稿板（仅本机，不参与判分）'));
+  var ctr = h('div');
+  var clr = ht('button', 'spbtn', '清空'); clr.onclick = function () { clearScratch(); };
+  var col = ht('button', 'spbtn', '收起'); col.onclick = function () { closeScratch(); };
+  ctr.appendChild(clr); ctr.appendChild(col); head.appendChild(ctr); el.appendChild(head);
+  var cv = document.createElement('canvas'); cv.className = 'spcv'; cv.style.touchAction = 'none';
+  el.appendChild(cv); document.body.appendChild(el);
+  scratchCanvas = cv; bindScratch(cv);
+  return el;
+}
+function scratchPos(cv, e) { var r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function scratchLine(cv, a, b) {
+  var c = cv.getContext('2d');
+  c.strokeStyle = '#2f2748'; c.lineWidth = 2.5; c.lineCap = 'round'; c.lineJoin = 'round';
+  if (!a) { c.beginPath(); c.fillStyle = '#2f2748'; c.arc(b.x, b.y, 1.25, 0, Math.PI * 2); c.fill(); return; }
+  c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+}
+function bindScratch(cv) {
+  cv.addEventListener('pointerdown', function (e) {
+    scratchPainting = true; scratchLast = scratchPos(cv, e);
+    try { cv.setPointerCapture(e.pointerId); } catch (x) {}
+    scratchLine(cv, null, scratchLast);
+    if (e.cancelable) e.preventDefault();
+  });
+  cv.addEventListener('pointermove', function (e) {
+    if (!scratchPainting) return;
+    var p = scratchPos(cv, e); scratchLine(cv, scratchLast, p); scratchLast = p;
+    if (e.cancelable) e.preventDefault();
+  });
+  var end = function (e) { scratchPainting = false; scratchLast = null; if (e && e.cancelable) e.preventDefault(); };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+  cv.addEventListener('pointerleave', function (e) { if (scratchPainting && e.pointerType !== 'touch') { scratchPainting = false; scratchLast = null; } });
+}
+function openScratch() {
+  var Q = qlist[qidx]; if (!Q) return;
+  scratchKey = scratchKeyOf(Q);
+  var el = scratchPad(); el.style.display = 'block'; scratchOpen = true;
+  var cv = scratchCanvas, dpr = window.devicePixelRatio || 1;
+  requestAnimationFrame(function () {
+    var w = cv.clientWidth || (el.clientWidth - 24) || 320, hh = 220;
+    cv.width = Math.round(w * dpr); cv.height = Math.round(hh * dpr);
+    cv.style.width = w + 'px'; cv.style.height = hh + 'px';
+    var c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, hh);
+    var data = scratchMap.get(scratchKey);
+    if (data) { var img = new Image(); img.onload = function () { try { c.drawImage(img, 0, 0, w, hh); } catch (e) {} }; img.src = data; }
+  });
+}
+function closeScratch() {
+  if (!scratchOpen) return;
+  if (scratchCanvas && scratchKey) { try { scratchMap.set(scratchKey, scratchCanvas.toDataURL('image/png')); } catch (e) {} }
+  var el = document.getElementById('scratchPad'); if (el) el.style.display = 'none';
+  scratchOpen = false; scratchPainting = false; scratchLast = null;
+}
+function clearScratch() {
+  if (!scratchCanvas) return;
+  var c = scratchCanvas.getContext('2d');
+  c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height); c.restore();
+  if (scratchKey) scratchMap.delete(scratchKey);
+}
+/* Esc 关闭草稿板（不影响 1-4 / Enter 答题） */
+document.addEventListener('keydown', function (e) { if (scratchOpen && e && e.key === 'Escape') { closeScratch(); } });
 /* ---------- 答题页 ---------- */
 function showQuestion(){
   if(quizOver)return;
+  closeScratch();   /* 批次 B：切题前先收起并保存上一题草稿 */
   showView('stage');clearNode(stageEl);locked=false;
   if(qidx>=total&&!autoMode){endQuiz();return;}
   var Q;
@@ -1833,6 +1927,7 @@ function showQuestion(){
     if(typeKey==='b:code'&&qaSection==='code'&&handMode&&Q&&!Q.hand){Q=genHandTask(Math.max(0,curDiff));qlist[qidx]=Q;}
   }
   if(!Q){endQuiz();return;}
+  var bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
   var card=h('div','qcard quizfill');
   // 进度条：自动匹配是无限模式，进度条固定满格（不打表，只做氛围）
   var pb=h('div','pbar'+(autoMode?' inf':''));var pbi=h('i');pbi.style.width=(autoMode?'100%':(Math.round((qidx+1)/Math.max(1,total)*100)+'%'));pb.appendChild(pbi);card.appendChild(pb);
@@ -1849,6 +1944,13 @@ function showQuestion(){
   /* 无限模式没有「满分」，头顶只留实力与题数，得分放结算页，避免四个 chip 挤成省略号 */
   if(!autoMode)hud.appendChild(ht('span','chip','✅ '+ok));
   card.appendChild(hud);
+  /* 批次 B：需要草稿板的题（数学全部 / 科学计算题 / Q.scratch）在题干上方给一个入口 chip */
+  if(needScratch(Q,bk)){
+    var _sbar=h('div','scratchbar');
+    var _sbtn=ht('button','chip scratchchip','📝 草稿');
+    _sbtn.onclick=function(){openScratch();};
+    _sbar.appendChild(_sbtn);card.appendChild(_sbar);
+  }
   if(typeKey==='b:code'&&qaSection==='code'){
     var swr=h('div','swrow');
     var tg=h('button','toggle'+(handMode?' on':''),handMode?'✍️ 手写代码：开':'✍️ 手写代码：关');
@@ -2098,6 +2200,7 @@ function navDrop(k){
 }
 /* 应用内回退一层：按栈顶决定退回哪个界面 */
 function backOneLayer(){
+  closeScratch();   /* 批次 B：返回书架前保存并收起草稿 */
   var top=navTop();
   if(top==='quiz'){
     navStack.pop();
@@ -2146,6 +2249,7 @@ function syncHudLevel(){
   el.textContent=/实力：/.test(t)?t.replace(/实力：[^·]*$/,'实力：'+curDiffLabel):t;
 }
 function markUnknown(){
+  closeScratch();   /* 批次 B：作答时收起，避免遮挡反馈 */
   if(locked)return;locked=true;
   var Q=qlist[qidx];
   /* 首次作答才结算（记薄弱题 / 记自适应窗口）；重试后再按「不会」不再重复记 */
@@ -2187,6 +2291,7 @@ function markUnknown(){
 }
 
 function answer(correct,given,ans,btn,opt){
+  closeScratch();   /* 批次 B：作答时收起，避免遮挡反馈 */
   if(locked)return;locked=true;
   opt=opt||{};
   var _bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
@@ -2325,6 +2430,7 @@ function retryRoundWrong(){
   ok=0;qidx=0;score=0;total=qlist.length;showQuestion();
 }
 function finish(sc){
+  closeScratch();   /* 批次 B：结算前保存并收起草稿 */
   navPush('finish');
   showView('stage');clearNode(stageEl);
   var acc=total?(Math.min(100,Math.round(ok/total*100))):0;
