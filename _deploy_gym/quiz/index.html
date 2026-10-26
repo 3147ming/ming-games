@@ -333,6 +333,20 @@ select:focus{outline:none;border-color:#c3b0ff;box-shadow:0 0 0 3px rgba(124,92,
   word-break:break-word;box-sizing:border-box;
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace}
 @media(max-height:720px){.edwrap{height:150px}}
+/* ---------- 批次 B：草稿板（数学 / 科学计算题；底部浮层，仅本机，不参与判分） ---------- */
+.scratchbar{display:flex;justify-content:flex-end;margin:0 0 6px}
+.chip.scratchchip{background:#eef2ff;color:#4a3ac2;font-weight:800;cursor:pointer;font-size:13px;padding:6px 12px}
+.scratchpad{position:fixed;left:0;right:0;bottom:0;z-index:60;display:none;
+  background:rgba(255,255,255,.98);border-top:1px solid #e6e2f5;
+  box-shadow:0 -8px 28px rgba(60,40,120,.16);
+  padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));}
+.sphead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 6px}
+.sptitle{font-size:12.5px;font-weight:800;color:var(--sub)}
+.sphead .spbtn{background:#f3efff;border:none;border-radius:16px;padding:5px 12px;
+  font-size:12.5px;font-weight:800;color:var(--purple-d);cursor:pointer;margin-left:6px}
+.spcv{display:block;width:100%;height:220px;background:#fff;border:1px dashed #d9d2f0;
+  border-radius:12px;touch-action:none;cursor:crosshair}
+@media(max-height:720px){.spcv{height:180px}}
 </style>
 </head>
 <body>
@@ -400,17 +414,17 @@ geo:[
   ["世界上面积最大的国家是？","俄罗斯","geo","加拿大|中国|美国",{"exp":"俄罗斯面积约 1700 万平方公里，跨欧亚两洲，是世界面积最大的国家。","src":"人教版初中地理"}],
   ["世界上人口最多的国家（截至 2023 年）是？","印度","geo","中国|美国|印度尼西亚",{exp:"2023 年印度人口超过中国，成为世界人口第一大国。",src:"联合国人口数据"}],
   ["中国第一长河是？","长江","geo","黄河|珠江|黑龙江",{"exp":"长江全长约 6300 公里，是中国第一长河，也是世界第三长河。","src":"人教版初中地理"}],
-  ["有\\\"母亲河\\\"之称的中国河流是？","黄河","geo","长江|珠江|淮河",{"exp":"黄河被称为中华民族的母亲河，流经九个省区，是中华文明的重要发源地。","src":"人教版初中地理"}],
+  ["有“母亲河”之称的中国河流是？","黄河","geo","长江|珠江|淮河",{"exp":"黄河被称为中华民族的母亲河，流经九个省区，是中华文明的重要发源地。","src":"人教版初中地理"}],
   ["新西兰的首都是？","惠灵顿","geo","奥克兰|基督城|皇后镇",{"exp":"新西兰法定首都是惠灵顿，最大城市是奥克兰，注意区分。","src":"世界地理常识"}],
   ["越南的首都是？","河内","geo","胡志明市|岘港|海防",{"exp":"越南首都是河内（北方），最大城市是胡志明市（南方）。","src":"世界地理常识"}],
   ["菲律宾的首都是？","马尼拉","geo","宿务|达沃|碧瑶",{"exp":"菲律宾首都是马尼拉，位于吕宋岛西岸。","src":"世界地理常识"}],
-  ["印度尼西亚的首都是？","雅加达","geo","万隆|泗水|棉兰",{"exp":"印度尼西亚首都是雅加达（爪哇岛），2024 年起新首都逐步迁往努山塔拉。","src":"世界地理常识"}],
+  ["截至 2024 年，印度尼西亚的首都是？","雅加达","geo","万隆|泗水|棉兰",{"exp":"截至 2024 年印尼首都仍是雅加达（爪哇岛）；新首都努山塔拉自 2024 年起分阶段启用，尚未完成搬迁。","src":"世界地理常识"}],
   ["马来西亚的首都是？","吉隆坡","geo","槟城|新山|马六甲",{"exp":"马来西亚首都是吉隆坡，行政中心在布城。","src":"世界地理常识"}],
   ["巴基斯坦的首都是？","伊斯兰堡","geo","卡拉奇|拉合尔|白沙瓦",{"exp":"巴基斯坦首都 1960 年代从卡拉奇迁至伊斯兰堡，最大城市是卡拉奇。","src":"世界地理常识"}],
   ["伊朗的首都是？","德黑兰","geo","伊斯法罕|设拉子|大不里士",{"exp":"伊朗首都是德黑兰，位于厄尔布尔士山脉南麓。","src":"世界地理常识"}],
   ["伊拉克的首都是？","巴格达","geo","巴士拉|摩苏尔|基尔库克",{"exp":"伊拉克首都是巴格达，位于底格里斯河畔。","src":"世界地理常识"}],
   ["沙特阿拉伯的首都是？","利雅得","geo","吉达|麦加|麦地那",{"exp":"沙特阿拉伯首都是利雅得，麦加与麦地那是宗教圣城、吉达是红海门户，均非首都。","src":"世界地理常识"}],
-  ["以色列的首都是？","耶路撒冷","geo","特拉维夫|海法|埃拉特",{"exp":"以色列政府机构位于耶路撒冷，多数国家大使馆设在特拉维夫。","src":"世界地理常识"}],
+  ["以色列的政府机构所在地是？","耶路撒冷","geo","特拉维夫|海法|埃拉特",{"exp":"以色列政府机构位于耶路撒冷；耶路撒冷最终地位属国际争议问题，多数国家使馆设在特拉维夫。","src":"世界地理常识"}],
   ["阿联酋的首都是？","阿布扎比","geo","迪拜|沙迦|阿治曼",{"exp":"阿联酋首都是阿布扎比，迪拜是著名商业城市但不是首都。","src":"世界地理常识"}],
   ["卡塔尔的首都是？","多哈","geo","科威特城|麦纳麦|马斯喀特",{"exp":"卡塔尔首都是多哈，位于波斯湾西岸的半岛上。","src":"世界地理常识"}],
   ["哈萨克斯坦的首都是？","阿斯塔纳","geo","阿拉木图|卡拉干达|奇姆肯特",{"exp":"哈萨克斯坦首都是阿斯塔纳（曾名努尔苏丹），1997 年从阿拉木图迁都。","src":"世界地理常识"}],
@@ -552,7 +566,7 @@ geo:[
   ["欧洲最高峰是？","厄尔布鲁士山","geo","勃朗峰|马特洪峰|少女峰",{"exp":"厄尔布鲁士山位于俄罗斯大高加索山脉，海拔 5642 米，是欧洲最高峰。","src":"世界地理常识"}],
   ["北美洲最高峰是？","迪纳利山","geo","惠特尼山|雷尼尔山|洛根山",{"exp":"迪纳利山位于美国阿拉斯加，海拔 6190 米，是北美洲最高峰。","src":"世界地理常识"}],
   ["南美洲最高峰是？","阿空加瓜山","geo","汉科乌马山|科托帕希火山|伊利亚马尼山",{"exp":"阿空加瓜山位于阿根廷，海拔 6961 米，是南美洲最高峰。","src":"世界地理常识"}],
-  ["世界海拔最高的国家首都是？","拉巴斯","geo","基多|波哥大|亚的斯亚贝巴",{"exp":"玻利维亚行政首都拉巴斯海拔约 3600 米，是世界海拔最高的实际首都。","src":"世界地理常识"}],
+  ["世界海拔最高的实际首都（政府所在地）是？","拉巴斯","geo","基多|波哥大|亚的斯亚贝巴",{"exp":"玻利维亚宪法首都是苏克雷，拉巴斯是实际政府所在地，海拔约 3600 米，是世界海拔最高的实际首都。","src":"世界地理常识"}],
   ["世界上人口密度最大的国家是？","摩纳哥","geo","新加坡|马尔代夫|梵蒂冈",{"exp":"摩纳哥面积约 2 平方公里、人口约 4 万，是世界上人口密度最高的国家。","src":"世界地理常识"}],
 ],
 history:[
@@ -634,13 +648,13 @@ history:[
   ["明朝戚继光率军抗击的是？","倭寇","history","蒙古|女真|沙俄",{"exp":"戚继光组建戚家军抗倭，平定了东南沿海的倭患。","src":"部编版初中历史"}],
   ["明朝中后期资本主义萌芽主要出现在哪个行业？","纺织业","history","冶铁业|制盐业|造船业",{"exp":"明朝中后期江南丝绸棉纺织业中出现雇佣劳动关系的资本主义萌芽。","src":"部编版初中历史"}],
   ["明末农民起义的著名领袖是？","李自成","history","张献忠|洪秀全|方腊",{"exp":"公元 1644 年李自成攻入北京，推翻明朝统治。","src":"部编版初中历史"}],
-  ["清朝的建立者是？","皇太极","history","努尔哈赤|多尔衮|康熙",{"exp":"公元 1636 年皇太极改国号为清。","src":"部编版初中历史"}],
+  ["1636 年改国号为清的皇帝是？","皇太极","history","努尔哈赤|多尔衮|康熙",{"exp":"1616 年努尔哈赤建立后金；1636 年皇太极改国号为大清。","src":"部编版初中历史"}],
   ["清军入关、定都北京时的皇帝是？","顺治帝","history","康熙帝|雍正帝|乾隆帝",{"exp":"公元 1644 年清军入关，顺治帝迁都北京。","src":"部编版初中历史"}],
   ["康熙帝平定的内乱是？","三藩之乱","history","安史之乱|黄巾起义|八王之乱",{"exp":"康熙帝平定吴三桂等三藩之乱，巩固了清朝统治。","src":"部编版初中历史"}],
-  ["清朝设置管辖西藏的机构是？","驻藏大臣","history","西域都护|宣政院|理藩院",{"exp":"公元 1727 年清朝设驻藏大臣，与达赖、班禅共同管理西藏。","src":"部编版初中历史"}],
-  ["康乾盛世主要指哪两位皇帝统治时期？","康熙与乾隆","history","康熙与雍正|雍正与乾隆|顺治与康熙",{"exp":"康熙、雍正、乾隆三代皇帝时期清朝达到鼎盛，其中康熙与乾隆最具代表性。","src":"部编版初中历史"}],
+  ["清朝派驻西藏、与达赖班禅共同管理的官员是？","驻藏大臣","history","理藩院|宣政院|西域都护",{"exp":"公元 1727 年清朝设驻藏大臣，与达赖、班禅共同管理西藏；理藩院是中央管理蒙藏事务的机构。","src":"部编版初中历史"}],
+  ["「康乾盛世」主要跨越哪三位皇帝？","康熙、雍正、乾隆","history","雍正、乾隆、嘉庆|康熙、顺治、雍正|顺治、康熙、雍正",{"exp":"康乾盛世跨越康熙、雍正、乾隆三朝，因康熙、乾隆最具代表性而得名。","src":"部编版初中历史"}],
   ["编修《四库全书》的是哪位皇帝？","乾隆帝","history","康熙帝|雍正帝|嘉庆帝",{"exp":"乾隆年间编修的《四库全书》是中国历史上最大的一部丛书。","src":"部编版初中历史"}],
-  ["清朝在新疆设置的管理机构是？","伊犁将军","history","驻藏大臣|西域都护|北庭都护",{"exp":"公元 1762 年清朝设伊犁将军，统辖新疆军政事务。","src":"部编版初中历史"}],
+  ["清朝统辖新疆军政的官员是？","伊犁将军","history","驻藏大臣|西域都护|北庭都护",{"exp":"公元 1762 年清朝设伊犁将军，统辖新疆军政事务（伊犁将军是官职，不是机构名）。","src":"部编版初中历史"}],
   ["明清时期实行的对外政策是？","闭关锁国","history","开放通商|自由贸易|朝贡开放",{"exp":"明清实行闭关锁国政策，限制海外贸易，导致逐渐落后于世界。","src":"部编版初中历史"}],
   ["鸦片战争爆发于哪一年？","1840","history","1839|1842|1856",{"exp":"公元 1840 年英国发动鸦片战争，中国近代史由此开端。","src":"部编版初中历史"}],
   ["中国近代第一个不平等条约是？","《南京条约》","history","《马关条约》|《辛丑条约》|《北京条约》",{"exp":"1842 年签订《南京条约》：割香港岛、赔款、开放五处通商口岸。","src":"部编版初中历史"}],
@@ -907,8 +921,8 @@ english:[
   ["\"狗\"的英文是？","dog","english","cat|bird|fish",{"exp":"狗 dog，\"遛狗 walk the dog\"。","src":"人教版初中英语"}],
   ["\"鸟\"的英文是？","bird","english","dog|cat|fish",{"exp":"鸟 bird，\"唱歌的鸟 a singing bird\"。","src":"人教版初中英语"}],
   ["\"马\"的英文是？","horse","english","cow|sheep|pig",{"exp":"马 horse，\"骑马 ride a horse\"。","src":"人教版初中英语"}],
-  ["\"牛\"的英文是？","cow","english","horse|sheep|pig",{"exp":"牛 cow（奶牛），\"牛奶 from cow\"。","src":"人教版初中英语"}],
-  ["\"羊\"的英文是？","sheep","english","cow|horse|pig",{"exp":"羊 sheep，单复数同形。","src":"人教版初中英语"}],
+  ["\"奶牛\"的英文是？","cow","english","horse|sheep|pig",{"exp":"奶牛 cow；牛的通称还有 cattle / ox，\"公牛\"是 bull。","src":"人教版初中英语"}],
+  ["\"绵羊\"的英文是？","sheep","english","cow|horse|pig",{"exp":"绵羊 sheep（单复数同形）；山羊是 goat。","src":"人教版初中英语"}],
   ["\"猪\"的英文是？","pig","english","cow|sheep|horse",{"exp":"猪 pig，\"小猪 piggy\"。","src":"人教版初中英语"}],
   ["\"兔子\"的英文是？","rabbit","english","dog|cat|horse",{"exp":"兔子 rabbit，\"白兔 white rabbit\"。","src":"人教版初中英语"}],
   ["\"老鼠\"的英文是？","mouse","english","cat|dog|rabbit",{"exp":"老鼠 mouse，复数 mice。","src":"人教版初中英语"}],
@@ -1055,10 +1069,10 @@ sports:[
   ["足球比赛每队上场几人？","11","sports","9|10|12"],
   ["奥运会五环代表几大洲？","5","sports","4|6|7"],
   ["乒乓球被称为中国的什么球？","国球","sports","国粹|国技|国术"],
-  ["马拉松全程约多少公里？","42.195","sports","21.0975|40|50"],
+  ["马拉松全程的标准距离是多少公里？","42.195","sports","21.0975|40|50",{"exp":"马拉松标准距离 42.195 公里，半程马拉松 21.0975 公里。","src":"世界田径常识"}],
   ["NBA 是哪类运动的职业联赛？","篮球","sports","橄榄球|棒球|冰球"],
   ["一场标准足球比赛常规时间多少分钟？","90","sports","60|80|100"],
-  ["游泳中速度通常最快的泳姿是？","自由泳","sports","蛙泳|蝶泳|仰泳"],
+  ["竞技游泳中通常速度最快的项目是？","自由泳","sports","蛙泳|蝶泳|仰泳",{"exp":"自由泳是项目名称，规则允许使用任意泳姿，运动员普遍采用最快的爬泳，因此常说自由泳最快。","src":"游泳竞赛常识"}],
   ["北京奥运会举办于哪一年？","2008","sports","2000|2004|2012"],
   ["篮球比赛中投进三分线外算几分？","3","sports","1|2|4"],
   ["第一届现代奥运会于 1896 年在哪座城市举办？","雅典","sports","巴黎|伦敦|罗马"],
@@ -1080,7 +1094,7 @@ animals:[
   ["海豚属于哪类动物？","哺乳动物","animals","鱼类|爬行动物|软体动物"],
   ["变色龙最著名的能力是？","变色","animals","喷毒|断尾再生|放电"],
   ["蜜蜂群体中负责产卵的是？","蜂后","animals","工蜂|雄蜂|幼蜂"],
-  ["世界上牙齿最多的动物是？","蜗牛","animals","鲨鱼|鳄鱼|老鼠"],
+  ["通常被认为牙齿最多的动物是？","蜗牛","animals","鲨鱼|鳄鱼|老鼠",{"exp":"通常认为蜗牛的齿舌上有上万颗细小牙齿（科普统计口径不一，属通说而非精确计数）。","src":"动物科普常识"}],
   ["北极熊主要生活在哪个地区？","北极","animals","南极|赤道|温带"]
 ],
 astronomy:[
@@ -1224,6 +1238,7 @@ function addWeak(item){
   for(i=0;i<a.length;i++){if(a[i]&&a[i].type===item.type&&a[i].q===item.q){ex=a[i];break;}}
   if(ex){
     ex.n=(ex.n||1)+1;ex.t=Date.now();
+    srsAdvance(ex,false);   /* C2：已有记录再答错 → 重置复习间隔（明天再复习） */
     if(item.pick)ex.pick=item.pick;
     if(!ex.a&&item.a)ex.a=item.a;
     if(!ex.opts&&item.opts)ex.opts=item.opts.slice();
@@ -1505,6 +1520,7 @@ var WIN_CAP=12,WIN_MIN=6,UP_ACC=0.75,DN_ACC=0.4,LEVEL_COOL=2,lvlCool=0;
 var lastAuto=null;                              // 结算页的实力评级快照
 var reviewOne=false;                            // 薄弱题本里的「单题练」：结算页返回题本而不是重开整局
 var roundWrong=[];                              // P2-A1：本局首次结算的错题（重试答对不追加、不重复）
+var roundShortMsg='';                           // C4：本局实际题量少于所选档位时的常驻提示
 var quizOver=false;                             // 本局是否已收尾（挡住答题后的延时切题把结算页顶掉）
 function sectionName(k){for(var i=0;i<SECTIONS.length;i++){if(SECTIONS[i].k===k)return SECTIONS[i].n;}return '🎯 选择题';}
 function windowAcc(){var a=selfWindow,i,n=0;if(!a.length)return 0;for(i=0;i<a.length;i++){if(a[i])n++;}return n/a.length;}
@@ -1520,10 +1536,12 @@ function toast(msg){
 
 /* ---------- 成绩 / 统计 存储 ---------- */
 function loadBest(){try{return JSON.parse(S.getItem('bt_qa_best')||'{}')||{};}catch(e){return{};}}
-function bestFor(prefix){var m=loadBest(),best=0,found=false;for(var k in m){if(k.indexOf(prefix)===0&&m[k]>best){best=m[k];found=true;}}return found?best:0;}
+/* C6：书架徽标统一走 bestInfo 的 found 语义 —— 0 分 / 负分也算「挑战过」，不再显示「未挑战」。
+   返回 null = 没挑战过；数字（含 0 / 负数）= 已挑战的最佳分。 */
+function bestFor(prefix){var i=bestInfo(prefix);return i.found?i.best:null;}
 function loadStats(){try{return JSON.parse(S.getItem('bt_qa_stats')||'{}')||{};}catch(e){return{};}}
 /* P2-A3：统计页专用 —— 「键存在即已挑战」，0 分 / 负分也算成绩。
-   bestFor 保留旧口径（只看 >0），因为书架徽标一直是那个语义。 */
+   C6 起书架徽标也走这套语义（bestFor 直接包它），统计页与书架不再互相矛盾。 */
 function bestInfo(prefix){
   var m=loadBest(),best=null,found=false;
   for(var k in m){if(k.indexOf(prefix)===0){found=true;if(best===null||m[k]>best)best=m[k];}}
@@ -1558,6 +1576,19 @@ function trendDays(n){
 function showView(v){if(v==='shelf'){shelfEl.hidden=false;stageEl.hidden=true;}else{shelfEl.hidden=true;stageEl.hidden=false;}}
 
 function stdCount(key){return (POOLS[key]&&POOLS[key].length)?POOLS[key].length:0;}
+/* C4：本分类「真能出多少题」= 人工题 + 过校验的 AI 补充题（按题干去重）。
+   pickDiffPanel 用它标注「本类仅 N 题」，doStartType 用它做整局提示。
+   math / code 是现生成，不受题量限制 → 返回 Infinity。 */
+function stdAvail(bk){
+  if(!bk||bk==='math'||bk==='code')return Infinity;
+  var man=POOLS[bk]||[],seen={},n=0;
+  man.forEach(function(it){var q=it&&it[0];if(!q)return;q=String(q);if(seen[q])return;seen[q]=1;n++;});
+  extraPool(bk).forEach(function(x){if(!x||!x.q)return;var q=String(x.q);if(seen[q])return;if(!validItem(x))return;seen[q]=1;n++;});
+  return n;
+}
+/* C4：档位是否真的改变题目难度。math 按学业阶段生成、code 按知识点×难度矩阵生成；
+   其余分类是扁平题库（pickPoolByDiff 对数组不分档），换档只改题量与扣分 → 不能说「实力：困难」 */
+function diffMatters(bk){return bk==='math'||bk==='code';}
 function codeCount(){var n=0;for(var d in POOLS.code){if(POOLS.code.hasOwnProperty(d))n+=POOLS.code[d].length;}return n;}
 function shelfCount(bk,cn){
   if(bk==='math')return '动态生成';
@@ -1595,7 +1626,7 @@ function renderShelf(){
   // 联网
   grid.appendChild(makeBook('🌐','联网题库·英文','online',null,bestFor('b:online'),(ONLINE_BANK&&ONLINE_BANK.length?ONLINE_BANK.length:0)+' 题'));
   shelfEl.appendChild(grid);
-  shelfEl.appendChild(ht('div','muted','💻 编程题量为「人工题 + 模板生成（理论组合数）」，参数空间有限，实际不重复体验以出题引擎去重为准；其余分类为人工题 + AI 扩充题。'));
+  shelfEl.appendChild(ht('div','muted','💻 编程题量为「人工题 + 模板生成（理论组合数）」，参数空间有限，实际不重复体验以出题引擎去重为准；其余分类为人工题库，题量以卡片上的实际题数为准（不再自动扩充）。'));
 
   // 联网管理
   var sec2=h('div','section-title',null);sec2.appendChild(ht('span',null,'🌐 联网题库'));shelfEl.appendChild(sec2);
@@ -1622,12 +1653,15 @@ function renderShelf(){
 }
 function makeBook(icon,name,bk,cn,best,count,isCustom){
   var b=h('div','book');
-  if(isCustom){var del=h('button','del','🗑');del.onclick=function(e){e.stopPropagation();delete custom[cn];saveCustom(custom);renderShelf();};b.appendChild(del);}
+  if(isCustom){var del=h('button','del','🗑');del.onclick=function(e){e.stopPropagation();
+    if(!confirm('删除整个题库「'+cn+'」？删除后不可恢复（该题库的成绩记录会保留）。'))return;
+    delete custom[cn];saveCustom(custom);renderShelf();toast('🗑 已删除题库「'+cn+'」');};b.appendChild(del);}
   b.appendChild(ht('div','ic',icon));
   b.appendChild(ht('div','nm',name));
   var meta=h('div','meta');
   if(count&&String(count).length>8)meta.style.flexWrap='wrap';
-  meta.appendChild(ht('span','star'+(best>0?'':' none'),best>0?('⭐ '+best):'未挑战'));
+  var _hasBest=(best!=null&&best!=='');   /* C6：0 / 负分也是成绩，只有 null 才是未挑战 */
+  meta.appendChild(ht('span','star'+(_hasBest?'':' none'),_hasBest?('⭐ '+best):'未挑战'));
   meta.appendChild(ht('span',null,count));
   b.appendChild(meta);
   b.onclick=function(){openCategory(bk,cn);};
@@ -1656,8 +1690,12 @@ function afterDetect(bk,cn){
 /* ---------- 难度面板 ---------- */
 function pickDiffPanel(bk,cb){
   var T=QA_TYPES[bk],ds=qaDiffs(bk);if(!ds){cb(-1);return;}
-  var PANEL=[{auto:true,n:'🤖 自动匹配',d:'无限刷题 · 实时调难度'}].concat(ds.map(function(x,i){return {n:x.n,d:x.d,idx:i};}));
+  var PANEL=[{auto:true,n:'🤖 自动匹配',d:'无限刷题 · 实时调难度'}].concat(ds.map(function(x,i){return {n:x.n,d:x.d,idx:i,cnt:x.cnt};}));
+  /* C4：本类真实可用题量（math/code 为 Infinity，不做标注） */
+  var _avail=stdAvail(bk);
   var defSel=0;try{var sv=parseInt(S.getItem('bd_qa_diff_'+bk),10);if(sv>=0&&sv<ds.length)defSel=sv+1;}catch(e){}
+  /* C4：上次选的档位若本类一题都出不了（如题库被清空），默认回到自动匹配 */
+  if(defSel>0&&ds[defSel-1]&&isFinite(stdAvail(bk))&&stdAvail(bk)<=0)defSel=0;
   var ov=overlayPanel((T.icon||'')+' '+T.name+' · 选择难度','diff');
   ov.p.appendChild(ht('div','hint',(bk==='math'?'🎓 按学业阶段出题：':(bk==='code'?'💻 按学习进度出题（已按你掌握的语言过滤）：':'⚙️ 选择难度，题量与扣分随档位变化'))+'也可选「🤖 自动匹配」无限刷题、难度实时跟着你走'));
   if(bk==='code'){var p=getCodeProfile();if(p&&p.done&&p.langs&&p.langs.length){ov.p.appendChild(ht('div','okmsg','已检测：'+p.langs.map(langName).join(' · ')+' · '+levelName(p.rank)));}}
@@ -1666,10 +1704,24 @@ function pickDiffPanel(bk,cb){
     var b=ht('button','diffbtn'+(i===defSel?' sel':''));
     var txt=h('div','dtxt');
     txt.appendChild(ht('div','dn',df.n));
-    txt.appendChild(ht('div','dd',df.d));
+    /* C4：档位题量 > 本类真实题量时，直接把差额写在档位上（不玩「看着 40 题实际 12 题」） */
+    var _dd=df.d,_short=false,_empty=false;
+    if(df.idx!=null&&isFinite(_avail)&&df.cnt>_avail){
+      _short=true;_empty=(_avail<=0);
+      _dd=df.d+' · 本类仅 '+_avail+' 题'+(_empty?'（暂无可用题目）':'');
+    }
+    var ddEl=ht('div','dd',_dd);
+    if(_short)ddEl.style.color='#a8690a';
+    txt.appendChild(ddEl);
     b.appendChild(txt);
     b.appendChild(ht('span','dck','✓'));
-    b.onclick=function(){[].slice.call(dr.children).forEach(function(x){try{x.classList.remove('sel');}catch(e){}});try{b.classList.add('sel');}catch(e){}};
+    if(_empty){
+      b.classList.add('off');b.style.opacity='0.45';b.style.cursor='not-allowed';
+      b.onclick=function(){toast('⚠️ 本类还没有可用题目：先「➕ 新建」题库或用 AI 补充题');};
+    }else{
+      b.onclick=function(){[].slice.call(dr.children).forEach(function(x){try{x.classList.remove('sel');}catch(e){}});try{b.classList.add('sel');}catch(e){}};
+    }
+    if(_short){try{b.setAttribute('data-short','1');}catch(e){}}
     dr.appendChild(b);});
   ov.p.appendChild(dr);
   /* B 批：先学后练开关（持久化到 bt_qa_learn_before） */
@@ -1719,14 +1771,17 @@ function applySection(qs){
 }
 function sectionGen(bk,n,diff){
   var qs=null;
-  /* 编程的「程序编写 / 填空题」都走读代码题型（答案短，好判分） */
-  if(bk==='code'&&QA_TYPES.code.genSection&&(qaSection==='code'||qaSection==='fill'))qs=QA_TYPES.code.genSection(n,diff);
+  /* C3：编程三个板块（选择题 / 填空题 / 程序编写）统一走 CODE_TOPICS 读代码题型。
+     旧 POOLS.code 88 道里 66 道没自带干扰项，mkFromPool 只能从别的题答案里硬凑，
+     于是冒出「可执行文件 / print / 未找到 / 视图 / 内存」这种跨类选项（P0）。
+     CODE_TOPICS 的 mkCodeQ 每题自带同类干扰项，答案当场算出来。 */
+  if(bk==='code'&&QA_TYPES.code.genSection)qs=QA_TYPES.code.genSection(n,diff,qaSection);
   if(!qs||!qs.length)qs=QA_TYPES[bk].gen(n,diff);
   return applySection(qs);
 }
 function switchSection(){
   var bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
-  if(!bk||bk==='online'||bk==='weak')return;
+  if(!bk||bk==='online'||bk==='weak'||bk==='srs'||bk==='round')return;
   var back=(lastRun&&lastRun.d!=null)?lastRun.d:(autoMode?'auto':curDiff);
   pickSection(bk,function(k){
     if(k===qaSection)return;
@@ -1780,13 +1835,16 @@ function doStartType(bk,cn,d){
   if(autoMode){selfRank=getRank(bk);curDiff=selfRank;}else{curDiff=(ds&&d>=0&&d<ds.length)?d:-1;}
   curDiffLabel=(curDiff>=0)?ds[curDiff].n:'';
   typeKey=bk?('b:'+bk):('c:'+cn);typeLabel=bk?QA_TYPES[bk].name:cn;
-  combo=0;wrongCombo=0;selfWindow=[];lvlCool=0;handMode=false;lastAuto=null;_handUsed.length=0;
+  combo=0;wrongCombo=0;selfWindow=[];lvlCool=0;handMode=false;lastAuto=null;_handUsed.length=0;roundShortMsg='';
   if(!bk)qaSection='choice';   // 自定义题库固定选择题，不弹板块面板
   if(bk){
     if(autoMode){qlist=[];total=Infinity;}
     else{var cnt=(curDiff>=0&&ds[curDiff].cnt)?ds[curDiff].cnt:10;qlist=sectionGen(bk,cnt,Math.max(0,curDiff));total=qlist.length;
       /* P0-2：无放回后题量可能不足，明确告知实际题数（绝不拿重复题凑数） */
-      if(qlist.length<cnt)toast('⚠️ 「'+QA_TYPES[bk].name+'」唯一题不足，本局改为 '+qlist.length+' 题（请求 '+cnt+' 题）');
+      if(qlist.length<cnt){
+        roundShortMsg='⚠️ 本类唯一题只有 '+qlist.length+' 题（所选档位是 '+cnt+' 题）· 本局按实际题量出题';
+        toast('⚠️ 「'+QA_TYPES[bk].name+'」唯一题不足，本局改为 '+qlist.length+' 题（请求 '+cnt+' 题）');
+      }
     }
   }else{
     var pairs=custom[cn]||[];if(!pairs.length){alert('该题库还没有题目，先去录入');return;}
@@ -1797,7 +1855,7 @@ function doStartType(bk,cn,d){
       return {q:p.q,a:p.a,opts:o,custom:true};
     });total=qlist.length;
   }
-  ok=0;qidx=0;score=0;roundWrong=[];
+  ok=0;qidx=0;score=0;roundWrong=[];scratchMap.clear();  /* 批次 B：开新局草稿不串题 */
   /* B 批：先学后练 —— 开启开关且该分类有知识卡时，开局前先弹知识卡覆盖层 */
   if(bk&&KNOW_CARDS[bk]&&JSON.parse(S.getItem('bt_qa_learn_before')||'false')){maybeShowCard(bk,function(){showQuestion();});}
   else{showQuestion();}
@@ -1805,9 +1863,89 @@ function doStartType(bk,cn,d){
   /* P0-5：移除静默 AI 补题（原本 900ms 后偷偷塞题进库）。题量不足不再自动写库，改由上面 toast 提示。 */
 }
 
+/* ---------- 批次 B：草稿板（数学全部 + 科学计算题；按题独立、仅本机、不参与判分） ---------- */
+var scratchMap = new Map();   /* key = typeKey|qidx|Q.q → dataURL；内存态，不写 localStorage */
+var scratchOpen = false, scratchCanvas = null, scratchKey = '', scratchPainting = false, scratchLast = null;
+function needScratch(Q, bk) {
+  if (!Q) return false;
+  if (Q.scratch === true) return true;   /* 单题标记优先 */
+  if (Q.hand || Q.code) return false;    /* 代码手写 / 读代码 / 补全：已有编辑器或会遮挡代码 */
+  if (bk === 'math') return true;        /* 数学全部 */
+  if (bk === 'science' && /计算|多少|等于|求|速度|压强|电流|电压|电阻|功率|面积|体积|浓度|质量|密度|浮力|热量|公式|路程|时间/.test(String(Q.q))) return true;
+  return false;
+}
+function scratchKeyOf(Q) { return (typeKey || '') + '|' + qidx + '|' + String((Q && Q.q) || ''); }
+function scratchPad() {
+  var el = document.getElementById('scratchPad');
+  if (el) { scratchCanvas = el.querySelector('canvas'); return el; }
+  el = h('div'); el.id = 'scratchPad'; el.className = 'scratchpad';
+  var head = h('div', 'sphead');
+  head.appendChild(ht('div', 'sptitle', '📝 草稿板（仅本机，不参与判分）'));
+  var ctr = h('div');
+  var clr = ht('button', 'spbtn', '清空'); clr.onclick = function () { clearScratch(); };
+  var col = ht('button', 'spbtn', '收起'); col.onclick = function () { closeScratch(); };
+  ctr.appendChild(clr); ctr.appendChild(col); head.appendChild(ctr); el.appendChild(head);
+  var cv = document.createElement('canvas'); cv.className = 'spcv'; cv.style.touchAction = 'none';
+  el.appendChild(cv); document.body.appendChild(el);
+  scratchCanvas = cv; bindScratch(cv);
+  return el;
+}
+function scratchPos(cv, e) { var r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function scratchLine(cv, a, b) {
+  var c = cv.getContext('2d');
+  c.strokeStyle = '#2f2748'; c.lineWidth = 2.5; c.lineCap = 'round'; c.lineJoin = 'round';
+  if (!a) { c.beginPath(); c.fillStyle = '#2f2748'; c.arc(b.x, b.y, 1.25, 0, Math.PI * 2); c.fill(); return; }
+  c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+}
+function bindScratch(cv) {
+  cv.addEventListener('pointerdown', function (e) {
+    scratchPainting = true; scratchLast = scratchPos(cv, e);
+    try { cv.setPointerCapture(e.pointerId); } catch (x) {}
+    scratchLine(cv, null, scratchLast);
+    if (e.cancelable) e.preventDefault();
+  });
+  cv.addEventListener('pointermove', function (e) {
+    if (!scratchPainting) return;
+    var p = scratchPos(cv, e); scratchLine(cv, scratchLast, p); scratchLast = p;
+    if (e.cancelable) e.preventDefault();
+  });
+  var end = function (e) { scratchPainting = false; scratchLast = null; if (e && e.cancelable) e.preventDefault(); };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+  cv.addEventListener('pointerleave', function (e) { if (scratchPainting && e.pointerType !== 'touch') { scratchPainting = false; scratchLast = null; } });
+}
+function openScratch() {
+  var Q = qlist[qidx]; if (!Q) return;
+  scratchKey = scratchKeyOf(Q);
+  var el = scratchPad(); el.style.display = 'block'; scratchOpen = true;
+  var cv = scratchCanvas, dpr = window.devicePixelRatio || 1;
+  requestAnimationFrame(function () {
+    var w = cv.clientWidth || (el.clientWidth - 24) || 320, hh = 220;
+    cv.width = Math.round(w * dpr); cv.height = Math.round(hh * dpr);
+    cv.style.width = w + 'px'; cv.style.height = hh + 'px';
+    var c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, hh);
+    var data = scratchMap.get(scratchKey);
+    if (data) { var img = new Image(); img.onload = function () { try { c.drawImage(img, 0, 0, w, hh); } catch (e) {} }; img.src = data; }
+  });
+}
+function closeScratch() {
+  if (!scratchOpen) return;
+  if (scratchCanvas && scratchKey) { try { scratchMap.set(scratchKey, scratchCanvas.toDataURL('image/png')); } catch (e) {} }
+  var el = document.getElementById('scratchPad'); if (el) el.style.display = 'none';
+  scratchOpen = false; scratchPainting = false; scratchLast = null;
+}
+function clearScratch() {
+  if (!scratchCanvas) return;
+  var c = scratchCanvas.getContext('2d');
+  c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height); c.restore();
+  if (scratchKey) scratchMap.delete(scratchKey);
+}
+/* Esc 关闭草稿板（不影响 1-4 / Enter 答题） */
+document.addEventListener('keydown', function (e) { if (scratchOpen && e && e.key === 'Escape') { closeScratch(); } });
 /* ---------- 答题页 ---------- */
 function showQuestion(){
   if(quizOver)return;
+  closeScratch();   /* 批次 B：切题前先收起并保存上一题草稿 */
   showView('stage');clearNode(stageEl);locked=false;
   if(qidx>=total&&!autoMode){endQuiz();return;}
   var Q;
@@ -1833,22 +1971,40 @@ function showQuestion(){
     if(typeKey==='b:code'&&qaSection==='code'&&handMode&&Q&&!Q.hand){Q=genHandTask(Math.max(0,curDiff));qlist[qidx]=Q;}
   }
   if(!Q){endQuiz();return;}
+  var bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
   var card=h('div','qcard quizfill');
   // 进度条：自动匹配是无限模式，进度条固定满格（不打表，只做氛围）
   var pb=h('div','pbar'+(autoMode?' inf':''));var pbi=h('i');pbi.style.width=(autoMode?'100%':(Math.round((qidx+1)/Math.max(1,total)*100)+'%'));pb.appendChild(pbi);card.appendChild(pb);
   var hud=h('div','hud');
   var sec=ht('span','chip sec',sectionName(qaSection));
   sec.title='点击切换板块';
-  if(typeKey&&typeKey.indexOf('b:')===0&&typeKey!=='b:online'&&typeKey!=='b:weak'){sec.onclick=function(){switchSection();};}
+  if(typeKey&&typeKey.indexOf('b:')===0&&typeKey!=='b:online'&&typeKey!=='b:weak'&&typeKey!=='b:srs'&&typeKey!=='b:round'){sec.onclick=function(){switchSection();};}
   hud.appendChild(sec);
   var _tik='';if(typeKey.indexOf('b:')===0&&QA_TYPES[typeKey.slice(2)])_tik=QA_TYPES[typeKey.slice(2)].icon+' ';
   var _badge='';
   if(typeKey==='b:code'){var _cp=getCodeProfile();if(_cp&&_cp.done&&_cp.langs&&_cp.langs.length){_badge=' · '+langName(_cp.langs[0])+(_cp.langs.length>1?(' 等'+_cp.langs.length+'种'):'');}}
-  hud.appendChild(ht('div','hl',_tik+typeLabel+_badge+(autoMode&&curDiffLabel?(' · 实力：'+curDiffLabel):(curDiffLabel?(' · '+curDiffLabel):''))));
+  /* C4：标准池是扁平题库（换档不改题目难度），自动模式报「实力：困难」是假的 → 只在真按档生成时才有实力 */
+  var _lvTxt='';
+  if(autoMode)_lvTxt=diffMatters(bk)?(' · 实力：'+(curDiffLabel||'')):' · 🎲 混合难度';
+  else if(curDiffLabel)_lvTxt=' · '+curDiffLabel;
+  hud.appendChild(ht('div','hl',_tik+typeLabel+_badge+_lvTxt));
   hud.appendChild(ht('div','hr',autoMode?('第 '+(qidx+1)+' 题 · 无限模式'):('第 '+(qidx+1)+'/'+total)));
   /* 无限模式没有「满分」，头顶只留实力与题数，得分放结算页，避免四个 chip 挤成省略号 */
   if(!autoMode)hud.appendChild(ht('span','chip','✅ '+ok));
   card.appendChild(hud);
+  /* C4：toast 会消失，玩家会以为「40 题的局丢题了」→ 整局常驻一行说明 */
+  if(roundShortMsg&&!autoMode&&isFinite(total)){
+    var _rsh=ht('div','hint',roundShortMsg);
+    _rsh.style.color='#a8690a';_rsh.style.margin='2px 0 0';
+    card.appendChild(_rsh);
+  }
+  /* 批次 B：需要草稿板的题（数学全部 / 科学计算题 / Q.scratch）在题干上方给一个入口 chip */
+  if(needScratch(Q,bk)){
+    var _sbar=h('div','scratchbar');
+    var _sbtn=ht('button','chip scratchchip','📝 草稿');
+    _sbtn.onclick=function(){openScratch();};
+    _sbar.appendChild(_sbtn);card.appendChild(_sbar);
+  }
   if(typeKey==='b:code'&&qaSection==='code'){
     var swr=h('div','swrow');
     var tg=h('button','toggle'+(handMode?' on':''),handMode?'✍️ 手写代码：开':'✍️ 手写代码：关');
@@ -2038,12 +2194,14 @@ function appendNextChip(fb){
 /* 「🔄 重试」：把同一题重新渲染出来再答一次。分数只认「首次 + 一次重试奖励」，杜绝反复刷分。
    showQuestion 会重建选项/输入框，而 lockOpts 只在作答后锁 —— 重渲染天然解锁，不用额外处理。 */
 function retryQuestion(){
+  var _Q=qlist[qidx];if(!canRewrite(_Q))return;   /* 选项/填空永远不能重写，避免误触把非手写题重渲染 */
   cancelPending();            /* 清掉任何残留的自动跳转计时 */
   locked=false;               /* 解锁，允许再次作答 */
   showQuestion();             /* qidx 不动；Q 还是同一对象，settled 标记保留 */
 }
-function appendRetryChip(fb){
-  var b=ht('button','chip fbretry','🔄 重试');
+function canRewrite(Q){return !!(Q&&Q.hand===true);}
+function appendRewriteChip(fb){
+  var b=ht('button','chip fbretry','✍️ 重写代码');
   b.onclick=function(){retryQuestion();};
   fb.appendChild(b);
 }
@@ -2081,6 +2239,7 @@ function goNext(){cancelPending();qidx++;showQuestion();}
 /* ---------- 页面层级：浏览器返回只回退一层（书架是根，根上再返回才退出网页） ---------- */
 var navStack=['shelf'];
 var NAV_BUSY=false,NAV_DRAIN=0;
+var NAV_SEQ=0;   /* C6：给每个 pushState 帧盖序号，关浮层时只弹自己那一帧 */
 function navTop(){return navStack[navStack.length-1]||'shelf';}
 /* 回书架：只把栈归零。⚠ 这里绝不能动 history —— 一旦当前站在历史首页，
    history.back() 会把整个页面顶出去（踩过：退出薄弱题回顾直接跳回 about:blank）。 */
@@ -2089,13 +2248,14 @@ function navReset(){navStack=['shelf'];NAV_DRAIN=0;}
 function navPush(k){
   if(navTop()===k)return;
   navStack.push(k);NAV_DRAIN=0;
-  try{history.pushState({qnav:1},'');}catch(e){}
+  try{history.pushState({qnav:1,seq:++NAV_SEQ},'');}catch(e){}
 }
 function navDrop(k){
   for(var i=navStack.length-1;i>=0;i--){if(navStack[i]===k){navStack.splice(i,1);return;}}
 }
 /* 应用内回退一层：按栈顶决定退回哪个界面 */
 function backOneLayer(){
+  closeScratch();   /* 批次 B：返回书架前保存并收起草稿 */
   var top=navTop();
   if(top==='quiz'){
     navStack.pop();
@@ -2144,6 +2304,7 @@ function syncHudLevel(){
   el.textContent=/实力：/.test(t)?t.replace(/实力：[^·]*$/,'实力：'+curDiffLabel):t;
 }
 function markUnknown(){
+  closeScratch();   /* 批次 B：作答时收起，避免遮挡反馈 */
   if(locked)return;locked=true;
   var Q=qlist[qidx];
   /* 首次作答才结算（记薄弱题 / 记自适应窗口）；重试后再按「不会」不再重复记 */
@@ -2155,6 +2316,8 @@ function markUnknown(){
       addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:'（不会）',src:Q.src,time:Date.now()});
       recorded=true;
     }
+    /* C2：SRS 复习里点「不会」—— 该题间隔重置，due 改为明天，不再连续出现 */
+    if(typeKey==='b:srs'&&Q&&Q.weak){srsAdvance(Q.weak,false);Q.weak.t=Date.now();srsTouch(Q.weak);}
     /* P2-A1：本局错题（回顾局不记，回顾本身就是错题本） */
     if(Q&&!reviewMode&&Q.q){
       roundWrong.push({q:Q.q,a:Q.a,given:'（未作答）',opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,src:Q.src});
@@ -2170,7 +2333,9 @@ function markUnknown(){
   }
   lockOpts();
   var fb=h('div','fb unk');
-  fb.appendChild(ht('div','fbm','😵 已跳过本题'+(recorded?'，已记入薄弱题':'')));
+  var _unkMsg='😵 已跳过本题'+(recorded?'，已记入薄弱题':'');
+  if(typeKey==='b:srs')_unkMsg='😵 已跳过本题 · 明天再复习一次';
+  fb.appendChild(ht('div','fbm',_unkMsg));
   if(Q&&Q.a!=null&&String(Q.a)!=='')fb.appendChild(ht('div','fba','正确答案：'+Q.a));
   appendSol(fb,Q);      // 手写题：✅ 参考代码
   appendSteps(fb,Q);    // 手写题：🧭 答题思路
@@ -2178,13 +2343,17 @@ function markUnknown(){
   appendSrc(fb,Q);      // 来源（C1）
   /* 重试对所有题型开放：看过参考代码后自己再写一遍，正是「学习时刻」的意义。
      手写题此时并未提交过，重试不会多烧 AI 调用。 */
-  appendRetryChip(fb);
+  if(canRewrite(Q))appendRewriteChip(fb);
   appendNextChip(fb);
   appendFb(fb);
   /* 不再 advance()：错题是学习时刻，去留由用户点「重试」还是「下一题」决定 */
 }
 
+/* C1：答对自动跳题（快速模式）默认关；开启才 800ms 自动跳，否则停住给「下一题」 */
+function quickJump(){try{return JSON.parse(S.getItem('bt_qa_quickjump')||'false')===true;}catch(e){return false;}}
+function maybeAdvance(correct,ms){if(correct&&quickJump())advance(ms||800);else cancelPending();}
 function answer(correct,given,ans,btn,opt){
+  closeScratch();   /* 批次 B：作答时收起，避免遮挡反馈 */
   if(locked)return;locked=true;
   opt=opt||{};
   var _bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
@@ -2199,12 +2368,15 @@ function answer(correct,given,ans,btn,opt){
     /* B 批：SRS 复习局 —— 走间隔升档/重置，不复用 b:weak「答对即移除」语义 */
     if(typeKey==='b:srs'){
       if(correct){
+        ok++;   /* C2：SRS 答对也要计入 ok，否则结算 0/N */
         var _rec=Q&&Q.weak;
         if(_rec){
           var _mastered=srsAdvance(_rec,true);
           if(_mastered){removeWeak(_rec);fbR.textContent='✅ 答对了！连续 30 天档答对，已掌握并移出复习队列';}
           else{_rec.t=Date.now();srsTouch(_rec);var _iv=SRS_INTERVALS[_rec.srs.lv];fbR.textContent='✅ 答对了！下次复习：'+_iv+' 天后';}
-        }else{ok++;fbR.textContent='✅ 答对了！';}
+        }else{fbR.textContent='✅ 答对了！';}
+        /* C1：答对也讲清楚 —— 解析/来源 + 下一题（默认不自动跳） */
+        appendExp(fbR,Q);appendSrc(fbR,Q);appendNextChip(fbR);
       }else{
         var _rec2=Q&&Q.weak;
         if(_rec2){srsAdvance(_rec2,false);_rec2.t=Date.now();srsTouch(_rec2);}
@@ -2212,13 +2384,26 @@ function answer(correct,given,ans,btn,opt){
         appendSol(fbR,Q);appendSteps(fbR,Q);appendExp(fbR,Q);appendSrc(fbR,Q);appendNextChip(fbR);
       }
       appendFb(fbR);
-      if(correct)advance(800);else cancelPending();
+      maybeAdvance(correct);   /* C1：默认不自动跳，看设置 */
       return;
     }
     if(correct){
-      if(Q&&Q.weak)removeWeak(Q.weak);
-      if(_roundR)dropRoundWrong(Q&&Q.q);
-      ok++;fbR.textContent=_roundR?'✅ 答对了！已从本轮错题移除':'✅ 答对了！已从薄弱题移除';
+      ok++;
+      if(_roundR){
+        /* 本局错题回顾：答对即从本轮错题移除（不是薄弱题本，不参与 SRS） */
+        dropRoundWrong(Q&&Q.q);
+        fbR.textContent='✅ 答对了！已从本轮错题移除';
+      }else{
+        /* C2：掌握标准统一 —— 薄弱题本答对推进 SRS 间隔，30 天档答对才算掌握（不再一次移除） */
+        var _recW=Q&&Q.weak;
+        if(_recW){
+          var _masteredW=srsAdvance(_recW,true);
+          if(_masteredW){removeWeak(_recW);fbR.textContent='✅ 答对了！连续 30 天档答对，已掌握并移出薄弱题本';}
+          else{_recW.t=Date.now();srsTouch(_recW);fbR.textContent='✅ 答对了！下次复习：'+SRS_INTERVALS[_recW.srs.lv]+' 天后（30 天档答对才算掌握）';}
+        }else{fbR.textContent='✅ 答对了！';}
+      }
+      /* C1：答对也讲清楚 —— 解析/来源 + 下一题（默认不自动跳） */
+      appendExp(fbR,Q);appendSrc(fbR,Q);appendNextChip(fbR);
     }
     else{
       if(_roundR){
@@ -2231,10 +2416,10 @@ function answer(correct,given,ans,btn,opt){
           code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:given||null,src:Q.src});
         fbR.textContent='❌ 正确答案：'+ans+'（保留在薄弱题，错误次数 +1）';
       }
-      appendSol(fbR,Q);appendSteps(fbR,Q);appendExp(fbR,Q);appendSrc(fbR,Q);appendRetryChip(fbR);appendNextChip(fbR);
+      appendSol(fbR,Q);appendSteps(fbR,Q);appendExp(fbR,Q);appendSrc(fbR,Q);if(canRewrite(Q))appendRewriteChip(fbR);appendNextChip(fbR);
     }
     appendFb(fbR);
-    if(correct)advance(800);else cancelPending();
+    maybeAdvance(correct);   /* C1：默认不自动跳，看设置 */
     return;
   }
   var _pen=(curDiff>=2&&_bk&&QA_TYPES[_bk]&&QA_TYPES[_bk].pen)?5:0;
@@ -2276,22 +2461,23 @@ function answer(correct,given,ans,btn,opt){
   var fb=h('div','fb '+(correct?'ok':'no'));
   if(opt.note){
     var noteTxt=(correct?'✅ 判为正确 '+(first?'＋10':'＋5'):('❌ 判为不正确'+((first&&_pen)?'　（−5 分）':'')))+'　'+opt.note;
-    if(correct)fb.textContent=noteTxt;
-    else{
-      fb.appendChild(ht('div','fbm',noteTxt));
-      /* 手写题由 AI 评判（耗时、每次都要钱），不给「重试」；但必须给解析与正确写法 ——
-         只说「判为不正确」等于什么都没教，参考代码 + 思路才是学习时刻。 */
-      appendSol(fb,Q);appendSteps(fb,Q);appendExp(fb,Q);appendSrc(fb,Q);appendNextChip(fb);
-    }
+      if(correct){fb.textContent=noteTxt;appendExp(fb,Q);appendSrc(fb,Q);appendNextChip(fb);}
+      else{
+        fb.appendChild(ht('div','fbm',noteTxt));
+        /* 手写题由 AI 评判（耗时、每次都要钱），不给「重试」；但必须给解析与正确写法 ——
+           只说「判为不正确」等于什么都没教，参考代码 + 思路才是学习时刻。 */
+        appendSol(fb,Q);appendSteps(fb,Q);appendExp(fb,Q);appendSrc(fb,Q);if(canRewrite(Q))appendRewriteChip(fb);appendNextChip(fb);
+      }
   }else{
     fb.textContent=correct?(first?'✅ 答对了！＋10':'✅ 重试答对了！＋5')
       :('❌ 正确答案：'+ans+((first&&_pen)?'　（−5 分）':''));
-    if(!correct){appendSol(fb,Q);appendSteps(fb,Q);appendExp(fb,Q);appendSrc(fb,Q);if(Q&&!Q.hand)appendRetryChip(fb);appendNextChip(fb);}
+    if(!correct){appendSol(fb,Q);appendSteps(fb,Q);appendExp(fb,Q);appendSrc(fb,Q);if(canRewrite(Q))appendRewriteChip(fb);appendNextChip(fb);}
+    else{appendExp(fb,Q);appendSrc(fb,Q);appendNextChip(fb);}
   }
   appendFb(fb);
   if(first)bumpStat(typeKey,correct);
   /* 答对保持自动跳（800ms），不打断节奏；答错 / 不会一律停住，等用户决定重试还是下一题 */
-  if(correct)advance(opt.wait||800);else cancelPending();
+  maybeAdvance(correct,opt.wait||800);   /* C1：默认不自动跳，看设置 */
 }
 
 function endQuiz(){
@@ -2323,6 +2509,7 @@ function retryRoundWrong(){
   ok=0;qidx=0;score=0;total=qlist.length;showQuestion();
 }
 function finish(sc){
+  closeScratch();   /* 批次 B：结算前保存并收起草稿 */
   navPush('finish');
   showView('stage');clearNode(stageEl);
   var acc=total?(Math.min(100,Math.round(ok/total*100))):0;
@@ -2331,15 +2518,27 @@ function finish(sc){
   card.appendChild(emo);
   card.appendChild(ht('div','hint',acc>=80?'太棒了，这轮很稳！':(acc>=60?'不错，继续保持～':'别急，错题会进薄弱题，多刷两轮就起来了')));
   /* 回顾模式不计分：大数字显示「已掌握几题」，别把 0 分摆在一个「太棒了」旁边 */
-  var _isRev=(typeKey==='b:weak'||typeKey==='b:round');
+  var _isRev=(typeKey==='b:weak'||typeKey==='b:round'||typeKey==='b:srs');
   var scoreBig=ht('div',null,_isRev?String(ok):String(sc));scoreBig.style.cssText='font-size:52px;font-weight:900;color:var(--purple-d);line-height:1.15;margin:6px 0 2px';
   card.appendChild(scoreBig);
-  if(_isRev)card.appendChild(ht('div','hint',(typeKey==='b:round'?'本轮掌握 ':'已掌握 ')+ok+' 题 · 答对的已从'+(typeKey==='b:round'?'本轮错题':'薄弱题')+'移除'));
+  if(_isRev){
+    var _revMsg;
+    if(typeKey==='b:srs'){
+      var _nd=srsNextDueDays();
+      _revMsg='已复习 '+ok+' 题 · 下次到期：'+(_nd==null?'暂无':(_nd<=0?'今天':_nd+' 天后'))+' · 答对会推进复习间隔，30 天档答对才算掌握';
+    }else if(typeKey==='b:round'){
+      _revMsg='本轮掌握 '+ok+' 题 · 答对的已从本轮错题移除';
+    }else{
+      _revMsg='本次回顾答对 '+ok+' 题 · 答对会推进复习间隔，30 天档答对才算掌握';
+    }
+    card.appendChild(ht('div','hint',_revMsg));
+  }
   var accLine=ht('div','hint','正确率 '+acc+'%　（'+ok+' / '+total+'）');accLine.style.color='var(--sub)';accLine.style.fontWeight='700';
   card.appendChild(accLine);
   if(lastAuto){
     var lc=h('div','lvlcard');
-    lc.appendChild(ht('div','lvlt','🎯 当前实力：'+(lastAuto.lab||levelName(lastAuto.rank))));
+    var _bkF=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
+    lc.appendChild(ht('div','lvlt',diffMatters(_bkF)?('🎯 当前实力：'+(lastAuto.lab||levelName(lastAuto.rank))):'🎲 本轮混合难度（该分类题库不按难度分档）'));
     lc.appendChild(ht('div','lvls','做了 '+lastAuto.n+' 题 · 正确 '+ok+' 题 · 最近 '+lastAuto.win+' 题正确率 '+Math.round(lastAuto.acc*100)+'%'));
     var _A=lastAuto.acc;
     lc.appendChild(ht('div','lvld',_A>=0.85?'状态在线，往上一档再试试。':(_A>=0.65?'基本稳住，这个档位可以继续刷。':(_A>=0.45?'还在爬坡，错题点「😵 不会」沉淀后回顾。':'这档偏难，先回低一档把基础打牢。'))));
@@ -2373,11 +2572,13 @@ function finish(sc){
   }
   var row=h('div','row');row.style.marginTop='16px';
   var again=h('button','btn gold',reviewOne?'📚 返回薄弱题本':
-    (typeKey==='b:round'?(roundWrong.length?('🔁 再练这 '+roundWrong.length+' 题'):'📚 返回书架'):'🔄 再来一局'));
+    (typeKey==='b:round'?(roundWrong.length?('🔁 再练这 '+roundWrong.length+' 题'):'📚 返回书架'):
+    (typeKey==='b:srs'?'🔁 再复习一轮':'🔄 再来一局')));
   again.onclick=function(){
     if(reviewOne){reviewOne=false;openWeakBook();return;}
     if(typeKey==='b:round'){if(roundWrong.length){retryRoundWrong();}else{renderShelf();}return;}
     if(typeKey==='b:weak'){startReview();return;}
+    if(typeKey==='b:srs'){startSrs();return;}
     if(typeKey==='b:online'){startOnline();return;}
     if(lastRun){doStartType(lastRun.bk,lastRun.cn,lastRun.d);return;}
     renderShelf();
@@ -2564,6 +2765,13 @@ function maybeShowCard(bk,start){
   ov.p.appendChild(skip);
 }
 /* SRS 复习局入口（书架空格「⏰ 待复习」） */
+/* C2：结算页「下次到期」—— 薄弱题本里最近一条 srs due 折成天 */
+function srsNextDueDays(){
+  var a=loadWeak(),best=null;
+  for(var i=0;i<a.length;i++){var s=a[i]&&a[i].srs;if(!s||typeof s.due!=='number')continue;var d=s.due-Date.now();if(best==null||d<best)best=d;}
+  if(best==null)return null;
+  return Math.max(0,Math.ceil(best/86400000));
+}
 function startSrs(){
   var a=loadWeak().filter(srsDue);
   if(!a.length){toast('⏰ 今天没有到期复习题：错题会按 1/2/4/7/15/30 天间隔安排复习');return;}
@@ -2640,7 +2848,7 @@ function openEditor(preset){
   var ainp=h('input');ainp.placeholder='答案';
   var addQ=h('button','btn','＋ 添加题目');var ar=h('div','row');ar.appendChild(qinp);ar.appendChild(ainp);ar.appendChild(addQ);card.appendChild(ar);
   addQ.onclick=function(){var q=qinp.value.trim(),a=ainp.value.trim();if(!q||!a){em.textContent='⚠️ 问题和答案都要填';return;}em.textContent='';pairs.push({q:q,a:a});qinp.value='';ainp.value='';renderList();};
-  var saveB=h('button','btn gold','💾 保存并开始');saveB.onclick=function(){var name=nm.value.trim();if(!name){em.textContent='⚠️ 请输入题库名称';return;}if(!pairs.length){em.textContent='⚠️ 至少录入一题';return;}custom[name]=pairs;saveCustom(custom);renderShelf();startType(null,name);};
+  var saveB=h('button','btn gold','💾 保存并开始');saveB.onclick=function(){var name=nm.value.trim();if(!name){em.textContent='⚠️ 请输入题库名称';return;}if(!pairs.length){em.textContent='⚠️ 至少录入一题';return;}if(custom[name]&&!confirm('已存在同名题库「'+name+'」，覆盖它？')){em.textContent='⚠️ 已有同名题库「'+name+'」，未覆盖';return;}custom[name]=pairs;saveCustom(custom);renderShelf();startType(null,name);};
   card.appendChild(saveB);
   var backB=h('button','btn ghost','← 返回');backB.onclick=function(){renderShelf();};card.appendChild(backB);
   stageEl.appendChild(card);
@@ -3799,36 +4007,56 @@ function pickAlts(ans,cands){
 }
 
 /* 程序编写板块组题：按已掌握语言过滤，档位不够时相邻档补齐，绝不空题 */
-QA_TYPES.code.genSection=function(n,diff){
+QA_TYPES.code.genSection=function(n,diff,sec){
   n=Math.max(1,n|0);
   var dd=(typeof diff==='number'&&diff>=0&&diff<5)?diff:0;
+  /* 板块由调用方传进来（vm 直跑引擎时没有 qaSection 这个全局） */
+  var _sec=(typeof sec==='string')?sec:'';
+  if(!_sec&&typeof qaSection==='string')_sec=qaSection;
   var allowed=codeAllowedLangs();
-  function poolFor(d){
-    var arr=CODE_TOPICS.filter(function(t){
-      return t.ranks.indexOf(d)>=0 && (!allowed||allowed.indexOf(t.lang)>=0);
-    });
-    return arr;
+  /* useLang=true 按已掌握语言过滤；false 忽略语言（选择题补池用） */
+  function poolWith(useLang){
+    function poolFor(d){
+      return CODE_TOPICS.filter(function(t){
+        return t.ranks.indexOf(d)>=0 && (!useLang||!allowed||allowed.indexOf(t.lang)>=0);
+      });
+    }
+    var p=poolFor(dd);
+    if(p.length<2){
+      var alt=[dd-1,dd+1,dd-2,dd+2];
+      for(var i=0;i<alt.length;i++){
+        if(alt[i]<0||alt[i]>4)continue;
+        p=p.concat(poolFor(alt[i]));
+        if(p.length>=4)break;
+      }
+    }
+    return p;
   }
-  var pool=poolFor(dd);
-  if(pool.length<2){
-    var alt=[dd-1,dd+1,dd-2,dd+2];
-    for(var i=0;i<alt.length;i++){
-      if(alt[i]<0||alt[i]>4)continue;
-      pool=pool.concat(poolFor(alt[i]));
-      if(pool.length>=4)break;
+  var out=[],seen={};
+  function qk(q){return q.q+'\u0001'+(q.code||'');}
+  /* C3：选择题板块只收自带选项的题 —— mkCodeFill 生成的是填空题（opts=null），
+     放进「选择题」会退化成输入框，与板块承诺不符 */
+  function pickable(q){
+    if(!q||!q.q||q.a==null)return false;
+    if(_sec==='choice'&&!(q.opts&&q.opts.length>=2))return false;
+    return true;
+  }
+  function fill(pool,cap){
+    var guard=0;
+    while(out.length<n&&pool.length&&guard++<cap){
+      var t=pool[riN(0,pool.length-1)],q=null;
+      try{q=t.gen();}catch(e){continue;}
+      if(!pickable(q)||seen[qk(q)])continue;
+      q.tag=q.tag||t.lang||t.k;
+      seen[qk(q)]=1;out.push(q);
     }
   }
-  var out=[],seen={},guard=0;
-  function qk(q){return q.q+'\u0001'+(q.code||'');}
-  while(out.length<n&&pool.length&&guard++<1500){
-    var t=pool[riN(0,pool.length-1)],q=null;
-    try{q=t.gen();}catch(e){continue;}
-    if(!q||!q.q||q.a==null)continue;
-    if(seen[qk(q)])continue;
-    q.tag=q.tag||t.lang||t.k;
-    seen[qk(q)]=1;out.push(q);
-  }
-  if(out.length<n){
+  fill(poolWith(true),1500);
+  /* 只勾了 Python / Java 的用户在低档可能一题都抽不到：先放宽语言补齐，
+     同档同类的题远好过旧 POOLS.code 拿别的题答案硬凑干扰项（P0） */
+  if(out.length<n&&_sec==='choice'&&allowed)fill(poolWith(false),1500);
+  /* 旧随机池兜底只留给非选择题板块：POOLS.code 的硬凑干扰项不再进选择题 */
+  if(out.length<n&&_sec!=='choice'){
     var more=QA_TYPES.code.gen(n-out.length,dd);
     more.forEach(function(q){
       if(out.length>=n||!q||seen[qk(q)])return;
@@ -4086,6 +4314,11 @@ function pickDistractors(ansTitle,titles,n){
   return shuffle(pool).slice(0,n);
 }
 function finishFree(name,items,sp,card){
+  if(isAcademic(name)){
+    sp.textContent='⚠️ 「'+name+'」是学科类主题，免费搜索只能生成「百科词条/书名」类检索题，不是考试题。请到 ⚙️ 设置 配置 AI（命题老师模式）生成试卷题，或用「📝 手动录入」。';
+    var _back=h('button','btn ghost','← 返回书架');_back.onclick=function(){renderShelf();};card.appendChild(_back);
+    return;
+  }
   var usable=items.filter(function(x){return descOK(x.desc);});
   if(usable.length<4){sp.textContent='⚠️ 资料不足（有效条目 '+usable.length+' 条），无法生成选择题，请手动录入或配置 AI。';var back=h('button','btn ghost','← 返回');back.onclick=function(){renderShelf();};card.appendChild(back);return;}
   var qs=[],titles=usable.map(function(x){return x.title;});
@@ -4097,11 +4330,11 @@ function finishFree(name,items,sp,card){
     if(d.indexOf(ans.title)>=0){
       var stem=d.replace(ans.title,'____');
       if(stem.length>64)stem=stem.slice(0,64)+'…';
-      qs.push({q:'补全词条：'+stem,a:ans.title,opts:opts});
+      qs.push({q:'补全词条：'+stem,a:ans.title,opts:opts,exp:'（百科速记，非考试题）',src:'百度百科摘要'});
     }else if(d.length<=90&&!/^(该|其|它|这|他|她|此)/.test(d)){
       // 摘要是一句完整介绍就用「描述的是哪项」；开头是「该/其/它」的指代句信息不全，跳过
       var cut=d.length>60?d.slice(0,60)+'…':d;
-      qs.push({q:'「'+cut+'」描述的是下列哪项？',a:ans.title,opts:opts});
+      qs.push({q:'「'+cut+'」描述的是下列哪项？',a:ans.title,opts:opts,exp:'（百科速记，非考试题）',src:'百度百科摘要'});
     }
   });
   qs=shuffle(qs).slice(0,20);
@@ -4109,20 +4342,41 @@ function finishFree(name,items,sp,card){
   sp.textContent='已抓取 '+items.length+' 条素材，生成 '+qs.length+' 题'+(qs.length<8?'（该主题免费资料有限，建议配置 AI 生成更高质量的题）':'');
   previewQuestions(name,qs,card);
 }
+/* ---------- 4.0 自定义题库生成质量：examLike 硬过滤 + 学术主题判定 ---------- */
+var ACADEMIC_RE=/化学|物理|数学|生物|历史|地理|英语|语文|政治|中考|高考|九年级|人教版|初中|高中/;
+function isAcademic(name){return ACADEMIC_RE.test(String(name||''));}
+var META_Q_RE=/描述的是下列哪项|出版社出版的图书|出版社|补全词条|普通高等学校本科专业|以下哪项.{0,6}(图书|专业|词条)|作者是|第[一二三四五六七八九十]+版|九年级[上下]册/;
+var META_OPT_RE=/出版社|第[一二三四五六七八九十]+版|九年级[上下]册|本科专业$/;
+function examLike(q){
+  if(!q||!q.q||!q.a)return false;
+  if(META_Q_RE.test(String(q.q)))return false;
+  if(/^补全词条/.test(String(q.q)))return false;
+  if((q.opts||[]).some(function(o){return META_OPT_RE.test(String(o));}))return false;
+  if(!q.exp&&!q.src)return false;   // 解析/来源至少其一（指令要求两者，放宽为 OR 以兼容免费 AI 输出）
+  return validItem(q);
+}
 /* ---------- AI 出题 prompt（aiBuild 与「边刷边补」共用同一套要求） ---------- */
 function makeQuizPrompt(name,count,items){
   var material='';
-  if(items&&items.length){material='参考素材：\n'+items.slice(0,12).map(function(x){return '· '+x.title+'：'+(x.desc||'').slice(0,90);}).join('\n')+'\n';}
-  return '你是中文题库生成助手。请围绕主题「'+name+'」生成 '+count+' 道中文选择题（不少于 '+Math.max(8,count-3)+' 道）。\n'+
-    material+
-    '要求：\n'+
-    '0. 题干、4 个选项、答案必须全部使用简体中文；禁止英文题干与英文选项。仅允许代码、函数名、专有名词（如 Python、JSON、ASCII）保留英文；若主题本身是英文词（如 "Python"），题干必须用中文提问（如 "Python 中，哪个关键字用于定义函数？"）。\n'+
-    '1. 多义词消歧：若主题是多义词（如「三角洲」），默认指其中最知名的实体（如游戏《三角洲行动》），全部题目只围绕该实体，不要混入其它义项。\n'+
-    '2. 若主题是游戏 / 影视 / 动漫等作品，题目要考察「对该作品的理解与熟悉」：角色或干员及其技能与定位、地图与关卡、模式与玩法机制、武器与装备、背景设定与开发信息；不要出与作品无关的百科通识题。\n'+
-    '3. 每题恰好 4 个选项，必须同类别（都是干员名、都是地图名、都是武器名……），彼此相近、有迷惑性，正确项唯一；严禁混入不同类别的选项。\n'+
-    '4. 答案必须事实正确，拿不准的题宁可不出一律不要编造；同一个考点不要重复出两次。\n'+
-    '5. 禁止任何政治敏感、色情、暴力、违法内容。\n'+
-    '严格只返回 JSON 数组，不要解释文字、不要 Markdown 代码块，格式：[{"q":"问题","a":"正确答案","opts":["选项1","选项2","选项3","选项4"]}, ...]';
+  if(items&&items.length){material='参考素材（仅作知识点提示，不要照抄成题干）：\n'+items.slice(0,12).map(function(x){return '· '+x.title+'：'+(x.desc||'').slice(0,90);}).join('\n')+'\n';}
+  var chemHint='';
+  if(/化学/.test(String(name))){
+    chemHint='本题库按「人教版九年级化学」单元组织，请围绕这些单元出题（不要出泛化的「化学」大词题）：\n'+
+      '①走进化学世界 ②我们身边的空气 ③物质构成的奥秘 ④自然界的水 ⑤化学方程式 ⑥碳和碳的氧化物 ⑦燃料及其利用 ⑧金属和金属材料 ⑨溶液 ⑩酸和碱 ⑪盐和化肥 ⑫化学与生活。\n'+
+      '每单元至少覆盖：概念辨析、实验操作、化学方程式、计算、图像/表格分析。\n';
+  }
+  var typeHint='题型（比例自定，但禁止全是「下列说法正确的是」）：单选 / 填空 / 实验探究 / 计算。\n';
+  var ban='严禁出的题（一旦发现作废）：\n'+
+    '· 含书名、出版社、版次（如「第3版」）、专业名（如「普通高等学校本科专业」）、词条名、作者、年份+出版物的元信息题；\n'+
+    '· 「XX 描述的是下列哪项」「补全词条：____」这类百科检索/词条题；\n'+
+    '· 编造的具体年份、地区、考试名（无法确认就写「中考真题改编」）。\n';
+  var fmt='每题返回对象：{"q":"题干","a":"正确答案","opts":["选项1","选项2","选项3","选项4"],"exp":"解析（写步骤/方程式/易错点，计算题写算式）","src":"来源（如：人教版九年级化学第X单元 / 中考真题改编）"}。\n'+
+    '严格只返回 JSON 数组，不要解释文字、不要 Markdown 代码块。';
+  return '你是一位严谨的中学命题老师，不是百科助手。请围绕主题「'+name+'」生成 '+count+' 道中文题（不少于 '+Math.max(8,count-3)+' 道）。\n'+
+    chemHint+typeHint+material+ban+
+    '要求：\n0. 题干、选项、答案全部简体中文；仅代码/函数名/专有名词（如 Python、JSON）可保留英文；主题本身是英文词（如 Python）时题干必须用中文问。\n'+
+    '1. 答案事实正确，拿不准宁可不出，绝不编造；同一考点不重复。\n'+
+    '2. 禁止政治敏感、色情、暴力、违法内容。\n'+fmt;
 }
 function aiBuild(name){
   var cfg=loadAICfg();
@@ -4136,7 +4390,10 @@ function aiBuild(name){
     var prompt=makeQuizPrompt(name,isFreeAI(cfg.url)?15:30,items);
     callAI(cfg,prompt,function(res){
       if(!res||!res.length){sp.textContent='⚠️ AI 未返回有效题目（可能是网络/Key/跨域问题）。可改用「🆓 免费搜索」或手动录入。';var back=h('button','btn ghost','← 返回');back.onclick=function(){renderShelf();};card.appendChild(back);return;}
-      sp.textContent='AI 已生成 '+res.length+' 题';previewQuestions(name,res,card);
+      var _raw=res.length,_ok=res.filter(examLike),_bad=_raw-_ok.length;
+      sp.textContent='AI 已生成 '+_raw+' 题'+(_bad>0?'，已过滤 '+_bad+' 道百科/书目类题（缺解析来源或含书名/专业/词条）':'');
+      if(!_ok.length){sp.textContent+='；均未达到考试题标准，请重试「🔄 换一批」或手动录入。';var back=h('button','btn ghost','← 返回书架');back.onclick=function(){renderShelf();};card.appendChild(back);return;}
+      previewQuestions(name,_ok,card,true);
     });
   });
 }
@@ -4144,7 +4401,11 @@ function aiBuild(name){
 var REFILL_MIN=10;        // 题库总量 ≤ 此值才补（说明已经刷得差不多了）
 var REFILL_TARGET=20;     // 补到多少题左右
 var refillBusy=false;
+/* C6：静默补题默认关闭 —— 只有用户在 ⚙️ 设置里显式打开「✨ 题库不足时自动补题」才会跑，
+   否则补进去的 AI 题用户根本不知道从哪来（以前是结算后 600ms 偷偷写库）。 */
+function autoRefillOn(){try{return JSON.parse(S.getItem('bt_qa_autorefill')||'false')===true;}catch(e){return false;}}
 function autoRefill(cn){
+  if(!autoRefillOn())return;
   if(refillBusy)return;
   var arr=custom[cn]||[];
   if(arr.length>REFILL_MIN)return;
@@ -4200,16 +4461,40 @@ function autoRefillBuiltin(bk,diff){
     if(shelfEl&&!shelfEl.hidden)renderShelf();
   });
 }
-function previewQuestions(name,qs,card){
+function previewQuestions(name,qs,card,aiOk){
   var keep=[];
+  function regenOne(i){
+    if(!aiOk){alert('未配置 AI，无法换题。可手动「✏️ 改」或删除。');return;}
+    var cfg=loadAICfg();if(!cfg||!cfg.url){alert('未配置 AI，无法换题。');return;}
+    qs[i]=null;paint();
+    callAI(cfg,makeQuizPrompt(name,1,[]),function(res){
+      if(res&&res.length){var q=res[0];if(q&&q.q&&q.a){q.exp=q.exp||'';q.src=q.src||'';qs[i]=q;keep[i]=true;}}
+      paint();
+    });
+  }
+  function regenBatch(){
+    if(!aiOk){alert('未配置 AI，无法换批。');return;}
+    var cfg=loadAICfg();if(!cfg||!cfg.url){alert('未配置 AI，无法换批。');return;}
+    callAI(cfg,makeQuizPrompt(name,Math.max(10,qs.length),[]),function(res){
+      if(res&&res.length){qs=res.slice(0,Math.max(10,qs.length));keep=[];paint();}
+    });
+  }
   /* P0-5：从「只能勾选」升级为「单题可改、可删、入库前校验」。
      以前 AI 生成一道坏题，用户只能整批放弃；现在可以挑掉那一题。 */
   function paint(){
     clearNode(card);
-    card.appendChild(ht('div','hud','📝 预览：'+name+'（'+qs.length+' 题）'));
-    card.appendChild(ht('div','hint','勾选＝入库。单题可「✏️ 改」题面/答案，或「🗑」删掉；选项不合规的题会挡在入库外。'));
+    card.appendChild(ht('div','hud','📝 预览：'+name+'（'+qs.filter(Boolean).length+' 题）'));
+    card.appendChild(ht('div','hint','勾选＝入库。单题可「✏️ 改」「🗑 删」；「🔄 换一题」由 AI 重出这一题，「🔄 换一批」重出一批；无解析/来源的题默认不勾选。'));
+    var _tb=h('div','row');_tb.style.cssText='gap:8px;margin:6px 0;flex-wrap:wrap';
+    var _b1=h('button','btn ghost','🔄 换一题');_b1.onclick=function(){var k=qs.findIndex(function(x){return x;});if(k>=0)regenOne(k);};
+    var _b2=h('button','btn ghost','🔄 换一批');_b2.onclick=regenBatch;
+    if(!aiOk){_b1.disabled=true;_b2.disabled=true;_b1.title=_b2.title='未配置 AI';}
+    _tb.appendChild(_b1);_tb.appendChild(_b2);card.appendChild(_tb);
     qs.forEach(function(Q,i){
-      if(keep[i]==null)keep[i]=true;
+      if(Q==null)return;
+      /* C6 修正：默认勾选只看有没有解析/来源 —— 免费搜索建的题 aiOk=false，
+         但固定带「百科速记 + 百度百科摘要」，不该让用户逐题手勾 */
+      if(keep[i]==null)keep[i]=!!(Q.exp||Q.src);
       var row=h('div','list-row');row.style.flexWrap='wrap';
       var chk=h('input');chk.type='checkbox';chk.checked=!!keep[i];chk.style.width='auto';
       chk.onchange=function(){keep[i]=chk.checked;};
@@ -4237,17 +4522,20 @@ function previewQuestions(name,qs,card){
       card.appendChild(row);
     });
     var saveB=h('button','btn gold','💾 入库并开始');saveB.onclick=function(){
-      var final=[],bad=0;
+      var final=[],bad=0,filtered=0;
       qs.forEach(function(Q,i){
-        if(!keep[i])return;
+        if(Q==null||!keep[i])return;
+        if(aiOk&&!examLike(Q)){filtered++;return;}
         if(Q.opts&&Q.opts.length){
           var u={};Q.opts.forEach(function(o){u[String(o)]=1;});
           if(Q.opts.length!==4||Object.keys(u).length!==4||Q.opts.indexOf(String(Q.a))<0){bad++;return;}
         }
         final.push(Q);
       });
+      if(filtered){alert('已过滤 '+filtered+' 道不合规题（缺解析/来源或含书名/专业/词条），未入库。');}
       if(bad){alert('有 '+bad+' 题选项不合规（必须 4 个互不相同、且包含答案），请「✏️ 改」或取消勾选后再入库。');return;}
       if(!final.length){alert('请至少保留一题');return;}
+      if(custom[name]&&!confirm('已存在同名题库「'+name+'」，覆盖它？'))return;
       custom[name]=final;saveCustom(custom);renderShelf();startType(null,name);
     };
     card.appendChild(saveB);
@@ -4472,7 +4760,7 @@ function callAI(cfg,prompt,cb){
           return validItem({a:String(x.a).trim(),opts:os});
         }).map(function(x){
           var os=(x.opts||[]).map(function(o){return String(o==null?'':o).trim();}).filter(function(o){return o!=='';});
-          return {q:x.q,a:String(x.a).trim(),opts:shuffle(os)};
+          return {q:x.q,a:String(x.a).trim(),opts:shuffle(os),exp:String(x.exp||'').trim(),src:String(x.src||'').trim()};
         });cb(out);}
       catch(e){cb(null);}
     }).catch(function(e){if(timer)clearTimeout(timer);cb(null);});
@@ -5116,6 +5404,21 @@ function openSettings(){
   var sec1=ht('div','section-title','实力检测');ov.p.appendChild(sec1);
   var redetect=h('button','btn ghost','🔄 重新编程实力检测');redetect.onclick=function(){try{S.removeItem(CODE_PROFILE_KEY);S.removeItem('bt_qa_rank_code');}catch(e){}closeOverlay(ov);codeQuestionnaire(function(){renderShelf();});};
   ov.p.appendChild(redetect);
+  /* C1：答题设置 —— 答对自动跳题（快速模式），默认关 */
+  ov.p.appendChild(ht('div','section-title','🧠 答题设置'));
+  var _qj=!!JSON.parse(S.getItem('bt_qa_quickjump')||'false');
+  var _qjL=document.createElement('label');_qjL.style.cssText='display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer';
+  var _qjC=document.createElement('input');_qjC.type='checkbox';_qjC.checked=_qj;
+  _qjC.onchange=function(){safeSet('bt_qa_quickjump',_qjC.checked?'true':'false');};
+  _qjL.appendChild(_qjC);_qjL.appendChild(ht('span',null,'⏩ 答对自动跳题（快速模式）'));
+  ov.p.appendChild(_qjL);
+  ov.p.appendChild(ht('div','muted','默认关闭：答对也会显示解析/来源，需要点「下一题」再走；打开后答对 800ms 自动跳。'));
+  var _arL=document.createElement('label');_arL.style.cssText='display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-top:6px';
+  var _arC=document.createElement('input');_arC.type='checkbox';_arC.checked=autoRefillOn();
+  _arC.onchange=function(){safeSet('bt_qa_autorefill',_arC.checked?'true':'false');};
+  _arL.appendChild(_arC);_arL.appendChild(ht('span',null,'✨ 题库不足时自动补题（调用 AI）'));
+  ov.p.appendChild(_arL);
+  ov.p.appendChild(ht('div','muted','默认关闭：打开后，自定义题库不足 10 题时会在结算后调用 AI 补到约 20 题（需先配好 AI）。'));
   // AI 配置
   var sec2=ht('div','section-title','🌐 AI 建题库（OpenAI 兼容）');ov.p.appendChild(sec2);
   var cfg=loadAICfg()||{};
@@ -5212,9 +5515,16 @@ function backupKeys(){
   return ks;
 }
 function buildBackup(){
-  var keys=backupKeys(),values={};
-  keys.forEach(function(k){try{var v=S.getItem(k);if(v!=null)values[k]=v;}catch(e){}});
-  return {exported_at:new Date().toISOString(),app:'ming-quiz',v:1,keys:Object.keys(values),values:values};
+  var keys=backupKeys(),values={},keyStripped=false;
+  keys.forEach(function(k){try{
+    var v=S.getItem(k);if(v==null)return;
+    /* C6：备份默认剔除 API Key —— 备份文件常被丢进网盘或发给别人，Key 不该跟着走 */
+    if(k==='bt_qa_ai'){try{var cfg=JSON.parse(v);if(cfg&&cfg.key){cfg.key='';keyStripped=true;v=JSON.stringify(cfg);}}catch(e){}}
+    values[k]=v;
+  }catch(e){}});
+  var out={exported_at:new Date().toISOString(),app:'ming-quiz',v:1,keys:Object.keys(values),values:values};
+  if(keyStripped)out.key_stripped=true;
+  return out;
 }
 function exportAllData(){
   var data=buildBackup(),n=Object.keys(data.values).length;
@@ -5224,7 +5534,7 @@ function exportAllData(){
     a.download='ming-quiz-backup-'+dayKey(new Date())+'.json';
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(function(){try{URL.revokeObjectURL(a.href);}catch(e){}},1000);
-    toast('💾 已导出备份（'+n+' 项）');
+    toast('💾 已导出备份（'+n+' 项'+(data.key_stripped?'，已剔除 API Key':'')+'）');
   }catch(e){toast('❌ 导出失败：当前浏览器不支持文件下载');}
 }
 /* 返回 -1 = 未写入（结构不对 / 用户取消）；返回 {n,bad} = 已写入 */
@@ -5330,7 +5640,7 @@ function openStats(){
 function overlayPanel(title,kind){
   // 同一时刻只保留一个浮层，避免出现重复 id="curOverlay"
   if(overlayRoot){var olds=overlayRoot.querySelectorAll('.ov');for(var i=0;i<olds.length;i++){if(olds[i].__nav)navDrop(olds[i].__nav);if(olds[i].parentNode)olds[i].parentNode.removeChild(olds[i]);}}
-  var ov=h('div','ov');ov.id='curOverlay';ov.__nav=kind||'overlay';navPush(ov.__nav);
+  var ov=h('div','ov');ov.id='curOverlay';ov.__nav=kind||'overlay';navPush(ov.__nav);ov.__seq=NAV_SEQ;
   var p=h('div','panel');
   var close=h('button','close','✕');close.onclick=function(){closeOverlay({ov:ov,p:p});};
   var h3=h('h3');h3.textContent=title;
@@ -5341,8 +5651,15 @@ function overlayPanel(title,kind){
 }
 function closeOverlay(o){
   if(!o||!o.ov)return;
-  if(o.ov.__nav)navDrop(o.ov.__nav);
+  var _wasTop=false;
+  if(o.ov.__nav){_wasTop=(navTop()===o.ov.__nav);navDrop(o.ov.__nav);}
   if(o.ov.parentNode)o.ov.parentNode.removeChild(o.ov);
+  /* C6：浮层开的时候压过一帧，关掉时顺手弹回去，返回键不用点好几次才退出。
+     NAV_BUSY=true 说明正处在「返回键」引发的回退里，那一帧已经被 popstate 吃掉了，别再补一次。
+     setTimeout 兜底：history 只剩一帧时 back() 不触发 popstate，NAV_BUSY 不能卡在 true。 */
+  var _curState=null;try{_curState=history.state;}catch(e){}
+  var _ownFrame=!!(_curState&&_curState.qnav&&_curState.seq!=null&&_curState.seq===o.ov.__seq);
+  if(_wasTop&&_ownFrame&&!NAV_BUSY){try{NAV_BUSY=true;history.back();setTimeout(function(){NAV_BUSY=false;},300);}catch(e){NAV_BUSY=false;}}
 }
 
 /* ---------- 启动 ---------- */
