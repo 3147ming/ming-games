@@ -1734,8 +1734,11 @@ function applySection(qs){
 }
 function sectionGen(bk,n,diff){
   var qs=null;
-  /* 编程的「程序编写 / 填空题」都走读代码题型（答案短，好判分） */
-  if(bk==='code'&&QA_TYPES.code.genSection&&(qaSection==='code'||qaSection==='fill'))qs=QA_TYPES.code.genSection(n,diff);
+  /* C3：编程三个板块（选择题 / 填空题 / 程序编写）统一走 CODE_TOPICS 读代码题型。
+     旧 POOLS.code 88 道里 66 道没自带干扰项，mkFromPool 只能从别的题答案里硬凑，
+     于是冒出「可执行文件 / print / 未找到 / 视图 / 内存」这种跨类选项（P0）。
+     CODE_TOPICS 的 mkCodeQ 每题自带同类干扰项，答案当场算出来。 */
+  if(bk==='code'&&QA_TYPES.code.genSection)qs=QA_TYPES.code.genSection(n,diff,qaSection);
   if(!qs||!qs.length)qs=QA_TYPES[bk].gen(n,diff);
   return applySection(qs);
 }
@@ -3952,36 +3955,56 @@ function pickAlts(ans,cands){
 }
 
 /* 程序编写板块组题：按已掌握语言过滤，档位不够时相邻档补齐，绝不空题 */
-QA_TYPES.code.genSection=function(n,diff){
+QA_TYPES.code.genSection=function(n,diff,sec){
   n=Math.max(1,n|0);
   var dd=(typeof diff==='number'&&diff>=0&&diff<5)?diff:0;
+  /* 板块由调用方传进来（vm 直跑引擎时没有 qaSection 这个全局） */
+  var _sec=(typeof sec==='string')?sec:'';
+  if(!_sec&&typeof qaSection==='string')_sec=qaSection;
   var allowed=codeAllowedLangs();
-  function poolFor(d){
-    var arr=CODE_TOPICS.filter(function(t){
-      return t.ranks.indexOf(d)>=0 && (!allowed||allowed.indexOf(t.lang)>=0);
-    });
-    return arr;
+  /* useLang=true 按已掌握语言过滤；false 忽略语言（选择题补池用） */
+  function poolWith(useLang){
+    function poolFor(d){
+      return CODE_TOPICS.filter(function(t){
+        return t.ranks.indexOf(d)>=0 && (!useLang||!allowed||allowed.indexOf(t.lang)>=0);
+      });
+    }
+    var p=poolFor(dd);
+    if(p.length<2){
+      var alt=[dd-1,dd+1,dd-2,dd+2];
+      for(var i=0;i<alt.length;i++){
+        if(alt[i]<0||alt[i]>4)continue;
+        p=p.concat(poolFor(alt[i]));
+        if(p.length>=4)break;
+      }
+    }
+    return p;
   }
-  var pool=poolFor(dd);
-  if(pool.length<2){
-    var alt=[dd-1,dd+1,dd-2,dd+2];
-    for(var i=0;i<alt.length;i++){
-      if(alt[i]<0||alt[i]>4)continue;
-      pool=pool.concat(poolFor(alt[i]));
-      if(pool.length>=4)break;
+  var out=[],seen={};
+  function qk(q){return q.q+'\u0001'+(q.code||'');}
+  /* C3：选择题板块只收自带选项的题 —— mkCodeFill 生成的是填空题（opts=null），
+     放进「选择题」会退化成输入框，与板块承诺不符 */
+  function pickable(q){
+    if(!q||!q.q||q.a==null)return false;
+    if(_sec==='choice'&&!(q.opts&&q.opts.length>=2))return false;
+    return true;
+  }
+  function fill(pool,cap){
+    var guard=0;
+    while(out.length<n&&pool.length&&guard++<cap){
+      var t=pool[riN(0,pool.length-1)],q=null;
+      try{q=t.gen();}catch(e){continue;}
+      if(!pickable(q)||seen[qk(q)])continue;
+      q.tag=q.tag||t.lang||t.k;
+      seen[qk(q)]=1;out.push(q);
     }
   }
-  var out=[],seen={},guard=0;
-  function qk(q){return q.q+'\u0001'+(q.code||'');}
-  while(out.length<n&&pool.length&&guard++<1500){
-    var t=pool[riN(0,pool.length-1)],q=null;
-    try{q=t.gen();}catch(e){continue;}
-    if(!q||!q.q||q.a==null)continue;
-    if(seen[qk(q)])continue;
-    q.tag=q.tag||t.lang||t.k;
-    seen[qk(q)]=1;out.push(q);
-  }
-  if(out.length<n){
+  fill(poolWith(true),1500);
+  /* 只勾了 Python / Java 的用户在低档可能一题都抽不到：先放宽语言补齐，
+     同档同类的题远好过旧 POOLS.code 拿别的题答案硬凑干扰项（P0） */
+  if(out.length<n&&_sec==='choice'&&allowed)fill(poolWith(false),1500);
+  /* 旧随机池兜底只留给非选择题板块：POOLS.code 的硬凑干扰项不再进选择题 */
+  if(out.length<n&&_sec!=='choice'){
     var more=QA_TYPES.code.gen(n-out.length,dd);
     more.forEach(function(q){
       if(out.length>=n||!q||seen[qk(q)])return;
