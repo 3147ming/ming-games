@@ -1520,6 +1520,7 @@ var WIN_CAP=12,WIN_MIN=6,UP_ACC=0.75,DN_ACC=0.4,LEVEL_COOL=2,lvlCool=0;
 var lastAuto=null;                              // 结算页的实力评级快照
 var reviewOne=false;                            // 薄弱题本里的「单题练」：结算页返回题本而不是重开整局
 var roundWrong=[];                              // P2-A1：本局首次结算的错题（重试答对不追加、不重复）
+var roundShortMsg='';                           // C4：本局实际题量少于所选档位时的常驻提示
 var quizOver=false;                             // 本局是否已收尾（挡住答题后的延时切题把结算页顶掉）
 function sectionName(k){for(var i=0;i<SECTIONS.length;i++){if(SECTIONS[i].k===k)return SECTIONS[i].n;}return '🎯 选择题';}
 function windowAcc(){var a=selfWindow,i,n=0;if(!a.length)return 0;for(i=0;i<a.length;i++){if(a[i])n++;}return n/a.length;}
@@ -1573,6 +1574,19 @@ function trendDays(n){
 function showView(v){if(v==='shelf'){shelfEl.hidden=false;stageEl.hidden=true;}else{shelfEl.hidden=true;stageEl.hidden=false;}}
 
 function stdCount(key){return (POOLS[key]&&POOLS[key].length)?POOLS[key].length:0;}
+/* C4：本分类「真能出多少题」= 人工题 + 过校验的 AI 补充题（按题干去重）。
+   pickDiffPanel 用它标注「本类仅 N 题」，doStartType 用它做整局提示。
+   math / code 是现生成，不受题量限制 → 返回 Infinity。 */
+function stdAvail(bk){
+  if(!bk||bk==='math'||bk==='code')return Infinity;
+  var man=POOLS[bk]||[],seen={},n=0;
+  man.forEach(function(it){var q=it&&it[0];if(!q)return;q=String(q);if(seen[q])return;seen[q]=1;n++;});
+  extraPool(bk).forEach(function(x){if(!x||!x.q)return;var q=String(x.q);if(seen[q])return;if(!validItem(x))return;seen[q]=1;n++;});
+  return n;
+}
+/* C4：档位是否真的改变题目难度。math 按学业阶段生成、code 按知识点×难度矩阵生成；
+   其余分类是扁平题库（pickPoolByDiff 对数组不分档），换档只改题量与扣分 → 不能说「实力：困难」 */
+function diffMatters(bk){return bk==='math'||bk==='code';}
 function codeCount(){var n=0;for(var d in POOLS.code){if(POOLS.code.hasOwnProperty(d))n+=POOLS.code[d].length;}return n;}
 function shelfCount(bk,cn){
   if(bk==='math')return '动态生成';
@@ -1671,8 +1685,12 @@ function afterDetect(bk,cn){
 /* ---------- 难度面板 ---------- */
 function pickDiffPanel(bk,cb){
   var T=QA_TYPES[bk],ds=qaDiffs(bk);if(!ds){cb(-1);return;}
-  var PANEL=[{auto:true,n:'🤖 自动匹配',d:'无限刷题 · 实时调难度'}].concat(ds.map(function(x,i){return {n:x.n,d:x.d,idx:i};}));
+  var PANEL=[{auto:true,n:'🤖 自动匹配',d:'无限刷题 · 实时调难度'}].concat(ds.map(function(x,i){return {n:x.n,d:x.d,idx:i,cnt:x.cnt};}));
+  /* C4：本类真实可用题量（math/code 为 Infinity，不做标注） */
+  var _avail=stdAvail(bk);
   var defSel=0;try{var sv=parseInt(S.getItem('bd_qa_diff_'+bk),10);if(sv>=0&&sv<ds.length)defSel=sv+1;}catch(e){}
+  /* C4：上次选的档位若本类一题都出不了（如题库被清空），默认回到自动匹配 */
+  if(defSel>0&&ds[defSel-1]&&isFinite(stdAvail(bk))&&stdAvail(bk)<=0)defSel=0;
   var ov=overlayPanel((T.icon||'')+' '+T.name+' · 选择难度','diff');
   ov.p.appendChild(ht('div','hint',(bk==='math'?'🎓 按学业阶段出题：':(bk==='code'?'💻 按学习进度出题（已按你掌握的语言过滤）：':'⚙️ 选择难度，题量与扣分随档位变化'))+'也可选「🤖 自动匹配」无限刷题、难度实时跟着你走'));
   if(bk==='code'){var p=getCodeProfile();if(p&&p.done&&p.langs&&p.langs.length){ov.p.appendChild(ht('div','okmsg','已检测：'+p.langs.map(langName).join(' · ')+' · '+levelName(p.rank)));}}
@@ -1681,10 +1699,24 @@ function pickDiffPanel(bk,cb){
     var b=ht('button','diffbtn'+(i===defSel?' sel':''));
     var txt=h('div','dtxt');
     txt.appendChild(ht('div','dn',df.n));
-    txt.appendChild(ht('div','dd',df.d));
+    /* C4：档位题量 > 本类真实题量时，直接把差额写在档位上（不玩「看着 40 题实际 12 题」） */
+    var _dd=df.d,_short=false,_empty=false;
+    if(df.idx!=null&&isFinite(_avail)&&df.cnt>_avail){
+      _short=true;_empty=(_avail<=0);
+      _dd=df.d+' · 本类仅 '+_avail+' 题'+(_empty?'（暂无可用题目）':'');
+    }
+    var ddEl=ht('div','dd',_dd);
+    if(_short)ddEl.style.color='#a8690a';
+    txt.appendChild(ddEl);
     b.appendChild(txt);
     b.appendChild(ht('span','dck','✓'));
-    b.onclick=function(){[].slice.call(dr.children).forEach(function(x){try{x.classList.remove('sel');}catch(e){}});try{b.classList.add('sel');}catch(e){}};
+    if(_empty){
+      b.classList.add('off');b.style.opacity='0.45';b.style.cursor='not-allowed';
+      b.onclick=function(){toast('⚠️ 本类还没有可用题目：先「➕ 新建」题库或用 AI 补充题');};
+    }else{
+      b.onclick=function(){[].slice.call(dr.children).forEach(function(x){try{x.classList.remove('sel');}catch(e){}});try{b.classList.add('sel');}catch(e){}};
+    }
+    if(_short){try{b.setAttribute('data-short','1');}catch(e){}}
     dr.appendChild(b);});
   ov.p.appendChild(dr);
   /* B 批：先学后练开关（持久化到 bt_qa_learn_before） */
@@ -1798,13 +1830,16 @@ function doStartType(bk,cn,d){
   if(autoMode){selfRank=getRank(bk);curDiff=selfRank;}else{curDiff=(ds&&d>=0&&d<ds.length)?d:-1;}
   curDiffLabel=(curDiff>=0)?ds[curDiff].n:'';
   typeKey=bk?('b:'+bk):('c:'+cn);typeLabel=bk?QA_TYPES[bk].name:cn;
-  combo=0;wrongCombo=0;selfWindow=[];lvlCool=0;handMode=false;lastAuto=null;_handUsed.length=0;
+  combo=0;wrongCombo=0;selfWindow=[];lvlCool=0;handMode=false;lastAuto=null;_handUsed.length=0;roundShortMsg='';
   if(!bk)qaSection='choice';   // 自定义题库固定选择题，不弹板块面板
   if(bk){
     if(autoMode){qlist=[];total=Infinity;}
     else{var cnt=(curDiff>=0&&ds[curDiff].cnt)?ds[curDiff].cnt:10;qlist=sectionGen(bk,cnt,Math.max(0,curDiff));total=qlist.length;
       /* P0-2：无放回后题量可能不足，明确告知实际题数（绝不拿重复题凑数） */
-      if(qlist.length<cnt)toast('⚠️ 「'+QA_TYPES[bk].name+'」唯一题不足，本局改为 '+qlist.length+' 题（请求 '+cnt+' 题）');
+      if(qlist.length<cnt){
+        roundShortMsg='⚠️ 本类唯一题只有 '+qlist.length+' 题（所选档位是 '+cnt+' 题）· 本局按实际题量出题';
+        toast('⚠️ 「'+QA_TYPES[bk].name+'」唯一题不足，本局改为 '+qlist.length+' 题（请求 '+cnt+' 题）');
+      }
     }
   }else{
     var pairs=custom[cn]||[];if(!pairs.length){alert('该题库还没有题目，先去录入');return;}
@@ -1943,11 +1978,21 @@ function showQuestion(){
   var _tik='';if(typeKey.indexOf('b:')===0&&QA_TYPES[typeKey.slice(2)])_tik=QA_TYPES[typeKey.slice(2)].icon+' ';
   var _badge='';
   if(typeKey==='b:code'){var _cp=getCodeProfile();if(_cp&&_cp.done&&_cp.langs&&_cp.langs.length){_badge=' · '+langName(_cp.langs[0])+(_cp.langs.length>1?(' 等'+_cp.langs.length+'种'):'');}}
-  hud.appendChild(ht('div','hl',_tik+typeLabel+_badge+(autoMode&&curDiffLabel?(' · 实力：'+curDiffLabel):(curDiffLabel?(' · '+curDiffLabel):''))));
+  /* C4：标准池是扁平题库（换档不改题目难度），自动模式报「实力：困难」是假的 → 只在真按档生成时才有实力 */
+  var _lvTxt='';
+  if(autoMode)_lvTxt=diffMatters(bk)?(' · 实力：'+(curDiffLabel||'')):' · 🎲 混合难度';
+  else if(curDiffLabel)_lvTxt=' · '+curDiffLabel;
+  hud.appendChild(ht('div','hl',_tik+typeLabel+_badge+_lvTxt));
   hud.appendChild(ht('div','hr',autoMode?('第 '+(qidx+1)+' 题 · 无限模式'):('第 '+(qidx+1)+'/'+total)));
   /* 无限模式没有「满分」，头顶只留实力与题数，得分放结算页，避免四个 chip 挤成省略号 */
   if(!autoMode)hud.appendChild(ht('span','chip','✅ '+ok));
   card.appendChild(hud);
+  /* C4：toast 会消失，玩家会以为「40 题的局丢题了」→ 整局常驻一行说明 */
+  if(roundShortMsg&&!autoMode&&isFinite(total)){
+    var _rsh=ht('div','hint',roundShortMsg);
+    _rsh.style.color='#a8690a';_rsh.style.margin='2px 0 0';
+    card.appendChild(_rsh);
+  }
   /* 批次 B：需要草稿板的题（数学全部 / 科学计算题 / Q.scratch）在题干上方给一个入口 chip */
   if(needScratch(Q,bk)){
     var _sbar=h('div','scratchbar');
@@ -2486,7 +2531,8 @@ function finish(sc){
   card.appendChild(accLine);
   if(lastAuto){
     var lc=h('div','lvlcard');
-    lc.appendChild(ht('div','lvlt','🎯 当前实力：'+(lastAuto.lab||levelName(lastAuto.rank))));
+    var _bkF=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
+    lc.appendChild(ht('div','lvlt',diffMatters(_bkF)?('🎯 当前实力：'+(lastAuto.lab||levelName(lastAuto.rank))):'🎲 本轮混合难度（该分类题库不按难度分档）'));
     lc.appendChild(ht('div','lvls','做了 '+lastAuto.n+' 题 · 正确 '+ok+' 题 · 最近 '+lastAuto.win+' 题正确率 '+Math.round(lastAuto.acc*100)+'%'));
     var _A=lastAuto.acc;
     lc.appendChild(ht('div','lvld',_A>=0.85?'状态在线，往上一档再试试。':(_A>=0.65?'基本稳住，这个档位可以继续刷。':(_A>=0.45?'还在爬坡，错题点「😵 不会」沉淀后回顾。':'这档偏难，先回低一档把基础打牢。'))));
