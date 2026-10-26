@@ -2290,6 +2290,9 @@ function markUnknown(){
   /* 不再 advance()：错题是学习时刻，去留由用户点「重试」还是「下一题」决定 */
 }
 
+/* C1：答对自动跳题（快速模式）默认关；开启才 800ms 自动跳，否则停住给「下一题」 */
+function quickJump(){try{return JSON.parse(S.getItem('bt_qa_quickjump')||'false')===true;}catch(e){return false;}}
+function maybeAdvance(correct,ms){if(correct&&quickJump())advance(ms||800);else cancelPending();}
 function answer(correct,given,ans,btn,opt){
   closeScratch();   /* 批次 B：作答时收起，避免遮挡反馈 */
   if(locked)return;locked=true;
@@ -2312,6 +2315,8 @@ function answer(correct,given,ans,btn,opt){
           if(_mastered){removeWeak(_rec);fbR.textContent='✅ 答对了！连续 30 天档答对，已掌握并移出复习队列';}
           else{_rec.t=Date.now();srsTouch(_rec);var _iv=SRS_INTERVALS[_rec.srs.lv];fbR.textContent='✅ 答对了！下次复习：'+_iv+' 天后';}
         }else{ok++;fbR.textContent='✅ 答对了！';}
+        /* C1：答对也讲清楚 —— 解析/来源 + 下一题（默认不自动跳） */
+        appendExp(fbR,Q);appendSrc(fbR,Q);appendNextChip(fbR);
       }else{
         var _rec2=Q&&Q.weak;
         if(_rec2){srsAdvance(_rec2,false);_rec2.t=Date.now();srsTouch(_rec2);}
@@ -2319,13 +2324,15 @@ function answer(correct,given,ans,btn,opt){
         appendSol(fbR,Q);appendSteps(fbR,Q);appendExp(fbR,Q);appendSrc(fbR,Q);appendNextChip(fbR);
       }
       appendFb(fbR);
-      if(correct)advance(800);else cancelPending();
+      maybeAdvance(correct);   /* C1：默认不自动跳，看设置 */
       return;
     }
     if(correct){
       if(Q&&Q.weak)removeWeak(Q.weak);
       if(_roundR)dropRoundWrong(Q&&Q.q);
       ok++;fbR.textContent=_roundR?'✅ 答对了！已从本轮错题移除':'✅ 答对了！已从薄弱题移除';
+      /* C1：答对也讲清楚 —— 解析/来源 + 下一题（默认不自动跳） */
+      appendExp(fbR,Q);appendSrc(fbR,Q);appendNextChip(fbR);
     }
     else{
       if(_roundR){
@@ -2341,7 +2348,7 @@ function answer(correct,given,ans,btn,opt){
       appendSol(fbR,Q);appendSteps(fbR,Q);appendExp(fbR,Q);appendSrc(fbR,Q);if(canRewrite(Q))appendRewriteChip(fbR);appendNextChip(fbR);
     }
     appendFb(fbR);
-    if(correct)advance(800);else cancelPending();
+    maybeAdvance(correct);   /* C1：默认不自动跳，看设置 */
     return;
   }
   var _pen=(curDiff>=2&&_bk&&QA_TYPES[_bk]&&QA_TYPES[_bk].pen)?5:0;
@@ -2383,7 +2390,7 @@ function answer(correct,given,ans,btn,opt){
   var fb=h('div','fb '+(correct?'ok':'no'));
   if(opt.note){
     var noteTxt=(correct?'✅ 判为正确 '+(first?'＋10':'＋5'):('❌ 判为不正确'+((first&&_pen)?'　（−5 分）':'')))+'　'+opt.note;
-      if(correct){fb.textContent=noteTxt;appendNextChip(fb);}
+      if(correct){fb.textContent=noteTxt;appendExp(fb,Q);appendSrc(fb,Q);appendNextChip(fb);}
       else{
         fb.appendChild(ht('div','fbm',noteTxt));
         /* 手写题由 AI 评判（耗时、每次都要钱），不给「重试」；但必须给解析与正确写法 ——
@@ -2394,11 +2401,12 @@ function answer(correct,given,ans,btn,opt){
     fb.textContent=correct?(first?'✅ 答对了！＋10':'✅ 重试答对了！＋5')
       :('❌ 正确答案：'+ans+((first&&_pen)?'　（−5 分）':''));
     if(!correct){appendSol(fb,Q);appendSteps(fb,Q);appendExp(fb,Q);appendSrc(fb,Q);if(canRewrite(Q))appendRewriteChip(fb);appendNextChip(fb);}
+    else{appendExp(fb,Q);appendSrc(fb,Q);appendNextChip(fb);}
   }
   appendFb(fb);
   if(first)bumpStat(typeKey,correct);
   /* 答对保持自动跳（800ms），不打断节奏；答错 / 不会一律停住，等用户决定重试还是下一题 */
-  if(correct)advance(opt.wait||800);else cancelPending();
+  maybeAdvance(correct,opt.wait||800);   /* C1：默认不自动跳，看设置 */
 }
 
 function endQuiz(){
@@ -5277,6 +5285,15 @@ function openSettings(){
   var sec1=ht('div','section-title','实力检测');ov.p.appendChild(sec1);
   var redetect=h('button','btn ghost','🔄 重新编程实力检测');redetect.onclick=function(){try{S.removeItem(CODE_PROFILE_KEY);S.removeItem('bt_qa_rank_code');}catch(e){}closeOverlay(ov);codeQuestionnaire(function(){renderShelf();});};
   ov.p.appendChild(redetect);
+  /* C1：答题设置 —— 答对自动跳题（快速模式），默认关 */
+  ov.p.appendChild(ht('div','section-title','🧠 答题设置'));
+  var _qj=!!JSON.parse(S.getItem('bt_qa_quickjump')||'false');
+  var _qjL=document.createElement('label');_qjL.style.cssText='display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer';
+  var _qjC=document.createElement('input');_qjC.type='checkbox';_qjC.checked=_qj;
+  _qjC.onchange=function(){safeSet('bt_qa_quickjump',_qjC.checked?'true':'false');};
+  _qjL.appendChild(_qjC);_qjL.appendChild(ht('span',null,'⏩ 答对自动跳题（快速模式）'));
+  ov.p.appendChild(_qjL);
+  ov.p.appendChild(ht('div','muted','默认关闭：答对也会显示解析/来源，需要点「下一题」再走；打开后答对 800ms 自动跳。'));
   // AI 配置
   var sec2=ht('div','section-title','🌐 AI 建题库（OpenAI 兼容）');ov.p.appendChild(sec2);
   var cfg=loadAICfg()||{};
