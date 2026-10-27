@@ -132,7 +132,7 @@ export function tickTurnStart(state, who) {
   const p = s.statuses.poison || 0;
   if (p > 0) {
     dealPure(state, who, p);
-    s.statuses.poison = p - 1;
+    s.statuses.poison = Math.max(0, p - CONST.POISON_DECAY);
     state.log.push({ t: 'poison', who, value: p });
   }
 }

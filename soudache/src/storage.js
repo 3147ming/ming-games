@@ -61,6 +61,8 @@ export function defaultSave() {
       kills: 0,
       bestScore: 0,
       bestValue: 0,
+      streak: 0, // 连续成功撤离次数（撤离 +1，失败清零）
+      dailyCount: 0, // 累计完成的每日突袭次数
     },
     settings: {
       volume: 0.6,
@@ -73,6 +75,13 @@ export function defaultSave() {
       touchButtonScale: 1.0, // 触控按钮尺寸倍率，0.8~1.3 可调（位置/大小可调需求）
     },
     layout: { touch: {} }, // 触控按钮布局偏移：{ [action]: { x, y } }（绝对像素，相对触屏控制容器）
+    // ---- 长期进度（以下字段都是"追加"，靠 loadSave 的浅/深合并天然兼容老档）----
+    insurance: { enabled: false }, // 装备保险：是否在部署时购买
+    daily: { date: '', bestScore: 0, extracted: false }, // 每日突袭当日成绩
+    rep: { xp: 0 }, // 军械商声望经验
+    codex: { seen: {}, brought: {} }, // 图鉴：见过 / 带出过
+    shop: { date: '', deals: [], sold: {} }, // 商店每日特价与限购计数
+    achievements: {}, // 成就达成时间戳 { id: ms }
   };
 }
 
@@ -94,6 +103,21 @@ export function loadSave() {
       stats: { ...base.stats, ...(data.stats || {}) },
       settings: { ...base.settings, ...(data.settings || {}) },
       layout: { touch: { ...(data.layout && data.layout.touch) } },
+      // 新增的嵌套对象必须逐个深合并：浅合并会把老档缺失的整个子键覆盖成 undefined，
+      // 之后任何 `save.codex.seen[id]` 都会抛 "cannot read properties of undefined"。
+      insurance: { ...base.insurance, ...(data.insurance || {}) },
+      daily: { ...base.daily, ...(data.daily || {}) },
+      rep: { ...base.rep, ...(data.rep || {}) },
+      codex: {
+        seen: { ...(data.codex && data.codex.seen) },
+        brought: { ...(data.codex && data.codex.brought) },
+      },
+      shop: {
+        date: (data.shop && data.shop.date) || base.shop.date,
+        deals: Array.isArray(data.shop && data.shop.deals) ? data.shop.deals.slice() : [],
+        sold: { ...(data.shop && data.shop.sold) },
+      },
+      achievements: { ...(data.achievements) },
     };
     save.version = VERSION;
     return save;

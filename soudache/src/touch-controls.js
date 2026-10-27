@@ -45,9 +45,15 @@ const BUTTONS = [
   { a: 'heal', t: '治疗', size: 'combat' },
   { a: 'ads', t: '瞄准', size: 'minor', toggle: 'ads' },
   { a: 'switch', t: '切枪', size: 'minor' },
-  // 贴顶部边缘的系统钮：背包 / 暂停（远离两个拇指作业区）
+  // 蹲伏：桌面上有 Ctrl，手机上以前**完全没有入口** —— 于是"蹲行更安静、更难被发现"
+  // 这条核心潜行机制对手机玩家是不存在的。放在火力区（右拇指），和瞄准同一档，
+  // 因为它和瞄准是同一类动作：临场姿态切换。
+  { a: 'crouch', t: '蹲伏', size: 'minor', toggle: 'crouch' },
+  // 贴顶部边缘的系统钮：背包 / 任务 / 暂停（远离两个拇指作业区）
   // 灵敏度**不放这里**：玩家反馈"暂停后调不了灵敏度"，所以改到暂停面板里用滑块调。
   { a: 'bag', t: '背包', size: 'minor', slot: 'top' },
+  // 任务面板：桌面上是 J 键，手机以前没有入口 —— 合约进度只能靠"折叠标题里的 3/2"猜。
+  { a: 'tasks', t: '任务', size: 'minor', slot: 'top' },
   { a: 'pause', t: '暂停', size: 'minor', slot: 'top' },
 ];
 
@@ -115,7 +121,7 @@ export function createTouchControls(opts) {
     b.appendChild(label);
     btnEls.set(def.a, b);
     b.addEventListener('pointerdown', onBtnPointerDown);
-    (def.slot === 'top' ? zoneTop : def.fire ? zoneL : (['reload', 'heal', 'ads'].includes(def.a) ? zoneR : zoneL)).appendChild(b);
+    (def.slot === 'top' ? zoneTop : def.fire ? zoneL : (['reload', 'heal', 'ads', 'crouch'].includes(def.a) ? zoneR : zoneL)).appendChild(b);
   }
   // 开火键必须是「右下火力区」的主键，而不是左下机动区
   zoneR.appendChild(btnEls.get('fire'));

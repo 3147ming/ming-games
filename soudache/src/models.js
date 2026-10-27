@@ -652,13 +652,15 @@ export function buildVehicleModel() {
 
 /**
  * 构建一个敌人模型（独立 Group，便于各自转向与受击闪红）。
- * @param {string} typeId 敌人类型（patrol / elite / marksman / rusher）
+ * @param {string} typeId 敌人类型（patrol / elite / marksman / rusher / heavy）
  * @returns {THREE.Group} 敌人模型
  */
 export function buildEnemyModel(typeId) {
-  // 体型：精英与精确射手用大号，冲锋兵用瘦小号，其余用标准
+  // 体型：精英 / 精确射手 / 重装兵用大号，冲锋兵用瘦小号，其余用标准。
+  // 重装兵走大号而不是新开一套 dims：轮廓辨识靠**配色 + 大号**已经足够，
+  // 再单独造一套骨骼会多一份几何/材质，而收益只是"看起来更胖一点"。
   const dims = VIEW3D.enemy;
-  const dim = (typeId === 'elite' || typeId === 'marksman')
+  const dim = (typeId === 'elite' || typeId === 'marksman' || typeId === 'heavy')
     ? dims.elite
     : (typeId === 'rusher' ? dims.rusher : dims.patrol);
   const tints = {
@@ -666,6 +668,7 @@ export function buildEnemyModel(typeId) {
     elite: PALETTE3D.enemyElite,
     marksman: PALETTE3D.enemyMarksman,
     rusher: PALETTE3D.enemyRusher,
+    heavy: PALETTE3D.enemyHeavy,
   };
   const tint = tints[typeId] || PALETTE3D.enemyPatrol;
   const group = new THREE.Group();

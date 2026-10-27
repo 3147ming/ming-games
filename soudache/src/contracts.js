@@ -91,13 +91,28 @@ export function contractProgress(c, w) {
   if (c.type === 'extractValue') return w.carriedValue || 0;
   if (c.type === 'demolish') return w.cratesBroken || 0;
   if (c.type === 'survival') return w.time || 0;
+  // 静默渗透：一枪未开记 1 分（target 恒为 1），开过枪就永远 0 分。
+  // 注意它和 extractValue 一样**不在局内判定**（见 updateContracts），
+  // 否则玩家一进场就白拿 1400 —— "没开枪"这件事只有在活着出去时才有价值。
+  if (c.type === 'silent') {
+    const shots = (w.player && w.player.shotsFired) || 0;
+    return shots === 0 ? 1 : 0;
+  }
   return 0;
 }
 
 /**
+ * 只在"撤离成功"时才结算的合约类型。
+ * extractValue：身上钱够了不等于带出去了；
+ * silent：没开枪不等于撤出去了（死掉一样算失败）。
+ */
+const EXTRACT_ONLY_TYPES = ['extractValue', 'silent'];
+
+/**
  * 推进合约进度。
- * extractValue（带出估值）只刷新进度、不判达成 —— 必须等真正撤离成功，
- * 由 settleExtractContracts 结算；否则"身上钱够了"会被误判成合约达成。
+ * extractValue（带出估值）与 silent（静默撤离）只刷新进度、不判达成 ——
+ * 必须等真正撤离成功，由 settleExtractContracts 结算；否则"身上钱够了"
+ * 或"刚进场还没开枪"会被误判成合约达成。
  * @param {object} w 战局
  * @param {function} onComplete 达成回调 (c) => void
  * @returns {void}
@@ -108,13 +123,13 @@ export function updateContracts(w, onComplete) {
     if (c.done) continue;
     const p = contractProgress(c, w);
     c.progress = Math.min(c.target, p);
-    if (c.type === 'extractValue') continue;
+    if (EXTRACT_ONLY_TYPES.includes(c.type)) continue;
     if (p >= c.target && typeof onComplete === 'function') onComplete(c);
   }
 }
 
 /**
- * 撤离成功时结算「带出估值」类合约。
+ * 撤离成功时结算"只在撤离时判定"的合约（带出估值 / 静默渗透）。
  * @param {object} w 战局
  * @param {number} lootValue 带出物资估值
  * @param {function} onComplete 达成回调 (c) => void
@@ -123,8 +138,15 @@ export function updateContracts(w, onComplete) {
 export function settleExtractContracts(w, lootValue, onComplete) {
   if (!w.contracts) return;
   for (const c of w.contracts) {
-    if (c.done || c.type !== 'extractValue') continue;
-    c.progress = Math.min(c.target, lootValue);
-    if (lootValue >= c.target && typeof onComplete === 'function') onComplete(c);
+    if (c.done || !EXTRACT_ONLY_TYPES.includes(c.type)) continue;
+    if (c.type === 'extractValue') {
+      c.progress = Math.min(c.target, lootValue);
+      if (lootValue >= c.target && typeof onComplete === 'function') onComplete(c);
+      continue;
+    }
+    // silent
+    const p = contractProgress(c, w);
+    c.progress = Math.min(c.target, p);
+    if (p >= c.target && typeof onComplete === 'function') onComplete(c);
   }
 }

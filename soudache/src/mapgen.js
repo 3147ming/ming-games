@@ -9,6 +9,7 @@
 import {
   TILE, MAP_COLS, MAP_ROWS, WORLD_W, WORLD_H, CELL, MATCH, VIEW3D,
   CONTAINERS, CONTAINER_SPAWN_WEIGHTS, POI, ENEMY_SPAWN_WEIGHTS, CRATE, VEHICLE,
+  ROOM_TAGS, ROOM_CONTAINER_WEIGHTS,
 } from './config.js';
 import { createRng } from './rng.js';
 
@@ -544,6 +545,14 @@ export function generateMap(seed) {
   connectTree(root, grid, cols, rng);
   const rooms = leaves.map((l) => l.room);
 
+  // 1.5) 房间区域标签：每个房间掷一个标签（办公 / 仓储 / 实验），
+  //      标签决定这间房刷什么容器（见 ROOM_CONTAINER_WEIGHTS）。
+  //      在容器生成**之前**打标，因此容器权重可以直接按 room.tag 取。
+  const roomTagEntries = ROOM_TAGS.map((t) => [t.id, t.weight]);
+  for (const room of rooms) {
+    room.tag = rng.weighted(roomTagEntries);
+  }
+
   const map = {
     seed: seed >>> 0,
     cols, rows, tile: TILE,
@@ -619,9 +628,17 @@ export function generateMap(seed) {
   }
 
   // 5) 容器
-  const typeEntries = Object.entries(CONTAINER_SPAWN_WEIGHTS);
+  //    权重按房间标签取：办公区多抽屉、仓储区多补给箱、实验区多保险箱。
+  //    typeEntries 必须在房间循环**内部**算（早先提到循环外是 TDZ 修复的副产品，
+  //    但那样就没法按房间区分权重了）；按 tag 缓存一次，避免每个容器都 Object.entries。
+  const typeEntriesByTag = {};
+  for (const tag of Object.keys(ROOM_CONTAINER_WEIGHTS)) {
+    typeEntriesByTag[tag] = Object.entries(ROOM_CONTAINER_WEIGHTS[tag]);
+  }
+  const fallbackTypeEntries = Object.entries(CONTAINER_SPAWN_WEIGHTS);
   let cid = 0;
   for (const room of rooms) {
+    const typeEntries = typeEntriesByTag[room.tag] || fallbackTypeEntries;
     const count = Math.max(1, Math.min(3, Math.round((room.tw * room.th) / 13)));
     for (let i = 0; i < count; i += 1) {
       let placed = null;
@@ -634,10 +651,16 @@ export function generateMap(seed) {
       }
       if (!placed) continue;
       const type = rng.weighted(typeEntries);
-      map.containers.push({
+      const node = {
         id: cid, type, x: Math.round(placed.x), y: Math.round(placed.y),
         r: CONTAINERS[type].radius, searched: false, loot: null, spawned: false,
-      });
+        tag: room.tag,
+      };
+      // 保险箱按 lockedChance 上锁：上锁的不用读条开，只能消耗一张门卡直开。
+      if (type === 'safe' && CONTAINERS.safe.lockedChance > 0) {
+        node.locked = rng.chance(CONTAINERS.safe.lockedChance);
+      }
+      map.containers.push(node);
       cid += 1;
     }
   }
@@ -745,9 +768,16 @@ export function generateMap(seed) {
     };
   }
 
-  // 8) 撤离点默认全部关闭：固定 2 个点，统一在「最后 2 分钟」由 main.js 打开。
-  //    （不在此处随机开放，避免早期就能撤离 —— 撤离窗口本来就压在局末。）
-  for (const ex of map.extracts) ex.open = false;
+  // 8) 撤离点分阶段开放：每个点自带 openAt（剩余秒数），由 main.js 到点逐个开启。
+  //    第一个点提前 extractFirstOpen 秒，其余按 extractOpenAt —— 两个点错开 30 秒，
+  //    "先赶近点还是等远点"才成为一个真实决策（原先所有点同时在最后一刻开，这个决策不存在）。
+  //    ⚠ 用逐点 openAt 而不是一个全局 opened 标志，是因为地图会重排点位顺序，
+  //    全局标志只能"一起开"，没法表达"ALPHA 已经能撤了、BRAVO 还锁着"。
+  for (let i = 0; i < map.extracts.length; i += 1) {
+    const ex = map.extracts[i];
+    ex.open = false;
+    ex.openAt = i === 0 ? MATCH.extractFirstOpen : MATCH.extractOpenAt;
+  }
 
   // 8.5) 撤离点类型：free / paid / guarded
   // 保证第一个撤离点免费（免费通道永远存在），其余随机为付费或守点。

@@ -794,9 +794,9 @@ var CURRENT=null,CURDIFF=0,curMode=null,CUR_ENDLESS=false;
 /* 无尽模式白名单：这些游戏在「玩法说明」面板里会出现 🌌 无尽模式 开关 */
 var ENDLESS_GAMES={quiz:1,reacttest:1,pixel:1,flashnum:1,accu:1,colortone:1,eagle:1,quick:1,dual:1,blitz:1,tiles:1};
 var MENUSCROLL=0,LIVE=null;
-function saveBest(id,score,low){
+function saveBest(id,score,low,endless){
   if(!id||score==null||isNaN(score))return false;
-  var k='bt_'+id,old=+(S.getItem(k)||0),rec;
+  var k=bestKey(id,CURDIFF,endless),old=+(S.getItem(k)||0),rec;
   if(low){rec=old>0?score<old:score>0}else{rec=score>old&&score>0}
   if(rec){try{S.setItem(k,score)}catch(e){}}
   return rec;
@@ -829,42 +829,350 @@ function toMenu(){probeLive();commitExit();stopTimers();document.onkeydown=null;
 try{document.body.className=String(document.body.className||'').replace(/\s*\bingame\b/,'')}catch(e){}$('menu').style.display='';$('stage').style.display='none';$('stage').className='';$('stage').innerHTML='';
   $('btnBack').style.display='none';$('btnRe').style.display='none';$('hdTitle').textContent='🎮 小游戏 · 豪华版';
   buildMenu();try{window.scrollTo(0,MENUSCROLL||0)}catch(e){}}
-function openGame(g){try{MENUSCROLL=window.pageYOffset||(document.documentElement&&document.documentElement.scrollTop)||0}catch(e){MENUSCROLL=0}
+
+/* ===================== 机制/内容 第一批 公共基座 (2026-10-28) ===================== */
+var LAST_META = null; /* P0-2 结算附加信息（avg/rating/ok/n/switchAcc），用完即清 */
+
+/* 分类反查 */
+function catOf(id){for(var i=0;i<CATS.length;i++){if(CATS[i].ids&&CATS[i].ids.indexOf(id)>=0)return CATS[i].n}return ''}
+/* 轻量 toast（复用 combo-pop 视觉） */
+function toast(msg){try{var host=$('stage')||document.body;var p=h('div','combo-pop');p.textContent=msg;host.appendChild(p);setTimeout(function(){if(p.parentNode)p.parentNode.removeChild(p)},1800)}catch(e){}}
+
+/* --- P0-1 纪录按「游戏 × 难度 × 模式」分档：bt2_<id>_<0|1|2> / bt2_<id>_e（无尽） --- */
+function bestKey(id,diff,endless){return 'bt2_'+id+'_'+(endless?'e':(diff|0))}
+function migrateBest(){
+  for(var id in GAMES){
+    if(S.getItem('bt2_'+id+'_0')!=null)continue;
+    var old=+(S.getItem('bt_'+id)||0);
+    if(old>0)try{S.setItem(bestKey(id,0,false),old)}catch(e){}
+  }
+}
+/* 跨难度/无尽取最高最佳（用于菜单卡与战绩合计） */
+function bestAll(id){var m=0;for(var d=0;d<3;d++){var v=+(S.getItem(bestKey(id,d,false))||0);if(v>m)m=v}var ve=+(S.getItem(bestKey(id,0,true))||0);if(ve>m)m=ve;return m}
+
+/* --- P0-3 局档案（环形 40） --- */
+function logPush(o){var a=[];try{a=JSON.parse(S.getItem('bt_log')||'[]')}catch(e){a=[]}
+  a.push(o);if(a.length>40)a=a.slice(a.length-40);
+  try{S.setItem('bt_log',JSON.stringify(a))}catch(e){}}
+function logRecent(id,d,n){var a=[];try{a=JSON.parse(S.getItem('bt_log')||'[]')}catch(e){a=[]}
+  var out=[];for(var i=a.length-1;i>=0;i--){
+    if(a[i].id===id&&(d==null||a[i].d===d)){out.push(a[i].sc);if(out.length>=n)break}}
+  return out}
+function median(arr){if(!arr.length)return 0;var b=arr.slice().sort(function(x,y){return x-y});
+  var m=b.length>>1;return b.length%2?b[m]:Math.round((b[m-1]+b[m])/2)}
+
+/* --- P0-4 金币换算（按量纲分游戏） --- */
+var COIN_UNIT={g2048:400,tetris:200,snake:150,plane:150,breaker:120,mosaic:60,
+  sudoku:120,killer:120,samurai:120,jigsaw:120,sudokuX:120,sokoban:60,flow:40,
+  quick:4,eagle:4,colortone:3,stroop:2,pond:6,dual:12,blitz:12,quiz:40};
+var COIN_LOW={reacttest:4,spantest:5};
+function coinFor(id,score,diff,rec){
+  var n;
+  if(COIN_LOW[id])n=COIN_LOW[id];
+  else{var u=COIN_UNIT[id]||40;n=Math.max(1,Math.floor((score||0)/u))}
+  n+=Math.min(diff|0,2)*2;
+  if(rec)n+=8;
+  return Math.min(n,25);
+}
+
+/* --- P0-5 能力画像基准 --- */
+var CAPS=[
+ {d:'mem',n:'记忆',g:[['spantest',9]]},
+ {d:'rxn',n:'反应',g:[['reacttest',240],['quick',55]]},
+ {d:'vis',n:'视觉',g:[['eagle',30],['colortone',22]]},
+ {d:'mat',n:'数学',g:[['vertmath',30],['sudoku',5000]]},
+ {d:'log',n:'逻辑',g:[['flow',700],['sokoban',700]]},
+ {d:'foc',n:'专注',g:[['dual',260],['blitz',260],['stroop',40]]}
+];
+function capScore(dim){
+  var sum=0,cnt=0;
+  dim.g.forEach(function(p){
+    var v=+(S.getItem(bestKey(p[0],2,false))||S.getItem(bestKey(p[0],1,false))||S.getItem(bestKey(p[0],0,false))||0);
+    if(v<=0)return;
+    var idx=GAMES[p[0]].low?Math.round(100*p[1]/Math.max(v,1)):Math.round(100*v/p[1]);
+    sum+=Math.max(0,Math.min(100,idx));cnt++;
+  });
+  return cnt?Math.round(sum/cnt):null;
+}
+function capConclusion(){
+  var vals=CAPS.map(function(c){return {d:c.d,n:c.n,v:capScore(c)}}).filter(function(x){return x.v!=null});
+  if(vals.length<2)return '';
+  var hi=vals[0],lo=vals[0];
+  vals.forEach(function(x){if(x.v>hi.v)hi=x;if(x.v<lo.v)lo=x});
+  var tip='';
+  if(lo.d==='rxn')tip='反应类建议从「眼疾手快」简单档起步';
+  else if(lo.d==='mem')tip='记忆类可多练「数字闪现」';
+  else if(lo.d==='vis')tip='视觉类建议从「火眼金睛」简单档起步';
+  else tip='针对性补强「'+lo.n+'」会更均衡';
+  return '你的强项是'+hi.n+'（'+hi.v+'），短板是'+lo.n+'（'+lo.v+'）；'+tip;
+}
+
+/* --- P0-7 自适应难度建议 --- */
+var TARGETS={quick:[30,40,50],eagle:[12,20,28],colortone:[8,14,20],
+  stroop:[18,28,38],flashnum:[5,7,8],calc:[1,3,5],ring:[8,14,20],
+  vertmath:[15,25,35],sudoku:[1200,3000,5000],pond:[8,14,20]};
+function suggestDiff(id){
+  var T=TARGETS[id];if(!T)return 0;
+  var r=logRecent(id,CURDIFF,2);if(r.length<2)return 0;
+  var t=T[CURDIFF]||1;
+  if(r[0]>=t*1.15&&r[1]>=t*1.15&&CURDIFF<2)return 1;
+  if(r[0]<t*0.6&&r[1]<t*0.6&&CURDIFF>0)return -1;
+  return 0;
+}
+
+/* --- P0-8 长局名单 + 断点续玩 --- */
+var LONGGAME={sudoku:1,killer:1,samurai:1,jigsaw:1,nonogram:1,flow:1,sokoban:1,sudokuX:1};
+function saveResume(id,d,payload){try{S.setItem('bt_resume',JSON.stringify({id:id,d:d,p:payload,t:Date.now()}))}catch(e){}}
+function takeResume(id){try{var o=JSON.parse(S.getItem('bt_resume')||'null');if(o&&o.id===id&&Date.now()-o.t<86400000)return o}catch(e){}return null}
+function clearResume(){try{S.removeItem('bt_resume')}catch(e){}}
+
+/* --- P0-6 训练组合 --- */
+var TRAIN_PLANS=[
+ {id:'wakeup',n:'☀️ 晨间唤醒',t:'约 4 分钟',ids:['quick','eagle','flashnum']},
+ {id:'focus', n:'🎯 专注冲刺',t:'约 5 分钟',ids:['stroop','dual','colortone']},
+ {id:'calm',  n:'🌙 睡前放松',t:'约 6 分钟',ids:['colortone','flow','sync']}
+];
+var TRAIN=null;
+function startTrain(plan){TRAIN={plan:plan,i:0,log:[],t0:Date.now()};openGame(GAMES[plan.ids[0]],true)}
+
+/* --- P1-10 音效（复用 AudioContext） --- */
+function sfx(kind){
+  if(+(S.getItem('bd_sound')||1)===0)return;
+  var c=audio();if(!c)return;
+  var f={ok:880,bad:196,tick:523,end:659}[kind]||660;
+  try{var t0=c.currentTime,o=c.createOscillator(),g=c.createGain();
+    o.type=kind==='bad'?'sawtooth':'sine';o.frequency.setValueAtTime(f,t0);
+    g.gain.setValueAtTime(0.06,t0);g.gain.exponentialRampToValueAtTime(0.0001,t0+0.18);
+    o.connect(g);g.connect(c.destination);o.start(t0);o.stop(t0+0.2)}catch(e){}
+}
+
+/* --- 内容 P0-1 每日挑战 --- */
+function dayKey(off){var d=new Date(Date.now()+(off||0)*86400000);
+  return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)}
+function daySeed(){var s=dayKey().replace(/-/g,'');return +s}
+var DAILY_POOL=['quick','eagle','colortone','stroop','flashnum','accu','dots','pixel',
+  'calc','ring','vertmath','crossfill','spantest','quiz','dual','blitz','pond','tiles','sync','mines'];
+function dailyPick(){
+  var rnd=mulberry32(daySeed()>>>0),pool=DAILY_POOL.slice(),out=[];
+  for(var i=0;i<3;i++){var k=Math.floor(rnd()*pool.length);out.push(pool.splice(k,1)[0])}
+  return out;
+}
+function dailyLoad(){try{var o=JSON.parse(S.getItem('bt_daily')||'null');
+  if(o&&o.d===dayKey())return o}catch(e){}return {d:dayKey(),ids:dailyPick(),sc:[],done:0}}
+var DAILY_REF={flashnum:6,accu:6,dots:6,pixel:6,crossfill:4,sync:80,mines:180,
+  tiles:300,quiz:80,dual:200,blitz:200,pond:12};
+function dailyIndex(id,sc){
+  var t=(typeof TARGETS!=='undefined'&&TARGETS[id])?TARGETS[id][CURDIFF||0]:DAILY_REF[id];
+  if(!t)return 0;
+  var v=GAMES[id].low?Math.round(100*t/Math.max(sc,1)):Math.round(100*sc/t);
+  return Math.max(0,Math.min(100,v));
+}
+
+/* --- 内容 P0-2 连续天数 + P0-3 段位经验 --- */
+function streakTouch(){
+  var o={n:0,last:''};try{o=JSON.parse(S.getItem('bt_streak')||'{}')}catch(e){}
+  var today=dayKey(),yest=dayKey(-1);
+  if(o.last===today)return o.n;
+  o.n=(o.last===yest)?(o.n||0)+1:1;
+  o.last=today;try{S.setItem('bt_streak',JSON.stringify(o))}catch(e){}
+  return o.n;
+}
+var RANKS=[{n:'🥉 新手',e:0},{n:'🥈 入门',e:100},{n:'🥇 熟练',e:300},
+ {n:'💎 精通',e:700},{n:'👑 大师',e:1500},{n:'🏆 传奇',e:3000}];
+function addExp(n){
+  var e=+(S.getItem('bt_exp')||0)+n;try{S.setItem('bt_exp',e)}catch(er){}
+  var r=0;for(var i=0;i<RANKS.length;i++)if(e>=RANKS[i].e)r=i;
+  var old=+(S.getItem('bt_rank')||0);if(r>old)try{S.setItem('bt_rank',r)}catch(er){}
+  return {exp:e,rank:Math.max(r,old),up:r>old};
+}
+function rankBadge(){var r=+(S.getItem('bt_rank')||0);var nx=RANKS[r+1];
+  var cur=RANKS[r].e, need=nx?nx.e:cur, pct=need>cur?Math.max(0,Math.min(100,Math.round((+(S.getItem('bt_exp')||0)-cur)/(need-cur)*100))):100;
+  return {name:RANKS[r].n,exp:+(S.getItem('bt_exp')||0),next:nx?nx.n:null,pct:pct}}
+
+/* --- 内容 P0-4 成就 --- */
+function bestAny(id,d){return +(S.getItem('bt2_'+id+'_'+d)||S.getItem('bt_'+id)||0)}
+function achCtx(){
+  var cnt={};try{cnt=JSON.parse(S.getItem('bt_cnt')||'{}')}catch(e){}
+  var n=0,mx=0,cats={},hard=0,st=0;
+  try{st=+(JSON.parse(S.getItem('bt_streak')||'{}').n||0)}catch(e){st=0}
+  for(var id in cnt){n+=cnt[id];if(cnt[id]>mx)mx=cnt[id];
+    if(cnt[id]>0&&GAMES[id]){var c=catOf(id);if(c)cats[c]=1}}
+  try{var lg=JSON.parse(S.getItem('bt_log')||'[]');
+    for(var i=0;i<lg.length;i++)if(lg[i].d===2)hard++}catch(e){}
+  return {
+    total:n, played:Object.keys(cnt).filter(function(k){return cnt[k]>0}).length,
+    maxCnt:mx, cats:Object.keys(cats).length, hardN:hard, streak:st, cnt:cnt,
+    coins:getCoins(), rank:+(S.getItem('bt_rank')||0), exp:+(S.getItem('bt_exp')||0),
+    daily:+(S.getItem('bt_daily_n')||0),
+    best:function(id,d){return bestAny(id,d)}
+  };
+}
+var ACH=[
+ {id:'first',n:'第一次开练',d:'完成任意 1 局',reward:10,chk:function(s){return s.total>=1}},
+ {id:'cat10',n:'九类通吃',d:'10 个分类各完成 1 局',reward:30,chk:function(s){return s.cats>=10}},
+ {id:'rt250',n:'闪电手',d:'反应速度 ≤250 ms',reward:20,chk:function(s){var v=s.best('reacttest',0);return v>0&&v<=250}},
+ {id:'span7',n:'七位记忆',d:'记忆广度达到 7 位',reward:20,chk:function(s){return s.best('spantest',0)>=7}},
+ {id:'streak7',n:'一周不断',d:'连续训练 7 天',reward:30,chk:function(s){return s.streak>=7}},
+ {id:'sudokuH',n:'数独硬核',d:'困难档完成 9×9 数独',reward:20,chk:function(s){return s.best('sudoku',2)>0}},
+ {id:'daily10',n:'十天打卡',d:'累计完成 10 次每日挑战',reward:20,chk:function(s){return s.daily>=10}},
+ {id:'hundred',n:'百局老兵',d:'任意一款累计 100 局',reward:30,chk:function(s){return s.maxCnt>=100}},
+ {id:'allPlay',n:'全都摸过',d:'全部小游戏各玩过至少 1 局',reward:30,chk:function(s){return s.played>=Object.keys(GAMES).length}},
+ {id:'hard20',n:'硬碰硬',d:'困难档累计完成 20 局',reward:20,chk:function(s){return s.hardN>=20}},
+ {id:'span9',n:'九位记忆',d:'记忆广度达到 9 位',reward:20,chk:function(s){return s.best('spantest',0)>=9}},
+ {id:'rt200',n:'极速反应',d:'反应速度 ≤200 ms',reward:20,chk:function(s){var v=s.best('reacttest',0);return v>0&&v<=200}},
+ {id:'eagle20',n:'鹰眼',d:'火眼金睛困难档 ≥20',reward:15,chk:function(s){return s.best('eagle',2)>=20}},
+ {id:'color20',n:'色彩大师',d:'色彩辨识困难档 ≥20',reward:15,chk:function(s){return s.best('colortone',2)>=20}},
+ {id:'calc5',n:'速算达人',d:'心算困难档 ≥5',reward:15,chk:function(s){return s.best('calc',2)>=5}},
+ {id:'flow20',n:'连线艺术家',d:'连线作战困难档 ≥700',reward:15,chk:function(s){return s.best('flow',2)>=700}},
+ {id:'sokoban10',n:'推箱老手',d:'推箱子困难档 ≥700',reward:15,chk:function(s){return s.best('sokoban',2)>=700}},
+ {id:'tetris100',n:'方块百连',d:'俄罗斯方块累计 100 局',reward:30,chk:function(s){return (s.cnt.tetris||0)>=100}},
+ {id:'snake50',n:'贪吃百蛇',d:'贪吃蛇累计 50 局',reward:20,chk:function(s){return (s.cnt.snake||0)>=50}},
+ {id:'coin500',n:'小富翁',d:'持有金币 ≥500',reward:20,chk:function(s){return s.coins>=500}},
+ {id:'rank3',n:'精通在望',d:'段位达到 💎 精通',reward:30,chk:function(s){return s.rank>=3}},
+ {id:'exp1000',n:'千锤百炼',d:'累计经验 ≥1000',reward:20,chk:function(s){return s.exp>=1000}},
+ {id:'daily30',n:'月度自律',d:'累计完成 30 次每日挑战',reward:30,chk:function(s){return s.daily>=30}},
+ {id:'hard50',n:'千锤百战',d:'困难档累计完成 50 局',reward:30,chk:function(s){return s.hardN>=50}}
+];
+function checkAch(){
+  var s=achCtx();var have=[];try{have=JSON.parse(S.getItem('bt_ach')||'[]')}catch(e){have=[]}
+  var ha={};have.forEach(function(x){if(typeof x==='string')ha[x]=1;else if(x&&x.id)ha[x.id]=1});
+  var newly=[];
+  ACH.forEach(function(a){if(ha[a.id])return;if(a.chk(s)){newly.push(a);ha[a.id]=1}});
+  if(!newly.length)return;
+  var arr=have.slice();var popN=0;
+  newly.forEach(function(a){arr.push({id:a.id,t:Date.now()});var rw=a.reward||15;addCoins(rw);
+    popN++;if(popN<=2)toast('🏅 '+a.n+' 达成！+'+rw+'🪙')});
+  try{S.setItem('bt_ach',JSON.stringify(arr))}catch(e){}
+}
+function openAch(){var pp=overlayPanel('🏅 成就');var p=pp.p,ov=pp.ov;
+  var ha={};try{JSON.parse(S.getItem('bt_ach')||'[]').forEach(function(x){ha[(x&&x.id)||x]=1})}catch(e){}
+  var got=ACH.filter(function(a){return ha[a.id]}).length;
+  p.appendChild(h('div','hint','已解锁 '+got+' / '+ACH.length+'　· 成就只给金币与展示，不影响玩法'));
+  var wrap=h('div','ach-list');
+  ACH.forEach(function(a){var on=ha[a.id];var row=h('div','ach-row'+(on?' on':''));
+    row.innerHTML='<div class="ach-name">'+(on?'🏅 ':'🔒 ')+a.n+'</div><div class="ach-desc">'+(on?'已达成':a.d)+'</div>';
+    wrap.appendChild(row)});
+  p.appendChild(wrap);
+  var b=h('button','btn gold','关闭');b.onclick=function(){if(ov.parentNode)ov.remove()};p.appendChild(b);
+  ov.appendChild(p);document.body.appendChild(ov);
+}
+
+/* --- 内容 P1-10 皮肤条件解锁 --- */
+function bestAny2(id,d){return bestAny(id,d)}
+var SKIN_UNLOCK={
+  retro:{txt:'记忆广度 7 位',chk:function(){return bestAny('spantest',0)>=7}},
+  checker:{txt:'全部小游戏各玩过 1 局',chk:function(){
+    var c=0,total=Object.keys(GAMES).length;
+    for(var id in GAMES)if(+(S.getItem('bt_'+id)||0)>0||+(S.getItem(bestKey(id,0,false))||0)>0)c++;
+    return c>=total}}
+};
+/* ============================================================================ */
+function openGame(g,skipIntro){try{MENUSCROLL=window.pageYOffset||(document.documentElement&&document.documentElement.scrollTop)||0}catch(e){MENUSCROLL=0}
 commitExit();LIVE=null;CURRENT=g;stopTimers();document.onkeydown=null;CURDIFF=0;CUR_ENDLESS=false;
 if(g.diffs){var sv=+(S.getItem('bd_'+g.id)||0);if(sv>=0&&sv<g.diffs.length)CURDIFF=sv}
-/* 只有依赖父容器高度的 canvas 游戏才撑满舞台；其余保持自然内容高度，
-   避免给所有游戏都凭空加出上百像素的底部空白 */
 var NEEDFILL={tiles:1,snake:1};
 $('menu').style.display='none';$('stage').style.display='';syncVH();$('stage').className=NEEDFILL[g.id]?'fill':'';
 try{var _bc=String(document.body.className||'');if(_bc.indexOf('ingame')<0)document.body.className=(_bc+' ingame').replace(/^\s+/,'')}catch(e){}
 var _hd=$('hd');if(_hd)_hd.className='nowrap';$('btnBack').style.display='';$('btnRe').style.display='';$('hdTitle').textContent=g.icon+' '+g.name;var st=$('stage');st.innerHTML='';
+if(skipIntro){GAME_PAUSED=false;PAUSED_ACC=0;PAUSE_AT=0;removePauseOv();setPauseBtn();removeScoreFloat();COMBO=0;g.start(CURDIFF);mountItemBar();if(canPause(g.id)){var _pb0=$('btnPause');if(_pb0)_pb0.style.display=''}return}
 var ov=h('div','overlay');var p=h('div','panel');
 p.appendChild(h('div','ptitle',g.icon+' '+g.name+' · 玩法说明'));
 var r=h('div','rules');r.innerHTML=g.rules;p.appendChild(r);
 if(g.diffs){p.appendChild(h('div','hint','⚙️ 选择难度：'));
 var dr=h('div','diffrow');
-g.diffs.forEach(function(df,i){var b=h('button','diffbtn'+(i===CURDIFF?' sel':''),df.n+'<small>'+df.d+'</small>');
-b.onclick=function(){CURDIFF=i;try{S.setItem('bd_'+g.id,i)}catch(e){}
-[].slice.call(dr.children).forEach(function(x){x.classList.remove('sel')});b.classList.add('sel')};
-dr.appendChild(b)});
+g.diffs.forEach(function(df,i){var bk=bestKey(g.id,i,false);var bv=+(S.getItem(bk)||0);var bve=+(S.getItem(bestKey(g.id,i,true))||0);
+  var bestTxt=bv>0?(' · 最佳 '+bv+(g.unit||'')):(bve>0?(' · 最佳(无尽) '+bve+(g.unit||'')):'');
+  var b=h('button','diffbtn'+(i===CURDIFF?' sel':''),df.n+'<small>'+df.d+bestTxt+'</small>');
+  b.onclick=function(){CURDIFF=i;try{S.setItem('bd_'+g.id,i)}catch(e){}
+  [].slice.call(dr.children).forEach(function(x){x.classList.remove('sel')});b.classList.add('sel')};
+  dr.appendChild(b)});
 p.appendChild(dr)}
 if(ENDLESS_GAMES[g.id]){CUR_ENDLESS=+(S.getItem('be_'+g.id)||0)?true:false;
 var _eb=h('button','diffbtn'+(CUR_ENDLESS?' sel':''),'🌌 无尽模式<small>'+(CUR_ENDLESS?'已开启 · 直到阵亡/失误':'关闭 · 有限轮次')+'</small>');
 _eb.onclick=function(){CUR_ENDLESS=!CUR_ENDLESS;try{S.setItem('be_'+g.id,CUR_ENDLESS?1:0)}catch(e){}
 _eb.classList.toggle('sel',CUR_ENDLESS);_eb.querySelector('small').textContent=(CUR_ENDLESS?'已开启 · 直到阵亡/失误':'关闭 · 有限轮次')};
 p.appendChild(_eb)}
+var rs=takeResume(g.id);
+if(rs&&rs.p){var rb=h('button','diffbtn','▶ 继续上次'+(rs.p.filled!=null?('（已填 '+rs.p.filled+' 格）'):''));rb.onclick=function(){if(ov.parentNode)ov.remove();clearResume();GAME_PAUSED=false;PAUSED_ACC=0;PAUSE_AT=0;removePauseOv();setPauseBtn();removeScoreFloat();COMBO=0;CURDIFF=rs.d||0;if(g.resume&&typeof g.resume==='function')g.resume(rs.p);else g.start(CURDIFF);mountItemBar();if(canPause(g.id)){var _pb2=$('btnPause');if(_pb2)_pb2.style.display=''}};p.appendChild(rb)}
 var b=h('button','btn gold','▶ 开始游戏');b.onclick=function(){if(ov.parentNode)ov.remove();GAME_PAUSED=false;PAUSED_ACC=0;PAUSE_AT=0;removePauseOv();setPauseBtn();removeScoreFloat();COMBO=0;g.start(CURDIFF);mountItemBar();if(canPause(g.id)){var _pb=$('btnPause');if(_pb)_pb.style.display=''}};p.appendChild(b);
 ov.appendChild(p);st.appendChild(ov)}
-function finish(score,low){var g=CURRENT;if(!g)return;if(low===undefined||low===null)low=g.low; /* 调用方从不传 low，必须回落到 CURRENT.low，否则 low 型游戏（如反应速度 ms）会被当成分高者胜，把最差成绩存成最佳 */stopTimers();document.onkeydown=null;GAME_PAUSED=false;PAUSED_ACC=0;PAUSE_AT=0;removePauseOv();setPauseBtn();removeScoreFloat();var _pb=$('btnPause');if(_pb)_pb.style.display='none';var old=+(S.getItem('bt_'+g.id)||0),rec=saveBest(g.id,score,low);LIVE=null;
-var bestShow=low?(old>0?Math.min(old,score):score):Math.max(old,score);
-var unit=g.unit||'';
-var earned=Math.max(1,Math.floor((score||0)/40))+(CURDIFF||0)*5;addCoins(earned);
-var pp=overlayPanel('⏹ 本轮结束');
-pp.p.appendChild(h('div','big',score+unit));
-pp.p.appendChild(h('div','sub','最佳成绩：'+bestShow+unit+(rec?'　🎉 新纪录！':'')+'　🪙 +'+earned));
-var b1=h('button','btn gold','再来一次');b1.onclick=restartGame;
-var b2=h('button','btn','返回菜单');b2.onclick=toMenu;
-pp.p.appendChild(b1);pp.p.appendChild(b2);pp.ov.appendChild(pp.p);$('stage').appendChild(pp.ov)}
+function trainSummary(){
+  var plan=TRAIN.plan, log=TRAIN.log, t0=TRAIN.t0||Date.now();
+  TRAIN=null;
+  var ms=Date.now()-t0, total=0; log.forEach(function(x){total+=(x.sc||0)});
+  var prev=+(S.getItem('bt_train_'+plan.id)||0);
+  var cmp = prev? (ms<prev?'⚡ 比上次快 '+Math.round((prev-ms)/1000)+'s':'🐢 比上次慢 '+Math.round((ms-prev)/1000)+'s') : '🎉 首次完成';
+  try{S.setItem('bt_train_'+plan.id,ms)}catch(e){}
+  var pp=overlayPanel('🏁 '+plan.n+' · 训练完成');
+  var html=''; log.forEach(function(x){var g=GAMES[x.id];html+='<div class="statrow"><span>'+(g?g.icon+' '+g.name:'')+'</span><b>'+(x.sc||0)+(g?g.unit||'':'')+'</b></div>'});
+  var p=h('div');p.innerHTML=html;pp.p.appendChild(p);
+  pp.p.appendChild(h('div','big','用时 '+Math.round(ms/1000)+'s'));
+  pp.p.appendChild(h('div','sub','合计 '+total+'　'+cmp));
+  var b1=h('button','btn gold','返回菜单');b1.onclick=toMenu;pp.p.appendChild(b1);
+  pp.ov.appendChild(pp.p);$('stage').appendChild(pp.ov);
+}
+function finish(score,low){var g=CURRENT;if(!g)return;
+  if(low===undefined||low===null)low=g.low;
+  stopTimers();document.onkeydown=null;GAME_PAUSED=false;PAUSED_ACC=0;PAUSE_AT=0;removePauseOv();setPauseBtn();removeScoreFloat();
+  var _pb=$('btnPause');if(_pb)_pb.style.display='none';
+  var old=+(S.getItem(bestKey(g.id,CURDIFF,CUR_ENDLESS))||0),rec=saveBest(g.id,score,low,CUR_ENDLESS);LIVE=null;
+  var bestShow=low?(old>0?Math.min(old,score):score):Math.max(old,score);
+  var unit=g.unit||'';
+  var earned=coinFor(g.id,score,CURDIFF,rec);addCoins(earned);sfx('end');
+  /* P0-3 局档案：先取本局之前的最近 10 局算中位，再写盘 */
+  var list=logRecent(g.id,CURDIFF,10);
+  logPush({t:Date.now(),id:g.id,d:CURDIFF,e:CUR_ENDLESS?1:0,sc:score,ok:(LAST_META&&LAST_META.ok)||null,n:(LAST_META&&LAST_META.n)||null});
+  /* 累计局数（成就用，必须独立存，bt_log 只留 40 条） */
+  var cnt={};try{cnt=JSON.parse(S.getItem('bt_cnt')||'{}')}catch(e){}
+  cnt[g.id]=(cnt[g.id]||0)+1;try{S.setItem('bt_cnt',JSON.stringify(cnt))}catch(e){}
+  streakTouch();
+  var ex=addExp(3+(rec?5:0));
+  if(TRAIN)TRAIN.log.push({id:g.id,sc:score});
+  checkAch();
+  /* P0-6 训练：最后一项直接出汇总 */
+  if(TRAIN&&TRAIN.i>=TRAIN.plan.ids.length-1){trainSummary();return}
+  var pp=overlayPanel('⏹ 本轮结束');
+  pp.p.appendChild(h('div','big',score+unit));
+  var sub=h('div','sub','最佳成绩：'+bestShow+unit+(rec?'　🎉 新纪录！':'')+'　🪙 +'+earned+(ex.up?'　🎉 晋升 '+RANKS[ex.rank].n:''));
+  pp.p.appendChild(sub);
+  /* P0-2 LAST_META 附加行 */
+  if(LAST_META){
+    if(LAST_META.avg!=null)pp.p.appendChild(h('div','sub',(LAST_META.rating?('平均 '+LAST_META.avg+' ms · '+LAST_META.rating):('平均 '+LAST_META.avg+' ms'))));
+    if(LAST_META.ok!=null&&LAST_META.n!=null)pp.p.appendChild(h('div','sub','正确 '+LAST_META.ok+'/'+LAST_META.n+(LAST_META.switchAcc!=null?('　· 切换后正确率 '+LAST_META.switchAcc+'%'):'')));
+    LAST_META=null;
+  }
+  /* P0-3 复盘对比 */
+  if(list.length){
+    var med=median(list), pct=med>0?Math.round((score-med)/med*100):0;
+    var better=g.low?(score<med):(score>med);
+    pp.p.appendChild(h('div','sub','📈 比你的中位 '+med+(g.unit||'')+' '+(better?(g.low?'低':'高'):(g.low?'高':'低'))+' '+Math.abs(pct)+'%　'+(better?'🔥':'再试一次')));
+  } else {
+    pp.p.appendChild(h('div','sub','📈 首局基准，下次来比'));
+  }
+  /* P0-7 升/降档建议（每局 id 偶数次才评估，避免每局都弹） */
+  if(!TRAIN&&g.diffs){
+    var gidN=logRecent(g.id,CURDIFF,9999).length;
+    if(gidN%2===0){
+      var sd=suggestDiff(g.id);
+      if(sd>0&&g.diffs[CURDIFF+1]){var nb=h('button','btn','⬆️ 建议升到 '+g.diffs[CURDIFF+1].n);nb.onclick=function(){try{S.setItem('bd_'+g.id,CURDIFF+1)}catch(e){}if(pp.ov.parentNode)pp.ov.remove()};pp.p.appendChild(nb);}
+      else if(sd<0&&g.diffs[CURDIFF-1]){var db=h('button','btn','⬇️ 建议降到 '+g.diffs[CURDIFF-1].n);db.onclick=function(){try{S.setItem('bd_'+g.id,Math.max(CURDIFF-1,0))}catch(e){}if(pp.ov.parentNode)pp.ov.remove()};pp.p.appendChild(db);}
+    }
+  }
+  /* 按钮 */
+  if(TRAIN){
+    TRAIN.i++;
+    var nxt=TRAIN.plan.ids[TRAIN.i];
+    var b1=h('button','btn gold','➡️ 下一项：'+(GAMES[nxt]?GAMES[nxt].name:''));
+    b1.onclick=function(){if(pp.ov.parentNode)pp.ov.remove();if(GAMES[nxt])openGame(GAMES[nxt],true)};
+    pp.p.appendChild(b1);
+    var b2=h('button','btn','退出训练');b2.onclick=function(){TRAIN=null;toMenu()};pp.p.appendChild(b2);
+  } else {
+    var b1=h('button','btn gold','再来一次');b1.onclick=restartGame;
+    var b2=h('button','btn','返回菜单');b2.onclick=toMenu;
+    pp.p.appendChild(b1);pp.p.appendChild(b2);
+  }
+  pp.ov.appendChild(pp.p);$('stage').appendChild(pp.ov);
+}
 
 
 // 难度门槛用"有效拉动次数"衡量：每次反向拉动对应正向一推，故拉动数=正向解步数上界
