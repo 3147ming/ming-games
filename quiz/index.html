@@ -2674,7 +2674,8 @@ function openWeakBook(cat){
   sel.onchange=function(){weakFilter=sel.value;renderRows();};
   top.appendChild(sel);top.appendChild(allB);ov.p.appendChild(top);
   var listBox=h('div');ov.p.appendChild(listBox);
-  var hint=ht('div','hint','掌握标准：回顾中答对即移除；答错继续保留并计数。');
+  /* 4.0.1-5：文案对齐 SRS 掌握口径 —— 旧文案「答对即移除」与 C2 的统一冲突 */
+  var hint=ht('div','hint','掌握标准：答对会推进复习间隔（1/2/4/7/15/30 天），30 天档答对才算掌握；也可手动移除。');
   hint.style.marginTop='10px';ov.p.appendChild(hint);
 
   function renderRows(){
