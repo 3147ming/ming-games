@@ -1521,6 +1521,7 @@ var lastAuto=null;                              // 结算页的实力评级快�
 var reviewOne=false;                            // 薄弱题本里的「单题练」：结算页返回题本而不是重开整局
 var roundWrong=[];                              // P2-A1：本局首次结算的错题（重试答对不追加、不重复）
 var roundShortMsg='';                           // C4：本局实际题量少于所选档位时的常驻提示
+var answeredCount=0;                            // 4.0.1-2：本局「真正作答过」的题数（自动模式的结算分母）
 var quizOver=false;                             // 本局是否已收尾（挡住答题后的延时切题把结算页顶掉）
 function sectionName(k){for(var i=0;i<SECTIONS.length;i++){if(SECTIONS[i].k===k)return SECTIONS[i].n;}return '🎯 选择题';}
 function windowAcc(){var a=selfWindow,i,n=0;if(!a.length)return 0;for(i=0;i<a.length;i++){if(a[i])n++;}return n/a.length;}
@@ -1868,7 +1869,7 @@ function doStartType(bk,cn,d){
       return {q:p.q,a:p.a,opts:o,custom:true};
     });total=qlist.length;
   }
-  ok=0;qidx=0;score=0;roundWrong=[];scratchMap.clear();  /* 批次 B：开新局草稿不串题 */
+  ok=0;qidx=0;score=0;answeredCount=0;roundWrong=[];scratchMap.clear();  /* 批次 B：开新局草稿不串题 */
   /* B 批：先学后练 —— 开启开关且该分类有知识卡时，开局前先弹知识卡覆盖层 */
   if(bk&&KNOW_CARDS[bk]&&JSON.parse(S.getItem('bt_qa_learn_before')||'false')){maybeShowCard(bk,function(){showQuestion();});}
   else{showQuestion();}
@@ -1896,7 +1897,7 @@ function scratchPad() {
   head.appendChild(ht('div', 'sptitle', '📝 草稿板（仅本机，不参与判分）'));
   var ctr = h('div');
   var clr = ht('button', 'spbtn', '清空'); clr.onclick = function () { clearScratch(); };
-  var col = ht('button', 'spbtn', '收起'); col.onclick = function () { closeScratch(); };
+  var col = ht('button', 'spbtn', '收起'); col.onclick = function () { closeScratch(true); };
   ctr.appendChild(clr); ctr.appendChild(col); head.appendChild(ctr); el.appendChild(head);
   var cv = document.createElement('canvas'); cv.className = 'spcv'; cv.style.touchAction = 'none';
   el.appendChild(cv); document.body.appendChild(el);
@@ -1929,6 +1930,7 @@ function bindScratch(cv) {
 }
 function openScratch() {
   var Q = qlist[qidx]; if (!Q) return;
+  cancelPending();   /* C1 二批：草稿板打开期间暂停「答对自动跳」，别刚答完就被计时器抢走 */
   scratchKey = scratchKeyOf(Q);
   var el = scratchPad(); el.style.display = 'block'; scratchOpen = true;
   var cv = scratchCanvas, dpr = window.devicePixelRatio || 1;
@@ -1941,11 +1943,15 @@ function openScratch() {
     if (data) { var img = new Image(); img.onload = function () { try { c.drawImage(img, 0, 0, w, hh); } catch (e) {} }; img.src = data; }
   });
 }
-function closeScratch() {
+/* C1 二批：resume===true 只有「用户主动收起」（收起按钮 / Esc）才传 ——
+   内部调用（切题、作答、返回书架）一律不传，否则切题瞬间会被重新计时顶掉下一题。 */
+function closeScratch(resume) {
   if (!scratchOpen) return;
   if (scratchCanvas && scratchKey) { try { scratchMap.set(scratchKey, scratchCanvas.toDataURL('image/png')); } catch (e) {} }
   var el = document.getElementById('scratchPad'); if (el) el.style.display = 'none';
   scratchOpen = false; scratchPainting = false; scratchLast = null;
+  /* 本题已答对 + 自动跳开着：收起草稿板后重新给 1 秒，看完草稿再走 */
+  if (resume === true && !quizOver && curAnsCorrect && quickJump()) advance(QUICK_JUMP_DELAY);
 }
 function clearScratch() {
   if (!scratchCanvas) return;
@@ -1954,10 +1960,11 @@ function clearScratch() {
   if (scratchKey) scratchMap.delete(scratchKey);
 }
 /* Esc 关闭草稿板（不影响 1-4 / Enter 答题） */
-document.addEventListener('keydown', function (e) { if (scratchOpen && e && e.key === 'Escape') { closeScratch(); } });
+document.addEventListener('keydown', function (e) { if (scratchOpen && e && e.key === 'Escape') { closeScratch(true); } });
 /* ---------- 答题页 ---------- */
 function showQuestion(){
   if(quizOver)return;
+  curAnsCorrect=false;   /* C1 二批：新题 = 未答对，草稿板「收起」不会误触发自动跳 */
   closeScratch();   /* 批次 B：切题前先收起并保存上一题草稿 */
   showView('stage');clearNode(stageEl);locked=false;
   if(qidx>=total&&!autoMode){endQuiz();return;}
@@ -2319,12 +2326,14 @@ function syncHudLevel(){
 function markUnknown(){
   closeScratch();   /* 批次 B：作答时收起，避免遮挡反馈 */
   if(locked)return;locked=true;
+  curAnsCorrect=false;   /* C1 二批：「不会」永远不自动跳 */
   var Q=qlist[qidx];
   /* 首次作答才结算（记薄弱题 / 记自适应窗口）；重试后再按「不会」不再重复记 */
   var first=!(Q&&Q.settled);
   if(Q)Q.settled=true;
   var recorded=false;
   if(first){
+    answeredCount++;   /* 4.0.1-2：点「不会」也算作答过（自动模式结算分母） */
     if(Q&&!reviewMode&&!Q.hand){
       addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:'（不会）',src:Q.src,time:Date.now()});
       recorded=true;
@@ -2362,9 +2371,14 @@ function markUnknown(){
   /* 不再 advance()：错题是学习时刻，去留由用户点「重试」还是「下一题」决定 */
 }
 
-/* C1：答对自动跳题（快速模式）默认关；开启才 800ms 自动跳，否则停住给「下一题」 */
-function quickJump(){try{return JSON.parse(S.getItem('bt_qa_quickjump')||'false')===true;}catch(e){return false;}}
-function maybeAdvance(correct,ms){if(correct&&quickJump())advance(ms||800);else cancelPending();}
+/* C1（二批）：答对先显示解析/来源，1 秒后自动跳 —— 默认开启（需求变更，上一批默认关）。
+   1 秒内点「下一题」立即跳（goNext 已 cancelPending，不会重复跳）。
+   答错 / 不会仍停住，去留由用户点「重写代码」还是「下一题」决定。 */
+var QUICK_JUMP_DELAY=1000;
+function quickJump(){try{return JSON.parse(S.getItem('bt_qa_quickjump')||'true')!==false;}catch(e){return true;}}
+function maybeAdvance(correct,ms){if(correct&&quickJump())advance(ms||QUICK_JUMP_DELAY);else cancelPending();}
+/* C1 二批：本题是否已答对（草稿板「收起」后据此重新计时，避免开了草稿板就再不自动跳） */
+var curAnsCorrect=false;
 function answer(correct,given,ans,btn,opt){
   closeScratch();   /* 批次 B：作答时收起，避免遮挡反馈 */
   if(locked)return;locked=true;
@@ -2374,6 +2388,7 @@ function answer(correct,given,ans,btn,opt){
   /* 首次 / 重试分层：重试只给 +5 学习奖励 —— 不扣分、不重复记薄弱题、不重复记窗口、不重复升降档 */
   var first=!(Q&&Q.settled);
   if(Q)Q.settled=true;
+  curAnsCorrect=!!correct;   /* C1 二批：草稿板「收起」后据此重新计时（重试答对也算） */
   if(reviewMode){
     if(btn)markChosen(btn,ans);else lockOpts();
     var fbR=h('div','fb '+(correct?'ok':'no'));
@@ -2437,6 +2452,7 @@ function answer(correct,given,ans,btn,opt){
   }
   var _pen=(curDiff>=2&&_bk&&QA_TYPES[_bk]&&QA_TYPES[_bk].pen)?5:0;
   if(first){
+    answeredCount++;   /* 4.0.1-2：自动模式结算分母 = 真正作答过的题数（不是 qidx） */
     if(correct){ok++;score+=10;
       /* B 批：普通局首次答对 —— 若该题在薄弱题本里，推进其 SRS 间隔（达 30 天档则掌握移除并提示） */
       var _wa=loadWeak();
@@ -2498,9 +2514,11 @@ function endQuiz(){
   if(reviewMode){reviewMode=false;finish(score);return;}
   var key=(autoMode&&typeKey.indexOf('b:')===0)?(typeKey+':auto'):((curDiff>=0)?(typeKey+':'+curDiff):typeKey);
   if(autoMode){
-    /* 无限模式没有预设题量：用实际作答数当分母，并留一份实力快照给结算页 */
-    lastAuto={rank:selfRank,n:qidx,acc:windowAcc(),win:selfWindow.length,lab:curDiffLabel};
-    total=qidx;
+    /* 4.0.1-2：无限模式没有预设题量，分母必须用「真正作答过的题数」——
+       旧写法 total=qidx 是「已经切到第几题」，答完当前题还没点下一题时 qidx 少 1，
+       会出现 2/1；C1 二批默认不自动跳后这条路径天天走，必然复现。 */
+    lastAuto={rank:selfRank,n:answeredCount,acc:windowAcc(),win:selfWindow.length,lab:curDiffLabel};
+    total=answeredCount;
   }
   autoMode=false;saveTypeBest(key,score);finish(score);
 }
@@ -2519,7 +2537,7 @@ function retryRoundWrong(){
     return {q:w.q,a:w.a,opts:(w.opts&&w.opts.length)?w.opts.slice():null,
             code:w.code,exp:w.exp,sol:w.sol,steps:w.steps,src:w.src,weak:null};
   });
-  ok=0;qidx=0;score=0;total=qlist.length;showQuestion();
+  ok=0;qidx=0;score=0;answeredCount=0;total=qlist.length;showQuestion();
 }
 function finish(sc){
   closeScratch();   /* 批次 B：结算前保存并收起草稿 */
@@ -2546,7 +2564,8 @@ function finish(sc){
     }
     card.appendChild(ht('div','hint',_revMsg));
   }
-  var accLine=ht('div','hint','正确率 '+acc+'%　（'+ok+' / '+total+'）');accLine.style.color='var(--sub)';accLine.style.fontWeight='700';
+  /* 4.0.1-2：自动模式一题没答就点结束，分母是 0 —— 别把「0 / 0」摆给用户看 */
+  var accLine=ht('div','hint',total?('正确率 '+acc+'%　（'+ok+' / '+total+'）'):'本局未作答（0 题）');accLine.style.color='var(--sub)';accLine.style.fontWeight='700';
   card.appendChild(accLine);
   if(lastAuto){
     var lc=h('div','lvlcard');
@@ -2791,7 +2810,7 @@ function startSrs(){
   reviewMode=true;reviewOne=false;autoMode=false;quizOver=false;typeKey='b:srs';typeLabel='SRS 复习';qaSection='choice';handMode=false;
   navPush('quiz');
   qlist=weakSort(a).map(weakToQ);   /* 次数多 + 新的在前，到期题内也有轻重 */
-  ok=0;qidx=0;score=0;total=qlist.length;roundWrong=[];showQuestion();
+  ok=0;qidx=0;score=0;answeredCount=0;total=qlist.length;roundWrong=[];showQuestion();
 }
 function startReview(){
   var a=loadWeak();
@@ -2799,14 +2818,14 @@ function startReview(){
   reviewMode=true;reviewOne=false;autoMode=false;quizOver=false;typeKey='b:weak';typeLabel='回顾薄弱题';qaSection='choice';handMode=false;
   navPush('quiz');
   qlist=weakSort(a).map(weakToQ);
-  ok=0;qidx=0;score=0;total=qlist.length;roundWrong=[];showQuestion();
+  ok=0;qidx=0;score=0;answeredCount=0;total=qlist.length;roundWrong=[];showQuestion();
 }
 /* 单题练：只做这一道，答对移除、答错计数 +1，结算页回题本 */
 function startReviewOne(x){
   if(!x)return;
   reviewMode=true;reviewOne=true;autoMode=false;quizOver=false;typeKey='b:weak';typeLabel='回顾薄弱题';qaSection='choice';handMode=false;
   navPush('quiz');
-  qlist=[weakToQ(x)];ok=0;qidx=0;score=0;total=1;roundWrong=[];showQuestion();
+  qlist=[weakToQ(x)];ok=0;qidx=0;score=0;answeredCount=0;total=1;roundWrong=[];showQuestion();
 }
 
 /* ---------- 联网 ---------- */
@@ -2842,7 +2861,7 @@ function beginOnline(){
   typeKey='b:online';typeLabel=(ONLINE_SRC==='offline')?'📴 联网（离线兜底）':'🌐 联网';curDiff=-1;curDiffLabel='';qaSection='choice';handMode=false;quizOver=false;reviewMode=false;
   navPush('quiz');
   qlist=shuffle(ONLINE_BANK.slice()).slice(0,Math.min(10,ONLINE_BANK.length)).map(function(it){return {q:it.q,a:it.a,opts:it.opts,src:it.src};});
-  ok=0;qidx=0;score=0;total=qlist.length;roundWrong=[];showQuestion();
+  ok=0;qidx=0;score=0;answeredCount=0;total=qlist.length;roundWrong=[];showQuestion();
 }
 
 /* ---------- 自定义题库编辑器 ---------- */
@@ -5417,15 +5436,15 @@ function openSettings(){
   var sec1=ht('div','section-title','实力检测');ov.p.appendChild(sec1);
   var redetect=h('button','btn ghost','🔄 重新编程实力检测');redetect.onclick=function(){try{S.removeItem(CODE_PROFILE_KEY);S.removeItem('bt_qa_rank_code');}catch(e){}closeOverlay(ov);codeQuestionnaire(function(){renderShelf();});};
   ov.p.appendChild(redetect);
-  /* C1：答题设置 —— 答对自动跳题（快速模式），默认关 */
+  /* C1（二批）：答题设置 —— 答对 1 秒后自动跳，默认开（关闭后可慢慢看解析） */
   ov.p.appendChild(ht('div','section-title','🧠 答题设置'));
-  var _qj=!!JSON.parse(S.getItem('bt_qa_quickjump')||'false');
+  var _qj=quickJump();
   var _qjL=document.createElement('label');_qjL.style.cssText='display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer';
   var _qjC=document.createElement('input');_qjC.type='checkbox';_qjC.checked=_qj;
   _qjC.onchange=function(){safeSet('bt_qa_quickjump',_qjC.checked?'true':'false');};
-  _qjL.appendChild(_qjC);_qjL.appendChild(ht('span',null,'⏩ 答对自动跳题（快速模式）'));
+  _qjL.appendChild(_qjC);_qjL.appendChild(ht('span',null,'⏩ 答对 1 秒后自动跳（关闭后可慢慢看解析）'));
   ov.p.appendChild(_qjL);
-  ov.p.appendChild(ht('div','muted','默认关闭：答对也会显示解析/来源，需要点「下一题」再走；打开后答对 800ms 自动跳。'));
+  ov.p.appendChild(ht('div','muted','默认开启：答对后先显示解析/来源，1 秒后自动进下一题；1 秒内点「下一题」立即跳。关闭后停住，看完解析自己点。'));
   var _arL=document.createElement('label');_arL.style.cssText='display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-top:6px';
   var _arC=document.createElement('input');_arC.type='checkbox';_arC.checked=autoRefillOn();
   _arC.onchange=function(){safeSet('bt_qa_autorefill',_arC.checked?'true':'false');};
