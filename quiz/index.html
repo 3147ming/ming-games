@@ -1341,6 +1341,15 @@ function mkQA(q,ans,cands,exp){ans=String(ans);var seen={};seen[ans]=1;var ws=[]
    任一通过即视为合格（4 选项含答案，或 3 干扰项不含答案）。 */
 function validItem(it){
   if(!it)return false;
+  /* 4.0.1-1：题目分类型。非选择题（填空/计算/实验）只要题干与答案非空，不校验四选项；
+     ⚠ 这是全站校验（extraPool / AI 入库 / autoRefill / stdAvail 都走它），
+       所以「缺省 type」必须继续按 choice 走老逻辑，旧题与源数组题（item[3] 干扰项）零变化。 */
+  var _ty=it.type;
+  if(_ty==='fill'||_ty==='calc'||_ty==='experiment'){
+    var _q=(it.q==null)?'':String(it.q).trim();
+    var _a=(it.a==null)?'':String(it.a).trim();
+    return !!(_q&&_a);
+  }
   var o=it.opts;
   if(!o && it[3]!=null)o=String(it[3]).split('|');
   if(!Array.isArray(o)||o.length<3)return false;
@@ -1522,6 +1531,7 @@ var reviewOne=false;                            // 薄弱题本里的「单题�
 var roundWrong=[];                              // P2-A1：本局首次结算的错题（重试答对不追加、不重复）
 var roundShortMsg='';                           // C4：本局实际题量少于所选档位时的常驻提示
 var answeredCount=0;                            // 4.0.1-2：本局「真正作答过」的题数（自动模式的结算分母）
+var customMixed=false;                          // 4.0.1-1：自定义题库本局含非选择题 → HUD 显示「混合试卷」
 var quizOver=false;                             // 本局是否已收尾（挡住答题后的延时切题把结算页顶掉）
 function sectionName(k){for(var i=0;i<SECTIONS.length;i++){if(SECTIONS[i].k===k)return SECTIONS[i].n;}return '🎯 选择题';}
 function windowAcc(){var a=selfWindow,i,n=0;if(!a.length)return 0;for(i=0;i<a.length;i++){if(a[i])n++;}return n/a.length;}
@@ -1845,6 +1855,7 @@ function makeCustomRound(tk,pairs){
 function doStartType(bk,cn,d){
   var ds=bk?qaDiffs(bk):null;
   quizOver=false;reviewMode=false;cancelPending();navPush('quiz');
+  customMixed=false;   /* 4.0.1-1：本局是否为「混合试卷」（自定义题库里含非选择题） */
   autoMode=(d==='auto');
   if(autoMode){selfRank=getRank(bk);curDiff=selfRank;}else{curDiff=(ds&&d>=0&&d<ds.length)?d:-1;}
   curDiffLabel=(curDiff>=0)?ds[curDiff].n:'';
@@ -1864,10 +1875,13 @@ function doStartType(bk,cn,d){
     var pairs=custom[cn]||[];if(!pairs.length){alert('该题库还没有题目，先去录入');return;}
     var picked=makeCustomRound(typeKey,pairs);
     qlist=picked.map(function(p){
-      // AI / 免费搜索生成的题带选项，手动录入的是填空 —— 两者都要保留
-      var o=(p.opts&&p.opts.length>=2)?shuffle(p.opts.slice()):null;
-      return {q:p.q,a:p.a,opts:o,custom:true};
+      // AI / 免费搜索生成的题带选项，手动录入的是填空 —— 两者都要保留。
+      // 4.0.1-1：type 决定四选一还是输入框；exp/src 让「判不中给解析」有内容可给。
+      var _nt=qTypeOf(p);
+      var o=(_nt==='choice'&&p.opts&&p.opts.length>=2)?shuffle(p.opts.slice()):null;
+      return {q:p.q,a:p.a,opts:o,custom:true,type:_nt,exp:p.exp||'',src:p.src||''};
     });total=qlist.length;
+    customMixed=qlist.some(isNonChoiceQ);
   }
   ok=0;qidx=0;score=0;answeredCount=0;roundWrong=[];scratchMap.clear();  /* 批次 B：开新局草稿不串题 */
   /* B 批：先学后练 —— 开启开关且该分类有知识卡时，开局前先弹知识卡覆盖层 */
@@ -1996,7 +2010,8 @@ function showQuestion(){
   // 进度条：自动匹配是无限模式，进度条固定满格（不打表，只做氛围）
   var pb=h('div','pbar'+(autoMode?' inf':''));var pbi=h('i');pbi.style.width=(autoMode?'100%':(Math.round((qidx+1)/Math.max(1,total)*100)+'%'));pb.appendChild(pbi);card.appendChild(pb);
   var hud=h('div','hud');
-  var sec=ht('span','chip sec',sectionName(qaSection));
+  /* 4.0.1-1：自定义题库里混着填空/计算/实验时，别再固定写「选择题」 */
+  var sec=ht('span','chip sec',customMixed?'📄 混合试卷':sectionName(qaSection));
   sec.title='点击切换板块';
   if(typeKey&&typeKey.indexOf('b:')===0&&typeKey!=='b:online'&&typeKey!=='b:weak'&&typeKey!=='b:srs'&&typeKey!=='b:round'){sec.onclick=function(){switchSection();};}
   hud.appendChild(sec);
@@ -2075,7 +2090,11 @@ function showQuestion(){
     var unk=h('button','unkbtn','😵 不会 · 记入薄弱题');unk.onclick=function(){markUnknown();};card.appendChild(unk);
   }else{
     var ir=h('div','row');ir.style.marginTop='4px';
-    var ti=h('input');ti.type='text';ti.placeholder='输入答案';ti.style.flex='1';
+    var ti=h('input');ti.type='text';
+    /* 4.0.1-1：填空 / 计算 / 实验共用同一个输入框判分（fillEqual 归一化：去空格标点、分数小数、上标） */
+    var _qt=qTypeOf(Q);
+    ti.placeholder=(_qt==='calc'?'输入计算结果（只写数值/表达式）':(_qt==='experiment'?'输入实验现象/结论的关键词':'输入答案'));
+    ti.style.flex='1';
     ti.setAttribute('autocapitalize','off');ti.setAttribute('autocorrect','off');ti.setAttribute('spellcheck','false');
     var sb=h('button','btn gold','提交');sb.onclick=function(){answer(fillEqual(ti.value,Q.a),ti.value,Q.a);};
     ti.onkeydown=function(e){if(e&&e.key==='Enter'){sb.click();}};
@@ -4378,6 +4397,11 @@ function finishFree(name,items,sp,card){
 /* ---------- 4.0 自定义题库生成质量：examLike 硬过滤 + 学术主题判定 ---------- */
 var ACADEMIC_RE=/化学|物理|数学|生物|历史|地理|英语|语文|政治|中考|高考|九年级|人教版|初中|高中/;
 function isAcademic(name){return ACADEMIC_RE.test(String(name||''));}
+/* 4.0.1-1：题型。取值缺省/未知一律按 choice 处理（旧题库无 type 字段，行为不变）。
+   choice=四选一；fill=填空；calc=计算；experiment=实验探究（后三者走输入框判分）。 */
+var QTYPE_NAME={choice:'单选',fill:'填空',calc:'计算',experiment:'实验'};
+function qTypeOf(Q){var t=Q&&Q.type;return (t==='fill'||t==='calc'||t==='experiment')?t:'choice';}
+function isNonChoiceQ(Q){return qTypeOf(Q)!=='choice';}
 var META_Q_RE=/描述的是下列哪项|出版社出版的图书|出版社|补全词条|普通高等学校本科专业|以下哪项.{0,6}(图书|专业|词条)|作者是|第[一二三四五六七八九十]+版|九年级[上下]册/;
 var META_OPT_RE=/出版社|第[一二三四五六七八九十]+版|九年级[上下]册|本科专业$/;
 function examLike(q){
@@ -4386,6 +4410,8 @@ function examLike(q){
   if(/^补全词条/.test(String(q.q)))return false;
   if((q.opts||[]).some(function(o){return META_OPT_RE.test(String(o));}))return false;
   if(!q.exp&&!q.src)return false;   // 解析/来源至少其一（指令要求两者，放宽为 OR 以兼容免费 AI 输出）
+  /* 4.0.1-1：填空/计算/实验不要求四选项，但元信息 + 解析来源两道闸照旧 */
+  if(isNonChoiceQ(q))return true;
   return validItem(q);
 }
 /* ---------- AI 出题 prompt（aiBuild 与「边刷边补」共用同一套要求） ---------- */
@@ -4398,12 +4424,15 @@ function makeQuizPrompt(name,count,items){
       '①走进化学世界 ②我们身边的空气 ③物质构成的奥秘 ④自然界的水 ⑤化学方程式 ⑥碳和碳的氧化物 ⑦燃料及其利用 ⑧金属和金属材料 ⑨溶液 ⑩酸和碱 ⑪盐和化肥 ⑫化学与生活。\n'+
       '每单元至少覆盖：概念辨析、实验操作、化学方程式、计算、图像/表格分析。\n';
   }
-  var typeHint='题型（比例自定，但禁止全是「下列说法正确的是」）：单选 / 填空 / 实验探究 / 计算。\n';
+  /* 4.0.1-1：题型必须混排 —— 旧 prompt 写了「填空/实验/计算」但返回格式只允许四选一，
+     AI 只能照抄成选择题；现在把 type 字段写进返回格式，并要求每 10 题至少 2 道非单选。 */
+  var typeHint='题型（必须混排，禁止全是「下列说法正确的是」）：choice 单选 / fill 填空 / calc 计算 / experiment 实验探究，每 10 题至少 2 道非单选。\n';
   var ban='严禁出的题（一旦发现作废）：\n'+
     '· 含书名、出版社、版次（如「第3版」）、专业名（如「普通高等学校本科专业」）、词条名、作者、年份+出版物的元信息题；\n'+
     '· 「XX 描述的是下列哪项」「补全词条：____」这类百科检索/词条题；\n'+
     '· 编造的具体年份、地区、考试名（无法确认就写「中考真题改编」）。\n';
-  var fmt='每题返回对象：{"q":"题干","a":"正确答案","opts":["选项1","选项2","选项3","选项4"],"exp":"解析（写步骤/方程式/易错点，计算题写算式）","src":"来源（如：人教版九年级化学第X单元 / 中考真题改编）"}。\n'+
+  var fmt='每题返回对象：{"type":"choice|fill|calc|experiment","q":"题干","a":"正确答案","opts":["选项1","选项2","选项3","选项4"],"exp":"解析（写步骤/方程式/易错点，计算题写算式）","src":"来源（如：人教版九年级化学第X单元 / 中考真题改编）"}。\n'+
+    'type 取值：choice=四选一（opts 必须恰好 4 个互不相同的选项、且包含正确答案）；fill=填空、calc=计算、experiment=实验探究（这三种 opts 留空数组 []，由学生自己输入答案）。\n'+
     '严格只返回 JSON 数组，不要解释文字、不要 Markdown 代码块。';
   return '你是一位严谨的中学命题老师，不是百科助手。请围绕主题「'+name+'」生成 '+count+' 道中文题（不少于 '+Math.max(8,count-3)+' 道）。\n'+
     chemHint+typeHint+material+ban+
@@ -4517,7 +4546,7 @@ function previewQuestions(name,qs,card,aiOk){
   function paint(){
     clearNode(card);
     card.appendChild(ht('div','hud','📝 预览：'+name+'（'+qs.filter(Boolean).length+' 题）'));
-    card.appendChild(ht('div','hint','勾选＝入库。单题可「✏️ 改」「🗑 删」；「🔄 换一题」由 AI 重出这一题，「🔄 换一批」重出一批；无解析/来源的题默认不勾选。'));
+    card.appendChild(ht('div','hint','勾选＝入库。单题可「✏️ 改」「🗑 删」；「🔄 换一题」由 AI 重出这一题，「🔄 换一批」重出一批；无解析/来源的题默认不勾选。〔单选〕走四选一，〔填空/计算/实验〕走输入框判分。'));
     var _tb=h('div','row');_tb.style.cssText='gap:8px;margin:6px 0;flex-wrap:wrap';
     var _b1=h('button','btn ghost','🔄 换一题');_b1.onclick=function(){var k=qs.findIndex(function(x){return x;});if(k>=0)regenOne(k);};
     var _b2=h('button','btn ghost','🔄 换一批');_b2.onclick=regenBatch;
@@ -4531,7 +4560,9 @@ function previewQuestions(name,qs,card,aiOk){
       var row=h('div','list-row');row.style.flexWrap='wrap';
       var chk=h('input');chk.type='checkbox';chk.checked=!!keep[i];chk.style.width='auto';
       chk.onchange=function(){keep[i]=chk.checked;};
-      var lab=ht('span',null,(i+1)+'. '+Q.q+' 〔答：'+Q.a+'〕');lab.style.flex='1';lab.style.minWidth='170px';
+      /* 4.0.1-1：每题标出题型，入库前一眼看出哪些是输入框题 */
+      var _tyn=QTYPE_NAME[qTypeOf(Q)]||'单选';
+      var lab=ht('span',null,(i+1)+'. 〔'+_tyn+'〕'+Q.q+' 〔答：'+Q.a+'〕');lab.style.flex='1';lab.style.minWidth='170px';
       var ed=h('button','btn ghost','✏️');ed.style.cssText='width:auto;padding:2px 7px;font-size:12px;flex:0 0 auto';
       ed.onclick=function(){
         var nq=prompt('改题面（取消＝不改）',Q.q);if(nq==null)return;
@@ -4785,15 +4816,19 @@ function callAI(cfg,prompt,cb){
         /* 英文题（题干或选项成句英文）直接挡在题库外：解析固定用中文写，英文题进来必然错配。
            单个词 / 代码标识符放行，否则「Python 哪个关键字定义函数」这类正常题会被连坐。 */
         /* P0-5 安全闸：统一走 validItem —— 必须恰好 4 个互不相同的选项、且包含答案。
-           以前只要求 opts.length>=2，2~3 个选项的坏题会一路进库。 */
+           以前只要求 opts.length>=2，2~3 个选项的坏题会一路进库。
+           4.0.1-1：题型分流 —— 非选择题不校验选项，但题干/答案仍要非空。 */
         var out=arr.filter(function(x){
           if(!x||!x.q||!x.a)return false;
           if(isEnglishQ(x))return false;
+          if(isNonChoiceQ(x))return !!(String(x.q).trim()&&String(x.a).trim());
           var os=(x.opts||[]).map(function(o){return String(o==null?'':o).trim();}).filter(function(o){return o!=='';});
           return validItem({a:String(x.a).trim(),opts:os});
         }).map(function(x){
+          var _ty=qTypeOf(x);
           var os=(x.opts||[]).map(function(o){return String(o==null?'':o).trim();}).filter(function(o){return o!=='';});
-          return {q:x.q,a:String(x.a).trim(),opts:shuffle(os),exp:String(x.exp||'').trim(),src:String(x.src||'').trim()};
+          /* 非选择题强制清空 opts：否则会被当成四选一渲染出来 */
+          return {q:x.q,a:String(x.a).trim(),opts:(_ty==='choice'?shuffle(os):null),exp:String(x.exp||'').trim(),src:String(x.src||'').trim(),type:_ty};
         });cb(out);}
       catch(e){cb(null);}
     }).catch(function(e){if(timer)clearTimeout(timer);cb(null);});
