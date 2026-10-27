@@ -4352,6 +4352,16 @@ function freeBuild(name){
   var sp=ht('div','hint','正在抓取资料（百度百科优先，维基百科兜底）…');card.appendChild(sp);
   stageEl.appendChild(card);
   if(navigator.onLine===false){offlineBlock(card,sp,'「免费搜索建题库」');return;}
+  /* 4.0.1-4：学科主题在抓资料之前就拦下 —— 以前要等百度百科 6 秒抓完、到 finishFree 才说
+     「这不是考试题」，白等一场。这里直接给「配置 AI / 手动录入」两条出路。 */
+  if(isAcademic(name)){
+    sp.textContent='⚠️ 「'+name+'」是学科类主题，免费搜索只能生成「百科词条/书名」类检索题，不是考试题。请到 ⚙️ 设置 配置 AI（命题老师模式）生成试卷题，或用「📝 手动录入」。';
+    var _mb=h('button','btn','📝 手动录入「'+name+'」');_mb.style.width='100%';_mb.style.marginTop='8px';
+    _mb.onclick=function(){openEditor(name);};card.appendChild(_mb);
+    var _bk=h('button','btn ghost','← 返回书架');_bk.style.width='100%';_bk.style.marginTop='8px';
+    _bk.onclick=function(){renderShelf();};card.appendChild(_bk);
+    return;
+  }
   gatherMaterial(name,function(items){
     if(!items||items.length<4){sp.textContent='⚠️ 该主题抓不到足够资料（网络受限或词条太少），请手动录入或配置 AI（⚙️ 设置）。';var back=h('button','btn ghost','← 返回');back.onclick=function(){renderShelf();};card.appendChild(back);return;}
     finishFree(name,items,sp,card);
@@ -4397,14 +4407,17 @@ function finishFree(name,items,sp,card){
   previewQuestions(name,qs,card);
 }
 /* ---------- 4.0 自定义题库生成质量：examLike 硬过滤 + 学术主题判定 ---------- */
-var ACADEMIC_RE=/化学|物理|数学|生物|历史|地理|英语|语文|政治|中考|高考|九年级|人教版|初中|高中/;
+/* 4.0.1-4：学科范围补上文学类 —— 这些主题走免费搜索只会出百科词条题 */
+var ACADEMIC_RE=/化学|物理|数学|生物|历史|地理|英语|语文|政治|文学|名著|古诗|文言文|中考|高考|九年级|人教版|初中|高中/;
 function isAcademic(name){return ACADEMIC_RE.test(String(name||''));}
 /* 4.0.1-1：题型。取值缺省/未知一律按 choice 处理（旧题库无 type 字段，行为不变）。
    choice=四选一；fill=填空；calc=计算；experiment=实验探究（后三者走输入框判分）。 */
 var QTYPE_NAME={choice:'单选',fill:'填空',calc:'计算',experiment:'实验'};
 function qTypeOf(Q){var t=Q&&Q.type;return (t==='fill'||t==='calc'||t==='experiment')?t:'choice';}
 function isNonChoiceQ(Q){return qTypeOf(Q)!=='choice';}
-var META_Q_RE=/描述的是下列哪项|出版社出版的图书|出版社|补全词条|普通高等学校本科专业|以下哪项.{0,6}(图书|专业|词条)|作者是|第[一二三四五六七八九十]+版|九年级[上下]册/;
+/* 4.0.1-4：「作者是」不能无条件拦 —— 会误杀「《红楼梦》的作者是谁？」这种正常文学题；
+   只有它和「出版/图书/词条」一起出现（书目元信息题）才拦。 */
+var META_Q_RE=/描述的是下列哪项|出版社出版的图书|出版社|补全词条|普通高等学校本科专业|以下哪项.{0,6}(图书|专业|词条)|(作者是.{0,6}(出版|图书|词条))|第[一二三四五六七八九十]+版|九年级[上下]册/;
 var META_OPT_RE=/出版社|第[一二三四五六七八九十]+版|九年级[上下]册|本科专业$/;
 function examLike(q){
   if(!q||!q.q||!q.a)return false;
@@ -4485,8 +4498,9 @@ function autoRefill(cn){
       refillBusy=false;
       if(!res||!res.length)return;          // 失败静默，下局再试
       var exist={};arr.forEach(function(x){exist[x.q]=1;});
-      /* P0-5：静默补题也必须过 validItem，坏题一律不入库 */
-      var fresh=res.filter(function(x){return x&&x.q&&!exist[x.q]&&validItem(x);});
+      /* P0-5：静默补题也必须过 validItem，坏题一律不入库
+         4.0.1-4：补题走的是出题 prompt，只过 validItem 会把百科/书目题漏进来 → 改用 examLike */
+      var fresh=res.filter(function(x){return x&&x.q&&!exist[x.q]&&examLike(x);});
       if(!fresh.length)return;
       custom[cn]=arr.concat(fresh);saveCustom(custom);
       // 书架正开着就就地刷新题量；答题/结算中绝不能调（renderShelf 里会 showView('shelf') 把用户弹回书架）
