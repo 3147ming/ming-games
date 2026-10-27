@@ -1779,6 +1779,19 @@ function sectionGen(bk,n,diff){
   if(!qs||!qs.length)qs=QA_TYPES[bk].gen(n,diff);
   return applySection(qs);
 }
+/* C3 补：自动匹配（无限模式）原本直接调 engine_core 的 genNextAuto() → T.gen()，
+   绕过了 sectionGen ⟹ 编程选择题又掉回旧 POOLS.code 的硬凑干扰项，
+   选择题板块还会混进 mkCodeFill 的填空题。这里把自动模式也接回 sectionGen。
+   （genNextAuto 定义在 engine_core 的全局作用域，看不见本 IIFE 里的 sectionGen，
+     所以只能在调用侧换掉。） */
+function genAutoOne(){
+  var bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
+  if(bk&&QA_TYPES[bk]){
+    var qs=sectionGen(bk,1,selfRank);
+    if(qs&&qs.length&&qs[0]&&qs[0].q)return qs[0];
+  }
+  return genNextAuto();
+}
 function switchSection(){
   var bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
   if(!bk||bk==='online'||bk==='weak'||bk==='srs'||bk==='round')return;
@@ -1956,7 +1969,7 @@ function showQuestion(){
       var _rk='bt_qa_recent_auto_'+(typeKey||'x').replace(/[^\w]/g,'_');
       var _rec=loadRecent(_rk),_tries=0,_nq=null,_nk='';
       do{
-        _nq=(typeKey==='b:code'&&qaSection==='code'&&handMode)?genHandTask(selfRank):genNextAuto();
+        _nq=(typeKey==='b:code'&&qaSection==='code'&&handMode)?genHandTask(selfRank):genAutoOne();
         _nk=_nq.q+(_nq.code?('|'+_nq.code):'');
         _tries++;
       }while(_tries<8&&_rec.indexOf(_nk)>=0);
