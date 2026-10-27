@@ -2359,8 +2359,10 @@ function markUnknown(){
     }
     /* C2：SRS 复习里点「不会」—— 该题间隔重置，due 改为明天，不再连续出现 */
     if(typeKey==='b:srs'&&Q&&Q.weak){srsAdvance(Q.weak,false);Q.weak.t=Date.now();srsTouch(Q.weak);}
-    /* P2-A1：本局错题（回顾局不记，回顾本身就是错题本） */
-    if(Q&&!reviewMode&&Q.q){
+    /* P2-A1：本局错题（回顾局不记，回顾本身就是错题本）
+       4.0.1-3：手写题不进来 —— 与 answer() 的错题分支对齐（重练要再烧一次 AI 评判，
+       而且代码题被塞进「只练这几题」会当填空渲染）。 */
+    if(Q&&!reviewMode&&!Q.hand&&Q.q){
       roundWrong.push({q:Q.q,a:Q.a,given:'（未作答）',opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,src:Q.src});
     }
     if(autoMode){
