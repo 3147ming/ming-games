@@ -157,8 +157,7 @@
   /* ======================================================== 开始界面 */
   function bindStart() {
     injectStyle();
-    buildMenuNav();
-    const btns = document.querySelectorAll('.mode-btn');
+    const btns = document.querySelectorAll('.mode-btn[data-mode]');
     Array.prototype.forEach.call(btns, function (b) {
       b.addEventListener('click', function () {
         const mode = b.getAttribute('data-mode');
@@ -204,7 +203,7 @@
         '<em>' + (i + 1) + '</em><span class="stars small">' + starRow(ZY.Save.getStar(i)) + '</span></span>';
     }
     g += '</div>';
-    el.saveInfo.innerHTML =
+    el.saveInfo.innerHTML = NAV_HTML +
       '<div><b>军衔</b> ' + rank + '</div>' +
       '<div><b>关卡</b> ' + (lvDone >= ZY.LEVELS.length ? '全部通关' : '第 ' + (lvDone + 1) + ' 关 · ' + lvName) + '</div>' +
       '<div><b>星级</b> ' + ZY.Save.getStarTotal() + ' / ' + ZY.Save.getStarMax() +
@@ -212,6 +211,7 @@
       g +
       '<div><b>无尽最高</b> ' + ZY.Save.getWaveBest() + ' 波</div>' +
       '<div><b>累计击杀</b> ' + ZY.Save.getKillTotal() + '</div>';
+    bindNavBtns();
   }
 
   function setMute(v) {
@@ -1881,7 +1881,8 @@
       '.save-stars{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin:4px 0}',
       '.sv-lv{display:flex;align-items:center;gap:3px;font-size:11px;opacity:.9}',
       '.sv-lv em{font-style:normal;opacity:.6}',
-      '.menu-nav{grid-template-columns:repeat(5,minmax(0,1fr))}',
+      '.menu-nav{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-items:center;margin:8px auto 2px;max-width:min(92vw,760px)}',
+      '.menu-nav .mode-btn{flex:0 0 auto;width:auto;min-height:0;padding:6px 14px;font-size:13px;border-radius:999px;background:rgba(255,255,255,.72)}',
       '.codex-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin:8px 0 14px}',
       '.codex-item{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;border-radius:8px;',
       'background:rgba(255,255,255,.06);font-size:12px}',
@@ -1892,7 +1893,7 @@
       '.achv-item{padding:6px 8px;border-radius:8px;background:rgba(255,255,255,.06);font-size:12px}',
       '.achv-item.off{opacity:.35}',
       '.achv-item b{display:block;font-size:13px}',
-      '.hud-timer{position:absolute;left:50%;transform:translateX(-50%);top:2px;font-size:11px;letter-spacing:.04em;',
+      '.hud-timer{position:absolute;left:50%;transform:translate(-50%,-50%);top:50%;font-size:11px;letter-spacing:.04em;',
       'color:#f4e2b8;opacity:.85;pointer-events:none;white-space:nowrap;z-index:6}',
       '.hud-btn{font:inherit;font-size:12px;padding:2px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.2);',
       'background:rgba(255,255,255,.08);color:inherit;cursor:pointer}',
@@ -1903,20 +1904,17 @@
     document.head.appendChild(s);
   }
 
-  function buildMenuNav() {
-    if (document.getElementById('menu-nav')) return;
-    const modes = document.querySelector('#screen-start .modes');
-    if (!modes) return;
-    const nav = document.createElement('div');
-    nav.id = 'menu-nav';
-    nav.className = 'modes menu-nav';
-    nav.innerHTML =
-      '<button class="mode-btn mini" data-nav="select">选关</button>' +
-      '<button class="mode-btn mini" data-nav="codex">图鉴</button>' +
-      '<button class="mode-btn mini" data-nav="record">战绩</button>' +
-      '<button class="mode-btn mini" data-nav="daily">今日之战</button>' +
-      '<button class="mode-btn mini" data-nav="ascend">修罗八阵</button>';
-    modes.parentNode.insertBefore(nav, modes.nextSibling);
+  const NAV_HTML = '<div id="menu-nav" class="menu-nav">' +
+    '<button class="mode-btn" data-nav="select">选关</button>' +
+    '<button class="mode-btn" data-nav="codex">图鉴</button>' +
+    '<button class="mode-btn" data-nav="record">战绩</button>' +
+    '<button class="mode-btn" data-nav="daily">今日之战</button>' +
+    '<button class="mode-btn" data-nav="ascend">修罗八阵</button></div>';
+
+  function bindNavBtns() {
+    const nav = el.saveInfo.querySelector('#menu-nav');
+    if (!nav || nav.getAttribute('data-bound')) return;
+    nav.setAttribute('data-bound', '1');
     Array.prototype.forEach.call(nav.querySelectorAll('[data-nav]'), function (b) {
       b.addEventListener('click', function () {
         ZY.Audio.play('tap');
