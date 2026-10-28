@@ -91,12 +91,13 @@ export function contractProgress(c, w) {
   if (c.type === 'extractValue') return w.carriedValue || 0;
   if (c.type === 'demolish') return w.cratesBroken || 0;
   if (c.type === 'survival') return w.time || 0;
-  // 静默渗透：一枪未开记 1 分（target 恒为 1），开过枪就永远 0 分。
+  // 静默渗透：一枪未开时进度 = 存活秒数（desc 是"全程不开一枪，存活满 {n} 秒"），
+  // 开过枪立刻归零并停住 —— "失败即归零"是这条合约的全部玩法。
   // 注意它和 extractValue 一样**不在局内判定**（见 updateContracts），
-  // 否则玩家一进场就白拿 1400 —— "没开枪"这件事只有在活着出去时才有价值。
+  // 否则玩家一进场就白拿奖励 —— "没开枪"这件事只有在活着出去时才有价值。
   if (c.type === 'silent') {
     const shots = (w.player && w.player.shotsFired) || 0;
-    return shots === 0 ? 1 : 0;
+    return shots === 0 ? (w.time || 0) : 0;
   }
   return 0;
 }

@@ -8,7 +8,7 @@
 import {
   ITEMS, ITEMS_BY_RARITY, RARITY_ORDER, CONTAINERS, AMMO_STACK, ENEMY_TYPES,
 } from './config.js';
-import { createItem } from './inventory.js';
+import { createItem, itemValue, itemWeight } from './inventory.js';
 
 /**
  * 掷一次稀有度。
@@ -111,12 +111,13 @@ export function rollEnemyLoot(enemyType, rng) {
 
 /**
  * 计算一组物品的总价值。
+ * 走 itemValue（弹药按「盒」换算），否则一盒 5.56 会按 60 倍多算 —— 见 inventory.displayUnits。
  * @param {Array<object>} items 物品实例数组
  * @returns {number} 总价值
  */
 export function valueOf(items) {
   if (!Array.isArray(items)) return 0;
-  return Math.round(items.reduce((s, it) => s + (it.value || 0) * Math.max(1, it.qty || 1), 0));
+  return Math.round(items.reduce((s, it) => s + itemValue(it), 0));
 }
 
 /**
@@ -126,5 +127,5 @@ export function valueOf(items) {
  */
 export function weightOf(items) {
   if (!Array.isArray(items)) return 0;
-  return Math.round(items.reduce((s, it) => s + (it.weight || 0) * Math.max(1, it.qty || 1), 0) * 10) / 10;
+  return Math.round(items.reduce((s, it) => s + itemWeight(it), 0) * 10) / 10;
 }

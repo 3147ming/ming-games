@@ -29,7 +29,7 @@ export const MATCH = {
   warnTime: 120, // 剩余 2 分钟计时转红（紧迫提示）
   extractChannel: 3, // 撤离读条 3 秒（站定不动即可撤离）
   extractTotal: 2, // 地图上的撤离点总数（固定 2 个）
-  extractOpenAt: 120, // 仅最后 2 分钟开放撤离通道（站定撤离的窗口）
+  extractOpenAt: 120, // 全部撤离点开放的时刻（最后 2 分钟；免费点更早，见 extractFirstOpen）
   // 分阶段开放：第一个撤离点（最近的）提前到剩余 extractFirstOpen 秒开放，
   // 其余按 extractOpenAt。两个点错开 30 秒，玩家才有"先赶近点、还是等远点"的决策。
   extractFirstOpen: 150,
@@ -469,7 +469,7 @@ export const CONTRACTS = [
   },
   {
     id: 'ghost', name: '静默渗透', type: 'silent',
-    desc: '全程不开一枪并成功撤离', target: [1, 1], reward: 1400, score: 320,
+    desc: '全程不开一枪，存活满 {n} 秒', target: [150, 240], reward: 1100, score: 300,
   },
   {
     id: 'purge', name: '全面清剿', type: 'kill',
@@ -948,7 +948,7 @@ export const PALETTE3D = {
   enemyElite: '#DC2626',
   enemyMarksman: '#7B68A6', // 精确射手：紫
   enemyRusher: '#E08A3C', // 冲锋兵：橙
-  enemyHeavy: '#5A6472', // 重装兵：冷钢灰（与巡逻兵的浅灰拉开明度，避免远处分不清）
+  enemyHeavy: '#8A6D3B', // 重装兵：沙棕（与 ENEMY_TYPES.heavy.color 同源，与巡逻兵浅灰拉开色相）
   vmBody: '#393E36',
   vmDark: '#22281F',
   sky: '#1A2430',

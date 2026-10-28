@@ -218,6 +218,48 @@ export function hasSpace(inv, item) {
 }
 
 /**
+ * 一件物品的「展示单位数」。
+ *
+ * ⚠ 弹药口径铁律：弹药的 `qty` 记的是**发**，而配置里的 `weight` / `value`
+ * 记的是**每一盒**（一盒 = ammoQty 发）。所以弹药的展示单位必须是「盒」，
+ * 其余物品的展示单位就是 qty 本身。
+ *
+ * 不做这次换算的后果：一盒 5.56（60 发）会被算成 60kg / ¥36,000 ——
+ * 只要带 2 盒弹药进图，负重就永久是 120kg，超重减速从落地那一刻起就不可能解除。
+ * 因此**任何**展示、计价、计重都必须经过这三个函数，禁止直接 qty × weight/value。
+ *
+ * @param {object} item 物品实例
+ * @returns {number} 展示单位数（弹药为盒数，可能带小数）
+ */
+export function displayUnits(item) {
+  if (!item) return 0;
+  const stack = item.ammoQty || item.stack || 0;
+  const qty = Math.max(1, item.qty || 1);
+  if (item.category === 'ammo' && stack > 1) return qty / stack;
+  return qty;
+}
+
+/**
+ * 一件物品的实际重量（kg），已按展示单位换算。
+ * @param {object} item 物品实例
+ * @returns {number} 重量
+ */
+export function itemWeight(item) {
+  if (!item) return 0;
+  return Math.round((item.weight || 0) * displayUnits(item) * 10) / 10;
+}
+
+/**
+ * 一件物品的实际价值（¥），已按展示单位换算。
+ * @param {object} item 物品实例
+ * @returns {number} 价值
+ */
+export function itemValue(item) {
+  if (!item) return 0;
+  return Math.round((item.value || 0) * displayUnits(item));
+}
+
+/**
  * 容器总重量（kg）。
  * @param {object} inv 容器
  * @returns {number} 重量
@@ -225,7 +267,7 @@ export function hasSpace(inv, item) {
 export function totalWeight(inv) {
   if (!inv) return 0;
   let sum = 0;
-  for (const it of inv.items) sum += (it.weight || 0) * Math.max(1, it.qty || 1);
+  for (const it of inv.items) sum += itemWeight(it);
   return Math.round(sum * 10) / 10;
 }
 
@@ -237,7 +279,7 @@ export function totalWeight(inv) {
 export function totalValue(inv) {
   if (!inv) return 0;
   let sum = 0;
-  for (const it of inv.items) sum += (it.value || 0) * Math.max(1, it.qty || 1);
+  for (const it of inv.items) sum += itemValue(it);
   return Math.round(sum);
 }
 

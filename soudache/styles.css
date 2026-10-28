@@ -1606,3 +1606,321 @@ body.touch-mode .battle-panel:not(.hidden) {
 }
 
 
+
+/* ========================================================================
+   第一批新增：每日突袭 / 军械商声望 / 图鉴 / 成就 / 商店特价 / 价值密度
+   （机制批 + 内容批共用这一块，风格沿用军事暗色 + 琥珀/青高亮）
+   ===================================================================== */
+
+/* ---- 主菜单：每日突袭状态行 ---- */
+.menu-daily {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 10px auto 0;
+  padding: 7px 14px;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(10, 14, 20, 0.7);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.daily-state {
+  color: var(--amber);
+  font-weight: 700;
+}
+
+.daily-state.ok {
+  color: var(--ok);
+}
+
+.daily-seed {
+  color: var(--dim);
+}
+
+.daily-best {
+  color: var(--cyan);
+}
+
+.btn.done {
+  border-color: rgba(93, 220, 122, 0.55);
+  color: var(--ok);
+}
+
+/* ---- 战前面板：装备保险开关 / 每日横幅 ---- */
+.btn.toggle {
+  width: 100%;
+  text-align: center;
+}
+
+.btn.toggle.on {
+  border-color: rgba(93, 220, 122, 0.6);
+  color: var(--ok);
+  background: linear-gradient(180deg, rgba(28, 60, 38, 0.9), rgba(16, 36, 24, 0.9));
+}
+
+.daily-banner {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--amber);
+  margin: 4px 0 0;
+}
+
+/* ---- 商店：声望条 / 角标 / 锁定行 ---- */
+.shop-rep {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: rgba(53, 224, 208, 0.06);
+}
+
+.shop-rep-lv {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cyan);
+}
+
+.shop-rep-xp {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.badge.deal {
+  color: #1a1205;
+  background: var(--amber);
+}
+
+.badge.lock {
+  color: var(--dim);
+  border: 1px solid var(--line-2);
+}
+
+.item-row.locked {
+  opacity: 0.55;
+}
+
+.item-row.locked .item-name {
+  color: var(--dim);
+}
+
+/* ---- 物品行：价值密度第四行 ---- */
+.item-density {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--cyan);
+  margin-top: 2px;
+}
+
+/* ---- 结算页：图鉴 / 成就 / 每日徽章带 ---- */
+.result-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.tag {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.tag.codex {
+  border-color: rgba(79, 163, 255, 0.5);
+  color: var(--rare);
+}
+
+.tag.ach {
+  border-color: rgba(255, 176, 32, 0.55);
+  color: var(--amber);
+}
+
+.tag.daily-ok {
+  border-color: rgba(93, 220, 122, 0.5);
+  color: var(--ok);
+}
+
+.tag.daily-bad {
+  border-color: var(--line-2);
+}
+
+/* ---- 图鉴 / 成就页 ---- */
+.codex-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.codex-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.tab {
+  appearance: none;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--dim);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.tab.active {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: rgba(255, 176, 32, 0.1);
+}
+
+.codex-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.codex-group {
+  grid-column: 1 / -1;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 4px;
+  margin-top: 4px;
+}
+
+.codex-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(10, 14, 20, 0.65);
+  text-align: center;
+}
+
+/* 未发现：剪影（灰度 + 压暗），"见过/带出"逐级点亮 */
+.codex-cell:not(.seen):not(.brought) {
+  filter: grayscale(1) brightness(0.35);
+}
+
+.codex-cell.seen {
+  border-color: rgba(124, 136, 153, 0.5);
+}
+
+.codex-cell.brought {
+  border-color: rgba(255, 176, 32, 0.55);
+  background: rgba(255, 176, 32, 0.08);
+}
+
+.codex-name {
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.codex-state {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+}
+
+.codex-cell.brought .codex-state {
+  color: var(--amber);
+}
+
+.codex-ach-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.ach-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name prog" "desc prog";
+  align-items: center;
+  gap: 0 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(10, 14, 20, 0.65);
+}
+
+.ach-row.done {
+  border-color: rgba(93, 220, 122, 0.45);
+  background: rgba(93, 220, 122, 0.07);
+}
+
+.ach-name {
+  grid-area: name;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ach-row.done .ach-name {
+  color: var(--ok);
+}
+
+.ach-desc {
+  grid-area: desc;
+  font-size: 11px;
+  color: var(--dim);
+  margin-top: 2px;
+}
+
+.ach-prog {
+  grid-area: prog;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--amber);
+}
+
+.ach-row.done .ach-prog {
+  color: var(--ok);
+}
+
+/* 图鉴页在手机横屏下要能滚动：面板 body 自己撑满，网格内部滚 */
+body.touch-mode .codex-grid,
+body.touch-mode .codex-ach-list {
+  max-height: 100%;
+}

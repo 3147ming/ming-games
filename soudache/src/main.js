@@ -856,7 +856,7 @@ function startRaid(seedInput, opts = {}) {
   if (world.isDaily) {
     ui.toast(`每日突袭 · 种子 ${seed} · 今日地图固定，全服同一张`);
   } else {
-    ui.toast(`已部署 · 种子 ${seed} · ${map.extracts.length} 个撤离点（${Math.round(MATCH.extractFirstOpen / 60)} 分钟起陆续开放）`);
+    ui.toast(`已部署 · 种子 ${seed} · ${map.extracts.length} 个撤离点（免费点 2:30 先开，其余 6:00）`);
   }
 }
 
@@ -1002,6 +1002,10 @@ function endRaid(reason) {
   }
   stats.push(['评分', String(score)]);
   if (ratingBonus > 0) stats.push(['评级奖励', `+${money(ratingBonus)}`]);
+  // 「距下一档还差多少」：评级从"看完就忘的字母"变成一条可追求的目标线。
+  // ratings 从高到低排列，filter(min > score).pop() 取到的是**严格更高**的最低一档。
+  const nextGrade = SCORING.ratings.filter((r) => r.min > score).pop();
+  if (success && nextGrade) stats.push([`距 ${nextGrade.grade} 级`, `${nextGrade.min - score} 分`]);
   stats.push(['军械商声望', `+${repXp} XP${repAfter > repBefore ? ` · 升到 Lv.${repAfter}` : ''}`]);
   if (achReward > 0) stats.push(['成就奖励', `+${money(achReward)}`]);
 
@@ -1049,9 +1053,8 @@ function takeAllLoot() {
   const list = (openContainer.loot || []).slice();
   let taken = 0;
   for (const item of list) {
+    if (openContainer.loot.indexOf(item) < 0) continue;
     if (!hasSpace(world.player.inventory, item)) continue;
-    const item = openContainer.loot.indexOf(item) >= 0 ? item : null;
-    if (!item) continue;
     autoPlace(world.player.inventory, item);
     markCodexSeen(save, item.id);
     const idx = openContainer.loot.indexOf(item);
@@ -1251,12 +1254,12 @@ function update(dt) {
   updateExplored(dt);
   input.firePressed = false;
 
-  // 撤离点**分阶段**开放：每个点自带 openAt（剩余秒数），到点逐个开启。
+  // 撤离点**分阶段**开放：每个点自带 openAt（**经过秒数**，与 w.time 同口径），到点逐个开启。
   // 早先是"所有点在同一帧一起开"，于是"去哪个撤离点"从来不是选择题 ——
-  // 开放时刻相同，那就永远只跑最近的那个。错开 30 秒之后才有取舍：
-  // 近点先开（守得住就跑），远点后开（但可能更安全 / 有人守）。
+  // 开放时刻相同，那就永远只跑最近的那个。错开之后才有取舍：
+  // 免费点 2:30 先开（近，跑快点到），其余 6:00 压局末（远，但常伴随守军/手续费）。
   for (const ex of w.map.extracts) {
-    if (ex.open || w.timeLeft > ex.openAt || w.timeLeft <= 0) continue;
+    if (ex.open || w.time < (ex.openAt || 0)) continue;
     ex.open = true;
     const kind = ex.kind || 'free';
     const sub = kind === 'paid' ? '（付费撤离）' : (kind === 'guarded' ? '（有守军）' : '');
@@ -1358,6 +1361,8 @@ const ui = createUI(uiRoot, {
     go('stash');
   },
   'result-again': () => {
+    // 「再来一局」= 普通战局（每日突袭一天打一次就是一次，不该被"再来一局"续上）
+    dailyPending = false;
     refreshLoadout();
     go('loadout');
   },
@@ -1468,6 +1473,9 @@ const ui = createUI(uiRoot, {
   },
   'reset-save': () => {
     save = Storage.resetSave();
+    dailyPending = false;
+    refreshShopDaily(save);
+    Storage.saveGame(save);
     ui.renderMenu(save);
     ui.toast('存档已清空');
   },
@@ -1630,6 +1638,11 @@ window.addEventListener('resize', () => {
 
 /* ============================ 启动 ============================ */
 
+// 启动即对齐"今天"的商店特价：否则玩家第一次进商店时 save.shop.date 还是空的，
+// 得先进一次再退出来才看到折扣（静默的时序 bug，肉眼极难发现）。
+refreshShopDaily(save);
+Storage.saveGame(save);
+
 go('menu');
 window.requestAnimationFrame(frame);
 
@@ -1660,4 +1673,12 @@ window.SOUDACHE = {
   // 之前只能靠"按完没报错"推断，那是弱证据：按键绑错了也照样不报错。
   isTasksOpen: ui.isTasksOpen,
   toggleTasks: ui.toggleTasks,
+  // 长期进度：探针需要能构造"今日已打过 / 声望 Lv.N"这类状态来断言 UI，
+  // 而不是靠点几十局把数值堆上去。
+  dailySeed,
+  dailyStatus: () => dailyStatus(save),
+  repLevel: () => currentRep(),
+  codexStats: () => codexStats(save),
+  shopDeals: () => (save.shop ? save.shop.deals.slice() : []),
+  insurancePremium,
 };

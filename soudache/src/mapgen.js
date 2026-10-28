@@ -768,16 +768,9 @@ export function generateMap(seed) {
     };
   }
 
-  // 8) 撤离点分阶段开放：每个点自带 openAt（剩余秒数），由 main.js 到点逐个开启。
-  //    第一个点提前 extractFirstOpen 秒，其余按 extractOpenAt —— 两个点错开 30 秒，
-  //    "先赶近点还是等远点"才成为一个真实决策（原先所有点同时在最后一刻开，这个决策不存在）。
-  //    ⚠ 用逐点 openAt 而不是一个全局 opened 标志，是因为地图会重排点位顺序，
-  //    全局标志只能"一起开"，没法表达"ALPHA 已经能撤了、BRAVO 还锁着"。
-  for (let i = 0; i < map.extracts.length; i += 1) {
-    const ex = map.extracts[i];
-    ex.open = false;
-    ex.openAt = i === 0 ? MATCH.extractFirstOpen : MATCH.extractOpenAt;
-  }
+  // 8) 撤离点默认全部关闭，逐点 openAt 由 8.5 之后统一赋值（要等 kind 定下来：
+  //    最早开放的必须是保底免费点，而不是数组顺序里的第一个）。
+  for (const ex of map.extracts) ex.open = false;
 
   // 8.5) 撤离点类型：free / paid / guarded
   // 保证第一个撤离点免费（免费通道永远存在），其余随机为付费或守点。
@@ -788,6 +781,16 @@ export function generateMap(seed) {
     ex.kind = rng.chance(0.5) ? 'paid' : 'guarded';
     if (ex.kind === 'paid') ex.cost = MATCH.extractFee;
   });
+
+  // 8.6) 分阶段开放：免费点第 extractFirstOpen 秒（2:30）先开，其余压在局末
+  //     （剩余 extractOpenAt 秒，即经过 duration - extractOpenAt 秒）。
+  //     openAt 是**经过秒数**，与 main.js 的 w.time 同口径 —— 写成"剩余秒数"会让
+  //     第二个点比第一个还早开（main 那侧是 w.time < openAt 的加法比较）。
+  //     ⚠ 用逐点 openAt 而不是一个全局 opened 标志：地图会重排点位顺序，
+  //     全局标志只能"一起开"，没法表达"免费点已经能撤了、守点还锁着"。
+  for (const ex of map.extracts) {
+    ex.openAt = ex.kind === 'free' ? MATCH.extractFirstOpen : (MATCH.duration - MATCH.extractOpenAt);
+  }
 
   // 9) 敌人出生点
   const enemyCount = rng.int(MATCH.enemyCountMin, MATCH.enemyCountMax);
