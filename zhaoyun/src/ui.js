@@ -1667,6 +1667,9 @@
     const r = Math.min(ZY.RANKS.length - 1, ZY.Save.getRank() + 1);
     ZY.Save.setRank(r);
     const stars = ZY.Game.starsOf(state);
+    // 第一批 P0-2：星级落盘（只增不减，旧档缺键时按 0 起算）+ 图鉴记下「已通关」
+    if (ZY.Save.setStar) ZY.Save.setStar(state.levelIdx, stars);
+    if (ZY.Save.markCodex) ZY.Save.markCodex('level:' + state.levelIdx);
     let starHtml = '';
     for (let i = 1; i <= 5; i++) starHtml += '<i class="' + (i <= stars ? 'on' : 'off') + '">★</i>';
     return '<p class="promote">恭喜晋升 · <b>' + ZY.Save.rankName(r) + '</b></p>' +

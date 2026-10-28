@@ -109,15 +109,74 @@
     };
   }
   const SOLO_BASE_MAP = {
+    name: '巨鹿',
     path: SOLO_PATH, entrance: SOLO_ENTRANCE, adou: SOLO_ADOU,
     slotsBase: SLOTS_SOLO_BASE, slotsBig: SLOTS_SOLO_BIG,
     obstacles: BASE_OBSTACLES, obsSet: toSet(BASE_OBSTACLES),
   };
-  const SOLO_MAPS = [
-    SOLO_BASE_MAP, SOLO_BASE_MAP, SOLO_BASE_MAP, SOLO_BASE_MAP, SOLO_BASE_MAP, SOLO_BASE_MAP,
-    buildMap(tfV),   // 第 7 关：左右翻转（敌从顶部左侧入，阿斗底部右侧）
-    buildMap(tfH),   // 第 8 关：上下翻转（敌从底部右侧入，阿斗顶部左侧）
-  ];
+
+  /* ---------- 八关八图（数据源 src/maps.js） ----------
+   * maps.js 只提供纯数据（path / slots / slotsBig / obstacles，坐标是 [row,col] 数组），
+   * board.js 负责转成内部结构并做启动自检。
+   * 自检不过（或 maps.js 未加载）→ 该关回落到基础图：宁可少一张图，也不白屏。 */
+  function toMap(m) {
+    const path = m.path.map(function (p) { return { row: p[0], col: p[1] }; });
+    const slotsBase = m.slots.map(function (p) { return p[0] + ',' + p[1]; });
+    const slotsBig = m.slotsBig.map(function (p) { return p[0] + ',' + p[1]; });
+    const obstacles = m.obstacles.map(function (p) { return p[0] + ',' + p[1]; });
+    return {
+      name: m.name || '',
+      path: path,
+      entrance: path[0],
+      adou: path[path.length - 1],
+      slotsBase: slotsBase,
+      slotsBig: slotsBig,
+      obstacles: obstacles,
+      obsSet: toSet(obstacles),
+    };
+  }
+
+  /** 单图自检：28 格四连通主路 / 29 障碍 / 17·21 塔位 / 三类互斥 */
+  function validateMap(m) {
+    if (!m || !m.path || m.path.length !== 28) return false;
+    const seen = {};
+    for (let i = 0; i < m.path.length; i++) {
+      const p = m.path[i];
+      if (!inBoard(p.row, p.col)) return false;
+      const k = key(p.row, p.col);
+      if (seen[k]) return false;
+      seen[k] = true;
+      if (i) {
+        const q = m.path[i - 1];
+        if (Math.abs(q.row - p.row) + Math.abs(q.col - p.col) !== 1) return false;
+      }
+    }
+    if (!m.obstacles || m.obstacles.length !== 29) return false;
+    for (let i = 0; i < m.obstacles.length; i++) if (seen[m.obstacles[i]]) return false;
+    if (!m.slotsBase || !m.slotsBig) return false;
+    if (m.slotsBase.length !== 17 || m.slotsBig.length !== 21) return false;
+    for (let i = 0; i < m.slotsBig.length; i++) {
+      const k = m.slotsBig[i];
+      if (seen[k] || m.obsSet[k]) return false;
+    }
+    return true;
+  }
+
+  const SOLO_MAPS = (function () {
+    const src = (ZY.MAPS && ZY.MAPS.length >= 8) ? ZY.MAPS : null;
+    // 回落：maps.js 未加载 → 沿用 V8.1 的 6 基础图 + 2 镜像
+    if (!src) return [SOLO_BASE_MAP, SOLO_BASE_MAP, SOLO_BASE_MAP, SOLO_BASE_MAP, SOLO_BASE_MAP, SOLO_BASE_MAP, buildMap(tfV), buildMap(tfH)];
+    const out = [];
+    for (let i = 0; i < 8; i++) {
+      const m = toMap(src[i]);
+      if (validateMap(m)) { out.push(m); continue; }
+      if (typeof console !== 'undefined' && console.error) {
+        console.error('[zhaoyun] 地图自检失败，回落到基础图：index=' + i + ' name=' + (m.name || '?'));
+      }
+      out.push(SOLO_BASE_MAP);
+    }
+    return out;
+  })();
   function resolveSoloMap(levelIdx) {
     let li = (typeof levelIdx === 'number') ? levelIdx : 0;
     if (li < 0) li = 0;

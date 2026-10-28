@@ -51,13 +51,18 @@
     }
 
     if (u.boss) {
-      const bo = ZY.BOSS;
+      const kinds = (ZY.BOSSES && ZY.BOSSES.length) ? ZY.BOSSES : [ZY.BOSS];
+      let bi = (typeof spec.bossKind === 'number') ? spec.bossKind : 0;
+      if (bi < 0 || bi >= kinds.length) bi = 0;
+      const bo = kinds[bi];
+      u.bossKind = bi; u.bossId = bo.id; u.bossSkill = bo.skill || null;
       const hpMul = num(spec.hpMul, 1) * bo.hpMul;
       const atkMul = num(spec.atkMul, 1) * bo.atkMul;
-      u.char = bo.char; u.name = bo.name;     // V5：带名武将（张梁）
+      u.char = bo.char; u.name = bo.name;     // 带名武将（张梁 / 张宝 / 张角）
       u.maxHp = bo.hp * hpMul; u.hp = u.maxHp;
       u.atk = bo.atk * atkMul; u.aspd = bo.aspd; u.range = bo.range; u.move = bo.move;
       u.skillCd = bo.skillCd; u.skillT = bo.skillCd;   // 出场先攒一次冷却
+      if (ZY.Save && ZY.Save.markCodex) ZY.Save.markCodex('boss:' + bo.id);
     } else if (u.cls === 'hero') {
       const h = ZY.HERO_BY_ID[u.heroId];
       const st = ZY.heroStats(u.heroId, u.heroLevel);
@@ -491,13 +496,21 @@
         state.nextBreak = w.idx + T.breakMin + Math.floor(Math.random() * (T.breakMax - T.breakMin + 1));
       }
       if (state.mode === 'versus' && w.idx >= T.versusWaves) w.done = true;   // 竞技：打完公共波次即收官
-    } else {                                          // 关卡：5 普通波 + 1 关底（第 6 波，强化波 + 张梁）
+    } else {                                          // 关卡：5 普通波 + 1 关底（第 6 波，强化波 + 关底名将）
       const lv = ZY.LEVELS[state.levelIdx];
+      // 难度接线（第一批）：三个按钮 → 三项实际投放参数；键就是按钮的 data-diff
+      const dk = (T.diff && T.diff[String(state.difficulty)]) || { hp: 1, atk: 1, count: 1 };
+      // 修罗八阵（第一批）：0~3 层，只放大敌方 hp/atk
+      const ascIdx = (typeof state.ascension === 'number') ? state.ascension
+        : ((ZY.Save && ZY.Save.getAscension) ? ZY.Save.getAscension() : 0);
+      const asc = (ZY.ASCEND_MUL && ZY.ASCEND_MUL[ascIdx]) || 1;
       isBoss = w.idx >= T.levelWaves;                 // 第 6 波 = 关底
-      count = isBoss ? Math.round((lv.count + (T.levelWaves - 2) * T.levelStep) * T.bossCountMul) + 1
-                     : lv.count + (w.idx - 1) * T.levelStep + 1;   // V8.1：每波 +1（关底 +1）
-      hpMul = lv.hpMul * (1 + T.levelHpRamp * (w.idx - 1)) * (isBoss ? T.bossHpMul : 1);
-      atkMul = lv.atkMul * (1 + T.levelAtkRamp * (w.idx - 1)) * (isBoss ? T.bossAtkMul : 1);
+      const baseCount = isBoss
+        ? Math.round((lv.count + (T.levelWaves - 2) * T.levelStep) * T.bossCountMul) + 1
+        : lv.count + (w.idx - 1) * T.levelStep + 1;   // V8.1：每波 +1（关底 +1）
+      count = Math.max(1, Math.round(baseCount * dk.count));
+      hpMul = lv.hpMul * (1 + T.levelHpRamp * (w.idx - 1)) * (isBoss ? T.bossHpMul : 1) * asc * dk.hp;
+      atkMul = lv.atkMul * (1 + T.levelAtkRamp * (w.idx - 1)) * (isBoss ? T.bossAtkMul : 1) * asc * dk.atk;
       level = clamp(1 + Math.floor(state.levelIdx / T.levelEnemyDiv) + (isBoss ? 1 : 0), 1, 5);
       if (isBoss) elites = 1 + Math.floor(state.levelIdx / 2);
       w.interval = isBoss ? T.levelBossGap : T.levelGap;
@@ -510,9 +523,11 @@
       w.pending.push({ type: pick.type, level: level, hpMul: hpMul, atkMul: atkMul, elite: i < elites });
     }
     if (isBoss) {
-      // V6 手感：张梁「领队」先出（旧逻辑 push 到队尾，单车道吞吐 1/移速，
-      // 9 个前排小兵要先排队 ~26s，关底名将迟迟不登场）。领队登场更有压迫感，也消除排队。
-      w.pending.unshift({ type: 'boss', level: level, hpMul: hpMul, atkMul: atkMul, boss: true });   // 张梁
+      // V6 手感：关底名将「领队」先出（旧逻辑 push 到队尾，单车道吞吐 1/移速，排队太久）。
+      // 第一批：按 LEVEL_BOSS 决定这一关是谁（张梁 / 张宝 / 张角）。
+      const bk = (ZY.LEVEL_BOSS && ZY.LEVEL_BOSS[state.levelIdx]) || 0;
+      state.bossKind = bk;
+      w.pending.unshift({ type: 'boss', level: level, hpMul: hpMul, atkMul: atkMul, boss: true, bossKind: bk });
     }
     w.total = w.pending.length;                      // V5：波内总敌人数（左下角「剩 N」用）
     if (bt) {
@@ -558,9 +573,9 @@
       });
       addUnit(state, u);
       if (spec.boss && tgt === 'player') {
-        // V5：敌方带名武将张梁登场
-        state.fx.push({ type: 'toast', text: '敌方名将 ' + ZY.BOSS.name + ' 登场！' });
-        state.fx.push({ type: 'big', row: u.row, col: u.col, text: ZY.BOSS.name });
+        // 第一批：登场播报按实际 Boss 名字（张梁 / 张宝 / 张角）
+        state.fx.push({ type: 'toast', text: '敌方名将 ' + u.name + ' 登场！' });
+        state.fx.push({ type: 'big', row: u.row, col: u.col, text: u.name });
       }
     });
     return true;
@@ -861,12 +876,17 @@
   /** 火球：落点 3×3 内「冲我来的」敌人各受 80 固定伤害 + 爆炸特效 */
   function useFireball(state, side, row, col) {
     let hit = 0;
+    // 第一批：火球随波缩放 —— 第 1 波仍是 80，之后每波 +6%，封顶 ×2.5
+    const wv = Math.max(1, (state.wave && state.wave.idx) || 1);
+    const scale = Math.min((ZY.TUNE && ZY.TUNE.fireballCap) || 2.5,
+      1 + (wv - 1) * ((ZY.TUNE && ZY.TUNE.fireballPerWave) || 0.06));
+    const dmg = C.FIREBALL_DMG * scale;
     const foes = state.units.filter(function (t) {
       return !t.dead && t.side === 'enemy' && t.target === side;
     });
     foes.forEach(function (t) {
       if (Math.max(Math.abs(t.row - row), Math.abs(t.col - col)) <= C.FIREBALL_RADIUS) {
-        hurtFixed(state, side, t, C.FIREBALL_DMG);
+        hurtFixed(state, side, t, dmg);
         hit++;
       }
     });

@@ -24,7 +24,7 @@ vm.runInContext(`
   };
 `, ctx);
 
-for (const f of ['units.js', 'board.js', 'storage.js', 'ai.js', 'game.js']) {
+for (const f of ['units.js', 'maps.js', 'board.js', 'storage.js', 'ai.js', 'game.js']) {
   vm.runInContext(fs.readFileSync(DIR + f, 'utf8'), ctx, { filename: f });
 }
 vm.runInContext('ZY.Audio = { play: function(){}, setMuted: function(){}, unlock: function(){} };', ctx);

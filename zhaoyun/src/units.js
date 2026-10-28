@@ -146,27 +146,58 @@ window.ZY = window.ZY || {};
     brush:     { id: 'brush',     name: '毛笔',   glyph: '笔', color: '#3b4a63', desc: '拖到己方塔上，改写该塔兵种（金/将不可）' },
     warcry:    { id: 'warcry',    name: '神兵符', glyph: '符', color: '#b3352f', desc: '拖出释放：全队攻击 ×1.5，持续 10 秒' },
     fireball:  { id: 'fireball',  name: '火球',   glyph: '火', color: '#c65a1e', desc: '拖到主路上：落点 3×3 内敌人受 80 点固定伤害' },
+    // —— 第一批扩充 4 → 7（释放规则在 game.js 的道具分派里）——
+    mirror:    { id: 'mirror',    name: '护心镜', glyph: '镜', color: '#93a2b4', desc: '拖出释放：阿斗获得 1 层护盾，抵挡 1 次漏怪' },
+    crossbow:  { id: 'crossbow',  name: '连弩',   glyph: '弩', color: '#6b7a3a', desc: '拖到己方塔上：该塔攻速 ×1.35，持续 15 秒' },
+    horn:      { id: 'horn',      name: '号角',   glyph: '角', color: '#8a5a2b', desc: '拖出释放：全体敌人减速 40%，持续 5 秒' },
   };
 
   /* ---------- 武器背包 ----------
-   * V5 新增：至少提供「铁剑 攻击+3」，可装备给武将（面板显示装备加成）。
-   * 其他武器为预留推导位。
+   * V5 只给「铁剑 攻击 +3」；第一批扩到 4 把，全部只对武将生效（面板显示装备加成）。
+   * 字段口径：atk 加法攻击 / aspd 加法攻速 / range 加法射程（0 表示不加）。
    */
   const WEAPONS = {
-    tiejian: { id: 'tiejian', name: '铁剑', glyph: '剑', atk: 3, desc: '攻击 +3' }, // 原版展示值
+    tiejian:  { id: 'tiejian',  name: '铁剑',   glyph: '剑', atk: 3, aspd: 0,     range: 0, desc: '攻击 +3' },              // 原版展示值
+    qinggang: { id: 'qinggang', name: '青釭剑', glyph: '青', atk: 1, aspd: 0.15,  range: 0, desc: '攻击 +1 · 攻速 +15%' }, // 推导：轻剑换攻速
+    yitian:   { id: 'yitian',   name: '倚天剑', glyph: '倚', atk: 6, aspd: -0.10, range: 0, desc: '攻击 +6 · 攻速 -10%' }, // 推导：重剑高攻低攻速
+    dilu:     { id: 'dilu',     name: '的卢',   glyph: '卢', atk: 0, aspd: 0,     range: 1, desc: '射程 +1' },              // 推导：坐骑，扩射程
   };
 
   /* ---------- Boss（关卡关底 / 无尽强化波） ----------
-   * V5：敌方带名武将「张梁」作为精英/Boss 出场，带名字。
+   * 第一批扩到 3 个：张梁（震击，原版）→ 张宝（回天，可打断）→ 张角（雷落，预警 1s 后砸 3×3 塔）。
+   * 数值仍是「同波敌 × hpMul / atkMul」口径，出场表见 LEVEL_BOSS。
    */
-  const BOSS = {
-    char: '梁', name: '张梁', base: 'zei',
-    hp: 30, atk: 2.4, aspd: 0.9, range: 1, move: 2.0,   // V8.1：随贼兵基础上调（hp 24→30 / atk 2→2.4）
-    hpMul: BOSS_HP_MUL, atkMul: BOSS_ATK_MUL, skillCd: BOSS_SKILL_CD, slow: BOSS_SLOW,
-  };
+  const BOSSES = [
+    {
+      id: 'zhangliang', char: '梁', name: '张梁', base: 'zei',
+      hp: 30, atk: 2.4, aspd: 0.9, range: 1, move: 2.0,   // V8.1：随贼兵基础上调（hp 24→30 / atk 2→2.4）
+      hpMul: BOSS_HP_MUL, atkMul: BOSS_ATK_MUL, skillCd: BOSS_SKILL_CD, slow: BOSS_SLOW,
+      skill: { type: 'shock', name: '震击', cd: BOSS_SKILL_CD, slow: BOSS_SLOW },
+    },
+    {
+      id: 'zhangbao', char: '宝', name: '张宝', base: 'zei',
+      hp: 28, atk: 2.2, aspd: 0.95, range: 1, move: 2.0,
+      hpMul: 11, atkMul: 3.2, skillCd: 8, slow: 0,
+      // 回天：每 8 秒回 8% 上限血；吟唱 0.8s 内被打断则不进 CD（玩家的应对空间）
+      skill: { type: 'heal', name: '回天', cd: 8, healPct: 0.08, cast: 0.8, interruptible: true },
+    },
+    {
+      id: 'zhangjiao', char: '角', name: '张角', base: 'zei',
+      hp: 32, atk: 2.6, aspd: 1.0, range: 2, move: 1.9,
+      hpMul: 14, atkMul: 3.8, skillCd: 9, slow: 0,
+      // 雷落：随机 2 个己方塔位，1s 预警后 3×3 内的塔受 55 伤害
+      skill: { type: 'thunder', name: '雷落', cd: 9, cells: 2, warn: 1.0, radius: 1, dmg: 55 },
+    },
+  ];
+  const BOSS = BOSSES[0];   // 兼容旧引用（张梁 = 原版关底 / 无尽强化波）
+
+  /* 每关关底用哪个 Boss（下标 → BOSSES） */
+  const LEVEL_BOSS = [0, 0, 1, 0, 0, 1, 0, 2];
 
   /* ---------- 征兵概率池（合计 100） ----------
    * V5：铲子改走道具栏计数，不再占卡牌池；权重向兵种/金字倾斜。
+   * 第一批：道具 4 → 7 种。**兵种/金字权重一个都没动**（合计仍 86），
+   *   只把道具内部分额从 14 重新切给新道具 → 战斗节奏与 V8.1 基本一致。
    */
   const RECRUIT_POOL = [
     { w: 24, kind: 'unit', type: 'dao' },
@@ -175,9 +206,12 @@ window.ZY = window.ZY || {};
     { w: 10, kind: 'unit', type: 'qi' },
     { w: 16, kind: 'gold' },
     { w: 5,  kind: 'unit', type: 'nong' },
-    { w: 4,  kind: 'item', item: 'brush' },
-    { w: 4,  kind: 'item', item: 'warcry' },
-    { w: 6,  kind: 'item', item: 'fireball' },
+    { w: 3,  kind: 'item', item: 'brush' },
+    { w: 3,  kind: 'item', item: 'warcry' },
+    { w: 4,  kind: 'item', item: 'fireball' },
+    { w: 2,  kind: 'item', item: 'mirror' },
+    { w: 1,  kind: 'item', item: 'crossbow' },
+    { w: 1,  kind: 'item', item: 'horn' },
   ];
 
   /* ---------- 敌军（无尽 / 关卡）出兵构成 ---------- */
@@ -189,6 +223,23 @@ window.ZY = window.ZY || {};
     { w: 8,  type: 'qi' },
   ];
   const ELITE_TYPES = ['dao', 'qi'];
+
+  /* ---------- 精英词条（第一批） ----------
+   * 精英出场时随机挂 1 条，三条都有明确应对方式，不做纯数值堆叠：
+   *   swift  疾行：跑得快但更脆（用弓/骑在远处解）
+   *   heavy  重甲：减伤 25% 但更慢（用高攻/火球硬解）
+   *   banner 旗手：给周围 1 格内的敌人 +15% 攻速（优先点掉）
+   */
+  const ELITE_TRAITS = [
+    { id: 'swift',  name: '疾行', tag: '疾', move: 1.35, hp: 0.85 },
+    { id: 'heavy',  name: '重甲', tag: '甲', dmgReduce: 0.25, move: 0.85 },
+    { id: 'banner', name: '旗手', tag: '旗', aura: { range: 1, aspd: 1.15 } },
+  ];
+
+  /* ---------- 修罗八阵（第一批） ----------
+   * 0 层 = 普通；1~3 层通关后逐层解锁，敌方 hp/atk 乘以下列系数（仅关卡模式生效）。
+   */
+  const ASCEND_MUL = [1, 1.20, 1.45, 1.75];
 
   /* ---------- 波次节奏（关卡 / 无尽）—— 数值基线集中在这里，方便统一调平 ---------- */
   const TUNE = {
@@ -223,6 +274,18 @@ window.ZY = window.ZY || {};
                             //       —— 单格入口 + 单占位会把出兵吞吐压到「移速/个」，此值解除吞兵节流
     levelBreakWave: 3,      // 关卡：每关第几波随机一次突破口
     versusWaves: 15,        // 竞技：公共波次总数（打满比阿斗剩血，持平比击杀；进行中仍谁先破谁输）
+
+    /* —— 第一批新增 ——
+     * 难度按钮仍是 data-diff = 0.8 / 1 / 1.2 三档；这里把「一个倍率」翻译成三项实际投放参数，
+     * 由 game.js 在 startWave 里统一乘上去（不再让 UI 各写一份）。 */
+    diff: {
+      '0.8': { hp: 0.85, atk: 0.90, count: 0.85 },   // 轻松：更少更软
+      '1':   { hp: 1.00, atk: 1.00, count: 1.00 },   // 标准
+      '1.2': { hp: 1.22, atk: 1.15, count: 1.15 },   // 硬核
+    },
+    // 火球随波缩放：80 ×(1 + (波次-1)×0.06)，封顶 ×2.5（避免后期火球变成废牌）
+    fireballPerWave: 0.06,
+    fireballCap: 2.5,
   };
 
   /* ---------- 军衔 ---------- */
@@ -389,6 +452,10 @@ window.ZY = window.ZY || {};
   ZY.ITEMS = ITEMS;
   ZY.WEAPONS = WEAPONS;
   ZY.BOSS = BOSS;
+  ZY.BOSSES = BOSSES;
+  ZY.LEVEL_BOSS = LEVEL_BOSS;
+  ZY.ELITE_TRAITS = ELITE_TRAITS;
+  ZY.ASCEND_MUL = ASCEND_MUL;
   ZY.RECRUIT_POOL = RECRUIT_POOL;
   ZY.ENEMY_MIX = ENEMY_MIX;
   ZY.ELITE_TYPES = ELITE_TYPES;
