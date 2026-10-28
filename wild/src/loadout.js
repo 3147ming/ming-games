@@ -62,6 +62,9 @@ export const LOADOUT_ITEMS = [
   // 阶段 7 新增 —— 与 w_sharp/w_swift 构成"打得更狠 / 打得更散 / 打得更快 / 穿透"四选一
   { id: 'w_spray', slot: 'weapon', name: '散射', desc: '攻击数量 +1，伤害 -15%', buff: { shots: 1, dmgCut: 0.15 }, unlock: { tier: 2 } },
   { id: 'w_pierce', slot: 'weapon', name: '贯穿', desc: '弹道可穿透 1 个敌人，伤害 -10%', buff: { pierceN: 1, dmgCut: 0.10 }, unlock: { kills: 1500 } },
+  // 阶段10·P1-8：给「弹道流」一个更便宜的入口（散射是 tier 2，这件 1500 杀就能拿）。
+  //   ★ shots: -1 是**负数加成**，applyLoadout 必须补 Math.max(1, …) 下限，否则会变成 0 条弹道。
+  { id: 'w_choke', slot: 'weapon', name: '收束', desc: '弹道 -1，伤害 +18%', buff: { shots: -1, dmgBase: 0.18 }, unlock: { kills: 1500 } },
 
   // ── 护符槽（4 件）──
   { id: 'c_vital', slot: 'charm', name: '生机', desc: '生命上限 +15', buff: { maxHp: 15 }, unlock: { tier: 0 } },
@@ -69,6 +72,8 @@ export const LOADOUT_ITEMS = [
   // 阶段 7 新增 —— 生存向的第二选择：护盾（时机向）vs 荆棘（反打向）
   { id: 'c_aegis', slot: 'charm', name: '护盾', desc: '每 30 秒获得一层抵挡 1 次伤害的护盾', buff: { shieldEvery: 30 }, unlock: { tier: 2 } },
   { id: 'c_thornmail', slot: 'charm', name: '荆棘', desc: '受到伤害时反弹 20% 给周围敌人', buff: { thorns: 0.20 }, unlock: { kills: 3000 } },
+  // 阶段10·P1-8：纯生存向，与「生命上限 +15」区分（这件是上限 + 移速）。
+  { id: 'c_vigor', slot: 'charm', name: '强健', desc: '生命上限 +8，移速 +3', buff: { maxHp: 8, moveBase: 3 }, unlock: { kills: 800 } },
 
   // ── 印记槽（4 件）──
   { id: 's_sage', slot: 'sigil', name: '悟性', desc: '经验 +10%', buff: { xpMul: 0.10 }, unlock: { tier: 0 } },
@@ -79,6 +84,8 @@ export const LOADOUT_ITEMS = [
   //     不许回补任何技能相关机制（见 README 阶段 8-2）。
   { id: 's_greed', slot: 'sigil', name: '贪婪', desc: '击杀金币 +20%', buff: { goldMul: 0.20 }, unlock: { tier: 2 } },
   { id: 's_rebirth', slot: 'sigil', name: '重生', desc: '每局首次死亡时复活并回复 50% 生命', buff: { revives: 1 }, unlock: { kills: 800 } },
+  // 阶段10·P1-8：与「重生」正面对位 —— 一个是兜底复活，一个是全程暴击（印记槽补回 4 件）。
+  { id: 's_focus', slot: 'sigil', name: '专注', desc: '暴击率 +8%', buff: { critRate: 0.08 }, unlock: { tier: 1 } },
 ];
 
 export const DEFAULT_LOADOUT = { weapon: null, charm: null, sigil: null };

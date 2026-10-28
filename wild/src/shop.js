@@ -35,6 +35,10 @@ export const SHOP_ITEMS = [
   { id: 's_xp',   name: '灵慧', desc: '经验获取 +4%',   stat: 'xpMul',    amt: 0.04, cost: 30 },
   // 阶段 8-2：「迅律」（技能冷却 -3%，stat: cdMul）已删除 —— cdMul 这个乘区随主动技能一起没了，
   //   留着它就是一件"花了魂火却什么都没发生"的货物。⟹ 商栈货物由 6 件收成 5 件。
+  // 阶段10·P1-10：新增 3 件**构筑向**货物（5 → 8），让商栈从"纯数值微调"变成"真有取舍"：
+  { id: 's_choice', name: '抉择', desc: '立刻再开一次三选一（不给等级）', stat: 'action', amt: 0,  cost: 50 },
+  { id: 's_level',  name: '锻造', desc: '当前主武器等级 +1',            stat: 'action', amt: 0,  cost: 50 },
+  { id: 's_reroll', name: '重铸', desc: '重抽一次三选一的三张牌',         stat: 'action', amt: 0,  cost: 40 },
 ];
 
 const SHOP_BY_ID = Object.fromEntries(SHOP_ITEMS.map((g) => [g.id, g]));
@@ -69,6 +73,10 @@ export function applyShopGood(core, good) {
   if (!good) return false;
   const it = shopItemById(good.id);
   if (!it) return false;
+  // 阶段10·P1-10：构筑向货物（动作而非数值）—— 这三种不走下面的 stat 开关，直接调用 core 动作。
+  if (good.id === 's_choice') { core.openUpgrade({ reason: 'elite' }); return true; }   // 立刻再给一次三选一（不给等级）
+  if (good.id === 's_level')  { const w = core._mainWeapon ? core._mainWeapon() : null; return w ? core.forceWeaponLevelUp(w) : false; } // 主武器 +1 级（到顶/无武器 → 不生效，调用方不扣钱）
+  if (good.id === 's_reroll') { core.pendingUpgrade = null; core.openUpgrade(); return true; } // 重抽三张牌
   const amt = good.amt != null ? good.amt : it.amt;
   switch (it.stat) {
     case 'dmgBase':  core.dmgBase += amt; break;

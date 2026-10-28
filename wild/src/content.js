@@ -45,6 +45,9 @@ export const WEAPONS = [
   //   直斩 = 扫出去**那一瞬间**就结算完的即时光束；剑 = 有弹速、有射程、**飞行途中穿透多个目标**的实体。
   //   同一个"直线穿透"的说法，打起来的手感与升级方向完全不同，所以值得占一个独立槽位。
   { id: 'sword', label: '剑', desc: '斩出飞行的穿透剑气（可进化为扇形 / 环绕形态）', start: false },
+  // 阶段10·P1-6：第 5 把武器。机制与现有四把**不重叠**：不是弹道、不是环绕、不是直线穿透，
+  //   而是"在脚下留一片持续伤害地面"—— 走位本身就是输出手段。
+  { id: 'mist', label: '毒雾', desc: '脚下留下一片腐蚀地面，踩上去持续掉血', start: false },
 ];
 
 // ───────── 技能池 · 已于阶段 8-2 整体移除 ─────────
@@ -164,6 +167,8 @@ const weaponOffers = [
   unlockOffer('weapon', 'laser', '新武器 · 直斩', '每 0.9 秒朝最近敌人扫一道穿透光束'),
   // 阶段 5：第 4 把武器「剑」—— 飞行 + 穿透 + 后续两段进化形态
   unlockOffer('weapon', 'sword', '新武器 · 剑', '每 1.2 秒斩出一道飞行的穿透剑气'),
+  // 阶段10·P1-6：第 5 把武器「毒雾」—— 地面持续伤害（不是弹道/环绕/直线）
+  unlockOffer('weapon', 'mist', '新武器 · 毒雾', '脚下留下一片腐蚀地面，踩上去持续掉血'),
 
   // 下面每一条都只是**壳**：id / 文案 / 分组。数值与门槛统一在下面的 UP_DEFS 里补，
   // 这样"改了某个上限"只需要动一张表，不会漏掉池子那一侧的判据。
@@ -179,6 +184,10 @@ const weaponOffers = [
   upOffer('weapon', 'ws_dmg', '全局 · 伤害 +8%', '所有武器伤害提高 8%'),
   upOffer('weapon', 'ws_count', '剑 · 剑气 +1', '多斩出一道剑气（扇形展开）'),
   upOffer('weapon', 'ws_cd', '剑 · 间隔 -0.15s', '挥剑更频繁（下限 0.5s）'),
+  // ── 阶段10·P1-6：毒雾的三轴（伤害 / 范围 / 铺设节拍）──
+  upOffer('weapon', 'wm_dmg', '全局 · 伤害 +8%', '所有武器伤害提高 8%'),
+  upOffer('weapon', 'wm_size', '毒雾 · 范围 +8', '腐蚀地面的半径扩大'),
+  upOffer('weapon', 'wm_cd', '毒雾 · 铺设 -0.2s', '更快在脚下留下腐蚀地面（下限 0.5s）'),
 ];
 
 // 阶段 8-2：skillOffers（解锁 dash/frost + 9 条 ks_/kd_/kf_ 技能强化）已随主动技能整体删除。
@@ -219,6 +228,14 @@ const UP_DEFS = {
   ws_cd: { w: 'sword', max: 5, more: (c) => c.weapons.sword && c.wlvlUp('sword') && c.sword.interval > ARENA.SWORD_MIN_CD + 1e-9,
     apply: (c) => { c.sword.interval = Math.max(ARENA.SWORD_MIN_CD, c.sword.interval - 0.15); } },
 
+  // ── 阶段10·P1-6：毒雾 ──
+  wm_dmg: { w: 'mist', max: 8, more: (c) => c.weapons.mist && c.wlvlUp('mist'),
+    apply: (c) => { c.gUpMul *= 1.08; } },
+  wm_size: { w: 'mist', max: 4, more: (c) => c.weapons.mist && c.wlvlUp('mist'),
+    apply: (c) => { c.mist.r += 8; } },
+  wm_cd: { w: 'mist', max: 4, more: (c) => c.weapons.mist && c.wlvlUp('mist') && c.mist.interval > ARENA.MIST_MIN_CD + 1e-9,
+    apply: (c) => { c.mist.interval = Math.max(ARENA.MIST_MIN_CD, c.mist.interval - 0.2); } },
+
   // 阶段 8-2：技能强化（ks_/kd_/kf_ 九条）已随主动技能整体删除 —— 三选一池里不再有任何 'skill' 类目。
 };
 // Object.assign 而不是重写对象：offer() 合成的那个 `avail` 读的是 **this.max / this.more**，
@@ -239,8 +256,24 @@ export const OFFERS = [
   ...passiveOffers, ...weaponOffers,
 ];
 
-/** 按 id 查 offer（宝箱发奖 / 测试都用它）。 */
-export const offerById = (id) => OFFERS.find((o) => o.id === id) || null;
+/**
+ * 兜底三选一：池子被抽空（武器满级、被动封顶）时用它补位。
+ * ★ 它们不进 OFFERS（不参与正常抽签），只在 openUpgrade 的兜底分支出场；
+ *   三张牌都"永远有效" —— 用同文件内部工厂 offer() 造，复用 avail 合成逻辑，杜绝"选了没反应"。
+ *   ★ 顺序即 id 契约（见上方 OFFERS 注释）：OFFERS 不许加项/挪位；FALLBACK_OFFERS 同理独立于抽签池。
+ */
+export const FALLBACK_OFFERS = [
+  offer({ id: 'f_heal', cat: 'passive', label: '当场回血 +6', desc: '立刻回复 6 点生命', weight: 1,
+    apply(c) { c.healPlayer(6); } }),
+  offer({ id: 'f_fire', cat: 'passive', label: '魂火 +25', desc: '局内商栈货币 +25', weight: 1,
+    apply(c) { c.soulfire += 25; } }),
+  offer({ id: 'f_mend', cat: 'passive', label: '生命上限 +5', desc: '上限 +5 并补上这 5 点', weight: 1,
+    apply(c) { c.maxHp += 5; c.hp = Math.min(c.maxHp, c.hp + 5); } }),
+];
+
+/** 按 id 查 offer（宝箱发奖 / 测试都用它）。两段查表：先正常池，再兜底池（f_*）。 */
+export const offerById = (id) =>
+  OFFERS.find((o) => o.id === id) || FALLBACK_OFFERS.find((o) => o.id === id) || null;
 
 /** 调试/结算用：把 core 当前持有的武器读成字符串数组（阶段 8-2：技能字段已随主动技能移除）。 */
 export const ownedIds = (c) => ({
@@ -411,6 +444,10 @@ export const EVOLUTIONS = [
     label: '扇形剑幕', desc: '一次张开 100° 斩出三道穿透剑气' },
   { id: 'ev_sword_ring', weapon: 'sword', passive: 'dmg', need: 3, stage: 2,
     label: '环绕剑域', desc: '十二道剑气绕身常驻，贴身者持续受创' },
+  // 阶段10·P1-6：毒雾的进化线。passive 用 'xp'（经验 +20%）—— 这条线此前没有任何进化占用，
+  //   正好分流，不去挤 multi/dmg/atk 三条独木桥。
+  { id: 'ev_mist', weapon: 'mist', passive: 'xp', need: 2,
+    label: '腐潮', desc: '毒雾连成一片，会缓慢跟着你移动' },
 ];
 
 /** 按 id 查进化线。 */

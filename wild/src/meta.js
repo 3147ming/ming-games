@@ -71,12 +71,17 @@ function sumLevels(levels) {
  *   （击杀/存活/灵魂/总等级），所以当前不满足 ⟹ 将来更不会满足，
  *   存下来也没有意义。读时过滤还能顺带修好"旧存档里存着现已锁住的 id"。
  */
-function normalizeUnlocked(loadout, levels) {
+function normalizeUnlocked(loadout, levels, peak) {
   const stats = { totalLevels: sumLevels(levels) };
   const a = loadAccount();
   stats.kills = a.kills || 0;
   stats.survival = a.survival || 0;
-  const tier = tierOf(stats.totalLevels);
+  // ★ 阶段10 · P0-6：装备解锁看「历史最高总等级」。
+  //   转生按设计是"变强"，但 doRebirth 会把 levels 清空 —— 若这里只按当前等级判，
+  //   玩家一按转生，「疾袭 / 散射 / 护盾 / 贪婪」四件 tier 装备就被静默过滤成 null，
+  //   要重新练回 25 级才拿得回来。玩家会以为存档坏了。
+  //   peak 由 buyGrowth / doRebirth 维护，缺省 0（旧档自动兼容，不换 key）。
+  const tier = tierOf(Math.max(stats.totalLevels, Number(peak) || 0));
   const out = { weapon: null, charm: null, sigil: null };
   for (const slot of LOADOUT_SLOTS) {
     const id = loadout[slot.id];
@@ -94,9 +99,13 @@ export function loadMeta() {
       const o = JSON.parse(raw);
       const rebirth = Number(o.rebirth) || 0;
       const levels = (o.levels && typeof o.levels === 'object') ? { ...o.levels } : {};
+      // 阶段10 · P0-6：历史最高总等级（只增不减）。旧档没有这个字段 ⟹ 取当前等级，
+      //   从这一刻起开始记录（向后兼容，不需要迁移脚本）。
+      const peakLevels = Math.max(Number(o.peakLevels) || 0, sumLevels(levels));
       return {
         souls: Number(o.souls) || 0,
         levels,
+        peakLevels,
         heroes: Array.isArray(o.heroes) && o.heroes.length ? o.heroes.slice() : DEFAULT_HEROES.slice(),
         hero: typeof o.hero === 'string' && heroById(o.hero) ? o.hero : DEFAULT_HERO,
         skin: typeof o.skin === 'string' && SKINS.some((s) => s.id === o.skin) ? o.skin : DEFAULT_SKIN,
@@ -105,7 +114,7 @@ export function loadMeta() {
         //   （例如某件装备的门槛后来被调高，或玩家在别的设备上配过）。
         //   若不在读入处过滤，core 的 applyLoadout 只看meta.loadout 认 id、不校验解锁，
         //   于是玩家会带着一件"其实没解锁"的装备进局—— 属于静默生效，不该留。
-        loadout: normalizeUnlocked(normalizeLoadout(o.loadout), levels),
+        loadout: normalizeUnlocked(normalizeLoadout(o.loadout), levels, peakLevels),
         rebirth,
         title: typeof o.title === 'string' ? o.title : titleOf(rebirth),
       };
@@ -113,7 +122,7 @@ export function loadMeta() {
   } catch { /* 忽略，走默认 */ }
   // ★ 兜底分支也必须带 heroes / hero —— 否则全新设备（localStorage 为空）拿到的 m.heroes
   //   是 undefined，heroCatalog() 里 `m.heroes.includes(...)` 直接抛，标题页英雄选择在模块顶层崩溃。
-  return { souls: 0, levels: {}, heroes: DEFAULT_HEROES.slice(), hero: DEFAULT_HERO, skin: DEFAULT_SKIN, loadout: { ...DEFAULT_LOADOUT }, rebirth: 0, title: titleOf(0) };
+  return { souls: 0, levels: {}, peakLevels: 0, heroes: DEFAULT_HEROES.slice(), hero: DEFAULT_HERO, skin: DEFAULT_SKIN, loadout: { ...DEFAULT_LOADOUT }, rebirth: 0, title: titleOf(0) };
 }
 
 export function saveMeta(meta) {
@@ -161,6 +170,9 @@ export function buyGrowth(id) {
   if (m.souls < cost) return m; // 钱不够，no-op
   m.souls -= cost;
   m.levels[id] = cur + 1;
+  // 阶段10 · P0-6：同步刷新历史最高总等级（只增不减）。
+  //   放在 levels 更新之后算 totalLevels，才是"买到这一级之后"的真峰值。
+  m.peakLevels = Math.max(Number(m.peakLevels) || 0, totalLevels(m));
   saveMeta(m);
   return m;
 }
@@ -190,6 +202,9 @@ export function canRebirth(meta) {
 export function doRebirth(meta) {
   const m = meta || loadMeta();
   if (!canRebirth(m)) return m; // 不满足门槛，no-op
+  // 阶段10 · P0-6：转生前先把当前总等级记进峰值（levels 马上就要清零了）。
+  //   ★ 只服务于装备解锁；canRebirth 的门槛**只认当前等级**，绝不能用峰值（见 P0-6 回归）。
+  m.peakLevels = Math.max(Number(m.peakLevels) || 0, totalLevels(m));
   m.levels = {};
   m.rebirth = (Number(m.rebirth) || 0) + 1;
   m.title = titleOf(m.rebirth);
@@ -237,21 +252,35 @@ export function heroCatalog() {
   }));
 }
 
-// ───────── 阶段 6-2：皮肤选择（纯外观，无解锁花费，全部恒可选）─────────
+// ───────── 阶段 6-2：皮肤选择（纯外观；阶段10·P1-9 起按阶段解锁）─────────
 
-/** 选中一个皮肤（未知 id 归一到默认，不开局崩）。 */
+/** 皮肤解锁用的阶段号。
+ *  ★ 用 max(totalLevels, peakLevels) 而不是裸 totalLevels：与装备的 normalizeUnlocked 同口径 ——
+ *    转生会清空 levels，但**已经解锁过的东西不该被重新锁上**（peakLevels 就是为此维护的）。 */
+function skinTier(m) {
+  return tierOf(Math.max(totalLevels(m), Number(m.peakLevels) || 0));
+}
+
+/** 选中一个皮肤（未知 id 归一到默认；未到 unlock tier 则 no-op，与 selectHero 同款）。 */
 export function selectSkin(id) {
   const m = loadMeta();
   if (!SKINS.some((s) => s.id === id)) id = DEFAULT_SKIN;
+  const s = SKINS.find((x) => x.id === id);
+  if (skinTier(m) < (Number(s.tier) || 0)) return m; // 未解锁：静默不改
   m.skin = id;
   saveMeta(m);
   return m;
 }
 
-/** 标题页渲染皮肤卡用：把 SKINS 映射成带「已选」标记的列表（皮肤无解锁门槛）。 */
+/** 标题页渲染皮肤卡用：把 SKINS 映射成带「已选 / 已解锁」标记的列表。 */
 export function skinCatalog() {
   const m = loadMeta();
-  return SKINS.map((s) => ({ ...s, selected: m.skin === s.id }));
+  const tier = skinTier(m);
+  return SKINS.map((s) => ({
+    ...s,
+    selected: m.skin === s.id,
+    unlocked: tier >= (Number(s.tier) || 0),
+  }));
 }
 
 // ───────── 阶段 6-3：装备 / 局外配装（3 槽各选 1 件，纯数值加成，无解锁花费）─────────

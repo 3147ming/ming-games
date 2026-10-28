@@ -14,24 +14,42 @@
 const KEY = 'wild.best.v1';
 
 /**
- * 评级切线。分数 = 存活秒数 + 击杀数（spec 二-2：「按存活时间 + 击杀数算总分」）。
- * ★ 定法：满局（600s + ~3300 杀）≈ 3900。
- *   · S 2800 —— 基本要活到 8 分钟以上且清得动场子，不是"活着就行"；
- *   · A 1700 —— 活到 5~6 分钟的中等局；
- *   · B  800 —— 打到中局就倒下；
+ * 评级切线（阶段10·P1-13 上调）。分数 = 存活 + 击杀 + 行为分，见下面 scoreParts。
+ * ★ 定法：满局（600s + ~3300 杀 + 2 Boss + 2 进化 + 6 箱）≈ 4900。
+ *   · S 3200 —— 基本要活到 8 分钟以上且清得动场子，不是"活着就行"；
+ *   · A 2000 —— 活到 5~6 分钟且有像样战果的中等局；
+ *   · B  950 —— 打到中局就倒下；
  *   · C  其余 —— 开局阶段就结束了（新手第一局多半在这里，正好留出"再来一把"的空间）。
+ * ★ 必须保持**降序**：gradeOf 的 for 循环先命中第一个，顺序反了所有人都是 C。
  */
 export const GRADE_CUTS = [
-  { g: 'S', at: 2800 },
-  { g: 'A', at: 1700 },
-  { g: 'B', at: 800 },
+  { g: 'S', at: 3200 },
+  { g: 'A', at: 2000 },
+  { g: 'B', at: 950 },
 ];
 
-/** 总分（spec 二-2）。只由结算读数算出，纯函数 ⟹ 可无头断言。 */
-export function scoreOf(res) {
+/**
+ * 总分 = 存活 + 击杀 + **行为分**（阶段10·P1-13）。
+ * ★ 行为分让"打得深"也进评级：Boss 300 / 进化 150 / 宝箱 20。
+ *   原来只有「存活 + 击杀」，于是"堆 DPS 平推"永远是唯一最优，build 深度零回报。
+ *   切线上调（2800/1700/800 → 3200/2000/950）：满局 600s + 3300 杀 + 2 Boss + 2 进化 + 6 箱 ≈ 4900，
+ *   所以 S 3200 仍要求"活到 8 分钟以上且清得动场子"，不是白送。
+ * ★ 历史纪录不受影响 —— best.js 只存 bestSec/bestKills/bestLevel（不存分数）。
+ */
+export function scoreParts(res) {
   const sec = Number(res && res.survivalSec) || 0;
   const kills = Number(res && res.kills) || 0;
-  return sec + kills;
+  const boss = Array.isArray(res && res.bossKills)
+    ? res.bossKills.reduce((s, n) => s + (Number(n) || 0), 0) : 0;
+  const evo = res && res.evolutions ? Object.values(res.evolutions).filter((n) => Number(n) > 0).length : 0;
+  const chests = Number(res && res.chests) || 0;
+  const behavior = boss * 300 + evo * 150 + chests * 20;
+  return { sec, kills, boss, evo, chests, behavior, total: sec + kills + behavior };
+}
+
+/** 总分（spec 二-2 + 阶段10 行为分）。只由结算读数算出，纯函数 ⟹ 可无头断言。 */
+export function scoreOf(res) {
+  return scoreParts(res).total;
 }
 
 /** 评级：S / A / B / C。纯函数，不读存档。 */
@@ -50,7 +68,7 @@ export function toNextGrade(res) {
   return GRADE_CUTS[GRADE_CUTS.findIndex((c) => c.g === g) - 1].at - s;
 }
 
-const EMPTY = { bestSec: 0, bestKills: 0, bestLevel: 0, runs: 0 };
+const EMPTY = { bestSec: 0, bestKills: 0, bestLevel: 0, bestBossKills: 0, runs: 0 };
 
 /** 读纪录；任何异常（隐私模式 / 损坏 JSON）都回退到空纪录，绝不抛。 */
 export function loadBest() {
@@ -62,6 +80,8 @@ export function loadBest() {
         bestSec: Number(o.bestSec) || 0,
         bestKills: Number(o.bestKills) || 0,
         bestLevel: Number(o.bestLevel) || 0,
+        // 阶段10·内容批P0-2：成就「巨兽杀手」判据。旧存档没有这个键 ⟹ Number 兜底 0，不抛。
+        bestBossKills: Number(o.bestBossKills) || 0,
         runs: Number(o.runs) || 0,
       };
     }
@@ -84,6 +104,11 @@ export function submitRun(res) {
   const sec = Number(res && res.survivalSec) || 0;
   const kills = Number(res && res.kills) || 0;
   const level = Number(res && res.level) || 0;
+  // ★ res.bossKills 是「每只 Boss 各杀了几次」的数组 ⟹ 取求和才是"本局杀了几个 Boss"
+  //   （取 length 会得到 Boss 的位数，恒 2/3，等于白送成就）。
+  const bossKills = Array.isArray(res && res.bossKills)
+    ? res.bossKills.reduce((s, n) => s + (Number(n) || 0), 0)
+    : 0;
   const records = {
     sec: sec > prev.bestSec,
     kills: kills > prev.bestKills,
@@ -93,6 +118,7 @@ export function submitRun(res) {
     bestSec: Math.max(prev.bestSec, sec),
     bestKills: Math.max(prev.bestKills, kills),
     bestLevel: Math.max(prev.bestLevel, level),
+    bestBossKills: Math.max(prev.bestBossKills, bossKills),
     runs: prev.runs + 1,
   });
   return { grade: gradeOf(res), score: scoreOf(res), records, best };

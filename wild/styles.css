@@ -86,13 +86,15 @@ html, body {
 }
 .title-wrap {
   margin: 0 auto;
-  min-height: 100%;            /* 内容矮也撑满一屏，配合下方 flex 居中 */
+  min-height: 100%;            /* 内容矮也撑满一屏 */
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  justify-content: center;     /* 内容矮时垂直居中；内容高时 min-height 撑开、可滚动 */
+  /* 阶段10 · P0-7：原本是 center —— 但开始按钮区改成 sticky 后，居中布局会和吸附打架
+     （内容不足一屏时顶部空一截，按钮吸不到顶）。改 flex-start，顶部从 0 开始排。 */
+  justify-content: flex-start;
   text-align: center;
-  padding: 24px 16px;
+  padding: 0 16px 24px;
 }
 .game-title {
   margin: 0;
@@ -113,9 +115,13 @@ html, body {
   line-height: 2;
   color: var(--paper-dim);
 }
+/* 阶段10 · P0-7：开始按钮吸顶。标题页本身是滚动容器（#screen-title），
+   sticky 直接生效 —— 滚到属性树时「进入荒野」仍钉在顶部，随时能开一局。 */
 .title-actions {
-  margin-top: 34px; display: flex; justify-content: center;
-  gap: 12px; flex-wrap: wrap; padding: 0 16px;
+  position: sticky; top: 0; z-index: 4;
+  margin: 18px 0 10px; display: flex; justify-content: center;
+  gap: 12px; flex-wrap: wrap; padding: 10px 16px;
+  background: linear-gradient(var(--ink) 72%, rgba(13, 12, 11, 0));
 }
 /* 游戏总入口 · 大厅按钮（与 .big 并排的副按钮，金色区分主次；触控热区 ≥44px） */
 .hub-btn {
@@ -133,6 +139,20 @@ html, body {
   color: var(--paper-dim);
   line-height: 1.9;
 }
+/* 阶段10 · P0-7：皮肤/装备的折叠摘要行。默认收起（选择区 hidden），点一下展开。
+   做成整行可点的按钮，热区 ≥44px；右侧 ▾ 在展开时由 .open 翻成 ▴。 */
+.pick-h {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; max-width: 520px; margin: 8px auto 0;
+  min-height: 44px; padding: 10px 14px;
+  font-size: 12px; letter-spacing: .06em;
+  color: var(--paper-dim); text-align: left;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--ink2);
+}
+.pick-h i { font-style: normal; opacity: .7; transition: transform .15s ease-out; }
+.pick-h.open i { transform: rotate(180deg); }
+.pick-h:hover { color: var(--paper); border-color: var(--paper-dim); }
 
 button {
   font-family: inherit;
@@ -156,13 +176,33 @@ button.big {
   background: #1b1726;
 }
 button.big:hover { background: #251f33; }
+/* 阶段10 · P0-1：结算页的次要按钮（回标题）—— 比主按钮弱一档，但热区同样够大 */
+button.big.ghost { border-color: var(--line); color: var(--paper-dim); background: var(--ink2); }
+button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim); }
+/* 结算页两个按钮并排（手机上换行，热区 44px 起） */
+.result-actions {
+  display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;
+  margin-top: 8px;
+}
+.result-actions button.big { min-width: 150px; }
 
 /* ───────── 结算页 ───────── */
+/* 阶段10 · P0-1：结算页变成可滚动容器。与 #screen-title 同一套处理：
+   block + overflow-y:auto 才不会出现「顶部被切、往上滚不动」。
+   以前这里没有滚动规则，而 #stage 是 overflow:hidden ⟹ 结算内容一长，
+   手机上的「再来一局」就被裁在屏幕外，够不着。 */
+#screen-result.screen.active {
+  display: block;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
 .over-wrap {
-  margin: auto;
+  margin: 0 auto;
   text-align: center;
-  padding: 0 26px;
+  padding: 24px 26px 40px;
   width: 100%;
+  box-sizing: border-box;
 }
 .over-wrap h2 {
   margin: 0;
@@ -202,6 +242,22 @@ button.big:hover { background: #251f33; }
 .rs-main .rs-v { font-size: 34px; color: var(--flux); }
 .rs-v.sm { font-size: 17px; color: var(--paper-dim); }
 
+/* 阶段10 · P0-4：本局构筑复盘。左键右值，逐行；空值时 main.js 会写「—」。
+   ★ 只展示中文名，内部 id（wp_shots / ev_spiral）绝不出现。 */
+.res-build {
+  margin: 0 0 22px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ink2);
+  text-align: left;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.res-build:empty { display: none; }
+.rb-row { display: flex; gap: 10px; font-size: 11px; line-height: 1.7; }
+.rb-k { flex: 0 0 58px; color: var(--paper-dim); letter-spacing: .08em; }
+.rb-v { flex: 1 1 auto; color: var(--paper); word-break: break-word; }
+
 /* ───────── 实时关（搬自 ONE-CARD 的 .arena-* 段） ───────── */
 /* 全屏覆盖层：竖屏暗场，独占 #stage 顶层 */
 .arena-root {
@@ -215,14 +271,15 @@ button.big:hover { background: #251f33; }
   overflow: hidden;
 }
 .arena-canvas { display: block; width: 100%; height: 100%; }
-/* 阶段 3：音效静音开关（右上角，覆盖在画面之上） */
+/* 阶段 3：音效静音开关（右上角，覆盖在画面之上）。
+   阶段10·P1-11：让开刘海/圆角安全区，热区放大到 iOS 最小 44px。 */
 .arena-mute {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: calc(10px + env(safe-area-inset-top));
+  right: calc(10px + env(safe-area-inset-right));
   z-index: 56;
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   border-radius: 9px;
   border: 1px solid var(--line);
   background: rgba(13,12,11,.55);
@@ -234,14 +291,17 @@ button.big:hover { background: #251f33; }
   backdrop-filter: blur(2px);
 }
 .arena-mute.muted { color: var(--paper-dim); border-color: #3a3531; opacity: .7; }
-/* 阶段 9：局内倍速按钮（右下角，原主动技能槽空位）。点击/V 键循环 0.5→1→2→3→0.5。 */
+/* 阶段 9：局内倍速按钮（原右下角，原主动技能槽空位）。点击/V 键循环 0.5→1→2→3→0.5。
+   阶段10·P1-11：挪到**左下角**并让开安全区（右下角是右手拇指走位区，常被误触），
+   热区放大到 44px；交互改成**长按 400ms 才切**（见 arena.js 的 pointerdown 计时）。 */
 .arena-speed {
   position: absolute;
-  right: 12px;
-  bottom: 12px;
+  left: calc(12px + env(safe-area-inset-left));
+  right: auto;
+  bottom: calc(12px + env(safe-area-inset-bottom));
   z-index: 56;
-  min-width: 46px;
-  height: 34px;
+  min-width: 60px;
+  height: 44px;
   padding: 0 10px;
   border-radius: 9px;
   border: 1px solid var(--line);
@@ -254,14 +314,63 @@ button.big:hover { background: #251f33; }
   backdrop-filter: blur(2px);
 }
 .arena-speed:active { border-color: var(--flux); }
+/* 阶段10·P1-8：局内暂停键（左上角，与右上 .arena-mute 对称，避开右下摇杆）。
+   P1-11：同步让开安全区并放大到 44px。 */
+.arena-pause {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top));
+  left: calc(10px + env(safe-area-inset-left));
+  z-index: 56;
+  width: 44px;
+  height: 44px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: rgba(13,12,11,.55);
+  color: var(--paper);
+  font-family: var(--font);
+  font-size: 13px;
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+.arena-pause:active { border-color: var(--flux); }
+/* 阶段10·P1-8：暂停菜单（全屏遮罩，复用 .arena-levelup 那套 inset:0 + .9 暗场，不加 backdrop-filter）。 */
+.arena-pausemenu {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(13,12,11,.9);
+  z-index: 60;
+}
+.arena-pausemenu[hidden] { display: none; }
+.pm-title { font-size: 18px; letter-spacing: .12em; color: var(--flux); }
+.arena-pausemenu .pm-resume,
+.arena-pausemenu .pm-quit {
+  width: min(70%, 240px);
+  padding: 13px 16px;
+  text-align: center;
+  border-radius: var(--radius);
+  border: 1px solid var(--flux);
+  background: #1b1726;
+  color: var(--paper);
+  font-family: var(--font);
+  font-size: 14px;
+  letter-spacing: .06em;
+  cursor: pointer;
+}
+.arena-pausemenu .pm-quit { border-color: var(--line); color: var(--paper-dim); }
 .arena-hint {
   position: absolute;
-  left: 12px;
-  bottom: 10px;
+  left: calc(12px + env(safe-area-inset-left));
+  /* 阶段10·P1-11：抬到倍速键上方（12 + 44 + 8），别压在按钮上。 */
+  bottom: calc(64px + env(safe-area-inset-bottom));
   font-size: 11px;
   letter-spacing: .04em;
   color: var(--paper-dim);
-  pointer-events: none;
+  pointer-events: none;   /* 挪位置后仍不可点 —— 不许变成拦截摇杆的隐形层 */
   text-shadow: 0 1px 2px rgba(0,0,0,.6);
 }
 
@@ -468,6 +577,10 @@ button.big:hover { background: #251f33; }
   margin-top: 8px; font-size: 11px; line-height: 1.5; color: var(--paper-dim);
   border: 1px dashed var(--line); border-radius: 10px; padding: 8px 10px; text-align: center;
 }
+/* 阶段10 · P0-6：转生到底保留什么、重置什么，一行写死 —— 别让玩家不敢按 */
+.g-rebirth-note {
+  margin-top: 6px; font-size: 10px; line-height: 1.6; color: #6b655d; text-align: center;
+}
 /* 阶段 5 · 首页底部的「更多游戏」入口（指向游戏大厅） */
 .more-games {
   display: block; margin: 16px auto 4px; width: fit-content;
@@ -534,6 +647,12 @@ button.big:hover { background: #251f33; }
   font-size: 12px; letter-spacing: .14em; color: var(--gold);
   margin-bottom: 8px; font-weight: 600;
 }
+/* 阶段10·P1-11：图鉴的分组小标题（敌人 / Boss / 进化）。 */
+.prog-sub {
+  font-size: 10px; letter-spacing: .16em; color: var(--paper-dim);
+  margin: 10px 0 6px; text-transform: uppercase;
+}
+.prog-sub:first-of-type { margin-top: 2px; }
 .prog-cell {
   display: grid;
   grid-template-columns: 1fr auto;

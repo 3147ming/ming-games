@@ -26,9 +26,11 @@ import { Sfx } from './sfx.js';
 //   若在顶层写 `const X = OFFERS.length` 或 `export const A = {...ARENA...}` 就会炸 TDZ。
 import {
   OFFERS, PASSIVES, WEAPONS,
-  CAT_LABEL, RARE_PASSIVES, offerById, growthLineOf,
+  CAT_LABEL, RARE_PASSIVES, offerById, growthLineOf, FALLBACK_OFFERS,
   // 阶段 4-5：超武进化表 + 角色表
   EVOLUTIONS, HEROES, heroById, DEFAULT_HERO, WEAPON_OF_UP, classPassiveOf, classPerkOf,
+  // 阶段10 · P0-5：局内 chip 显示"离进化还差什么"（此前这个导出零调用）
+  evoOfWeapon,
   // 阶段 8-2：SKILLS/SKILL_ORDER/SKILL_SHORT/SKILL_LABEL/SKILL_SLOT_KEYS/
   //           SKILL_TIER_CADENCE/isSkillFlavored 已随主动技能整体删除（见 content.js 删除清单）。
 } from './content.js';
@@ -36,6 +38,12 @@ import { Rng } from './rng.js';   // 阶段 4-7.x：心心掉落的**独立**随
 import { SKIN_TINT_ALPHA, DEFAULT_SKIN, SKINS, skinById, skinNeedsTint } from './skins.js';  // 阶段 6-2：纯外观皮肤
 import { loadoutBuffs } from './loadout.js';  // 阶段 6-3：局外配装（纯数值，applyGrowth 之后叠加）
 import { SHOP_TIMES, rollShop, applyShopGood } from './shop.js';  // 阶段 6-4：局内商店「魂火商栈」（纯逻辑，不碰 DOM）
+
+// 阶段10 · P0-5：进化所需被动的短名。
+//   PASSIVES 的 label 是「伤害 +12%」这种长文案，塞不进底部 chip；
+//   这里只服务 EVOLUTIONS 里真正出现过的三个 passive（multi / dmg / atk）。
+//   ★ 如果以后进化线用到第四个 passive，这里缺键会回落成 id 原文（不会崩）。
+const EVO_PASSIVE_SHORT = { multi: '多弹', dmg: '伤害', atk: '攻速' };
 
 // ───────── 数值口径（写死，可被 tools/arena-sim.mjs 与 tests/ 直接断言） ─────────
 // 工具与测试读同一份常量，才不会出现「测试里是 A 数值、模拟器里是 B 数值」的隐形口径漂移。
@@ -468,6 +476,11 @@ export const ARENA = {
   ELITE_XP_MUL: 3,
   ELITE_GEM_DROPS: 3,       // 死亡掉 3 颗宝石（每颗都带精英的 xp）
   ELITE_TINT: '#c9402f',    // "颜色更红"：真图叠一层红蒙版 / 剪影直接换红色（见 Arena._eliteMask）
+  // 阶段10·P1-7：精英词条。原先一局几十只精英只有数值差异、长得一模一样；
+  //   词条让"这只精英有点不一样"成为最便宜的内容量。
+  // ★ 词条**不用 rng 抽**（出生位置哈希取模）—— 在热路径上引 rng 会平移整条随机流，
+  //   直接破坏"同种子同结果"的冻结护栏。
+  ELITE_TRAITS: ['tank', 'swift', 'split'],
 
   // ── 阶段 4-1：远程精英怪（ranged）──
   // 它和近战精英是**两种不同性质的压力**：近战逼你走位，远程逼你**不能停**。
@@ -650,6 +663,14 @@ export const ARENA = {
   SWORD_C3_SPIN: 2.2,      // 角速度 rad/s（≈2.9 秒一圈）
   SWORD_C3_TICK: 0.35,     // 同一只怪被这一圈再结算的最小间隔 s（沿用 ORBIT_TICK 的口径：
                            //   不节流的后果是 DPS 随帧率变 ⟹ 直接破坏可复现性）
+  // ── 阶段10·P1-6：第 5 把武器「毒雾」（脚下持续伤害地面）──
+  // ★ 同屏上限 MIST_MAX=8：不设上限的话"站着不动"会无限堆叠，DPS 失控。
+  MIST_DMG: 6,             // 单跳伤害（走 applyHit ⟹ 自动吃 gDmgMul / 暴击）
+  MIST_R: 46,              // 每片腐蚀地面的半径 px
+  MIST_LIFE: 3,            // 单片寿命 s
+  MIST_CD: 1.4,            // 每隔多久在脚下留一片
+  MIST_MAX: 8,             // 同屏最多几片（超过丢最旧）
+  MIST_MIN_CD: 0.5,        // wm_cd 强化的下限（防止强化后每帧喷一片）
   // 阶段 8-2：这两个值原本分别是写死的 1.2s 复活无敌与 0.25s 白闪。
   //   原先白闪的归一时基借用 SHOCKWAVE_FLASH（冲击波白闪），技能删除后必须自带常量，
   //   否则渲染那边会读到 undefined。★ REVIVE_INVULN **不进 ANIM_KEYS** ——
@@ -709,11 +730,17 @@ export const ARENA = {
   // ── 阶段 6-4：魂火商栈（局内商店）──
   // ★ 时间点直接复用 shop.js 的 SHOP_TIMES（单一真相源，避免 arena 与 shop 各写一份漂移）。
   SHOP_TIMES,              // [120, 300, 480]：第 2 / 5 / 8 分钟各开一次
+  SHOP_COST_MUL: 1.6,      // 阶段10·P1-10：同局每次开店的价格通胀系数（第1/2/3次 = ×1 / ×1.6 / ×2.56）
   SOULFIRE_PER_KILL: 1,    // 每击杀掉落 1 魂火（与 gems=xperience 完全独立的货币）
   EVENT_LAST: 600,         // 最后一个事件不晚于此（留收尾给 Boss 决战）
-  EVENT_SEQ: ['gold', 'supply', 'magnet'], // 阶段 4-13：三种纯增益波（经济×2 / 补给 / 磁暴收割），确定性安全、不破基准存活护栏。
-                                                 //   elite 事件（_fireEvent('elite')）已实现+测试，但强制刷精英会拖死 WILD-TEST-LONG 基准种子（test 48 硬护栏），
-                                                 //   故暂不进 live 循环，留待难度曲线重平衡后再启用。
+  // 阶段10·P1-4：事件池 3 → 4，把已实现但从未启用的 'elite'（精英狩猎）接进 75 秒循环。
+  //   4 项 × 每 75s，一局 8 次正好各 2 次；中局终于有一次"糟了"的时刻。
+  //   ★ 这是本批唯一**会改难度**的机制项：如果 16 局跑满率掉到 12 以下，处置顺序是
+  //     先降 ELITE_BOON_HEARTS/ELITE_BOON_GEMS → 再降 ELITE_CALL_N → 绝不动 EVENT_EVERY/EVENT_LAST。
+  EVENT_SEQ: ['gold', 'supply', 'elite', 'magnet'],
+  ELITE_EVENT_ON: true,    // 一行回退：false ⟹ elite 事件自动替换成 supply（回到"全增益"口径）
+  // （历史：阶段 4-13 曾因强制刷精英拖死 WILD-TEST-LONG 基准种子而把 elite 挡在循环外；
+  //   阶段10 按用户指令接回，并留上面这个开关。）
   GOLD_MUL: 2,             // 黄金时段经验倍率
   GOLD_T: 12,              // 黄金时段时长 s
   MAGNET_MUL: 3,           // 磁暴事件：经验/心心拾取半径 ×MAGNET_MUL（纯增益，确定性安全）
@@ -808,6 +835,14 @@ export const ARENA = {
     { at: 300, kind: 'kill', text: '已杀 300 只！' },
     { at: 500, kind: 'kill', text: '已杀 500 只！' },
     { at: 1000, kind: 'kill', text: '已杀 1000 只！' },
+    // 阶段10·P1-5：后 5 分钟原本一条提示都没有 —— 追加 5 条补齐高潮段的目标感。
+    // ★ 只能追加到末尾：MILESTONES 的下标就是 mileFlags 的键（构造器按数组 map 生成），
+    //   插队会让老存档的已触发位错位。
+    { at: 420,  kind: 'sec',  text: '撑过 7 分钟！' },
+    { at: 540,  kind: 'sec',  text: '撑过 9 分钟！' },
+    { at: 2000, kind: 'kill', text: '已杀 2000 只！' },
+    { at: 3000, kind: 'kill', text: '已杀 3000 只！' },
+    { at: 580,  kind: 'sec',  text: '最后 20 秒！' },
   ],
   MILE_FADE: 2.0,           // 里程碑横幅的显示时长 s（不是动画时长，是"停留 + 淡出"的总时长）
 
@@ -845,8 +880,10 @@ export const ARENA = {
   RAIN_ON: true,            // 总开关（关掉即回到战役前的逐个 Boss 行为）
   RAIN_GRID: [12, 8],       // 落点栅格 列×行（=96 格；自启动时在整个视野范围内铺开）
   RAIN_JITTER: 0.30,        // 格内抖动比例（0 = 严格落在格心；太大则格子边界糊在一起，安全间隙就没意义了）
-  RAIN_COUNT: [30, 44],     // 每波落点数：Boss1 30 / Boss2 44（Boss2 更密 —— 区分度）
-  RAIN_WARN: [0.8, 0.6],    // 预警时长 s：Boss1 0.8 / Boss2 0.6（Boss2 更短 = 更难躲 —— 区分度）
+  // ★ 阶段10·P1-3：按 BOSS_TYPES.idx 取值，**加 Boss 必须同时给这两张表补一档** ——
+  //   _beginRain 直接 RAIN_COUNT[idx]，undefined 不会抛错，只会让预警圈永远停在场上。
+  RAIN_COUNT: [30, 44, 52], // 每波落点数：Boss1 30 / Boss2 44 / Boss3 52（终局最密）
+  RAIN_WARN: [0.8, 0.6, 0.55], // 预警时长 s：Boss1 0.8 / Boss2 0.6 / Boss3 0.55（终局最难躲）
   RAIN_DMG: 12,             // 单发伤害（90 血挨 8 发死；使命是"可躲但不秒杀"，留出走位余地）
   RAIN_R: 46,               // 命中判定半径 px（与预警圈同 size，所见即所判）
   RAIN_COVER_MAX: 0.70,     // 覆盖率硬上限。实测：Boss1 21.6% / Boss2 31.7%（远低于上限，留足走位余地）
@@ -858,12 +895,12 @@ export const ARENA = {
   // ★ 满级阈值为什么是这几个数：一局约 32 次升级，还要留出拿新武器/新技能/被动的余量。
   //   定太高（比如 10）⟹ 三条线一条都走不完，"进化"等于不存在；
   //   定太低 ⟹ 中期就进化完，后半局没有追求。6/5/5 是"第 6~8 分钟才可能成型"的量级。
-  W_LEVEL_MAX: { projectile: 6, orbit: 5, laser: 5, sword: 6 },
+  W_LEVEL_MAX: { projectile: 6, orbit: 5, laser: 5, sword: 6, mist: 6 },
   // ★ 阶段 5：每把武器能进化到**第几阶**。除剑以外的三把只有 1 阶（⟹ 行为与阶段 4-5 逐字节一致）；
   //   剑有两段链（C1→C2→C3），所以 maxStage = 2。
   //   没有这张表，wlvlUp / _checkEvolution 就无法区分两种完全不同的状态：
   //   "已进化到底、强化项该从池子消失" 与 "才刚到 C2、还得爬到 C3 才能再进化"。
-  W_STAGE_MAX: { projectile: 1, orbit: 1, laser: 1, sword: 2 },
+  W_STAGE_MAX: { projectile: 1, orbit: 1, laser: 1, sword: 2, mist: 1 },
   EVO_BANNER_LIFE: 2.4,     // 「★武器进化★」大字的停留时长 s
                             //   ⚠ 它不是过渡动画（那张表管的是"看得见的缓动"），
                             //     所以不进 ANIM_KEYS —— 与里程碑横幅同一口径。
@@ -941,6 +978,11 @@ export const BOSS_TYPES = {
     hpMul: 30, r: 32, speed: 50, shape: 77, spikes: true, color: '#7a1f18', summon: 4 },
   boss2: { id: 'boss2', idx: 1, label: '噬影之主', atSec: 330,
     hpMul: 50, r: 38, speed: 54, shape: 91, spikes: true, color: '#3a1f4a', summon: 6 },
+  // 阶段10·P1-3：终局 Boss —— 9:00 出场，留 60 秒收尾（终局感来自"最后一分钟还有东西压着"）。
+  //   shape 12 是没被任何实体用过的种子（现有 2/3/4/5/6/7/9/77/91）⟹ 轮廓天然独一份。
+  //   ★ bossSpawned/bossKills 由 BOSS_ORDER.map() 自动变成 3 项，不要手改长度。
+  boss3: { id: 'boss3', idx: 2, label: '荒野之喉', atSec: 540,
+    hpMul: 70, r: 44, speed: 46, shape: 12, spikes: true, color: '#2c3a2a', summon: 8 },
 };
 /** Boss 的出场顺序（按 atSec 升序）："没死不刷下一个"靠这个顺序推进。 */
 export const BOSS_ORDER = Object.keys(BOSS_TYPES).sort((a, b) => BOSS_TYPES[a].atSec - BOSS_TYPES[b].atSec);
@@ -973,6 +1015,9 @@ const COLOR = {
   evo: '#e8c45a',           // 阶段 4-5：进化大字（金）
   laser: '#e8e3da',
 };
+
+/** 阶段10·P1-7：精英词条的中文名（死亡飘字与图鉴用，避免每次击杀都建一个临时对象）。 */
+const ELITE_TRAIT_NAME = { tank: '厚甲', swift: '疾行', split: '裂体' };
 
 // ── 阶段 3：精灵素材（drawImage 替代剪影）──
 // 每种实体一张透明 PNG，居中绘制、按碰撞半径 r 等比缩放。
@@ -1138,6 +1183,10 @@ export class ArenaCore {
     this.attackInterval = ARENA.BASE_ATTACK_INTERVAL / hero.atkMul;  // 攻速倍率 >1 = 间隔更短
     this.shots = 1;
     this.magnet = ARENA.GEM_MAGNET;
+    // 阶段10·P1-12：玩家开火的**次数**（每轮齐射 +1）。只有远程怪的子弹有 bulletsFired，
+    //   玩家自己射出去的没有计数 ⟹ 单开一个，专供音频层做"射击声"增量判定。
+    //   ★ 纯计数，**不进 result()**（那会让探针口径漂移）。
+    this.playerShots = 0;
 
     // 一局战绩（结算只报「存活时间 + 总击杀数」，其余仅作调试/复盘读数）
     this.kills = 0;
@@ -1156,7 +1205,8 @@ export class ArenaCore {
     //   留这个槽是为了"将来若让雨能伤怪"，Σ来源 == 总击杀 这条护栏依然成立、不用追着改口径。
     // ★ 阶段 8-2：'shockwave' 与 'dash' 两个桶已删除 —— 它们的击杀来源（冲击波/闪现撞伤）不存在了。
     //   现在只剩四把武器 + thorn（荆棘反伤） + bossRain（预留槽，恒 0）+ other（必须恒 0）。
-    this.killSrc = { projectile: 0, orbit: 0, laser: 0, sword: 0, thorn: 0, bossRain: 0, other: 0 };
+    // ★ 阶段10·P1-6：加 mist —— 不加的话毒雾击杀会落进 other，而"other 恒 0"是既有护栏。
+    this.killSrc = { projectile: 0, orbit: 0, laser: 0, sword: 0, mist: 0, thorn: 0, bossRain: 0, other: 0 };
     // ★ 阶段 5.1 诊断用：每件武器的**净输出伤害**累计（含 gDmgMul，按"实际扣掉的 hp"计，
     //   不把溢出伤害算进去）。只用于 arena-sim 的逐分钟 DPS 复核，不参与任何判定、不改任何玩法。
     this.dmgDealt = { projectile: 0, orbit: 0, laser: 0, sword: 0, thorn: 0, other: 0 };
@@ -1269,6 +1319,9 @@ export class ArenaCore {
     this.chestTimer = ARENA.CHEST_FIRST;
     this.chestsOpened = 0;
     this.newThings = 0;     // 已拿到的"新东西"（新武器/新技能）计数，前期保底用
+    // 阶段10 · P0-3：死因与血线（结算页「最后一击：接触 · 游荡者（3:42）」读它们）
+    this.lastHit = null;    // { src, kind, at } —— 最近一次**真正掉血**的来源
+    this.hpLog = [];        // [[秒, 血量], …]，封顶 200 条
 
     this.flashT = -1;       // 白闪计时（**复活**用；原冲击波白闪已随技能删除）
     this.hurtT = -1;        // 阶段 4-10：受击红屏脉冲计时（-1 = 不显示）
@@ -1446,7 +1499,9 @@ export class ArenaCore {
     // ★ shots 与 pierceN 都**叠加**到已有字段而不是新建：`shots` 是「投射物 +1」被动在用的、
     //   `projPierce` 是剑与流浪者「连珠」在用的 ⟹ 装备与它们天然同一套口径、同一批硬上限
     //   （MAX_SHOTS），不会出现"装备绕过上限堆到满屏弹道"。
-    if (b.shots) this.shots = Math.min(ARENA.MAX_SHOTS, this.shots + b.shots);
+    // 阶段10·P1-8：装备「收束」是 shots:-1（负数加成）⟹ 必须补下限 1，
+    //   否则弹道会变成 0 条（"装了装备反而打不出子弹"）。上限仍由 MAX_SHOTS 夹住。
+    if (b.shots) this.shots = Math.max(1, Math.min(ARENA.MAX_SHOTS, this.shots + b.shots));
     if (b.pierceN) this.projPierce = Math.max(this.projPierce, b.pierceN);
     if (b.dmgCut) this.dmgCut = Math.min(0.6, this.dmgCut + b.dmgCut);
     if (b.critRate) this.critRate = Math.min(ARENA.CRIT_RATE_MAX, this.critRate + b.critRate);
@@ -1478,6 +1533,11 @@ export class ArenaCore {
     this.shopGoods = rollShop(this.shopRng, 3);
     this.shopAtSec = Math.round(this.elapsed);
     this.shopVisits += 1;
+    // 阶段10·P1-10：通胀。缩放写在 shopVisits += 1 之后，指数用 (visits-1)：
+    //   第1次 ×1（不通胀）、第2次 ×1.6、第3次 ×1.6²=2.56（同档货 30→48→77）。
+    for (const g of this.shopGoods) {
+      g.cost = Math.round(g.cost * Math.pow(ARENA.SHOP_COST_MUL, this.shopVisits - 1));
+    }
   }
 
   /** 结算商店：buyIds 是玩家想买的货物 id 列表（按可负担 + 去重过滤）。
@@ -1499,6 +1559,27 @@ export class ArenaCore {
     }
     this.shopOpen = false;
     this.shopGoods = null;
+  }
+
+  /** 阶段10·P1-10：单件购买（玩家点击货物时调用，**买完不关窗**）。
+   *  ★ 与 resolveShop 拆分：resolveShop 是"关窗"（sim 跳过 / 真人点『下次再来』都走它，空买只关窗）；
+   *   本方法只扣钱 + 应用 + 标记，保留 shopOpen 让玩家一窗内连买。
+   *  ★ 动作类货物（s_choice / s_reroll）应用后会当场触发升级弹窗 ⟹ 让位关窗（closeShop=true），
+   *   否则商店遮罩与升级遮罩会叠在一起；关窗走 resolveShop([]) 复用同一套收尾，不会重复应用。
+   *  @returns {{bought:boolean, closeShop:boolean}} */
+  buyShopGood(id) {
+    if (!this.shopOpen) return { bought: false, closeShop: false };
+    const good = (this.shopGoods || []).find((g) => g.id === id);
+    if (!good || this.soulfire < good.cost) return { bought: false, closeShop: false };
+    // ★ 先应用、成功才扣钱：s_level 在主武器到顶/无武器时是 no-op，
+    //   旧顺序（先扣后应用）会让玩家花 50 魂火买到一个"什么都没发生"。
+    if (!applyShopGood(this, good)) return { bought: false, closeShop: false };
+    this.soulfire -= good.cost;
+    this.shopSpend += good.cost;
+    this.shopBought.push(id);
+    const closeShop = (id === 's_choice' || id === 's_reroll');
+    if (closeShop) this.resolveShop([]); // 空买 = 只关窗不重应用
+    return { bought: true, closeShop };
   }
 
   /** 渲染层告知的**视口**尺寸（HUD 布局 + "屏幕外"粗判用）。
@@ -1671,6 +1752,8 @@ export class ArenaCore {
     if (this.weapons.laser) this.stepLaser(dt);
     // 阶段 5：剑（第 4 把）—— 同样是独立节拍，不与上面三把共享计时器。
     if (this.weapons.sword) this.stepSword(dt);
+    // 阶段10·P1-6：毒雾（第 5 把）—— 地面持续伤害，独立计时器。
+    if (this.weapons.mist) this.stepMist(dt);
 
     // ── 自动攻击（投射物：不是人人都有，重壳守卫以环绕刃开局）──
     if (this.weapons.projectile) {
@@ -1815,13 +1898,13 @@ export class ArenaCore {
         //   否则贴上玩家后每帧结算一次 3 倍接触伤害，那是判定错误而不是"高伤害"。
         if (isBossKind(e.kind)) {
           if (e.touchCd <= 0 && !contactHit) {
-            this.damagePlayer(e.contact);
+            this.damagePlayer(e.contact, { src: 'contact', kind: e.kind });
             contactHit = true;
             e.touchCd = ARENA.BOSS_TOUCH_CD;
           }
           continue;
         }
-        if (!contactHit) { this.damagePlayer(e.contact); contactHit = true; } // 同帧合并，见循环头的注释
+        if (!contactHit) { this.damagePlayer(e.contact, { src: 'contact', kind: e.kind }); contactHit = true; } // 同帧合并，见循环头的注释
         // 阶段 3「反伤」被动：撞你的敌人也吃伤害。反伤致死 → 走正常击杀（给宝石/计数）；
         // 否则这只怪"撞上来"本就该消失（只给视觉死亡动画，不改经济）。两种分支互斥，
         // 避免同一只怪被 killEnemy + addDeath 各结算一次。
@@ -1851,7 +1934,7 @@ export class ArenaCore {
       const dx = b.x - this.player.x, dy = b.y - this.player.y;
       const rr = this.player.r + b.r;
       if (dx * dx + dy * dy <= rr * rr) {
-        this.damagePlayer(b.dmg);
+        this.damagePlayer(b.dmg, { src: 'ranged' });
         b.dead = true;
         this.bulletHits += 1;   // 统计口径（阶段 4-1.1）：弹命中玩家的次数
       }
@@ -2065,7 +2148,7 @@ export class ArenaCore {
   makeEnemy(kind, x, y, sec, elite, ang = null) {
     const t = ENEMY_TYPES[kind];
     const hp = t.hp * this.hpScale(sec) * (elite ? ARENA.ELITE_HP_MUL : 1);
-    return {
+    const e = {
       kind,
       x, y,
       r: t.r * (elite ? ARENA.ELITE_SIZE_MUL : 1),
@@ -2086,6 +2169,21 @@ export class ArenaCore {
       // 阶段 4-7：护盾怪带 SHIELD_HITS 层护盾，破盾前吸收伤害（见 applyHit）。
       shield: kind === 'shield' ? ARENA.SHIELD_HITS : 0,
     };
+
+    // 阶段10·P1-7：精英词条（厚甲 / 疾行 / 裂体）。
+    // ★ 词条不用 rng 抽：出生位置哈希取模，确定性与"同种子同结果"完全不受影响。
+    //   （用 srcRng 会平移事件落点序列，用主 rng 会破冻结；只有位置哈希是零代价的。）
+    if (elite) {
+      const h = Math.abs(Math.round(x * 7 + y * 13));
+      e.trait = ARENA.ELITE_TRAITS[h % ARENA.ELITE_TRAITS.length];
+      if (e.trait === 'tank') { e.hp *= 1.6; e.maxHp = e.hp; e.r *= 1.1; }
+      else if (e.trait === 'swift') {
+        e.speed = Math.min(ARENA.ENEMY_SPEED_CAP, e.speed * 1.35);
+        e.hp *= 0.7; e.maxHp = e.hp;
+      }
+      // split：死亡时裂成 2 只普通怪 —— 复用 killEnemy 里 splitter 那段
+    }
+    return e;
   }
 
   /** 阶段 4-7：开局齐射——先放 3 只（normal×2 + fast×1），保证"前 10 秒有怪可打"。
@@ -2270,6 +2368,8 @@ export class ArenaCore {
       if (this.projPierce > 0) { pp.pierce = true; pp.hits = []; pp.pierceN = this.projPierce; }
       this.projectiles.push(pp);
     }
+    // 阶段10·P1-12：真的射出去了才 +1（没目标时上面已 return false，不会误响）。
+    this.playerShots = (this.playerShots || 0) + 1;
     return true;
   }
 
@@ -2432,7 +2532,8 @@ export class ArenaCore {
     // ★ 走 makeEnemy 保证裂片也吃"出生时定死数值"的口径（与 spawnEnemy / 群冲一致），
     //   不消耗精英判定、不进 BOSS 序列、不进出生环（就在尸体处瞬间出现）。
     //   裂片小一圈、血薄、跑得快 ⟹ "越打越多、要控场"；计数进 kindCounts.splitling 供 sim 自证。
-    if (e.kind === 'splitter') {
+    // 阶段10·P1-7：「裂体」精英死亡也裂成 2 只（复用同一段，子怪仍是 splitling）。
+    if (e.kind === 'splitter' || e.trait === 'split') {
       // ★ 上限守卫同上：裂片在**尸体处**瞬间出现，不经过 spawnEnemy()，
       //   刷怪表/围堵/Boss 召唤那三处守卫一个都管不到它。
       //   用**硬上限**（不是 MAX − CLIMAX_SOFT_GAP）："越打越多"是裂体怪的识别度，
@@ -2444,6 +2545,12 @@ export class ArenaCore {
         this.spawned += 1;
         this.kindCounts.splitling = (this.kindCounts.splitling || 0) + 1;
       }
+    }
+
+    // 阶段10·P1-7：精英词条死亡飘字 —— 让玩家在乱战里也能读出"这只不一样"。
+    // ★ 上移 24px：killEnemy 的伤害数字也在 e.y - e.r，两条同高会糊成一团。
+    if (e.elite && e.trait) {
+      this.floatText(e.x, e.y - e.r - 24, '精英·' + (ELITE_TRAIT_NAME[e.trait] || e.trait), COLOR.gold);
     }
 
     // 大伤害飘字放大 1.5 倍并变色（spec 一-1）。
@@ -2513,7 +2620,9 @@ export class ArenaCore {
     }
     // 触发下一个事件（固定时间 + 固定类型循环，绝不随机）
     if (this.eventIdx < 999 && this.elapsed >= this.nextEventAt && this.nextEventAt <= ARENA.EVENT_LAST) {
-      const type = ARENA.EVENT_SEQ[this.eventIdx % ARENA.EVENT_SEQ.length];
+      let type = ARENA.EVENT_SEQ[this.eventIdx % ARENA.EVENT_SEQ.length];
+      // 阶段10·P1-4：一行回退到"全增益"（精英事件会改难度，留一个不删代码的关闭口）。
+      if (!ARENA.ELITE_EVENT_ON && type === 'elite') type = 'supply';
       this._fireEvent(type);
       this.eventIdx += 1;
       this.nextEventAt = this.elapsed + ARENA.EVENT_EVERY;
@@ -2731,6 +2840,9 @@ export class ArenaCore {
     //     最初把 Boss1 的雨放在第 4 拍（≈20s），实测 16 局里只有 9 局见得到雨 ——
     //     那些 6~16s 就被秒的 Boss 根本轮不到转向雨这一拍，特性形同不存在。挪到第 2 拍后，
     //     每个"站得住的"Boss 都会先撒一场雨再谈别的。
+    // ★ 阶段10·P1-3：boss3（idx=2）暂时**沿用 Boss2 的节拍**（三元只分 idx===0 / 其他）。
+    //   这是有意的：本批只加内容不加机制；终局压迫感来自 hpMul=70 + 52 点弹雨密度，
+    //   节拍差异留到下一批再调（要改就换成按 idx 查的小表，别在这里堆嵌套三元）。
     const sumSlot = idx === 0 ? (e.cycN % 2 === 0) : (e.cycN % 3 === 2);
     const rainTurn = sumSlot && (idx === 0 ? (e.cycN % 4 === 2) : (e.cycN % 6 === 2));
     if (rainTurn) this._beginRain(idx);
@@ -2813,7 +2925,7 @@ export class ArenaCore {
         p.t -= dt;
         if (p.t > 0) continue;
         const dx = this.player.x - p.x, dy = this.player.y - p.y;
-        if (dx * dx + dy * dy <= r2) { this.damagePlayer(ARENA.RAIN_DMG); this.rainHits += 1; }
+        if (dx * dx + dy * dy <= r2) { this.damagePlayer(ARENA.RAIN_DMG, { src: 'rain' }); this.rainHits += 1; }
         p.phase = 'hit';
         p.hitT = ARENA.RAIN_IMPACT_T;
       } else {
@@ -2870,7 +2982,13 @@ export class ArenaCore {
     if (e) e.hitT = ARENA.HIT_FLASH;
   }
 
-  damagePlayer(amount) {
+  /** 扣玩家血。
+   *  @param {number} amount 伤害量（未扣护甲/磐石前）
+   *  @param {?{src?:string, kind?:string}} src 伤害来源（阶段10 · P0-3）。
+   *    ★ 只有**真正扣掉血**的那一次会覆盖死因：护盾整次格挡在上面就 return 了，
+   *      不会留下「最后一击：护盾」这种没意义的情报。
+   *    ★ 纯记账，零 rng ⟹ 同种子结果逐位不变。 */
+  damagePlayer(amount, src = null) {
     // 阶段 8-2：这里原本是"闪现途中无敌"。闪现删了，但**无敌窗口本身还有用**
     //   —— 复活后的那一拍喘气（见下方 revive 分支）走的正是它。
     //   ⟹ 字段改成中性的 `invulnT`（不再叫 dashInvuln），语义是"还剩多久免疫伤害"。
@@ -2897,6 +3015,12 @@ export class ArenaCore {
     this.stoneT = this._stoneWindow();
     // 阶段 3「减伤」被动：接触伤害先扣 armor，但至少留 1 点（否则满减伤=无敌，比"抗揍"过头）。
     const dmg = Math.max(1, after - this.armor);
+    // 阶段10 · P0-3：死因与血线。
+    //   ★ 位置在**扣血之前**、护盾 return 之后 ⟹ 只记真正掉血的那一下。
+    //   ★ hpLog 封顶 200 条（十分钟局挨打远不止 200 次），只留最近的血线供结算复盘。
+    this.lastHit = { src: (src && src.src) || 'unknown', kind: (src && src.kind) || '', at: Math.round(this.elapsed) };
+    if (this.hpLog.length >= 200) this.hpLog.shift();
+    this.hpLog.push([Math.round(this.elapsed), Math.round(this.hp)]);
     this.hp = Math.max(0, this.hp - dmg);
     this.hurtT = ARENA.HURT_FLASH;   // 阶段 4-10：受击红屏脉冲（复活另有 flashT 白闪，二者叠加不冲突）
     // 阶段 3 元进度「不屈」：hp 归零但还有复活次数 → 兜底一次半血复活 + 短暂无敌。
@@ -3072,10 +3196,11 @@ export class ArenaCore {
       picks.push(o);
       rest.splice(rest.indexOf(o), 1);
     }
-    // 兜底：极端封顶下可选项不足 3 个 → 退回完整池子补足。
-    // 三选一**必须永远是 3 个**：宁可给一个已封顶的项，也不能让弹窗只剩 1~2 个选项。
+    // 兜底：极端封顶下可选项不足 3 个 → 用**永不作废的兜底牌**补足（阶段10·P1-9）。
+    // 三选一**必须永远是 3 个**，且不再出现"选了没反应"的已封顶项 —— f_* 三条永远有效：
+    //   f_heal 回血 / f_fire 魂火 / f_mend 上限，都是"即时收益"而非"强化某条已封顶的属性"。
     if (picks.length < ARENA.UPGRADE_CHOICES) {
-      const all = OFFERS.slice();
+      const all = FALLBACK_OFFERS.slice();
       while (picks.length < ARENA.UPGRADE_CHOICES && all.length) {
         const o = this.rng.weighted(all, (x) => x.weight);
         all.splice(all.indexOf(o), 1);
@@ -3147,6 +3272,29 @@ export class ArenaCore {
    *  ★ 纯谓词，绝不改状态：进化后或已满级 ⟹ false（该武器强化项从池子消失）。 */
   wlvlUp(w) {
     return (this.evolved[w] || 0) < ARENA.W_STAGE_MAX[w] && (this.wLvl[w] || 0) < ARENA.W_LEVEL_MAX[w];
+  }
+
+  /** 当前主武器：已持有武器中等级最高的一把（平手取最先持有）。商栈「s_level」用。 */
+  _mainWeapon() {
+    let best = null, bestLv = -1;
+    for (const w of Object.keys(this.weapons)) {
+      if (!this.weapons[w]) continue;
+      const lv = this.wLvl[w] || 0;
+      if (lv > bestLv) { bestLv = lv; best = w; }
+    }
+    return best;
+  }
+
+  /** 阶段10·P1-10：把指定武器等级 +1（商栈「s_level」用）。
+   *  ★ 内部就是 applyUpgrade 那三行（wlvlUp 判据 + wLvl+1 + 封顶 + _checkEvolution），不抄第二份。
+   *   @returns {boolean} 是否真的升了（武器未持有 / 已到顶则返回 false，no-op）。 */
+  forceWeaponLevelUp(w) {
+    if (!w || !this.weapons[w]) return false;
+    if (!this.wlvlUp(w)) return false;
+    this.wLvl[w] = (this.wLvl[w] || 0) + 1;
+    if (this.wLvl[w] > ARENA.W_LEVEL_MAX[w]) this.wLvl[w] = ARENA.W_LEVEL_MAX[w];
+    this._checkEvolution();
+    return true;
   }
 
   /** 阶段 4-5：检查所有进化线是否达成（满级 + 凑齐指定被动）。每条线只套一次。
@@ -3251,6 +3399,52 @@ export class ArenaCore {
     else if (id === 'laser') this.laser = { dmg: ARENA.LASER_DMG, w: ARENA.LASER_W, interval: ARENA.LASER_CD, cd: 0, cleave: false };
     // 阶段 5：剑。解锁时把对象装起来（"获得即持有"）；形态始终读 this.evolved.sword（不存第二份）。
     else if (id === 'sword') this.sword = { dmg: ARENA.SWORD_DMG, count: ARENA.SWORD_COUNT, interval: ARENA.SWORD_INTERVAL, cd: 0, speed: ARENA.SWORD_SPEED };
+    // 阶段10·P1-6：毒雾。zones 是**地面**状态（每片独立寿命），不是实体，不进 enemies。
+    else if (id === 'mist') this.mist = { dmg: ARENA.MIST_DMG, r: ARENA.MIST_R, interval: ARENA.MIST_CD, cd: 0, zones: [] };
+  }
+
+  /** 阶段10·P1-6：毒雾 —— 按 interval 在玩家脚下留一片腐蚀地面，圈内敌人按 ORBIT_TICK 节流掉血。
+   *  ★ 节流用 e.mCd（与 orbit 的 e.oCd 分开）：共享冷却会让两把武器互相抢伤害，
+   *    且多片毒雾重叠时若逐片结算，站着不动就能叠出 8 倍 DPS —— 一只怪每 0.3s 最多吃一次。
+   *  ★ 进化「腐潮」：zone 缓慢跟随玩家（18px/s），把"画地为牢"变成"推着一片毒走"。
+   *  ★ 纯确定性：不消耗任何 rng（出生时机由 interval 决定，位置就是玩家坐标）。 */
+  stepMist(dt) {
+    const m = this.mist;
+    m.cd -= dt;
+    if (m.cd <= 0) {
+      m.cd = m.interval;
+      m.zones.push({ x: this.player.x, y: this.player.y, r: m.r, life: ARENA.MIST_LIFE });
+      if (m.zones.length > ARENA.MIST_MAX) m.zones.shift();  // 超过上限丢最旧
+    }
+    const evolved = (this.evolved.mist || 0) >= 1;
+    for (const z of m.zones) {
+      z.life -= dt;
+      if (evolved) {
+        // 腐潮：整片毒雾朝玩家缓慢漂移（不瞬移 —— "推着走"才感觉得到）
+        const dx = this.player.x - z.x, dy = this.player.y - z.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > 1e-6) {
+          const step = Math.min(d, 18 * dt);
+          z.x += (dx / d) * step;
+          z.y += (dy / d) * step;
+        }
+      }
+    }
+    m.zones = m.zones.filter((z) => z.life > 0);
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      if (e.mCd > 0) e.mCd -= dt;
+      if (e.mCd > 0) continue;                 // 还在冷却：同一只怪每 ORBIT_TICK 最多吃一跳
+      for (const z of m.zones) {
+        const dx = e.x - z.x, dy = e.y - z.y;
+        const rr = z.r + e.r;
+        if (dx * dx + dy * dy > rr * rr) continue;
+        e.mCd = ARENA.ORBIT_TICK;
+        this.applyHit(e, m.dmg, null, true, 'mist');
+        break;
+      }
+    }
+    this.enemies = this.enemies.filter((e) => !e.dead);
   }
   /** 环绕刃：剑尖绕玩家转，碰到敌人扣血。命中节流见 ARENA.ORBIT_TICK 的注释。 */
   stepOrbit(dt) {
@@ -3563,6 +3757,10 @@ export class ArenaCore {
       upgrades: this.upgradesTaken.slice(),
       // 阶段 2 复盘读数
       weapons: Object.keys(this.weapons).filter((k) => this.weapons[k]),
+      // 阶段10 · P0-4：每把武器进化到第几阶（0/1/2；剑有两阶）。
+      //   ★ 结算页靠它显示「进化：环绕剑域」；内容批的每日任务 d_evo1 与图鉴也读这个键。
+      //   ★ 新增键，不替代任何既有字段 —— 探针按老键断言的部分完全不受影响。
+      evolutions: Object.assign({}, this.evolved),
       chests: this.chestsOpened,
       // 阶段 4-1 复盘读数（不影响任何判定）
       elites: this.eliteSpawned,
@@ -3580,6 +3778,10 @@ export class ArenaCore {
       kindCounts: Object.assign({}, this.kindCounts),
       // 阶段 4-3：连杀（纯显示，不参与任何数值判定；这里只是给结算页一个读数）
       comboBest: this.comboBest,
+      // 阶段10 · P0-3：死因 + 血线。以前死了只知道"死了"，分不清是被弹雨拍死、
+      //   被蚀影射手点死还是被围死 —— 下一局没法改，只能重复同样的死法。
+      lastHit: this.lastHit ? Object.assign({}, this.lastHit) : null,
+      hpLog: this.hpLog.slice(0),
       // 阶段 4-3：里程碑达成情况（结算页用来回看"这局走到过哪几步"）
       milestones: ARENA.MILESTONES.filter((m, i) => this.mileFlags[i]).map((m) => m.text),
       // 阶段 4-4：Boss 自证（spec 的验收要 arena-sim 报"8 局里 Boss1/Boss2 各打死几只"）
@@ -3700,8 +3902,10 @@ export class Arena {
     // 中央横幅（里程碑 / 后一阶段的 Boss 警告）：渲染层自己计时淡出，core 只负责 push。
     this._banners = [];
     // 阶段 3 音效：每帧比对 core 状态增量来触发声音，这里存"上一帧的快照"
-    this._sfx = { level: 0, hits: 0, kills: 0, chests: 0, hp: ARENA.PLAYER_HP, over: false };
+    this._sfx = { level: 0, hits: 0, kills: 0, chests: 0, hp: ARENA.PLAYER_HP, over: false, shots: 0 };
     this._muteBtn = null;
+    // 阶段10·P1-8：局内暂停（来电话/下车/带错装备都能先停，再决定继续或结算，不白打）。
+    this.paused = false;
   }
 
   start() {
@@ -3719,6 +3923,14 @@ export class Arena {
       <div class="arena-hint">拖动屏幕移动 · WASD/方向键亦可</div>
       <!-- 阶段 9：局内倍速按钮（原主动技能槽腾出的右下角空位）。V 键同样可切换。 -->
       <button class="arena-speed" type="button" aria-label="局内倍速（V 键切换）">1x</button>
+      <!-- 阶段10·P1-8：左上角暂停键（与右上 .arena-mute 对称，避开右下摇杆）。 -->
+      <button class="arena-pause" type="button" aria-label="暂停">▮▮</button>
+      <!-- 阶段10·P1-8：暂停菜单（全屏遮罩，复用 .arena-levelup 那套样式）。 -->
+      <div class="arena-pausemenu" hidden>
+        <div class="pm-title">已暂停</div>
+        <button class="pm-resume" type="button">继续</button>
+        <button class="pm-quit" type="button">结束本局并结算</button>
+      </div>
       <div class="arena-levelup" hidden>
         <div class="alu-title">升级！三选一</div>
         <div class="alu-choices"></div>
@@ -3759,7 +3971,33 @@ export class Arena {
     // 阶段 9：局内倍速按钮（右下角，原技能槽空位）。点击循环 0.5→1→2→3→0.5。
     this.speedBtn = root.querySelector('.arena-speed');
     this.speedBtn.textContent = this.gameSpeed + 'x';
-    this.speedBtn.onclick = () => this._cycleSpeed();
+    // 阶段10·P1-11：倍速键改「长按 400ms 才切」，短按不响应 —— 顺手根治走位时的误触。
+    //   （V 键仍是即时切换，见 _onKeyDown。）
+    this._speedPressTimer = null;
+    const cancelSpeedPress = () => {
+      if (this._speedPressTimer) { clearTimeout(this._speedPressTimer); this._speedPressTimer = null; }
+    };
+    this.speedBtn.onpointerdown = () => {
+      cancelSpeedPress();
+      this._speedPressTimer = setTimeout(() => {
+        this._speedPressTimer = null;
+        if (!this.ended) this._cycleSpeed();
+      }, 400);
+    };
+    this.speedBtn.onpointerup = cancelSpeedPress;
+    this.speedBtn.onpointercancel = cancelSpeedPress;
+    this.speedBtn.onpointerleave = cancelSpeedPress;
+    // 阶段10·P1-8：暂停键 + 暂停菜单接线。
+    this.pauseEl = root.querySelector('.arena-pause');
+    this.pauseMenuEl = root.querySelector('.arena-pausemenu');
+    this.pauseEl.onclick = () => this._togglePause();
+    this.pauseMenuEl.querySelector('.pm-resume').onclick = () => this._togglePause();
+    this.pauseMenuEl.querySelector('.pm-quit').onclick = () => {
+      // 走 forceFinish → _end() → onDone(res)，灵魂照常结算；玩家不用再等死。
+      this.paused = false;
+      this.pauseMenuEl.hidden = true;
+      this.forceFinish();
+    };
     // 阶段 8-2：三个技能槽的查找/绑定（skillBar / skillSlots 与 pointerdown 释放）已整体删除。
     //   ⟹ CSS 里的 `.arena-skillbar` / `.skill-slot` 由 styles.css 一并清掉；
     //      多指处理的 pid 过滤逻辑**保留**（仍有手势可以做别的事作为参照，且动它风险大于收益）。
@@ -3830,6 +4068,20 @@ export class Arena {
       // 阶段 9：V 键循环局内倍速（0.5→1→2→3→0.5）。不进 ARENA_KEYS（不是移动键），
       //   preventDefault 防止某些浏览器把 V 当快捷键；不写进 this.keys（免得被当作移动输入）。
       if (e.key === 'v' || e.key === 'V') { this._cycleSpeed(); e.preventDefault(); return; }
+      // 阶段10·P1-8：Esc / p / P 切换暂停（不进 ARENA_KEYS，不写进 this.keys）。
+      if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') { this._togglePause(); e.preventDefault(); return; }
+      // 阶段10·P1-9：数字键 1/2/3 选牌（仅三选一弹窗可见时；driver 在场时不弹窗，故不会误触）。
+      if (this.core && this.core.pendingUpgrade && this.levelupEl && !this.levelupEl.hidden
+          && (e.key === '1' || e.key === '2' || e.key === '3')) {
+        const i = Number(e.key) - 1;
+        if (i < this.core.pendingUpgrade.length) {
+          this.core.chooseUpgrade(i);
+          this.levelupEl.hidden = true;
+          this._needsPaint = true;
+        }
+        e.preventDefault();
+        return;
+      }
       // 阶段 8-2：空格 / Q / E 三个技能键已删除 —— 按它们**不再有任何反应**，
       //   也不再 preventDefault（这里特意不再劫持空格：原本是为了防止滚动，但现在
       //   没有任何东西需要它，继续吞掉空格反而会干扰页面上的按钮与滚动）。
@@ -3957,6 +4209,19 @@ export class Arena {
     this._needsPaint = true;
   }
 
+  /** 阶段10·P1-8：切换局内暂停。暂停时 world/fx 全停（见 _loop 的 paused 判定），
+   *  怪不动、HUD 倒计时不动；恢复时补一帧重绘，避免冻结画面残留。
+   *  ★ driver（?pilot=1）在场时这个方法**不会被自动调用** —— 暂停键与 Esc 都是真人输入，
+   *    驾驶员不会触发，所以无头跑局不会误弹暂停菜单。 */
+  _togglePause() {
+    if (this.ended || !this.core) return;
+    // 升级/商栈本身已经在暂停世界；此时再叠一层暂停菜单只会两个遮罩打架。
+    if (!this.paused && (this.core.pendingUpgrade || this.core.shopOpen)) return;
+    this.paused = !this.paused;
+    if (this.pauseMenuEl) this.pauseMenuEl.hidden = !this.paused;
+    if (!this.paused) this._needsPaint = true;
+  }
+
   _keyVec() {
     let x = 0, y = 0;
     if (this.keys.has('ArrowLeft') || this.keys.has('a') || this.keys.has('A')) x -= 1;
@@ -4003,7 +4268,7 @@ export class Arena {
       this._needsPaint = true;
     }
 
-    const paused = !!this.core.pendingUpgrade || !!this.core.shopOpen;
+    const paused = !!this.core.pendingUpgrade || !!this.core.shopOpen || this.paused;
     if (!this.core.done && !paused) {
       // 阶段 9 局内倍速：把这一帧的墙上时间按 gameSpeed 放大成"游戏时间"，
       // 再拆成 ≤0.05 的子步喂给 stepWorld（物理口径不变，不会隧穿过敌人）。
@@ -4061,6 +4326,9 @@ export class Arena {
   _syncSfx(c) {
     const s = this._sfx;
     if (c.level > s.level) { Sfx.levelUp(); s.level = c.level; }
+    // 阶段10·P1-12：玩家开火。玩家自己射的弹没有计数（只有远程怪的 bulletsFired 有），
+    //   所以单开 playerShots 这一路增量。节流在 Sfx 内部（THROTTLE），这里不重复节流。
+    if (c.playerShots > s.shots) { Sfx.shoot(); s.shots = c.playerShots; }
     if (c.hits > s.hits) { Sfx.hit(); s.hits = c.hits; }
     if (c.kills > s.kills) { Sfx.death(); s.kills = c.kills; }
     if (c.chestsOpened > s.chests) { Sfx.chest(); s.chests = c.chestsOpened; this._shakeBy(ARENA.SHAKE_AMP); }
@@ -4081,7 +4349,8 @@ export class Arena {
       const up = this.core.pendingUpgrade[i];
       const btn = document.createElement('button');
       btn.className = 'alu-choice';
-      btn.innerHTML = `<span class="alu-tag">${CAT_LABEL[up.cat] || ''}</span><span class="alu-name">${up.label}</span><span class="alu-desc">${up.desc}</span>`;
+      btn.dataset.i = String(i); // 阶段10·P1-9：数字键 1/2/3 选牌用
+      btn.innerHTML = `<span class="alu-tag">${i + 1}·${CAT_LABEL[up.cat] || ''}</span><span class="alu-name">${up.label}</span><span class="alu-desc">${up.desc}</span>`;
       btn.onclick = () => {
         this.core.chooseUpgrade(i);
         this.levelupEl.hidden = true;
@@ -4091,11 +4360,13 @@ export class Arena {
     }
   }
 
-  // 阶段 6-4：魂火商栈弹窗。渲染 3 件货物（买不起的置灰），点击 = resolveShop([id])。
+  // 阶段 6-4：魂火商栈弹窗。渲染 3 件货物（买不起的置灰），点击 = buyShopGood（买完不关窗）。
   //   跳过按钮在 start() 里已接线（resolveShop([])）。
   _showShop() {
     this.shopEl.hidden = false;
-    this.shopBalanceEl.textContent = `魂火：${Math.floor(this.core.soulfire)}`;
+    // 阶段10·P1-10：余额行补「第 N 次 + 买完可再买」，让玩家知道价格在涨、且一窗能连买。
+    this.shopBalanceEl.textContent =
+      `魂火：${Math.floor(this.core.soulfire)} · 第 ${this.core.shopVisits} 次 · 买完可再买`;
     this.shopChoicesEl.innerHTML = '';
     for (const g of (this.core.shopGoods || [])) {
       const afford = this.core.soulfire >= g.cost;
@@ -4106,9 +4377,15 @@ export class Arena {
         + `<span class="shop-cost">${g.cost} 魂火</span>`;
       btn.disabled = !afford;
       btn.onclick = () => {
-        this.core.resolveShop([g.id]);
-        this.shopEl.hidden = true;
-        this._needsPaint = true; // 恢复后补一帧，避免暂停期间跳过的重绘留下旧画面
+        const r = this.core.buyShopGood(g.id);
+        if (!r || !r.bought) return;
+        this._needsPaint = true;
+        if (r.closeShop) {
+          // 动作类货物（抉择/重铸）当场触发升级弹窗 ⟹ 让位关窗（loop 会接管显示升级遮罩）
+          this.shopEl.hidden = true;
+        } else {
+          this._showShop(); // 买完不关窗：重渲染货架（余额 + 可负担状态刷新，价格本局不变）
+        }
       };
       this.shopChoicesEl.appendChild(btn);
     }
@@ -4278,6 +4555,23 @@ export class Arena {
     }
   }
 
+  /** 阶段10·P1-6：毒雾地面。世界层、画在地面之上、实体之下。
+   *  纯色半透明圆 + 随剩余寿命淡出 —— 不做粒子（每帧 8 片 × 220 怪的距离判定已经够用）。 */
+  _renderMist(ctx, c) {
+    const zones = c.mist && c.mist.zones;
+    if (!zones || !zones.length) return;
+    ctx.save();
+    for (const z of zones) {
+      const k = Math.max(0, Math.min(1, z.life / ARENA.MIST_LIFE)); // 1 → 0
+      ctx.globalAlpha = 0.10 + 0.16 * k;
+      ctx.fillStyle = '#7a4fd0';   // 紫：与宝石(#a89ae6)/护盾(青)/危险(红)区分开
+      ctx.beginPath();
+      ctx.arc(z.x, z.y, z.r, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   /** 阶段 8：Boss 弹幕雨。世界层、**画在地面之上实体之下** —— 它是"地面预警标记"。 */
   _renderRain(ctx, c) {
     if (!c.rain || !c.rain.length) return;
@@ -4380,6 +4674,7 @@ export class Arena {
     //  （数字跟着抖就没法读了，而"我还有多少血"恰恰是最不能读错的那个数）。
     ctx.translate(w / 2 - this.cam.x + this._shakeX, h / 2 - this.cam.y + this._shakeY);
     this._renderGround(ctx, w, h);
+    this._renderMist(ctx, c);   // 阶段10·P1-6：毒雾地面（在实体之下、地面之上）
     this._pdone('ground');
     this._renderRain(ctx, c);
     this._pdone('rain');
@@ -5053,7 +5348,26 @@ export class Arena {
   _renderInventory(c) {
     const parts = [];
     // 阶段 8-2：技能胶囊那一行删掉了（图标栏现在**只有武器 + 被动**）。
-    for (const w of WEAPONS) if (c.weapons[w.id]) parts.push({ t: 'w', label: w.label });
+    // 阶段10 · P0-5：武器 chip 现在带「离进化还差什么」——
+    //   进化是这个游戏的高光（4 把武器 / 5 条线 / 剑还是两级链），但此前玩家在局内
+    //   完全看不到进度（evoOfWeapon 导出零调用），只能碰运气。
+    //   ★ 每帧都跑，所以这里只做 O(武器数)=4 的查表，绝不遍历 enemies。
+    for (const w of WEAPONS) {
+      if (!c.weapons[w.id]) continue;
+      const st = c.evolved[w.id] || 0;
+      const lv = c.wLvl[w.id] || 0;
+      const lvMax = ARENA.W_LEVEL_MAX[w.id] || lv;
+      const evo = evoOfWeapon(w.id, st);
+      let tail;
+      if (evo) {
+        const have = Math.min(c.passiveTaken[evo.passive] || 0, evo.need);
+        tail = `${lv}/${lvMax} · 需${EVO_PASSIVE_SHORT[evo.passive] || evo.passive}×${evo.need}（${have}/${evo.need}）`;
+      } else {
+        // 没有下一阶：要么已经到顶（剑 C3），要么武器本身没有进化线
+        tail = st > 0 ? '已进化' : '满级';
+      }
+      parts.push({ t: 'w', label: `${w.label} ${tail}` });
+    }
     const tally = {};
     for (const id of c.upgradesTaken) tally[id] = (tally[id] || 0) + 1;
     for (const p of PASSIVES) if (tally[p.id]) parts.push({ t: 'p', label: p.label, n: tally[p.id] });
@@ -5157,6 +5471,12 @@ export class Arena {
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
     const res = this.core ? this.core.result() : null;
+    // 阶段10 · 机制批 P0-2：皮肤只活在渲染层（this.skin），core 不认识它 ⟹ 结算前补进 res，
+    //   core 仍保持无头可测（result() 不读 DOM）。
+    //   ★ 不加这一行，皮肤类每日任务（d_flame/d_frost/d_gold）、成就「四相俱显」（a_skin4）
+    //     与账号的 skinsUsed 累计都永远读不到 —— 玩家换着皮肤打一整晚，面板还是「进行中」。
+    //   ★ 这是**新增**键，不替代 res.hero（d_gale 那条任务走 hero）。
+    if (res) res.skin = this.skin;
     this._teardown();
     this.onDone?.(res);
   }

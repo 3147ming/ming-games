@@ -46,6 +46,18 @@ export const DAILY_POOL = [
   { id: 'd_frost',    name: '幽霜试炼', desc: '使用「幽霜」皮肤完成一局',  metric: 'skin',       target: 'frost', op: 'run', reward: 100 },
   { id: 'd_gold',     name: '鎏金试炼', desc: '使用「鎏金」皮肤完成一局',  metric: 'skin',       target: 'gold',  op: 'run', reward: 100 },
   { id: 'd_gale',     name: '疾风路线', desc: '使用「疾风行者」完成一局',   metric: 'hero',       target: 'gale',  op: 'run', reward: 120 },
+  // ── 阶段10·内容批P0-1：用「这一局干了什么」出题，而不只是「杀多少 / 活多久」──
+  // ★ 全部用 result() 里已存在的字段，不新增统计、不新增存档。
+  // ⚠ elites 是本局**刷出**的精英数（arena 的 eliteSpawned），不是击杀数 ⟹ 描述写「遭遇」。
+  // ⚠ evolutions 来自机制批 P0-4 新增的 res.evolutions（每把武器的进化阶数）。
+  { id: 'd_chest3',  name: '开箱手气', desc: '单局打开 3 个宝箱',       metric: 'chests',     target: 3,  op: 'run', reward: 150 },
+  { id: 'd_elite6',  name: '精英如潮', desc: '单局遭遇 6 只精英',       metric: 'elites',     target: 6,  op: 'run', reward: 170 },
+  { id: 'd_boss1',   name: '屠戮巨兽', desc: '单局击杀 1 只 Boss',      metric: 'bossKills',  target: 1,  op: 'run', reward: 260 },
+  { id: 'd_combo60', name: '一气呵成', desc: '单局最高连杀 60',         metric: 'comboBest',  target: 60, op: 'run', reward: 200 },
+  { id: 'd_fire400', name: '魂火富翁', desc: '单局攒下 400 魂火',       metric: 'soulfire',   target: 400, op: 'run', reward: 180 },
+  { id: 'd_shop2',   name: '会花钱',   desc: '单局在商栈买 2 件',       metric: 'shopBought', target: 2,  op: 'run', reward: 140 },
+  { id: 'd_arms4',   name: '四器齐鸣', desc: '单局集齐 4 把武器',       metric: 'weapons',    target: 4,  op: 'run', reward: 240 },
+  { id: 'd_evo1',    name: '脱胎换骨', desc: '单局完成 1 次武器进化',   metric: 'evolutions', target: 1,  op: 'run', reward: 300 },
 ];
 
 export const DAILY_COUNT = 3;      // 每天发 3 条
@@ -61,6 +73,17 @@ export function dailyProgress(task, res) {
     //   这样它们天然是"单局口径"，不需要额外判断当前用的是哪一套。
     return v === task.target ? 1 : 0;
   }
+  // ── 阶段10·内容批P0-1：新增判据字段里有数组与对象 ──
+  // ★ weapons / shopBought 是「收集到的 id 数组」⟹ 条数 = length。
+  // ★ bossKills 是「每只 Boss 各杀了几次」的数组 ⟹ 必须**求和**：
+  //    取 length 会得到"Boss 的位数"（恒 2/3），于是 d_boss1 一只没杀也算完成 —— 与验收矛盾。
+  // ⚠ 原指令写的是统一 `return v.length`，这里按判据语义分了两支，不能不这么改。
+  if (Array.isArray(v)) {
+    if (task.metric === 'bossKills') return v.reduce((s, n) => s + (Number(n) || 0), 0);
+    return v.length;
+  }
+  // ★ evolutions 是「每把武器 → 进化阶数」的对象 ⟹ 阶数 > 0 的武器把数。
+  if (v && typeof v === 'object') return Object.values(v).filter((n) => Number(n) > 0).length;
   return Number(v) || 0;
 }
 
@@ -82,44 +105,67 @@ export function dailyDone(task, res) {
  * ★ 不用 rng、不用 Date.now()：同一个 dateKey 永远给出同一组，
  *   于是"刷新页面"不会换任务，同一天玩家和测试看到的是同一张表。
  */
-export function pickDaily(dateKey) {
+export function pickDaily(dateKey, history = {}) {
   let h = 2166136261;
   for (let i = 0; i < dateKey.length; i++) {
     h ^= dateKey.charCodeAt(i);
     h = (h * 16777619) >>> 0;
   }
   const n = DAILY_POOL.length;
+  // ── 阶段10·内容批P0-1：DAILY_ROLL 落地（原来只是个没人读的常量）──
+  // ★ 近 DAILY_ROLL 天出过的 id 记进 recent，尽量避开 ⟹ 一周内不重复同一组。
+  // ★ **只算过去的天**（k < dateKey）：今天的自条目被排除，于是
+  //   "同一天刷新页面"无论 history 里有没有今天，算出来的都是同一组 —— 确定性不破。
+  const recent = new Set();
+  const past = Object.keys(history || {}).filter((k) => k < dateKey).sort().slice(-DAILY_ROLL);
+  for (const k of past) for (const id of (history[k] || [])) recent.add(id);
+
   const picked = [];
   const used = new Set();
   for (let k = 0; k < DAILY_COUNT; k++) {
     h = (h * 1664525 + 1013904223) >>> 0;
     let idx = h % n;
     let guard = 0;
-    while (used.has(idx) && guard++ < n) { h = (h * 1664525 + 1013904223) >>> 0; idx = h % n; }
+    // 兜底：若 recent 把整个池子都盖住了（理论上不会），guard 走完后照样选，绝不死循环。
+    while ((used.has(idx) || recent.has(DAILY_POOL[idx].id)) && guard++ < n * 3) {
+      h = (h * 1664525 + 1013904223) >>> 0;
+      idx = h % n;
+    }
     used.add(idx);
     picked.push(DAILY_POOL[idx]);
   }
   return picked;
 }
 
-/** 存档形状：{ dateKey, ids:[...], done:[...], claimed:[...], claimedDays: {dateKey: souls} } */
+/** 存档形状：{ dateKey, ids:[...], done:[...], claimed:[...], claimedDays: {dateKey: souls}, history: {dateKey:[ids]} } */
 function emptyDaily(dateKey, tasks) {
-  return { dateKey, ids: tasks.map((t) => t.id), done: [], claimed: [], claimedDays: {} };
+  // 阶段10·P1-12：progress = 本局实测值（面板显示「900 / 1200」）。
+  return { dateKey, ids: tasks.map((t) => t.id), done: [], claimed: [], claimedDays: {}, progress: {}, history: {} };
 }
 
 function normalize(d, dateKey, tasks) {
   const base = emptyDaily(dateKey, tasks);
   if (!d || typeof d !== 'object') return base;
   const ids = Array.isArray(d.ids) ? d.ids.filter((id) => tasks.some((t) => t.id === id)) : [];
+  // ★ 阶段10·P0-1：history 是"每天各发了哪 3 条"的历史表，供 DAILY_ROLL 避重。
+  //   它**不能**和 claimedDays 混在一起（跨天整份重置语义不同），单独一个键。
+  const history = (d.history && typeof d.history === 'object') ? { ...d.history } : {};
   // ★ 日期不匹配 ⟹ 整份重置（每日任务就是"按日重置"）。
-  //   ids 用旧存档的（若仍属于今天的任务池），否则退回今天新发的 3 条。
-  const useIds = d.dateKey === dateKey && ids.length === tasks.length ? ids : base.ids;
+  //   ids 用旧存档的（若仍属于今天的任务池），否则按「今天 + 历史」重新发 3 条。
+  const useIds = d.dateKey === dateKey && ids.length === tasks.length
+    ? ids
+    : pickDaily(dateKey, history).map((t) => t.id);
   return {
     dateKey,
     ids: useIds.slice(0, DAILY_COUNT),
     done: Array.isArray(d.done) ? d.done.filter((id) => useIds.includes(id)) : [],
     claimed: Array.isArray(d.claimed) ? d.claimed.filter((id) => useIds.includes(id)) : [],
     claimedDays: (d.claimedDays && typeof d.claimedDays === 'object') ? { ...d.claimedDays } : {},
+    // 阶段10·P1-12：进度只留当日 3 条（跨天后自动丢弃旧 id 的进度）。
+    progress: (d.progress && typeof d.progress === 'object')
+      ? Object.fromEntries(Object.entries(d.progress).filter(([id]) => useIds.includes(id)))
+      : {},
+    history,
   };
 }
 
@@ -134,7 +180,14 @@ export function loadDaily(store, dateKey) {
 }
 
 function saveDaily(store, d) {
-  try { store.setItem(KEY, JSON.stringify(d)); } catch { /* 忽略 */ }
+  // ★ 阶段10·P0-1：每次落盘把「今天发了哪 3 条」记进 history，供之后的 pickDaily 避重。
+  //   ★ 今天自己的条目在 pickDaily 里被 `k < dateKey` 排除 ⟹ "同一天刷新不变"仍然成立。
+  //   ★ 只留最近 30 天，否则 JSON 会随年份一直增长。
+  const history = { ...(d.history || {}) };
+  history[d.dateKey] = d.ids.slice();
+  const keys = Object.keys(history).sort();
+  while (keys.length > 30) delete history[keys.shift()];
+  try { store.setItem(KEY, JSON.stringify({ ...d, history })); } catch { /* 忽略 */ }
   return d;
 }
 
@@ -143,7 +196,15 @@ export function dailyBoard(store, dateKey) {
   const d = loadDaily(store, dateKey);
   return d.ids.map((id) => {
     const t = DAILY_POOL.find((x) => x.id === id);
-    return t ? { ...t, done: d.done.includes(id), claimed: d.claimed.includes(id) } : null;
+    return t
+      ? {
+        ...t,
+        done: d.done.includes(id),
+        claimed: d.claimed.includes(id),
+        // 阶段10·P1-12：本局最高实测值（面板显示「900 / 1200」）。
+        progress: Math.max(0, Number((d.progress || {})[id]) || 0),
+      }
+      : null;
   }).filter(Boolean);
 }
 
@@ -154,10 +215,16 @@ export function dailyBoard(store, dateKey) {
  */
 export function submitDaily(store, dateKey, res) {
   const d = loadDaily(store, dateKey);
+  d.progress = d.progress || {};
   for (const id of d.ids) {
-    if (d.done.includes(id) || d.claimed.includes(id)) continue;
     const t = DAILY_POOL.find((x) => x.id === id);
-    if (t && dailyDone(t, res)) d.done.push(id);
+    if (!t) continue;
+    // 阶段10·P1-12：把本局实测值写进进度（面板显示「900 / 1200」）。
+    // ★ 取 max 而不是覆盖：玩家第二局打得差，不该把面板上"最高到过 900"擦成 200。
+    const p = Number(dailyProgress(t, res)) || 0;
+    d.progress[id] = Math.max(Number(d.progress[id]) || 0, p);
+    if (d.done.includes(id) || d.claimed.includes(id)) continue;
+    if (dailyDone(t, res)) d.done.push(id);
   }
   return saveDaily(store, d);
 }
@@ -173,8 +240,41 @@ export function dailyClaim(store, dateKey) {
     d.claimed.push(id);
     gained += t.reward;
   }
+  // 阶段10·P1-12：claimedDays 这个字段建了但从未写过 —— 终于把它用上：
+  //   记录"这天领到多少灵魂"，供连续天数（streakOf）与以后可能的日历视图使用。
+  //   ★ 只在真的领到钱时写：dailyClaim 的幂等性（第二次 gained=0）不能被破坏。
+  if (gained > 0) {
+    d.claimedDays = d.claimedDays || {};
+    d.claimedDays[dateKey] = (Number(d.claimedDays[dateKey]) || 0) + gained;
+    // 只留最近 30 天，否则一年后 JSON 会一直长。
+    const keys = Object.keys(d.claimedDays).sort();
+    while (keys.length > 30) delete d.claimedDays[keys.shift()];
+  }
   saveDaily(store, d);
   return { gained, claimed: d.claimed.slice() };
+}
+
+/** 阶段10·P1-12：连续领奖天数。
+ *  ★ 起点：今天领过就从今天数；今天还没领则从**昨天**数 ——
+ *    "连续 3 天"不该在当天早上打开游戏时突然归零（领完又变回 3）。
+ *  ★ 从 dateKey 字符串按本地日期逐日回退，不依赖时钟/时区。 */
+export function streakOf(store, dateKey) {
+  const d = loadDaily(store, dateKey);
+  const days = d.claimedDays || {};
+  const has = (k) => !!days[k];
+  const cur = new Date(dateKey + 'T00:00:00');
+  if (!has(dateKey)) cur.setDate(cur.getDate() - 1);   // 今天还没领：从昨天起算
+  let n = 0;
+  // 上限 366：即使存档被塞进一整年的连续记录，也只数一年（防呆）。
+  for (let i = 0; i < 366; i++) {
+    const y = cur.getFullYear();
+    const m = String(cur.getMonth() + 1).padStart(2, '0');
+    const day = String(cur.getDate()).padStart(2, '0');
+    if (!has(`${y}-${m}-${day}`)) break;
+    n++;
+    cur.setDate(cur.getDate() - 1);
+  }
+  return n;
 }
 
 // ───────── 成就 ─────────
@@ -198,13 +298,23 @@ export const ACHIEVEMENTS = [
   { id: 'a_skin4',       name: '四相俱显', hint: '四套皮肤全部使用过',         reward: 350 },
   { id: 'a_hero3',       name: '三途行者', hint: '三个角色都玩过',             reward: 300 },
   { id: 'a_tier3',       name: '荒野之主', hint: '属性树总等级达到 50',        reward: 1200 },
+  // ── 阶段10·内容批P0-2：10 → 16（打完四阶也要有下一个目标）──
+  // A 组：只把已有字段喂进 stats，改 main.js 两处构造即可，零存档改动。
+  { id: 'a_kill10000',  name: '万人斩',   hint: '历史累计击杀 10000',          reward: 1500 },
+  { id: 'a_lv45',       name: '登顶',     hint: '单局等级达到 45',             reward: 600 },
+  { id: 'a_tier2',      name: '三阶',     hint: '属性树总等级达到 25',         reward: 500 },
+  // B 组：a_bosskill 需要 best.js 加 bestBossKills 字段；rebirth 直接读 meta。
+  { id: 'a_bosskill',   name: '巨兽杀手', hint: '累计击杀至少 1 只 Boss',      reward: 500 },
+  { id: 'a_rebirth1',   name: '浴火',     hint: '完成 1 次转生',               reward: 800 },
+  { id: 'a_rebirth3',   name: '三度轮回', hint: '完成 3 次转生',               reward: 2000 },
 ];
 
 const AKEY = 'wild.achieve.v1';
 
 /**
  * 成就判据：给定「历史统计」返回每条成就的完成情况。
- * @param stats { runs, bestKills, bestSurvival, skinsUsed:[], heroesUsed:[], totalLevels }
+ * @param stats { runs, bestKills, bestSurvival, skinsUsed:[], heroesUsed:[], totalLevels,
+ *                totalKills, bestLevel, bestBossKills, rebirth }（后四个是阶段10·P0-2 新增）
  *
  * ★ 判据全部是**纯比较**，不读 localStorage、不读 Date —— 于是任何一个历史口径
  *   （best.js / account.js / meta.js）都能直接喂进来测。
@@ -216,6 +326,11 @@ export function achievementState(stats = {}) {
   const skins = new Set(Array.isArray(stats.skinsUsed) ? stats.skinsUsed : []);
   const heroes = new Set(Array.isArray(stats.heroesUsed) ? stats.heroesUsed : []);
   const lv = Number(stats.totalLevels) || 0;
+  // ── 阶段10·P0-2：新增 6 条成就的判据量（totalKills/bestLevel/bestBossKills/rebirth）──
+  const totalKills = Number(stats.totalKills) || 0;
+  const bestLevel = Number(stats.bestLevel) || 0;
+  const bestBossKills = Number(stats.bestBossKills) || 0;
+  const rebirth = Number(stats.rebirth) || 0;
   const ok = {
     a_firstblood: runs >= 1,
     a_kill500: bestKills >= 500,
@@ -227,6 +342,12 @@ export function achievementState(stats = {}) {
     a_skin4: skins.size >= 4,
     a_hero3: heroes.size >= 3,
     a_tier3: lv >= 50,
+    a_kill10000: totalKills >= 10000,
+    a_lv45: bestLevel >= 45,
+    a_tier2: lv >= 25,
+    a_bosskill: bestBossKills >= 1,
+    a_rebirth1: rebirth >= 1,
+    a_rebirth3: rebirth >= 3,
   };
   return ACHIEVEMENTS.map((a) => ({ ...a, unlocked: !!ok[a.id] }));
 }

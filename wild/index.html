@@ -25,23 +25,32 @@
           <h1 class="game-title">荒野</h1>
           <p class="game-sub">W&nbsp;I&nbsp;L&nbsp;D</p>
           <p class="game-line">十分钟。<br>活到最后一秒。</p>
-          <!-- 阶段 4-5：英雄选择（流浪者默认；重壳守卫/疾风行者用灵魂解锁） -->
-          <div id="hero-select" class="hero-select"></div>
-          <!-- 阶段 6-2：皮肤选择（纯外观，全部恒可选；点击即换英雄色调） -->
-          <div id="skin-select" class="skin-select"></div>
-          <!-- 阶段 6-3：装备 / 局外配装（3 槽各选 1 件，纯数值加成） -->
-          <div id="loadout-select" class="loadout-select"></div>
-          <!-- 阶段 4-3 目标感：三条本地纪录（大字） -->
-          <div id="best-panel" class="best-panel"></div>
-          <!-- 阶段 7：每日任务（按天重置，完成奖励灵魂）+ 成就（永久里程碑） -->
-          <div id="daily-panel" class="prog-panel"></div>
-          <div id="ach-panel" class="prog-panel"></div>
+          <!-- 阶段10 · 机制批 P0-7：「进入荒野」原本埋在 2000px 之下（三块选择区 + 纪录 + 每日 + 成就
+               全排在按钮之前），第一次来的人找不到开始键。现在按钮区上移到标题正下方并吸顶，
+               皮肤/装备两块默认折叠成一行摘要，点开才展开。 -->
           <div class="title-actions">
             <button id="btn-start" class="big">进入荒野</button>
             <!-- 游戏总入口 · 大厅（2026-10-01 用户裁决：主按钮区放显眼入口，
                  页脚的 .more-games 小字链接保留但不再是唯一入口） -->
             <a class="big hub-btn" href="https://ming-games.surge.sh" target="_blank" rel="noopener">游戏大厅</a>
           </div>
+          <!-- 阶段 4-5：英雄选择（流浪者默认；重壳守卫/疾风行者用灵魂解锁） -->
+          <div id="hero-select" class="hero-select"></div>
+          <!-- 阶段 6-2：皮肤选择（纯外观；摘要行常驻，点开才展开全部 8 套） -->
+          <button class="pick-h" type="button" data-target="skin-select"><span id="skin-sum">皮肤 · 默认</span><i>▾</i></button>
+          <div id="skin-select" class="skin-select" hidden></div>
+          <!-- 阶段 6-3：装备 / 局外配装（3 槽各选 1 件，纯数值加成） -->
+          <button class="pick-h" type="button" data-target="loadout-select"><span id="loadout-sum">装备 · 未配置</span><i>▾</i></button>
+          <div id="loadout-select" class="loadout-select" hidden></div>
+          <!-- 阶段 4-3 目标感：三条本地纪录（大字） -->
+          <div id="best-panel" class="best-panel"></div>
+          <!-- 阶段10·P1-10：今日挑战（同一天同一个种子 + 本地榜） -->
+          <div id="challenge-panel" class="prog-panel"></div>
+          <!-- 阶段 7：每日任务（按天重置，完成奖励灵魂）+ 成就（永久里程碑） -->
+          <div id="daily-panel" class="prog-panel"></div>
+          <div id="ach-panel" class="prog-panel"></div>
+          <!-- 阶段10·P1-11：图鉴（敌人 / Boss / 进化） -->
+          <div id="codex-panel" class="prog-panel"></div>
           <div id="meta-panel" class="meta-panel"></div>
           <p id="title-meta" class="title-meta"></p>
           <a class="more-games" href="https://ming-games.surge.sh" target="_blank" rel="noopener">更多游戏 → ming-games.surge.sh</a>
@@ -55,7 +64,9 @@
       <!-- 实时关挂载点：arena.js 会把 .arena-root 塞进 #stage（绝对定位覆盖） -->
       <section id="arena" class="screen"></section>
 
-      <section id="screen-result" class="screen">
+      <!-- 阶段10 · 机制批 P0-1：结算页可滚动（内容变多后手机上「再来一局」会被裁在屏外），
+           并且补了一个「回标题」出口 —— 以前想换英雄/换装备只能刷新页面。 -->
+      <section id="screen-result" class="screen screen-scroll">
         <div class="over-wrap">
           <h2 id="res-title">荒野把你留下了</h2>
           <!-- 阶段 4-3 目标感：S/A/B/C 大字评级 + ★新纪录★ -->
@@ -63,11 +74,16 @@
           <p id="res-record" class="res-record" hidden></p>
           <p id="res-sub" class="over-sub"></p>
           <div id="res-stats" class="res-stats"></div>
+          <!-- 阶段10 · P0-4：本局构筑复盘（武器/进化/伤害构成/战果/升级），全部中文名 -->
+          <div id="res-build" class="res-build"></div>
           <p id="res-souls" class="over-souls"></p>
           <!-- 阶段 4-5：本地账号档案（累计 + 称号 + 距下个称号差额） -->
           <div id="res-account" class="res-account"></div>
           <p id="res-next" class="over-next"></p>
-          <button id="btn-retry" class="big">再来一局</button>
+          <div class="result-actions">
+            <button id="btn-retry" class="big">再来一局</button>
+            <button id="btn-home" class="big ghost">回标题</button>
+          </div>
         </div>
       </section>
 
