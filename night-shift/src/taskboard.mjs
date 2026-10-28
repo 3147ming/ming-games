@@ -34,6 +34,10 @@ const METRICS = {
   served: (c) => numOr(c.served, 0),
   servedBento: (c) => numOr(c.servedBento, 0),
   soldDrinkPromo: (c) => numOr(c.promoActive ? c.soldDrinkPromo : 0, 0),
+  /* P1-10：节日礼盒销量。不需要像促销那样再 gate 一层时间窗 ——
+   * 礼盒只在节日夜到货、非节日夜的 soldFestival 恒为 0（resetForNewNight 清零），
+   * 指标本身就没有"非节日期"这种状态。 */
+  soldFestival: (c) => numOr(c.soldFestival, 0),
   cleaned: (c) => numOr(c.cleaned, 0),
   placed: (c) => numOr(c.placed, 0),
   cleared: (c) => numOr(c.cleared, 0),
@@ -68,12 +72,24 @@ export function createTaskboard(opts = {}) {
     return tb;
   }
 
-  /** 从模板池抽 n 张不重复的卡（洗牌后取前 n） */
-  function pickTemplates(n) {
+  /** 从模板池抽 n 张不重复的卡（洗牌后取前 n）
+   *  @param includeId 必发模板 id（P1-10 节日夜必发礼盒单）；池里找不到就忽略
+   *
+   *  实现是"先洗牌 → 把必发卡提到第一位 → 取前 n"，而不是"必发卡 + 随机 n-1"：
+   *  后者在 n ≥ 池大小时会少发牌，而且必发卡永远排在最前、位置可预测。
+   *  提到第一位之后仍受 slice(0,n) 约束，所以 includeId 存在时它一定在牌面上。 */
+  function pickTemplates(n, includeId = null) {
     const pool = [...TASKBOARD.templates];
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(rnd() * (i + 1));
       [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    if (includeId) {
+      const i = pool.findIndex((t) => t.id === includeId);
+      if (i > 0) {
+        const [t] = pool.splice(i, 1);
+        pool.unshift(t);
+      }
     }
     return pool.slice(0, Math.min(n, pool.length));
   }
@@ -85,7 +101,10 @@ export function createTaskboard(opts = {}) {
    */
   function dealNight(ctx = {}) {
     const tb = ensure();
-    tb.offers = pickTemplates(TASKBOARD.offerPerNight).map((tpl) => ({
+    /* P1-10：节日夜把"卖掉节日礼盒"钉进牌面。ctx.festival 由 main 传
+     * （isFestival(state.themeId)）—— 本模块不认识 themes，保持纯逻辑。 */
+    const forced = ctx.festival === true ? 'sell_festival' : null;
+    tb.offers = pickTemplates(TASKBOARD.offerPerNight, forced).map((tpl) => ({
       uid: `T${++seq}`,
       tplId: tpl.id,
       metric: tpl.metric,

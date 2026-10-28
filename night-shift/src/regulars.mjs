@@ -53,9 +53,15 @@ export function createRegulars(opts = {}) {
     const night = state.night;
     let entry = faces[faceId];
     if (!entry) {
+      /* P1-8：名字与人设**同索引**取 —— 抽一次 nameIndex，名字和人设都按它取。
+       * 若分两次 rng()，阿强可能配上"考试周靠咖啡续命"（那是小敏的台词），
+       * 于是同一个人的名字和台词每次都不一样，人设就不成立了。
+       * personaIndex 落盘：跨夜/跨周/读档后仍是同一个人格。 */
+      const nameIndex = Math.floor(rng() * REGULARS.names.length);
       entry = {
         nights: [],
-        name: REGULARS.names[Math.floor(rng() * REGULARS.names.length)],
+        name: REGULARS.names[nameIndex],
+        personaIndex: nameIndex,
         emoji: FACE_EMOJI[pick++ % FACE_EMOJI.length],
         /* 2026-10-06 块2：新脸入场时抽一个偏好商品 + 忠诚度归零。
          * 偏好只从 preferPool 里抽（不抽 festival —— 节日限定商品当天可能根本没进过货，
@@ -85,6 +91,9 @@ export function createRegulars(opts = {}) {
       tag: regular ? REGULARS.tag : null,
       nights,
       identityId: finalIdentity,
+      /* P1-8：人设（旧存档没有 personaIndex → 兜底第 0 条，
+       * 名字仍在，只是台词退化成"阿强"那句通用开场白，不会变成 undefined） */
+      persona: REGULARS.personas?.[entry.personaIndex ?? 0] ?? null,
       /* 块2 扩展字段 */
       prefer: entry.prefer ?? null,
       loyalty: entry.loyalty ?? 0,
@@ -165,6 +174,9 @@ export function createRegulars(opts = {}) {
       label: loyaltyLabel(lv),
       discount: loyaltyDiscount(entry),
       nights: (entry.nights ?? []).length,
+      /* P1-8：周终"本周常客"面板与第 7 夜告别 toast 都要显示人设台词。
+       * 老存档没有 personaIndex → 兜底第 0 条（同 judge，不返回 undefined）。 */
+      persona: REGULARS.personas?.[entry.personaIndex ?? 0] ?? null,
     };
   }
 

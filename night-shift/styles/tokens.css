@@ -731,6 +731,65 @@ html, body {
 .lb-meta { color: var(--text-subtle); font-size: 11px; }
 .lb-val { color: var(--money); font-weight: 700; font-variant-numeric: tabular-nums; }
 .lb-empty { color: var(--text-subtle); font-size: 12px; padding: 6px 0; }
+/* 分组标题（P1-4 / P1-5）：街机 vs 经营。刻意做得比 .lb-head 更轻、
+ * 更靠上留白 —— 它是"章"，.lb-head 是"节"，视觉层级不能同级。 */
+.lb-group-head,
+.ach-group-head {
+  margin: 14px 0 8px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lb-group-head:first-child,
+.ach-group-head:first-child { margin-top: 0; }
+.lb-group-head::after,
+.ach-group-head::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(150, 170, 200, .18);
+}
+
+/* ---------- 周终七夜条形图（内容批 P1-3） ----------
+ * 七根等宽条：柱高按 |净利| 相对最大值归一（最高那夜顶满 100%），
+ * 颜色语义与结算面板一致（赚 = --money / 亏 = --warning）。
+ * 负值条**不**画到基线以下 —— 这个尺寸下上下分轴会让"亏 50"和"赚 2000"
+ * 高度接近，反而看不出塌方；这里用颜色表达正负、高度只表达量级。 */
+.we-bars {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  align-items: end;
+  height: 132px;
+  margin-top: 10px;
+  padding: 8px 6px 0;
+  border-radius: 12px;
+  background: rgba(20, 26, 36, .5);
+  border: 1px solid rgba(150, 170, 200, .16);
+}
+.we-bar {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+}
+.we-bar-v { font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.we-bar-fill {
+  width: 100%;
+  max-width: 34px;
+  border-radius: 4px 4px 0 0;
+  min-height: 3px;
+  /* 高度由内联 style 给出（每条不同），这里只兜过渡动画 */
+  transition: height .18s ease-out;
+}
+.we-bar-n { font-size: 10px; color: var(--text-subtle); }
+
 
 /* ==================================================================
    需求I：玩法叠加新增的三块 UI
@@ -1041,6 +1100,29 @@ html, body {
 }
 .questpanel .q-idle b { color: var(--brand); }
 
+/* ---- 首夜目标卡（P1-12）+ 常客条头部（P1-13 并入追踪块） ---- */
+.questpanel .q-goal {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12.5px; color: var(--text-muted); line-height: 1.7;
+}
+.questpanel .q-goal b { margin-left: auto; font-weight: 700; }
+.questpanel .q-goal.done { color: rgba(111, 207, 151, .95); }
+.questpanel .q-goal.done b { color: rgba(111, 207, 151, .95); }
+.questpanel .q-box {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; flex: 0 0 14px;
+  border-radius: 4px; border: 1px solid var(--border-soft);
+  font-size: 10px; line-height: 1;
+}
+.questpanel .q-goal.done .q-box {
+  border-color: rgba(111, 207, 151, .6); background: rgba(111, 207, 151, .18);
+}
+.questpanel .q-regs {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  padding-bottom: 6px; margin-bottom: 4px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
 .questpanel.done {
   border-color: rgba(111, 207, 151, .55);
   box-shadow: var(--shadow-float), 0 0 0 1px rgba(111, 207, 151, .45), 0 0 26px rgba(111, 207, 151, .35);
@@ -1268,6 +1350,17 @@ html, body {
   color: var(--text);
 }
 .theme-banner .tb-desc { margin-left: 8px; font-weight: 400; font-size: 12px; color: var(--text-muted); }
+/* P0-2 的叙事引导语：横幅**第二行**。
+ * 必须 display:block —— 挤在同一行会和主题名+描述抢宽度，
+ * 在 375px 竖屏上直接换行成三截、读不成句子。 */
+.theme-banner .tb-intro {
+  display: block;
+  margin-top: 2px;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--neon-ice, #4FD1E8);
+  opacity: .9;
+}
 .promo-banner {
   background: linear-gradient(90deg, rgba(235, 87, 87, .9), rgba(232, 169, 78, .9));
   border: 1px solid rgba(255, 255, 255, .3);
@@ -1639,6 +1732,11 @@ html, body { overscroll-behavior: none; }
  * 注意：角块真实类名为 .corner.tl / .corner.tr（见 src/hud.mjs），不是 left/right；
  *       .toasts 同时补 bottom:auto，否则会和 base / coarse 块的 bottom 一起把容器竖向拉伸。 */
 @media (max-width: 600px) {
+/* 窄屏弹窗按钮：改**竖排**。
+ * 横排时两个按钮平分宽度，"进入第 2 周 · ×1.25" 这种带数值的文案会被折成两行，
+ * 按钮高度随之跳动、两个按钮高度还不一致。竖排之后每个按钮独占一行，文案一行放得下。 */
+.actions { flex-direction: column-reverse; align-items: stretch; }
+.actions .btn { width: 100%; }
 .topbar { font-size: 12px; padding: 6px 10px; }
 .topbar .segment { font-size: 11px; margin-left: 6px; }
 .corner { padding: 8px 10px; }
@@ -1653,6 +1751,18 @@ html, body { overscroll-behavior: none; }
 .queue .head { font-size: 10px; }
 /* 左右角数据块在手机上缩小宽度 */
 .corner.tl, .corner.tr { max-width: 42%; }
+}
+
+/* ---------- 手机竖屏布局（P0-2：不锁横屏，竖屏也是可玩状态） ----------
+ * 放在 (max-width:600px) 之后、横屏规则之前：375×667 真机同时命中 600px 与本条，
+ * 靠"后者胜"让竖屏的左右角 calc(50% - 12px) 压过 600px 块的 42%。
+ * 与后面的横屏块互斥（orientation 不同时成立），不存在互相覆盖问题。 */
+@media (pointer: coarse) and (orientation: portrait) {
+  .corner.tl, .corner.tr { max-width: calc(50% - 12px); padding: 6px 8px; }
+  .envline .env-row { gap: 6px; font-size: 10px; }
+  .queue { bottom: 96px; }              /* 让开右下按钮组 */
+  #ns-joy { bottom: 18px; }
+  .topbar { padding: 5px 8px; }
 }
 
 /* 手机横屏（高度紧张）：手机面板的 .phone-screen 有 320px 硬性最小高 + overflow:hidden，
@@ -1677,6 +1787,7 @@ html, body { overscroll-behavior: none; }
 .toasts { top: 50px; bottom: auto; }
 .theme-banner, .promo-banner { font-size: 12px; padding: 5px 10px; }
 .theme-banner .tb-desc { font-size: 10px; }
+.theme-banner .tb-intro { font-size: 10px; }   /* 竖屏：引导语跟描述同级缩一号，别抢主题名 */
 }
 
 /* 触屏点击反馈：桌面 :hover 在手机上不会触发，用 :active / :focus-visible 补 */
@@ -1740,33 +1851,27 @@ html, body { overscroll-behavior: none; }
 #ns-menu button:active { background: rgba(177, 91, 216, .4); }
 #ns-menu .ns-menu-close { grid-column: 1 / -1; background: rgba(235, 87, 87, .25); }
 
-/* 横屏旋转遮罩（仅触屏 + 竖屏 + 游戏进行中由 JS 显示）
- * 2026-10-03 真机事故后加固：默认 pointer-events:none，JS 显示时才置 auto；
- * 并且遮罩内必须有「知道了，直接进入」兜底按钮（≥44px），旋转不是唯一出路。 */
+/* 横屏提示条（仅触屏 + 竖屏 + 游戏进行中由 JS 显示）
+ * 2026-10-27（P0-2）起从"全屏遮罩"降级为**底部 44px 提示条**：不锁方向、不挡视野、
+ * 8 秒自动消失、整条可点关闭。2026-10-03 真机事故的三条硬约束仍成立：
+ * 默认 pointer-events:none，JS 显示时才置 auto；隐藏必须 display:none 不留透明层；
+ * 出口不依赖旋转（可点 + 自动消失）。500ms 轮询在 mobile-controls.mjs，不能删。 */
 #ns-rotate {
-  position: fixed; inset: 0; z-index: 9999; display: none;
+  position: fixed; left: 0; right: 0; bottom: 0; height: 44px; z-index: 9999; display: none;
   pointer-events: none;   /* 未显示/判定不出来时绝不吃点击；JS 显式开时才 auto */
-  flex-direction: column; align-items: center; justify-content: center; gap: 14px;
-  background: rgba(8, 10, 16, .96); color: #f0ece2; text-align: center; padding: 24px;
+  flex-direction: row; align-items: center; justify-content: center; gap: 10px;
+  background: rgba(8, 10, 16, .88); color: #f0ece2;
+  border-top: 1px solid rgba(177, 91, 216, .35);
+  padding: 0 16px; touch-action: manipulation;
 }
-/* ⚠ 这三个子元素在 mobile-controls.mjs 里是 class，不是 id —— 此前写成 #id 选择器导致
- * 整段字号/弱化色完全失效（2026-10-24 修正）。改这里务必保持 .class 写法。 */
+/* ⚠ 这两个子元素在 mobile-controls.mjs 里是 class，不是 id —— 此前写成 #id 选择器导致
+ * 整段样式完全失效（2026-10-24 修正）。改这里务必保持 .class 写法。 */
 .ns-rotate-icon {
-  width: 40px; height: 70px; border: 3px solid #b15bd8; border-radius: 8px;
+  width: 14px; height: 24px; border: 2px solid #b15bd8; border-radius: 4px;
+  flex: none;
   animation: ns-rotate-hint 1.6s ease-in-out infinite;
 }
-.ns-rotate-text { font-size: 18px; font-weight: 700; line-height: 1.6; max-width: 16em; }
-.ns-rotate-sub { font-size: 13px; line-height: 1.6; max-width: 18em; color: rgba(240, 236, 226, .68); }
-#ns-rotate-dismiss {
-  min-width: 200px; min-height: 48px;              /* ≥44px 触控靶区是硬要求 */
-  margin-top: 6px; padding: 0 20px;
-  border-radius: 12px; border: 1px solid rgba(177, 91, 216, .55);
-  background: rgba(177, 91, 216, .22); color: #f0ece2;
-  font-size: 15px; font-weight: 700;
-  touch-action: manipulation;                       /* 去掉 300ms 合成 click 延迟 */
-  -webkit-tap-highlight-color: transparent;
-}
-#ns-rotate-dismiss:active { background: rgba(177, 91, 216, .5); }
+.ns-rotate-text { font-size: 13px; font-weight: 600; line-height: 1.4; }
 /* 隐藏态兜底：就算别处误把 display 改回来，也不允许它挡住下方 UI（要求③） */
 #ns-rotate[style*="display: none"], #ns-rotate[hidden] { pointer-events: none !important; }
 /* 「转过去并停住」比原对称摆动更直观：0~20% 竖着等，20~60% 转过去，60~100% 停在横屏 */

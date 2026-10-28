@@ -10,9 +10,9 @@
  *   · 画布轻触      → interaction.tryInteract()        （替代 E 键交互）
  *   · 右下按钮      → 交互 / 冲刺(切换) / 菜单
  *   · 菜单面板      → 进货 / 背包 / 手机 / 监控 / 排行 / 存档 / 读档 / 暂停
- *   · 横屏策略      → enterGame() 内 requestFullscreen + screen.orientation.lock('landscape')；
- *                     不支持锁屏（iOS Safari）则降级为全屏 + 「横屏玩更顺手」遮罩，
- *                     转成横屏自动消失，**且遮罩上有「知道了，直接进入」兜底出口**（不依赖旋转）。
+ *   · 横屏策略      → enterGame() 内 requestFullscreen（2026-10-27 起**不再锁方向**）；
+ *                     竖屏时底部弹一条 44px 可关闭提示（8 秒自动消失），
+ *                     竖屏 HUD 布局见 tokens.css 的 (orientation: portrait) 块。
  *   退出游戏 exitGame() 释放全屏与锁屏。
  *
  * 设计要点（见项目 memory 的「双端适配铁律」）：
@@ -59,13 +59,12 @@ export function createMobileControls({ player, interaction, panels = {} } = {}) 
       <button type="button" data-act="load">📂 读档</button>
       <button type="button" data-act="settings">⚙ 设置</button>
       <button type="button" data-act="pause">⏸ 暂停</button>
+      <button type="button" data-act="closeNight">🌅 提前打烊</button>
       <button type="button" data-act="close" class="ns-menu-close">✕ 关闭</button>
     </div>
     <div id="ns-rotate">
       <div class="ns-rotate-icon"></div>
-      <div class="ns-rotate-text">横屏玩更顺手</div>
-      <div class="ns-rotate-sub">把手机转成横向即可自动关闭本提示</div>
-      <button id="ns-rotate-dismiss" type="button">知道了，直接进入</button>
+      <div class="ns-rotate-text">横屏视野更宽 · 点此关闭</div>
     </div>`;
   document.body.appendChild(root);
 
@@ -180,16 +179,16 @@ export function createMobileControls({ player, interaction, panels = {} } = {}) 
     if (typeof fn === 'function') fn();
   });
 
-  /* ---------------- 横屏 / 旋转遮罩 ----------------
-   * 真机事故（2026-10-03）：部分手机上「请旋转设备」遮罩把玩家永久关在门外——
+  /* ---------------- 横屏 / 旋转提示条 ----------------
+   * 真机事故（2026-10-03）：部分手机上「请旋转设备」全屏遮罩把玩家永久关在门外——
    * 竖屏提示只有旋转一条出路，而 z-index 9999 的遮罩又吃掉了所有点击。
+   * 2026-10-27（P0-2）起降级为**底部 44px 提示条**：不锁方向、不挡视野、8 秒自动消失。
    * 三条硬约束（改这里前先读）：
-   *   ① **必须有兜底出口**：遮罩上有可点的「知道了，直接进入」，不依赖旋转；
+   *   ① **必须有兜底出口**：整条可点关闭 + 8 秒自动消失，不依赖旋转；
    *   ② **判定方向要统一**：宽>=高 即横屏，media query / window.innerWidth 都只是"参考"，
    *      谁先报横屏都算，避免某些浏览器 (orientation:portrait) 撒谎导致判定反了且永不自愈；
    *   ③ **隐藏必须彻底**：display:none + pointer-events:none，绝不留透明层挡住下方 UI。
    */
-  const rotateBtn = root.querySelector('#ns-rotate-dismiss');
   let running = false;
   // 玩家明确关过遮罩后就不再自动弹（否则每次 orientationchange 都糊上来一次）
   let rotateDismissed = false;
@@ -216,10 +215,18 @@ export function createMobileControls({ player, interaction, panels = {} } = {}) 
   function isPortrait() {
     return !wideEnough();
   }
+  let rotateTimer = 0;
   function showRotate(on) {
+    if (rotateTimer) { clearTimeout(rotateTimer); rotateTimer = 0; }
     if (on) {
       rotate.style.display = 'flex';
-      rotate.style.pointerEvents = 'auto';   // 可见时才吃点击（按钮要吃得到）
+      rotate.style.pointerEvents = 'auto';   // 可见时才吃点击（整条可点关闭）
+      /* 8 秒后自动消失（P0-2）：提示完就走，不逼玩家做任何操作 */
+      rotateTimer = setTimeout(() => {
+        rotateTimer = 0;
+        rotateDismissed = true;
+        showRotate(false);
+      }, 8000);
     } else {
       rotate.style.display = 'none';
       rotate.style.pointerEvents = 'none';   // 不可见且绝不吃指针（要求③）
@@ -257,24 +264,25 @@ export function createMobileControls({ player, interaction, panels = {} } = {}) 
   } catch { /* 忽略 */ }
   // 兜底轮询：任何事件都不触发时，500ms 自查一次宽高比，遮罩状态永不卡死
   setInterval(updateRotate, 500);
-  // 要求①：兜底出口。点一下即"我就要进游戏"，不转屏也放行。
-  if (rotateBtn) {
+  // 要求①：兜底出口。整条提示都可点（"点此关闭"），且 8 秒自动消失 —— 不转屏也放行。
+  {
     const dismiss = (e) => {
       if (e) { e.preventDefault(); e.stopPropagation(); }
       rotateDismissed = true;
       showRotate(false);
     };
-    rotateBtn.addEventListener('click', dismiss);
-    rotateBtn.addEventListener('touchend', dismiss, { passive: false });
+    rotate.addEventListener('click', dismiss);
+    rotate.addEventListener('touchend', dismiss, { passive: false });
   }
 
   function enterGame() {
     running = true;
     rotateDismissed = false;   // 每次进游戏重新给一次横屏提示（读档/重开也算一次新进场）
     root.style.display = 'block';
-    // 全屏 + 锁横屏必须在用户手势内调用（来自「开始营业」按钮点击链）
+    // 全屏必须在用户手势内调用（来自「开始营业」按钮点击链）
     try { if (document.documentElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {}); } catch { /* iOS 不支持，忽略 */ }
-    try { if (screen.orientation && typeof screen.orientation.lock === 'function') screen.orientation.lock('landscape').catch(() => {}); } catch { /* iOS 不支持，忽略 */ }
+    /* P0-2：不再锁方向。强制横屏会把"拒绝全屏 / 开着旋转锁"的玩家关在门外，
+     * 竖屏改为底部提示条 + 竖屏 HUD 布局（tokens.css 的 portrait 块）。 */
     updateRotate();
     // 转屏瞬间部分浏览器 metrics 还没更新 → 补两次延迟重判，避免出现"转了但遮罩不走"
     setTimeout(updateRotate, 260);

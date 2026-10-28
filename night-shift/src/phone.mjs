@@ -100,15 +100,22 @@ export function createPhone(opts = {}) {
     return msg;
   }
 
-  /** 记一条点评；差评会累积 badReviewStreak 并可能触发补救任务 */
-  function pushReview(rating, kind) {
+  /**
+   * 记一条点评；差评会累积 badReviewStreak 并可能触发补救任务。
+   * @param who P1-8：点评人（常客名）。有名字就挂在点评前面 ——
+   *   "「阿强」：关东煮还是那个味"比一句匿名的"味道不错"更能让人记住这个客人；
+   *   普通顾客不发名字（他们本来就没有名字），维持原来的匿名点评。
+   */
+  function pushReview(rating, kind, who = null) {
+    const body = pick(REVIEW_TEXT[rating]);
     const review = {
       id: `R${++seq}`,
       night: state.night,
       time: state.gameHour,
       rating,
       kind, // 'sale' 成交后点评 | 'lost' 失销差评
-      text: pick(REVIEW_TEXT[rating]),
+      who: who || null,
+      text: who ? `「${who}」：${body}` : body,
     };
     state.reviews.push(review);
     if (state.reviews.length > PHONE.reviewsMax) {
@@ -161,9 +168,14 @@ export function createPhone(opts = {}) {
     lastLostSales = lost;
 
     const events = [];
+    /* P1-8：每生成一条成交点评就取一个"点评人"。nextName 由 main 注入 ——
+     * phone 不认识 customers / regulars（纯逻辑模块的边界），
+     * 谁成交、谁叫什么名字由调用方决定。取不到就退回匿名点评。 */
+    const nextName = typeof ctx.nextName === 'function' ? ctx.nextName : null;
     for (let i = 0; i < nServed; i++) {
       const rating = ratingForRep();
-      const review = pushReview(rating, 'sale');
+      const who = nextName ? (nextName() ?? null) : null;
+      const review = pushReview(rating, 'sale', who);
       events.push({ type: 'review', rating, review });
     }
     for (let i = 0; i < nLost; i++) {

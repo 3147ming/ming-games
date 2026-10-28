@@ -4,7 +4,8 @@
  */
 import {
   SKU_BY_ID, OPEN_HOUR, NIGHTS_PER_WEEK, CLERK, MODULE_MAX_PER_DEVICE, MODULE_REFUND,
-  STAFF, WAREHOUSE, SECONDHAND, MONITOR, DELIVERY, GARBAGE,
+  STAFF, WAREHOUSE, SECONDHAND, MONITOR, DELIVERY, GARBAGE, nightCurve, GAME_HOURS,
+  TUTORIAL_STOCK_GOAL, TUTORIAL_SERVE_GOAL, nightInWeek,
 } from './config.mjs';
 import { state, NIGHT_SECONDS } from './state.mjs';
 import { RESET_SCOPE } from './reset.mjs';
@@ -17,6 +18,13 @@ import { fmtYuan, fmtYuanSigned } from './fmt.mjs';
  * 为什么不把 CG 表直接写进 hud：那会让"里程碑只弹一次"这类规则无法在 Node 里单测。 */
 import { CG_BY_ID, PROLOGUE_LINES, cgUrl } from './cgs.mjs';
 import { charArtFor } from './artmap.mjs';
+/* P0-2：七夜的叙事锚点只有 intros 这一段是**展示用**，由这里取；
+ * rollTheme 的 anchor 仍在 themes.mjs 内部使用（hud 不参与抽签逻辑）。
+ * ⚠ 这条 import 曾经漏过一次：`showThemeBanner` 里用了 NIGHT_PLAN 却没导入，
+ *   于是**每一次开夜**都在这里抛 ReferenceError，把 startNight 后半段
+ *   （任务板发牌 / 顾客重置 / 常客告别）整段跳过 —— 单测与静态检查都没抓到，
+ *   是无头探针在周终截图时抓到的。 */
+import { NIGHT_PLAN } from './themes.mjs';
 
 let els = {};
 let modalOpen = false;
@@ -70,7 +78,8 @@ export function mountHud(root) {
     </div>
 
     <div class="corner tl">
-      <div><span class="label">第</span> <span class="value" data-el="night">1</span> <span class="label">夜 / ${NIGHTS_PER_WEEK}</span></div>
+      <div><span class="label">第</span> <span class="value" data-el="night">1</span> <span class="label">夜 / ${NIGHTS_PER_WEEK}</span> <span class="label ntag" data-el="ntag"></span></div>
+      <div><span class="label">今夜客数</span> <span class="value" data-el="ntarget">0</span></div>
       <div><span class="label">满意度</span> <span class="value brand" data-el="rep">50</span></div>
       <!-- 疲劳系统：玩家疲劳读数（独立于店员的 barFatigue，不混用） -->
       <div class="pfatigue" data-el="pfatigue" style="display:none">
@@ -116,7 +125,7 @@ export function mountHud(root) {
   const q = (name) => root.querySelector(`[data-el="${name}"]`);
   els = {
     crosshair: q('crosshair'), clock: q('clock'), segment: q('segment'), track: q('track'),
-    night: q('night'), rep: q('rep'), cash: q('cash'), rev: q('rev'),
+    night: q('night'), ntag: q('ntag'), ntarget: q('ntarget'), rep: q('rep'), cash: q('cash'), rev: q('rev'),
     tokens: q('tokens'), envline: q('envline'),
     prompt: q('prompt'), held: q('held'), hint: q('hint'),
     custPortrait: q('cust-portrait'),
@@ -237,6 +246,43 @@ function syncModalLayer() {
  * @param env 环境快照（worldstate.snapshot() 的派生值），由 main 传入。
  *            HUD 本身不持有 worldstate —— 保持"hud 只画、不计算"的边界（ADR-002）。
  */
+/** 脏检查写入：HTML 字符串与上次一致就跳过 innerHTML 赋值，避免每帧重排（P0-4）。
+ *  指纹存在元素自身上（_fp）。显隐由调用方照常设置，本函数只管 innerHTML。 */
+function setHtmlIfChanged(el, html) {
+  if (el._fp !== html) { el.innerHTML = html; el._fp = html; }
+}
+
+/**
+ * P1-12：首夜目标卡 —— 没有限时任务时，把"这一夜该干的三件事"直接摆在追踪块里。
+ * 判定全部读 state 的当夜累计值（placed / served），与引导第 4、5 步完全同源，
+ * 不会出现"卡片说完成了、引导还在教"这种两套口径打架的情况。
+ */
+function firstNightGoalHtml() {
+  const placed = state.placed | 0;
+  const served = state.served | 0;
+  const bought = (state.purchaseCost | 0) > 0;
+  const item = (done, label, cur, goal) =>
+    `<div class="q-goal${done ? ' done' : ''}">`
+    + `<span class="q-box">${done ? '✔' : ''}</span>`
+    + `<span>${label}</span>`
+    + `<b>${Math.min(cur, goal)}/${goal}</b>`
+    + `</div>`;
+  return `<div class="q-head"><span class="q-tag">首夜目标</span></div>`
+    + item(bought, '进货一次', bought ? 1 : 0, 1)
+    + item(placed >= TUTORIAL_STOCK_GOAL, '上架货物', placed, TUTORIAL_STOCK_GOAL)
+    + item(served >= TUTORIAL_SERVE_GOAL, '成交订单', served, TUTORIAL_SERVE_GOAL);
+}
+
+/** 夜次难度标签（P0-5）：随 NIGHT_CURVE 的客流量倍率变化 */
+function nightDifficultyTag(night) {
+  const c = nightCurve(night);
+  if (c.arrivalsMul >= 1.4) return '· 爆满';
+  if (c.arrivalsMul >= 1.25) return '· 繁忙';
+  if (c.arrivalsMul >= 1.1) return '· 渐忙';
+  if (c.arrivalsMul >= 1.0) return '· 平稳';
+  return '· 轻松';
+}
+
 export function renderHud(env) {
   syncModalLayer();
   if (!els.clock) return;
@@ -246,6 +292,8 @@ export function renderHud(env) {
   els.track.style.width = `${Math.min(100, (state.wallElapsed / NIGHT_SECONDS) * 100)}%`;
 
   els.night.textContent = String(state.night);
+  if (els.ntag) els.ntag.textContent = nightDifficultyTag(state.night);
+  if (els.ntarget) els.ntarget.textContent = String(state.arrivalsTarget ?? 0);
   const cashShown = easeNum('cash', state.cash);
   els.rep.textContent = String(Math.round(easeNum('rep', state.reputation)));
   els.cash.textContent = fmtMoney(cashShown);
@@ -254,14 +302,17 @@ export function renderHud(env) {
   els.rev.textContent = fmtMoney(state.revenue);
   if (els.tokens) els.tokens.textContent = String(Math.round(easeNum('tokens', state.tokens ?? 0)));
 
-  /* 经营环境：拆成两行（P2-9）。
-   * 原来顾客/满意/洁净/垃圾/故障/倒计时全挤成一行，字小又长，右上角还要被统计栏裁。
-   * 第一行放"经营读数"，第二行单独放**事件倒计时**并用高饱和色高亮，
-   * 让"还有多久恢复"一眼可见，不必在长串里找。 */
+  /* 经营环境：拆成两行（P2-9），P1-13 再收一档 —— 只留"主数字 + 事件槽"。
+   * 满意度/洁净/垃圾**低阈值才显数字**：一切正常时这三行是纯噪音，
+   * 玩家扫一眼 HUD 应该只看到"有没有出事"，而不是五个都要读的百分比。
+   * 出事才冒出来 = 数字自带注意力，这是它唯一该出现的时候。 */
   if (els.envline) {
     if (env) {
       const sat = Math.round((env.satisfaction ?? 1) * 100);
       const clean = Math.round((env.cleanliness ?? 1) * 100);
+      const litter = env.litterCount ?? 0;
+
+      /* 事件槽：只放"正在发生且需要玩家知道"的倒计时；常驻满格信息一律不进。 */
       let events = '';
       const st = env.incident;
       if (st?.powerOut) events += `<span class="ev ev-bad">⚡ 停电 ${Math.ceil(st.powerLeft)}s</span>`;
@@ -272,31 +323,33 @@ export function renderHud(env) {
       /* 块6：垃圾堆积警告（≥warnThreshold 件，橙红，复用促销倒计时样式） */
       if (env.garbageCount >= GARBAGE.warnThreshold) events += `<span class="ev ev-hot">🗑 垃圾堆积 ${env.garbageCount}/${GARBAGE.cap}</span>`;
 
-      els.envline.style.display = '';
-      els.envline.innerHTML =
+      /* 异常读数：平时不显示，跌破/越过阈值才冒出来（P1-13）。 */
+      let alerts = '';
+      if (sat < 60) alerts += `<span class="label">满意</span> <span class="value warn">${sat}%</span>`;
+      if (clean < 60) alerts += `<span class="label">洁净</span> <span class="value warn">${clean}%</span>`;
+      if (litter > 0) alerts += `<span class="label">垃圾</span> <span class="value warn">${litter}</span>`;
+      if (env.brokenCount > 0) alerts += `<span class="value warn">故障 ${env.brokenCount}</span>`;
+
+      const envHtml =
         `<div class="env-row">`
         + `<span class="label">顾客</span> <span class="value">${env.npcCount ?? 0}</span>`
-        + `<span class="label">满意</span> <span class="value">${sat}%</span>`
-        + `<span class="label">洁净</span> <span class="value">${clean}%</span>`
-        + `<span class="label">垃圾</span> <span class="value">${env.litterCount ?? 0}</span>`
-        + (env.brokenCount > 0 ? `<span class="value warn">故障 ${env.brokenCount}</span>` : '')
+        + alerts
         + `</div>`
         + (events ? `<div class="env-events">${events}</div>` : '');
+      els.envline.style.display = '';
+      setHtmlIfChanged(els.envline, envHtml);
     } else {
       els.envline.style.display = 'none';
+      els.envline._fp = '';   // 隐藏时清空指纹，重新显示时必会重绘
     }
   }
 
-  /* 常客在场提示（模块 4 子功能③）：列出今夜在店的熟客，带"熟"标 */
+  /* 常客在场提示（模块 4 子功能③）：P1-13 起**并入任务追踪块头部**，
+   * 不再单独占一条屏幕底部横条 —— 两块信息都是"这一夜要关注什么"，
+   * 分开摆等于让玩家在两个角落之间来回扫。下面的 quest 块负责渲染它。 */
   if (els.regulars) {
-    const regs = (state.customers || []).filter((c) => c.regularTag);
-    if (regs.length) {
-      els.regulars.style.display = '';
-      els.regulars.innerHTML = `<span class="reg-label">常客在场</span>`
-        + regs.map((c) => `<span class="reg-chip">${c.regularName}<i class="reg-tag">熟</i></span>`).join('');
-    } else {
-      els.regulars.style.display = 'none';
-    }
+    els.regulars.style.display = 'none';
+    els.regulars._fp = '';
   }
 
   /* ---------- 左下角任务追踪（常驻） ----------
@@ -306,23 +359,33 @@ export function renderHud(env) {
   if (els.quest) {
     if (state.phase !== 'running') {
       els.quest.style.display = 'none';
+      els.quest._fp = '';
     } else {
       const q = env?.quest ?? null;
       const flashing = performance.now() < questDoneUntil;
       els.quest.style.display = '';
       els.quest.className = `questpanel${flashing ? ' done' : ''}`;
-      if (!q) {
-        els.quest.innerHTML = '<div class="q-idle">空闲 · 去 <b>Tab</b> 商店看看</div>';
-      } else {
-        els.quest.innerHTML =
-          `<div class="q-head">
+      /* P1-13：常客条并入追踪块头部 —— 熟客在场是"这一夜的即时情报"，
+       * 和限时任务同属"现在该盯什么"，放一起比单独占一条底部横条好扫。 */
+      const regs = (state.customers || []).filter((c) => c.regularTag);
+      const regHead = regs.length
+        ? `<div class="q-regs"><span class="reg-label">常客在场</span>`
+          + regs.map((c) => `<span class="reg-chip">${c.regularName}<i class="reg-tag">熟</i></span>`).join('')
+          + `</div>`
+        : '';
+      /* P1-12：首夜没有任务时，任务追踪块改显示"首夜目标"三连。
+       * 复用同一块 DOM 而不是再加一个浮层 —— 玩家的视线只需要盯左下角一处，
+       * 且不会和引导字幕 / 主题横幅抢位置。 */
+      const questHtml = regHead + (q
+        ? `<div class="q-head">
              <span class="q-tag">限时任务</span>
              <span class="q-left${q.left <= 60 ? ' urgent' : ''}">⏱ ${q.left}s</span>
            </div>
            <div class="q-body">${q.label} <b>${q.progress}/${q.goal}</b> ${q.unit}</div>
            <div class="q-bar"><i style="width:${Math.round(q.ratio * 100)}%"></i></div>
-           <div class="q-reward">${flashing ? '<span class="q-check">✅ 已完成</span> · ' : ''}奖励 ${q.reward.cash > 0 ? `${fmtYuan(q.reward.cash)} · ` : ''}🎮 ${q.reward.tokens}</div>`;
-      }
+           <div class="q-reward">${flashing ? '<span class="q-check">✅ 已完成</span> · ' : ''}奖励 ${q.reward.cash > 0 ? `${fmtYuan(q.reward.cash)} · ` : ''}🎮 ${q.reward.tokens}</div>`
+        : (state.night === 1 ? firstNightGoalHtml() : '<div class="q-idle">空闲 · 去 <b>Tab</b> 商店看看</div>'));
+      setHtmlIfChanged(els.quest, questHtml);
     }
   }
 
@@ -1631,7 +1694,7 @@ export function showIncident(info, duration = 4200) {
  * 它们已经真实地改过现金，这里只是把它们从"营业收入"里拆出来单独展示，
  * 绝不二次加减（见 ledger.mjs 文件头）。
  */
-export function openSettle(report, onNext, upgradesList, buyUpgradeFn) {
+export function openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNight, onOpenShop) {
   const line = (label, v, cls = '') =>
     `<div class="line"><span>${label}</span><span class="${cls}">${v}</span></div>`;
 
@@ -1687,23 +1750,33 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn) {
       <div class="sec-head">${wom.emoji} 口碑：${wom.label}</div>
       <div class="sec-sub">${wom.desc}</div>
     </div>` : '';
-  /* 忠诚度榜单：只列出有忠诚度的（level ≥ 1），最多 5 人 —— 全列出来是噪音。 */
+  /* 忠诚度榜单：只列出有忠诚度的（level ≥ 1），最多 5 人 —— 全列出来是噪音。
+   * P1-8：标题从"常客忠诚度"改成"本周常客"，并把**来了几次**摆到名字后面 ——
+   * "忠诚度 3 级"是个抽象数字，玩家真正有感觉的是"老周这周来了 6 次"。 */
   const loy = Array.isArray(report.loyalty) ? report.loyalty.filter((x) => x && x.level >= 1) : [];
   const loyalBlock = loy.length ? `
     <div class="set-sec">
-      <div class="sec-head">\u{1F49B} 常客忠诚度</div>
+      <div class="sec-head">\u{1F49B} 本周常客</div>
       ${loy.slice(0, 5).map((x) => {
-        const sku = SKU_BY_ID[x.prefer];
         const disc = x.discount >= 1 ? '无折扣' : `${Math.round(x.discount * 100)}折`;
+        const reason = x.persona?.reason ? ` <span class="lb-sub">（${x.persona.reason}）</span>` : '';
         return `<div class="line">
-          <span>${x.emoji} ${x.name} \u00b7 偏好 ${sku ? sku.emoji + sku.name : '\u2014'}</span>
+          <span>${x.emoji} ${x.name} \u00b7 来了 ${x.nights ?? 0} 次${reason}</span>
           <span>${x.label} ${'\u2764\ufe0f'.repeat(x.level)}${disc === '无折扣' ? '' : ` \u00b7 ${disc}`}</span>
         </div>`;
       }).join('')}
       ${loy.length > 5 ? `<div class="sec-sub">\u2026另有 ${loy.length - 5} 位常客</div>` : ''}
     </div>` : '';
 
-  const ups = `
+  /* P1-10：全部升级买完后，把升级列表换成一句"已满配"。
+   * 留一排永远 disabled 的按钮会让玩家以为"还有东西没解锁，只是我钱不够"。 */
+  const allOwned = upgradesList.length > 0 && upgradesList.every((u) => !!state.upgrades[u.id]);
+  const ups = allOwned ? `
+    <div class="upgrades">
+      <div class="upgrade" style="justify-content:center;opacity:.7">
+        <div class="u-eff">本店已满配 · 所有升级均已拥有</div>
+      </div>
+    </div>` : `
     <div class="upgrades">
       ${upgradesList.map((u) => {
         const owned = !!state.upgrades[u.id];
@@ -1721,7 +1794,9 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn) {
     <div class="modal-mask">
       <div class="modal">
         <h2>第 ${report.night} 夜 · 结算</h2>
-        <div class="sub">营业时间 22:00 → 06:00 结束</div>
+        <div class="sub">${report.closeEarly
+          ? `实际营业 22:00 → ${fmtClock(report.closedAtHour ?? GAME_HOURS)}（提前打烊）`
+          : '营业时间 22:00 → 06:00 结束'}</div>
         ${themeBlock}
         <div class="report">
           ${line('营业收入', fmtMoney(report.revenue), 'pos')}
@@ -1730,10 +1805,20 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn) {
           ${line('过期损耗', `-${fmtMoney(report.loss)}`, 'neg')}
           ${report.expiring?.loss ? line('　临期货报废', `-${fmtMoney(report.expiring.loss)}`, 'neg') : ''}
           ${line('租金', `-${fmtMoney(report.rent)}`, 'neg')}
+          ${line('水电', `-${fmtMoney(report.utilities ?? 0)}`, 'neg')}
           ${report.coffee ? line('咖啡机增益', fmtMoney(report.coffee), 'pos') : ''}
           ${report.stall ? line('夜市摊收入', `+${fmtMoney(report.stall)}`, 'pos') : ''}
           ${line('本夜净利', fmtMoney(report.netProfit), report.netProfit >= 0 ? 'pos' : 'neg')}
           ${line('服务 / 失销', `${report.served} 人 / ${report.lostSales} 人`)}
+          ${(() => {
+            /* P1-8：失销拆成三行。只在真有失销时展开 —— 满分夜没必要占三行，
+             * 空表格只会让人以为"还有我没发现的问题"。 */
+            const b = report.lostByReason ?? { outOfStock: 0, queueFull: 0, impatient: 0 };
+            if (!report.lostSales) return '';
+            return line('　缺货', `${b.outOfStock} 人`)
+              + line('　队满', `${b.queueFull} 人`)
+              + line('　等太久', `${b.impatient} 人`);
+          })()}
           ${report.cleared ? `<div class="line"><span>打烊清场</span><span style="color:#E6C75A;font-weight:600">${report.cleared} 位顾客未结账</span></div>` : ''}
           ${line('成交率', `${Math.round(report.rate * 100)}%`)}
           ${line('顾客满意度', String(report.reputation))}
@@ -1751,6 +1836,8 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn) {
         ${ups}
         <div class="actions">
           <button class="btn primary" data-act="next">开始第 ${report.night + 1} 夜</button>
+          ${onRetryNight ? `<button class="btn" data-act="retry-night">🔄 重打第 ${report.night} 夜</button>` : ''}
+          ${onOpenShop ? '<button class="btn" data-act="open-shop">🏪 去进货/投资(Tab)</button>' : ''}
         </div>
       </div>
     </div>`;
@@ -1761,7 +1848,7 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn) {
     if (!btn) return;
     if (btn.dataset.up) {
       const res = buyUpgradeFn?.(btn.dataset.up);
-      if (res?.ok) { toast(`已购买：${res.up.name}`, 'ok'); openSettle(report, onNext, upgradesList, buyUpgradeFn); }
+      if (res?.ok) { toast(`已购买：${res.up.name}`, 'ok'); openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNight, onOpenShop); }
       else toast(res?.reason ?? '购买失败', 'bad');
       return;
     }
@@ -1769,30 +1856,135 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn) {
       closeModal();
       onNext?.();
     }
+    if (btn.dataset.act === 'open-shop') {
+      closeModal();
+      onOpenShop?.();
+    }
+    if (btn.dataset.act === 'retry-night') {
+      closeModal();
+      onRetryNight?.();
+    }
   });
 }
 
-export function openWeekEnd(passed, onRestart) {
+/**
+ * 周终面板。
+ *
+ * @param passed      这一周是否撑住
+ * @param onRestart   进入下一周
+ * @param onRetryNight 重打本夜（无快照时传 null，不显示按钮）
+ * @param extra       P1-3 / P1-9 追加数据：
+ *   { week, weekNet, nextWeek, nextMod, nights:[{night,netProfit,revenue,star}], bestNet, passed }
+ *
+ * ── 为什么"本周七夜"要用条形图而不是再列 7 行数字 ─────────────
+ * 七个数字堆在一起，玩家只能逐个读；换成同基线、同宽度的条之后，
+ * "哪一夜塌了"是一眼的事（通常是第 5~7 夜房租与客流双高的那几夜）。
+ * 赚为正、亏为负，颜色固定走 --money / --warning，与结算面板同一套语义色。
+ */
+export function openWeekEnd(passed, onRestart, onRetryNight, extra = null) {
+  /* ⚠ 这里原来直接写 `report.loss` —— 但 `report` 在本模块**根本没声明**
+   *   （它是 openSettle 的形参，不是模块级变量）。ES 模块是严格模式，
+   *   读未声明标识符会抛 ReferenceError，于是周终面板一弹就炸，
+   *   玩家看到的只是"打烊后什么都没发生"。
+   *   现在显式取：main 传进来的本夜报告 → 退到 economy 记的 state.lastReport → 空对象。
+   *   永远不会再出现"面板依赖一个碰巧存在的全局"。 */
+  const rep = extra?.report ?? state.lastReport ?? {};
+  /* P0-7 净利归因：失败时最该回答的是"钱去哪了"，而不是又一个"再来一次"。
+   * 把当晚最大的两笔漏出（过期损耗 / 房租+水电）算出来写明，
+   * 玩家才知道下一夜该少进货还是先别扩设施。 */
+  const loss = Number(rep.loss) || 0;
+  const expiringLoss = Number(rep.expiring?.loss) || 0;
+  const fixedCost = (Number(rep.rent) || 0) + (Number(rep.utilities) || 0);
+  const waste = loss + expiringLoss;
+  const attribution = passed ? '' : `
+    <div class="set-sec">
+      <div class="sec-head">🔍 这一夜的钱去哪了</div>
+      <div class="sec-sub">${
+        waste >= fixedCost
+          ? `主要是<b>货损</b>：过期/临期报废 ${fmtMoney(waste)}（房租水电 ${fmtMoney(fixedCost)}）—— 下次少进易过期 SKU。`
+          : `主要是<b>固定支出</b>：房租水电 ${fmtMoney(fixedCost)}（货损 ${fmtMoney(waste)}）—— 下次先别急着扩设施。`
+      }</div>
+    </div>`;
+
+  /* ---------- P1-9：周号与下一周难度 ---------- */
+  const weekNo = Number(extra?.week) || Number(state.week) || 1;
+  const nextWeek = Number(extra?.nextWeek) || weekNo + 1;
+  const endless = extra?.nextMod?.endless === true;
+  const nextModLabel = extra?.nextMod?.label ?? '';
+  const nextBtn = passed
+    ? (endless
+      ? `进入无尽周 · 只比纪录`
+      /* 难度写进按钮但压短：375px 竖屏下"进入第 2 周（难度 ×1.25）"会折成两行，
+       * 把"难度"二字去掉后一行放得下（'难度 ×1.25' → '×1.25'）。 */
+      : `进入第 ${nextWeek} 周${nextModLabel ? ` · ${nextModLabel.replace(/^难度\s*/, '')}` : ''}`)
+    : '重开本周';
+
+  /* ---------- P1-3：本周七夜条形图 ---------- */
+  const nights = Array.isArray(extra?.nights) ? extra.nights : [];
+  const maxAbs = Math.max(1, ...nights.map((e) => Math.abs(Number(e.netProfit) || 0)));
+  const bars = nights.length ? `
+    <div class="set-sec">
+      <div class="sec-head">📊 本周七夜</div>
+      <div class="sec-sub">柱高 = 该夜净利绝对值 · 绿为赚、红为亏</div>
+      <div class="we-bars">
+        ${nights.map((e) => {
+          const p = Number(e.netProfit) || 0;
+          const h = Math.max(4, Math.round((Math.abs(p) / maxAbs) * 100));
+          const col = p >= 0 ? 'var(--money)' : 'var(--warning)';
+          // 周内夜次：第 8 夜属于第 2 周的第 1 夜，横轴上永远标 1~7
+          const idx = ((Math.max(1, e.night | 0) - 1) % NIGHTS_PER_WEEK) + 1;
+          return `<div class="we-bar" title="第 ${e.night} 夜 · 净利 ${fmtMoney(p)} · ${e.star ?? 1}★">
+            <span class="we-bar-v" style="color:${col}">${p >= 0 ? '+' : '−'}${Math.abs(Math.round(p))}</span>
+            <span class="we-bar-fill" style="height:${h}%;background:${col}"></span>
+            <span class="we-bar-n">${idx}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
+  /* 历史最佳：纪录册是**设备级**的（重开账号也不清），所以这里明确写"本机"，
+   * 避免玩家误以为这是"本账号"的纪录。
+   * ⚠ 措辞必须写清"单夜" —— bestNet 是**单夜**最高净利。
+   *   初版还在这行尾巴加了"本周 ¥222"，但上面已经有独立的「本周总净利」行了：
+   *   375px 竖屏下两段数字挤在一行会糊成"（本机）¥210"，且口径重复。直接去掉尾巴。 */
+  const bestNet = Number(extra?.bestNet);
+  const bestLine = Number.isFinite(bestNet) && bestNet > 0
+    ? `<div class="line"><span>历史最佳单夜净利（本机）</span><span class="pos">${fmtMoney(bestNet)}</span></div>`
+    : '';
+
   els.modal.innerHTML = `
     <div class="modal-mask">
       <div class="modal">
-        <h2>${passed ? '🎉 撑过一周！' : '本周结束'}</h2>
+        <h2>${passed ? '🎉 撑过一周！' : '本周结束'}<span class="lb-sub"> · 第 ${weekNo} 周</span></h2>
         <div class="sub">${passed
-          ? '你成功经营了 7 个夜班，没有破产。'
-          : '现金见底，这一周没能撑住（软失败，可重开）。'}</div>
+          ? `你成功经营了第 ${weekNo} 周的 7 个夜班，没有破产。`
+          : `现金见底，第 ${weekNo} 周没能撑住（软失败，可重开）。`}</div>
         <div class="report">
           <div class="line"><span>最终现金</span><span class="${state.cash >= 0 ? 'pos' : 'neg'}">${fmtMoney(state.cash)}</span></div>
+          <div class="line"><span>本周总净利</span><span class="${(Number(extra?.weekNet) || 0) >= 0 ? 'pos' : 'neg'}">${fmtYuan(Number(extra?.weekNet) || 0)}</span></div>
           <div class="line"><span>顾客满意度</span><span>${Math.round(state.reputation)}</span></div>
+          ${bestLine}
         </div>
+        ${bars}
+        ${attribution}
         <div class="actions">
-          <button class="btn primary" data-act="restart">${passed ? '再开一周' : '重开本周'}</button>
+          <button class="btn primary" data-act="restart">${nextBtn}</button>
+          ${onRetryNight ? `<button class="btn" data-act="retry-night">🔄 重打第 ${state.night} 夜</button>` : ''}
         </div>
       </div>
     </div>`;
   modalOpen = true;
-  els.modal.querySelector('[data-act="restart"]').addEventListener('click', () => {
-    closeModal();
-    onRestart?.();
+  els.modal.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    if (btn.dataset.act === 'restart') {
+      closeModal();
+      onRestart?.();
+    }
+    if (btn.dataset.act === 'retry-night') {
+      closeModal();
+      onRetryNight?.();
+    }
   });
 }
 
@@ -1936,7 +2128,8 @@ const PASSWORD_HINT = '4–20 位，不能包含空格';
  * @param {Array<{kind:string,label:string,unit:string,entries:Array}>} boards
  */
 export function openLeaderboard(boards, onClose) {
-  const sections = boards.map((b) => {
+  /** 单个榜的渲染（两栏共用，避免两份一模一样的模板各自漂移） */
+  const renderBoard = (b) => {
     const rows = b.entries.length
       ? b.entries.map((e, i) => `
         <div class="lb-row">
@@ -1951,7 +2144,25 @@ export function openLeaderboard(boards, onClose) {
         <div class="lb-head">${b.emoji} ${b.label} <span class="lb-sub">· ${b.metric}</span></div>
         ${rows}
       </div>`;
-  }).join('');
+  };
+
+  /* P1-4：先按 group 分两栏再各自渲染。
+   * 分组标题只在该组**有内容**时输出 —— 空组留一个孤零零的"🏪 经营"
+   * 会让玩家以为界面坏了（尤其新账号，经营榜一定是空的）。 */
+  const GROUP_TITLES = { store: '🏪 经营', arcade: '🎮 街机' };
+  const order = ['store', 'arcade'];
+  const grouped = new Map();
+  for (const b of boards) {
+    const g = b.group === 'store' ? 'store' : 'arcade';
+    if (!grouped.has(g)) grouped.set(g, []);
+    grouped.get(g).push(b);
+  }
+  const sections = order
+    .filter((g) => (grouped.get(g)?.length ?? 0) > 0)
+    .map((g) => `
+      <div class="lb-group-head">${GROUP_TITLES[g]}</div>
+      ${grouped.get(g).map(renderBoard).join('')}`)
+    .join('');
 
   els.modal.innerHTML = `
     <div class="modal-mask">
@@ -2221,7 +2432,21 @@ export function flashQuestDone() {
 export function openAchievements(api, onClose) {
   function render() {
     const c = api.count();
-    const rows = api.list().map((a) => {
+    const all = api.list();
+
+    /* P1-5：20 条平铺找不到重点，按「经营 / 街机」分两组。
+     * 组内保持 ACHIEVEMENTS 的定义顺序（经营在前），不按达成与否重排 ——
+     * 达成后条目位置跳动会让玩家失去"我在哪一条"的定位感。 */
+    const GROUP_TITLES = { store: '🏪 经营', arcade: '🎮 街机' };
+    const order = ['store', 'arcade'];
+    const byGroup = new Map();
+    for (const a of all) {
+      const g = a.group === 'arcade' ? 'arcade' : 'store';
+      if (!byGroup.has(g)) byGroup.set(g, []);
+      byGroup.get(g).push(a);
+    }
+
+    const rowOf = (a) => {
       const prog = a.progress
         ? `<div class="a-prog">进度 ${a.progress.cur}/${a.progress.max}</div>`
         : '';
@@ -2237,7 +2462,18 @@ export function openAchievements(api, onClose) {
         </div>
         <div>${badge}</div>
       </div>`;
-    }).join('');
+    };
+
+    const rows = order
+      .filter((g) => (byGroup.get(g)?.length ?? 0) > 0)
+      .map((g) => {
+        const list = byGroup.get(g);
+        const done = list.filter((a) => a.done).length;
+        return `<div class="ach-group-head">${GROUP_TITLES[g]}
+          <span class="a-count">${done}/${list.length}</span></div>
+          ${list.map(rowOf).join('')}`;
+      }).join('');
+
     els.modal.innerHTML = `
       <div class="modal-mask">
         <div class="modal">
@@ -2464,8 +2700,13 @@ function setBanner(key, html) {
 /** 今夜主题横幅（每晚首次开店宣布） */
 export function showThemeBanner(theme) {
   if (!theme) { setBanner('theme', ''); return; }
+  /* 内容批 P0-2：横幅第二行带一句当夜的叙事引导（七个夜班有起承转合）。
+   * ⚠ 用**周内夜次**取，不能用 state.night —— 第 2 周的第 1 夜是 absolute night 8，
+   * 而 intros 的键只有 1..7；直接用绝对夜号在第 2 周之后就再也读不到引导语了。 */
+  const intro = NIGHT_PLAN.intros?.[nightInWeek(state.night)] ?? '';
   setBanner('theme', `<div class="theme-banner">${theme.emoji} 今夜主题 · <b>${theme.name}</b>
-    <span class="tb-desc">${theme.desc}</span></div>`);
+    <span class="tb-desc">${theme.desc}</span>
+    ${intro ? `<span class="tb-intro">${intro}</span>` : ''}</div>`);
 }
 
 /** 限时促销横幅（醒目） */

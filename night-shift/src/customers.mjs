@@ -13,7 +13,7 @@ import {
   SEGMENTS, QUEUE_MAX, PATIENCE_SEC, GAME_HOURS,
   ELASTICITY_K, DEMAND_MUL_MIN, DEMAND_MUL_MAX, POS, STORE,
   EVENTS, NIGHT_WALL_SECONDS, REGULARS,
-  IDENTITIES, IDENTITY_IDS, SKU_BY_ID,
+  IDENTITIES, IDENTITY_IDS, SKU_BY_ID, FIRST_ARRIVAL_FLOOR, nightCurve, nightInWeek,
 } from './config.mjs';
 import { state, notify } from './state.mjs';
 import { sellable, availableSkus, removeFromQueue } from './economy.mjs';
@@ -64,9 +64,20 @@ export function pickSku(seg) {
 
 /* ---------- 块7：顾客身份 + 组合购买 ---------- */
 
-/** 按当前夜段的 idWeights 抽一个身份（权重已归一化；缺省权重 1 兜底） */
-export function pickIdentity(seg) {
-  const w = IDENTITY_IDS.map((id) => Math.max(0.0001, seg.idWeights?.[id] ?? 1));
+/**
+ * 按当前夜段的 idWeights 抽一个身份。
+ * @param boost 主题级身份权重倍率（P1-7，如学生夜 { student: 2.2 }）；null/undefined = 不改。
+ *
+ * ⚠ 缺失身份的兜底值是 **1**，不是 0 —— 这不是"没权重就不出现"，而是
+ *   "配置漏写时仍然能出现"。代价是：新增身份若忘了往 SEGMENTS.idWeights 补权重，
+ *   它会以 1 的权重压过既有身份（0.1~0.3），瞬间占到近一半客流。
+ *   所以 P1-7 加 nurse/courier 时同步把四段 idWeights 都补齐了。
+ */
+export function pickIdentity(seg, boost = null) {
+  const w = IDENTITY_IDS.map((id) => Math.max(
+    0.0001,
+    (seg.idWeights?.[id] ?? 1) * (boost?.[id] ?? 1),
+  ));
   const total = w.reduce((a, b) => a + b, 0);
   let r = Math.random() * total;
   for (let i = 0; i < IDENTITY_IDS.length; i++) {
@@ -187,6 +198,9 @@ export function createCustomers(scene, opts = {}) {
   /** 常客识别钩子（模块 4 注入；缺省 null = 不识别熟客）。
    *  返回 { regular, name, emoji, tag }；调用即登记"该脸今夜到店"。 */
   const regularJudge = typeof opts.regularJudge === 'function' ? opts.regularJudge : null;
+  /** P1-7：主题级身份权重（main 注入 () => themes.effects().idWeight）。
+   *  做成回调而不是快照 —— 主题每夜翻页，顾客生成时必须读**当前**效果。 */
+  const identityWeightOf = typeof opts.identityWeightOf === 'function' ? opts.identityWeightOf : null;
   /** 稳定脸谱池大小（见 config.REGULARS.rosterSize 注释）：保证同一张脸跨夜反复出现 */
   const rosterSize = Math.max(4, opts.regularRosterSize ?? REGULARS.rosterSize);
 
@@ -201,7 +215,14 @@ export function createCustomers(scene, opts = {}) {
         times.push(t);
       }
     }
-    return times.sort((a, b) => a - b);
+    times.sort((a, b) => a - b);
+    /* P0-1：S1 段 from:0 会把首位顾客撒在开局头几秒。给首位一个下限
+     * （0.75 游戏小时 ≈ 45 秒真实时间），让玩家看完引导再迎来第一位客人。
+     * 只钳首位 —— 后面的时序分布保持原样，避免整体节奏漂移。 */
+    if (times.length) {
+      times[0] = Math.max(times[0], FIRST_ARRIVAL_FLOOR / GAME_HOURS);
+    }
+    return times;
   }
 
   let schedule = [];
@@ -275,11 +296,13 @@ export function createCustomers(scene, opts = {}) {
       faceId: opts.faceId ?? null,
       regularName: opts.regularName ?? null,
       regularTag: opts.regularTag ?? null,
+      /* P1-8：常客人设（{ line, reason }），进店 toast 用 line、周终面板用 reason */
+      regularPersona: opts.regularPersona ?? null,
       phase: 'toShelf', // toShelf → toQueue → leaving
       route: routeToShelf(targetIdx),
       routeIdx: 0,
       target: new THREE.Vector3(),
-      patience: PATIENCE_SEC * (id?.patienceMul ?? 1), // 块7：身份耐心系数
+      patience: PATIENCE_SEC * (id?.patienceMul ?? 1) * nightCurve(state.night).patienceMul, // 块7 身份系数 × P0-5 夜次曲线
       taken: false,
       /** 情绪反馈（需求）：'happy' 成交 / 'angry' 失销；moodT 为剩余显示秒数 */
       mood: null,
@@ -294,7 +317,9 @@ export function createCustomers(scene, opts = {}) {
   function spawn() {
     const seg = currentSegment();
     // 块7：先按夜段身份分布抽一个身份，再交给 regularJudge（常客会固化该身份）
-    let identityId = pickIdentity(seg);
+    // P1-7：主题可以整体抬升某类身份的出现率（学生夜/考试周），boost 只在这里参与抽样。
+    const boost = identityWeightOf?.() ?? null;
+    let identityId = pickIdentity(seg, boost);
     let ropts = {};
     if (regularJudge) {
       const faceId = `F${Math.floor(Math.random() * rosterSize)}`;
@@ -302,8 +327,8 @@ export function createCustomers(scene, opts = {}) {
       if (r) {
         // 常客身份固化：以 regulars 返回的 identityId 为准（跨夜不变，与忠诚度共存）
         identityId = r.identityId ?? identityId;
-        if (r.regular) ropts = { isRegular: true, faceId, regularName: r.name, regularTag: r.tag };
-        else ropts = { faceId, regularName: r.name, regularTag: null };
+        if (r.regular) ropts = { isRegular: true, faceId, regularName: r.name, regularTag: r.tag, regularPersona: r.persona };
+        else ropts = { faceId, regularName: r.name, regularTag: null, regularPersona: r.persona };
       }
     }
     let items = buildCart(identityId, seg);
@@ -314,14 +339,27 @@ export function createCustomers(scene, opts = {}) {
     }
     const c = makeCustomer(items, identityId, ropts);
     const idName = IDENTITIES[c.identityId]?.name ?? '';
-    if (c.regularTag) toast(`⭐ ${c.regularName}（${c.regularTag}客·${idName}）来了 · 要 ${comboLabel(c.items)}`, 'ok');
+    /* P1-8：熟客进店时给他的**人设台词**一个位置。
+     * 原来只有"⭐ 阿强（熟客·夜猫子）来了 · 要 关东煮×2"—— 名字只是名字。
+     * 有了台词，"阿强"才是一个每周都会来的通宵客，而不是随机字符串。
+     * 台词缺失（旧存档 / 配置漏项）就退回原来的带货清单，不让 toast 空一半。 */
+    if (c.regularTag) {
+      const line = c.regularPersona?.line;
+      toast(
+        line
+          ? `⭐ ${c.regularName}（${c.regularTag}客·${idName}）· ${line}`
+          : `⭐ ${c.regularName}（${c.regularTag}客·${idName}）来了 · 要 ${comboLabel(c.items)}`,
+        'ok',
+      );
+    }
     return c;
   }
 
   /** 常客（§4.4）：带身份 + 组合篮，量大（主件 2–3）；成交 rep+1 + 10% 小费 */
   function spawnRegular() {
     const seg = currentSegment();
-    const identityId = pickIdentity(seg);
+    // P1-7：雨夜"老主顾必到"同样吃主题级身份权重（否则学生夜里的常客仍按基础分布抽）
+    const identityId = pickIdentity(seg, identityWeightOf?.() ?? null);
     let items = buildCart(identityId, seg);
     if (!items) {
       const sku = pickSku(seg);
@@ -383,7 +421,23 @@ export function createCustomers(scene, opts = {}) {
     c.route = routeToExit(c.mesh.position.z);
     c.routeIdx = 0;
     state.lostSales += 1;
-    state.reputation = Math.max(0, state.reputation - 1);
+    /* P1-8：按失销原因分桶。⚠ 桶名必须和本文件 update() 里传的字面量完全一致
+     * （'out-of-stock' / 'queue-full' / 'impatient'）—— 写成 camelCase 会静默掉进
+     * impatient 兜底桶，结算归因就永远显示"顾客等太久"，而真正的原因是缺货。
+     * 兜底到 impatient 是为了保证三桶之和恒等于 lostSales。 */
+    const buckets = (state.lostByReason ??= { outOfStock: 0, queueFull: 0, impatient: 0 });
+    if (reason === 'out-of-stock') buckets.outOfStock += 1;
+    else if (reason === 'queue-full') buckets.queueFull += 1;
+    else buckets.impatient += 1;
+
+    /* 队列满导致的失销**不扣口碑**：队排不下是容量问题，不是服务失误 ——
+     * 玩家已经为扩容付过钱了，再扣一次等于双重惩罚。
+     * P0-1 开局保护：前 60 秒内的失销只计数、不扣口碑。
+     * 口碑是"玩家该被评价的部分"，而开局头 45 秒顾客到店时，
+     * 玩家很可能还在读引导条 —— 这不是经营失误。 */
+    if (reason !== 'queue-full' && state.wallElapsed >= (state.graceUntil ?? 0)) {
+      state.reputation = Math.max(0, state.reputation - 1);
+    }
     // §1.2 失销 → 心理 −0.4（每笔）
     if (state.clerk) state.clerk.mental = Math.max(0, Math.min(100, state.clerk.mental - 0.4));
     notify();

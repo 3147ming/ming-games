@@ -21,6 +21,7 @@
  */
 
 import { viewNextTheme, lockNextTheme } from './boons.mjs';
+import { nightInWeek } from './config.mjs';
 
 /** 情报服务（Tab 商店购买）：花少量金币预知明晚主题 */
 export const INTEL_COST = 60;
@@ -45,6 +46,9 @@ export const DEFAULT_EFFECTS = {
   stayMul: 1,
   /** 顾客类型权重倍率：{ youth: 2.2 } */
   typeWeight: {},
+  /** P1-7：顾客**身份**权重倍率 { student: 2.2 }；null = 不改（与 typeWeight 是两套维度：
+   *  typeWeight 作用于街机 NPC 的类型，idWeight 作用于结账顾客的身份）。 */
+  idWeight: null,
   /** 强制偏好设施 kind（覆盖顾客类型的 prefer）；null = 不改 */
   preferKinds: null,
   /** 老主顾（常客）必到 */
@@ -69,6 +73,9 @@ export const THEMES = [
     effects: {
       typeWeight: { youth: 2.2, child: 0.7 },
       preferKinds: ['dance', 'racing'],
+      /* P1-7：学生夜不只街机里学生多，便利店客流里学生也翻倍、快递员略增
+       * （晚自习结束顺路买东西的是这两类人）。 */
+      idWeight: { student: 2.2, courier: 1.4 },
       spendMul: 1.25,
       litterMul: 1.5,
     },
@@ -86,7 +93,12 @@ export const THEMES = [
   {
     id: 'exam', name: '考试周夜', emoji: '📚', weight: 12,
     desc: '学生减半 · 老年客上升 · 偏爱简单机器',
-    effects: { typeWeight: { youth: 0.5, elder: 2.0 }, preferKinds: ['vending'] },
+    effects: {
+      typeWeight: { youth: 0.5, elder: 2.0 },
+      preferKinds: ['vending'],
+      /* P1-7：考试周 —— 学生明显变少，医院夜班护士成为深夜主力客群。 */
+      idWeight: { nurse: 1.8, student: 0.6 },
+    },
   },
   {
     id: 'weekend', name: '周末狂欢夜', emoji: '🎉', weight: 10,
@@ -135,15 +147,55 @@ export const THEME_BY_ID = Object.fromEntries(THEMES.map((t) => [t.id, t]));
 
 const clampNum = (v, d) => (Number.isFinite(v) ? v : d);
 
-/** 按 weight 抽一个主题（rng 可注入，便于测试确定性） */
-export function rollTheme(rng = Math.random) {
-  const total = THEMES.reduce((a, t) => a + (t.weight ?? 1), 0);
+/**
+ * 七个夜班的叙事锚点（内容批 P0-2）。
+ * 只规定"这几夜必须是什么"，其余夜次照旧随机 ——
+ * **不把 7 夜全写死**：写死会让"主题情报"（buyIntel / INTEL_COST=60）变成废纸，
+ * 玩家花 60 币买"明晚预告"就毫无意义了。
+ */
+export const NIGHT_PLAN = {
+  anchor: {
+    1: ['normal'],                                   // 教学夜：绝不摇到节日
+    4: ['promo', 'weekend'],                          // 中段高潮二选一
+    7: ['halloween', 'newyear', 'anniversary'],        // 周终必是节日夜
+  },
+  /** 第 6 夜之前不出现节日主题（节日留给周终当"BOSS 夜"） */
+  festivalFromNight: 6,
+  intros: {
+    1: '第一夜：把货架填满，记住收银台在哪',
+    2: '第二夜：开始有回头客了',
+    3: '第三夜：房租涨了，账要算清楚',
+    4: '第四夜：中段来一波大的',
+    5: '第五夜：老主顾都记得你',
+    6: '第六夜：客人多到排不下',
+    7: '周终：今晚之后，这一周就定了',
+  },
+};
+
+/** 按 weight 抽一个主题（rng 可注入，便于测试确定性）
+ *  @param pool 候选池；不传时行为与扩展前完全一致（抽全表） */
+export function rollTheme(rng = Math.random, pool = THEMES) {
+  const list = (pool && pool.length) ? pool : THEMES;
+  const total = list.reduce((a, t) => a + (t.weight ?? 1), 0);
   let x = rng() * total;
-  for (const t of THEMES) {
+  for (const t of list) {
     x -= (t.weight ?? 1);
     if (x <= 0) return t;
   }
-  return THEMES[THEMES.length - 1];
+  return list[list.length - 1];
+}
+
+/**
+ * 当夜的可抽池：锚点夜只抽锚点池，其余夜抽全表（但第 6 夜前剔除节日）。
+ * ⚠ 明晚（themeNextId）也要按**它自己那一夜**的池子摇，否则"第 7 夜必是节日"
+ * 会被提前一天摇出来的随机结果顶掉。
+ */
+export function poolForNight(night) {
+  const n = Number.isFinite(night) ? night : 1;
+  const anchors = NIGHT_PLAN.anchor[n];
+  if (anchors) return THEMES.filter((t) => anchors.includes(t.id));
+  const from = NIGHT_PLAN.festivalFromNight ?? 1;
+  return THEMES.filter((t) => !(t.festival && n < from));
 }
 
 /**
@@ -176,9 +228,14 @@ export function createThemes(opts = {}) {
    */
   function rollForNight() {
     const locked = state.intel?.lockedId ?? null;
-    const tonight = locked ?? (THEME_BY_ID[state.themeNextId] ? state.themeNextId : rollTheme(rng).id);
+    /* P1-9：锚点表 NIGHT_PLAN.anchor 的键是**周内夜次**（1..7）。
+     * night 是绝对夜号（第 8 夜 = 第 2 周第 1 夜），所以这里必须先折算，
+     * 否则第二周起"第 7 夜必是节日"的锚点会失效（poolForNight(14) 找不到 anchor[14]）。 */
+    const tonight = locked ?? (THEME_BY_ID[state.themeNextId] ? state.themeNextId : rollTheme(rng, poolForNight(nightInWeek(state.night))).id);
     state.themeId = tonight;
-    state.themeNextId = rollTheme(rng).id;
+    /* 明晚同样按"明晚那一夜"的池子摇 —— 保证第 7 夜（= 第 6 夜的明晚）落在节日池里。
+     * 第 7 夜的明晚 = 第 8 夜 = 下一周第 1 夜，折算回 1 后自然落"普通夜"锚点。 */
+    state.themeNextId = rollTheme(rng, poolForNight(nightInWeek(state.night + 1))).id;
     // 上一夜买的情报只对"上一夜所预知的那一夜"有效，翻页后失效
     state.intelNight = null;
     // 锁定与情报都是"一次性"：翻页即消耗（无论今晚是否真的用了锁定）

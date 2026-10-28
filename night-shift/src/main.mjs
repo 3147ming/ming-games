@@ -4,7 +4,9 @@
 import {
   GAME_HOURS, UPGRADES, CLERK, EVENTS, LEADERBOARD, MINIGAME, RANDOM_EVENTS,
   CONSUMABLE_BY_ID, WAREHOUSE, SKU_BY_ID, STAFF, FATIGUE, QTE, PHONE, SLOT_CAP,
-  GROWTH_EXPANSIONS,
+  GROWTH_EXPANSIONS, TUTORIAL_STOCK_GOAL, TUTORIAL_SERVE_GOAL,
+  TIP_WINDOW_SEC, TIP_CHANGE_AMOUNT, TIP_CHANGE_CAP_PER_NIGHT,
+  NIGHTS_PER_WEEK, weekOf, weekMod, nightInWeek,
 } from './config.mjs';
 import { state, NIGHT_SECONDS, notify, resetForNewNight, resetGame, clearPromoOnClose } from './state.mjs';
 import { createWorld } from './scene.mjs';
@@ -30,6 +32,8 @@ import {
 import { ITEM_ART, CHAR_ART, artUrl, itemArtFor, charArtFor } from './artmap.mjs';
 import { createAuthService, createNetBridge } from './account.mjs';
 import { submitLocal, readBoard, scoreOf, clearForAccount } from './leaderboard.mjs';
+/* 跨周纪录（P1-3）：本机历史最好成绩，与账号存档分键存放（见 records.mjs 文件头） */
+import { createRecords } from './records.mjs';
 /* 账号重开（重置）：本账号进度清回初始状态，见 reset.mjs 的四个"为什么" */
 import { createResetService } from './reset.mjs';
 /* 需求I 玩法叠加：七个新模块的纯逻辑层（规则都在各自模块里，main 只做装配与回调接线） */
@@ -46,7 +50,7 @@ import {
   settleNight, purchase, buyUpgrade, nextNight, canAfford, payCash, earnCash,
   buyWarehouseGood, upgradeWarehouse, warehouseCap, warehouseUsed, warehouseFree,
   restockShelfIfPossible, backroomTotal, place, sellable,
-  setCheckoutHook, setCheckoutDoneHook, setSettleExtras,
+  setCheckoutHook, setCheckoutDoneHook, setSettleExtras, setDeviceCountSource,
 } from './economy.mjs';
 /* 命名空间导出（探针走真实结账入口做端到端验收，触发 checkoutDoneHook 的组合结账飘字） */
 import * as economy from './economy.mjs';
@@ -67,7 +71,7 @@ import { createWorldState } from './worldstate.mjs';
 import { createNpcs } from './npcs.mjs';
 import { createDayNight } from './daynight.mjs';
 import { createBloom, createPassThrough } from './postfx.mjs';
-import { createSaveManager, AUTOSAVE_SEC, saveKeyFor } from './save.mjs';
+import { createSaveManager, AUTOSAVE_SEC, saveKeyFor, buildSave, applySave, validateSave } from './save.mjs';
 import { createCharacter } from './character.mjs';
 import { ZONES, STORE, POND, POS, TASKBOARD, DELIVERY, GARBAGE, IDENTITIES } from './config.mjs';
 import { NPC, DAYNIGHT } from './art.mjs';
@@ -153,6 +157,10 @@ const regulars = createRegulars({
 const customers = createCustomers(world.scene, {
   /* 块7：把本夜抽到的身份透传给 regulars.judge —— 常客首次入场即固化该身份（与忠诚度共存） */
   regularJudge: (faceId, identityId) => regulars.judge(faceId, identityId),
+  /* P1-7：主题级身份权重（学生夜学生翻倍 / 考试周护士顶上）。
+   * 传**回调**而不是快照：主题每夜翻页，顾客生成时必须读当前生效的效果；
+   * `themes` 在下方才创建，但回调只在开局 spawn 之后被调用，不存在 TDZ 问题。 */
+  identityWeightOf: () => themes.effects()?.idWeight ?? null,
 });
 
 /* ==================================================================
@@ -247,6 +255,10 @@ const achievements = createAchievements({
   },
 });
 
+/* 跨周纪录（P1-3）：本机历史最好成绩 + 最近七夜流水。
+ * 刻意**不**注入 storageKey —— 它是设备级纪念册，账号重开时保留（见 reset.mjs 的 keeps）。 */
+const records = createRecords();
+
 const choices = createChoices({
   state,
   api: {
@@ -312,6 +324,12 @@ const ambient = createAmbient({
 /* 疲劳系统：玩家通宵困倦。表现事件（跨档/打哈欠/打瞌睡）在这里翻译成字幕与音效，
  * 疲劳本身只由 fatigue.mjs 驱动 —— 玩家灵敏度/准星/暗角是**表现层**，走 effects() 派生值。 */
 const fatigue = createFatigue({ state });
+
+/** P1-8：点评人队列 —— 谁刚结账、买完的人叫什么。
+ *  点评是**差分**生成的（phone 只看 served 涨了几），一次可能补出好几条，
+ *  所以要用队列按顺序喂，而不是只记"最后一个顾客名"（那样一批点评全叫阿强）。
+ *  只在有名字（常客）时入队，普通顾客留空 = 匿名点评。 */
+let reviewWhoQueue = [];
 
 /* 前台手机：点评 / 跑腿 / 消息箱。差评、跑腿到账、补救任务触发/完成在此翻译成字幕；
  * 'review'（好/中评）与 'errand-accept' 不弹字幕 —— 太频繁会刷屏，只在手机里看。 */
@@ -447,6 +465,16 @@ setCheckoutDoneHook((info) => {
    * 放在 faceId 判断**之前** —— 音效跟常客没关系，每一笔成交都该有；
    * 之前那个 `if (!info.faceId) return` 会把绝大多数随机顾客的成交音一起吞掉。 */
   sfx.coin();
+  /* P1-8：把成交顾客的名字交给点评队列（只有常客有名字，普通客保持匿名）。
+   * 这里只入队，不立刻生成点评 —— 结账是即时的、点评是差分批量生成的，
+   * 两者节奏不同，解耦才不会出现"点评内容对不上人"。 */
+  {
+    const whoName = info.customer?.regularName;
+    if (whoName) {
+      reviewWhoQueue.push(whoName);
+      if (reviewWhoQueue.length > 40) reviewWhoQueue.shift();
+    }
+  }
   /* 收银飞钱（块3）：从顾客站位抛到收银台。钱数越多枚数越多（1~3 封顶，
    * 免得大额结算时一堆金币在手机端掉帧）。顾客站位用 mesh 的世界坐标 ——
    * 拿不到就退化为"从收银台前方飞"（坐标仍合理，不会有动画穿墙）。 */
@@ -482,6 +510,10 @@ setCheckoutDoneHook((info) => {
   for (const it of (info.items || [{ skuId: info.skuId, qty: info.qty }])) {
     if (it.skuId === 'bento') state.servedBento += it.qty || 0;
     if (it.skuId === 'drink' && pricing.promoActive()) state.soldDrinkPromo += it.qty || 0;
+    /* P1-10：节日礼盒销量（任务板 sell_festival 指标的唯一来源）。
+     * 挂在 checkoutDoneHook 而不是"从货架扣货"那一行 —— 只有真结账卖出去才算"卖掉"，
+     * 清仓/报废/打烊清场都不该计进任务进度。 */
+    if (it.skuId === 'festival') state.soldFestival += it.qty || 0;
     /* 售罄音：顾客买走的是该 SKU 在货架上的最后一件。
      * 判定用 sellable()（只算未过期的在架货），不是单格 qty —— 同一个 SKU 可能在两格都有货，
      * 只清了一格不算售罄，要让玩家听到"这个品彻底卖空了"才有意义。 */
@@ -501,6 +533,10 @@ setCheckoutDoneHook((info) => {
     toast(`${lv?.name ?? '常客'} 忠诚度提升 → ${r.label}（偏好商品${disc}）`, 'ok', 2200);
   }
 });
+
+/* P0-6 水电：economy 不认识 worldstate，由这里注入"当前设备台数"。
+ * 设施是可升级的，台数会变，所以做成运行时回调而不是常量。 */
+setDeviceCountSource(() => worldState.deviceList().length);
 
 /* 结算扩展段：economy 只负责把它们并进 report，内容全在这里算。
  * 注：星级那段由 endNight 在 settleNight 之后单独写（它要读 report 才能判定）。 */
@@ -944,21 +980,27 @@ function openFacility(id) {
  *
  * interaction 在 repair/clean/place 三个分支里，若注入这些回调就先走 QTE、
  * 不再走"立即完成 + BUSY"的旧路径；未注入时行为与扩展前完全一致。
- * QTE 期间暂停游戏时钟（见 qte.mjs 文件头），倒计时走墙钟 —— 玩家不因专注操作而丢顾客。
+ * P0-3（2026-10-27）起 QTE **不再暂停夜时钟**：补货/维修/清理都是"店里正在发生的事"，
+ * 与街机（state.minigameId，不暂停）同一套时间规则；改用 busyUntil 锁住 E 交互，
+ * 倒计时走墙钟（performance.now）与世界时钟解耦。
  * 成功动作落地后由 worldState 的 onEvent 自动补音效与提示（维修/清洁），上货则手动补。
  * ================================================================== */
 
-/** QTE 结束后的统一收尾：恢复营业 + 重新锁定鼠标 */
+/** QTE 结束后的统一收尾（P0-3：不再动 paused，也不再抢指针锁 —— 点画布即重新锁定）。
+ *  只清"QTE 打开期间"的锁：onDone 里 setQteBusy 刚设的收尾 busy 必须保留，
+ *  靠 label 区分（setQteBusy 会把 label 覆盖成 'qte'）。 */
 function finishQte() {
-  state.paused = false;
-  if (state.phase === 'running') player.requestLock();
+  if (state.busyLabel === 'restockQte' || state.busyLabel === 'repairQte' || state.busyLabel === 'cleanQte') {
+    state.busyUntil = null;
+    state.busyLabel = '';
+  }
 }
 
 /** 动作收尾的短暂 BUSY（QTE 成功后的动作耗时，比原路径更短 —— 体现"更快"） */
 function setQteBusy(sec) {
   if (sec > 0) {
     state.busyUntil = state.wallElapsed + sec;
-    if (!state.busyLabel) state.busyLabel = 'qte';
+    state.busyLabel = 'qte';   // 覆盖 QTE 期间的锁标签，finishQte 才不会把它当"QTE 锁"清掉
   }
 }
 
@@ -969,7 +1011,9 @@ function openRepairQte(id) {
   if (!dev?.broken) return;                    // 保险：设备已不坏就不同时弹
   const base = worldState.repairCost(id);
   if (document.exitPointerLock) document.exitPointerLock();
-  state.paused = true;
+  /* P0-3：不暂停夜时钟，改用操作锁（QTE 期间挡住 E 交互；onDone 后由 finishQte 清） */
+  state.busyUntil = state.wallElapsed + QTE.timeLimitSec;
+  state.busyLabel = 'repairQte';
   openQte({
     kind: 'repair',
     title: `🔧 维修 ${fac?.emoji ?? ''}${fac?.name ?? '设备'}`,
@@ -993,7 +1037,9 @@ function openRepairQte(id) {
 /** 清洁 QTE：拖抹布擦污渍 */
 function openCleanQte(litterId) {
   if (document.exitPointerLock) document.exitPointerLock();
-  state.paused = true;
+  /* P0-3：同维修 —— 不暂停夜时钟，改用操作锁 */
+  state.busyUntil = state.wallElapsed + QTE.timeLimitSec;
+  state.busyLabel = 'cleanQte';
   openQte({
     kind: 'clean',
     title: '🧹 清理垃圾',
@@ -1012,12 +1058,40 @@ function openCleanQte(litterId) {
   });
 }
 
+/* P0-3：同 SKU 60 秒内连续上货免弹窗。上货是全场最高频动作（8 格 × 每格 24 件），
+ * 补满一轮就是十几次全屏弹窗 + 十几次时间静止 —— 机会成本被抹掉。
+ * 记录挂在"该 SKU 最近一次成功上架"上：QTE 成功后写，直接上架成功后滑动刷新。 */
+/** P0-6：现金低于此值就在夜末弹红色预警（只提示，不阻断） */
+const CASH_WARN_BELOW = 100;
+
+let lastRestockSku = null;
+let lastRestockAt = -1e9;
+
 /** 上货 QTE：拖拽货物到正确的货架格 */
 function openRestockQte(slotIndex) {
   if (!state.held) return;
   const sku = SKU_BY_ID[state.held.skuId];
+  const sameSku = state.held.skuId === lastRestockSku
+    && (state.wallElapsed - lastRestockAt) < 60;
+  if (sameSku) {
+    // 同 SKU 续上：走 interaction 原来的直接 place() 路径，不弹 QTE、不停时钟
+    const r = place(slotIndex);
+    if (r.ok) {
+      applyActionCost(state, 'PLACE');       // 与 QTE 路径一致：上货消耗体力
+      lastRestockAt = state.wallElapsed;     // 滑动窗口：长串补货不过早失效
+      world.pulseSlot?.(slotIndex, r.put);
+      sfx.done('stock');
+      toast(`已上架 ${r.sku?.emoji ?? ''}×${r.put}`, 'ok');
+      notify();
+    } else {
+      toast(r.reason ?? '上货失败', 'bad');
+    }
+    return;
+  }
   if (document.exitPointerLock) document.exitPointerLock();
-  state.paused = true;
+  /* P0-3：不暂停夜时钟，改用操作锁（QTE 期间挡住 E 交互；onDone 后由 finishQte 清） */
+  state.busyUntil = state.wallElapsed + QTE.timeLimitSec;
+  state.busyLabel = 'restockQte';
   openQte({
     kind: 'restock',
     title: `📤 上货 ${sku?.emoji ?? ''}×${state.held.qty}`,
@@ -1025,10 +1099,13 @@ function openRestockQte(slotIndex) {
     slots: state.slots.map((s) => ({ skuId: s.skuId, qty: s.qty })),
     onDone: (out) => {
       if (out.ok) {
+        const skuId = state.held?.skuId ?? null;   // place() 会清空 held，先取
         const r = place(out.result.slotIndex);
         if (r.ok) {
           applyActionCost(state, 'PLACE');   // 与旧路径一致：上货消耗体力
           setQteBusy(QTE.restock.busySec);
+          lastRestockSku = skuId;            // 这个 SKU 刚成功上过 → 60 秒内免弹窗
+          lastRestockAt = state.wallElapsed;
           world.pulseSlot?.(out.result.slotIndex, r.put);  // 上货放置动画（与正常路径一致）
           sfx.done('stock');
           toast(`已上架 ${r.sku?.emoji ?? ''}×${r.put}`, 'ok');
@@ -1466,6 +1543,9 @@ const mobileControls = createMobileControls({
     save: () => { const r = save.save(); if (!r.ok) sfx.bad(); },
     load: () => loadGame(),
     pause: () => togglePause(),
+    /* P1-9：触屏也要有提前打烊入口 —— 手机玩家更可能"就玩十分钟"，
+     * 没有这个入口就只能熬到 06:00 或直接退出丢进度。 */
+    closeNight: () => closeNightEarly(),
     // 移动端直达「设置」：与桌面 Esc→暂停→设置 同口径（含账号重开入口）。
     // 关掉后停在游戏内（relock），重开成功后回到第一夜。
     settings: () => openSettings(() => relock(), reset, () => {
@@ -1488,9 +1568,16 @@ function applySettings(s = settings) {
     post.setGrade({ brightness: s.brightness, gamma: s.gamma, vignette: s.vignette });
   }
   player.setSensitivity(s.sensitivity);
-  world.setFov(s.fov);
+  /* 竖屏的可用宽度只有横屏的 55% 左右，同样的 FOV 只看得到脚下一块地板（P0-2）。
+   * 取 max(玩家设置, 竖屏基线 88)：不改 settings 里存的值，转回横屏就恢复。 */
+  const portraitFov = window.innerHeight > window.innerWidth ? 88 : 0;
+  world.setFov(Math.max(s.fov, portraitFov));
   sfx.applyVolumes();
 }
+/* 转屏 / 窗口尺寸变化时重跑一次：竖屏↔横屏切换后 FOV 基线要跟着换。
+ * （scene.mjs 自管 renderer/camera aspect 的 resize，这里只补 FOV 判定。） */
+window.addEventListener('resize', () => applySettings());
+window.addEventListener('orientationchange', () => setTimeout(() => applySettings(), 120));
 /* 触屏设备首次启动：手机横屏视野窄 + 手指滑动天生比鼠标费劲，
  * 默认把 FOV 拉到 85°、灵敏度倍率 1.4（进设置可随时调回）。
  * 只在「从未保存过设置」时生效一次：玩家调过任何一项后，以玩家保存的值为准，
@@ -1515,8 +1602,15 @@ const FACILITY_INFO = {
   fishing: { emoji: '🎣', label: '钓鱼池塘' },
   basketball: { emoji: '🏀', label: '投篮机' },
   claw: { emoji: '🧸', label: '抓娃娃机' },
+  /* P1-4：经营榜两项（不进 facilities，没有对应机器，纯结算口径） */
+  weekNet: { emoji: '🏪', label: '门店经营' },
+  bestNight: { emoji: '🌙', label: '单夜净利' },
 };
 
+/** 排行榜分两栏：街机（玩出来的）/ 经营（赚出来的）。
+ *  P1-4：7 个街机榜 + 2 个经营榜平铺，玩家第一眼看到的是"弹珠机"，找不到"我这周赚了多少"。
+ *  group 由 config.LEADERBOARD.metrics[kind].group 决定（缺省 'arcade'），
+ *  这样加新榜只改 config，不用碰这里。 */
 function leaderboardBoards() {
   return Object.entries(LEADERBOARD.metrics).map(([kind, m]) => ({
     kind,
@@ -1524,6 +1618,7 @@ function leaderboardBoards() {
     label: FACILITY_INFO[kind]?.label ?? kind,
     metric: m.label,
     unit: m.unit,
+    group: m.group === 'store' ? 'store' : 'arcade',
     entries: readBoard(kind),
   }));
 }
@@ -1639,6 +1734,16 @@ canvas.addEventListener('mousedown', () => {
  * 如果一进游戏就把三步糊完，玩家读到第 2 步时已经点开商店，三步全部作废。
  * 判定条件刻意用"真实行为"（走过路 / 真的交互成功 / 真的打开过商店）而不是时间 ——
  * 用时间推的话，站着不动的玩家会被"教"完还没学会。 */
+/* P1-11：切后台存档。手机上"切出去回个消息"是最常见的中断方式，
+ * 而 visibilitychange 是**唯一保证会被触发**的时机（beforeunload 在移动端常被跳过）。
+ * ⚠ 只在真·营业中存：暂停 / 弹窗 / 小游戏时 state 处于中间态，存了等于写入半个坏档。 */
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'hidden') return;
+  if (state.phase !== 'running' || state.paused) return;
+  if (isMinigameOpen() || isQteOpen()) return;
+  try { save.save(); } catch { /* 存不上也不该拦住切后台 */ }
+});
+
 const TUTORIAL_SECONDS = 180;
 /**
  * 第 1 步"走两步"的判定距离（米）。
@@ -1648,10 +1753,14 @@ const TUTORIAL_SECONDS = 180;
  * 于是引导无论走多久都停在"引导 1/3"（用户报的卡死，控制台一片干净）。
  */
 const TUTORIAL_WALK_M = 3.0;
+/* P1-12：三步拆成五步。原来第 3 步把"Tab 采购 → 上货 → 收银"三件事压成一句话，
+ * 玩家在商店面板里看不到它，等于没教。拆开后每屏只说一件事。 */
 const TUTORIAL_STEPS = [
-  { text: '用 W A S D 在店里走两步', hint: '鼠标转视角 · Shift 小跑' },
-  { text: '走近货架或库存箱，按 E 取货 / 上货', hint: '结账、维修、清扫也都是 E' },
-  { text: '按 Tab 打开商店采购，再把货摆上货架', hint: '顾客来了回收银台按 E 收银' },
+  { text: '用 W A S D 在店里走两步', hint: '鼠标转视角 · Shift 小跑', cond: 'moved' },
+  { text: '走近库存箱，按 E 取货', hint: '货架空的，得先从箱里拿货', cond: 'acted' },
+  { text: '按 Tab 打开商店采购一批货', hint: '买满才够卖一整夜', cond: 'shopped' },
+  { text: '把货摆上货架（对准货架按 E）', hint: `目标是摆满 ${TUTORIAL_STOCK_GOAL} 件`, cond: 'stocked' },
+  { text: '顾客排队后到收银台按 E 收钱', hint: `目标是成交 ${TUTORIAL_SERVE_GOAL} 单`, cond: 'served' },
 ];
 const tutorial = {
   step: 1,
@@ -1659,8 +1768,42 @@ const tutorial = {
   shown: false,
   acted: false,     // 第 2 步的完成条件：至少一次交互成功
   shopped: false,   // 第 3 步的完成条件：至少打开过一次商店
+  stocked: false,   // 第 4 步的完成条件：上架 ≥ TUTORIAL_STOCK_GOAL 件
+  served: false,    // 第 5 步的完成条件：成交 ≥ TUTORIAL_SERVE_GOAL 单
   done: false,      // 一旦结束（走完 / 超时 / 非第 1 夜）就永不再出现
 };
+
+/* ==================== P1-14：找零窗口（可选小费） ====================
+ * 结账金额常常带零头（¥14.85）。这里给玩家一个"手快"的小奖励：
+ * 结完账 0.6 秒内再按一次 E，表示零钱不用找了，折算成 +¥2 小费。
+ * 为什么值得做：它把结账从一个"必须做的动作"变成一个有**节奏感**的动作，
+ * 连击时手不离开键盘，顺手多按一下就有回报 —— 这是手感层面的收益，不是数值膨胀。
+ * 上限每夜 10 次，防止"刷小费"取代正常经营（与任务板收入占比同一类防线）。 */
+let tipChangeUsed = 0;
+
+/** 窗口还开着吗（给 HUD 画进度条用）。过期不补 —— 手慢就是手慢。 */
+export function changeTipWindow() {
+  const w = state.tipWindow;
+  if (!w || !w.open) return null;
+  if (state.wallElapsed >= w.close) return null;
+  const left = Math.max(0, w.close - state.wallElapsed);
+  return { left, ratio: TIP_WINDOW_SEC > 0 ? Math.max(0, Math.min(1, left / TIP_WINDOW_SEC)) : 0 };
+}
+
+/** 尝试兑现找零小费。返回 true 表示这次 E 已被"找零"消费掉。 */
+function claimChangeTip() {
+  if (!changeTipWindow()) return false;
+  if (tipChangeUsed >= TIP_CHANGE_CAP_PER_NIGHT) return false;
+  tipChangeUsed += 1;
+  state.tipWindow = { open: false, close: state.wallElapsed, change: 0 };
+  state.tips = (Number.isFinite(state.tips) ? state.tips : 0) + TIP_CHANGE_AMOUNT;
+  earnCash(TIP_CHANGE_AMOUNT);
+  state.revenue += TIP_CHANGE_AMOUNT;
+  sfx.done('tip');
+  toast(`🙌 零钱不用找了 · 小费 +${fmtYuan(TIP_CHANGE_AMOUNT)}`, 'ok', 1800);
+  notify();
+  return true;
+}
 
 function updateTutorial() {
   const inWindow = !tutorial.done
@@ -1679,18 +1822,28 @@ function updateTutorial() {
   // 位移每帧累计（只统计引导生效期间；player 暂停时 frameMove 已被清零，不会灌进脏值）
   tutorial.moved += player.frameMove;
 
-  /* 三步的完成条件都是**真实动作**：走够距离 / 成功交互过一次 / 打开过一次商店。
+  /* 完成条件全部是**真实动作**（不是时间），每步只说一件事（P1-12 五步化）：
+   *   1 走够距离 → 2 取货成功 → 3 打开过商店 → 4 上架 ≥6 件 → 5 成交 ≥5 单
+   * ⚠ stocked/served 用**当夜累计值**判定（state.placed / state.served），
+   *   两者都在 resetForNewNight() 里清零，所以不需要额外重置标记。
    * 全部达成即 done=true 永久消失（本局内不会再回来）。 */
   if (tutorial.step === 1) {
     if (tutorial.moved > TUTORIAL_WALK_M) tutorial.step = 2;
   } else if (tutorial.step === 2 && tutorial.acted) {
     tutorial.step = 3;
   } else if (tutorial.step === 3 && tutorial.shopped) {
-    tutorial.done = true;
-    tutorial.shown = false;
-    hideTutorial();
-    toast('👍 引导完成 · 剩下的交给你了', 'ok', 2400);
-    return;
+    tutorial.step = 4;
+  } else if (tutorial.step === 4) {
+    if ((state.placed | 0) >= TUTORIAL_STOCK_GOAL) { tutorial.stocked = true; tutorial.step = 5; }
+  } else if (tutorial.step === 5) {
+    if ((state.served | 0) >= TUTORIAL_SERVE_GOAL) {
+      tutorial.served = true;
+      tutorial.done = true;
+      tutorial.shown = false;
+      hideTutorial();
+      toast('👍 引导完成 · 剩下的交给你了', 'ok', 2400);
+      return;
+    }
   }
 
   tutorial.shown = true;
@@ -1752,10 +1905,16 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyE') {
     // 手感 2：按下瞬间给一次"按键手感"音；结果出来再报成功/失败音
     sfx.key();
+    /* P1-14 找零窗口：刚结完账的 0.6 秒内再按一次 E = "零钱不用找了"。
+     * 必须**抢在 tryInteract 之前**判定 —— 否则玩家对着还在排队的下一个顾客按 E，
+     * 会变成"给下一位结账"，找零意图被吞掉。 */
+    if (claimChangeTip()) return;
     const res = interaction.tryInteract();
     if (res && res.ok) {
       sfx.ok();
       tutorial.acted = true;   // 第 2 步引导的完成条件
+      /* 结账成功 → 开启"找零窗口"（只有金额带零头时才开）。 */
+      if (res.type === 'checkout' && res.tipWindow) state.tipWindow = res.tipWindow;
       if (res.amount !== undefined) {
         // Bug⑤ 现场之一：`res.amount` 未格式化时是 ¥14.850000000000001
         toast(`成交 ${fmtYuanSigned(res.amount)} ${res.sku?.emoji ?? ''}`, 'ok');
@@ -1992,6 +2151,91 @@ function syncStars() {
   }
 }
 
+/* ==================== P0-7：夜初快照 / 重打本夜 ====================
+ * 为什么用**独立键**而不是复用存档键：
+ *   存档键是"随时可覆盖的最新进度"，玩家手动存档会把它冲掉；
+ *   快照要的是"这一夜开始那一刻"的定格，一旦被覆盖，重打就失去意义。
+ * 存的是 buildSave 的**纯数据**（不含 mesh / 函数引用），读档时交给 applySave 分发，
+ * 与正常读档走同一条还原路径 —— 不另起炉灶，避免两套逻辑慢慢漂。 */
+const CHECKPOINT_KEY = 'nightshift.checkpoint.v1';
+
+/** 在夜初落一份快照。写失败（隐私模式 / 配额满）只告警，绝不阻断开局。 */
+function writeNightCheckpoint() {
+  try {
+    const payload = buildSave({ state, worldState, npcs, dayNight, player });
+    window.localStorage.setItem(CHECKPOINT_KEY, JSON.stringify(payload));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 清掉快照（重开账号 / 正常进入下一夜后都不该再留着旧定格）。 */
+function clearNightCheckpoint() {
+  try { window.localStorage.removeItem(CHECKPOINT_KEY); } catch { /* 忽略 */ }
+}
+
+/** 有没有可重打的定格。只做"结构可用"判断，不负责内容是否划算。 */
+function hasNightCheckpoint() {
+  try {
+    const raw = window.localStorage.getItem(CHECKPOINT_KEY);
+    if (!raw) return false;
+    return validateSave(JSON.parse(raw)).ok;
+  } catch { return false; }
+}
+
+/**
+ * P1-9：提前打烊（暂停菜单 / 触屏菜单同一入口）。
+ *
+ * 为什么走 endNight 而不是自己写一份"半程结算"：
+ *   结算口径（过期报废 / 房租 / 水电 / 星级 / 账本）必须和自然天亮**逐字一致**，
+ *   否则玩家可以靠"卡在好时候提前打烊"刷出更高评级 —— 那是设计漏洞不是功能。
+ *   这里只多做一件事：把"提前打烊"这个事实记进 state，让结算面板如实显示。
+ *
+ * ⚠ 二次确认用 window.confirm：这是不可逆动作，代价等同"重开账号"。
+ *   项目里其他不可逆入口（账号重开）也是确认词 + 密码的同等强度口径。
+ */
+function closeNightEarly() {
+  if (state.phase !== 'running') return;
+  const ok = window.confirm('提前打烊会立刻结束这一夜并结算，确定吗？');
+  if (!ok) return;
+  if (isMinigameOpen()) closeMinigame();
+  state.closeEarly = true;
+  state.paused = false;   // 结算面板自身会置 paused；这里先解开，避免面板被"暂停层"逻辑吃掉
+  endNight();
+}
+
+/**
+ * 重打本夜：把夜初快照整体还原回去，然后照常进入营业。
+ * 走 applySave（与 F9 读档同一条分发路径），再补齐**不进存档的运行时位**：
+ *   · 场景同步：垃圾 mesh / 设备状态 / 昼夜光照不会自己跟着 state 变；
+ *   · 事件排程：scheduledEvents 是内存数组（随机排程本就每夜现摇），要重排；
+ *   · 差分基线：情绪音 / 手机点评都是"新增了 N 单"的差分，不归零会立刻误报；
+ *   · 指针锁：营业态要重新抢回鼠标。
+ * ⚠ 不能复用 startNight()：它开头的 resetForNewNight() 会把 state.night **翻到下一夜**，
+ *   那样"重打第 3 夜"就变成"直接跳到第 4 夜"，定格毫无意义。
+ */
+function retryNight() {
+  try {
+    const raw = window.localStorage.getItem(CHECKPOINT_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    const res = applySave(data, { state, worldState, npcs, dayNight, player });
+    if (!res.ok) return false;
+    syncWorldVisuals();
+    scheduleEvents();
+    state.segmentLabel = '';
+    lastServedCount = state.served;
+    lastLostCount = state.lostSales;
+    phone.reset();
+    state.paused = false;
+    state.phase = 'running';
+    player.requestLock();
+    notify();
+    return true;
+  } catch { return false; }
+}
+
 function startNight() {
   resetForNewNight();
   /* --- 代币出口：过期限时券清理 + 永久「每夜启动资金 +¥100」 --- */
@@ -2020,7 +2264,11 @@ function startNight() {
   taskboard.dealNight({
     served: state.served,
     servedBento: state.servedBento,
+    soldFestival: state.soldFestival,
     cleaned: worldState.stats.cleaned,
+    /* P1-10：节日夜必发"卖掉节日礼盒"单。themeId 此时已由 rollForNight 翻页，
+     * 判的是**今晚**而不是明晚（明晚的预告在上面那段 toast 里，两者用的不是同一个字段）。 */
+    festival: isFestival(state.themeId),
   });
 
   if (isFestival(state.themeId)) {
@@ -2051,11 +2299,36 @@ function startNight() {
   lastLostCount = state.lostSales;
   // 手机点评差分基线同样对齐到新一夜的 0，否则上一夜累计会被当成"这一夜新增"
   phone.reset();
+  /* P1-8：点评人队列跨夜清空 —— 昨夜没被消费掉的名字不该出现在今晚的点评里 */
+  reviewWhoQueue = [];
+  /* P1-8：周终夜给老客一次"告别"。
+   * 放在**开夜**而不是结算：这一夜他们还会来，玩家还有机会在店里多看他们一眼；
+   * 等到结算再讲，人已经走了，情绪就落空了。
+   * 阈值取 level ≥ 3（第 4 档「老客」起）—— 只来过两三次的不算"要告别的人"。 */
+  if (nightInWeek(state.night) === NIGHTS_PER_WEEK) {
+    const oldFriends = regulars.snapshot().loyal.filter((r) => r.level >= 3);
+    if (oldFriends.length) {
+      toast(`🌙 周终夜 · ${oldFriends.length} 位老客说今晚一定来`, 'info', 3600);
+      oldFriends.slice(0, 3).forEach((r, i) => {
+        setTimeout(() => {
+          toast(`${r.emoji} ${r.name}（${r.label}）· ${r.persona?.line ?? '这一周，多谢照顾'}`, 'info', 4200);
+        }, 1400 * (i + 1));
+      });
+    }
+  }
   notify();
   // P1-4：这里原来会在未锁定时弹一条 6 秒的操作说明 toast。
   // 那是开发期的"指针锁定警告"，玩家每开一夜就被糊一脸；已移除。
   // 现在只在**真正拖拽环视**时的首次给一次右下角一次性提示（见 showLockHintOnce）。
   player.requestLock();
+  /* P0-7：夜初快照（破产后可重打本夜）。
+   * 必须在 startNight **末尾**写 —— 此时主题已翻页、客流目标已按曲线重算、
+   * 抉择与环境已排好，快照才是"这一夜真正的起点"。早一步写会把上一夜的残留带进来。
+   * P1-11：顺便立刻落一次盘 —— 开局就有档可回，不用等第一次自动存档。 */
+  writeNightCheckpoint();
+  try { save.save(); } catch { /* 存不上不该拦住开局 */ }
+  /* P1-14：找零小费的每夜配额随夜复位（与 state.tipWindow 同步）。 */
+  tipChangeUsed = 0;
 }
 
 function endNight() {
@@ -2111,6 +2384,13 @@ function endNight() {
   taskboard.settleNight();
   report.wom = regulars.wordOfMouthOf();
   report.loyalty = regulars.snapshot().loyal;
+  /* P1-9：结算面板要显示"实际营业到几点"。记 gameHour 而不是格式化好的字符串 ——
+   * 时间格式化是 HUD 的事（fmtClock 在 hud.mjs），economy/main 只存原始值。 */
+  report.closedAtHour = state.gameHour;
+  report.closeEarly = state.closeEarly === true;
+  /* P1-11：结算后立刻存档。这一刻的 state 是"这一夜已结账、下一夜还没开始"的
+   * 稳定断面 —— 玩家在结算面板里关掉页面，回来还能从这个断面继续。 */
+  try { save.save(); } catch { /* 存不上也不该拦住结算 */ }
 
   /* 3) 星级判定（需要在 report 出来之后 —— 它读营业额与满意度） */
   const starRes = stars.evaluate(report);
@@ -2124,6 +2404,29 @@ function endNight() {
     unlocked: starRes.leveled ? unlocksAt(lv).map((u) => u.name) : [],
   };
 
+  /* 3.5) 跨周纪录 + 排行榜（P1-3 / P1-4）
+   * 顺序：先落纪录 → 再拿纪录算"本周总净利" → 再提交排行榜。
+   * 理由：weekNet 是从纪录里**汇总**出来的（本周各夜净利之和），
+   * 不先落今晚这一条就会漏掉最后一夜，周榜永远差一夜。 */
+  const recSnap = records.submitNight({
+    night: report.night,
+    revenue: report.revenue,
+    netProfit: report.netProfit,
+    star: lv,
+  });
+  /* 本周净利：只汇总"与本夜同一周"的夜。
+   * records 只留最近 7 条，恰好覆盖一个完整周；跨周后旧周的条目会被挤出去，
+   * 所以这里不需要额外清空，天然是"本周"口径。 */
+  const weekNet = recSnap.lastNights
+    .filter((e) => weekOf(e.night) === weekOf(report.night))
+    .reduce((s, e) => s + (Number(e.netProfit) || 0), 0);
+  const accountName = identity?.accountId ?? '本机';
+  submitLocal('bestNight', {
+    value: Math.round(report.netProfit),
+    name: accountName,
+    night: report.night,
+  });
+
   /* 4) 成就（以结算数据为准的几个） */
   achievements.note('settle', {
     revenue: report.revenue,
@@ -2131,6 +2434,15 @@ function endNight() {
     reputation: report.reputation,
     served: report.served,
     lostSales: report.lostSales,
+    /* P1-5 扩展字段：新增的 6 条经营成就要读这些口径外的数据。
+     * 一律在这里汇总好再传 —— achievements.mjs 保持纯逻辑，不认识 regulars/staff/themes。 */
+    night: report.night,
+    weekNet,
+    weekPassed: state.weekPassed === true,
+    starStreak: stars.streak,
+    lostByReason: report.lostByReason ?? state.lostByReason ?? null,
+    regularCount: regulars.snapshot().regulars,
+    staffCount: Array.isArray(state.staff) ? state.staff.length : 0,
   });
   if (starRes.leveled) achievements.note('star', { level: lv });
 
@@ -2150,16 +2462,52 @@ function endNight() {
   /* 结算面板的"落地函数"：里程碑 CG 看完之后回到这里。
    * 抽出来是因为 CG 是插在它**前面**的一层，两条分支（周终 / 普通结算）都走同一条路。 */
   const showSettle = () => {
+    /* P0-7：破产/失手时可"重打本夜"。按钮只在**存在有效快照**时才出现 ——
+     * 没有定格却给按钮，点了只会弹失败提示，等于骗玩家。 */
+    const onRetryNight = hasNightCheckpoint() ? () => {
+      if (!retryNight()) { toast('重打失败 · 快照已损坏', 'bad', 2800); return; }
+      toast(`🔄 重打第 ${state.night} 夜 · 回到营业开始`, 'info', 2600);
+    } : null;
     if (state.phase === 'weekEnd') {
+      /* P1-4：周终才写"本周总净利"榜 —— 单夜数据无法回溯出周合计，
+       * 必须在周终这一刻把它钉成一条不可变的成绩。
+       * P1-3：同时把这一周记进纪录册（周表做纪念 + 下次"历史最佳"对比）。 */
+      submitLocal('weekNet', { value: Math.round(weekNet), name: accountName, night: report.night });
+      const recNow = records.submitWeek({
+        week: weekOf(report.night),
+        netProfit: weekNet,
+        star: lv,
+        passed: state.weekPassed === true,
+      });
+      const weekNo = weekOf(state.night);
+      /* P1-9：进入下一周 —— night 继续往上涨（绝对夜号），
+       * 于是 weekOf() 自动落到下一周，NIGHT_CURVE 也从"周内第 1 夜"重新走。 */
+      const nextStartNight = weekNo * NIGHTS_PER_WEEK + 1;
+      const nextMod = weekMod(weekNo + 1);
       openWeekEnd(state.weekPassed === true, () => {
-        resetGame();
+        clearNightCheckpoint();
+        /* 保留成长、清空进度：星级/成就/CG 继续带走，
+         * 现金/库存/设备/常客这些"这一周攒的"归零重来。 */
+        resetGame({ keepGrowth: true, night: nextStartNight });
         startNight();
+      }, onRetryNight, {
+        week: weekNo,
+        weekNet,
+        nextWeek: weekNo + 1,
+        nextMod,
+        /* 面板的"钱去哪了"归因要读本夜报告。**显式传**，不要指望 hud 里有同名全局 ——
+         * 那边原来就是靠一个未声明的 `report` 撞大运，一弹就 ReferenceError。 */
+        report,
+        nights: recNow.lastNights.filter((e) => weekOf(e.night) === weekNo),
+        bestNet: recNow.bestNet,
+        passed: state.weekPassed === true,
       });
     } else {
       openSettle(report, () => {
+        clearNightCheckpoint();
         nextNight();
         startNight();
-      }, UPGRADES, buyUpgrade);
+      }, UPGRADES, buyUpgrade, onRetryNight, openPurchasePanel);
     }
   };
 
@@ -2179,6 +2527,11 @@ function endNight() {
   runCg(0);
 
   toast(`第 ${report.night} 夜结束 · 净利 ${fmtYuan(report.netProfit)}`, report.netProfit >= 0 ? 'ok' : 'bad');
+  /* P0-6 现金见底预警：房租与水电是"不开张也要付"的固定支出，现金低于 100 时
+   * 下一夜很可能连补货周转都做不动。这里只预警不阻断 —— 破产判定仍以 cash<0 为准。 */
+  if (state.cash < CASH_WARN_BELOW) {
+    toast(`⚠ 现金仅剩 ${fmtYuan(state.cash)} · 下夜房租与水电将难以为继`, 'bad', 3200);
+  }
 }
 
 /* ---------- 暂停菜单（含退出键，手感 4：0.15s 淡入淡出，不再硬切） ----------
@@ -2211,6 +2564,8 @@ pauseEl.innerHTML = `<div style="text-align:center;padding:24px 28px;border-radi
         border:1px solid #465468;background:rgba(28,34,47,.85);color:#E6E2D6;font-weight:600;font-size:14px">⚙ 设置</button>
       <button data-act="quit" style="padding:9px 18px;border-radius:10px;cursor:pointer;
         border:1px solid #465468;background:rgba(28,34,47,.85);color:#E6E2D6;font-weight:600;font-size:14px">退出到标题</button>
+      <button data-act="close-night" style="padding:9px 18px;border-radius:10px;cursor:pointer;
+        border:1px solid #6E5AA8;background:rgba(177,91,216,.22);color:#E6E2D6;font-weight:600;font-size:14px">🌅 提前打烊</button>
     </div>
   </div>`;
 document.body.appendChild(pauseEl);
@@ -2238,6 +2593,14 @@ pauseEl.querySelector('[data-act="ach"]').addEventListener('click', () => {
   openAchievements(achievements, () => { /* 关闭后停在暂停菜单即可 */ });
 });
 pauseEl.querySelector('[data-act="quit"]').addEventListener('click', () => quitToTitle());
+/**
+ * P1-9：提前打烊 —— 不想熬到 06:00 也能结账收工。
+ * 走的是**和自然天亮完全相同**的 endNight 链路（清场 → 临期报废 → 结算 → 面板），
+ * 只是把"营业到几点"如实记下来给结算面板看。
+ * ⚠ 必须二次确认：这是不可逆动作（一按就把这一夜结束了），
+ *    误触的代价是整夜进度，和"重开账号"同量级。
+ */
+pauseEl.querySelector('[data-act="close-night"]').addEventListener('click', () => closeNightEarly());
 
 /**
  * 退出到标题（"游戏的退出键"）。
@@ -2509,7 +2872,11 @@ function step(now) {
     monitor.update(dt, { gameHour: state.gameHour });
 
     /* --- 前台手机：点评生成（served/lostSales 差分）+ 跑腿倒计时 + 补救任务推进 --- */
-    phone.update(dt, { served: state.served, lostSales: state.lostSales });
+    phone.update(dt, {
+      served: state.served,
+      lostSales: state.lostSales,
+      nextName: () => reviewWhoQueue.shift() ?? null,
+    });
   }
 
   /* 横幅与角标是表现层，暂停时也要保持/收起（否则暂停期间横幅会僵在屏幕上） */
@@ -2664,6 +3031,7 @@ function applyAccountReset(accountId) {
   customers.resetForNight();          // 1) 摘掉 3D 顾客（含 mesh）
   npcs.resetForNight();               //    NPC 自带内部列表，同样要摘 mesh
   save.clear();                       // 2)
+  clearNightCheckpoint();             //    夜初定格是"上一世"的，重开账号必须一起清
   clearForAccount(accountId);         // 3)
   resetGame();                        // 4)
   worldState.resetAll();
@@ -2795,6 +3163,9 @@ window.__NS = {
    * customers 也一并暴露：常客"熟"标必须走 customers.spawn() 的真实到店路径，
    * 直接往 state.customers 塞假对象会被 customers.update 的 c.mesh.position 打爆。 */
   monitor, secondhand, regulars, customers,
+  /* 内容批：跨周纪录 / 任务板 / 排行榜数据装配 —— 探针要走真实读写入口验收，
+   * 不暴露的话只能看 DOM，验不出"周终图表的数据源到底对不对"。 */
+  records, taskboard, leaderboardBoards,
   /* 打烊清场（块8 任务1）：探针走真实 endNight 链路验收结算面板"打烊清场"金行 */
   endNight,
   /* 账号重开（重置）：探针要能验"冷却 / 每日上限 / 密码校验 / 清档范围"整条链路 */
@@ -2811,6 +3182,8 @@ window.__NS = {
     openAchievements, openChoice, showThemeBanner, showPromoBanner,
     /** 块7 探针：走真实入口打开经营面板（默认落在「进货」分页），截图验收新 SKU 出现 */
     openPurchase: openPurchasePanel,
+    /* 内容批：排行榜要验"分组渲染"，走真实弹窗入口而不是自己拼 DOM */
+    openLeaderboard,
     /* 任务6 CG：整屏覆盖层（探针直接开做截图 / 布局验收） */
     openCg, showPrologue, showMilestoneCg,
     /* 美术接入：顾客肖像显示/隐藏（探针驱动 + 验收头像位 src） */

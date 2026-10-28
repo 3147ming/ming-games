@@ -5,7 +5,7 @@
 import {
   START_CASH, START_REPUTATION, SKUS, SLOT_COUNT,
   ARRIVALS_PER_NIGHT, NIGHT_WALL_SECONDS, DEMO_NIGHT_SECONDS, CLERK, CLAW_CABINET,
-  WORD_OF_MOUTH,
+  WORD_OF_MOUTH, OPENING_STOCK, SKU_BY_ID, nightCurve, nightInWeek, weekOf,
 } from './config.mjs';
 
 export const NIGHT_SECONDS = DEMO_NIGHT_SECONDS ?? NIGHT_WALL_SECONDS;
@@ -18,6 +18,23 @@ function makeSlots(n) {
   }));
 }
 
+/* 开局货架（P0-1）：新开局不再是 8 个空格子。
+ * 保质期口径照 economy.place() 的 expiryNight = placedAtNight + shelfLife，
+ * 这样第 1 夜的便当不会立刻过期，饮料也能撑到第 8 夜。
+ * 只写 slots，不进 backroom —— backroom 的语义是"库存箱散货"，不是已上架商品。 */
+function makeOpeningSlots(n) {
+  const out = makeSlots(n);
+  for (const o of OPENING_STOCK) {
+    const s = out[o.slot];
+    if (!s) continue;
+    s.skuId = o.skuId;
+    s.qty = o.qty;
+    s.placedAtNight = 1;
+    s.expiryNight = 1 + (SKU_BY_ID[o.skuId]?.shelfLife ?? 1);
+  }
+  return out;
+}
+
 function baseState() {
   return {
     /* 经济 */
@@ -25,15 +42,26 @@ function baseState() {
     /** 代币：顾客 NPC 游玩电玩设施留下的代币（存档项，见需求「存档内容」） */
     tokens: 0,
     backroom: Object.fromEntries(SKUS.map((s) => [s.id, 0])), // 库存箱：不计保质期（SYS-02 §2）
-    slots: makeSlots(SLOT_COUNT),
+    slots: makeOpeningSlots(SLOT_COUNT),
     held: null,                                               // { skuId, qty } | null
     prices: Object.fromEntries(SKUS.map((s) => [s.id, s.price])),
     upgrades: {},                                             // { slot:true, fridge:true, ... }
 
     /* 时间 */
     night: 1,
+    /** P1-9：第几周（1 起）。night 是**绝对**夜号（存档里的 expiryNight 等全按它算），
+     *  week 由 weekOf(night) 推导，并在 resetForNewNight 里同步 —— 存它是为了让
+     *  HUD / 结算能直接读，不必各自再算一遍。 */
+    week: 1,
     gameHour: 0,
     wallElapsed: 0,
+    /* 开局保护期（P0-1）：这一夜的 wallElapsed < graceUntil 时，失销只计数不扣口碑。
+     * 由 resetForNewNight() 每夜重置为 60 秒；存档只加这一个字段。 */
+    graceUntil: 0,
+    /** P1-9：本夜是否由玩家手动提前打烊（结算面板据此显示"实际营业 X:XX"）。 */
+    closeEarly: false,
+    /** P1-14 找零窗口：{ open, close(游戏秒), change }。由 checkout 成功后写入。 */
+    tipWindow: { open: false, close: 0, change: 0 },
     paused: true,
     phase: 'start',      // 'start' | 'running' | 'settle' | 'weekEnd'
 
@@ -51,6 +79,13 @@ function baseState() {
     wordOfMouth: WORD_OF_MOUTH.tiers[1],
     served: 0,
     lostSales: 0,
+    /* P1-8 失销归因：与 lostSales 同源（每笔失销只累加其中一个桶，合计恒等于 lostSales）。
+     * 分开记的原因：三者的**对策完全不同** ——
+     *   outOfStock 缺货 → 多进货 / 别把货压在临期；
+     *   queueFull  队满 → 提升结账速度 / 扩容队列；
+     *   impatient  等太久 → 缩短排队时间（夜次曲线下尤其重要）。
+     * 只给一个"失销 N 人"的总数，玩家无法判断该修哪一头。 */
+    lostByReason: { outOfStock: 0, queueFull: 0, impatient: 0 },
     revenue: 0,
     /* ---------- 任务板计数器（2026-10-06 块4）----------
      * 任务板的进度指标走"累计值差分"（见 taskboard.mjs 的口径说明），
@@ -60,6 +95,8 @@ function baseState() {
      * 用差分算不出子集（在总数上做差分只能得到"总数变化"）。 */
     servedBento: 0,        // 卖出的便当份数
     soldDrinkPromo: 0,     // 促销期间卖出的饮料件数
+    /** P1-10：当夜卖出的节日礼盒数（节日夜专属任务指标；跨夜清零，**不进**存档白名单）。 */
+    soldFestival: 0,
     placed: 0,             // 从库存箱上架的件数
     cleared: 0,            // 清仓卖出的格数
     /** 块6：当夜垃圾/空箱件数（拆箱 + 临期清仓产生，最多叠 GARBAGE.cap 件）；
@@ -253,11 +290,23 @@ export function notify() {
 export function resetForNewNight() {
   state.gameHour = 0;
   state.wallElapsed = 0;
+  /* P1-9：周号从绝对夜号推导。放在这里而不是 nextNight 里 —— 读档（applySave）
+   * 只恢复 night，不保证旧档有 week；每次开夜同步一次，旧档自然被纠正。 */
+  state.week = weekOf(state.night);
   state.customers = [];
   state.queue = [];
   state.spawnedTonight = 0;
   state.served = 0;
   state.lostSales = 0;
+    /* P1-8：失销分桶每夜清零 —— 它们是"当夜口径"，跨夜累加会让结算归因失准。 */
+    state.lostByReason = { outOfStock: 0, queueFull: 0, impatient: 0 };
+    /* P1-9：提前打烊标记随夜重置 —— 上一夜提前收工不该让下一夜也显示"提前打烊"。 */
+    state.closeEarly = false;
+    /* P1-14：找零窗口随夜复位 —— 上一夜没来得及按的那一下不该跨夜仍然有效。 */
+    state.tipWindow = { open: false, close: 0, change: 0 };
+  /* 开局 60 秒保护期（P0-1）：首位顾客最早 45 秒到店，这段时间他若空手走
+   * 只记失销、不扣口碑 —— 新玩家还在读引导，不该被扣分。 */
+  state.graceUntil = 60;
   state.revenue = 0;
   state.tips = 0;
   /* 任务板计数器（块4）：当夜口径，跨夜清零。
@@ -271,6 +320,9 @@ export function resetForNewNight() {
    * 立刻把它转成门口箱子）。若连在途也清掉，玩家会白扣一次运费。 */
   if (state.delivery) { state.delivery.crates = []; state.delivery.held = null; }
   state.soldDrinkPromo = 0;
+  /* P1-10：节日礼盒是"当夜可售"的限时货，销量计数必须每夜清零，
+   * 否则节日夜之后的任务板进度会把上一夜的礼盒也算进去。 */
+  state.soldFestival = 0;
   state.placed = 0;
   state.cleared = 0;
   state.garbage = 0;       // 块6：当夜垃圾件数（跨夜清零，与 cleared 同口径）
@@ -362,11 +414,56 @@ export function resetForNewNight() {
   const repMul = 1 + ((state.reputation - 50) / 100) * 0.3;
   const wom = (WORD_OF_MOUTH.tiers.find((t) => state.reputation >= t.min)) ?? WORD_OF_MOUTH.tiers[WORD_OF_MOUTH.tiers.length - 1];
   state.wordOfMouth = wom;              // 供 HUD / 结算面板显示当前档位
-  state.arrivalsTarget = Math.round(ARRIVALS_PER_NIGHT * Math.min(1.15, Math.max(0.85, repMul)) * wom.mul);
+  /* P1-9：曲线按**周内夜次**取（1..7），让每一周都重新走"轻松 → 爆满"的节奏；
+   * 周与周之间的整体加压交给 WEEK_MODS（房租 / 消费 / 货损），两者不重复计。 */
+  const curve = nightCurve(nightInWeek(state.night));
+  state.arrivalsTarget = Math.round(ARRIVALS_PER_NIGHT * Math.min(1.15, Math.max(0.85, repMul)) * wom.mul * curve.arrivalsMul);
 }
 
-export function resetGame() {
+/**
+ * 重置内存真源。
+ *
+ * @param {object} [opts]
+ * @param {boolean} [opts.keepGrowth=false]
+ *   false（默认）= **全清**：账号重开走这条，连成就与星级一起回到初始。
+ *   true          = **保留成长、清空进度**：二周目（P1-9）走这条 ——
+ *                   星级 / 连星 / 成就 / 成就进度 / CG 已看 继续沿用，
+ *                   而现金、库存、设备、常客脸谱、帖子点评这些"这一周攒的东西"全部归零。
+ * @param {number} [opts.night] 起始绝对夜号（默认 1）。二周目传"下一周的第一夜"。
+ *
+ * ⚠ 为什么成长字段要**手工挑出来再放回**，而不是给 baseState() 打补丁：
+ *   baseState() 是"全新账号"的唯一定义，往里塞"有时保留"的分支会让它不再是纯函数，
+ *   读档 / 单测 / 重开三条路径就会各自解释一遍"什么算初始状态"。
+ *   继承清单写在这里，二周目到底继承了什么一眼可见。
+ */
+export function resetGame(opts = {}) {
+  const keepGrowth = opts.keepGrowth === true;
+  const startNight = Math.max(1, Math.round(Number(opts.night) || 1));
+
+  /* 先抓出来再覆盖 —— Object.assign(state, baseState()) 会把它们一起抹掉 */
+  const growth = keepGrowth ? {
+    star: state.star,
+    starStreak: state.starStreak,
+    achievements: state.achievements,
+    achProgress: state.achProgress,
+    cgSeen: state.cgSeen,
+  } : null;
+
   Object.assign(state, baseState());
+
+  /* 夜号：二周目不从 1 重来，而是接着数 —— night 是**绝对**夜号
+   * （expiryNight / expireNight 等存档字段全按它算，见 config.WEEK_MODS 注释）。
+   * week 仍由 weekOf() 推导，保证 week 与 night 永远一致、不会各自飘。 */
+  state.night = startNight;
+  state.week = weekOf(startNight);
+
+  if (growth) {
+    state.star = growth.star;
+    state.starStreak = growth.starStreak;
+    if (growth.achievements && typeof growth.achievements === 'object') state.achievements = growth.achievements;
+    if (growth.achProgress && typeof growth.achProgress === 'object') state.achProgress = growth.achProgress;
+    if (Array.isArray(growth.cgSeen)) state.cgSeen = growth.cgSeen;
+  }
   state.arrivalsTarget = ARRIVALS_PER_NIGHT;
 }
 

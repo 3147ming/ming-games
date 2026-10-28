@@ -47,8 +47,13 @@ export function saveKeyFor(accountId) {
 
 /** 存档结构版本：与 SAVE_KEY 的版本号保持一致，做一次冗余校验 */
 export const SAVE_VERSION = 1;
-/** 自动存档间隔（游戏秒） */
-export const AUTOSAVE_SEC = 120;
+/**
+ * 自动存档间隔（游戏秒）。
+ * P1-11 从 120 降到 60：一整夜只有 8 个游戏小时（约 8 分钟墙钟），
+ * 120 秒意味着一夜最多存 4 次，中途被切后台/杀进程要丢近两分钟进度。
+ * 60 秒把最坏丢失窗口砍半，写入开销仍在可接受范围（一次 JSON 落盘）。
+ */
+export const AUTOSAVE_SEC = 60;
 
 /**
  * state.mjs 里**允许**持久化的字段（白名单）。
@@ -59,9 +64,14 @@ export const STATE_FIELDS = [
   /* 经济 */
   'cash', 'tokens', 'backroom', 'prices', 'upgrades', 'held', 'slots',
   /* 时间 / 流程 */
-  'night', 'gameHour', 'wallElapsed', 'phase', 'paused',
+  'night', 'week', 'gameHour', 'wallElapsed', 'phase', 'paused',
+  /* 开局保护期（P0-1）：wallElapsed 秒之前失销不扣口碑。只加字段，不改既有语义。 */
+  'graceUntil',
   /* 统计 */
   'reputation', 'served', 'lostSales', 'revenue', 'earned', 'purchaseCost', 'loss', 'garbage',
+  'lostByReason',   // P1-8 失销归因分桶（当夜口径）
+  'closeEarly',     // P1-9 本夜是否提前打烊
+  'tipWindow',      // P1-14 找零窗口（跨夜复位）
   /* 顾客 / 事件 */
   'spawnedTonight', 'arrivalsTarget', 'blackoutUntil', 'rushUntil', 'rushActive',
   /* 店员状态（R1） */
@@ -345,6 +355,11 @@ export function applySave(data, ctx = {}) {
     state.busyUntil = null;
     state.minigameId = null;
     state.pointerLockBlocked = false;
+    /* P1-10：礼盒销量是**当夜口径**、刻意不进白名单。
+     * 这里补一句归零：读档发生在两次开局之间，若不清，会把"上一场残留的计数"
+     * 带进新的一夜（resetForNewNight 虽然也会清，但那要等 startNight）；
+     * 中间任何读 state.soldFestival 的地方都可能先看到旧值。 */
+    state.soldFestival = 0;
     applied.push('state');
   } else if (state) {
     skipped.push('state');

@@ -7,7 +7,8 @@ import {
   SKUS, SKU_BY_ID, SLOT_CAP, PICK_BATCH, RENT_PER_NIGHT,
   STAR_THRESHOLDS, UPGRADES, COFFEE_BONUS, NIGHTS_PER_WEEK,
   REP_SERVE, REP_LOST, CLERK, EVENTS, SNACK, WAREHOUSE, GARBAGE,
-  FIRST_NIGHT_SPEND_MUL, IDENTITIES,
+  FIRST_NIGHT_SPEND_MUL, IDENTITIES, nightCurve, UTILITIES_PER_NIGHT,
+  TIP_WINDOW_SEC, nightInWeek, weekMod,
 } from './config.mjs';
 import { state, expandSlots, notify } from './state.mjs';
 import { isFestival } from './themes.mjs';
@@ -353,6 +354,14 @@ export function setSettleExtras(fn) {
   settleExtrasHook = typeof fn === 'function' ? fn : null;
 }
 
+/** 设备数量来源（P0-6 水电）：由 main 注入 `() => worldState.deviceList().length`。
+ *  未注入时返回 0 —— 与 setSettleExtras 一致的"缺省中性"口径：
+ *  economy 是纯逻辑层，不该自己去认识 worldstate / FACILITIES。 */
+let deviceCountSource = null;
+export function setDeviceCountSource(fn) {
+  deviceCountSource = typeof fn === 'function' ? fn : null;
+}
+
 export function checkout() {
   if (state.blackoutUntil !== null && state.wallElapsed < state.blackoutUntil) {
     return { ok: false, reason: '⚡ 停电中，无法结账' };
@@ -407,15 +416,17 @@ export function checkout() {
   const nightMul = state.night === 1 ? FIRST_NIGHT_SPEND_MUL : 1;
   /* 块7：身份消费倍率（只乘总额，不动定价 —— 见 config.IDENTITIES 注释） */
   const identityMul = IDENTITIES[customer.identityId]?.spendMul ?? 1;
+  /* P1-9：周难度 —— 第二周起顾客更抠（spendMul < 1）。只乘总额，不动定价。 */
+  const weekMul = weekMod(state.week).spendMul;
   const tipBase = customer.isRegular ? EVENTS.REGULAR.tip : 1;
   /* 块6：店内垃圾 ≥ tipThreshold 件 → 小费减半（顾客嫌脏，懒得给小费）。
    * 只压"小费那部分"，不动本金（与主题/常客折扣同一处理层级）。 */
   const tipPenalty = state.garbage >= GARBAGE.tipThreshold ? 0.5 : 1;
   const tip = 1 + (tipBase - 1) * tipMul * tipPenalty;   // 雨夜等主题只放大"小费那部分"，不动本金
-  const amount = subtotalUnit * tip * nightMul * identityMul;
+  const amount = subtotalUnit * tip * nightMul * identityMul * weekMul;
   /* 小费单独累计（打烊结算要单列"其中小费"一行）。
    * 口径：实际收款 − 不含小费的应收。促销/主题折扣压低的是本金，不该算成小费变少。 */
-  const noTip = subtotalUnit * nightMul * identityMul;
+  const noTip = subtotalUnit * nightMul * identityMul * weekMul;
   state.tips = (Number.isFinite(state.tips) ? state.tips : 0) + Math.max(0, amount - noTip);
   state.cash += amount;
   state.revenue += amount;
@@ -453,6 +464,14 @@ export function checkout() {
     }
   }
   notify();
+  /* P1-14 找零窗口：结账后留一段"手还没离开收银台"的时间，
+   * 这期间再按一次 E 表示"零钱不用找了" → 折算成 +¥2 小费。
+   * 只在**有找零空间**时开窗口：收款正好是整数就没零可找，开窗口纯属骚扰。
+   * 门限 0.6s 是手感值 —— 短到玩家来不及反应，长到会打断结账连击节奏。 */
+  const change = amount - Math.floor(amount);
+  const tipWindow = change > 0.01
+    ? { open: true, close: state.wallElapsed + TIP_WINDOW_SEC, change }
+    : { open: false, close: state.wallElapsed, change: 0 };
   return {
     ok: true,
     amount,
@@ -461,6 +480,7 @@ export function checkout() {
     items: fulfilled,
     isRegular: !!customer.isRegular,
     identityId: customer.identityId ?? null,
+    tipWindow,
   };
 }
 
@@ -483,10 +503,13 @@ export function purchaseSnack() {
 /* ---------- 夜末结算（SYS-04 §2） ---------- */
 export function settleNight() {
   // 1) 过期报废（SYS-02 §2）
+  /* P1-9：周难度里的"货损更重"落在这里 —— 高周次同一批过期品的报废金额放大。
+   * 不动保质期本身（那会让"冰柜升级"的价值随周次漂移），只放大损失，口径可解释。 */
+  const spoilMul = weekMod(state.week).spoilMul;
   let loss = 0;
   for (const s of state.slots) {
     if (s.skuId && state.night > s.expiryNight && s.qty > 0) {
-      loss += s.qty * (SKU_BY_ID[s.skuId]?.cost ?? 0);
+      loss += s.qty * (SKU_BY_ID[s.skuId]?.cost ?? 0) * spoilMul;
       s.skuId = null;
       s.qty = 0;
     }
@@ -500,15 +523,21 @@ export function settleNight() {
     state.revenue += coffee;
   }
 
-  // 3) 房租（漏出，防失控）
-  const rent = RENT_PER_NIGHT;
+  // 3) 房租（漏出，防失控）；房租随夜次曲线上浮（P0-5）
+  /* P1-9：房租 = 基准 × 周内夜次曲线 × 周难度。周内曲线保留"第 7 夜最贵"的节奏，
+   * 周难度（第二周 ×1.25 / 第三周 ×1.5）把整周一起抬上去。 */
+  const rent = Math.round(RENT_PER_NIGHT * nightCurve(nightInWeek(state.night)).rentMul * weekMod(state.week).rentMul);
+  /* 水电：按设备数计（P0-6）。与房租同属固定支出，随设施规模增长。 */
+  const deviceCount = deviceCountSource?.() ?? 0;
+  const utilities = Math.round(UTILITIES_PER_NIGHT * deviceCount);
   const cashBefore = state.cash;
-  state.cash = cashBefore - loss - rent;
+  state.cash = cashBefore - loss - rent - utilities;
 
   // 4) 净利（采购成本在采购时已扣现金，此处不重复扣减 —— SYS-04 §8）
   //    小游戏净额单独计一行：它不该被算成"门店营收"，但要计入当晚盈亏
+  //    水电与房租并列计入支出（P0-6）
   const miniNet = state.minigameEarn - state.minigameSpend;
-  const netProfit = state.revenue + miniNet - (state.purchaseCost + loss + rent);
+  const netProfit = state.revenue + miniNet - (state.purchaseCost + loss + rent + utilities);
 
   // 5) 星级（成交率）
   const attempts = state.served + state.lostSales;
@@ -532,10 +561,14 @@ export function settleNight() {
     purchaseCost: state.purchaseCost,
     loss,
     rent,
+    utilities,
     coffee,
     netProfit,
     served: state.served,
     lostSales: state.lostSales,
+    /* P1-8 失销归因分桶：三桶之和 = lostSales。用空对象兜底 ——
+     * 老存档没有这个字段时结算面板显示 0，而不是崩在 undefined 上。 */
+    lostByReason: state.lostByReason ?? { outOfStock: 0, queueFull: 0, impatient: 0 },
     rate,
     stars,
     reputation: Math.round(state.reputation),
@@ -547,7 +580,9 @@ export function settleNight() {
 
   // 6) 周目标判定（软目标：撑过一周不破产，无硬 game over）
   const bankrupt = state.cash < 0;
-  if (state.night >= NIGHTS_PER_WEEK) {
+  /* P1-9：night 是绝对夜号（会一直涨到 8、9…），所以判"周终"必须看**周内夜次**，
+   * 不能再用 `night >= 7` —— 否则第 8 夜起每一夜都被判成周终。 */
+  if (nightInWeek(state.night) === NIGHTS_PER_WEEK) {
     state.weekPassed = !bankrupt;
     state.phase = 'weekEnd';
   } else {

@@ -15,14 +15,30 @@
  * 与"连续 3 夜"的字面承诺不符。所以断档即归零（UI 上要显示 streak，玩家能看见断点）。
  */
 
-import { STAR_UNLOCKS } from './config.mjs';
+import { STAR_UNLOCKS, ARRIVALS_PER_NIGHT, NIGHTS_PER_WEEK, nightCurve } from './config.mjs';
 
-/** 双达标门槛：营业额（¥）与满意度（0–100） */
+/** 双达标门槛基准值（第 1 周的营业额基准；实际门槛按夜次缩放，见 starTargets） */
 export const STAR_TARGETS = { revenue: 350, satisfaction: 62 };
 /** 星级上限 */
 export const STAR_MAX = 5;
-/** 需要连续达标的夜数 */
-export const STAR_STREAK_NEED = 3;
+/** 需要连续达标的夜数（内容批 P0-1：3 → 2，让 7 夜内容纳 3 次升星） */
+export const STAR_STREAK_NEED = 2;
+/** 周终奖励星：第 7 夜若双达标，额外 +1 星（内容批 P0-1，5★ 的唯一来源） */
+export const STAR_WEEK_BONUS = true;
+
+/**
+ * 当夜的双达标门槛（内容批 P0-1）。
+ * 机制批 P0-5 的 NIGHT_CURVE 会把客流从 18 拉到 32，固定 ¥350 会让第 1 夜
+ * 几乎不可能达标、第 7 夜空手就过线 —— 门槛必须跟着客流一起涨。
+ */
+export function starTargets(night) {
+  const cur = nightCurve(night);
+  const scale = (cur.arrivalsMul ?? 1);
+  return {
+    revenue: Math.round(STAR_TARGETS.revenue * scale),
+    satisfaction: STAR_TARGETS.satisfaction,
+  };
+}
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const numOr = (v, d = 0) => (Number.isFinite(v) ? v : d);
@@ -63,7 +79,10 @@ export function createStars(opts = {}) {
   function evaluate(report) {
     const revenue = numOr(report?.revenue);
     const satisfaction = numOr(report?.reputation);
-    const passed = revenue >= STAR_TARGETS.revenue && satisfaction >= STAR_TARGETS.satisfaction;
+    /* ⚠ 门槛按夜次取（内容批 P0-1 B）：客流随夜次上涨，门槛必须同步，
+     * 否则第 1 夜永远不达标、第 7 夜躺着达标，星级就失去意义了。 */
+    const targets = starTargets(numOr(report?.night, state.night));
+    const passed = revenue >= targets.revenue && satisfaction >= targets.satisfaction;
 
     if (!passed) {
       state.starStreak = 0;
@@ -72,6 +91,7 @@ export function createStars(opts = {}) {
 
     state.starStreak = numOr(state.starStreak) + 1;
     let leveled = false;
+    let weekBonus = false;
     if (state.starStreak >= STAR_STREAK_NEED && level() < STAR_MAX) {
       state.starStreak = 0;
       state.star = level() + 1;
@@ -80,7 +100,18 @@ export function createStars(opts = {}) {
         try { onUnlock?.(u); } catch { /* 解锁失败不该拖垮结算 */ }
       }
     }
-    return { leveled, level: level(), streak: state.starStreak, passed: true };
+    /* 周终加冕：第 7 夜双达标再 +1 星。
+     * 没有这一下，一周最多 3★ —— 4★/5★ 的机器、装修、成就、CG 全是死内容。 */
+    if (STAR_WEEK_BONUS && level() < STAR_MAX
+        && numOr(report?.night, 0) >= NIGHTS_PER_WEEK) {
+      state.star = level() + 1;
+      leveled = true;
+      weekBonus = true;
+      for (const u of unlocksAt(state.star)) {
+        try { onUnlock?.(u); } catch { /* 解锁失败不该拖垮结算 */ }
+      }
+    }
+    return { leveled, level: level(), streak: state.starStreak, passed: true, weekBonus };
   }
 
   /** 左下角 / 结算里的进度文案 */
@@ -100,7 +131,8 @@ export function createStars(opts = {}) {
   return {
     level, evaluate, staffCapBonus, progressText, starString,
     get streak() { return numOr(state.starStreak); },
-    get targets() { return { ...STAR_TARGETS }; },
+    /** 当夜门槛（随夜次缩放，见 starTargets） */
+    get targets() { return starTargets(state.night); },
     /** 下一档解锁预览（结算 / 商店里告诉玩家"再升一星能拿到什么"） */
     nextUnlock() {
       const lv = level();
@@ -116,7 +148,7 @@ export function createStars(opts = {}) {
         streak: numOr(state.starStreak),
         need: STAR_STREAK_NEED,
         max: STAR_MAX,
-        targets: { ...STAR_TARGETS },
+        targets: starTargets(state.night),
         staffCapBonus: staffCapBonus(),
         unlocked: unlocksUpTo(level()).map((u) => ({ star: u.star, name: u.name, desc: u.desc })),
       };

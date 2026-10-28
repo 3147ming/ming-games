@@ -39,6 +39,15 @@ export const SKUS = [
   { id: 'oden',      name: '关东煮', emoji: '🍢', cost: 3,  price: 9,  shelfLife: 1, moq: 6,  color: 0xC8672E },
   { id: 'hotcoffee', name: '热咖啡', emoji: '☕', cost: 2,  price: 7,  shelfLife: 1, moq: 8,  color: 0x6F4A2E },
   { id: 'beer',      name: '啤酒',   emoji: '🍺', cost: 5,  price: 12, shelfLife: 30, moq: 4, color: 0xD9A441, locked: 'grocery' },
+  /* ---------- 内容批 P1-6：货架再扩 4 样（三明治 / 冰淇淋 / 薯片 / 苹果酒） ----------
+   * 全部复用现有 PRODUCT_SHAPE 轮廓（box / cup / bag / bottle），不新增任何 3D 几何；
+   * 苹果酒与啤酒同属"杂货解锁"，其余三样开局即可进货 —— 首夜货架不再只有泡面便当。
+   * 定价按"便利店鲜食"口径：三明治与便当同档但更轻（保质期 1 夜），
+   * 冰淇淋低单价高周转，薯片走量，苹果酒做夜间小酒的高毛利补充。 */
+  { id: 'sandwich',  name: '三明治', emoji: '🥪', cost: 5, price: 12, shelfLife: 1, moq: 4, color: 0xF2C879 },
+  { id: 'icecream',  name: '冰淇淋', emoji: '🍦', cost: 3, price: 8,  shelfLife: 3, moq: 6, color: 0xF7D9E3 },
+  { id: 'chips',     name: '薯片',   emoji: '🍟', cost: 2, price: 6,  shelfLife: 10, moq: 8, color: 0xF2C230 },
+  { id: 'cider',     name: '苹果酒', emoji: '🍏', cost: 5, price: 13, shelfLife: 20, moq: 4, color: 0xC9A24B, locked: 'grocery' },
 ];
 export const SKU_BY_ID = Object.fromEntries(SKUS.map((s) => [s.id, s]));
 
@@ -130,6 +139,28 @@ export const PRODUCT_VARIANTS = {
     { name: '黑啤',   shape: 'bottle', color: 0x3A2A1A, accent: 0xC0392B },
     { name: '无醇',   shape: 'bottle', color: 0xC9A24B, accent: 0xE8F5E9 },
   ],
+  /* 内容批 P1-6：四个新 SKU 的变体池。形状全部复用既有构造器
+   * （box / cup / bag / bottle），零新增几何；靠配色与相邻格错位区分。 */
+  sandwich: [
+    { name: '火腿三明治', shape: 'box', color: 0xF2C879, accent: 0xC0392B },
+    { name: '鸡蛋三明治', shape: 'box', color: 0xF6E3C5, accent: 0xE8B23A },
+    { name: '金枪鱼三明治', shape: 'box', color: 0xE8D9A0, accent: 0x2E7D5B },
+  ],
+  icecream: [
+    { name: '香草',   shape: 'cup', color: 0xFFF3D6, accent: 0xD9A441 },
+    { name: '巧克力', shape: 'cup', color: 0x6F4A2E, accent: 0xF3E3D0 },
+    { name: '草莓',   shape: 'cup', color: 0xF7A8C0, accent: 0xFFFFFF },
+  ],
+  chips: [
+    { name: '原味薯片', shape: 'bag', color: 0xF2C230, accent: 0xE8552B },
+    { name: '番茄薯片', shape: 'bag', color: 0xD62828, accent: 0xFFE082 },
+    { name: '烧烤薯片', shape: 'bag', color: 0x8B5A2B, accent: 0xF2C230 },
+  ],
+  cider: [
+    { name: '苹果酒', shape: 'bottle', color: 0xC9A24B, accent: 0xE8F5E9 },
+    { name: '梨子酒', shape: 'bottle', color: 0xD9C46B, accent: 0xF7F0D0 },
+    { name: '莓果酒', shape: 'bottle', color: 0xB5526E, accent: 0xF7D9E3 },
+  ],
 };
 
 /**
@@ -163,9 +194,34 @@ export const SLOT_COUNT = 8;      // 起始货架格
 export const SLOT_CAP = 24;       // 单格容量上限
 export const PICK_BATCH = 6;      // 单次取货批量
 
+/* 开局货架：当作"上一班留下的货"，直接从 startNight 起就在架上，
+ * 不从 START_CASH 里扣钱 —— 第一夜的任务是学会进货，不是先被扣一笔。
+ * 只给两个主力 SKU 各一小批：够撑到玩家看完引导自己去进货，又不至于让第一夜无脑躺赢。 */
+export const OPENING_STOCK = [
+  { slot: 0, skuId: 'drink', qty: 12 },
+  { slot: 1, skuId: 'bento', qty: 6 },
+];
+/* 首位顾客的最早到店时刻（游戏小时）：0.75 ≈ 开局 45 秒真实时间。
+ * 不设下限时 S1 段从 0 开始撒点，玩家还在读"用 WASD 走两步"，
+ * 顾客已经进店空手离开并扣口碑。 */
+export const FIRST_ARRIVAL_FLOOR = 0.75;
+
 /* ---------- 结算 / 经济（SYS-04） ---------- */
 export const RENT_PER_NIGHT = 80;
+/** 水电：每台设备每夜的固定支出（P0-6）。设备越多越费电 —— 让"多装设施"有持续成本，
+ *  与房租一起构成"不开张也要付钱"的固定压力。设备数由 main 注入（见 economy.setDeviceCountSource）。 */
+export const UTILITIES_PER_NIGHT = 8;
 export const NIGHTS_PER_WEEK = 7;
+/** 首夜目标（P1-12）：上架件数 / 成交单数 —— HUD 目标卡与引导第 4、5 步共用同一套阈值，
+ *  避免"卡片说完成了、引导还在教"的两套口径打架。 */
+export const TUTORIAL_STOCK_GOAL = 6;
+export const TUTORIAL_SERVE_GOAL = 5;
+
+/** 收银找零窗口（P1-14）：结账后多久内再按 E 可把零钱当小费。 */
+export const TIP_WINDOW_SEC = 0.6;
+/** 找零小费：单次金额与每夜上限。上限是为了防止"刷小费"取代正常经营。 */
+export const TIP_CHANGE_AMOUNT = 2;
+export const TIP_CHANGE_CAP_PER_NIGHT = 10;
 export const STAR_THRESHOLDS = [0.8, 0.6, 0.4]; // 成交率 → 3★/2★/1★
 export const UPGRADES = [
   { id: 'slot',    name: '加货架格',   cost: 300, eff: '货架 +4 格' },
@@ -180,25 +236,85 @@ export const ARRIVALS_PER_NIGHT = 22;
 export const QUEUE_MAX = 5;
 export const PATIENCE_SEC = 25;
 export const START_REPUTATION = 50;
+
+/* ---------- 七夜难度曲线（P0-5） ----------
+ * 随夜次推进：客流量↑、顾客耐心↓、房租↑；第 7 夜封顶，不无限加码。
+ * arrivalsMul 作用于客数目标，patienceMul 作用于顾客耐心，rentMul 作用于房租。 */
+export const NIGHT_CURVE = [
+  { night: 1, arrivalsMul: 0.80, patienceMul: 1.30, rentMul: 0.80 },
+  { night: 2, arrivalsMul: 0.92, patienceMul: 1.20, rentMul: 0.88 },
+  { night: 3, arrivalsMul: 1.00, patienceMul: 1.10, rentMul: 0.95 },
+  { night: 4, arrivalsMul: 1.10, patienceMul: 1.00, rentMul: 1.00 },
+  { night: 5, arrivalsMul: 1.22, patienceMul: 0.95, rentMul: 1.12 },
+  { night: 6, arrivalsMul: 1.34, patienceMul: 0.90, rentMul: 1.24 },
+  { night: 7, arrivalsMul: 1.48, patienceMul: 0.85, rentMul: 1.40 },
+];
+export function nightCurve(night) {
+  const i = Math.max(0, Math.min(NIGHT_CURVE.length - 1, (night | 0) - 1));
+  return NIGHT_CURVE[i];
+}
+
+/* ---------- 二周目：周难度（内容批 P1-9） ----------
+ * ── 为什么 night 继续做**绝对**夜号 ----------
+ * 存档里 slots[].expiryNight / buffCards[].expireNight / influenceUntilNight /
+ * pendingNextNight[].night 全是"绝对夜号"口径。如果每满 7 夜把 night 重置为 1，
+ * 这些值会全部错位（临期货永不过期、限时券永不到期）。所以 night 只增不减，
+ * "第几周 / 周内第几夜"由下面两个纯函数从绝对夜号推导。
+ *
+ * ── 难度怎么叠 ──────────────────────────────
+ * NIGHT_CURVE 仍是"周内节奏"（第 1 夜轻松 → 第 7 夜爆满，见 nightCurve 调用点）；
+ * WEEK_MODS 是"周与周之间"的整体加压：顾客更抠、房租更贵、货损更重。
+ * 两者相乘，既保留每周内部的起伏，又让第二周整体比第一周难。 */
+export const WEEK_MODS = [
+  { week: 1, spendMul: 1.00, rentMul: 1.00, spoilMul: 1.0, label: '标准周' },
+  { week: 2, spendMul: 0.95, rentMul: 1.25, spoilMul: 1.2, label: '难度 ×1.25' },
+  { week: 3, spendMul: 0.90, rentMul: 1.50, spoilMul: 1.4, label: '难度 ×1.5' },
+];
+
+/** 取某周的难度修正。第 4 周起进入"无尽周"：数值封顶在最后一档，只比纪录。 */
+export function weekMod(week) {
+  const w = Math.max(1, week | 0);
+  const i = Math.min(WEEK_MODS.length, w) - 1;
+  return { ...WEEK_MODS[i], endless: w > WEEK_MODS.length };
+}
+
+/** 绝对夜号 → 第几周（1 起）。night 7 → 1，night 8 → 2。 */
+export function weekOf(night) {
+  const n = Math.max(1, night | 0);
+  return Math.floor((n - 1) / NIGHTS_PER_WEEK) + 1;
+}
+
+/** 绝对夜号 → 周内第几夜（1..7）。所有"按夜次缩放"的曲线都用它，保证每周重新走一遍节奏。 */
+export function nightInWeek(night) {
+  const n = Math.max(1, night | 0);
+  return ((n - 1) % NIGHTS_PER_WEEK) + 1;
+}
 export const REP_SERVE = 0.5;    // 成交 +0.5
 export const REP_LOST = -1;      // 失销 -1
 export const SEGMENTS = [
-  /* bias 已同步归一化到「含 6 个基础 SKU」：不可售的 oden/hotcoffee/beer 权重在
-   * pickSku 里被 availableSkus() 过滤掉（啤酒需解锁杂货），所以实际抽样只看当夜在售的。
-   * 时段倾向：深夜/凌晨偏关东煮·啤酒·热咖啡，清晨偏便当·热咖啡（打工族提神）。 */
+  /* bias 是**相对权重**（pickSku 内部按总和归一化），不需要手工凑成 1。
+   * 不可售的 SKU（未解锁的杂货线 / 非节日夜的礼盒）会在 availableSkus() 里被过滤。
+   * 时段倾向：深夜/凌晨偏关东煮·酒·热咖啡，清晨偏便当·三明治·热咖啡。
+   * P1-6 新增四样（三明治/冰淇淋/薯片/苹果酒）按"鲜食走高、零食全天、酒走夜"分配。 */
   { id: 'S1', label: '晚间', from: 0, to: 2, weight: 1.00,
-    bias: { drink: 0.22, noodle: 0.20, bento: 0.22, oden: 0.14, hotcoffee: 0.12, beer: 0.10 },
-    /* idWeights：各身份的「相对出现权重」，深夜醉汉/夜猫子多、清晨上班族/司机多（块7） */
-    idWeights: { nightowl: 0.25, student: 0.20, office: 0.20, drunk: 0.20, driver: 0.15 } },
+    bias: { drink: 0.22, noodle: 0.20, bento: 0.22, oden: 0.14, hotcoffee: 0.12, beer: 0.10,
+            sandwich: 0.10, icecream: 0.06, chips: 0.10, cider: 0.05 },
+    /* idWeights：各身份的「相对出现权重」，深夜醉汉/夜猫子多、清晨上班族/司机多（块7）
+     * P1-7 新增护士/快递员：两者都必须显式给权重 —— pickIdentity 对缺失身份回落 1，
+     * 漏写会让新身份瞬间占到约一半客流（见 customers.pickIdentity 的注释）。 */
+    idWeights: { nightowl: 0.22, student: 0.18, office: 0.18, drunk: 0.16, driver: 0.12, nurse: 0.08, courier: 0.06 } },
   { id: 'S2', label: '深夜', from: 2, to: 4, weight: 0.60,
-    bias: { drink: 0.22, noodle: 0.16, bento: 0.14, oden: 0.18, hotcoffee: 0.12, beer: 0.18 },
-    idWeights: { nightowl: 0.30, student: 0.15, office: 0.10, drunk: 0.30, driver: 0.15 } },
+    bias: { drink: 0.22, noodle: 0.16, bento: 0.14, oden: 0.18, hotcoffee: 0.12, beer: 0.18,
+            sandwich: 0.08, icecream: 0.05, chips: 0.12, cider: 0.10 },
+    idWeights: { nightowl: 0.26, student: 0.12, office: 0.08, drunk: 0.26, driver: 0.12, nurse: 0.06, courier: 0.10 } },
   { id: 'S3', label: '凌晨', from: 4, to: 6, weight: 0.35,
-    bias: { drink: 0.24, noodle: 0.16, bento: 0.12, oden: 0.18, hotcoffee: 0.14, beer: 0.16 },
-    idWeights: { nightowl: 0.28, student: 0.17, office: 0.12, drunk: 0.28, driver: 0.15 } },
+    bias: { drink: 0.24, noodle: 0.16, bento: 0.12, oden: 0.18, hotcoffee: 0.14, beer: 0.16,
+            sandwich: 0.08, icecream: 0.05, chips: 0.10, cider: 0.12 },
+    idWeights: { nightowl: 0.24, student: 0.14, office: 0.10, drunk: 0.24, driver: 0.12, nurse: 0.07, courier: 0.09 } },
   { id: 'S4', label: '清晨', from: 6, to: 8, weight: 0.80,
-    bias: { drink: 0.18, noodle: 0.18, bento: 0.26, oden: 0.10, hotcoffee: 0.18, beer: 0.10 },
-    idWeights: { nightowl: 0.10, student: 0.15, office: 0.35, drunk: 0.10, driver: 0.30 } },
+    bias: { drink: 0.18, noodle: 0.18, bento: 0.26, oden: 0.10, hotcoffee: 0.18, beer: 0.10,
+            sandwich: 0.14, icecream: 0.04, chips: 0.06, cider: 0.04 },
+    idWeights: { nightowl: 0.08, student: 0.12, office: 0.28, drunk: 0.08, driver: 0.24, nurse: 0.12, courier: 0.08 } },
 ];
 
 /* ---------- 块7：顾客身份（5 种，带时段分布 + 独立外观 + 组合率） ----------
@@ -216,15 +332,22 @@ export const SEGMENTS = [
  */
 export const IDENTITIES = {
   nightowl:  { id: 'nightowl',  name: '夜猫子', emoji: '🦉', spendMul: 1.1, patienceMul: 1.6, comboRate: 0.35,
-               prefer: ['drink', 'oden', 'beer'],            look: { eyes: 'tired' } },
+               prefer: ['drink', 'oden', 'beer', 'icecream'],  look: { eyes: 'tired' } },
   student:   { id: 'student',   name: '学生',   emoji: '🎒', spendMul: 0.85, patienceMul: 1.0, comboRate: 0.30,
-               prefer: ['noodle', 'drink', 'gum'],          look: { backpack: true } },
+               prefer: ['noodle', 'drink', 'gum', 'chips'],    look: { backpack: true } },
   office:    { id: 'office',    name: '上班族', emoji: '💼', spendMul: 1.3, patienceMul: 0.6, comboRate: 0.25,
-               prefer: ['bento', 'hotcoffee', 'magazine'],  look: { briefcase: true } },
+               prefer: ['bento', 'hotcoffee', 'magazine', 'sandwich', 'festival'],  look: { briefcase: true } },
   drunk:     { id: 'drunk',     name: '醉汉',   emoji: '🍻', spendMul: 1.2, patienceMul: 0.6, comboRate: 0.40,
-               prefer: ['beer', 'gum', 'magazine'],         look: { flush: true } },
+               prefer: ['beer', 'gum', 'magazine', 'cider', 'festival'],            look: { flush: true } },
   driver:    { id: 'driver',    name: '司机',   emoji: '🚕', spendMul: 1.0, patienceMul: 0.6, comboRate: 0.30,
                prefer: ['hotcoffee', 'gum', 'battery'],      look: { hat: true } },
+  /* P1-7：两种新身份 —— 护士（夜班同路人：耐心好、爱买热食）与
+   * 快递员（赶时间：耐心差、客单价高、爱买泡面与电池）。
+   * look 复用既有外观修饰（帽子 / 背包），零新增角色几何。 */
+  nurse:     { id: 'nurse',     name: '护士',   emoji: '🩺', spendMul: 1.05, patienceMul: 1.2, comboRate: 0.35,
+               prefer: ['bento', 'hotcoffee', 'drink'],      look: { hat: true } },
+  courier:   { id: 'courier',   name: '快递员', emoji: '📦', spendMul: 1.25, patienceMul: 0.7, comboRate: 0.30,
+               prefer: ['noodle', 'drink', 'battery'],        look: { backpack: true } },
 };
 export const IDENTITY_IDS = Object.keys(IDENTITIES);
 
@@ -758,6 +881,10 @@ export const LEADERBOARD = {
     dance: { label: '单局最高连击', unit: '连' },
     racing: { label: '单局完美过弯', unit: '弯' },
     ktv: { label: '单曲最高分', unit: '分' },
+    /* 内容批 P1-4：经营向两条榜。口径都是"越高越好"，与街机榜同一套 submitLocal 逻辑；
+     * 面板按 group 分"🎮 街机 / 🏪 经营"两段（见 main.leaderboardBoards）。 */
+    weekNet: { label: '本周总净利', unit: '¥', group: 'store' },
+    bestNight: { label: '单夜最高净利', unit: '¥', group: 'store' },
   },
 };
 
@@ -1065,6 +1192,21 @@ export const REGULARS = {
   /** 熟客结账加成（复用 economy 的 isRegular 逻辑：rep+REGULAR.repGain / 小费 ×REGULAR.tip） */
   /** 随机生成的常客名字池（带"熟"的昵称） */
   names: ['阿强', '小敏', '老周', '丸子', '阿杰', '丽丽', '大壮', '阿May', '阿Ken', '豆豆'],
+  /* P1-8：常客人设 —— **与 names 同序**（personaIndex === nameIndex）。
+   * 每条一句口头禅 + 一个"为什么常来"的理由；名字是骨架，人设才是让玩家记住他的东西。
+   * 只做展示（进店 toast / 周终告别），不参与任何数值判定。 */
+  personas: [
+    { line: '又是一个通宵的晚上啊', reason: '就爱这口关东煮' },
+    { line: '考试周……只能靠咖啡续命了', reason: '泡面最实在' },
+    { line: '跑完这单就收工', reason: '热咖啡提神' },
+    { line: '今天也想吃点甜的', reason: '冰淇淋治愈一切' },
+    { line: '加班到现在，饭还没吃', reason: '便当热一热就能吃' },
+    { line: '刚下夜班，来点热的', reason: '热咖啡暖手' },
+    { line: '再来一瓶，就一瓶', reason: '啤酒够冰' },
+    { line: '睡不着，出来走走', reason: '薯片配剧' },
+    { line: '还有三单，先垫一口', reason: '泡面最快' },
+    { line: '明天早八，今天先犒劳自己', reason: '三明治当早餐' },
+  ],
   /** 熟客头顶"熟"标 */
   tag: '熟',
 
@@ -1269,6 +1411,13 @@ export const TASKBOARD = {
     { id: 'serve_night',  metric: 'served',    label: '接待顾客',     unit: '位', goals: [6],    reward: { cash: 14, tokens: 2 }, hint: '结账即计入' },
     { id: 'stock_up',     metric: 'placed',    label: '补满货架',     unit: '件', goals: [8],    reward: { cash: 10, tokens: 1 }, hint: '从库存箱上架即计入' },
     { id: 'clear_exp',    metric: 'cleared',   label: '清掉临期货',   unit: '格', goals: [1],    reward: { cash: 12, tokens: 2 }, hint: '对准临期货格清仓' },
+    /* P1-10：节日夜专属 —— 礼盒只在第 7 夜（周终）到货 8 件，卖光就是"周终 BOSS 商品"。
+     * 由 taskboard.dealNight 在 isFestival(themeId) 时**优先发**，非节日夜不会出现。
+     * ⚠ 现金奖励刻意给 12 而不是 15：任务板有一条硬约束"满接 3 张 ≤ 单夜营收 30%"
+     *   （tests/block4-taskboard.test.mjs 守着）。多出这一张之后，若它也是 15，
+     *   最坏组合（15 + 15 + 14 = 44）就顶到 31.3% 越线；压到 12 后最坏组合回到 41（29.1%）。
+     *   它的吸引力靠 tokens=3（全场最高）来补，不靠现金。 */
+    { id: 'sell_festival', metric: 'soldFestival', label: '卖掉节日礼盒', unit: '个', goals: [6], reward: { cash: 12, tokens: 3 }, hint: '节日夜限定 · 只在这一夜可卖' },
   ],
 };
 
