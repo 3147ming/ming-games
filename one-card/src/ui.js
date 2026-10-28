@@ -6,13 +6,16 @@ import { CONST, STATUS_TEXT } from '../config/constants.js';
 import { ARCHETYPES, ARCHETYPE_MAP } from '../config/archetypes.js';
 import { CARD_MAP, POOL_CARDS } from '../config/cards.js';
 import { RELICS } from '../config/relics.js';
-import { describeCard, describeRelic, typeText, rarityText } from './describe.js';
+import { describeCard, describeRelic, typeText, rarityText, shortCardText } from './describe.js';
 import { glyphSvg } from './glyph.js';
 import { intentView } from './enemy.js';
-import { PHASE } from './run.js';
+import { ENEMY_MAP } from '../config/enemies.js';
+import { EPITAPHS } from '../config/epitaphs.js';
+import { PHASE, dailyInfo } from './run.js';
 import { NODE_META } from './mapgen.js';
 import { Fx } from './fx.js';
 import { resolveLogEnv, lastLog, amendLastLog } from './logger.js';
+import { load } from './storage.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -25,6 +28,11 @@ export class Ui {
       hudProgress: $('hud-progress'),
       hudSeed: $('hud-seed'),
       hudRelics: $('hud-relics'),
+      hudDeck: $('hud-deck'),
+      hudDeckN: $('hud-deck-n'),
+      energy: $('energy'),
+      energyNow: $('energy-now'),
+      energyMax: $('energy-max'),
       stage: $('stage'),
       enemyZone: $('enemy-zone'),
       logZone: $('log-zone'),
@@ -136,6 +144,7 @@ export class Ui {
     for (const s of document.querySelectorAll('.screen')) s.classList.remove('active');
     const target = $('screen-' + name);
     if (target) target.classList.add('active');
+    else if (typeof console !== 'undefined') console.warn('[ui] 没有这个屏：', name);
     this.screen = name;
     // 阶段 5 / T3：每个环节给 #stage 上对应 mood（combat 在 renderCombat 里还会细化到 elite/boss）。
     const mood = {
@@ -190,12 +199,24 @@ export class Ui {
       ? `第 ${n.floor} 层 · ${n.index + 1}/${CONST.NODES_PER_FLOOR}`
       : `第九层的尽头`;
     this.el.hudSeed.textContent = `种子 ${run.seed}`;
+    // 机制批 P0-7：遗物改可点方块（去掉 title，手机上触屏没有 hover）。点击弹 toast 显示效果。
     this.el.hudRelics.innerHTML = run.relicIds
       .map((id) => {
         const r = RELICS.find((x) => x.id === id);
-        return r ? `<span class="relic-chip" title="${r.n}">${r.n.slice(0, 1)}</span>` : '';
+        return r ? `<span class="relic-chip" data-relic="${r.id}">${r.n.slice(0, 1)}</span>` : '';
       })
       .join('');
+    for (const el of this.el.hudRelics.querySelectorAll('[data-relic]')) {
+      el.onclick = () => {
+        const r = RELICS.find((x) => x.id === el.dataset.relic);
+        if (!r) return;
+        // describeRelic 输出带 <b>/<br>，toast 里只需要纯文本
+        this.toast(`${r.n}：${describeRelic(r).replace(/<br>/g, '；').replace(/<\/?b>/g, '')}`, 3200);
+      };
+    }
+    // 机制批 P0-1：牌组数字 + 只读牌组视图入口
+    if (this.el.hudDeckN) this.el.hudDeckN.textContent = run.deck.length;
+    if (this.el.hudDeck) this.el.hudDeck.onclick = () => this.h.onDeckView();
   }
 
   // ---------- 标题页 ----------
@@ -203,18 +224,54 @@ export class Ui {
   renderTitle(meta) {
     this.show('title');
     const actions = document.querySelector('#screen-title .title-actions');
-    actions.innerHTML = '<button id="btn-new-run" class="big">开始一世</button><button id="btn-codex">牌谱</button>';
+    // 机制批 P0-6：存在节点边界快照时，给一个「继续这一世」入口（resumeRun 读快照续局）。
+    const snap = load(CONST.RUN_KEY, null);
+    const canResume = !!(snap && snap.v === 1);
+    // 内容批 P1-7：今日之牌 —— 按钮上直接写今日日期与今日最好成绩（没打过就只有日期）
+    const di = dailyInfo();
+    const drec = load('one-card:daily:v1', null);
+    const todayRec = drec && drec.date === di.date ? drec : null;
+    const dailyLabel = todayRec
+      ? `今日之牌 · ${di.date.slice(5).replace('-', '/')} · 最好 ${todayRec.best.nodes || 0}/${CONST.FLOORS * CONST.NODES_PER_FLOOR} 节点`
+      : `今日之牌 · ${di.date.slice(5).replace('-', '/')}`;
+    actions.innerHTML =
+      '<button id="btn-new-run" class="big">开始一世</button>' +
+      (canResume ? '<button id="btn-resume">继续这一世</button>' : '') +
+      `<button id="btn-daily">${dailyLabel}</button>` +
+      '<button id="btn-codex">牌谱</button>';
     $('btn-new-run').onclick = () => this.showArchetypePicker();
     $('btn-codex').onclick = () => this.renderCodex(meta);
+    $('btn-daily').onclick = () => this.h.onDaily();
+    if (canResume) $('btn-resume').onclick = () => this.h.onResumeRun();
     const done = POOL_CARDS.length - meta.unlockedCards.length;
+    // 内容批 P1-6：难度阶梯显示（封顶 5）。0 阶不显示 —— 第一世的标题页不该有数字。
+    const asc = meta.ascension || 0;
     $('title-stats').innerHTML =
       `已归来 ${meta.runs} 世 · 抵达第九层 ${meta.wins} 次<br>` +
       `牌谱 ${meta.unlockedCards.length} / ${POOL_CARDS.length} · 遗物 ${meta.unlockedRelics.length} / ${RELICS.length}` +
-      (done > 0 ? `<br>还有 <b>${done}</b> 张牌没被你带回来` : '<br>你把所有的牌都带回来了。');
+      (done > 0 ? `<br>还有 <b>${done}</b> 张牌没被你带回来` : '<br>你把所有的牌都带回来了。') +
+      (asc > 0 ? `<br>第九层之下 <b>${'ⅠⅡⅢⅣⅤ'[Math.min(asc, 5) - 1]}</b> · 敌人血量 +${asc * 12}%` : '') +
+      // 内容批 P1-8：世记 —— 最近 6 世，最新的在最上面（纯 DOM，不新开屏）
+      this.historyHtml(meta);
     this.renderHud(null);
   }
 
+  /** 内容批 P1-8：世记（最近 6 世）。流派名必须走 ARCHETYPE_MAP，不在模板里写死中文映射。 */
+  historyHtml(meta) {
+    const h = (meta.history || []).slice(-6).reverse();
+    if (!h.length) return '';
+    return `<div class="hist">${h
+      .map(
+        (e) =>
+          `第 ${e.run} 世 · ${(ARCHETYPE_MAP[e.arch] || {}).name || e.arch} · ` +
+          `${e.cleared ? '通关' : `死在第 ${e.floor} 层`} · 牌组 ${e.deck} 张`
+      )
+      .join('<br>')}</div>`;
+  }
+
+  /** 内容批 P1-9：第一步 —— 选流派（第二步选出身，见 showOriginPicker）。 */
   showArchetypePicker() {
+    this.show('title');
     const actions = document.querySelector('#screen-title .title-actions');
     actions.innerHTML =
       `<div style="font-size:12px;color:var(--paper-dim);margin-bottom:2px">选择你这一世的身体</div>` +
@@ -226,9 +283,40 @@ export class Ui {
       ).join('') +
       '<button id="btn-arch-back">返回</button>';
     for (const b of actions.querySelectorAll('[data-arch]')) {
-      b.onclick = () => this.h.onStartRun(b.dataset.arch);
+      b.onclick = () => this.showOriginPicker(b.dataset.arch);
     }
     $('btn-arch-back').onclick = () => this.renderTitle(this.h.getMeta());
+  }
+
+  /**
+   * 内容批 P1-9：第二步 —— 选出身。
+   * 口径：每个出身**只替换流派那 2 张入门牌**，4 打击 + 4 防御不动，牌组仍是 10 张。
+   *      没有 origins 字段的流派直接开局（配置缺字段也不能把玩家卡在选人页）。
+   */
+  showOriginPicker(archId) {
+    const a = ARCHETYPE_MAP[archId];
+    if (!a) return this.showArchetypePicker();
+    if (!a.origins || !a.origins.length) return this.h.onStartRun(archId);
+    this.show('title');
+    const actions = document.querySelector('#screen-title .title-actions');
+    actions.innerHTML =
+      `<div style="font-size:12px;color:var(--paper-dim);margin-bottom:2px">
+        <span style="color:var(--${a.color})">${a.name}</span> · 你是从哪里来的？</div>` +
+      a.origins
+        .map(
+          (o) => `<button class="big" data-origin="${o.id}" style="text-align:left;letter-spacing:0">
+            ${o.n} · ${o.tag}
+            <i style="display:block;font-style:normal;font-size:11px;color:var(--paper-dim);margin-top:3px">${o.deck
+              .map((cid) => (CARD_MAP[cid] ? CARD_MAP[cid].n : cid))
+              .join(' + ')}</i>
+          </button>`
+        )
+        .join('') +
+      '<button id="btn-origin-back">换流派</button>';
+    for (const b of actions.querySelectorAll('[data-origin]')) {
+      b.onclick = () => this.h.onStartRun(archId, { originId: b.dataset.origin });
+    }
+    $('btn-origin-back').onclick = () => this.showArchetypePicker();
   }
 
   // ---------- 地图 ----------
@@ -256,12 +344,30 @@ export class Ui {
       })
       .join('');
     this.el.mapBody.scrollTop = this.el.mapBody.scrollHeight;
+    // 机制批 P1-2：入口二选一 —— 即将进入的节点若带 alt，给一个副选项
+    const upcoming = run.map.find((n) => !n.done);
+    const altWrap = document.getElementById('map-alt');
+    if (altWrap) altWrap.remove();
+    if (upcoming && upcoming.alt) {
+      const alt = upcoming.alt;
+      const altLabel = NODE_META[alt.type] ? NODE_META[alt.type].label : alt.type;
+      const wrap = document.createElement('div');
+      wrap.id = 'map-alt';
+      wrap.className = 'map-alt';
+      wrap.innerHTML = `也可以走：<button data-alt="1">${altLabel}</button>`;
+      wrap.querySelector('[data-alt]').onclick = (ev) => {
+        ev.stopPropagation();
+        this.h.onAdvance(upcoming.uid);
+      };
+      this.el.mapBody.appendChild(wrap);
+    }
     $('screen-map').onclick = () => this.h.onAdvance();
   }
 
   // ---------- 战斗 ----------
 
   renderCombat(run, combat) {
+    document.getElementById('tut')?.remove();   // 机制批 P1-5：每次重渲染先清掉新手提示
     this.show('combat');
     this.renderHud(run);
     // 阶段 5 / T3：按节点类型细化氛围（精英偏红、Boss 深红暗涌）。
@@ -282,7 +388,7 @@ export class Ui {
     this.el.enemyZone.innerHTML = `
       <div class="enemy-card" id="enemy-card">
         <div class="enemy-name">${e.n}</div>
-        <div class="enemy-sub">${e.sub || ''}</div>
+        <div class="enemy-sub">${e.sub || ''}${e.phase2 ? ' · 蜕变' : ''}</div>
         <div class="enemy-glyph">${glyphSvg({ shape: e.shape, tier: e.tier })}</div>
         <div class="enemy-hp bar">
           <div class="bar-fill" style="width:${Math.max(0, (e.hp / e.maxHp) * 100)}%"></div>
@@ -298,8 +404,24 @@ export class Ui {
       </div>`;
 
     this.renderLog(combat);
+    // 机制批 P1-5：新手提示只在「第一世」出现。不引入新的存档字段 —— meta.runs 就是最准的判据。
+    const firstLife = run.meta.runs === 0;
+    if (firstLife && !this._tutDismissed) {
+      this.el.logZone.insertAdjacentHTML('beforebegin', `
+        <div id="tut" class="tut">
+          <b>点手牌出牌</b>（左上角数字是费用，灰掉的牌是费不够）· 每回合 3 点能量<br>
+          敌人卡下方是<b>意图</b>，提前看到伤害才能决定挡还是打 · 打完点<b>结束回合</b>
+        </div>`);
+    }
     this.renderHand(combat);
     this.renderPiles(combat);
+    // 机制批 P0-2：能量可见。数据源就是 s.player，不新增字段。
+    if (this.el.energy) {
+      this.el.energyNow.textContent = s.player.energy;
+      this.el.energyMax.textContent = s.player.maxEnergy;
+      this.el.energy.classList.toggle('empty', s.player.energy <= 0);
+      this.el.energy.classList.toggle('gain', s.player.energy > s.player.maxEnergy); // 熵流过载时 >3
+    }
 
     const any = s.hand.some((i) => combat.canPlay(i));
     this.el.btnEndTurn.classList.toggle('ready', !any);
@@ -313,12 +435,14 @@ export class Ui {
       const now = performance.now();
       if (this._lastCardTap.uid === uid && now - this._lastCardTap.t < 260) return;
       this._lastCardTap = { uid, t: now };
+      this._tutDismissed = true; // 机制批 P1-5：打出第一张牌后撤掉新手提示
       this.h.onPlayCard(uid);
     };
     const onEnd = () => {
       const now = performance.now();
       if (now - this._lastEndTap < 260) return; // 结束回合双击去抖
       this._lastEndTap = now;
+      this._tutDismissed = true; // 机制批 P1-5：结束回合也撤掉新手提示
       this.h.onEndTurn();
     };
     this.el.btnEndTurn.onclick = onEnd;
@@ -370,6 +494,8 @@ export class Ui {
   renderHand(combat) {
     if (!this.busy) this.handScroll = this.el.handZone.scrollLeft;
     const s = combat.state;
+    // 机制批 P0-3：这一世开局带在牌组里的那张牌，战斗里认得出
+    const carried = combat.run && combat.run.meta ? combat.run.meta.carried : null;
     this.el.handTrack.innerHTML = s.hand
       .map((inst) => {
         const d = CARD_MAP[inst.cid];
@@ -379,9 +505,11 @@ export class Ui {
         if (!ok) cls.push('unplayable');
         return `<div class="${cls.join(' ')}" data-uid="${inst.uid}">
           <div class="card-cost">${d.cost}</div>
+          ${inst.cid === carried ? '<div class="card-carry">本世</div>' : ''}
           <div class="card-name">${d.n}</div>
           <div class="card-type">${typeText(d.t)}${arch ? ' · ' + arch.name : ''}</div>
-          <div class="card-text">${describeCard(d)}</div>
+          <div class="card-text">${shortCardText(d)}</div>
+          ${d.ex ? '<div class="card-ex">消耗</div>' : ''}
           <div class="card-rarity">${rarityText(d.r)}</div>
         </div>`;
       })
@@ -389,6 +517,16 @@ export class Ui {
     requestAnimationFrame(() => {
       this.el.handZone.scrollLeft = this.handScroll;
     });
+    // 机制批 P0-8：窄屏只完整显示 5 张，必须告诉玩家「右边还有」
+    const more = Math.max(0, s.hand.length - 5);
+    document.getElementById('hand-more')?.remove();
+    if (more > 0) {
+      const tag = document.createElement('div');
+      tag.id = 'hand-more';
+      tag.className = 'hand-more';
+      tag.textContent = `+${more}`;
+      this.el.handZone.appendChild(tag);
+    }
   }
 
   renderPiles(combat) {
@@ -465,10 +603,14 @@ export class Ui {
     this.el.rewardBody.innerHTML =
       `<div class="card-row reward">${run.rewardCards.map((c) => this.cardHtml(c)).join('')}</div>
        <div class="reward-note">点击取走一张，或跳过</div>
-       <div style="display:flex;justify-content:center;margin-top:16px"><button id="btn-skip">跳过</button></div>`;
+       <div style="display:flex;gap:12px;justify-content:center;margin-top:16px">
+         <button id="btn-reroll"${run.rerollUsed ? ' disabled' : ''}>重抽（本局 1 次）</button>
+         <button id="btn-skip">跳过</button>
+       </div>`;
     for (const el of this.el.rewardBody.querySelectorAll('.card')) {
       el.onclick = () => this.h.onReward(el.dataset.cid);
     }
+    $('btn-reroll').onclick = () => { this.h.onReroll(); };
     $('btn-skip').onclick = () => this.h.onReward(null);
   }
 
@@ -479,6 +621,7 @@ export class Ui {
       <div class="card-name">${c.n}</div>
       <div class="card-type">${typeText(c.t)}${arch ? ' · ' + arch.name : ''}</div>
       <div class="card-text">${describeCard(c)}</div>
+      ${c.ex ? '<div class="card-ex">消耗</div>' : ''}
       <div class="card-rarity">${rarityText(c.r)}</div>
     </div>`;
   }
@@ -521,7 +664,7 @@ export class Ui {
   }
 
   renderRemove(run) {
-    this.show('remove');
+    this.show('rest');   // 复用 #screen-rest：删牌本来就发生在灯下/遗迹，视觉上也是同一块地方
     this.renderHud(run);
     this.el.restBody.innerHTML =
       `<div class="event-text">选择要移除的一张牌。</div>
@@ -578,18 +721,28 @@ export class Ui {
     const s = run.summary();
     const cleared = s.outcome === 'cleared';
     this.el.overTitle.textContent = cleared ? '你把第九层的灯带走了' : '这一世，到此为止';
+    // 机制批 P1-1：死因行 —— 告诉玩家死在哪、打到第几回合
+    const lb = s.lastBattle;
+    const foe = lb && lb.enemyId ? ENEMY_MAP[lb.enemyId] : null;
     this.el.overSub.innerHTML =
       `种子 ${s.seed}<br>` +
       `走过 ${s.cleared} / ${s.total} 个节点 · 剩余生命 ${s.hp}/${s.maxHp}<br>` +
+      (cleared ? '' : (foe ? `最后一场：${foe.n} · 打到第 ${lb.turns} 回合<br>` : '你在路上倒下了<br>')) +
       `牌组 ${s.deckSize} 张 · 遗物 ${s.relics} 件 · 用时 ${s.minutes} 分钟<br><br>` +
-      (cleared ? '第九层没有尽头，只有更低的第九层。' : '你死在这里。但这一次不算白死。') +
+      // 内容批 P1-11：碑文。wins 在 finish() 里已 +1，所以第一次通关取第 0 条；
+      // 死亡文案是全游戏最好的一句，不动它。
+      (cleared
+        ? EPITAPHS[(run.meta.wins - 1 + EPITAPHS.length) % EPITAPHS.length]
+        : '你死在这里。但这一次不算白死。') +
       this.selfReportHtml();
     this.bindSelfReport();
     // 注意：「带回一张牌」在独立的一屏里完成，这一屏只负责收尾 —— 不要再依赖 pendingUnlock，
     // 它此时已经被消费掉了（这个 bug 是探针截图抓出来的）。
+    const arch = ARCHETYPE_MAP[run.archetypeId];
     const btn = $('btn-over-next');
-    btn.textContent = '回到开头';
-    btn.onclick = () => this.h.onContinue();
+    btn.textContent = `再来一世 · ${arch ? arch.name : ''}`;
+    btn.onclick = () => this.h.onAgain(run.archetypeId);
+    $('btn-over-home').onclick = () => this.h.onContinue();
   }
 
   // ---------- 试玩自报（阶段 4 / T2）----------
@@ -644,7 +797,7 @@ export class Ui {
     const u = run.pendingUnlock;
     this.el.metaTitle.textContent = '带回来的那一张';
     this.el.metaBody.innerHTML =
-      `<div class="reward-note" style="margin:0 0 16px">每一世，你只带回一张牌。<br>它从此会出现在后面每一局的路上。</div>
+      `<div class="reward-note" style="margin:0 0 16px">每一世，你只带回一张牌。<br>它会躺进你下一世的起手牌组。</div>
        <div class="card-row reward">${u.cards
          .map((c) => this.cardHtml(c))
          .join('')}</div>
@@ -652,5 +805,16 @@ export class Ui {
     for (const el of this.el.metaBody.querySelectorAll('.card')) {
       el.onclick = () => this.h.onUnlock(el.dataset.cid);
     }
+  }
+
+  /** 只读牌组视图（机制批 P0-1）。绝不绑 onclick —— 看牌不能改牌。 */
+  renderDeckView(run) {
+    this.show('meta');
+    this.renderHud(run);
+    this.el.metaTitle.textContent = `牌组 · ${run.deck.length} 张`;
+    this.el.metaBody.innerHTML =
+      `<div class="card-row">${run.deck.map((inst) => this.cardHtml(CARD_MAP[inst.cid])).join('')}</div>
+       <div style="display:flex;justify-content:center;margin-top:16px"><button id="btn-deck-back">返回</button></div>`;
+    $('btn-deck-back').onclick = () => this.h.onResume();
   }
 }

@@ -72,11 +72,20 @@ export function removeCard(state, uid) {
   return false;
 }
 
-/** 奖励卡池：稀有度加权（口径 60/30/10），不放回抽 n 张 */
-export function rollRewardCards(rng, unlockedCids, n = CONST.REWARD_CHOICES) {
+/** 奖励卡池：稀有度加权（口径 60/30/10），不放回抽 n 张
+ *  机制批 P0-4：opts.guaranteeArch 先给本流派留一个位置，其余按原权重补齐；
+ *              保持旧调用签名可用（荒野关 rollWildReward 不传这个参数就还是旧行为）。 */
+export function rollRewardCards(rng, unlockedCids, n = CONST.REWARD_CHOICES, opts = {}) {
   const pool = POOL_CARDS.filter((c) => unlockedCids.has(c.id));
   const picked = [];
   const used = new Set();
+  // 口径：先给本流派一个位置，再按稀有度权重补齐 —— 否则 28.9%~42.3% 的局一张关键牌都摸不到。
+  const own = opts.guaranteeArch ? pool.filter((c) => c.a === opts.guaranteeArch) : [];
+  if (own.length && n > 1) {
+    const c = rng.weighted(own, (x) => CONST.RARITY_WEIGHT[x.r] || 0);
+    used.add(c.id);
+    picked.push(c);
+  }
   let guard = 0;
   while (picked.length < n && guard++ < 200) {
     const c = rng.weighted(pool, (x) => CONST.RARITY_WEIGHT[x.r] || 0);
@@ -84,7 +93,12 @@ export function rollRewardCards(rng, unlockedCids, n = CONST.REWARD_CHOICES) {
     used.add(c.id);
     picked.push(c);
   }
-  return picked;
+  return rng.shuffled(picked); // 打散顺序：保底牌不能永远排第一
+}
+
+/** 从存档恢复时把 UID 推到已用过的最大值之上，否则新牌会和旧牌撞号（removeFromDeck 会删错） */
+export function ensureUidAbove(maxUid) {
+  if (UID <= maxUid) UID = maxUid + 1;
 }
 
 export function rollCardsByRarity(rng, unlockedCids, rarity, n) {

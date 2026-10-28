@@ -21,6 +21,9 @@ export function defaultMeta() {
     wins: 0,
     bestFloor: 0,
     totalMinutes: 0,
+    carried: null,     // 上一世带回来的那张牌（id）。这是「一世一牌」唯一的机制载体。
+    ascension: 0,      // 第九层之下：通关次数决定的难度阶梯（内容批 P1-6）
+    history: [],       // 世记：每一世死在哪、带回了什么（内容批 P1-8）
   };
 }
 
@@ -60,6 +63,8 @@ export function grantCardUnlock(meta, cid) {
     meta.unlockedCards.push(cid);
     meta.unlockedAt.push({ kind: 'card', id: cid, run: meta.runs });
   }
+  // 机制批 P0-3：上一世带回的那张牌，下一世从第一回合就躺在牌组里 —— 这是「一世一牌」的机制化身。
+  meta.carried = cid;
   saveMeta(meta);
 }
 

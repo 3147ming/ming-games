@@ -2,6 +2,9 @@
 // 字段：id / a=流派 / n=牌名 / t=类型 / cost=能量 / r=稀有度(1-3) / ops=效果 / ex=消耗 / starter=入门牌 / sealed=初始封印
 // 关键口径：卡面描述由 ops 自动生成（见 src/describe.js），因此配置与文案永远不可能漂移。
 // 加一张卡 = 加一条数据，0 行战斗循环代码改动 —— 这是「选对类型」的硬指标。
+// 内容批 P1-9：starterDeck 需要按出身（origins）拼起始牌组，故引入 ARCHETYPE_MAP。
+//   方向安全：archetypes.js 不 import cards.js，不构成循环依赖。
+import { ARCHETYPE_MAP } from './archetypes.js';
 
 export const CARDS = [
   // ============ 通用基础牌（不入奖励池，由起始牌组给出）============
@@ -80,6 +83,17 @@ export const CARDS = [
   { id: 'x.sketch', a: 'flux', n: '速写', t: 'attack', cost: 1, r: 1, ops: [{ op: 'damage', value: 4 }, { op: 'energy', value: 1 }] },
   { id: 'x.perpetual', a: 'flux', n: '永动', t: 'skill', cost: 3, r: 3, ex: true, sealed: true, ops: [{ op: 'energy', value: 3 }, { op: 'draw', value: 3 }] },
 
+  // ============ 内容批 P0-3：四流派各补 2 张 R1，把池子厚度补上（不封印、进初始池）============
+  // 数值口径严格对齐 CONST.DMG_PER_ENERGY=6 / BLOCK_PER_ENERGY=5，R1 略低于曲线但不高于同费 R2。
+  { id: 'b.gash', a: 'blade', n: '割', t: 'attack', cost: 1, r: 1, ops: [{ op: 'damage', value: 7 }, { op: 'if', cond: { type: 'enemyHpBelowHalf' }, then: [{ op: 'damage', value: 3 }] }] },
+  { id: 'b.brace', a: 'blade', n: '硬撑', t: 'skill', cost: 1, r: 1, ops: [{ op: 'block', value: 6 }, { op: 'damage', value: 2 }] },
+  { id: 'f.rime', a: 'frost', n: '白霜', t: 'skill', cost: 1, r: 1, ops: [{ op: 'block', value: 5 }, { op: 'status', status: 'dex', value: 1, who: 'self' }] },
+  { id: 'f.chill', a: 'frost', n: '寒意', t: 'attack', cost: 1, r: 1, ops: [{ op: 'damage', value: 3 }, { op: 'status', status: 'weak', value: 2, who: 'enemy' }] },
+  { id: 'r.bile', a: 'rot', n: '胆汁', t: 'skill', cost: 1, r: 1, ops: [{ op: 'status', status: 'poison', value: 3, who: 'enemy' }, { op: 'block', value: 4 }] },
+  { id: 'r.gnaw', a: 'rot', n: '啃噬', t: 'attack', cost: 1, r: 1, ops: [{ op: 'damage', value: 5 }, { op: 'if', cond: { type: 'enemyHasStatus', status: 'poison' }, then: [{ op: 'damage', value: 3 }] }] },
+  { id: 'x.pulse', a: 'flux', n: '脉动', t: 'attack', cost: 1, r: 1, ops: [{ op: 'damage', value: 3 }, { op: 'draw', value: 2 }] },
+  { id: 'x.dampen', a: 'flux', n: '阻尼', t: 'skill', cost: 1, r: 1, ops: [{ op: 'block', value: 5 }, { op: 'draw', value: 1 }] },
+
   // ============ 荒野牌（阶段 6 · 实时割草关「荒野遭遇」奖励，也在普通卡牌战池内可抽到）============
   // 不封印（sealed 缺省 false）→ 默认解锁，进奖励池；数值对齐同流派现有牌（spec §3）。
   // 流派按 spec §3 指定：猎手=刃(blade) 输出 / 壁垒=蚀(rot) 生存(格挡+回血) / 疾风=霜(frost) 过牌。
@@ -99,8 +113,11 @@ export const POOL_CARDS = CARDS.filter((c) => c.r > 0);
 
 // 起始牌组口径：4 打击 + 4 防御 + 2 张流派入门牌 = 10 张
 // 推导：牌组 10 / 手牌 5 → 循环周期 2 回合；随 10 次取牌奖励成长到 20 张 → 循环周期 4 回合
-export function starterDeck(archetypeId) {
-  const starter = CARDS.filter((c) => c.a === archetypeId && c.starter).map((c) => c.id);
+// 内容批 P1-9：第二参 originId 选「出身」。不传或找不到时退回该流派默认入门牌（与旧行为完全一致）。
+export function starterDeck(archetypeId, originId) {
+  const a = ARCHETYPE_MAP[archetypeId];
+  const o = a && (a.origins || []).find((x) => x.id === originId);
+  const starter = o ? o.deck : CARDS.filter((c) => c.a === archetypeId && c.starter).map((c) => c.id);
   return [
     ...Array(4).fill('base.strike'),
     ...Array(4).fill('base.defend'),

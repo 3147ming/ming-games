@@ -33,6 +33,18 @@ export const RELICS = [
   { id: 'g.marrow', n: '髓晶', r: 3, sealed: true, hooks: { combatStart: [{ op: 'status', status: 'str', value: 2, who: 'self' }] } },
   { id: 'g.terminus', n: '终结符', r: 3, sealed: true, hooks: { combatStart: [{ op: 'status', status: 'vuln', value: 3, who: 'enemy' }, { op: 'status', status: 'weak', value: 3, who: 'enemy' }] } },
   { id: 'g.ashes', n: '灰烬', r: 3, sealed: true, hooks: { cardPlayed: [{ cond: { cardType: 'attack' }, ops: [{ op: 'draw', value: 1 }] }] } },
+
+  // ---- 内容批 P0-2：8 件新遗物（纯数据，只用 combatStart/turnStart/cardPlayed/combatEnd 四个既有钩子）----
+  // 口径：新遗物必须提供「一个可以被玩家一句话说出的打法偏向」，不许再写纯 +格挡。
+  // 8 件里 6 件 sealed（封印数 12 → 18）、2 件初始解锁（o.tinder / o.hollow）。
+  { id: 'o.tinder', n: '火绒', r: 1, hooks: { combatStart: [{ op: 'energy', value: 1 }] } },
+  { id: 'o.hollow', n: '空壳', r: 1, hooks: { combatStart: [{ op: 'draw', value: 1 }, { op: 'block', value: 4 }] } },
+  { id: 'u.frayed', n: '断线', r: 2, sealed: true, hooks: { turnStart: [{ op: 'draw', value: 1 }, { op: 'loseHp', value: 1 }] } },
+  { id: 'u.mirror', n: '残镜', r: 2, sealed: true, hooks: { cardPlayed: [{ cond: { cardType: 'skill' }, ops: [{ op: 'status', status: 'str', value: 1, who: 'self' }] }] } },
+  { id: 'u.noose', n: '绞索', r: 2, sealed: true, hooks: { cardPlayed: [{ cond: { cardType: 'attack' }, ops: [{ op: 'block', value: 2 }] }] } },
+  { id: 'g.ironlung', n: '铁肺', r: 3, sealed: true, hooks: { turnStart: [{ op: 'status', status: 'dex', value: 2, who: 'self' }, { op: 'loseHp', value: 2 }] } },
+  { id: 'g.lastword', n: '遗言', r: 3, sealed: true, hooks: { combatEnd: [{ op: 'heal', value: 5 }, { op: 'status', status: 'str', value: 1, who: 'self' }] } },
+  { id: 'g.choir', n: '合唱', r: 3, sealed: true, hooks: { turnStart: [{ op: 'status', status: 'poison', value: 2, who: 'enemy' }, { op: 'status', status: 'weak', value: 1, who: 'enemy' }] } },
 ];
 
 export const RELIC_MAP = Object.fromEntries(RELICS.map((r) => [r.id, r]));

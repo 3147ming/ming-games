@@ -13,6 +13,12 @@ export const ARCHETYPES = [
     winLine: '把力量堆起来，用一次多段攻击带走。',
     keyCards: ['b.charge', 'b.dualblade', 'b.bladedance'],
     starter: ['b.slash', 'b.stance'],
+    // 内容批 P1-9：八种出身（每流派 2 个）。第一个 origin 的牌组与该流派默认入门牌一致，
+    // 保证「不选出身」时行为不变；其余引用 config/cards.js 已存在的 id，不新增卡。
+    origins: [
+      { id: 'edge', n: '持刃者', tag: '攻守平衡', deck: ['b.slash', 'b.stance'] },
+      { id: 'brute', n: '莽夫', tag: '少一张架势，多一张蓄力', deck: ['b.slash', 'b.charge'] },
+    ],
   },
   {
     id: 'frost',
@@ -23,6 +29,10 @@ export const ARCHETYPES = [
     winLine: '让敌人打不动你，再靠易伤反打。',
     keyCards: ['f.permafrost', 'f.shatter', 'f.stasis'],
     starter: ['f.ward', 'f.froststrike'],
+    origins: [
+      { id: 'warden', n: '持盾者', tag: '攻守平衡', deck: ['f.ward', 'f.froststrike'] },
+      { id: 'crystal', n: '凝霜者', tag: '多一张控制，少一张防御', deck: ['f.ward', 'f.freeze'] },
+    ],
   },
   {
     id: 'rot',
@@ -33,6 +43,10 @@ export const ARCHETYPES = [
     winLine: '用生命换毒层，让敌人在自己的回合里掉血。',
     keyCards: ['r.corrupt', 'r.plague', 'r.heartrot'],
     starter: ['r.poisonblade', 'r.miasma'],
+    origins: [
+      { id: 'venom', n: '持毒者', tag: '攻守平衡', deck: ['r.poisonblade', 'r.miasma'] },
+      { id: 'corroder', n: '腐蚀者', tag: '多一张毒性，少一张攻击', deck: ['r.miasma', 'r.corrode'] },
+    ],
   },
   {
     id: 'flux',
@@ -43,6 +57,10 @@ export const ARCHETYPES = [
     winLine: '把能量和手牌滚起来，在一回合里打出整个牌库。',
     keyCards: ['x.cycle', 'x.overload', 'x.perpetual'],
     starter: ['x.spark', 'x.vent'],
+    origins: [
+      { id: 'cycler', n: '持环者', tag: '攻守平衡', deck: ['x.spark', 'x.vent'] },
+      { id: 'scholar', n: '研习者', tag: '多一张过牌，少一张充能', deck: ['x.spark', 'x.study'] },
+    ],
   },
 ];
 

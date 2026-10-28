@@ -2,7 +2,7 @@
 // 口径：这里只做「把 Run / Combat 的输出接到 UI 上」这一件事，不含任何规则。
 // 支持 URL 参数 ?seed=XXX&arch=blade 用于复现问题与无头测试。
 
-import { Run, PHASE } from './run.js';
+import { Run, PHASE, dailyInfo } from './run.js';
 import { Combat } from './combat.js';
 import { Ui } from './ui.js';
 import { loadMeta } from './meta.js';
@@ -11,6 +11,7 @@ import { Arena, rollWildReward, isWildPending, markWildHandled } from './arena.j
 import { BY_TIER } from '../config/enemies.js';
 import { CONST } from '../config/constants.js';
 import { resolveLogEnv, dumpJsonl } from './logger.js';
+import { load, clear } from './storage.js';
 
 const params = new URLSearchParams(location.search);
 const meta = loadMeta();
@@ -23,9 +24,9 @@ let arena = null; // 阶段 6：荒野关实例（运行时独占，退出后清
 const ui = new Ui({
   getMeta: () => meta,
   onStartRun,
-  onAdvance: () => {
+  onAdvance: (uid) => {
     if (!run || run.phase !== PHASE.MAP) return;
-    run.advance();
+    run.advance(uid);
     renderPhase();
   },
   onPlayCard,
@@ -56,6 +57,17 @@ const ui = new Ui({
   onBack: () => {
     ui.renderTitle(meta);
   },
+  onDeckView: () => {
+    if (run) ui.renderDeckView(run);
+  },
+  onResume: () => renderPhase(),
+  onAgain: (arch) => onStartRun(arch),
+  onResumeRun: () => resumeRun(),
+  onDaily: () => onStartDaily(),
+  onReroll: () => {
+    run.rerollRewards();
+    renderPhase();
+  },
 });
 
 function newSeed() {
@@ -63,12 +75,39 @@ function newSeed() {
   return g.int(1e9).toString(36).toUpperCase();
 }
 
-function onStartRun(archetypeId) {
-  const seed = params.get('seed') || newSeed();
-  run = new Run({ archetypeId, meta, seed });
+function onStartRun(archetypeId, opts = {}) {
+  // 机制批 P0-6：开新局先清掉任何遗留的「继续这一世」快照，
+  // 否则玩家弃局重开后，刷新会错误地回到上一局（而非当前这一局）。
+  clear(CONST.RUN_KEY);
+  // 种子优先级（内容批 P1-7 口径）：?seed= > opts.seed（每日局）> newSeed()。
+  // 顺序不能反 —— 调试/探针用 ?seed= 必须能压过每日局的固定种子，否则复现入口失效。
+  const seed = params.get('seed') || opts.seed || newSeed();
+  const originId = opts.originId != null ? opts.originId : (params.get('origin') || null);
+  const daily = opts.daily != null ? opts.daily : (params.get('daily') ? true : null);
+  const asc = opts.asc != null ? opts.asc : (params.get('asc') != null ? Number(params.get('asc')) : null);
+  run = new Run({ archetypeId, meta, seed, originId, daily, asc });
   combat = null;
   combatNodeUid = null;
+  arena = null;
   ui.renderMap(run);
+}
+
+/** 内容批 P1-7：今日之牌入口 —— 流派与种子都由日期决定，同日重开完全一致。 */
+function onStartDaily() {
+  const info = dailyInfo();
+  onStartRun(info.arch, { seed: info.seed, daily: true });
+}
+
+/** 机制批 P0-6：从节点边界快照恢复一局「继续这一世」。无快照或版本不符时返回 false。 */
+function resumeRun() {
+  const snap = load(CONST.RUN_KEY, null);
+  if (!snap || snap.v !== 1) return false;
+  run = Run.restore(snap, meta);
+  combat = null;
+  combatNodeUid = null;
+  arena = null;
+  ui.renderMap(run);
+  return true;
 }
 
 function ensureCombat() {
@@ -266,6 +305,8 @@ window.__ONECARD = {
   },
   act: {
     start: onStartRun,
+    resume: () => resumeRun(),
+    startDaily: () => { onStartDaily(); return run; },
     advance: () => {
       if (run && run.phase === PHASE.MAP) {
         run.advance();
@@ -308,9 +349,11 @@ window.__ONECARD = {
 };
 
 // 快捷入口：?arch=blade 直接开局；?jump=wild 直接开局并跳到荒野节点（手动验收用）
+// 内容批 P1-7：?daily=1 直接进今日之牌（可叠 ?seed= 覆盖种子，用于复现）
 if (params.get('arch') || params.get('jump')) onStartRun(params.get('arch') || 'blade');
+else if (params.get('daily')) onStartDaily();
 if (params.get('jump') === 'wild') jumpWild();
-if (!params.get('arch') && !params.get('jump')) ui.renderTitle(meta);
+if (!params.get('arch') && !params.get('jump') && !params.get('daily')) ui.renderTitle(meta);
 
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) ui.fx.resize();

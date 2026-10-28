@@ -72,6 +72,24 @@ export function describeCard(card) {
   return opsText(card.ops);
 }
 
+/** 窄卡（竖屏手牌）用的短描述：只留数字与关键词，丢连接词（机制批 P0-8） */
+export function shortCardText(card) {
+  return (card.ops || [])
+    .map((o) => {
+      if (o.op === 'damage') return o.times ? `${o.value}×${o.times}伤` : `${o.value}伤`;
+      if (o.op === 'block') return `${o.value}防`;
+      if (o.op === 'draw') return `抽${o.value}`;
+      if (o.op === 'energy') return `+${o.value}能`;
+      if (o.op === 'heal') return `回${o.value}`;
+      if (o.op === 'loseHp') return `失${o.value}`;
+      if (o.op === 'status') return `${o.value}${STATUS_TEXT[o.status] || o.status}`;
+      if (o.op === 'if') return `若${o.cond.type === 'enemyHpBelowHalf' ? '半血' : '条件'}→${(o.then || []).map((t) => t.value || '').join('/')}`;
+      return '';
+    })
+    .filter(Boolean)
+    .join('·');
+}
+
 /** 遗物钩子的可读描述（用于牌谱页） */
 export function describeRelic(relic) {
   const out = [];

@@ -19,7 +19,30 @@ export function makeEnemy(def, rng) {
     pattern: def.pattern,
     intentIndex: 0,
     intent: def.pattern[0],
+    // 内容批 P1-5：二阶段（Boss 蜕变）。无 pattern2 的敌人 phase2 恒为 false，行为与旧版一字不差。
+    pattern2: def.pattern2 || null,
+    phase2At: def.phase2At != null ? def.phase2At : 0.5,
+    phase2: false,
   };
+}
+
+/**
+ * 二阶段切换（P1-5）。
+ * 口径：**在敌人行动结算完之后判定**，而不是在玩家回合判定。
+ *      - 玩家看到并据此规划的那条意图必须被真实执行，否则「可预告」被破坏；
+ *      - 切换后把 intentIndex 指到 pattern2 末位，紧接着 combat.js 的 advanceIntent
+ *        自然回落到 pattern2[0]，因此无需改动战斗循环的调用顺序。
+ */
+export function checkPhase2(state) {
+  const enemy = state.enemy;
+  if (!enemy || enemy.phase2 || !enemy.pattern2 || enemy.hp <= 0) return false;
+  if (enemy.hp / enemy.maxHp > enemy.phase2At) return false;
+  enemy.phase2 = true;
+  enemy.pattern = enemy.pattern2;
+  enemy.intentIndex = enemy.pattern2.length - 1;
+  enemy.intent = enemy.pattern2[0];
+  state.log.push({ t: 'info', text: `${enemy.n} 撕开了自己的壳 —— 它变了。` });
+  return true;
 }
 
 export function advanceIntent(enemy) {
@@ -77,4 +100,7 @@ export function runIntent(state, ctx) {
     default:
       break;
   }
+
+  // 行动结算之后再判定蜕变：本回合已展示的意图必须被兑现（P1-5）。
+  checkPhase2(state);
 }

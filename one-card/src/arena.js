@@ -125,11 +125,23 @@ export const ARENA = {
   WILD_CARD_SCORE_CAP: 1.5, // 单柱得分上限（防一柱爆表后完全掩盖其它柱）
 };
 
-// 三选一升级（spec 写死这 3 项，不引入升级树/道具/被动）
+// 三选一升级（spec 写死前 3 项；内容批 P1-10 追加第 4 项 —— 但弹窗仍只给 3 个按钮，
+// 由 openUpgrade() 用 rng.sample 抽 3 个，于是「冲击波」变成一条可选项而非第 4 个按钮）
 const ARENA_UPGRADES = [
   { id: 'dmg', label: '伤害 +1', desc: '投射物伤害提高 1' },
   { id: 'move', label: '移速 +15%', desc: '移动速度提高 15%' },
   { id: 'atk', label: '攻速 -0.15s', desc: '自动攻击间隔缩短 0.15 秒' },
+  { id: 'shock', label: '冲击波 -0.3s', desc: '主动技能冷却缩短 0.3 秒' },
+];
+
+// 荒野敌人类型（内容批 P1-10）
+// 口径：三种敌人共用同一套移动/受击/死亡逻辑，只在速度、血量、接触伤害、剪影四个数值上分叉。
+//      不引入远程弹幕 —— 那会让每帧碰撞多一个数组，违反「每帧不遍历大量对象」的既有约束。
+//      weight 只影响刷怪占比；三者的宝石/击杀/冲击波结算完全一致（四柱口径不变）。
+export const ENEMY_KINDS = [
+  { id: 'walker', hpMul: 1.0, speedMul: 1.0, dmgMul: 1.0, rMul: 1.0, shape: ARENA.ENEMY_SHAPE, weight: 6 },
+  { id: 'charger', hpMul: 1.4, speedMul: 1.7, dmgMul: 1.6, rMul: 0.88, shape: 17, weight: 3 }, // 冲锋者：快、疼、好躲
+  { id: 'husk', hpMul: 2.2, speedMul: 0.55, dmgMul: 1.0, rMul: 1.35, shape: 18, weight: 2 },    // 空壳：慢、厚、堵路
 ];
 
 // 荒野牌模板（spec §3 三柱 + 阶段 6.1 / 裁决 2C 补第 4 张 -> 四流派各 1 张，四柱取最高）
@@ -274,6 +286,9 @@ export class ArenaCore {
     // 蓄力期间不结算任何伤害，所以这是"有过程"，不是"加延迟"——伤害仍在同一个
     // 0.15s 窗口结束时一次性落地，之后 0.28s 的爆发环只是余韵，不占操作节拍。
     this.shockwaveCd = 0;      // 冷却剩余秒
+    // 冷却上限独立成字段（P1-10）：升级「冲击波 -0.3s」改的是它，冷却判定读它。
+    // 不直接改 ARENA.SHOCKWAVE_CD —— 那个常量是跨局口径，改了会让「上一局升过级」泄漏到下一局。
+    this.shockwaveCdMax = ARENA.SHOCKWAVE_CD;
     this.shockChargeT = -1;    // 蓄力圈进度（<0 表示无；0..SHOCKWAVE_CHARGE）
     this.shockwaveCastT = -1;  // 爆发环进度（<0 表示无）
     this.flashT = -1;          // 白闪剩余（<0 表示无）
@@ -474,9 +489,19 @@ export class ArenaCore {
     else if (edge === 1) { x = this.w + m; y = this.rng.next() * this.h; }
     else if (edge === 2) { x = this.rng.next() * this.w; y = this.h + m; }
     else { x = -m; y = this.rng.next() * this.h; }
+    // 加权抽类型（P1-10）：6/3/2 ≈ 55% 走卒 / 27% 冲锋者 / 18% 空壳。
+    // 放在取完坐标之后，保证「edge + 坐标」的 rng 消费序不变，只在末尾多消费一次。
+    const kind = this.rng.weighted(ENEMY_KINDS, (k) => k.weight);
     this.enemies.push({
-      x, y, r: ARENA.ENEMY_RADIUS, speed: ARENA.ENEMY_SPEED,
-      hp: ARENA.ENEMY_HP, contact: ARENA.ENEMY_CONTACT_DMG, dead: false,
+      x, y,
+      // P1-10：三种敌人只在数值与剪影上分叉；移动/受击/死亡仍走同一段代码。
+      kind: kind.id,
+      shape: kind.shape,
+      r: ARENA.ENEMY_RADIUS * kind.rMul,
+      speed: ARENA.ENEMY_SPEED * kind.speedMul,
+      hp: Math.round(ARENA.ENEMY_HP * kind.hpMul),
+      contact: Math.max(1, Math.round(ARENA.ENEMY_CONTACT_DMG * kind.dmgMul)),
+      dead: false,
     });
   }
 
@@ -533,6 +558,8 @@ export class ArenaCore {
     if (this.deaths.length >= ARENA.MAX_DEATHS) this.deaths.shift(); // 与 burst 同一策略：保最新
     this.deaths.push({
       x: e.x, y: e.y, r: e.r, t: 0, life: ARENA.DEATH_ANIM,
+      // P1-10：死亡动画也要记住剪影，否则空壳炸开时会缩成一只小走卒
+      shape: e.shape != null ? e.shape : ARENA.ENEMY_SHAPE,
       dx: knock ? knock.ux * knock.dist : 0,
       dy: knock ? knock.uy * knock.dist : 0,
     });
@@ -558,15 +585,19 @@ export class ArenaCore {
   }
 
   openUpgrade() {
-    this.pendingUpgrade = ARENA_UPGRADES.slice(); // 暂停游戏的开关
+    // P1-10：4 项里抽 3 项 —— 弹窗仍是「三选一」的手感，但「冲击波冷却」成了可遇不可求的一条 build。
+    this.pendingUpgrade = this.rng.sample(ARENA_UPGRADES, 3); // 暂停游戏的开关
   }
 
-  /** 选择第 i 个升级（0/1/2）。选完若仍有富余经验则连开下一级。 */
+  /** 选择第 i 个升级（0/1/2，索引指向本次抽出的 3 项）。选完若仍有富余经验则连开下一级。 */
   chooseUpgrade(i) {
     if (!this.pendingUpgrade) return;
-    if (i === 0) this.dmg += 1;
-    else if (i === 1) this.moveSpeed *= 1.15;
-    else if (i === 2) this.attackInterval = Math.max(0.2, this.attackInterval - 0.15);
+    const up = this.pendingUpgrade[i];
+    if (!up) return;
+    if (up.id === 'dmg') this.dmg += 1;
+    else if (up.id === 'move') this.moveSpeed *= 1.15;
+    else if (up.id === 'atk') this.attackInterval = Math.max(0.2, this.attackInterval - 0.15);
+    else if (up.id === 'shock') this.shockwaveCdMax = Math.max(1.0, this.shockwaveCdMax - 0.3);
     this.level += 1;
     this.xp -= this.xpToLevel;
     this.pendingUpgrade = null;
@@ -581,7 +612,7 @@ export class ArenaCore {
   shockwave() {
     if (this.done || this.pendingUpgrade || this.shockwaveCd > 0 || this.shockChargeT >= 0) return false;
     this.shockChargeT = 0;
-    this.shockwaveCd = ARENA.SHOCKWAVE_CD;
+    this.shockwaveCd = this.shockwaveCdMax;
     return true;
   }
 
@@ -697,7 +728,8 @@ export class Arena {
     this.input = { x: 0, y: 0 };
     this.joy = { x: 0, y: 0, active: false, ox: 0, oy: 0, vx: 0, vy: 0 };
     this.keys = new Set();
-    this._enemyPath = new Path2D(silhouette(ARENA.ENEMY_SHAPE, false));
+    // 剪影按 shape 缓存（P1-10 起有三种敌人）。每个 shape 只解析一次路径，之后白拿 Path2D 复用。
+    this._paths = new Map();
     // 渲染/输入侧的小状态（避免每帧重复写 DOM / 重复解析字体、以及暂停时白重绘）
     this._needsPaint = true;   // 暂停中仅在置位时重绘一帧
     this._skillTxt = '';       // 技能按钮上次写入的文本（只在变化时写 DOM）
@@ -863,6 +895,17 @@ export class Arena {
     }
   }
 
+  /** 取某个 shape 的剪影路径（懒建 + 缓存）。缺省回落到走卒剪影，避免新 shape 忘配时整关黑屏。 */
+  _enemyPath(shape) {
+    const key = shape != null ? shape : ARENA.ENEMY_SHAPE;
+    let p = this._paths.get(key);
+    if (!p) {
+      p = new Path2D(silhouette(key, false));
+      this._paths.set(key, p);
+    }
+    return p;
+  }
+
   _render() {
     const ctx = this.ctx;
     const c = this.core;
@@ -887,14 +930,14 @@ export class Arena {
       ctx.fill();
     }
 
-    // 敌人剪影（复用 glyph）
-    const s = (ARENA.ENEMY_RADIUS * 2) / 100;
+    // 敌人剪影（复用 glyph）。P1-10：按 kind 取不同剪影，尺寸跟着半径走。
     for (const e of c.enemies) {
+      const s = (e.r * 2) / 100;
       ctx.save();
       ctx.translate(e.x - 50 * s, e.y - 46 * s);
       ctx.scale(s, s);
       ctx.fillStyle = COLOR.enemy;
-      ctx.fill(this._enemyPath);
+      ctx.fill(this._enemyPath(e.shape));
       ctx.restore();
     }
 
@@ -910,12 +953,12 @@ export class Arena {
       const eo = easeOut(p);                       // 外飞位移同样走 ease-out：先窜出去再停住
       const x = d.x + d.dx * eo, y = d.y + d.dy * eo;
       const flash = p < 0.4 ? 1 : 1 - (p - 0.4) / 0.6; // 前 40% 保持全白，之后退回本色
-      const sk = s * k;
+      const sk = ((d.r * 2) / 100) * k;
       ctx.fillStyle = DEATH_COLORS[Math.round(clamp(flash, 0, 1) * (DEATH_COLORS.length - 1))];
       ctx.save();
       ctx.translate(x - 50 * sk, y - 46 * sk); // 与活体同一个锚点，缩放才不会"跳位"
       ctx.scale(sk, sk);
-      ctx.fill(this._enemyPath);
+      ctx.fill(this._enemyPath(d.shape));
       ctx.restore();
     }
 

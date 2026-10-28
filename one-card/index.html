@@ -27,6 +27,8 @@
         </div>
       </div>
       <div id="hud-relics" class="hud-relics"></div>
+      <!-- 机制批 P0-1：只读牌组入口 -->
+      <div id="hud-deck" class="hud-deck">牌组 <b id="hud-deck-n">10</b></div>
     </header>
 
     <main id="stage">
@@ -54,6 +56,7 @@
         <div id="hand-zone" class="hand-zone"><div id="hand-track" class="hand-track"></div></div>
         <div id="action-zone" class="action-zone">
           <div id="pile-draw" class="pile">抽牌<span class="pile-n">0</span></div>
+          <div id="energy" class="energy"><span id="energy-now">3</span><i>/</i><span id="energy-max">3</span></div>
           <button id="btn-end-turn" class="end-turn">结束回合</button>
           <div id="pile-discard" class="pile">弃牌<span class="pile-n">0</span></div>
         </div>
@@ -97,6 +100,7 @@
           <h2 id="over-title">这一世，到此为止</h2>
           <p id="over-sub" class="over-sub"></p>
           <button id="btn-over-next" class="big">带回一张牌</button>
+          <button id="btn-over-home">回到开头</button>
         </div>
       </section>
 
