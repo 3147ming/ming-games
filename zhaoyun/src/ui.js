@@ -156,6 +156,8 @@
 
   /* ======================================================== 开始界面 */
   function bindStart() {
+    injectStyle();
+    buildMenuNav();
     const btns = document.querySelectorAll('.mode-btn');
     Array.prototype.forEach.call(btns, function (b) {
       b.addEventListener('click', function () {
@@ -196,9 +198,18 @@
     const rank = ZY.Save.rankName(ZY.Save.getRank());
     const lvName = ZY.LEVELS[ZY.Save.getLevel()].name;
     const lvDone = ZY.Save.getLevel();
+    let g = '<div class="save-stars">';
+    for (let i = 0; i < ZY.LEVELS.length; i++) {
+      g += '<span class="sv-lv" title="' + ZY.LEVELS[i].name + '">' +
+        '<em>' + (i + 1) + '</em><span class="stars small">' + starRow(ZY.Save.getStar(i)) + '</span></span>';
+    }
+    g += '</div>';
     el.saveInfo.innerHTML =
       '<div><b>军衔</b> ' + rank + '</div>' +
       '<div><b>关卡</b> ' + (lvDone >= ZY.LEVELS.length ? '全部通关' : '第 ' + (lvDone + 1) + ' 关 · ' + lvName) + '</div>' +
+      '<div><b>星级</b> ' + ZY.Save.getStarTotal() + ' / ' + ZY.Save.getStarMax() +
+      ' · 成就 ' + Object.keys(ZY.Save.getAchv()).length + ' / ' + ZY.ACHV.length + '</div>' +
+      g +
       '<div><b>无尽最高</b> ' + ZY.Save.getWaveBest() + ' 波</div>' +
       '<div><b>累计击杀</b> ' + ZY.Save.getKillTotal() + '</div>';
   }
@@ -714,6 +725,7 @@
     if (hudCache.recruitDis !== !can) { hudCache.recruitDis = !can; el.btnRecruit.classList.toggle('dis', !can); }
     const buffOn = state.buff.player > 0;
     if (hudCache.recruitBuff !== buffOn) { hudCache.recruitBuff = buffOn; el.btnRecruit.classList.toggle('buff', buffOn); }
+    hudExtras();
   }
 
   function hearts(n) {
@@ -983,6 +995,14 @@
     if (src === 'board') {
       if (!t) { toast('把塔拖到绿色塔位上换位'); return; }
       const u = state.units.find(function (x) { return x.id === unitId; });
+      /* 第一批 P1-9：拖到荒地 = 拆塔返资源 */
+      if (u && u.cls === 'soldier' && isWastelandAt(t.row, t.col)) {
+        const dr = ZY.Game.demolish(state, 'player', unitId);
+        if (!dr.ok) { toast(dr.msg || '拆不了'); return; }
+        syncCells(); syncUnits(); syncHud();
+        toast('拆塔 · 返还 ' + dr.refund + ' 资源');
+        return;
+      }
       if (u && u.cls === 'soldier') {
         const tw = state.grid[t.row][t.col];
         if (tw && tw.cls === 'soldier' && tw.side === 'player' && tw.id !== u.id &&
@@ -1042,6 +1062,32 @@
         syncHand(); syncBarracks();
         return;
       }
+      /* 第一批：护心镜 / 号角 = 拖出即放；连弩 = 拖到己方塔上 */
+      if (card.item === 'mirror') {
+        consume(uid);
+        const r = ZY.Game.useMirror(state, 'player');
+        toast('护心镜！阿斗护盾 ×' + r.shield);
+        syncHand(); syncBarracks(); syncHud();
+        return;
+      }
+      if (card.item === 'horn') {
+        consume(uid);
+        const r = ZY.Game.useHorn(state, 'player');
+        toast(r.hit ? '号角！' + r.hit + ' 个敌人减速 40%（5s）' : '号角吹响（路上暂时没有敌军）');
+        syncHand(); syncBarracks(); syncHud();
+        return;
+      }
+      if (card.item === 'crossbow') {
+        if (!t) { toast('把连弩拖到己方塔上释放'); return; }
+        const tw = state.grid[t.row][t.col];
+        if (!tw || tw.side !== 'player') { toast('连弩要拖到己方塔上'); return; }
+        const cr = ZY.Game.useCrossbow(state, 'player', tw.id);
+        if (!cr.ok) { toast(cr.msg); return; }
+        consume(uid);
+        toast('连弩上弦！该塔攻速 ×1.35（15s）');
+        syncUnits(); syncHand(); syncBarracks();
+        return;
+      }
       if (card.item === 'brush') {
         if (!t) { toast('把毛笔拖到己方塔上释放'); return; }
         const tower = state.grid[t.row][t.col];
@@ -1069,7 +1115,7 @@
             return;
           }
         }
-        toast('把金字拖到棋盘外的塔位… 不对，金字要在手牌里凑对合成');
+        toast('金字要在手牌里凑成一对（例：「赵」+「云」）才能合成武将');
         return;
       }
     }
@@ -1219,16 +1265,22 @@
         ' · 经验 (' + u.xp.toFixed(1) + '/' + C.XP_PER_LEVEL + ')' +
         ' · 攻 ' + u.atk.toFixed(1) + ' 技能「' + h.skill.name + '」' + h.skill.desc + '（CD ' + h.skill.cd + 's）');
     } else if (u.boss) {
-      toast(u.name + '（敌方名将）：血 ' + Math.round(u.hp) + '/' + Math.round(u.maxHp) + ' · 沿主路直扑阿斗');
+      toast(u.name + '（敌方名将）：血 ' + Math.round(u.hp) + '/' + Math.round(u.maxHp) +
+        (u.bossSkill ? ' · 技能「' + u.bossSkill.name + '」' : '') + ' · 沿主路直扑阿斗');
     } else if (u.type === 'nong') {
       toast('农民塔 Lv' + u.level + '：每秒 +' + (U.nong.produce * u.level).toFixed(1) + ' 资源');
     } else if (u.side === 'enemy') {
-      toast('敌军' + (u.elite ? '精英' : '') + U[u.type].name + ' Lv' + u.level + '：血 ' + Math.round(u.hp) + '/' + Math.round(u.maxHp) +
-        ' · 沿主路直扑阿斗');
+      /* 第一批 P1-14：敌方信息卡显示精英词条（疾行 / 重甲 / 旗手） */
+      toast('敌军' + (u.elite ? '精英' + (u.traitName ? '·' + u.traitName : '') : '') + U[u.type].name +
+        ' Lv' + u.level + '：血 ' + Math.round(u.hp) + '/' + Math.round(u.maxHp) +
+        (u.slowT > 0 ? ' · 减速中' : '') + ' · 沿主路直扑阿斗');
     } else {
+      const w = u.weapon ? ZY.WEAPONS[u.weapon] : null;
       toast(U[u.type].name + '塔 Lv' + u.level + ' · ' + U[u.type].tag +
         '：血 ' + Math.round(u.hp) + '/' + Math.round(u.maxHp) +
         ' 攻 ' + u.atk.toFixed(1) + ' 射程 ' + u.range +
+        (w ? ' · 装备' + w.name + '（' + w.desc + '）' : '') +
+        (u.crossbowT > 0 ? ' · 连弩加速中' : '') +
         ' · 经验 (' + u.xp.toFixed(1) + '/' + C.XP_PER_LEVEL + ')');
     }
   }
@@ -1674,9 +1726,10 @@
     for (let i = 1; i <= 5; i++) starHtml += '<i class="' + (i <= stars ? 'on' : 'off') + '">★</i>';
     return '<p class="promote">恭喜晋升 · <b>' + ZY.Save.rankName(r) + '</b></p>' +
       '<div class="stars">' + starHtml + '</div>' +
-      '<p class="coin-row">奖励金币 <b>+20</b>' +
-      '<button class="btn small gold" data-act="double">双倍金币</button></p>' +
-      '<p class="dim">阿斗剩 ' + state.player.adou + ' 血 · 击杀 ' + state.stats.kills + ' · 用时 ' + Math.round(state.t) + 's</p>';
+      '<p class="coin-row">本关星数 <b>' + stars + ' / 5</b>' +
+      '<button class="btn small" data-act="restart">再来一局</button></p>' +
+      '<p class="dim">阿斗剩 ' + state.player.adou + ' 血 · 漏怪 ' + state.leaked.player +
+      ' · 击杀 ' + state.stats.kills + ' · 用时 ' + Math.round(state.t) + 's</p>';
   }
 
   function showResult() {
@@ -1724,7 +1777,9 @@
       ZY.Save.addKills(state.stats.kills);
       if (win) {
         const next = state.levelIdx + 1;
-        body = winPanelLevel();
+        if (state.ascension >= 1) ZY.Save.setAscension(state.ascension + 1);   // 第一批：修罗逐层解锁
+        if (state.daily) ZY.Save.setDailyBest({ stars: ZY.Game.starsOf(state), levelIdx: state.levelIdx });
+        body = winPanelLevel() + achvLine(state);
         if (next >= ZY.LEVELS.length) {
           ZY.Save.setLevel(ZY.LEVELS.length - 1);
           body += '<p>全关通关！</p>';
@@ -1770,7 +1825,9 @@
         } else if (act === 'next') {
           startLevelRun(state.levelIdx + 1, state);
         } else if (act === 'double') {
-          toast('双倍金币：广告位预留（本版本不接广告）');
+          // 第一批 P1-12：假按钮改成真「再来一局」（不再有广告位文案）
+          if (state.mode === 'level') startLevelRun(state.levelIdx, carry, true);
+          else { state = ZY.Game.baseState(state.mode, { difficulty: state.difficulty, ascension: ascPick }); enterGame(); }
         } else if (act === 'home') {
           state = null; carry = null;
           el.overlay.hidden = true; el.overlay.innerHTML = '';
@@ -1786,11 +1843,298 @@
    *  prev 为空且关卡号 > 0（中途开档）时，补一支该进度应有的部队，避免死局 */
   function startLevelRun(idx, prev, noBonus) {
     idx = Math.max(0, Math.min(ZY.LEVELS.length - 1, idx));
-    state = ZY.Game.baseState('level', { levelIdx: idx });
+    state = ZY.Game.baseState('level', {
+      levelIdx: idx,
+      ascension: ascPick,
+      difficulty: parseFloat(getActiveDiff()),
+      daily: dailyMode,
+    });
+    dailyMode = false;
     if (prev) ZY.Game.inherit(state, prev, noBonus);
     else if (idx > 0) ZY.Game.inherit(state, null);   // 走 seedArmy 分支
     carry = prev || null;
     enterGame();
+  }
+
+  /* ==========================================================================
+   * 第一批 · 主菜单与面板（选关 / 图鉴 / 战绩 / 今日之战 / 修罗八阵）
+   * 全部复用 #overlay + .panel，不新增页面；样式由 injectStyle() 注入，
+   * 避免改动 66KB 的 styles.css（该文件直写有静默丢写风险）。
+   * ========================================================================== */
+  let ascPick = 0;          // 当前选的修罗层数
+  let dailyMode = false;    // 本局是否「今日之战」
+  let hudExtraAt = 0;       // HUD 扩展的节流时间戳（ms）
+
+  function injectStyle() {
+    if (document.getElementById('zy-batch1-css')) return;
+    const s = document.createElement('style');
+    s.id = 'zy-batch1-css';
+    s.textContent = [
+      '.panel.wide{max-width:min(92vw,760px);max-height:86vh;overflow:auto}',
+      '.lv-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:10px 0}',
+      '.lv-card{display:flex;flex-direction:column;gap:4px;align-items:center;padding:10px 6px;border-radius:10px;',
+      'border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:inherit;cursor:pointer;font:inherit}',
+      '.lv-card:hover{background:rgba(255,255,255,.13)}',
+      '.lv-card.lock{opacity:.42;cursor:not-allowed}',
+      '.lv-card em{font-style:normal;font-size:12px;opacity:.75}',
+      '.stars.small i{font-size:11px}',
+      '.save-stars{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin:4px 0}',
+      '.sv-lv{display:flex;align-items:center;gap:3px;font-size:11px;opacity:.9}',
+      '.sv-lv em{font-style:normal;opacity:.6}',
+      '.menu-nav{grid-template-columns:repeat(5,minmax(0,1fr))}',
+      '.codex-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin:8px 0 14px}',
+      '.codex-item{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;border-radius:8px;',
+      'background:rgba(255,255,255,.06);font-size:12px}',
+      '.codex-item.off{opacity:.3}',
+      '.codex-item b{font-size:18px;line-height:1}',
+      '.rec-row{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:4px 6px;border-radius:6px;background:rgba(255,255,255,.05);margin-bottom:4px}',
+      '.achv-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}',
+      '.achv-item{padding:6px 8px;border-radius:8px;background:rgba(255,255,255,.06);font-size:12px}',
+      '.achv-item.off{opacity:.35}',
+      '.achv-item b{display:block;font-size:13px}',
+      '.hud-timer{position:absolute;left:50%;transform:translateX(-50%);top:2px;font-size:11px;letter-spacing:.04em;',
+      'color:#f4e2b8;opacity:.85;pointer-events:none;white-space:nowrap;z-index:6}',
+      '.hud-btn{font:inherit;font-size:12px;padding:2px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.2);',
+      'background:rgba(255,255,255,.08);color:inherit;cursor:pointer}',
+      '.hud-btn.dis{opacity:.4;cursor:not-allowed}',
+      '.board-wrap.danger #board{box-shadow:inset 0 0 0 2px rgba(220,70,60,.75)}',
+      '.board-wrap.danger .hud-timer{color:#ff9d8f;opacity:1}',
+    ].join('');
+    document.head.appendChild(s);
+  }
+
+  function buildMenuNav() {
+    if (document.getElementById('menu-nav')) return;
+    const modes = document.querySelector('#screen-start .modes');
+    if (!modes) return;
+    const nav = document.createElement('div');
+    nav.id = 'menu-nav';
+    nav.className = 'modes menu-nav';
+    nav.innerHTML =
+      '<button class="mode-btn mini" data-nav="select">选关</button>' +
+      '<button class="mode-btn mini" data-nav="codex">图鉴</button>' +
+      '<button class="mode-btn mini" data-nav="record">战绩</button>' +
+      '<button class="mode-btn mini" data-nav="daily">今日之战</button>' +
+      '<button class="mode-btn mini" data-nav="ascend">修罗八阵</button>';
+    modes.parentNode.insertBefore(nav, modes.nextSibling);
+    Array.prototype.forEach.call(nav.querySelectorAll('[data-nav]'), function (b) {
+      b.addEventListener('click', function () {
+        ZY.Audio.play('tap');
+        const k = b.getAttribute('data-nav');
+        if (k === 'select') showLevelSelect();
+        else if (k === 'codex') showCodex();
+        else if (k === 'record') showRecord();
+        else if (k === 'daily') showDaily();
+        else if (k === 'ascend') showAscension();
+      });
+    });
+  }
+
+  function closePanel() { el.overlay.hidden = true; el.overlay.innerHTML = ''; refreshSave(); }
+
+  function openPanel(html) {
+    el.overlay.hidden = false;
+    el.overlay.innerHTML = '<div class="panel wide">' + html +
+      '<div class="btns"><button class="btn primary" data-act="close-panel">关闭</button></div></div>';
+    Array.prototype.forEach.call(el.overlay.querySelectorAll('[data-act]'), function (b) {
+      b.addEventListener('click', function () {
+        const act = b.getAttribute('data-act');
+        ZY.Audio.play('tap');
+        if (act === 'close-panel' || act === 'home') { closePanel(); return; }
+        if (act === 'pick-level') {
+          closePanel();
+          startLevelRun(parseInt(b.getAttribute('data-idx'), 10), null);
+          return;
+        }
+        if (act === 'pick-asc') {
+          ascPick = parseInt(b.getAttribute('data-idx'), 10) || 0;
+          showLevelSelect();
+          return;
+        }
+        if (act === 'start-daily') { closePanel(); startDaily(); return; }
+      });
+    });
+  }
+
+  function starRow(n, max) {
+    let s = '';
+    for (let i = 0; i < (max || 5); i++) s += '<i class="' + (i < n ? 'on' : 'off') + '">★</i>';
+    return s;
+  }
+
+  /** 第一批 P1-9：荒地 = 空着、不在主路、不是障碍、也不是可用塔位 */
+  function isWastelandAt(r, c) {
+    if (!state) return false;
+    if (B.isPath(state.mode, r, c, state.levelIdx)) return false;
+    if (B.isObstacle(r, c, state.mode, state.levelIdx)) return false;
+    if (state.deploy[r + ',' + c]) return false;
+    return true;
+  }
+
+  function achvLine(st) {
+    const got = (st && st.newAchv) || [];
+    if (!got.length) return '';
+    const names = got.map(function (id) {
+      const a = (ZY.ACHV || []).find(function (x) { return x.id === id; });
+      return a ? a.name : id;
+    });
+    return '<p class="dim">成就解锁 · ' + names.join(' / ') + '</p>';
+  }
+
+  function showLevelSelect() {
+    const unlocked = ZY.Save.getLevel();
+    const total = ZY.Save.getStarTotal();
+    let h = '<h2>选关</h2>';
+    h += '<p class="dim">星级 ' + total + ' / ' + ZY.Save.getStarMax() +
+      (ascPick ? ' · 修罗 ' + ascPick + ' 层（敌方 hp/atk ×' + ZY.ASCEND_MUL[ascPick] + '）' : '') + '</p>';
+    h += '<div class="lv-grid">';
+    for (let i = 0; i < ZY.LEVELS.length; i++) {
+      const lv = ZY.LEVELS[i];
+      const st = ZY.Save.getStar(i);
+      const lock = i > unlocked;
+      h += '<button class="lv-card' + (lock ? ' lock' : '') + '" data-act="pick-level" data-idx="' + i + '"' +
+        (lock ? ' disabled' : '') + '>' +
+        '<b>' + (i + 1) + ' · ' + lv.name + '</b>' +
+        '<span class="stars small">' + starRow(st) + '</span>' +
+        '<em>' + (lock ? '未解锁' : (st ? st + ' 星' : '待通关')) + '</em></button>';
+    }
+    h += '</div>';
+    openPanel(h);
+  }
+
+  function showCodex() {
+    const groups = [
+      { t: '兵种', items: Object.keys(ZY.UNITS).map(function (k) { return { k: 'unit:' + k, n: ZY.UNITS[k].name, g: ZY.UNITS[k].char }; }) },
+      { t: '武将', items: ZY.HEROES.map(function (x) { return { k: 'hero:' + x.id, n: x.name, g: x.chars[0] }; }) },
+      { t: '名将', items: ZY.BOSSES.map(function (x) { return { k: 'boss:' + x.id, n: x.name, g: x.char }; }) },
+      { t: '关卡', items: ZY.LEVELS.map(function (x, i) { return { k: 'level:' + i, n: x.name, g: '关' }; }) },
+    ];
+    let all = 0, got = 0;
+    let h = '<h2>图鉴</h2>';
+    groups.forEach(function (g) {
+      h += '<p class="dim" style="margin:8px 0 2px">' + g.t + '</p><div class="codex-grid">';
+      g.items.forEach(function (it) {
+        all++;
+        const on = ZY.Save.hasCodex(it.k);
+        if (on) got++;
+        h += '<div class="codex-item' + (on ? '' : ' off') + '"><b>' + it.g + '</b>' + it.n + '</div>';
+      });
+      h += '</div>';
+    });
+    h = h.replace('<h2>图鉴</h2>', '<h2>图鉴 · ' + got + ' / ' + all + '</h2>');
+    openPanel(h);
+  }
+
+  function showRecord() {
+    const logs = ZY.Save.getLog();
+    const achv = ZY.Save.getAchv();
+    let h = '<h2>战绩</h2>';
+    h += '<p class="dim">累计击杀 ' + ZY.Save.getKillTotal() + ' · 无尽最高 ' + ZY.Save.getWaveBest() +
+      ' 波 · 星级 ' + ZY.Save.getStarTotal() + ' / ' + ZY.Save.getStarMax() + '</p>';
+    h += '<p class="dim" style="margin-top:8px">最近 ' + logs.length + ' 局</p>';
+    if (!logs.length) h += '<p class="dim">还没有记录，先打一局。</p>';
+    logs.slice(0, 10).forEach(function (r) {
+      const mode = r.mode === 'level' ? ('第' + (r.levelIdx + 1) + '关') : (r.mode === 'endless' ? '无尽' : '竞技');
+      const res = r.result === 'win' ? '胜' : '负';
+      h += '<div class="rec-row"><span>' + mode + (r.ascension ? ' · 修罗' + r.ascension : '') +
+        '</span><span>' + res + ' · 第' + (r.wave || 0) + '波 · 杀' + (r.kills || 0) + ' · 漏' + (r.leaked || 0) +
+        ' · ' + (r.dur || 0) + 's</span></div>';
+    });
+    h += '<p class="dim" style="margin-top:10px">成就 ' + Object.keys(achv).length + ' / ' + ZY.ACHV.length + '</p><div class="achv-grid">';
+    ZY.ACHV.forEach(function (a) {
+      const on = !!achv[a.id];
+      h += '<div class="achv-item' + (on ? '' : ' off') + '"><b>' + (on ? '★ ' : '') + a.name + '</b>' + a.desc + '</div>';
+    });
+    h += '</div>';
+    openPanel(h);
+  }
+
+  function dailyLevelIdx() {
+    const k = ZY.Save.todayKey();
+    let n = 0;
+    for (let i = 0; i < k.length; i++) n = (n * 31 + k.charCodeAt(i)) % 9973;
+    return n % ZY.LEVELS.length;
+  }
+
+  function showDaily() {
+    const idx = dailyLevelIdx();
+    const best = ZY.Save.getDaily();
+    let h = '<h2>今日之战</h2>';
+    h += '<p>今日阵图：<b>第 ' + (idx + 1) + ' 关 · ' + ZY.LEVELS[idx].name + '</b>（修罗 1 层）</p>';
+    h += '<p class="dim">每日按日期换阵；当天记录最高星级，跨日自动重置。' +
+      (best.stars ? '今日最佳 ' + best.stars + ' 星' : '今日还没打过') + '</p>';
+    h += '<div class="btns" style="margin-top:10px"><button class="btn primary" data-act="start-daily">开始今日之战</button></div>';
+    openPanel(h);
+  }
+
+  function showAscension() {
+    const unlocked = ZY.Save.getAscension();
+    let h = '<h2>修罗八阵</h2><p class="dim">逐层通关解锁；层级越高敌方 hp/atk 越高，星级与选关共用。</p><div class="lv-grid">';
+    for (let i = 0; i < ZY.ASCEND_MUL.length; i++) {
+      const lock = i > unlocked;
+      h += '<button class="lv-card' + (lock ? ' lock' : '') + '" data-act="pick-asc" data-idx="' + i + '"' + (lock ? ' disabled' : '') + '>' +
+        '<b>' + (i === 0 ? '普通' : '修罗 ' + i + ' 层') + '</b>' +
+        '<em>敌方 ×' + ZY.ASCEND_MUL[i] + '</em>' +
+        '<em>' + (lock ? '未解锁' : (i === unlocked ? '当前最高' : '已通关')) + '</em></button>';
+    }
+    h += '</div>';
+    openPanel(h);
+  }
+
+  function startDaily() {
+    dailyMode = true;
+    ascPick = 1;
+    startLevelRun(dailyLevelIdx(), null);
+  }
+
+  /* ---------------- HUD 扩展：波次倒计时 / 漏怪 / 护盾 / 收兵 ---------------- */
+  function ensureHudExtras() {
+    if (el.hudTimer) return;
+    const hud = document.querySelector('.hud');
+    if (!hud) return;
+    const t = document.createElement('div');
+    t.className = 'hud-timer';
+    hud.appendChild(t);
+    el.hudTimer = t;
+    const btn = document.createElement('button');
+    btn.className = 'hud-btn';
+    btn.textContent = '收兵';
+    btn.title = '提前开下一波，按提前秒数换资源';
+    btn.addEventListener('click', function () {
+      if (!state || state.over) return;
+      const r = ZY.Game.collectWave(state, 'player');
+      if (!r.ok) { toast(r.msg); return; }
+      syncHud();
+    });
+    const right = document.querySelector('.hud .hud-r') || hud;
+    right.appendChild(btn);
+    el.btnCollect = btn;
+  }
+
+  function hudExtras() {
+    ensureHudExtras();
+    if (!state || !el.hudTimer) return;
+    /* 性能：这套统计是 O(单位数)，每帧跑会拖慢主循环（V8 有 2.5ms/帧 预算），节流到 ~8Hz */
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    if (now - hudExtraAt < 120) return;
+    hudExtraAt = now;
+    const w = state.wave;
+    let txt = '';
+    if (!state.over && !w.done) {
+      if (w.pending.length) txt = '出兵中';
+      else if (w.timer < w.interval) txt = '下一波 ' + Math.max(1, Math.ceil(w.interval - w.timer)) + 's';
+    }
+    if (state.leaked.player) txt += (txt ? ' · ' : '') + '漏 ' + state.leaked.player;
+    if (state.shield.player) txt += (txt ? ' · ' : '') + '护盾 ' + state.shield.player;
+    const dan = ZY.Game.adouDanger(state, 'player');
+    if (dan.danger && !state.over) txt = '阿斗告急！' + (txt ? ' · ' + txt : '');
+    if (el.hudTimer.textContent !== txt) el.hudTimer.textContent = txt;
+    const bw = document.querySelector('.board-wrap');
+    if (bw && bw.classList.contains('danger') !== dan.danger) bw.classList.toggle('danger', dan.danger);
+    if (el.btnCollect) {
+      const dis = state.over || !!w.pending.length || w.done || (w.interval - w.timer) <= 0.5;
+      if (el.btnCollect.classList.contains('dis') !== dis) el.btnCollect.classList.toggle('dis', dis);
+    }
   }
 
   // getState 只读暴露当前对局状态，供自动化自测 / 调试面板使用

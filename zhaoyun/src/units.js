@@ -286,7 +286,24 @@ window.ZY = window.ZY || {};
     // 火球随波缩放：80 ×(1 + (波次-1)×0.06)，封顶 ×2.5（避免后期火球变成废牌）
     fireballPerWave: 0.06,
     fireballCap: 2.5,
+    pressureCap: 26,        // 压力闸门：同屏敌人上限（超出暂缓出兵，不削总量）
   };
+
+  /* ---------- 成就（12 条，判定在 game.js 的 ZY.Achv.eval） ---------- */
+  const ACHV = [
+    { id: 'first_win',   name: '初战告捷', desc: '首次通关任意关卡' },
+    { id: 'no_leak',     name: '滴水不漏', desc: '通关一关且一次没漏怪' },
+    { id: 'five_star',   name: '五星连珠', desc: '任意关卡拿到 5 星' },
+    { id: 'boss_slayer', name: '名将克星', desc: '击杀一名关底名将' },
+    { id: 'endless_10',  name: '十波不倒', desc: '无尽模式坚持到第 10 波' },
+    { id: 'endless_20',  name: '二十波',   desc: '无尽模式坚持到第 20 波' },
+    { id: 'kill_300',    name: '百人斩',   desc: '累计击杀 300' },
+    { id: 'all_weapons', name: '兵器谱',   desc: '四把武器都上手过' },
+    { id: 'codex_half',  name: '见多识广', desc: '图鉴解锁过半' },
+    { id: 'ascend_1',    name: '修罗初阵', desc: '通关修罗 1 层' },
+    { id: 'daily_once',  name: '今日之战', desc: '完成一局今日之战' },
+    { id: 'rich',        name: '富甲一方', desc: '单局资源达到 300' },
+  ];
 
   /* ---------- 军衔 ---------- */
   const RANKS = ['军士一', '军士二', '军士三', '校尉', '都尉', '偏将', '上将'];
@@ -456,6 +473,7 @@ window.ZY = window.ZY || {};
   ZY.LEVEL_BOSS = LEVEL_BOSS;
   ZY.ELITE_TRAITS = ELITE_TRAITS;
   ZY.ASCEND_MUL = ASCEND_MUL;
+  ZY.ACHV = ACHV;
   ZY.RECRUIT_POOL = RECRUIT_POOL;
   ZY.ENEMY_MIX = ENEMY_MIX;
   ZY.ELITE_TYPES = ELITE_TYPES;

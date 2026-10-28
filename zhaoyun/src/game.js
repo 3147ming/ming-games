@@ -66,15 +66,17 @@
     } else if (u.cls === 'hero') {
       const h = ZY.HERO_BY_ID[u.heroId];
       const st = ZY.heroStats(u.heroId, u.heroLevel);
+      if (ZY.Save && ZY.Save.markCodex) ZY.Save.markCodex('hero:' + u.heroId);
       u.char = h.name;
       u.maxHp = st.hp; u.hp = st.hp;
-      u.atk = st.atk + weaponAtk(u); u.aspd = st.aspd; u.range = st.range; u.move = st.move;
+      u.atk = st.atk + weaponAtk(u); u.aspd = st.aspd + weaponMod(u, 'aspd'); u.range = st.range + weaponMod(u, 'range'); u.move = st.move;
       u.pierce = st.pierce; u.splash = st.splash;
       u.crit = st.crit; u.critMul = st.critMul; u.dmgReduce = st.dmgReduce;
       u.noAttack = st.noAttack;
       u.skillCd = h.skill.cd; u.skillT = h.skill.cd;
     } else {
       if (!u.char && U[u.type]) u.char = U[u.type].char;
+      if (ZY.Save && ZY.Save.markCodex && u.type) ZY.Save.markCodex('unit:' + u.type);
       const st = ZY.statsAt(u.type, u.level);
       const hpMul = num(spec.hpMul, 1), atkMul = num(spec.atkMul, 1);
       const em = u.elite ? C.ELITE_MUL : 1;          // V8.1：精英基础 hp/atk ×1.25（与敌方 +25% 同一口径）
@@ -84,6 +86,14 @@
       u.pierce = !!U[u.type].pierce; u.splash = U[u.type].splash || 0;
       u.produce = U[u.type].produce || 0;
       u.noAttack = u.atk <= 0;
+      /* 第一批：精英词条 —— 按 id 轮转（同种子可复现），只给行军敌人挂 */
+      if (u.elite && u.side === 'enemy' && ZY.ELITE_TRAITS && ZY.ELITE_TRAITS.length) {
+        const tr = ZY.ELITE_TRAITS[u.id % ZY.ELITE_TRAITS.length];
+        u.trait = tr.id; u.traitName = tr.name; u.traitTag = tr.tag;
+        if (tr.hp) { u.maxHp *= tr.hp; u.hp = u.maxHp; }
+        if (tr.dmgReduce) u.dmgReduce = (u.dmgReduce || 0) + tr.dmgReduce;
+        if (tr.move) u.move = u.move / tr.move;      // move = 每格耗时（秒），除的是速度倍率
+      }
     }
 
     // 击杀赏金：敌方行军单位才给赏金（塔不给对方送经济）
@@ -98,6 +108,12 @@
     if (!u || !u.weapon) return 0;
     const w = ZY.WEAPONS[u.weapon];
     return w ? w.atk : 0;
+  }
+  /** 第一批：武器除攻击外还带攻速 / 射程修正（青釭 +15% 攻速、的卢 +1 射程） */
+  function weaponMod(u, key) {
+    if (!u || !u.weapon) return 0;
+    const w = ZY.WEAPONS[u.weapon];
+    return (w && w[key]) || 0;
   }
 
   function addUnit(state, u) {
@@ -124,7 +140,7 @@
     const ratio = u.maxHp > 0 ? clamp(u.hp / u.maxHp, 0, 1) : 1;
     if (u.cls === 'hero') {
       const st = ZY.heroStats(u.heroId, u.heroLevel);
-      u.maxHp = st.hp; u.atk = st.atk + weaponAtk(u); u.aspd = st.aspd; u.range = st.range; u.move = st.move;
+      u.maxHp = st.hp; u.atk = st.atk + weaponAtk(u); u.aspd = st.aspd + weaponMod(u, 'aspd'); u.range = st.range + weaponMod(u, 'range'); u.move = st.move;
       u.pierce = st.pierce; u.splash = st.splash;
       u.crit = st.crit; u.critMul = st.critMul; u.dmgReduce = st.dmgReduce;
       u.hp = u.maxHp;
@@ -172,7 +188,7 @@
     s.kills++;
     state.fx.push({ type: 'bun', row: tgt.row, col: tgt.col, text: '+' + tgt.bounty });   // 击杀普通敌人飘字 +1
     if (tgt.side === 'enemy' && tgt.target === 'player') state.stats.kills++;
-    if (tgt.boss) { state.banner = { text: '强敌倒下', life: 2.2 }; state.fx.push({ type: 'shake' }); }
+    if (tgt.boss) { state.bossKilled = true; state.banner = { text: '强敌倒下', life: 2.2 }; state.fx.push({ type: 'shake' }); }
     if (tgt.elite) state.fx.push({ type: 'big', row: tgt.row, col: tgt.col, text: '精英倒下' });
   }
 
@@ -208,6 +224,18 @@
   /** 敌人踏入终点格（阿斗格）：掉 1 血 + 补偿资源 + 该敌人消失 */
   function adouHit(state, side, unit) {
     const s = sideState(state, side);
+    state.leaked[side] = (state.leaked[side] || 0) + 1;   // 第一批：漏怪统计（被护盾吃掉的也算漏）
+    /* 第一批：护心镜 —— 有盾先碎盾，不扣阿斗血 */
+    if (state.shield[side] > 0) {
+      state.shield[side] -= 1;
+      const a0 = B.adouAt(state.mode, side, state.levelIdx);
+      state.fx.push({ type: 'adou', row: a0.row, col: a0.col, text: '护盾 -1' });
+      state.fx.push({ type: 'shake' });
+      state.fx.push({ type: 'toast', text: '护心镜碎裂！抵下 1 次漏怪' });
+      removeUnit(state, unit, true);
+      ZY.Audio.play('item');
+      return;
+    }
     s.adou -= 1;
     s.bun += C.ADOU_BONUS;
     const a = B.adouAt(state.mode, side, state.levelIdx);
@@ -316,7 +344,8 @@
     // V6 手感：出关第一步用 gateExit 快速腾出入口格，出关后恢复正常移速。
     //       否则单格入口被一个敌人占满移速周期，整波只能按「1 个 / 移速」滴出，
     //       关底张梁排到队尾可达 20s+（入口堵路节流）。
-    const stepT = (u.pi === 0 ? Math.min(u.move, (ZY.TUNE && ZY.TUNE.gateExit) || 0.5) : u.move);
+    let stepT = (u.pi === 0 ? Math.min(u.move, (ZY.TUNE && ZY.TUNE.gateExit) || 0.5) : u.move);
+    if (u.slowT > 0) stepT /= (u.slowMul || 0.6);       // 第一批：号角减速（每格耗时拉长）
     u.moveT += dt;
     if (u.moveT < stepT) return;
     u.moveT = 0;
@@ -363,6 +392,7 @@
     }
 
     // 2) 神兵符倒计时
+    if (state.player.bun > (state.peakBun || 0)) state.peakBun = state.player.bun;   // 成就「富甲一方」用
     ['player', 'enemy'].forEach(function (side) {
       if (state.buff[side] > 0) { state.buff[side] -= dt; if (state.buff[side] <= 0) state.buff[side] = 0; }
     });
@@ -375,6 +405,9 @@
     for (let i = 0; i < list.length; i++) {
       const u = list[i];
       if (u.dead) continue;
+      /* 第一批：连弩加速 / 号角减速的计时（塔与敌人都可能带） */
+      if (u.crossbowT > 0) { u.crossbowT -= dt; if (u.crossbowT <= 0) { u.crossbowT = 0; u.crossbowMul = 1; } }
+      if (u.slowT > 0) { u.slowT -= dt; if (u.slowT <= 0) { u.slowT = 0; u.slowMul = 1; } }
       if (u.stun > 0) { u.stun -= dt; continue; }
       if (u.skillCd > 0) {
         u.skillT -= dt;
@@ -392,7 +425,7 @@
 
       const targets = B.threatsInRange(state, u, u.range);
       if (targets.length) {
-        const interval = u.aspd > 0 ? 1 / u.aspd : 1;
+        const interval = u.aspd > 0 ? 1 / (u.aspd * (u.crossbowMul || 1)) : 1;
         u.atkT += dt;
         if (u.atkT >= interval) {
           u.atkT -= interval;
@@ -447,7 +480,15 @@
     const w = state.wave;
     w.spawnT += dt;
     const gap = w.spawnGap || SPAWN_GAP;
-    if (w.pending.length && w.spawnT >= gap) {
+    /* 第一批 P1-8：压力闸门 —— 同屏敌人超过上限就暂缓出兵（不减少总量，只压节奏，
+     * 避免低端机在波峰处掉帧；塔清得掉就自然恢复） */
+    const cap = (ZY.TUNE && ZY.TUNE.pressureCap) || 26;
+    let alive = 0;
+    for (let i = 0; i < state.units.length; i++) {
+      const u = state.units[i];
+      if (u.side === 'enemy' && !u.dead) alive++;
+    }
+    if (w.pending.length && w.spawnT >= gap && alive < cap) {
       const spec = w.pending.shift();
       // V6：出兵成功才清零；入口仍被占则放回队首并保持阈值，下一 tick 立即重试
       //     （旧逻辑无条件归零，失败要白等一个完整 gap）
@@ -460,6 +501,26 @@
       w.timer = 0;
       startWave(state);
     }
+  }
+
+  /** 第一批 P0-5：收兵 —— 提前结束本波备战、立刻开下一波；
+   *  提前的秒数按 3s = 1 资源折算（封顶 6），清完波的玩家可以换节奏换钱。 */
+  function collectWave(state, side) {
+    const w = state.wave;
+    if (state.over || state.paused) return { ok: false, msg: '现在不能收兵' };
+    if (w.done) return { ok: false, msg: '本局波次已结束' };
+    if (w.pending.length) return { ok: false, msg: '本波还在出兵，等出完' };
+    const left = Math.max(0, w.interval - w.timer);
+    if (left <= 0.5) return { ok: false, msg: '下一波马上就到' };
+    const gain = Math.min(6, Math.floor(left / 3));
+    const s = sideState(state, side);
+    if (s && gain > 0) s.bun += gain;
+    w.timer = w.interval;                    // 下一个 tick 自然开波
+    if (side === 'player') {
+      ZY.Audio.play('tap');
+      state.fx.push({ type: 'toast', text: '收兵出击！提前 ' + Math.round(left) + 's' + (gain ? '，+ ' + gain + ' 资源' : '') });
+    }
+    return { ok: true, gain: gain, left: left };
   }
 
   function startWave(state) {
@@ -617,6 +678,18 @@
     state.result = result;
     state.paused = false;
     if (result === 'win') ZY.Audio.play('win'); else ZY.Audio.play('lose');
+    /* 第一批：战绩落盘 + 成就判定（纯数据，异常不影响结算） */
+    try {
+      if (ZY.Save && ZY.Save.addLog) {
+        ZY.Save.addLog({
+          date: Date.now(), mode: state.mode, levelIdx: state.levelIdx,
+          result: result, wave: state.wave.idx, kills: state.stats.kills,
+          dur: Math.round(state.t), leaked: state.leaked.player,
+          ascension: state.ascension || 0, daily: !!state.daily,
+        });
+      }
+      if (ZY.Achv && ZY.Achv.eval) ZY.Achv.eval(state, result);
+    } catch (e) { /* noop */ }
   }
 
   /* ------------------------------------------------------------ 玩家操作 */
@@ -786,6 +859,7 @@
     if (t.level >= C.MAX_LEVEL) return { ok: false, msg: '已满级（' + C.MAX_LEVEL + ' 级），无法再合成' };
     t.level++;
     restatUnit(state, t);
+    t.hp = t.maxHp;                             // 第一批 P1-13：合成即满血（不再「合完反而更脆」）
     removeUnit(state, u, true);                 // 被吃塔消失（清空占地，不触发死亡特效）
     const di = state.units.indexOf(u);          // 立即从单位表移除，避免拖拽来源滞留一帧
     if (di >= 0) state.units.splice(di, 1);
@@ -873,6 +947,41 @@
     return { ok: true };
   }
 
+  /** 第一批 · 护心镜：阿斗叠 1 层护盾（抵挡 1 次漏怪，不扣血） */
+  function useMirror(state, side) {
+    state.shield[side] = (state.shield[side] || 0) + 1;
+    if (side === 'player') {
+      ZY.Audio.play('item');
+      state.banner = { text: '护心镜！阿斗护盾 ×' + state.shield[side], life: 1.6 };
+    }
+    return { ok: true, shield: state.shield[side] };
+  }
+
+  /** 第一批 · 连弩：该塔攻速 ×1.35，持续 15 秒（重复使用刷新时长） */
+  function useCrossbow(state, side, unitId) {
+    const u = state.units.find(function (x) { return x.id === unitId; });
+    if (!u || u.dead) return { ok: false, msg: '目标塔不存在' };
+    if (u.side !== side) return { ok: false, msg: '连弩只能给自己人' };
+    if (u.noAttack) return { ok: false, msg: '这个单位不攻击，装了没用' };
+    u.crossbowMul = 1.35; u.crossbowT = 15;
+    if (side === 'player') ZY.Audio.play('item');
+    return { ok: true };
+  }
+
+  /** 第一批 · 号角：全体冲该侧的敌人减速 40%，持续 5 秒 */
+  function useHorn(state, side) {
+    let n = 0;
+    state.units.forEach(function (u) {
+      if (u.dead || u.side !== 'enemy' || u.target !== side) return;
+      u.slowMul = 0.6; u.slowT = 5; n++;
+    });
+    if (side === 'player') {
+      ZY.Audio.play('item');
+      state.banner = { text: '号角！敌军减速 40%（5s）· ' + n + ' 人', life: 1.6 };
+    }
+    return { ok: true, hit: n };
+  }
+
   /** 火球：落点 3×3 内「冲我来的」敌人各受 80 固定伤害 + 爆炸特效 */
   function useFireball(state, side, row, col) {
     let hit = 0;
@@ -909,6 +1018,7 @@
     if (u.weapon) s.weapons[u.weapon] = (s.weapons[u.weapon] || 0) + 1;
     s.weapons[weaponId]--;
     u.weapon = weaponId;
+    if (ZY.Save && ZY.Save.markCodex) ZY.Save.markCodex('weapon:' + weaponId);
     restatUnit(state, u);
     if (side === 'player') {
       state.fx.push({ type: 'brush', row: u.row, col: u.col, text: '装备 ' + w.name + '（攻击+' + w.atk + '）' });
@@ -936,6 +1046,8 @@
     const state = {
       mode: mode, difficulty: num(opts.difficulty, 1),
       levelIdx: num(opts.levelIdx, 0),
+      ascension: num(opts.ascension, 0),      // 第一批：修罗八阵层级（0~3）
+      daily: !!opts.daily,                    // 第一批：今日之战标记
       levelName: mode === 'level' ? ZY.LEVELS[num(opts.levelIdx, 0)].name : '',
       t: 0, paused: false, over: false, result: null, speed: 1,
       grid: B.createGrid(), units: [], deploy: {},
@@ -944,6 +1056,8 @@
       player: freshSide(),
       enemy: freshSide(),
       buff: { player: 0, enemy: 0 },
+      shield: { player: 0, enemy: 0 },     // 第一批：护心镜层数
+      leaked: { player: 0, enemy: 0 },     // 第一批：漏怪统计（踏进阿斗格即 +1）
       hasAdou: { player: true, enemy: mode === 'versus' },
       wave: { idx: 0, timer: 0, interval: mode === 'level' ? T.levelFirstGap : T.endlessInterval, pending: [], spawnT: 0, spawnGap: SPAWN_GAP, done: false, breakEntrance: false, total: 0 },
       aiT: 0, fx: [], banner: null, stats: { kills: 0, waves: 0, duration: 0 },
@@ -1014,12 +1128,83 @@
     state.player.bun += 30 * idx;
   }
 
+  /** 第一批 P1-9：拆塔 —— 拖到荒地上即拆除，返还 50% 估算造价（2×等级） */
+  function demolish(state, side, unitId) {
+    const u = state.units.find(function (x) { return x.id === unitId; });
+    if (!u || u.dead || u.side !== side) return { ok: false, msg: '没有这个塔' };
+    if (u.cls === 'hero') return { ok: false, msg: '武将不能拆，先拖到别的塔位' };
+    const refund = Math.max(1, Math.round(2 * (u.level || 1)));
+    const s = sideState(state, side);
+    if (s) s.bun += refund;
+    removeUnit(state, u, true);
+    const di = state.units.indexOf(u);
+    if (di >= 0) state.units.splice(di, 1);
+    if (side === 'player') {
+      ZY.Audio.play('merge');
+      state.fx.push({ type: 'toast', text: '拆塔 · 返还 ' + refund + ' 资源' });
+    }
+    return { ok: true, refund: refund };
+  }
+
+  /** 第一批 P0-7：安全区判定 —— 敌人距阿斗 ≤ 2 格（切比雪夫）即为「告急」，不暂停只提示 */
+  function adouDanger(state, side) {
+    if (!state.hasAdou[side]) return { danger: false, n: 0, dist: 99 };
+    const a = B.adouAt(state.mode, side, state.levelIdx);
+    if (!a) return { danger: false, n: 0, dist: 99 };
+    let n = 0, best = 99;
+    for (let i = 0; i < state.units.length; i++) {
+      const u = state.units[i];
+      if (u.dead || u.side !== 'enemy' || u.target !== side) continue;
+      const d = Math.max(Math.abs(u.row - a.row), Math.abs(u.col - a.col));
+      if (d < best) best = d;
+      if (d <= 2) n++;
+    }
+    return { danger: n > 0, n: n, dist: best };
+  }
+
+  /* ------------------------------------------------------------ 成就判定（第一批 12 条） */
+  const Achv = {
+    list: function () { return ZY.ACHV || []; },
+    eval: function (state, result) {
+      if (!state || !ZY.Save || !ZY.Save.unlockAchv) return [];
+      const got = [];
+      const win = result === 'win';
+      const unlock = function (id, cond) { if (cond && ZY.Save.unlockAchv(id)) got.push(id); };
+      const stars = (ZY.Game && ZY.Game.starsOf) ? ZY.Game.starsOf(state) : 0;
+      unlock('first_win', win && state.mode === 'level');
+      unlock('no_leak', win && state.mode === 'level' && (state.leaked.player || 0) === 0);
+      unlock('five_star', win && state.mode === 'level' && stars >= 5);
+      unlock('boss_slayer', !!state.bossKilled);
+      unlock('endless_10', state.mode === 'endless' && state.wave.idx >= 10);
+      unlock('endless_20', state.mode === 'endless' && state.wave.idx >= 20);
+      unlock('kill_300', (ZY.Save.getKillTotal() + (state.stats.kills || 0)) >= 300);
+      unlock('all_weapons', ZY.Save.codexCount('weapon:') >= 4);
+      unlock('codex_half', ZY.Save.codexCount() >= 12);
+      unlock('ascend_1', win && state.mode === 'level' && (state.ascension || 0) >= 1);
+      unlock('daily_once', !!state.daily && state.over);
+      unlock('rich', (state.peakBun || 0) >= 300);
+      state.newAchv = got;
+      if (got.length && state.fx) {
+        const all = Achv.list();
+        got.slice(0, 3).forEach(function (id) {
+          const a = all.find(function (x) { return x.id === id; });
+          if (a) state.fx.push({ type: 'toast', text: '成就解锁 · ' + a.name });
+        });
+      }
+      return got;
+    },
+  };
+  ZY.Achv = Achv;
+
   ZY.Game = {
     TICK: TICK, SPAWN_GAP: SPAWN_GAP,
     baseState: baseState, inherit: inherit, seedArmy: seedArmy,
     tick: tick, recruit: recruit, stageCard: stageCard, deploy: deploy, mergeTower: mergeTower,
     synthHero: synthHero, synthHeroStar: synthHeroStar, useShovel: useShovel, useBrush: useBrush,
     useWarcry: useWarcry, useFireball: useFireball,
+    useMirror: useMirror, useCrossbow: useCrossbow, useHorn: useHorn,
+    collectWave: collectWave, demolish: demolish, adouDanger: adouDanger,
+    Achv: Achv,
     equipWeapon: equipWeapon, unequipWeapon: unequipWeapon,
     endGame: endGame, sideState: sideState, cardLabel: cardLabel,
     makeUnit: makeUnit, addUnit: addUnit, removeUnit: removeUnit, moveUnit: moveUnit,

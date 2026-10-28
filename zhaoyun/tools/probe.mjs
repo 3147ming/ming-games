@@ -578,15 +578,17 @@ const winRes = await evalJs(`(async () => {
     promote: (ov.querySelector('.promote') || {}).textContent,
     coin: (ov.querySelector('.coin-row') || {}).textContent,
     double: !!ov.querySelector('[data-act="double"]'),
+    restart: !!ov.querySelector('[data-act="restart"]'),
     next: !!ov.querySelector('[data-act="next"]')
   };
 })()`);
 ok('胜利结算面板弹出（胜 利）', winRes.hidden === false && winRes.title === '胜 利' && winRes.panelCls.indexOf('win') >= 0,
   JSON.stringify(winRes).slice(0, 140));
 ok('评级 1-5 星（3 血快速通关 = 5 星）', winRes.starsOn === 5 && winRes.starsOff === 0, 'on=' + winRes.starsOn + ' off=' + winRes.starsOff);
-ok('恭喜晋升 + 金币 +20 + 双倍金币按钮（仅展示）',
-  winRes.promote.indexOf('恭喜晋升') >= 0 && winRes.coin.indexOf('+20') >= 0 && winRes.double === true,
-  JSON.stringify({ promote: winRes.promote, coin: winRes.coin, double: winRes.double }));
+ok('恭喜晋升 + 本关星数 + 再来一局按钮（第一批 P1-12：假按钮改成真重开，不再有广告位文案）',
+  winRes.promote.indexOf('恭喜晋升') >= 0 && winRes.coin.indexOf('星数') >= 0 &&
+  winRes.double === false && winRes.restart === true,
+  JSON.stringify({ promote: winRes.promote, coin: winRes.coin, double: winRes.double, restart: winRes.restart }));
 
 console.log('\n== 竞技双路双阿斗 ==');
 await send('Page.navigate', { url: URL });
