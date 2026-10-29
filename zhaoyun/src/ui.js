@@ -36,6 +36,10 @@
     el.game = $('screen-game');
     el.board = $('board');
     el.cells = $('cells');
+    // 第三批 P0-3：塔信息常驻卡（放进 #board 而不是 #fx，避免被 trimFx() 裁掉）
+    el.unitCard = document.createElement('div');
+    el.unitCard.className = 'unit-card';
+    el.board.appendChild(el.unitCard);
     // V7.3：主路整块绘制的 SVG 层。
     // 必须压在 .cells 之上：描边有一半落在轮廓外侧，垫在格子下面会被相邻格的
     // 底色盖掉，只剩内侧半条线；入口/突破口/预警这类"要盖在路面上"的标记
@@ -179,12 +183,16 @@
         ZY.Audio.play('tap');
       });
     });
+    // 第三批 P1-10：遍历 ZY.Save.KEYS 全清（旧版只清 4 个键，星/图鉴/成就/战绩/修罗全残留）
     $('btn-reset').addEventListener('click', function () {
-      if (!window.confirm('确定清空本机存档（军衔 / 关卡 / 最高波数 / 击杀）？')) return;
-      ZY.Save.setRank(0); ZY.Save.setLevel(0);
-      try { localStorage.setItem(ZY.Save.KEYS.waveBest, '0'); } catch (e) { /* noop */ }
-      try { localStorage.setItem(ZY.Save.KEYS.killTotal, '0'); } catch (e) { /* noop */ }
+      if (!window.confirm('确定清空本机存档？星数 / 图鉴 / 成就 / 战绩 / 修罗层数会一起清空，无法恢复。')) return;
+      Object.keys(ZY.Save.KEYS).forEach(function (k) {
+        if (k === 'muted') return;                 // 静音是偏好，保留
+        try { localStorage.removeItem(ZY.Save.KEYS[k]); } catch (e) { /* noop */ }
+      });
+      ascPick = 0; dailyMode = false;              // 内存里的档位一起重置
       refreshSave();
+      toast('存档已清空');
     });
   }
 
@@ -364,7 +372,10 @@
     el.rangeRing.classList.add('show');
   }
   function showRange(u) { showRangeAt(u.row, u.col, u.range); }
-  function clearRange() { if (el.rangeRing) el.rangeRing.classList.remove('show'); }
+  function clearRange() {
+    if (el.rangeRing) el.rangeRing.classList.remove('show');
+    if (el.unitCard) el.unitCard.classList.remove('show');   // 第三批 P0-3：脱选即收起信息卡
+  }
 
   /* ======================================================== 进入对局 */
   function enterGame() {
@@ -376,6 +387,7 @@
     el.overlay.hidden = true;
     el.overlay.innerHTML = '';
     el.weaponPanel.hidden = true;
+    if (el.unitCard) { el.unitCard.innerHTML = ''; el.unitCard.classList.remove('show'); }   // 第三批 P0-3
     unitEls = {};
     el.units.innerHTML = '';
     adouEls = {};
@@ -559,9 +571,11 @@
     const hb = '<i class="hb"><u></u></i>';
     const sk = (u.cls === 'hero') ? '<em class="sk"></em>' : '';
     const wp = u.weapon ? '<s class="wp">' + ZY.WEAPONS[u.weapon].glyph + '</s>' : '';   // 装备武器小徽标
+    // 第三批 P0-2：精英头顶词条标记（疾 / 甲 / 旗 / 拆）
+    const tg = (u.elite && u.traitTag) ? '<s class="tag">' + u.traitTag + '</s>' : '';
     // V7：位图立绘（assets/ 相对路径，不转 base64）；名字/角标/血条/技能/武器徽标一并保留
     const fig = '<span class="fig-wrap"><img class="fig-img" src="assets/' + assetKeyOf(u) + '.png" draggable="false" alt=""></span>';
-    return nm + fig + lv + hb + sk + wp;
+    return nm + fig + lv + hb + sk + wp + tg;
   }
 
   function syncUnits(force) {
@@ -685,6 +699,9 @@
       if (hudCache.e !== e) { hudCache.e = e; el.hpEnemy.innerHTML = hearts(e); }
     }
     let mode = state.mode === 'versus' ? '竞技' : (state.mode === 'endless' ? '无尽' : ('第' + (state.levelIdx + 1) + '关 ' + state.levelName));
+    // 第三批 P0-4：HUD 关卡名后带地形特色（如「第 5 关 定军山 · 高地环绕」）
+    const mp = (ZY.MAPS && ZY.MAPS[state.levelIdx]) || null;
+    if (state.mode === 'level' && mp && mp.note) mode += ' · ' + mp.note;
     if (hudCache.mode !== mode) { hudCache.mode = mode; el.hudMode.textContent = mode; }
     let wave = '';
     if (state.mode !== 'versus') {
@@ -737,6 +754,10 @@
   function cardInner(card) {
     if (card.kind === 'item') {
       return { cls: 'item it-' + card.item, html: '<b>' + ZY.ITEMS[card.item].glyph + '</b><span>' + ZY.ITEMS[card.item].name + '</span>' };
+    }
+    if (card.kind === 'weapon') {                       // 第三批 P1-9：武器卡
+      const w = ZY.WEAPONS[card.weapon];
+      if (w) return { cls: 'card weapon', html: '<b>' + w.glyph + '</b><span>' + w.name + '</span>' };
     }
     if (card.kind === 'hero') {
       const star = (card.level || 1) > 1 ? (' · ' + card.level + '★') : ' · 2格';
@@ -1173,6 +1194,9 @@
         }
       } else if (card.kind === 'gold') {
         ok = false;
+      } else if (card.kind === 'weapon') {          // 第三批 P1-9：只能落到武将塔上
+        const tw = state.grid[t.row][t.col];
+        ok = !!tw && tw.side === 'player' && tw.cls === 'hero';
       } else {
         const span = ZY.cardSpan(card);
         ok = B.canPlace(state, 'player', t.row, t.col, span) || isMergeTarget(t, card);
@@ -1180,12 +1204,12 @@
     }
     cellEls[t.row][t.col].classList.add(ok ? 'hl' : 'bad');
   }
-  /** 落到己方塔上：V8 卡只喂同兵种 1 级塔 → 可合成 */
+  /** 落到己方塔上：第三批 P0-1 —— 同兵种 1~3 级塔可喂卡（4 级起走塔塔合成） */
   function isMergeTarget(t, card) {
     const tw = state.grid[t.row][t.col];
     if (!tw || tw.side !== 'player' || tw.cls !== 'soldier') return false;
     if (card.kind !== 'unit' || tw.type !== card.type) return false;
-    return tw.level === 1 && tw.level < C.MAX_LEVEL;
+    return tw.level >= 1 && tw.level <= 3 && tw.level < C.MAX_LEVEL;
   }
 
   function cellAt(x, y) {
@@ -1223,6 +1247,11 @@
       toast(it.name + '：拖出手牌释放 —— ' + it.desc);
       return;
     }
+    if (card.kind === 'weapon') {                       // 第三批 P1-9
+      const w = ZY.WEAPONS[card.weapon];
+      toast('武器卡「' + (w ? w.name : '?') + '」：拖到武将塔上装备 —— ' + (w ? w.desc : ''));
+      return;
+    }
     toast('把「' + card.char + '」拖到塔位建塔；拖到同字塔上可合成升级');
   }
 
@@ -1243,6 +1272,7 @@
     if (card.kind === 'item') return ZY.ITEMS[card.item].name;
     if (card.kind === 'hero') return '武将卡「' + card.char + '」';
     if (card.kind === 'gold') return '金字「' + card.char + '」';
+    if (card.kind === 'weapon') return '武器「' + (ZY.WEAPONS[card.weapon] ? ZY.WEAPONS[card.weapon].name : '?') + '」';
     return '「' + card.char + '」' + U[card.type].name;
   }
 
@@ -1252,8 +1282,27 @@
     // V6 数值校准：点击/选中我方塔 → 显示其等级角标（脱离选中即隐藏）
     selectedUnitId = (u.side === 'player') ? u.id : null;
     updateBadges();
-    showUnitInfo(u);
+    renderUnitCard(u);          // 第三批 P0-3：常驻信息卡（不进 loop，只在选中时写一次）
+    showUnitInfo(u);            // toast 摘要保留，照顾旧习惯
     ZY.Audio.play('tap');
+  }
+
+  /** 第三批 P0-3：常驻塔信息卡 —— DPS / 覆盖主路格数 / 经验 / 精铸，一眼看全 */
+  function renderUnitCard(u) {
+    if (!el.unitCard) return;
+    if (!u || u.dead) { el.unitCard.classList.remove('show'); return; }
+    const lv = u.cls === 'hero' ? u.heroLevel : u.level;
+    let cov = 0;
+    if (u.side === 'player' && B.coverCount) {
+      cov = B.coverCount(state.mode, 'player', u.row, u.col, u.range, state.levelIdx);
+    }
+    el.unitCard.innerHTML =
+      '<b>' + (u.char || '') + ' Lv' + lv + (u.refined ? ' · 精铸 ' + u.refined + '/3' : '') + '</b><br>' +
+      '血 ' + Math.round(u.hp) + '/' + Math.round(u.maxHp) +
+      ' · 攻 ' + u.atk.toFixed(1) + ' · 速 ' + u.aspd.toFixed(2) +
+      ' · DPS ' + (u.atk * u.aspd).toFixed(1) + '<br>' +
+      '射程 ' + u.range + ' · 覆盖主路 ' + cov + ' 格 · 经验 ' + (u.xp || 0).toFixed(1) + '/' + C.XP_PER_LEVEL;
+    el.unitCard.classList.add('show');
   }
 
   function showUnitInfo(u) {
@@ -1287,6 +1336,7 @@
 
   function handleCellTap(r, c) {
     clearRange();
+    if (el.unitCard) el.unitCard.classList.remove('show');   // 第三批 P0-3：点空白格收起信息卡
     // V6 数值校准：点棋盘空白处 / 阿斗 → 收起选中塔的等级角标
     if (selectedUnitId !== null) { selectedUnitId = null; updateBadges(); }
     const a = B.adouAt(state.mode, 'player', state.levelIdx);
@@ -1763,6 +1813,9 @@
       }
       body += '<p class="dim">击杀 ' + state.player.kills + ' · 敌方击杀 ' + state.enemy.kills +
         ' · 用时 ' + Math.round(state.t) + 's</p>';
+      // 第三批 P0-5：竞技败北也补「漏怪 / 峰值」（与关卡失败同口径）
+      body += '<p class="dim">漏怪 ' + (state.leaked.player || 0) + ' 次 · 最后一次在第 ' +
+        (state.stats.leakWave || 0) + ' 波 · 峰值同屏敌军 ' + (state.stats.peakEnemies || 0) + '</p>';
       btns = '<button class="btn primary" data-act="restart">再来一局</button>' +
         '<button class="btn" data-act="home">返回主菜单</button>';
     } else if (state.mode === 'endless') {
@@ -1770,14 +1823,17 @@
       ZY.Save.addKills(state.stats.kills);
       title = '守 家 结 算';
       body = '<p>最高波数 <b>' + state.wave.idx + '</b> · 总击杀 <b>' + state.stats.kills + '</b></p>' +
-        '<p class="dim">用时 ' + Math.round(state.t) + 's · 历史最高 ' + ZY.Save.getWaveBest() + ' 波</p>';
+        '<p class="dim">用时 ' + Math.round(state.t) + 's · 历史最高 ' + ZY.Save.getWaveBest() + ' 波</p>' +
+        // 第三批 P0-5：无尽结算同样给「漏怪 / 峰值」
+        '<p class="dim">漏怪 ' + (state.leaked.player || 0) + ' 次 · 最后一漏在第 ' +
+        (state.stats.leakWave || 0) + ' 波 · 峰值同屏敌军 ' + (state.stats.peakEnemies || 0) + '</p>';
       btns = '<button class="btn primary" data-act="restart">再来一局</button>' +
         '<button class="btn" data-act="home">返回主菜单</button>';
     } else {
       ZY.Save.addKills(state.stats.kills);
       if (win) {
         const next = state.levelIdx + 1;
-        if (state.ascension >= 1) ZY.Save.setAscension(state.ascension + 1);   // 第一批：修罗逐层解锁
+        ZY.Save.syncAscension();   // 第三批 P1-8：按进度/星数解锁（旧逻辑要求「先打修罗」→ 1/2/3 层永远锁死）
         if (state.daily) ZY.Save.setDailyBest({ stars: ZY.Game.starsOf(state), levelIdx: state.levelIdx });
         body = winPanelLevel() + achvLine(state);
         if (next >= ZY.LEVELS.length) {
@@ -1793,7 +1849,22 @@
             '<button class="btn" data-act="home">返回主菜单</button>';
         }
       } else {
-        body = '<p>阿斗失守于 <b>' + state.levelName + '</b>。重打本关。</p>';
+        // 第三批 P0-5：失败复盘 —— 漏在第几波、崩盘时几座塔、一句该改什么
+        const mine = state.units.filter(function (u) { return u.side === 'player'; });
+        let topLv = 0, emptySlots = 0;
+        mine.forEach(function (u) { const lv = u.level || u.heroLevel || 1; if (lv > topLv) topLv = lv; });
+        Object.keys(state.deploy).forEach(function (k) {
+          if (state.deploy[k] !== 'player') return;
+          const p = k.split(',');
+          if (!state.grid[+p[0]][+p[1]]) emptySlots++;
+        });
+        body = '<p>阿斗失守于 <b>' + state.levelName + '</b>。重打本关。</p>' +
+          '<p class="dim">漏怪 ' + (state.leaked.player || 0) + ' 次 · 最后一漏在第 ' + (state.stats.leakWave || 0) + ' 波' +
+          ' · 峰值同屏敌军 ' + (state.stats.peakEnemies || 0) + '</p>' +
+          '<p class="dim">崩盘时 塔 ' + mine.length + ' 座 · 最高 Lv' + topLv +
+          ' · 手上资源 ' + Math.floor(state.player.bun) + ' · 空塔位 ' + emptySlots + '</p>' +
+          '<p class="dim">本关最佳 ' + ZY.Save.getStar(state.levelIdx) + ' / 5 星</p>' +
+          '<p class="dim">' + diagLine(state, mine.length, topLv, emptySlots) + '</p>';
         btns = '<button class="btn primary" data-act="restart">重打本关</button>' +
           '<button class="btn" data-act="home">返回主菜单</button>';
       }
@@ -1806,6 +1877,15 @@
       '<div class="btns">' + btns + '</div></div>';
     bindPanel();
     refreshSave();
+  }
+
+  /** 第三批 P0-5：失败诊断 —— 按条件只出一句最该改的事 */
+  function diagLine(state, towers, topLv, emptySlots) {
+    if (towers === 0) return '一座塔都没建：先把手牌里的兵种卡落到棕色塔位。';
+    if (emptySlots >= 8) return '塔位空了 ' + emptySlots + ' 个：先铺满邻路塔位，再考虑合成。';
+    if (state.player.bun >= 100) return '结算前手上还有 ' + Math.floor(state.player.bun) + ' 资源：钱要花成塔，不是攒着。';
+    if (topLv >= 4) return '主力塔等级够，是覆盖不够：试着往拐角挪一格，让射程多吃两段路。';
+    return '下一局先喂一张同字卡：合成出来的塔比纯打怪升级多一层精铸。';
   }
 
   function bindPanel() {
@@ -1841,11 +1921,13 @@
 
   /** 关卡模式开局：可继承上一关的棋盘 / 手牌 / 军营 / 武器
    *  prev 为空且关卡号 > 0（中途开档）时，补一支该进度应有的部队，避免死局 */
-  function startLevelRun(idx, prev, noBonus) {
+  function startLevelRun(idx, prev, noBonus, forceAsc) {
     idx = Math.max(0, Math.min(ZY.LEVELS.length - 1, idx));
+    // 第三批 P1-8：forceAsc 显式传入（今日之战固定修罗 1）时不改模块级 ascPick，避免污染后续选关
+    const asc = (forceAsc === undefined) ? ascPick : forceAsc;
     state = ZY.Game.baseState('level', {
       levelIdx: idx,
-      ascension: ascPick,
+      ascension: asc,
       difficulty: parseFloat(getActiveDiff()),
       daily: dailyMode,
     });
@@ -1888,16 +1970,42 @@
       'background:rgba(255,255,255,.06);font-size:12px}',
       '.codex-item.off{opacity:.3}',
       '.codex-item b{font-size:18px;line-height:1}',
+      '.codex-item i{font-style:normal;font-size:10px;opacity:.62;line-height:1.15;text-align:center}',
+      /* 第三批 P0-3：塔信息常驻卡（棋盘右下，不遮手牌与征兵键） */
+      '.unit-card{position:absolute;right:6px;bottom:6px;max-width:52%;padding:4px 7px;border-radius:8px;',
+      'background:rgba(246,242,232,.92);border:1px solid rgba(90,74,52,.45);font-size:11px;line-height:1.5;',
+      'color:#3a3226;pointer-events:none;opacity:0;transition:opacity .12s;z-index:8}',
+      '.unit-card.show{opacity:1}',
+      /* 第三批 P1-8：选关面板顶部的修罗档位条 */
+      '.asc-row{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:2px 0 8px}',
+      '.asc-row .btn.small{padding:4px 10px;min-height:30px;font-size:12px}',
+      '.lv-note{font-style:normal;font-size:10px;opacity:.6;line-height:1.2;display:block;margin-top:1px}',
+      /* 第三批 P0-2：精英头顶词条标记 */
+      '.unit .tag{position:absolute;right:-2px;top:-6px;font-size:9px;line-height:1;padding:1px 3px;',
+      'border-radius:4px;background:rgba(60,46,26,.86);color:#f0c96a;border:1px solid rgba(240,201,106,.55);',
+      'pointer-events:none;text-decoration:none}',
       '.rec-row{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:4px 6px;border-radius:6px;background:rgba(255,255,255,.05);margin-bottom:4px}',
       '.achv-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}',
       '.achv-item{padding:6px 8px;border-radius:8px;background:rgba(255,255,255,.06);font-size:12px}',
       '.achv-item.off{opacity:.35}',
       '.achv-item b{display:block;font-size:13px}',
-      '.hud-timer{position:absolute;left:50%;transform:translate(-50%,-50%);top:50%;font-size:11px;letter-spacing:.04em;',
+      /* 第三批 P0-6：倒计时改成 .hud-mid 里的静态第三行（旧写法相对 .screen 定位 → 压在棋盘正中） */
+      '.hud-timer{position:static;transform:none;left:auto;top:auto;font-size:11px;letter-spacing:.04em;',
       'color:#f4e2b8;opacity:.85;pointer-events:none;white-space:nowrap;z-index:6}',
       '.hud-btn{font:inherit;font-size:12px;padding:2px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.2);',
       'background:rgba(255,255,255,.08);color:inherit;cursor:pointer}',
       '.hud-btn.dis{opacity:.4;cursor:not-allowed}',
+      /* 第三批 P0-6：「收兵」挪进 .dock（HUD 只留 倍速 / 静音 / 暂停 三颗图标键） */
+      '.dock-collect{align-self:flex-start;margin:2px 0 4px;min-height:30px;padding:4px 12px;font-size:12px}',
+      '.dock-collect.dis{opacity:.4}',
+      /* 第三批 P0-6：图标键放大 + 安全区（无刘海环境 env() 解析为 0，桌面零变化） */
+      '.icon-btn{width:clamp(34px,5.6cqh,44px);height:clamp(34px,5.6cqh,44px);font-size:clamp(13px,4.2cqh,17px)}',
+      '.hud-r{gap:8px}',
+      '#screen-game{padding:max(4px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) ',
+      'max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))}',
+      '.hud{padding:3px max(6px,env(safe-area-inset-right)) 3px max(6px,env(safe-area-inset-left))}',
+      '.start-wrap{padding-left:max(0px,env(safe-area-inset-left));padding-right:max(0px,env(safe-area-inset-right))}',
+      '.btn,.btn.small{min-height:34px}',
       '.board-wrap.danger #board{box-shadow:inset 0 0 0 2px rgba(220,70,60,.75)}',
       '.board-wrap.danger .hud-timer{color:#ff9d8f;opacity:1}',
     ].join('');
@@ -1945,10 +2053,12 @@
           return;
         }
         if (act === 'pick-asc') {
-          ascPick = parseInt(b.getAttribute('data-idx'), 10) || 0;
-          showLevelSelect();
+          const pa = parseInt(b.getAttribute('data-idx'), 10);
+          ascPick = isNaN(pa) ? 0 : pa;
+          showLevelSelect();                     // 第三批 P1-8：选完留在选关面板，不两级空转
           return;
         }
+        if (act === 'to-select') { showLevelSelect(); return; }
         if (act === 'start-daily') { closePanel(); startDaily(); return; }
       });
     });
@@ -1985,6 +2095,16 @@
     let h = '<h2>选关</h2>';
     h += '<p class="dim">星级 ' + total + ' / ' + ZY.Save.getStarMax() +
       (ascPick ? ' · 修罗 ' + ascPick + ' 层（敌方 hp/atk ×' + ZY.ASCEND_MUL[ascPick] + '）' : '') + '</p>';
+    // 第三批 P1-8：档位选择器内嵌在选关面板顶部（未解锁的置灰并写明门槛）
+    const ascMax = ZY.Save.getAscension();
+    h += '<div class="asc-row">';
+    for (let i = 0; i < ZY.ASCEND_MUL.length; i++) {
+      const lock = i > ascMax;
+      h += '<button class="btn small' + (i === ascPick ? ' primary' : '') + '" data-act="pick-asc" data-idx="' + i + '"' +
+        (lock ? ' disabled' : '') + '>' + (i === 0 ? '普通' : '修罗 ' + i + ' 层') +
+        (lock ? '（' + ascGateText(i) + '）' : '') + '</button>';
+    }
+    h += '</div>';
     h += '<div class="lv-grid">';
     for (let i = 0; i < ZY.LEVELS.length; i++) {
       const lv = ZY.LEVELS[i];
@@ -1994,30 +2114,48 @@
         (lock ? ' disabled' : '') + '>' +
         '<b>' + (i + 1) + ' · ' + lv.name + '</b>' +
         '<span class="stars small">' + starRow(st) + '</span>' +
-        '<em>' + (lock ? '未解锁' : (st ? st + ' 星' : '待通关')) + '</em></button>';
+        '<em>' + (lock ? '未解锁' : (st ? st + ' 星' : '待通关')) + '</em>' +
+        // 第三批 P0-4：选关卡片第二行显示地形特色
+        '<i class="lv-note">' + ((ZY.MAPS[i] && ZY.MAPS[i].note) || '') + '</i></button>';
     }
     h += '</div>';
     openPanel(h);
   }
 
+  /** 第三批 P1-9：图鉴加「武器」组（23 → 27 项），每项补第二行说明 */
+  function codexDesc(k) {
+    const p = k.split(':'), id = p[1];
+    if (p[0] === 'unit') return (ZY.UNITS[id] && ZY.UNITS[id].tag) || '';
+    if (p[0] === 'hero') { const h = ZY.HERO_BY_ID[id]; return h ? (h.tag || h.baseName || '') : ''; }
+    if (p[0] === 'boss') { const b = ZY.BOSSES.filter(function (x) { return x.id === id; })[0]; return b && b.skill ? b.skill.name : '关底名将'; }
+    if (p[0] === 'weapon') return (ZY.WEAPONS[id] && ZY.WEAPONS[id].desc) || '';
+    if (p[0] === 'level') { const m = ZY.MAPS[+id]; return m ? m.note : ''; }
+    return '';
+  }
   function showCodex() {
     const groups = [
       { t: '兵种', items: Object.keys(ZY.UNITS).map(function (k) { return { k: 'unit:' + k, n: ZY.UNITS[k].name, g: ZY.UNITS[k].char }; }) },
       { t: '武将', items: ZY.HEROES.map(function (x) { return { k: 'hero:' + x.id, n: x.name, g: x.chars[0] }; }) },
       { t: '名将', items: ZY.BOSSES.map(function (x) { return { k: 'boss:' + x.id, n: x.name, g: x.char }; }) },
+      { t: '武器', items: Object.keys(ZY.WEAPONS).map(function (k) { return { k: 'weapon:' + k, n: ZY.WEAPONS[k].name, g: ZY.WEAPONS[k].glyph }; }) },
       { t: '关卡', items: ZY.LEVELS.map(function (x, i) { return { k: 'level:' + i, n: x.name, g: '关' }; }) },
     ];
     let all = 0, got = 0;
     let h = '<h2>图鉴</h2>';
     groups.forEach(function (g) {
+      let gn = 0, gg = 0;
       h += '<p class="dim" style="margin:8px 0 2px">' + g.t + '</p><div class="codex-grid">';
       g.items.forEach(function (it) {
-        all++;
+        all++; gn++;
         const on = ZY.Save.hasCodex(it.k);
-        if (on) got++;
-        h += '<div class="codex-item' + (on ? '' : ' off') + '"><b>' + it.g + '</b>' + it.n + '</div>';
+        if (on) { got++; gg++; }
+        const d = codexDesc(it.k);
+        h += '<div class="codex-item' + (on ? '' : ' off') + '"><b>' + it.g + '</b>' + it.n +
+          (d ? '<i>' + d + '</i>' : '') + '</div>';
       });
       h += '</div>';
+      h = h.replace('<p class="dim" style="margin:8px 0 2px">' + g.t + '</p>',
+        '<p class="dim" style="margin:8px 0 2px">' + g.t + ' · ' + gg + '/' + gn + '</p>');
     });
     h = h.replace('<h2>图鉴</h2>', '<h2>图鉴 · ' + got + ' / ' + all + '</h2>');
     openPanel(h);
@@ -2065,24 +2203,34 @@
     openPanel(h);
   }
 
+  /** 第三批 P1-8：解锁门槛文案（通关第 8 关 / 星 20 / 星 32） */
+  function ascGateText(i) {
+    if (i === 1) return '通关第 8 关解锁';
+    if (i === 2) return '星 20 解锁';
+    if (i === 3) return '星 32 解锁';
+    return '默认档';
+  }
   function showAscension() {
     const unlocked = ZY.Save.getAscension();
-    let h = '<h2>修罗八阵</h2><p class="dim">逐层通关解锁；层级越高敌方 hp/atk 越高，星级与选关共用。</p><div class="lv-grid">';
+    let h = '<h2>修罗八阵</h2>' +
+      '<p class="dim">解锁门槛：' + ascGateText(1) + ' · ' + ascGateText(2) + ' · ' + ascGateText(3) + '</p>' +
+      '<div class="lv-grid">';
     for (let i = 0; i < ZY.ASCEND_MUL.length; i++) {
       const lock = i > unlocked;
       h += '<button class="lv-card' + (lock ? ' lock' : '') + '" data-act="pick-asc" data-idx="' + i + '"' + (lock ? ' disabled' : '') + '>' +
         '<b>' + (i === 0 ? '普通' : '修罗 ' + i + ' 层') + '</b>' +
         '<em>敌方 ×' + ZY.ASCEND_MUL[i] + '</em>' +
-        '<em>' + (lock ? '未解锁' : (i === unlocked ? '当前最高' : '已通关')) + '</em></button>';
+        '<em>' + (lock ? ascGateText(i) : (i === unlocked ? '当前最高' : '已解锁')) + '</em></button>';
     }
     h += '</div>';
+    h += '<p class="dim">选完档位去「选关」开局，或点下面的关卡直接打。</p>';
+    h += '<div class="btns" style="margin-top:8px"><button class="btn" data-act="to-select">去选关</button></div>';
     openPanel(h);
   }
 
   function startDaily() {
     dailyMode = true;
-    ascPick = 1;
-    startLevelRun(dailyLevelIdx(), null);
+    startLevelRun(dailyLevelIdx(), null, false, 1);   // 今日之战固定修罗 1，不动 ascPick
   }
 
   /* ---------------- HUD 扩展：波次倒计时 / 漏怪 / 护盾 / 收兵 ---------------- */
@@ -2090,12 +2238,15 @@
     if (el.hudTimer) return;
     const hud = document.querySelector('.hud');
     if (!hud) return;
+    // 第三批 P0-6：倒计时挂进 .hud-mid 当第三行（position 改 static，不再压在棋盘中央）
+    const mid = hud.querySelector('.hud-mid') || hud;
     const t = document.createElement('div');
     t.className = 'hud-timer';
-    hud.appendChild(t);
+    mid.appendChild(t);
     el.hudTimer = t;
+    // 第三批 P0-6：「收兵」从 .hud-r 挪到 .dock（HUD 只留 倍速 / 静音 / 暂停 三颗图标键）
     const btn = document.createElement('button');
-    btn.className = 'hud-btn';
+    btn.className = 'btn small dock-collect';
     btn.textContent = '收兵';
     btn.title = '提前开下一波，按提前秒数换资源';
     btn.addEventListener('click', function () {
@@ -2104,8 +2255,9 @@
       if (!r.ok) { toast(r.msg); return; }
       syncHud();
     });
-    const right = document.querySelector('.hud .hud-r') || hud;
-    right.appendChild(btn);
+    const dock = document.querySelector('.dock');
+    if (dock) dock.insertBefore(btn, dock.firstChild);
+    else hud.appendChild(btn);
     el.btnCollect = btn;
   }
 

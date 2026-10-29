@@ -145,7 +145,7 @@ window.ZY = window.ZY || {};
     shovel:    { id: 'shovel',    name: '铲子',   glyph: '铲', color: '#7a6a52', desc: '拖到荒地塔位上，扩成可建塔地块' },
     brush:     { id: 'brush',     name: '毛笔',   glyph: '笔', color: '#3b4a63', desc: '拖到己方塔上，改写该塔兵种（金/将不可）' },
     warcry:    { id: 'warcry',    name: '神兵符', glyph: '符', color: '#b3352f', desc: '拖出释放：全队攻击 ×1.5，持续 10 秒' },
-    fireball:  { id: 'fireball',  name: '火球',   glyph: '火', color: '#c65a1e', desc: '拖到主路上：落点 3×3 内敌人受 80 点固定伤害' },
+    fireball:  { id: 'fireball',  name: '火球',   glyph: '火', color: '#c65a1e', desc: '拖到主路上：落点 3×3 内敌人受伤，伤害随波次递增' },
     // —— 第一批扩充 4 → 7（释放规则在 game.js 的道具分派里）——
     mirror:    { id: 'mirror',    name: '护心镜', glyph: '镜', color: '#93a2b4', desc: '拖出释放：阿斗获得 1 层护盾，抵挡 1 次漏怪' },
     crossbow:  { id: 'crossbow',  name: '连弩',   glyph: '弩', color: '#6b7a3a', desc: '拖到己方塔上：该塔攻速 ×1.35，持续 15 秒' },
@@ -196,8 +196,10 @@ window.ZY = window.ZY || {};
 
   /* ---------- 征兵概率池（合计 100） ----------
    * V5：铲子改走道具栏计数，不再占卡牌池；权重向兵种/金字倾斜。
-   * 第一批：道具 4 → 7 种。**兵种/金字权重一个都没动**（合计仍 86），
-   *   只把道具内部分额从 14 重新切给新道具 → 战斗节奏与 V8.1 基本一致。
+   * 第一批：道具 4 → 7 种（兵种/金字合计 86 未动）。
+   * 第三批 P1-9：给四把武器一条获取途径 —— 加 3 张武器卡（青釭 / 倚天 / 的卢），
+   *   权重从道具份额里匀（brush 3→2、warcry 3→2、fireball 4→3，镜/弩/角不动）。
+   *   兵种与金字 86 + 道具 11 + 武器 3 = 100（rules-test 断言合计 = 100）。
    */
   const RECRUIT_POOL = [
     { w: 24, kind: 'unit', type: 'dao' },
@@ -206,12 +208,15 @@ window.ZY = window.ZY || {};
     { w: 10, kind: 'unit', type: 'qi' },
     { w: 16, kind: 'gold' },
     { w: 5,  kind: 'unit', type: 'nong' },
-    { w: 3,  kind: 'item', item: 'brush' },
-    { w: 3,  kind: 'item', item: 'warcry' },
-    { w: 4,  kind: 'item', item: 'fireball' },
+    { w: 2,  kind: 'item', item: 'brush' },
+    { w: 2,  kind: 'item', item: 'warcry' },
+    { w: 3,  kind: 'item', item: 'fireball' },
     { w: 2,  kind: 'item', item: 'mirror' },
     { w: 1,  kind: 'item', item: 'crossbow' },
     { w: 1,  kind: 'item', item: 'horn' },
+    { w: 1,  kind: 'weapon', weapon: 'qinggang' },
+    { w: 1,  kind: 'weapon', weapon: 'yitian' },
+    { w: 1,  kind: 'weapon', weapon: 'dilu' },
   ];
 
   /* ---------- 敌军（无尽 / 关卡）出兵构成 ---------- */
@@ -224,16 +229,18 @@ window.ZY = window.ZY || {};
   ];
   const ELITE_TYPES = ['dao', 'qi'];
 
-  /* ---------- 精英词条（第一批） ----------
-   * 精英出场时随机挂 1 条，三条都有明确应对方式，不做纯数值堆叠：
+  /* ---------- 精英词条（第一批 3 条 + 第三批第 4 条） ----------
+   * 精英出场时按 id 轮转挂 1 条，四条都有明确应对方式，不做纯数值堆叠：
    *   swift  疾行：跑得快但更脆（用弓/骑在远处解）
    *   heavy  重甲：减伤 25% 但更慢（用高攻/火球硬解）
    *   banner 旗手：给周围 1 格内的敌人 +15% 攻速（优先点掉）
+   *   siege  拆迁：走到塔旁读条 1.2s 砸塔（塔位因此有了真实风险，可拖走躲掉）
    */
   const ELITE_TRAITS = [
     { id: 'swift',  name: '疾行', tag: '疾', move: 1.35, hp: 0.85 },
     { id: 'heavy',  name: '重甲', tag: '甲', dmgReduce: 0.25, move: 0.85 },
     { id: 'banner', name: '旗手', tag: '旗', aura: { range: 1, aspd: 1.15 } },
+    { id: 'siege',  name: '拆迁', tag: '拆', siege: { mul: 0.8, cd: 1.2 } },
   ];
 
   /* ---------- 修罗八阵（第一批） ----------
@@ -403,6 +410,11 @@ window.ZY = window.ZY || {};
       if (wants.length && Math.random() < GOLD_MATCH_RATE) c = wants[Math.floor(Math.random() * wants.length)];
       else c = GOLD_CHARS[Math.floor(Math.random() * GOLD_CHARS.length)];
       return { kind: 'gold', char: c, level: 1 };
+    }
+    // 第三批 P1-9：武器卡（青釭 / 倚天 / 的卢）—— 拖到武将塔上即装备
+    if (hit.kind === 'weapon') {
+      const wp = WEAPONS[hit.weapon];
+      return { kind: 'weapon', weapon: hit.weapon, char: wp ? wp.glyph : '兵', name: wp ? wp.name : '' };
     }
     return { kind: 'item', item: hit.item };
   }

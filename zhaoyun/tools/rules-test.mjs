@@ -329,21 +329,68 @@ section('V8 合成改版：卡喂 1 级塔 · 塔塔同级合成升阶');
   const r2 = G.deploy(s, 'player', 3, ar, ac);
   ok('异字不可喂卡', !r2.ok && s.grid[ar][ac].level === 2, r2.msg);
 
-  // V8 新规则：卡只能喂 1 级塔
+  // 第三批 P0-1：喂卡窗口从「仅 1 级」放宽到 1~3 级，4 级起只能塔塔合成 / 击杀升级
   s.player.hand.push({ uid: 4, kind: 'unit', char: '刀', type: 'dao', level: 1 });
   const r3 = G.deploy(s, 'player', 4, ar, ac);
-  ok('V8：卡不能喂 2 级塔（仅 1 级可喂）', !r3.ok && s.grid[ar][ac].level === 2, r3.msg);
+  ok('第三批 P0-1：2 级塔可喂卡 → 3 级（旧版会被拒绝）', r3.ok && s.grid[ar][ac].level === 3, JSON.stringify(r3));
+  s.player.hand.push({ uid: 40, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+  const r3b = G.deploy(s, 'player', 40, ar, ac);
+  ok('第三批 P0-1：3 级塔仍可喂卡 → 4 级', r3b.ok && s.grid[ar][ac].level === 4, JSON.stringify(r3b));
+  s.player.hand.push({ uid: 41, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+  const r3c = G.deploy(s, 'player', 41, ar, ac);
+  ok('第三批 P0-1：4 级塔不可喂卡（只能同级塔合成 / 击杀升级）', !r3c.ok && s.grid[ar][ac].level === 4, r3c.msg);
 
-  // V8 塔塔合成：再建一座 1 级刀 → 喂成 2 级；两座 2 级刀合并 → 3 级
+  // 第三批 P0-1：精铸 —— 只由合成产生，纯经验升级拿不到，上限 3 层
+  ok('第三批 P0-1：卡喂 3 次 → 精铸 3/3', s.grid[ar][ac].refined === 3, 'refined=' + s.grid[ar][ac].refined);
+  ok('第三批 P0-1：卡喂后血条回满（与塔塔合成同口径）', s.grid[ar][ac].hp === s.grid[ar][ac].maxHp, s.grid[ar][ac].hp + '/' + s.grid[ar][ac].maxHp);
+  {
+    const s2 = G.baseState('endless', {});
+    const k0 = Object.keys(s2.deploy)[0].split(',').map(Number);
+    s2.player.hand.push({ uid: 900, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+    G.deploy(s2, 'player', 900, k0[0], k0[1]);
+    const ta = s2.grid[k0[0]][k0[1]];
+    const k1 = Object.keys(s2.deploy)[1].split(',').map(Number);
+    s2.player.hand.push({ uid: 901, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+    G.deploy(s2, 'player', 901, k1[0], k1[1]);
+    const tb = s2.grid[k1[0]][k1[1]];
+    s2.player.hand.push({ uid: 902, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+    G.deploy(s2, 'player', 902, k0[0], k0[1]);          // (A) 精铸 1
+    s2.player.hand.push({ uid: 903, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+    G.deploy(s2, 'player', 903, k0[0], k0[1]);          // (A) 精铸 2
+    s2.player.hand.push({ uid: 904, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+    G.deploy(s2, 'player', 904, k0[0], k0[1]);          // (A) 精铸 3（第 4 次起被拒）
+    s2.player.hand.push({ uid: 905, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+    G.deploy(s2, 'player', 905, k0[0], k0[1]);
+    ok('第三批 P0-1：精铸上限 3 层（第 4 次合成不再叠加）', ta.refined === 3, 'refined=' + ta.refined);
+    const k2 = Object.keys(s2.deploy)[2].split(',').map(Number);
+    const tc = G.makeUnit(s2, 'player', { cls: 'soldier', type: 'dao', level: ta.level, row: k2[0], col: k2[1], span: 1, target: null });
+    G.addUnit(s2, tc);                                     // 同等级、精铸 0 的参照塔
+    ok('第三批 P0-1：精铸折进面板（同等级下 攻 +24% / 速 +18%）',
+      Math.abs(ta.atk - tc.atk * 1.24) < 1e-6 && Math.abs(ta.aspd - tc.aspd * 1.18) < 1e-6,
+      'atk ' + ta.atk.toFixed(2) + ' vs ' + tc.atk.toFixed(2) + ' · aspd ' + ta.aspd.toFixed(2) + ' vs ' + tc.aspd.toFixed(2));
+    ok('第三批 P0-1：纯经验升级不产精铸', (function () {
+      const s3 = G.baseState('endless', {});
+      const k = Object.keys(s3.deploy)[0].split(',').map(Number);
+      s3.player.hand.push({ uid: 910, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+      G.deploy(s3, 'player', 910, k[0], k[1]);
+      const t3 = s3.grid[k[0]][k[1]];
+      t3.xp = 999; G.tick(s3, 0.1);
+      return (t3.refined || 0) === 0;
+    })());
+  }
+
+  // V8 塔塔合成：再建一座 1 级刀 → 喂到 4 级；两座 4 级刀合并 → 5 级
   const [br, bc] = rc(B0);
-  s.player.hand.push({ uid: 5, kind: 'unit', char: '刀', type: 'dao', level: 1 });
-  G.deploy(s, 'player', 5, br, bc);
-  s.player.hand.push({ uid: 6, kind: 'unit', char: '刀', type: 'dao', level: 1 });
-  G.deploy(s, 'player', 6, br, bc);            // (B) 现在是 2 级刀
+  [51, 52, 53, 54].forEach(function (uid) {
+    s.player.hand.push({ uid: uid, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+    G.deploy(s, 'player', uid, br, bc);
+  });                                          // (B) 现在是 4 级刀
   const before = s.units.length;
-  const m1 = G.mergeTower(s, 'player', s.grid[br][bc].id, ar, ac);  // 把 (B) 拖到 (A)
-  ok('V8：塔塔合成 2+2 → 3 级', m1.ok && m1.merged === true && s.grid[ar][ac].level === 3, JSON.stringify(m1));
+  const bunBefore = s.player.bun;
+  const m1 = G.mergeTower(s, 'player', s.grid[br][bc].id, ar, ac);  // 把 (B) 拖到 (A)：4+4 → 5
+  ok('V8：塔塔合成 4+4 → 5 级', m1.ok && m1.merged === true && s.grid[ar][ac].level === 5, JSON.stringify(m1));
   ok('V8：被吃塔消失（占地清空 + 单位数 -1）', s.units.length === before - 1 && s.grid[br][bc] === null, 'units ' + before + '→' + s.units.length);
+  ok('第三批 P0-1：被吃塔按 2×等级返还资源（不再净亏）', s.player.bun === bunBefore + 2 * 4, 'bun ' + bunBefore + '→' + s.player.bun);
 
   // 不同兵种不可合并
   const [cr, cc] = rc(C0);
@@ -352,7 +399,7 @@ section('V8 合成改版：卡喂 1 级塔 · 塔塔同级合成升阶');
   s.player.hand.push({ uid: 8, kind: 'unit', char: '枪', type: 'qiang', level: 1 });
   G.deploy(s, 'player', 8, cr, cc);            // (C) 现在是 2 级枪
   const m2 = G.mergeTower(s, 'player', s.grid[cr][cc].id, ar, ac);  // 枪拖到刀塔
-  ok('V8：不同兵种不可合成', !m2.ok && s.grid[ar][ac].level === 3, m2.msg);
+  ok('V8：不同兵种不可合成', !m2.ok && s.grid[ar][ac].level === 5, m2.msg);
 
   // 不能和自己合成
   const m3 = G.mergeTower(s, 'player', s.grid[ar][ac].id, ar, ac);
@@ -363,7 +410,7 @@ section('V8 合成改版：卡喂 1 级塔 · 塔塔同级合成升阶');
   const lo = G.makeUnit(s, 'player', { cls: 'soldier', type: 'dao', level: 2, row: dr, col: dc, span: 1, target: null });
   G.addUnit(s, lo);
   const m4 = G.mergeTower(s, 'player', lo.id, ar, ac);
-  ok('V8：等级不同不可合成', !m4.ok && s.grid[ar][ac].level === 3 && s.grid[dr][dc] === lo, m4.msg);
+  ok('V8：等级不同不可合成', !m4.ok && s.grid[ar][ac].level === 5 && s.grid[dr][dc] === lo, m4.msg);
 
   // 满级（5 级）不可再合成：两座 5 级刀 (E)(F)
   const [er, ec] = rc(E0), [fr, fc] = rc(F0);
@@ -866,30 +913,39 @@ section('敌人沿蛇形主路行军（右侧进入 · 不穿塔位 · 不回头
 }
 
 /* ------------------------------------------------ 16b. 关卡专属地图（V6 新关卡） */
-section('关卡专属地图（第 7/8 关 = 原图镜像派生新布局）');
+section('关卡专属地图（第三批：八关八图，逐图独立母题）');
 {
   ok('关卡总数 = 8', ZY.LEVELS.length === 8, ZY.LEVELS.length + '');
   ok('第 7 关名 = 街亭', ZY.LEVELS[6].name === '街亭');
   ok('第 8 关名 = 麦城', ZY.LEVELS[7].name === '麦城');
-  const COLS = B.COLS, ROWS = B.ROWS;
-  const mirrorV = function (k) { const p = k.split(','); return p[0] + ',' + (COLS - 1 - +p[1]); };
-  const mirrorH = function (k) { const p = k.split(','); return (ROWS - 1 - +p[0]) + ',' + p[1]; };
-  const baseSet = B.pathSet('endless', 0);
-  [6, 7].forEach(function (li) {
-    const tf = li === 6 ? mirrorV : mirrorH;
+  const sigOf = (li) => B.pathSeq('level', 'player', li).map((p) => p.row + ',' + p.col).join('|');
+  const sigs = [];
+  for (let li = 0; li < 8; li++) sigs.push(sigOf(li));
+  ok('八关主路两两不同（第 7/8 关不再是镜像）', new Set(sigs).size === 8, 'unique=' + new Set(sigs).size);
+  ok('第 7/8 关主路 ≠ 第 1 关主路', sigs[6] !== sigs[0] && sigs[7] !== sigs[0]);
+  const obsSig = (li) => {
+    const out = [];
+    for (let r = 0; r < B.ROWS; r++) for (let c = 0; c < B.COLS; c++) if (B.isObstacle(r, c, 'level', li)) out.push(r + ',' + c);
+    return out.sort().join('|');
+  };
+  const osigs = [];
+  for (let li = 0; li < 8; li++) osigs.push(obsSig(li));
+  ok('八关障碍分布两两不同（第三批母题重排）', new Set(osigs).size === 8, 'unique=' + new Set(osigs).size);
+  ok('每张图都有地形特色 note', ZY.MAPS.length === 8 && ZY.MAPS.every((m) => !!m.note && m.note.length > 0));
+  [0, 1, 2, 3, 4, 5, 6, 7].forEach(function (li) {
     const seq = B.pathSeq('level', 'player', li);
     const ent = B.entrances('level', 'player', li)[0];
     const adou = B.adouAt('level', 'player', li);
     const pset = B.pathSet('level', li);
     const slots = Object.keys(B.startSlots('level', 'player', li));
-    ok('第 ' + (li + 1) + ' 关主路 28 格（与原图同构）', Object.keys(pset).length === 28, Object.keys(pset).length + '');
-    ok('第 ' + (li + 1) + ' 关首格 = 入口', seq[0].row === ent.row && seq[0].col === ent.col);
-    ok('第 ' + (li + 1) + ' 关末格 = 阿斗', seq[seq.length - 1].row === adou.row && seq[seq.length - 1].col === adou.col);
-    ok('第 ' + (li + 1) + ' 关塔位与主路无交叠', slots.every((k) => !pset[k]));
-    ok('第 ' + (li + 1) + ' 关塔位与障碍无交叠', slots.every((k) => { const p = k.split(','); return !B.isObstacle(+p[0], +p[1], 'level', li); }));
-    ok('第 ' + (li + 1) + ' 关路径全在棋盘内', seq.every((p) => B.inBoard(p.row, p.col)));
-    ok('第 ' + (li + 1) + ' 关为原图双射镜像', seq.every((p) => baseSet[tf(p.row + ',' + p.col)]));
-    ok('第 ' + (li + 1) + ' 关入口 ≠ 原图 (0,7)', !(ent.row === 0 && ent.col === 7), ent.row + ',' + ent.col);
+    const tag = '第 ' + (li + 1) + ' 关';
+    ok(tag + '主路 28 格', Object.keys(pset).length === 28, Object.keys(pset).length + '');
+    ok(tag + '首格 = 入口', seq[0].row === ent.row && seq[0].col === ent.col);
+    ok(tag + '末格 = 阿斗', seq[seq.length - 1].row === adou.row && seq[seq.length - 1].col === adou.col);
+    ok(tag + '塔位与主路/障碍无交叠', slots.every((k) => !pset[k]) &&
+      slots.every((k) => { const p = k.split(','); return !B.isObstacle(+p[0], +p[1], 'level', li); }));
+    ok(tag + '路径全在棋盘内', seq.every((p) => B.inBoard(p.row, p.col)));
+    ok(tag + '入口在第 0 或第 11 行', ent.row === 0 || ent.row === 11, ent.row + ',' + ent.col);
   });
 }
 section('塔攻击射程内「最靠前」的敌人（离阿斗最近优先）');
@@ -944,6 +1000,157 @@ section('存档键前缀');
   ok('关卡进度读写', ZY.Save.getLevel() === 3);
   ok('最高波数只增不减', ZY.Save.getWaveBest() === 9);
   ok('静音读写', ZY.Save.getMuted() === true);
+}
+
+
+/* ================================================================ 第三批新增断言 */
+section('第三批 P0-2：拆迁精英 —— 塔位有真实风险');
+{
+  // 找一个「塔位与主路相邻」的组合，好让精英站到塔边上
+  function findSpot() {
+    const seq = B.pathSeq('endless', 'player', 0);
+    const slots = Object.keys(B.startSlots('endless', 'player', 0));
+    for (let si = 0; si < slots.length; si++) {
+      const q = slots[si].split(',').map(Number);
+      for (let i = 1; i < seq.length - 1; i++) {
+        if (Math.max(Math.abs(seq[i].row - q[0]), Math.abs(seq[i].col - q[1])) === 1) {
+          return { tr: q[0], tc: q[1], er: seq[i].row, ec: seq[i].col, pi: i };
+        }
+      }
+    }
+    return null;
+  }
+  const sp = findSpot();
+  ok('存在与主路相邻的塔位（拆迁前提）', !!sp, JSON.stringify(sp));
+  function scenario(withSiege) {
+    const s = G.baseState('endless', {});
+    const tower = G.makeUnit(s, 'player', { cls: 'soldier', type: 'dao', level: 1, row: sp.tr, col: sp.tc, span: 1, target: null });
+    G.addUnit(s, tower);
+    tower.atk = 0; tower.noAttack = true;                   // 塔不还手，纯粹看塔挨不挨打
+    tower.maxHp = 1000; tower.hp = 1000;
+    const e = G.makeUnit(s, 'enemy', { cls: 'soldier', type: 'dao', level: 1, row: sp.er, col: sp.ec, target: 'player', pi: sp.pi });
+    e.move = 0; e.atk = 100;
+    if (withSiege) { e.siege = { mul: 1, cd: 1.2 }; e.trait = 'siege'; e.traitTag = '拆'; }
+    G.addUnit(s, e);
+    for (let i = 0; i < 20; i++) G.tick(s, 0.1);            // 2 秒 > 1.2s 读条
+    return { s: s, tower: tower, e: e };
+  }
+  const a = scenario(true);
+  ok('第三批 P0-2：拆迁精英读条满 → 塔掉血', a.tower.hp < 1000, 'hp=' + a.tower.hp);
+  const b = scenario(false);
+  ok('第三批 P0-2：没有拆迁精英时塔血一局不变', b.tower.hp === 1000, 'hp=' + b.tower.hp);
+  // 继续砸到塔倒 → 塔位应自动释放（可重建）
+  for (let i = 0; i < 300 && !a.tower.dead; i++) G.tick(a.s, 0.1);
+  ok('第三批 P0-2：塔被拆掉后占位释放、塔位仍在', a.tower.dead && a.s.grid[sp.tr][sp.tc] === null && !!a.s.deploy[sp.tr + ',' + sp.tc],
+    'dead=' + a.tower.dead + ' grid=' + a.s.grid[sp.tr][sp.tc]);
+}
+
+section('第三批 P0-5：失败复盘记账');
+{
+  const s = G.baseState('endless', {});
+  s.wave.idx = 3;                                   // 从第 4 波开跑，leakWave 才有非零值可比
+  const seq = B.pathSeq('endless', 'player', 0);
+  const last = seq.length - 1;
+  const stay = G.makeUnit(s, 'enemy', { cls: 'soldier', type: 'dao', level: 1, row: seq[0].row, col: seq[0].col, target: 'player', pi: 0 });
+  stay.move = 0;                                    // 站桩敌人：撑起同屏峰值
+  G.addUnit(s, stay);
+  const e = G.makeUnit(s, 'enemy', { cls: 'soldier', type: 'dao', level: 1, row: seq[last - 1].row, col: seq[last - 1].col, target: 'player', pi: last - 1 });
+  e.move = 0.05;
+  G.addUnit(s, e);
+  for (let i = 0; i < 10; i++) G.tick(s, 0.1);
+  ok('第三批 P0-5：leakWave 记到「最后一次漏在第几波」', s.stats.leakWave > 0 && s.stats.leakWave === s.wave.idx,
+    'leakWave=' + s.stats.leakWave + ' wave=' + s.wave.idx);
+  ok('第三批 P0-5：peakEnemies 记同屏敌军峰值', s.stats.peakEnemies > 0, 'peak=' + s.stats.peakEnemies);
+}
+
+section('第三批 P1-7：三 Boss 技能分派 + 无尽 Boss');
+{
+  const seq = B.pathSeq('endless', 'player', 0);
+  // 张宝「回天」
+  {
+    const s = G.baseState('endless', {});
+    const b = G.makeUnit(s, 'enemy', { cls: 'soldier', type: 'zei', level: 1, boss: true, bossKind: 1, row: seq[0].row, col: seq[0].col, target: 'player', pi: 0 });
+    G.addUnit(s, b);
+    b.move = 0; b.skillT = 0.05; b.hp = b.maxHp * 0.3;
+    const hp0 = b.hp;
+    for (let i = 0; i < 12; i++) G.tick(s, 0.1);            // 0.8s 吟唱 + 结算
+    ok('第三批 P1-7：张宝「回天」真的回血', b.hp > hp0, 'hp ' + Math.round(hp0) + ' → ' + Math.round(b.hp));
+    // 张宝冷却 8 秒（不再是统一的 6 秒）
+    ok('第三批 P1-7：张宝技能冷却 = 8s（不再写死 6s）', b.skillCd === 8 && b.skillT > 6, 'cd=' + b.skillCd + ' skillT=' + b.skillT.toFixed(1));
+  }
+  // 张角「雷落」
+  {
+    const s = G.baseState('endless', {});
+    const keys = Object.keys(s.deploy);   // 塔位全摆上：落雷随机取点，别让随机性决定成败
+    const towers = keys.map((k) => {
+      const q = k.split(',').map(Number);
+      const t = G.makeUnit(s, 'player', { cls: 'soldier', type: 'dao', level: 1, row: q[0], col: q[1], span: 1, target: null });
+      t.maxHp = 1000; t.hp = 1000; t.atk = 0; t.noAttack = true;
+      G.addUnit(s, t);
+      return t;
+    });
+    const b = G.makeUnit(s, 'enemy', { cls: 'soldier', type: 'zei', level: 1, boss: true, bossKind: 2, row: seq[0].row, col: seq[0].col, target: 'player', pi: 0 });
+    G.addUnit(s, b);
+    b.move = 0; b.skillT = 0.05;
+    for (let i = 0; i < 14; i++) G.tick(s, 0.1);            // 1s 预警 + 落雷
+    const hurt = towers.filter((t) => t.hp < 1000).length;
+    ok('第三批 P1-7：张角「雷落」落雷伤塔', hurt > 0, '被击中的塔 ' + hurt + ' 座');
+    ok('第三批 P1-7：张角技能冷却 = 9s', b.skillCd === 9, 'cd=' + b.skillCd);
+  }
+  // 无尽第 10 波出 Boss
+  {
+    const s = G.baseState('endless', {});
+    s.wave.idx = 9; s.wave.pending.length = 0; s.wave.done = false; s.wave.timer = s.wave.interval;
+    G.tick(s, 0.1);
+    ok('第三批 P1-7：无尽第 10 波出关底名将', s.wave.idx === 10 && s.wave.pending.some((p) => p.boss === true),
+      'wave=' + s.wave.idx + ' boss=' + s.wave.pending.filter((p) => p.boss).length);
+  }
+}
+
+section('第三批 P1-8：修罗八阵按进度解锁');
+{
+  for (let i = 0; i < 8; i++) ZY.Save.setStar(i, 5);        // 40 星
+  ZY.Save.setLevel(ZY.LEVELS.length - 1);
+  ok('第三批 P1-8：解锁门槛（通关第 8 关 + 星 32 → 3 层）', ZY.Save.syncAscension() === 3, 'asc=' + ZY.Save.syncAscension());
+  ok('第三批 P1-8：跨局读回', ZY.Save.getAscension() === 3, 'asc=' + ZY.Save.getAscension());
+  ZY.Save.setLevel(0);
+  ok('第三批 P1-8：只增不减（进度回落也不掉层）', ZY.Save.syncAscension() === 3, 'asc=' + ZY.Save.getAscension());
+  ZY.Save.setAscension(99);
+  ok('第三批 P1-8：越界回落（99 → 3）', ZY.Save.getAscension() === 3, 'asc=' + ZY.Save.getAscension());
+}
+
+section('第三批 P1-9：武器有获取途径');
+{
+  const sum = ZY.RECRUIT_POOL.reduce(function (a, x) { return a + x.w; }, 0);
+  ok('第三批 P1-9：RECRUIT_POOL 合计仍是 100', sum === 100, 'sum=' + sum);
+  const st = G.baseState('endless', {});
+  let got = null;
+  for (let i = 0; i < 6000 && !got; i++) {
+    const c = ZY.rollRecruit(st, 'player');
+    if (c && c.kind === 'weapon') got = c;
+  }
+  ok('第三批 P1-9：征兵能抽出武器卡', !!got && !!ZY.WEAPONS[got.weapon], JSON.stringify(got));
+  ok('第三批 P1-9：图鉴武器组 4 项（全套 27 项）', Object.keys(ZY.WEAPONS).length === 4,
+    Object.keys(ZY.WEAPONS).join(','));
+}
+
+section('第三批 P1-10：清空存档全键');
+{
+  ok('第三批 P1-10：KEYS 全部是 zhaoyun_ 前缀的真实键名（≥11 个）',
+    Object.keys(ZY.Save.KEYS).length >= 11 &&
+    Object.keys(ZY.Save.KEYS).every(function (k) { return String(ZY.Save.KEYS[k]).indexOf('zhaoyun_') === 0; }),
+    Object.keys(ZY.Save.KEYS).length + ' 个键');
+  // localStorage 是 VM 内的 shim：必须在 ctx 里执行，模块作用域的这行会被 try/catch 吞成空操作
+  vm.runInContext('Object.keys(ZY.Save.KEYS).forEach(function(k){ if(k==="muted") return; localStorage.removeItem(ZY.Save.KEYS[k]); });', ctx);
+  const det = {
+    starTotal: ZY.Save.getStarTotal(), star0: ZY.Save.getStar(0), asc: ZY.Save.getAscension(),
+    codex: Object.keys(ZY.Save.getCodex()).length, log: ZY.Save.getLog().length,
+    waveBest: ZY.Save.getWaveBest(), kills: ZY.Save.getKillTotal(), level: ZY.Save.getLevel(), rank: ZY.Save.getRank(),
+  };
+  ok('第三批 P1-10：清档后所有读取回默认值且不报错',
+    det.starTotal === 0 && det.star0 === 0 && det.asc === 0 && det.codex === 0 && det.log === 0 &&
+    det.waveBest === 0 && det.kills === 0 && det.level === 0 && det.rank === 0,
+    JSON.stringify(det));
 }
 
 console.log('\n──────────────────────────────');

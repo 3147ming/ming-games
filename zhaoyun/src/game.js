@@ -38,7 +38,9 @@
       dmgReduce: 0, noAttack: false, produce: 0,
       atkT: 0, moveT: 0, stun: 0,
       kills: 0, xp: 0, weapon: spec.weapon || null,          // V5：经验值 / 装备武器
-      skillCd: 0, skillT: 0,
+      refined: spec.refined || 0,                            // 第三批 P0-1：精铸层数（只由合成产生）
+      skillCd: 0, skillT: 0, siege: null, siegeT: 0, trait: null, traitTag: null,
+      casting: null, castT: 0, thunder: null, auraAspd: 1,   // 第三批 P1-7：Boss 吟唱 / 雷落 / 旗手光环
       elite: !!spec.elite, dead: false,
       /* V4 塔防：行军敌人专属 —— target=冲谁来的（哪侧阿斗），path=主路序列，pi=走到第几格
        * 塔（含武将塔）不行军：deploy/synth 显式传 target:null */
@@ -93,6 +95,12 @@
         if (tr.hp) { u.maxHp *= tr.hp; u.hp = u.maxHp; }
         if (tr.dmgReduce) u.dmgReduce = (u.dmgReduce || 0) + tr.dmgReduce;
         if (tr.move) u.move = u.move / tr.move;      // move = 每格耗时（秒），除的是速度倍率
+        if (tr.siege) u.siege = tr.siege;            // 第三批 P0-2：拆迁精英会拆塔
+      }
+      /* 第三批 P0-1：建塔 / 跨关继承时把精铸折进面板 */
+      if (u.refined > 0) {
+        u.atk = u.atk * (1 + 0.08 * u.refined);
+        u.aspd = u.aspd * (1 + 0.06 * u.refined);
       }
     }
 
@@ -148,6 +156,12 @@
       const st = ZY.statsAt(u.type, u.level);
       u.maxHp = st.hp; u.atk = st.atk; u.aspd = st.aspd;
       u.hp = Math.max(1, u.maxHp * ratio);
+    }
+    // 第三批 P0-1：精铸折进面板（幂等 —— 每次都从基础值重算，不会叠乘）
+    const rf = u.refined || 0;
+    if (rf > 0) {
+      u.atk = u.atk * (1 + 0.08 * rf);
+      u.aspd = u.aspd * (1 + 0.06 * rf);
     }
   }
 
@@ -225,6 +239,7 @@
   function adouHit(state, side, unit) {
     const s = sideState(state, side);
     state.leaked[side] = (state.leaked[side] || 0) + 1;   // 第一批：漏怪统计（被护盾吃掉的也算漏）
+    state.stats.leakWave = state.wave.idx;                // 第三批 P0-5：最后一次漏在第几波
     /* 第一批：护心镜 —— 有盾先碎盾，不扣阿斗血 */
     if (state.shield[side] > 0) {
       state.shield[side] -= 1;
@@ -322,20 +337,126 @@
     return true;
   }
 
-  /** Boss（张梁）震击：对象 = 射程内守这条路的塔（u.target 侧） */
-  function castBossSkill(state, u) {
+  /* 第三批 P1-7：Boss 技能按 bossSkill.type 分派（shock 震击 / heal 回天 / thunder 雷落）
+   * 公共部分（播报 / 音效 / 特效）不变；返回值 = 这次该进的冷却（不返回则用 C.BOSS_SKILL_CD）。 */
+
+  /** shock 震击：相邻格守军挨 atk×1.5 并被减速 */
+  function bossShock(state, u) {
     const near = B.neighbors(state, u.row, u.col, true);
-    let hitAny = false;
     near.forEach(function (p) {
       const t = state.grid[p.row][p.col];
-      if (t && !t.dead && t.side === u.target) { hurt(state, u, t, u.atk * 1.5); t.stun = Math.max(t.stun, C.BOSS_SLOW); hitAny = true; }
+      if (t && !t.dead && t.side === u.target) {
+        hurt(state, u, t, u.atk * 1.5);
+        t.stun = Math.max(t.stun, C.BOSS_SLOW);
+      }
     });
     state.fx.push({ type: 'ring', row: u.row, col: u.col });
     state.fx.push({ type: 'shake' });
     state.fx.push({ type: 'redflash' });
-    /* V7：Boss 技能释放 → 播报「黄天当立！」+ 黄色法阵粒子 */
+    return null;
+  }
+
+  /** heal 回天：吟唱 sk.cast 秒后回 maxHp×healPct；吟唱期间被晕则中断（tick 里清 casting） */
+  function bossHeal(state, u, sk) {
+    if (u.casting === 'heal') {                            // 已经在吟唱 → 这次结算
+      u.casting = null; u.castT = 0;
+      const before = u.hp;
+      u.hp = Math.min(u.maxHp, u.hp + u.maxHp * (sk.healPct || 0.08));
+      state.fx.push({ type: 'heal', row: u.row, col: u.col, text: '+' + Math.round(u.hp - before) });
+      state.fx.push({ type: 'ring', row: u.row, col: u.col });
+      return sk.cd || 8;
+    }
+    u.castT = sk.cast || 1.5;                              // 起手：进入吟唱
+    u.casting = 'heal';
+    state.fx.push({ type: 'ring', row: u.row, col: u.col });
+    state.fx.push({ type: 'toast', text: (u.name || '敌将') + ' 吟唱「回天」—— 打断他！' });
+    return sk.cast || 1.5;                                 // 吟唱时长内不再触发
+  }
+
+  /** thunder 雷落：随机挑 sk.cells 个塔位，warn 秒预警后对 radius 内己方塔造成 sk.dmg */
+  function bossThunder(state, u, sk) {
+    if (!u.thunder || !u.thunder.length) {
+      const src = Object.keys(B.startSlots(state.mode, u.target, state.levelIdx));
+      const pick = [];
+      for (let i = 0; i < (sk.cells || 2) && src.length; i++) {
+        pick.push(src[Math.floor(Math.random() * src.length)]);
+      }
+      u.thunder = pick;
+      u.warnT = sk.warn || 1;
+      pick.forEach(function (k) { const p = k.split(','); state.fx.push({ type: 'warn', row: +p[0], col: +p[1], life: sk.warn || 1 }); });
+      state.fx.push({ type: 'toast', text: (u.name || '敌将') + '「雷落」—— ' + (sk.warn || 1) + ' 秒后落雷' });
+      return sk.warn || 1;
+    }
+    // 预警到期 → 落雷
+    const rad = sk.radius || 1;
+    u.thunder.forEach(function (k) {
+      const p = k.split(','); const r0 = +p[0], c0 = +p[1];
+      for (let r = r0 - rad; r <= r0 + rad; r++) {
+        for (let c = c0 - rad; c <= c0 + rad; c++) {
+          if (!B.inBoard(r, c)) continue;
+          const t = state.grid[r][c];
+          if (t && !t.dead && t.side === u.target) hurtFixed(state, u.target === 'player' ? 'enemy' : 'player', t, sk.dmg || 55);
+        }
+      }
+      state.fx.push({ type: 'big', row: r0, col: c0, text: '雷' });
+    });
+    u.thunder = null; u.warnT = 0;
+    state.fx.push({ type: 'shake' });
+    state.fx.push({ type: 'redflash' });
+    return sk.cd || 9;
+  }
+
+  function castBossSkill(state, u) {
+    const sk = u.bossSkill;
+    let cd = null;
+    if (sk && sk.type === 'heal') cd = bossHeal(state, u, sk);
+    else if (sk && sk.type === 'thunder') cd = bossThunder(state, u, sk);
+    else cd = bossShock(state, u);
+    /* V7：Boss 技能释放 → 播报 + 法阵粒子 */
     if (ZY.UI && ZY.UI.onSkillCast) ZY.UI.onSkillCast(u);
     ZY.Audio.play('skill');
+    return cd;
+  }
+
+  /** 第三批 P0-2：拆迁精英 —— 相邻格有塔时读条 1.2s，满了砸塔（塔位因此有了真实风险） */
+  function siegeTick(state, u, dt) {
+    if (!u.siege || u.stun > 0) { u.siegeT = 0; return; }
+    if (u.casting) return;                                  // 吟唱中的 Boss 不拆塔
+    const near = B.neighbors(state, u.row, u.col, false);
+    let tower = null;
+    for (let i = 0; i < near.length; i++) {
+      const t = state.grid[near[i].row] && state.grid[near[i].row][near[i].col];
+      if (t && !t.dead && t.side !== u.side) { tower = t; break; }
+    }
+    if (!tower) { u.siegeT = 0; return; }
+    const before = u.siegeT || 0;
+    u.siegeT = before + dt;
+    // 读条每跨过 0.4 / 0.8 秒闪一次白（复用已有的 hit 特效，零新增渲染代码）
+    if (Math.floor(before / 0.4) !== Math.floor(u.siegeT / 0.4) && u.siegeT < u.siege.cd) {
+      state.fx.push({ type: 'hit', row: tower.row, col: tower.col });
+    }
+    if (u.siegeT < u.siege.cd) return;
+    u.siegeT = 0;
+    state.fx.push({ type: 'big', row: tower.row, col: tower.col, text: '塔受损' });
+    hurt(state, u, tower, u.atk * u.siege.mul);
+  }
+
+  /** 第三批 P0-2：旗手光环 —— 只在旗手存活时算一次，别每帧全盘扫 */
+  function applyAuras(state) {
+    let any = false;
+    for (let i = 0; i < state.units.length; i++) if (state.units[i].trait === 'banner' && !state.units[i].dead) { any = true; break; }
+    if (!any) return;
+    for (let i = 0; i < state.units.length; i++) {
+      const u = state.units[i];
+      if (u.dead || u.trait !== 'banner') continue;
+      const tr = ZY.ELITE_TRAITS.filter(function (x) { return x.id === 'banner'; })[0];
+      if (!tr || !tr.aura) continue;
+      const near = B.neighbors(state, u.row, u.col, false);
+      for (let j = 0; j < near.length; j++) {
+        const t = state.grid[near[j].row] && state.grid[near[j].row][near[j].col];
+        if (t && !t.dead && t.side === u.side && t.trait !== 'banner') t.auraAspd = tr.aura.aspd;
+      }
+    }
   }
 
   /* ------------------------------------------------------------ 行军：沿主路逐格走 */
@@ -401,6 +522,7 @@
     tickWaves(state, dt);
 
     // 4) 单位行动
+    applyAuras(state);                                 // 第三批 P0-2：旗手光环（无旗手时立刻返回，不进每帧扫描）
     const list = state.units.slice();
     for (let i = 0; i < list.length; i++) {
       const u = list[i];
@@ -408,24 +530,34 @@
       /* 第一批：连弩加速 / 号角减速的计时（塔与敌人都可能带） */
       if (u.crossbowT > 0) { u.crossbowT -= dt; if (u.crossbowT <= 0) { u.crossbowT = 0; u.crossbowMul = 1; } }
       if (u.slowT > 0) { u.slowT -= dt; if (u.slowT <= 0) { u.slowT = 0; u.slowMul = 1; } }
+      /* 第三批 P1-7：Boss 吟唱计时 —— 被震晕就打断（回天白吟一次、雷落落空） */
+      if (u.casting) {
+        if (u.stun > 0) {
+          u.castT = 0; u.casting = null; u.thunder = null;
+          state.fx.push({ type: 'toast', text: (u.name || '敌将') + ' 吟唱被打断！' });
+        } else if (u.castT > 0) u.castT -= dt;
+      }
       if (u.stun > 0) { u.stun -= dt; continue; }
       if (u.skillCd > 0) {
         u.skillT -= dt;
         if (u.skillT <= 0) {
-          if (u.boss) { castBossSkill(state, u); u.skillT = C.BOSS_SKILL_CD; }
-          else if (!castSkill(state, u)) u.skillT = 0;
+          if (u.boss) {
+            const cd = castBossSkill(state, u);      // 第三批 P1-7：回 CD 用 Boss 自己的冷却（6/8/9 秒）
+            u.skillT = cd || C.BOSS_SKILL_CD;
+          } else if (!castSkill(state, u)) u.skillT = 0;
         }
       }
       if (u.dead) continue;
       tryLevelUp(state, u);                          // V5：经验升级
       if (u.dead) continue;
-      if (u.side === 'enemy' && u.target) { walkPath(state, u, dt); continue; }   // 行军敌人：只走路，不攻击（塔 target=null，走攻击逻辑）
+      // 行军敌人：走路 + 拆迁精英读条拆塔（P0-2）；塔 target=null，走攻击逻辑
+      if (u.side === 'enemy' && u.target) { walkPath(state, u, dt); siegeTick(state, u, dt); continue; }
       if (u.noAttack && !u.produce) continue;        // 不攻击的产出单位
       if (u.produce) continue;                       // 农民：只产资源
 
       const targets = B.threatsInRange(state, u, u.range);
       if (targets.length) {
-        const interval = u.aspd > 0 ? 1 / (u.aspd * (u.crossbowMul || 1)) : 1;
+        const interval = u.aspd > 0 ? 1 / (u.aspd * (u.crossbowMul || 1) * (u.auraAspd || 1)) : 1;
         u.atkT += dt;
         if (u.atkT >= interval) {
           u.atkT -= interval;
@@ -434,10 +566,13 @@
       }
     }
 
-    // 5) 清理尸体
+    // 5) 清理尸体（顺带记同屏敌军峰值，P0-5 失败复盘用）
     if (state.units.some(function (u) { return u.dead; })) {
       state.units = state.units.filter(function (u) { return !u.dead; });
     }
+    let aliveEnemy = 0;
+    for (let i = 0; i < state.units.length; i++) if (state.units[i].side === 'enemy') aliveEnemy++;
+    if (aliveEnemy > (state.stats.peakEnemies || 0)) state.stats.peakEnemies = aliveEnemy;
 
     // 6) AI 决策（竞技模式）
     if (state.mode === 'versus' && !state.over) {
@@ -557,6 +692,14 @@
         state.nextBreak = w.idx + T.breakMin + Math.floor(Math.random() * (T.breakMax - T.breakMin + 1));
       }
       if (state.mode === 'versus' && w.idx >= T.versusWaves) w.done = true;   // 竞技：打完公共波次即收官
+      // 第三批 P1-7：无尽每 10 波轮换一只关底名将（10 张梁 / 20 张宝 / 30 张角 …）
+      if (state.mode === 'endless' && w.idx % 10 === 0) {
+        isBoss = true;
+        const bk = ((w.idx / 10) - 1) % 3;
+        state.bossKind = bk;
+        w.pending.unshift({ type: 'boss', level: level, hpMul: hpMul, atkMul: atkMul, boss: true, bossKind: bk });
+        state.fx.push({ type: 'toast', text: '无尽第 ' + w.idx + ' 波 · 名将压境' });
+      }
     } else {                                          // 关卡：5 普通波 + 1 关底（第 6 波，强化波 + 关底名将）
       const lv = ZY.LEVELS[state.levelIdx];
       // 难度接线（第一批）：三个按钮 → 三项实际投放参数；键就是按钮的 data-diff
@@ -574,6 +717,9 @@
       atkMul = lv.atkMul * (1 + T.levelAtkRamp * (w.idx - 1)) * (isBoss ? T.bossAtkMul : 1) * asc * dk.atk;
       level = clamp(1 + Math.floor(state.levelIdx / T.levelEnemyDiv) + (isBoss ? 1 : 0), 1, 5);
       if (isBoss) elites = 1 + Math.floor(state.levelIdx / 2);
+      // 第三批 P0-2：普通波也给精英（第 4 关起每波 1 只、第 6 关起 2 只）
+      // —— 否则「拆迁」只在关底出现，塔位风险在第 1~5 关等于没有。
+      else if (state.levelIdx >= 3) elites = Math.min(2, 1 + Math.floor((state.levelIdx - 3) / 2));
       w.interval = isBoss ? T.levelBossGap : T.levelGap;
       if (isBoss) w.done = true;
       if (w.idx === T.levelBreakWave && !state.levelBtDone) { bt = true; state.levelBtDone = true; }
@@ -583,7 +729,7 @@
       const pick = ZY.weighted(ZY.ENEMY_MIX);
       w.pending.push({ type: pick.type, level: level, hpMul: hpMul, atkMul: atkMul, elite: i < elites });
     }
-    if (isBoss) {
+    if (isBoss && state.mode === 'level') {
       // V6 手感：关底名将「领队」先出（旧逻辑 push 到队尾，单车道吞吐 1/移速，排队太久）。
       // 第一批：按 LEVEL_BOSS 决定这一关是谁（张梁 / 张宝 / 张角）。
       const bk = (ZY.LEVEL_BOSS && ZY.LEVEL_BOSS[state.levelIdx]) || 0;
@@ -805,20 +951,35 @@
 
     const t = state.grid[r] && state.grid[r][c];
     if (t) {
+      // 第三批 P1-9：武器卡拖到武将塔 = 装备（复用 equipWeapon，顺手记图鉴）
+      if (card.kind === 'weapon') {
+        if (t.side !== side) return { ok: false, msg: '不能给敌方单位装备' };
+        if (t.cls !== 'hero') return { ok: false, msg: '武器只能装备给武将塔' };
+        s.weapons = s.weapons || {};
+        s.weapons[card.weapon] = (s.weapons[card.weapon] || 0) + 1;   // 卡 → 背包 → 装备（复用既有链路）
+        const ew = equipWeapon(state, side, t.id, card.weapon);
+        if (ew && ew.ok) removeCard(s, found);
+        else s.weapons[card.weapon]--;                                // 装备失败就别白拿
+        return ew;
+      }
       // —— 落到己方塔上：V8 卡喂塔（仅 1 级塔）+ 同字合成 ——
       if (t.side !== side) return { ok: false, msg: '不能叠到敌方单位上' };
       if (card.kind !== 'unit' || t.cls !== 'soldier') return { ok: false, msg: '只有同字兵种塔才能合成' };
       if (t.type !== card.type) return { ok: false, msg: '兵种不同，无法合成' };
       if (t.level >= C.MAX_LEVEL) return { ok: false, msg: '已满级（' + C.MAX_LEVEL + ' 级），无法再合成' };
-      if (t.level !== 1) return { ok: false, msg: '只有 1 级塔才能喂卡；同级塔可拖来合成升阶' };
+      // 第三批 P0-1：喂卡窗口 1 级 → 1~3 级（4 级以上走塔塔合成 / 击杀升级）
+      if (t.level >= 4) return { ok: false, msg: '4 级以上只能靠同级塔合成或击杀升级' };
       t.level++;
+      t.refined = Math.min(3, (t.refined || 0) + 1);   // 精铸：每次合成 +1 层，纯经验升级拿不到
       restatUnit(state, t);
+      t.hp = t.maxHp;                                  // 第三批 P0-1：卡喂与塔塔合成统一「合成 = 修好这座塔」
       removeCard(s, found);
       if (side === 'player') {
         ZY.Audio.play('merge');
         state.fx.push({ type: 'merge', row: r, col: c, text: t.char + '² 合成 Lv' + t.level });
+        state.fx.push({ type: 'toast', text: '精铸 +1（攻 +8% / 速 +6%）· 现 ' + t.refined + '/3' });
       }
-      return { ok: true, merged: true, level: t.level };
+      return { ok: true, merged: true, level: t.level, refined: t.refined };
     }
 
     // —— 空格：建塔（武将卡 span=2） ——
@@ -849,6 +1010,7 @@
   /** V8 塔塔合成：拖一座兵种塔到另一座「同兵种、同等级」的己方兵种塔上 → 目标塔 +1 级，被吃塔消失（占地清空）。
    *  允许 1+1=2（与卡喂并存）；等级上限 5（4+4=5 后不可再合）；不同兵种 / 等级 / 满级 → 拒绝。 */
   function mergeTower(state, side, draggedId, r, c) {
+    const s = sideState(state, side);
     const u = state.units.find(function (x) { return x.id === draggedId; });
     if (!u || u.dead || u.side !== side || u.cls !== 'soldier') return { ok: false, msg: '只能合成己方的兵种塔' };
     const t = state.grid[r] && state.grid[r][c];
@@ -858,8 +1020,11 @@
     if (t.level !== u.level) return { ok: false, msg: '等级不同，只有同级才能合成' };
     if (t.level >= C.MAX_LEVEL) return { ok: false, msg: '已满级（' + C.MAX_LEVEL + ' 级），无法再合成' };
     t.level++;
+    t.refined = Math.min(3, (t.refined || 0) + 1);   // 第三批 P0-1：精铸只由合成产生
     restatUnit(state, t);
-    t.hp = t.maxHp;                             // 第一批 P1-13：合成即满血（不再「合完反而更脆」）
+    t.hp = t.maxHp;                             // 合成 = 修好这座塔（与卡喂同口径）
+    const refund = Math.max(1, Math.round(2 * (u.level || 1)));   // 第三批 P0-1：被吃塔按拆塔口径返还资源
+    if (s) s.bun += refund;
     removeUnit(state, u, true);                 // 被吃塔消失（清空占地，不触发死亡特效）
     const di = state.units.indexOf(u);          // 立即从单位表移除，避免拖拽来源滞留一帧
     if (di >= 0) state.units.splice(di, 1);
@@ -1060,7 +1225,8 @@
       leaked: { player: 0, enemy: 0 },     // 第一批：漏怪统计（踏进阿斗格即 +1）
       hasAdou: { player: true, enemy: mode === 'versus' },
       wave: { idx: 0, timer: 0, interval: mode === 'level' ? T.levelFirstGap : T.endlessInterval, pending: [], spawnT: 0, spawnGap: SPAWN_GAP, done: false, breakEntrance: false, total: 0 },
-      aiT: 0, fx: [], banner: null, stats: { kills: 0, waves: 0, duration: 0 },
+      aiT: 0, fx: [], banner: null,
+      stats: { kills: 0, waves: 0, duration: 0, leakWave: 0, peakEnemies: 0 },   // 第三批 P0-5：失败复盘
     };
     state.deploy = B.startSlots(mode, 'player', state.levelIdx);
     if (mode === 'versus') {
@@ -1099,6 +1265,7 @@
         cls: u.cls, type: u.type, char: u.char, heroId: u.heroId,
         heroLevel: u.heroLevel, level: u.level, row: u.row, col: u.col,
         span: u.span, weapon: u.weapon,
+        refined: u.refined || 0,                            // 第三批 P0-1：跨关继承精铸，别白合
       });
       nu.hp = nu.maxHp;
       nu.kills = u.kills; nu.xp = u.xp || 0; nu.skillT = u.skillT;

@@ -131,6 +131,22 @@
       const n = Math.max(0, Math.min(3, parseInt(v, 10) || 0));
       if (n > Save.getAscension()) writeNum(KEYS.ascension, n);
     },
+    /** 第三批 P1-8：修罗层数按进度解锁（不再要求「先打修罗才能解锁修罗」）
+     *  门槛：通关第 8 关 → 1 层；星合计 ≥20 → 2 层；≥32 → 3 层。只增不减。 */
+    ASCEND_GATE: [
+      { n: 1, text: '通关第 8 关解锁' },
+      { n: 2, text: '星 20 解锁' },
+      { n: 3, text: '星 32 解锁' },
+    ],
+    syncAscension: function () {
+      let n = 0;
+      if (Save.getLevel() >= ZY.LEVELS.length - 1) n = 1;
+      const st = Save.getStarTotal();
+      if (st >= 20) n = Math.max(n, 2);
+      if (st >= 32) n = Math.max(n, 3);
+      Save.setAscension(n);
+      return Save.getAscension();
+    },
 
     /* ---------------- 今日之战（按本地日期播种，跨日自动作废） ---------------- */
     todayKey: function () {
