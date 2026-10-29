@@ -756,6 +756,12 @@ section('关卡模式（巨鹿 6 波 · 通关评级 1-5 星）');
         s.player.hand.splice(i, 1);
         return;
       }
+      if (card.kind === 'weapon') {                    // 第三批 P1-9：武器卡只能落到武将塔，没武将就先扔
+        const hero = s.units.find((u) => u.side === 'player' && u.cls === 'hero' && !u.dead);
+        if (hero) G.deploy(s, 'player', card.uid, hero.row, hero.col);
+        else s.player.hand.splice(i, 1);
+        return;
+      }
       let placed = false;
       outer: for (let r = 0; r < B.ROWS; r++) {
         for (let c = 0; c < B.COLS; c++) {
@@ -932,6 +938,16 @@ section('关卡专属地图（第三批：八关八图，逐图独立母题）')
   for (let li = 0; li < 8; li++) osigs.push(obsSig(li));
   ok('八关障碍分布两两不同（第三批母题重排）', new Set(osigs).size === 8, 'unique=' + new Set(osigs).size);
   ok('每张图都有地形特色 note', ZY.MAPS.length === 8 && ZY.MAPS.every((m) => !!m.note && m.note.length > 0));
+  // 第三批 P0-4：难度台阶落在「塔位质量」上 —— 有效塔位 = slotsBig 里贴着主路的格子
+  const effOf = (li) => {
+    const pset = B.pathSet('level', li);
+    return ZY.MAPS[li].slotsBig.filter(function (p) {
+      return [[1, 0], [-1, 0], [0, 1], [0, -1]].some((d) => pset[(p[0] + d[0]) + ',' + (p[1] + d[1])]);
+    }).length;
+  };
+  const effs = [0, 1, 2, 3, 4, 5, 6, 7].map(effOf);
+  ok('有效（邻路）塔位逐关不增', effs.every((n, i) => i === 0 || n <= effs[i - 1]), effs.join(' > '));
+  ok('第 7/8 关有效塔位 ≤ 16（铺满就赢失效）', effs[6] <= 16 && effs[7] <= 16, '第7=' + effs[6] + ' 第8=' + effs[7]);
   [0, 1, 2, 3, 4, 5, 6, 7].forEach(function (li) {
     const seq = B.pathSeq('level', 'player', li);
     const ent = B.entrances('level', 'player', li)[0];
@@ -1105,6 +1121,18 @@ section('第三批 P1-7：三 Boss 技能分派 + 无尽 Boss');
     ok('第三批 P1-7：无尽第 10 波出关底名将', s.wave.idx === 10 && s.wave.pending.some((p) => p.boss === true),
       'wave=' + s.wave.idx + ' boss=' + s.wave.pending.filter((p) => p.boss).length);
   }
+  // 出场链路：pending 里的 bossKind 必须一路传到 makeUnit（漏传 → 三关关底全是张梁）
+  {
+    const s = G.baseState('level', { levelIdx: 7 });
+    s.player.adou = 1e9;
+    s.wave.idx = 5; s.wave.done = false; s.wave.pending = []; s.wave.timer = s.wave.interval;
+    G.tick(s, 0.2);
+    let boss = null;
+    for (let i = 0; i < 200 && !boss; i++) { G.tick(s, 0.1); boss = s.units.find((u) => u.boss) || null; }
+    ok('第三批 P1-7：第 8 关关底出场「张角」（走 startWave → spawnEnemyNow 链路）',
+      !!boss && boss.name === '张角' && boss.bossSkill && boss.bossSkill.type === 'thunder',
+      boss ? boss.name + '/' + (boss.bossSkill && boss.bossSkill.type) : '未出场');
+  }
 }
 
 section('第三批 P1-8：修罗八阵按进度解锁');
@@ -1130,7 +1158,7 @@ section('第三批 P1-9：武器有获取途径');
     if (c && c.kind === 'weapon') got = c;
   }
   ok('第三批 P1-9：征兵能抽出武器卡', !!got && !!ZY.WEAPONS[got.weapon], JSON.stringify(got));
-  ok('第三批 P1-9：图鉴武器组 4 项（全套 27 项）', Object.keys(ZY.WEAPONS).length === 4,
+  ok('第三批 P1-9：图鉴武器组 4 项（全套 28 项：兵种6+武将7+名将3+武器4+关卡8）', Object.keys(ZY.WEAPONS).length === 4,
     Object.keys(ZY.WEAPONS).join(','));
 }
 

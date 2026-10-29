@@ -776,6 +776,7 @@
       const u = makeUnit(state, 'enemy', {
         cls: 'soldier', type: spec.type, level: spec.level,
         hpMul: spec.hpMul, atkMul: spec.atkMul, elite: spec.elite, boss: spec.boss,
+        bossKind: spec.bossKind,          // 第三批 P1-7：关底/无尽选谁靠这个字段，漏传就永远是张梁
         row: ents[i].row, col: ents[i].col, target: tgt,
       });
       addUnit(state, u);

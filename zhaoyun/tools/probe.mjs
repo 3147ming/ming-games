@@ -318,7 +318,10 @@ const heroPlace = await evalJs(`(async () => {
   await new Promise(r => setTimeout(r, 160));
   const el = document.querySelector('.unit.p.hero');
   // 旋转态下 bbox 宽高互换，比例必须用 offsetWidth（布局尺寸，不受 transform 影响）
-  const cellW = document.getElementById('board').offsetWidth / 8;
+  // P0-6 之后 HUD 长高、棋盘变窄，拿 #board.offsetWidth（含 3px 边框）当分母会把 2 格量成 1.93，
+  // 单位是挂在 .units 里的，分母用 .units.offsetWidth 才是同一坐标系。
+  const units = document.querySelector('.units');
+  const cellW = (units ? units.offsetWidth : document.getElementById('board').offsetWidth) / 8;
   return {
     d: d,
     placed: !!(s.grid[1][5] && s.grid[1][5].cls === 'hero'),
@@ -687,6 +690,10 @@ const art = await evalJs(`(async () => {
   const roadD = roadPath ? (roadPath.getAttribute('d') || '') : '';
   const roadEdgeD = roadEdgeEl ? (roadEdgeEl.getAttribute('d') || '') : '';
   const inFill = (x, y) => { try { return !!roadPath && roadPath.isPointInFill(new DOMPoint(x, y)); } catch (e) { return false; } };
+  // 接缝点正好落在数学边界上，而 SVG path 的 d 只保留两位小数（25.83 vs 310/12=25.8333），
+  // isPointInFill 对这种「恰好在边上」的点不稳定 → 改成检查接缝两侧各 0.2 都在路面内（连续性更强）
+  const inSeamV = (x, y) => inFill(x, y - 0.2) && inFill(x, y + 0.2);
+  const inSeamH = (x, y) => inFill(x - 0.2, y) && inFill(x + 0.2, y);
   const vb = road ? road.getAttribute('viewBox').split(' ').map(Number) : [0, 0, 0, 0];
   const cw = vb[2] / 8, chh = vb[3] / 12;
   const pathCells = [...document.querySelectorAll('.cell.path')];
@@ -694,8 +701,8 @@ const art = await evalJs(`(async () => {
   pathCells.forEach(n => {
     const r = +n.dataset.r, c = +n.dataset.c, x = c * cw, y = r * chh;
     if (inFill(x + cw / 2, y + chh / 2)) roadCenter++;
-    if (isP(at[r + ',' + (c + 1)]) && inFill(x + cw, y + chh / 2)) roadH++;
-    if (isP(at[(r + 1) + ',' + c]) && inFill(x + cw / 2, y + chh)) roadV++;
+    if (isP(at[r + ',' + (c + 1)]) && inSeamH(x + cw, y + chh / 2)) roadH++;
+    if (isP(at[(r + 1) + ',' + c]) && inSeamV(x + cw / 2, y + chh)) roadV++;
   });
   document.querySelectorAll('.cell').forEach(n => {
     if (isP(n)) return;
@@ -800,70 +807,92 @@ const skill1 = await evalJs(`(async () => {
   const foe = ZY.Game.makeUnit(s, 'enemy', { cls:'soldier', type:'zei', level:1, row:2, col:5, target:'player' });
   foe.move = 0; foe.hp = foe.maxHp = 9000;
   ZY.Game.addUnit(s, foe);
-  await new Promise(r => setTimeout(r, 80));
   hero.skillT = 0;
+  // 改手动 tick 消除 rAF 节流 flaky。注意 tick() 开头有 if(paused) return，必须先解冻；
+  // 同步 for 循环内 rAF 不会插入，解冻→tick→再冻结 是原子块。
   s.paused = false;
-  await new Promise(r => setTimeout(r, 340));
+  let fired = false;
+  for (let i = 0; i < 40 && !fired; i++) { ZY.Game.tick(s, 0.1); if (hero.skillT > 0) fired = true; }
   s.paused = true;
   const b = document.getElementById('skill-banner');
   return { text: b ? b.textContent : '', shown: b ? b.classList.contains('show') : false,
-           parts: document.querySelectorAll('.skill-fx .fx-particle').length, fired: hero.skillT > 0 };
+           parts: document.querySelectorAll('.skill-fx .fx-particle').length, fired: fired };
 })()`);
 ok('V7 技能真正释放 → #skill-banner 播报「横扫剑气！」', skill1.text === '横扫剑气！' && skill1.shown === true, skill1.text + ' fired=' + skill1.fired);
 ok('V7 技能粒子生成（6–12 个，≤ 上限 20）', skill1.parts >= 6 && skill1.parts <= 20, 'particles=' + skill1.parts);
 
 // Boss 技能播报（先等 1.5s 防刷屏解除）
 const bossSkill = await evalJs(`(async () => {
-  await new Promise(r => setTimeout(r, 1600));
   const s = ZY.UI.getState();
+  s.paused = true;
+  await new Promise(r => setTimeout(r, 1600));   // 等 skill1 的 1.5s banner 锁过期
   const boss = s.units.find(u => u.id === ${art.ids.boss});
   boss.move = 0; boss.skillT = 0;
-  s.paused = false;
-  await new Promise(r => setTimeout(r, 220));
+  s.paused = false;   // 解冻才能让 tick() 真正执行（tick 开头有 paused 早退）
+  let fired = false;
+  for (let i = 0; i < 40 && !fired; i++) { ZY.Game.tick(s, 0.1); if (boss.skillT > 0) fired = true; }
   s.paused = true;
   const b = document.getElementById('skill-banner');
-  return { text: b ? b.textContent : '', parts: document.querySelectorAll('.skill-fx .fx-particle').length };
+  return { text: b ? b.textContent : '', parts: document.querySelectorAll('.skill-fx .fx-particle').length, fired: fired };
 })()`);
 ok('V7 Boss 技能释放 → 播报「黄天当立！」+ 法阵粒子', bossSkill.text === '黄天当立！' && bossSkill.parts >= 6, bossSkill.text + ' parts=' + bossSkill.parts);
 
 /* ========================================================= V8 收尾验收断言 */
-console.log('\n== V8 合成改版（卡喂 1 级 · 塔塔同级合成升阶）==');
+console.log('\n== 第三批 V8.1 合成改版（卡喂 1~3 级 · 精铸 · 塔塔同级合成）==');
 const syn8 = await evalJs(`(async () => {
   const s = ZY.UI.getState();
   const G = ZY.Game, B = ZY.B;
   const slots = Object.keys(B.startSlots('endless','player')).map(k => k.split(',').map(Number));
   s.units = s.units.filter(u => u.side !== 'player');
-  const mk = (r,c,type,lv) => { const u = G.makeUnit(s,'player',{cls:'soldier',type,level:lv,row:r,col:c,span:1,target:null}); G.addUnit(s,u); return u; };
-  const A = slots[0], Bc = slots[1], C = slots[2], D = slots[3], E = slots[4], F = slots[5];
-  mk(A[0],A[1],'dao',2);
-  const bT = mk(Bc[0],Bc[1],'dao',2);
-  mk(C[0],C[1],'qiang',2);
+  // 造塔时故意压低血量，用来验证「合成 = 修好这座塔」
+  const mk = (r,c,type,lv) => { const u = G.makeUnit(s,'player',{cls:'soldier',type,level:lv,row:r,col:c,span:1,target:null}); G.addUnit(s,u); u.hp = Math.max(1, Math.round(u.maxHp * 0.3)); return u; };
+  const A = slots[0], Bc = slots[1], C = slots[2], D = slots[3], E = slots[4], F = slots[5], Q = slots[6];
+  // ① 2 级塔可喂 → 3 级（旧版会被拒绝）+ 精铸 1 + 回满血
+  const aT = mk(A[0],A[1],'dao',2);
   s.player.hand.push({uid:9001,kind:'unit',char:'刀',type:'dao',level:1});
-  const rFeed = G.deploy(s,'player',9001,A[0],A[1]);          // V8：卡不能喂 2 级塔
-  const cardStill = s.player.hand.some(x => x.uid === 9001);
-  const lvlA = s.grid[A[0]][A[1]].level;
-  const before = s.units.length;
-  const m = G.mergeTower(s,'player',bT.id,A[0],A[1]);         // 塔塔 2+2 → 3
-  const after = s.units.length;
-  const consumedGone = s.grid[Bc[0]][Bc[1]] === null;
-  const lvlAfter = s.grid[A[0]][A[1]].level;
-  const cT = s.units.find(u => u.side==='player' && u.type==='qiang' && u.level===2 && u.row===C[0] && u.col===C[1]);
-  const m2 = G.mergeTower(s,'player',cT ? cT.id : 0,A[0],A[1]);   // 异兵种
-  const m3 = G.mergeTower(s,'player',s.grid[A[0]][A[1]].id,A[0],A[1]); // 自合
+  const rFeed = G.deploy(s,'player',9001,A[0],A[1]);
+  const cardGone = !s.player.hand.some(x => x.uid === 9001);
+  const aLv = s.grid[A[0]][A[1]].level, aRf = s.grid[A[0]][A[1]].refined;
+  const aTower = s.grid[A[0]][A[1]];
+  const aFull = aTower.hp === aTower.maxHp;
+  // ② 4 级塔不可喂（卡留在手里）
+  const cT = mk(C[0],C[1],'dao',4);
+  s.player.hand.push({uid:9002,kind:'unit',char:'刀',type:'dao',level:1});
+  const r4 = G.deploy(s,'player',9002,C[0],C[1]);
+  const card4 = s.player.hand.some(x => x.uid === 9002);
+  // ③ 塔塔 2+2 → 3 级（干净的一对，没喂过卡）
   const dT = mk(D[0],D[1],'dao',2);
-  const m4 = G.mergeTower(s,'player',dT.id,A[0],A[1]);        // 不同级
-  const eT = mk(E[0],E[1],'dao',5);
-  const fT = mk(F[0],F[1],'dao',5);
-  const m5 = G.mergeTower(s,'player',fT.id,E[0],E[1]);        // 满级
+  const eT = mk(E[0],E[1],'dao',2);
+  const before = s.units.length;
+  const m = G.mergeTower(s,'player',eT.id,D[0],D[1]);
+  const after = s.units.length;
+  const consumedGone = s.grid[E[0]][E[1]] === null;
+  const lvlAfter = s.grid[D[0]][D[1]].level;
+  const mergeFull = s.grid[D[0]][D[1]].hp === s.grid[D[0]][D[1]].maxHp;
+  // ④ 异兵种 / 自合 / 不同级 / 满级
+  const qT = mk(F[0],F[1],'qiang',3);
+  const m2 = G.mergeTower(s,'player',qT.id,D[0],D[1]);
+  const m3 = G.mergeTower(s,'player',s.grid[D[0]][D[1]].id,D[0],D[1]);
+  const gT = mk(Q[0],Q[1],'dao',4);
+  const m4 = G.mergeTower(s,'player',gT.id,D[0],D[1]);
+  const e5a = mk(slots[7][0],slots[7][1],'dao',5);
+  const e5b = mk(slots[8][0],slots[8][1],'dao',5);
+  const m5 = G.mergeTower(s,'player',e5b.id,slots[7][0],slots[7][1]);
   return {
-    rFeedOk: !rFeed.ok, rFeedMsg: rFeed.msg, cardStill, lvlA,
-    mOk: m.ok, mMerged: m.merged, mLevel: m.level, before, after, consumedGone, lvlAfter,
-    m2Ok: !m2.ok, m3Ok: !m3.ok, m4Ok: !m4.ok, m5Ok: !m5.ok, lvlFinal: s.grid[A[0]][A[1]].level, eLv: s.grid[E[0]][E[1]].level
+    rFeedOk: rFeed.ok, rFeedMsg: rFeed.msg, cardGone, aLv, aRf, aFull,
+    r4Ok: !r4.ok, r4Msg: r4.msg, card4,
+    mOk: m.ok, mMerged: m.merged, mLevel: m.level, before, after, consumedGone, lvlAfter, mergeFull,
+    m2Ok: !m2.ok, m3Ok: !m3.ok, m4Ok: !m4.ok, m5Ok: !m5.ok, lvlFinal: s.grid[D[0]][D[1]].level, eLv: s.grid[slots[7][0]][slots[7][1]].level
   };
 })()`);
-ok('V8 卡不能喂 2 级塔（仅 1 级可喂）', syn8.rFeedOk && syn8.cardStill && syn8.lvlA === 2, syn8.rFeedMsg);
+ok('第三批 P0-1：2 级塔可喂卡 → 3 级（旧版仅 1 级可喂）',
+  syn8.rFeedOk === true && syn8.cardGone === true && syn8.aLv === 3 && syn8.aRf === 1,
+  'ok=' + syn8.rFeedOk + ' lv=' + syn8.aLv + ' 精铸=' + syn8.aRf + ' msg=' + syn8.rFeedMsg);
+ok('第三批 P0-1：卡喂后塔血回满（合成 = 修好这座塔）', syn8.aFull === true);
+ok('第三批 P0-1：4 级塔不可喂卡（卡留在手里）', syn8.r4Ok === true && syn8.card4 === true, syn8.r4Msg);
 ok('V8 塔塔合成 2+2 → 3 级', syn8.mOk && syn8.mMerged && syn8.mLevel === 3 && syn8.lvlAfter === 3, JSON.stringify({ ok: syn8.mOk, lv: syn8.lvlAfter }));
 ok('V8 被吃塔消失（单位表 -1 + 占位清空）', syn8.after === syn8.before - 1 && syn8.consumedGone, 'before=' + syn8.before + ' after=' + syn8.after);
+ok('V8 塔塔合成后目标塔血回满', syn8.mergeFull === true);
 ok('V8 异兵种不可合成', syn8.m2Ok);
 ok('V8 不能和自己合成', syn8.m3Ok);
 ok('V8 等级不同不可合成（仍为 3 级）', syn8.m4Ok && syn8.lvlFinal === 3);
@@ -1119,8 +1148,9 @@ const part8 = await evalJs(`(async () => {
   const fxLayer = document.querySelector('.skill-fx');
   let single = 0;
   // 旁路屏蔽：场上 Boss 也会放技能（14 粒）并落在同一层，会把「单次」计数抬高（实测 10+14=24）
+  // 注意 Boss 的 cls 是 'soldier'、靠 u.boss 标记（旧条件写 u.cls === 'boss' 是空条件，从没真屏蔽过）
   const muted = [];
-  s.units.forEach(u => { if (u !== z && (u.heroId || u.cls === 'boss')) { muted.push([u, u.skillT]); u.skillT = 1e9; } });
+  s.units.forEach(u => { if (u !== z && (u.heroId || u.boss || u.cls === 'boss')) { muted.push([u, u.skillT]); u.skillT = 1e9; } });
   const mo = new MutationObserver(list => list.forEach(m => m.addedNodes.forEach(n => {
     if (n.nodeType === 1 && n.classList && n.classList.contains('fx-particle')) single++;
   })));
@@ -1220,6 +1250,163 @@ await capShot('07-landscape-812.png');
 await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 667, deviceScaleFactor: 2, mobile: true });
 await sleep(200);
 console.log('   截图已存: ' + SHOT_DIR);
+
+console.log('\n== 第三批：塔信息卡 / HUD 地形 / 失败复盘 / 横屏热区 / 武器图鉴 / 清档 ==');
+await send('Emulation.setDeviceMetricsOverride', { width: 667, height: 375, deviceScaleFactor: 2, mobile: true });
+await send('Page.navigate', { url: URL });
+await sleep(1400);
+await evalJs(DRAG_HELPERS);
+
+/* —— P0-3：点塔 → 常驻信息卡（DPS / 覆盖主路格数）；点空白 → 收起 —— */
+await evalJs(`document.querySelector('.mode-btn[data-mode="endless"]').click()`);
+await sleep(320);
+const ucard = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  s.player.bun = 300;
+  s.player.hand.push({ uid: 881001, kind: 'unit', char: '刀', type: 'dao', level: 1 });
+  await new Promise(r => setTimeout(r, 260));
+  const free = [...document.querySelectorAll('.cell.deploy')].find((c) => !s.grid[+c.dataset.r][+c.dataset.c]);
+  if (!free) return { err: 'no free slot' };
+  const row = +free.dataset.r, col = +free.dataset.c;
+  const p = window.__cellXY(row, col);
+  await window.__dragFrom('#hand .card[data-uid="881001"]', p.x, p.y);
+  const t = s.grid[row][col];
+  if (!t) return { err: 'no tower' };
+  await window.__tapEl('.unit.p[data-uid="' + t.id + '"]');
+  await new Promise(r => setTimeout(r, 120));
+  const uc = document.querySelector('.unit-card');
+  const shown = !!uc && uc.classList.contains('show');
+  const txt = uc ? uc.textContent.replace(/\\s+/g, ' ') : '';
+  const empty = [...document.querySelectorAll('.cell.deploy')].find((c) => !s.grid[+c.dataset.r][+c.dataset.c]);
+  if (empty) await window.__tapEl('.cell[data-r="' + empty.dataset.r + '"][data-c="' + empty.dataset.c + '"]');
+  await new Promise(r => setTimeout(r, 120));
+  const uc2 = document.querySelector('.unit-card');
+  return { shown: shown, dps: txt.indexOf('DPS') >= 0, cov: txt.indexOf('覆盖') >= 0,
+           hidden: !uc2 || !uc2.classList.contains('show'), txt: txt.slice(0, 64) };
+})()`);
+ok('第三批 P0-3：点塔出现常驻信息卡（含 DPS / 覆盖主路格数）',
+  ucard.shown === true && ucard.dps === true && ucard.cov === true, JSON.stringify(ucard).slice(0, 140));
+ok('第三批 P0-3：点棋盘空白处信息卡收起', ucard.hidden === true, JSON.stringify(ucard).slice(0, 100));
+
+/* —— P0-6：图标键尺寸 / 倒计时归位 / HUD 右栏不再有「收兵」 —— */
+const hudFit = await evalJs(`(() => {
+  const R = (e) => e.getBoundingClientRect();
+  const btns = [...document.querySelectorAll('.icon-btn')];
+  const hudEl = document.querySelector('.hud');
+  const hud = hudEl ? R(hudEl) : null;
+  const timer = document.querySelector('.hud-timer');
+  const tr = timer ? R(timer) : null;
+  const rEl = document.querySelector('.hud-r');
+  return {
+    n: btns.length, minH: btns.length ? Math.min(...btns.map((b) => Math.round(R(b).height))) : 0,
+    timerText: timer ? timer.textContent.trim().slice(0, 18) : '',
+    inHud: !!(tr && hud && tr.top >= hud.top - 1 && tr.bottom <= hud.bottom + 1),
+    inBoard: !!document.querySelector('#board .hud-timer'),
+    hudRTxt: rEl ? rEl.textContent.replace(/\\s+/g, ' ').trim() : ''
+  };
+})()`);
+ok('第三批 P0-6：667×375 下图标键高度 ≥ 34px（原 30px）', hudFit.minH >= 34 && hudFit.n >= 3,
+  'min=' + hudFit.minH + ' n=' + hudFit.n);
+ok('第三批 P0-6：倒计时在 HUD 内、不在 #board 里（原压在棋盘正中）',
+  hudFit.inHud === true && hudFit.inBoard === false, JSON.stringify(hudFit).slice(0, 120));
+ok('第三批 P0-6：HUD 右栏只剩 倍速/静音/暂停（收兵已挪进 .dock）',
+  hudFit.hudRTxt.indexOf('收兵') < 0, hudFit.hudRTxt);
+
+/* —— P0-4：HUD 显示地形特色 —— */
+await send('Page.navigate', { url: URL });
+await sleep(1300);
+await evalJs(`document.querySelector('.mode-btn[data-mode="level"]').click()`);
+await sleep(320);
+const terrain = await evalJs(`(() => {
+  const hud = document.querySelector('.hud');
+  const st = ZY.UI.getState();
+  const note = (ZY.MAPS[st.levelIdx] && ZY.MAPS[st.levelIdx].note) || '';
+  const txt = hud ? hud.textContent.replace(/\\s+/g, ' ').trim() : '';
+  return { idx: st.levelIdx, note: note, has: !!note && txt.indexOf(note) >= 0, txt: txt.slice(0, 56) };
+})()`);
+ok('第三批 P0-4：HUD 关卡名后带该关地形特色', terrain.has === true,
+  'note=' + terrain.note + ' / hud=' + terrain.txt);
+
+/* —— P0-5：失败结算的三行复盘 + 一句诊断 —— */
+const recap = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  s.player.adou = 1;
+  const seq = ZY.B.pathSeq('level', 'player', s.levelIdx);
+  const pi = seq.length - 2;
+  const p = seq[pi];
+  const u = ZY.Game.makeUnit(s, 'enemy', { cls: 'soldier', type: 'zei', level: 1, row: p.row, col: p.col, target: 'player', pi: pi });
+  ZY.Game.addUnit(s, u);
+  for (let i = 0; i < 200 && !s.over; i++) { ZY.Game.tick(s, 0.1); await new Promise(r => setTimeout(r, 0)); }
+  await new Promise(r => setTimeout(r, 320));
+  const ov = document.getElementById('overlay');
+  const body = ov ? ov.textContent.replace(/\\s+/g, ' ') : '';
+  return { over: s.over, result: s.result, adou: s.player.adou, has: body.indexOf('漏怪') >= 0 && body.indexOf('最后一漏') >= 0,
+           peak: body.indexOf('峰值同屏') >= 0, diag: /塔位|塔都没建|资源|精铸/.test(body), body: body.slice(0, 150) };
+})()`);
+ok('第三批 P0-5：失败结算含「漏怪 / 最后一漏 / 峰值同屏 / 诊断」',
+  recap.result === 'lose' && recap.has === true && recap.peak === true && recap.diag === true,
+  JSON.stringify(recap).slice(0, 160));
+
+/* —— P1-7：第 8 关关底出场张角（雷落），播报带名字 —— */
+await send('Page.navigate', { url: URL });
+await sleep(1300);
+const zhangjue = await evalJs(`(async () => {
+  ZY.Save.setLevel(7);
+  document.querySelector('[data-nav="select"]').click();
+  await new Promise(r => setTimeout(r, 240));
+  const card8 = document.querySelector('.lv-card[data-idx="7"]');
+  if (!card8) return { err: 'no lv8 card' };
+  card8.click();
+  await new Promise(r => setTimeout(r, 420));
+  const s = ZY.UI.getState();
+  if (!s) return { err: 'no state' };
+  s.player.adou = 1e9;
+  s.wave.idx = 5; s.wave.done = false; s.wave.pending = []; s.wave.timer = s.wave.interval;
+  let boss = null;
+  for (let i = 0; i < 200 && !boss; i++) { ZY.Game.tick(s, 0.1); boss = s.units.find((u) => u.boss) || null; }
+  await new Promise(r => setTimeout(r, 120));
+  const toast = (document.getElementById('toast') || {}).textContent || '';
+  return { idx: s.levelIdx, name: boss ? boss.name : '', skill: boss ? (boss.bossSkill && boss.bossSkill.type) : '',
+           cd: boss ? (boss.skillCd || 0) : 0, toast: toast.trim(), fx: (s.fx || []).some((f) => f.type === 'toast' && String(f.text).indexOf('张角') >= 0) };
+})()`);
+ok('第三批 P1-7：第 8 关关底出场张角（雷落 · 9s CD）并播报名字',
+  zhangjue.name === '张角' && zhangjue.skill === 'thunder' && zhangjue.cd >= 9 &&
+  (zhangjue.toast.indexOf('张角') >= 0 || zhangjue.fx === true),
+  JSON.stringify(zhangjue).slice(0, 150));
+
+/* —— P1-9：图鉴出现武器组 —— */
+await send('Page.navigate', { url: URL });
+await sleep(1300);
+const codex = await evalJs(`(async () => {
+  document.querySelector('[data-nav="codex"]').click();
+  await new Promise(r => setTimeout(r, 240));
+  const ov = document.getElementById('overlay');
+  const body = ov ? ov.textContent.replace(/\\s+/g, ' ') : '';
+  return { weapon: body.indexOf('武器') >= 0, n4: /武器 · \\d\\/4/.test(body),
+           all: (body.match(/图鉴 · \\d+ \\/ (\\d+)/) || [])[1] || '', body: body.slice(0, 80) };
+})()`);
+ok('第三批 P1-9：图鉴含「武器 n/4」组、全套 28 项（原 24 + 武器 4）',
+  codex.weapon === true && codex.n4 === true && codex.all === '28',
+  JSON.stringify(codex).slice(0, 130));
+
+/* —— P1-10：清空存档全键生效（星数归零） —— */
+const wipe = await evalJs(`(async () => {
+  ZY.Save.setStar(0, 5); ZY.Save.setStar(3, 4); ZY.Save.setLevel(3);
+  ZY.Save.addKills(120); ZY.Save.setWaveBest(30); ZY.Save.setAscension(2);
+  await new Promise(r => setTimeout(r, 120));
+  const before = ZY.Save.getStarTotal();
+  window.confirm = () => true;
+  document.getElementById('btn-reset').click();
+  await new Promise(r => setTimeout(r, 300));
+  const info = (document.getElementById('save-info').textContent || '').replace(/\\s+/g, ' ');
+  return { before: before, stars: ZY.Save.getStarTotal(), level: ZY.Save.getLevel(),
+           kills: ZY.Save.getKillTotal(), best: ZY.Save.getWaveBest(), asc: ZY.Save.getAscension(),
+           info: info.slice(0, 60) };
+})()`);
+ok('第三批 P1-10：清档后星数/关卡/击杀/波数/修罗全归零且面板同步',
+  wipe.before > 0 && wipe.stars === 0 && wipe.level === 0 && wipe.kills === 0 &&
+  wipe.best === 0 && wipe.asc === 0 && wipe.info.indexOf('星级 0') >= 0,
+  JSON.stringify(wipe).slice(0, 160));
 
 console.log('\n== 外部请求检查 ==');
 const external = requests.filter((u) => !u.startsWith('file://') && !u.startsWith('data:') && !u.startsWith('blob:'));
