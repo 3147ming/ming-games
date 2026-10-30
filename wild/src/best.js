@@ -14,26 +14,34 @@
 const KEY = 'wild.best.v1';
 
 /**
- * 评级切线（阶段10·P1-13 上调）。分数 = 存活 + 击杀 + 行为分，见下面 scoreParts。
- * ★ 定法：满局（600s + ~3300 杀 + 2 Boss + 2 进化 + 6 箱）≈ 4900。
- *   · S 3200 —— 基本要活到 8 分钟以上且清得动场子，不是"活着就行"；
- *   · A 2000 —— 活到 5~6 分钟且有像样战果的中等局；
- *   · B  950 —— 打到中局就倒下；
- *   · C  其余 —— 开局阶段就结束了（新手第一局多半在这里，正好留出"再来一把"的空间）。
+ * 评级切线（阶段11·P0-4 按实测重标）。分数 = 存活 + 击杀 + 行为分，见下面 scoreParts。
+ * ★ 定法与回测方法（下一批请照这个表重算，别再按"满局 3300 杀"拍脑袋）：
+ *   16 局 `node tools/arena-sim.mjs 16` 实测平均击杀 **15527.8**（15236~15657）、
+ *   平均存活 600.0s ⟹ 满局分 ≈ 600 + 15527 + 行为分（3 Boss×1500 + 进化×800 + 6 箱×80）≈ 17500。
+ *   · S 12000 —— 满局的 ~70%：要活到 8 分钟以上且清得动场子；
+ *   · A  6000 —— ~5~6 分钟 + 像样战果；
+ *   · B  2500 —— 打到 3 分钟就倒下；
+ *   · C  其余 —— 开局阶段就结束了。
  * ★ 必须保持**降序**：gradeOf 的 for 循环先命中第一个，顺序反了所有人都是 C。
+ * ★ 旧刻度（3200/2000/950）是"满局 3300 杀"时代的产物 —— 那个口径下任何活过 5 分钟的局
+ *   都是 S，评级退化成"活过一半没有"。
  */
 export const GRADE_CUTS = [
-  { g: 'S', at: 3200 },
-  { g: 'A', at: 2000 },
-  { g: 'B', at: 950 },
+  { g: 'S', at: 12000 },
+  { g: 'A', at: 6000 },
+  { g: 'B', at: 2500 },
 ];
 
+/** 行为分的换算基准：1 只小怪 = 1 分。
+ *  ★ 阶段11·P0-4：原来 Boss 300 / 进化 150 / 宝箱 20，在实测"满局 1.5 万杀"的量级下只占 8%，
+ *    等于没有行为分（打死一只 Boss ≈ 打死 21 只小怪）。这里按"当量"重定：
+ *    Boss ≈ 满局击杀量的 10%、进化 ≈ 5%、宝箱 ≈ 0.5%。 */
+const KILL_EQ = { boss: 1500, evo: 800, chest: 80 };
+
 /**
- * 总分 = 存活 + 击杀 + **行为分**（阶段10·P1-13）。
- * ★ 行为分让"打得深"也进评级：Boss 300 / 进化 150 / 宝箱 20。
+ * 总分 = 存活 + 击杀 + **行为分**（阶段10·P1-13 / 阶段11·P0-4 重标）。
+ * ★ 行为分让"打得深"也进评级：Boss / 进化 / 宝箱按"击杀当量"折算（见 KILL_EQ）。
  *   原来只有「存活 + 击杀」，于是"堆 DPS 平推"永远是唯一最优，build 深度零回报。
- *   切线上调（2800/1700/800 → 3200/2000/950）：满局 600s + 3300 杀 + 2 Boss + 2 进化 + 6 箱 ≈ 4900，
- *   所以 S 3200 仍要求"活到 8 分钟以上且清得动场子"，不是白送。
  * ★ 历史纪录不受影响 —— best.js 只存 bestSec/bestKills/bestLevel（不存分数）。
  */
 export function scoreParts(res) {
@@ -43,7 +51,7 @@ export function scoreParts(res) {
     ? res.bossKills.reduce((s, n) => s + (Number(n) || 0), 0) : 0;
   const evo = res && res.evolutions ? Object.values(res.evolutions).filter((n) => Number(n) > 0).length : 0;
   const chests = Number(res && res.chests) || 0;
-  const behavior = boss * 300 + evo * 150 + chests * 20;
+  const behavior = boss * KILL_EQ.boss + evo * KILL_EQ.evo + chests * KILL_EQ.chest;
   return { sec, kills, boss, evo, chests, behavior, total: sec + kills + behavior };
 }
 

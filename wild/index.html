@@ -47,10 +47,14 @@
           <!-- 阶段10·P1-10：今日挑战（同一天同一个种子 + 本地榜） -->
           <div id="challenge-panel" class="prog-panel"></div>
           <!-- 阶段 7：每日任务（按天重置，完成奖励灵魂）+ 成就（永久里程碑） -->
-          <div id="daily-panel" class="prog-panel"></div>
-          <div id="ach-panel" class="prog-panel"></div>
-          <!-- 阶段10·P1-11：图鉴（敌人 / Boss / 进化） -->
-          <div id="codex-panel" class="prog-panel"></div>
+          <!-- 阶段11·P1-11：三块 36 格面板默认收起（摘要行常驻），否则属性树被顶到几屏之外。 -->
+          <button class="pick-h" type="button" data-target="daily-panel"><span id="daily-sum">每日任务</span><i>▾</i></button>
+          <div id="daily-panel" class="prog-panel" hidden></div>
+          <button class="pick-h" type="button" data-target="ach-panel"><span id="ach-sum">成就</span><i>▾</i></button>
+          <div id="ach-panel" class="prog-panel" hidden></div>
+          <!-- 阶段10·P1-11：图鉴（敌人 / Boss / 进化 / 武器 / 皮肤） -->
+          <button class="pick-h" type="button" data-target="codex-panel"><span id="codex-sum">图鉴</span><i>▾</i></button>
+          <div id="codex-panel" class="prog-panel" hidden></div>
           <div id="meta-panel" class="meta-panel"></div>
           <p id="title-meta" class="title-meta"></p>
           <a class="more-games" href="https://ming-games.surge.sh" target="_blank" rel="noopener">更多游戏 → ming-games.surge.sh</a>

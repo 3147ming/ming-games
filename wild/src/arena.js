@@ -831,17 +831,19 @@ export const ARENA = {
     { at: 60,  kind: 'sec',  text: '撑过 1 分钟！' },
     { at: 180, kind: 'sec',  text: '撑过 3 分钟！' },
     { at: 300, kind: 'sec',  text: '撑过 5 分钟！' },
-    { at: 100, kind: 'kill', text: '已杀 100 只！' },
-    { at: 300, kind: 'kill', text: '已杀 300 只！' },
+    // ★ 阶段11·P0-4：击杀刻度按实测重标（满局 ~15527 杀）。六条 1:1 换 at/text，
+    //   下标不变（mileFlags 的键就是下标）。
     { at: 500, kind: 'kill', text: '已杀 500 只！' },
-    { at: 1000, kind: 'kill', text: '已杀 1000 只！' },
+    { at: 1500, kind: 'kill', text: '已杀 1500 只！' },
+    { at: 4000, kind: 'kill', text: '已杀 4000 只！' },
+    { at: 8000, kind: 'kill', text: '已杀 8000 只！' },
     // 阶段10·P1-5：后 5 分钟原本一条提示都没有 —— 追加 5 条补齐高潮段的目标感。
     // ★ 只能追加到末尾：MILESTONES 的下标就是 mileFlags 的键（构造器按数组 map 生成），
     //   插队会让老存档的已触发位错位。
     { at: 420,  kind: 'sec',  text: '撑过 7 分钟！' },
     { at: 540,  kind: 'sec',  text: '撑过 9 分钟！' },
-    { at: 2000, kind: 'kill', text: '已杀 2000 只！' },
-    { at: 3000, kind: 'kill', text: '已杀 3000 只！' },
+    { at: 12000, kind: 'kill', text: '已杀 12000 只！' },
+    { at: 16000, kind: 'kill', text: '已杀 16000 只！' },
     { at: 580,  kind: 'sec',  text: '最后 20 秒！' },
   ],
   MILE_FADE: 2.0,           // 里程碑横幅的显示时长 s（不是动画时长，是"停留 + 淡出"的总时长）
@@ -889,6 +891,15 @@ export const ARENA = {
   RAIN_COVER_MAX: 0.70,     // 覆盖率硬上限。实测：Boss1 21.6% / Boss2 31.7%（远低于上限，留足走位余地）
                             //   ⟹ 对应的"安全采样点占比" Boss1 79.2% / Boss2 69.6%，不存在无处可躲的死局
   RAIN_IMPACT_T: 0.22,      // 命中后的残渣停留时长 s（纯表现）
+
+  // ── 阶段11·P1-12：终局压力 ──
+  // ★ 为什么需要它：16 局 sim 实测 16/16 跑满、全程最低血量 86/90 ⟹ 玩家从不濒死，
+  //   Boss / 血量 / 护甲这些系统的意义归零。终局段（480~600s）单独加一层**可躲**的压力，
+  //   不碰 WAVES / XP / 四把武器伤害（那三块是 16 局逐档扫出来的冻结项）。
+  FINAL_RAIN_ON: true,     // 一行关闭：false ⟹ 行为回到"只有 Boss 会下雨"
+  FINAL_RAIN_FROM: 480,    // 从第 8 分钟开始
+  FINAL_RAIN_EVERY: 18,    // 每 18s 一场（一局约 5~6 场，密度低于 Boss 自己的那场）
+  FINAL_RAIN_COUNT: 30,    // 每场落点数（Boss1 档 30，别用 Boss3 的 52）
 
   // ───────── 阶段 4-5：超武进化 ─────────
   // 「武器拿满若干次专属强化」= 满级；满级 + 凑齐指定被动 ⟹ 本局**自动进化**（不弹选择）。
@@ -1414,6 +1425,7 @@ export class ArenaCore {
     this.rain = [];          // 弹雨落点：{ x, y, t, phase:'warn'|'hit', hitT }
     this.rainWaves = 0;      // 本局已发动的弹雨波数（sim 自证读数）
     this.rainHits = 0;       // 命中过玩家几次（sim 自证读数）
+    this.nextFinalRainAt = ARENA.FINAL_RAIN_FROM;   // 阶段11·P1-12：终局弹雨时间表
     this.bossRain = 0;       // 由 Boss 发动的波数（= rainWaves，保留供 sim 分口径核对）
     this._nextShopIdx = 0;     // 下一个待触发的 SHOP_TIMES 下标
     this.shopOpen = false;     // 非 null/true 时游戏暂停，等待购买/跳过
@@ -1502,6 +1514,9 @@ export class ArenaCore {
     // 阶段10·P1-8：装备「收束」是 shots:-1（负数加成）⟹ 必须补下限 1，
     //   否则弹道会变成 0 条（"装了装备反而打不出子弹"）。上限仍由 MAX_SHOTS 夹住。
     if (b.shots) this.shots = Math.max(1, Math.min(ARENA.MAX_SHOTS, this.shots + b.shots));
+    // 阶段11·P1-6：收束的代价从"弹道 -1"（被下限吃掉）换成"攻速 -10%"。
+    //   ★ 攻速是间隔，-10% 攻速 = 间隔 / 0.9；下限仍由 ATTACK_INTERVAL_MIN（0.2s）夹住。
+    if (b.atkMul) this.attackInterval = Math.max(ARENA.ATTACK_INTERVAL_MIN, this.attackInterval / (1 + b.atkMul));
     if (b.pierceN) this.projPierce = Math.max(this.projPierce, b.pierceN);
     if (b.dmgCut) this.dmgCut = Math.min(0.6, this.dmgCut + b.dmgCut);
     if (b.critRate) this.critRate = Math.min(ARENA.CRIT_RATE_MAX, this.critRate + b.critRate);
@@ -1540,6 +1555,20 @@ export class ArenaCore {
     }
   }
 
+  /** 阶段11·P1-9：商栈「重铸」—— 重抽本次货架的 3 件货。
+   *  ★ 原实现是 `pendingUpgrade = null; openUpgrade()`，但商栈开门时本来就**没有**待选牌
+   *    （stepWorld 遇 pendingUpgrade 早退，两者不可能同时存在），于是它实际变成"40 魂火买一次
+   *    会涨级的普通三选一"，比 50 魂火的「抉择」还强，描述却在说"重抽三张牌"。
+   *  ★ 价格按**本次开店次数**重算（不通胀第二次），与 openShop 的公式同一口径。 */
+  rerollShop() {
+    if (!this.shopOpen) return false;
+    this.shopGoods = rollShop(this.shopRng, 3);
+    for (const g of this.shopGoods) {
+      g.cost = Math.round(g.cost * Math.pow(ARENA.SHOP_COST_MUL, this.shopVisits - 1));
+    }
+    return true;
+  }
+
   /** 结算商店：buyIds 是玩家想买的货物 id 列表（按可负担 + 去重过滤）。
    *  ★ sim 传 []（不购买，保持回归=基线）；人力游戏传点击的 id。
    *   买不起 / 未知 id 静默跳过；末了清掉 shopOpen 让世界继续。 */
@@ -1550,7 +1579,8 @@ export class ArenaCore {
     for (const id of buys) {
       if (seen.has(id)) continue;
       const good = (this.shopGoods || []).find((g) => g.id === id);
-      if (!good || this.soulfire < good.cost) continue;  // 买不起 / 不存在 → 跳过
+      // 阶段11·P0-2：已购的货不能再买（同一窗内一件货限购 1 件）。
+      if (!good || good.sold || this.soulfire < good.cost) continue;  // 已购 / 买不起 / 不存在 → 跳过
       seen.add(id);
       this.soulfire -= good.cost;
       this.shopSpend += good.cost;
@@ -1564,20 +1594,27 @@ export class ArenaCore {
   /** 阶段10·P1-10：单件购买（玩家点击货物时调用，**买完不关窗**）。
    *  ★ 与 resolveShop 拆分：resolveShop 是"关窗"（sim 跳过 / 真人点『下次再来』都走它，空买只关窗）；
    *   本方法只扣钱 + 应用 + 标记，保留 shopOpen 让玩家一窗内连买。
-   *  ★ 动作类货物（s_choice / s_reroll）应用后会当场触发升级弹窗 ⟹ 让位关窗（closeShop=true），
-   *   否则商店遮罩与升级遮罩会叠在一起；关窗走 resolveShop([]) 复用同一套收尾，不会重复应用。
+   *  ★ 「抉择」会当场触发升级弹窗 ⟹ 让位关窗（closeShop=true），否则两个遮罩会叠在一起；
+   *   「重铸」只换货架、不弹窗 ⟹ 留在窗口里继续看新货（阶段11·P1-9）。
+   *   关窗走 resolveShop([]) 复用同一套收尾，不会重复应用。
    *  @returns {{bought:boolean, closeShop:boolean}} */
   buyShopGood(id) {
     if (!this.shopOpen) return { bought: false, closeShop: false };
     const good = (this.shopGoods || []).find((g) => g.id === id);
-    if (!good || this.soulfire < good.cost) return { bought: false, closeShop: false };
+    // 阶段11·P0-2：已购的同窗货物不能再买（按钮虽已置灰，但这里必须兜住程序化调用）。
+    if (!good || good.sold || this.soulfire < good.cost) return { bought: false, closeShop: false };
     // ★ 先应用、成功才扣钱：s_level 在主武器到顶/无武器时是 no-op，
     //   旧顺序（先扣后应用）会让玩家花 50 魂火买到一个"什么都没发生"。
     if (!applyShopGood(this, good)) return { bought: false, closeShop: false };
     this.soulfire -= good.cost;
     this.shopSpend += good.cost;
     this.shopBought.push(id);
-    const closeShop = (id === 's_choice' || id === 's_reroll');
+    // 阶段11·P0-2：一件货**每窗限购 1 件**。原来只 push 不标记 ⟹ 同一件可以原价买到底
+    //   （上万魂火的局能把「焰心 +2%」点成 +1000% 伤害；通胀只在跨店生效，管不住）。
+    good.sold = true;
+    // 阶段11·P1-9：只有「抉择」会当场触发升级弹窗，必须让位关窗；
+    //   「重铸」之后应该继续看新货架（不关窗）。
+    const closeShop = (id === 's_choice');
     if (closeShop) this.resolveShop([]); // 空买 = 只关窗不重应用
     return { bought: true, closeShop };
   }
@@ -1744,6 +1781,7 @@ export class ArenaCore {
     // ── 阶段 7：精英波调度 + 三选一兑现（独立 90 秒节奏，见 ARENA.ELITE_WAVE_*）──
     this._stepEliteWaves(dt);
     this._stepRain(dt);   // 阶段 8：Boss 弹幕雨（按 dt 推进 ⟹ 天然跟随倍速，见倍速任务接口约定）
+    this._stepFinalRain(); // 阶段11·P1-12：终局弹雨（固定时间表，零主 rng 侵入）
 
     // ── 武器：环绕刃 / 直斩（投射物走下面的自动攻击）──
     // 三把武器**各打各的**：独立的计时器、独立的伤害、独立的结算。
@@ -2874,10 +2912,11 @@ export class ArenaCore {
    *   预警圈在这 0.6~0.8s 里就完整画出来了，玩家据此走位；如果压根没留出成片空地，
    *   那就不是「可躲的弹雨」，而是纯粹的场地剥夺 —— 玩家会觉得是被系统杀了。
    */
-  _beginRain(idx) {
+  _beginRain(idx, countOverride = 0, fromBoss = true) {
     if (!ARENA.RAIN_ON) return 0;
     const cols = ARENA.RAIN_GRID[0], rows = ARENA.RAIN_GRID[1];
-    const want = ARENA.RAIN_COUNT[idx];
+    // 阶段11·P1-12：countOverride 供终局雨复用同一套"预警→结算→残渣"口径。
+    const want = countOverride || ARENA.RAIN_COUNT[idx];
     const warn = ARENA.RAIN_WARN[idx];
     const r = ARENA.RAIN_R;
     const [x0, y0, w, h] = this._rainField();
@@ -2905,9 +2944,20 @@ export class ArenaCore {
       });
     }
     this.rainWaves += 1;
-    this.bossRain += 1;
+    // 终局雨不是 Boss 发动的 ⟹ 不记进 bossRain（保持"= Boss 雨波数"这个口径）。
+    if (fromBoss) this.bossRain += 1;
     this.milestones.push({ text: `☔ 弹幕雨 ×${n}·走位躲开☔`, kind: 'event', t: 0, life: ARENA.EVENT_BANNER_LIFE });
     return n;
+  }
+
+  /** 阶段11·P1-12：终局弹雨的固定时间表（确定性，零主 rng 侵入 —— 落点仍走 rainRng）。
+   *  ★ 与 Boss 雨共用 _beginRain，所以"预警圈 → 结算 → 残渣"这套口径一字不差。 */
+  _stepFinalRain() {
+    if (!ARENA.FINAL_RAIN_ON) return;
+    if (this.elapsed < this.nextFinalRainAt) return;
+    if (this.elapsed > ARENA.EVENT_LAST) { this.nextFinalRainAt = 1e9; return; }
+    this.nextFinalRainAt = this.elapsed + ARENA.FINAL_RAIN_EVERY;
+    this._beginRain(2, ARENA.FINAL_RAIN_COUNT, false);
   }
 
   /**
@@ -3992,8 +4042,18 @@ export class Arena {
     this.pauseMenuEl = root.querySelector('.arena-pausemenu');
     this.pauseEl.onclick = () => this._togglePause();
     this.pauseMenuEl.querySelector('.pm-resume').onclick = () => this._togglePause();
-    this.pauseMenuEl.querySelector('.pm-quit').onclick = () => {
-      // 走 forceFinish → _end() → onDone(res)，灵魂照常结算；玩家不用再等死。
+    // 阶段11·P0-3：一键结算 = 一键结束一局，必须二次确认（3 秒窗口）。
+    //   ★ 不引入 confirm() —— 手机上是浏览器弹窗，丑且会抢焦点。
+    const quitBtn = this.pauseMenuEl.querySelector('.pm-quit');
+    this._quitArmedAt = 0;
+    quitBtn.onclick = () => {
+      const now = performance.now();
+      if (now - this._quitArmedAt > 3000) {
+        this._quitArmedAt = now;
+        quitBtn.textContent = '再点一次 · 结算并退出';
+        return;
+      }
+      // 走 forceFinish → _end() → onDone(res)，灵魂照常结算；存活判定按真实时长。
       this.paused = false;
       this.pauseMenuEl.hidden = true;
       this.forceFinish();
@@ -4218,7 +4278,14 @@ export class Arena {
     // 升级/商栈本身已经在暂停世界；此时再叠一层暂停菜单只会两个遮罩打架。
     if (!this.paused && (this.core.pendingUpgrade || this.core.shopOpen)) return;
     this.paused = !this.paused;
-    if (this.pauseMenuEl) this.pauseMenuEl.hidden = !this.paused;
+    if (this.pauseMenuEl) {
+      this.pauseMenuEl.hidden = !this.paused;
+      // 阶段11·P0-3：每次打开都把「结束本局」恢复到未武装状态（避免上次的二次确认残留）。
+      if (this.paused) {
+        this._quitArmedAt = 0;
+        this.pauseMenuEl.querySelector('.pm-quit').textContent = '结束本局并结算';
+      }
+    }
     if (!this.paused) this._needsPaint = true;
   }
 
@@ -4296,7 +4363,10 @@ export class Arena {
     // 阶段 4-3：中央横幅（里程碑）—— 从 core 搬过来并自己走淡出计时。
     // 放在这里而不是 _render 里：暂停（三选一）时 _render 不跑，横幅不该趁暂停偷偷计时。
     this._drainBanners();
-    for (const b of this._banners) b.t += dt;
+    // 阶段11·P0-3：暂停时横幅不该偷偷计时（与上面 _drainBanners 的注释同一口径）。
+    //   ★ 用局部 paused（= 暂停菜单 / 三选一 / 商栈），而不是裸 this.paused ——
+    //     后两种遮罩同样冻结世界，横幅也不该在它们后面偷偷走完。
+    if (!paused) for (const b of this._banners) b.t += dt;
     this._banners = this._banners.filter((b) => b.t < (b.life || ARENA.MILE_FADE));
 
     // 阶段 3 音效：比对 core 状态增量触发对应声音（射击/命中/升级/技能/开箱/死亡/受伤）。
@@ -4364,24 +4434,26 @@ export class Arena {
   //   跳过按钮在 start() 里已接线（resolveShop([])）。
   _showShop() {
     this.shopEl.hidden = false;
-    // 阶段10·P1-10：余额行补「第 N 次 + 买完可再买」，让玩家知道价格在涨、且一窗能连买。
+    // 阶段10·P1-10：余额行补「第 N 次」；阶段11·P0-2：改成「每件限购 1 件」
+    //   （玩家读得懂，别让人以为点坏了）。
     this.shopBalanceEl.textContent =
-      `魂火：${Math.floor(this.core.soulfire)} · 第 ${this.core.shopVisits} 次 · 买完可再买`;
+      `魂火：${Math.floor(this.core.soulfire)} · 第 ${this.core.shopVisits} 次 · 每件限购 1 件`;
     this.shopChoicesEl.innerHTML = '';
     for (const g of (this.core.shopGoods || [])) {
-      const afford = this.core.soulfire >= g.cost;
+      const sold = !!g.sold;
+      const afford = !sold && this.core.soulfire >= g.cost;
       const btn = document.createElement('button');
-      btn.className = 'shop-choice' + (afford ? '' : ' cant');
-      btn.innerHTML = `<span class="shop-name">${g.name}</span>`
+      btn.className = 'shop-choice' + (afford ? '' : ' cant') + (sold ? ' sold' : '');
+      btn.innerHTML = `<span class="shop-name">${g.name}${sold ? ' · 已购' : ''}</span>`
         + `<span class="shop-desc">${g.desc}</span>`
-        + `<span class="shop-cost">${g.cost} 魂火</span>`;
+        + `<span class="shop-cost">${sold ? '—' : g.cost + ' 魂火'}</span>`;
       btn.disabled = !afford;
       btn.onclick = () => {
         const r = this.core.buyShopGood(g.id);
         if (!r || !r.bought) return;
         this._needsPaint = true;
         if (r.closeShop) {
-          // 动作类货物（抉择/重铸）当场触发升级弹窗 ⟹ 让位关窗（loop 会接管显示升级遮罩）
+          // 「抉择」当场触发升级弹窗 ⟹ 让位关窗（loop 会接管显示升级遮罩）；「重铸」不关窗。
           this.shopEl.hidden = true;
         } else {
           this._showShop(); // 买完不关窗：重渲染货架（余额 + 可负担状态刷新，价格本局不变）
@@ -5361,7 +5433,11 @@ export class Arena {
       let tail;
       if (evo) {
         const have = Math.min(c.passiveTaken[evo.passive] || 0, evo.need);
-        tail = `${lv}/${lvMax} · 需${EVO_PASSIVE_SHORT[evo.passive] || evo.passive}×${evo.need}（${have}/${evo.need}）`;
+        const short = EVO_PASSIVE_SHORT[evo.passive] || evo.passive;
+        // 阶段11·P1-8：只在"已经凑到一半"或"等级已满、只差被动"时才展开缺口。
+        //   全程展开的话，5 把武器 × 每条 17 字 ⟹ 底部 6~9 行，直接盖住角色。
+        const near = have > 0 || lv >= lvMax;
+        tail = near ? `${lv}/${lvMax} · ${short}${have}/${evo.need}` : `${lv}/${lvMax}`;
       } else {
         // 没有下一阶：要么已经到顶（剑 C3），要么武器本身没有进化线
         tail = st > 0 ? '已进化' : '满级';
@@ -5430,11 +5506,14 @@ export class Arena {
     lines.forEach((s, i) => ctx.fillText(s, bx + pad, by + pad + i * lh));
   }
 
-  /** 探针/外部用：立刻结束本局（存活判定按当前是否活满进行） */
+  /** 探针 / 暂停菜单共用：立刻结束本局。
+   *  ★ 阶段11·P0-3：存活判定必须看**是否真的跑满时长**，不能看 hp > 0 ——
+   *    2:30 满血退出会被判成"活到天亮"、结算页打出「整整十分钟」（玩家一眼看穿）。
+   *    hp <= 0 的死亡路径在 stepWorld 已经判过，这里只管"提前收工"这一种。 */
   forceFinish() {
     if (this.ended || !this.core) return;
     this.core.done = true;
-    this.core.survived = this.core.hp > 0;
+    this.core.survived = this.core.time >= this.core.durationMs;
     this._end();
   }
 

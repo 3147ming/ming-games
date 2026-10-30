@@ -38,7 +38,7 @@ export const SHOP_ITEMS = [
   // 阶段10·P1-10：新增 3 件**构筑向**货物（5 → 8），让商栈从"纯数值微调"变成"真有取舍"：
   { id: 's_choice', name: '抉择', desc: '立刻再开一次三选一（不给等级）', stat: 'action', amt: 0,  cost: 50 },
   { id: 's_level',  name: '锻造', desc: '当前主武器等级 +1',            stat: 'action', amt: 0,  cost: 50 },
-  { id: 's_reroll', name: '重铸', desc: '重抽一次三选一的三张牌',         stat: 'action', amt: 0,  cost: 40 },
+  { id: 's_reroll', name: '重铸', desc: '重抽货架上的 3 件货（价格不变）', stat: 'action', amt: 0,  cost: 40 },
 ];
 
 const SHOP_BY_ID = Object.fromEntries(SHOP_ITEMS.map((g) => [g.id, g]));
@@ -76,7 +76,10 @@ export function applyShopGood(core, good) {
   // 阶段10·P1-10：构筑向货物（动作而非数值）—— 这三种不走下面的 stat 开关，直接调用 core 动作。
   if (good.id === 's_choice') { core.openUpgrade({ reason: 'elite' }); return true; }   // 立刻再给一次三选一（不给等级）
   if (good.id === 's_level')  { const w = core._mainWeapon ? core._mainWeapon() : null; return w ? core.forceWeaponLevelUp(w) : false; } // 主武器 +1 级（到顶/无武器 → 不生效，调用方不扣钱）
-  if (good.id === 's_reroll') { core.pendingUpgrade = null; core.openUpgrade(); return true; } // 重抽三张牌
+  // 阶段11·P1-9：重抽**货架**（不是三选一）。原实现 `pendingUpgrade = null; openUpgrade()`
+  //   在真人局里永远没有旧牌可重抽（商栈开门时 pendingUpgrade 必为 null），实际变成
+  //   "40 魂火买一次会涨级的三选一"，比 50 的「抉择」还强。改回描述里的意思。
+  if (good.id === 's_reroll') { return core.rerollShop ? core.rerollShop() : false; }
   const amt = good.amt != null ? good.amt : it.amt;
   switch (it.stat) {
     case 'dmgBase':  core.dmgBase += amt; break;

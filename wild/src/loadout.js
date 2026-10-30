@@ -63,8 +63,9 @@ export const LOADOUT_ITEMS = [
   { id: 'w_spray', slot: 'weapon', name: '散射', desc: '攻击数量 +1，伤害 -15%', buff: { shots: 1, dmgCut: 0.15 }, unlock: { tier: 2 } },
   { id: 'w_pierce', slot: 'weapon', name: '贯穿', desc: '弹道可穿透 1 个敌人，伤害 -10%', buff: { pierceN: 1, dmgCut: 0.10 }, unlock: { kills: 1500 } },
   // 阶段10·P1-8：给「弹道流」一个更便宜的入口（散射是 tier 2，这件 1500 杀就能拿）。
-  //   ★ shots: -1 是**负数加成**，applyLoadout 必须补 Math.max(1, …) 下限，否则会变成 0 条弹道。
-  { id: 'w_choke', slot: 'weapon', name: '收束', desc: '弹道 -1，伤害 +18%', buff: { shots: -1, dmgBase: 0.18 }, unlock: { kills: 1500 } },
+  // 阶段11·P1-6：原来写 `shots: -1` —— 基础弹道只有 1 条，被 applyLoadout 的 Math.max(1, …)
+  //   夹回 1，等于没有代价（描述在骗人）。改成"攻速 -10%"，用既有 attackInterval，不加新状态。
+  { id: 'w_choke', slot: 'weapon', name: '收束', desc: '攻速 -10%，伤害 +18%', buff: { atkMul: -0.10, dmgBase: 0.18 }, unlock: { kills: 1500 } },
 
   // ── 护符槽（4 件）──
   { id: 'c_vital', slot: 'charm', name: '生机', desc: '生命上限 +15', buff: { maxHp: 15 }, unlock: { tier: 0 } },
@@ -100,6 +101,8 @@ function zeroBuffs() {
     // 阶段 8-2：cdMul 已从零值形状里移除（连带「急速」装备删除）。
     dmgCut: 0, shots: 0, pierceN: 0, critRate: 0, lifesteal: 0,
     thorns: 0, goldMul: 0, shieldEvery: 0, revives: 0,
+    // 阶段11·P1-6：攻速乘区（"收束"的代价）。加性累加，applyLoadout 按 (1 + atkMul) 折算间隔。
+    atkMul: 0,
   };
 }
 

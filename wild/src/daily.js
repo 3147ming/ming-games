@@ -14,7 +14,8 @@
 //   "昨天完成的任务今天还算不算"这类判断散落在各处的问题。
 
 import { tierOf } from './content.js';
-import { loadMeta, saveMeta } from './meta.js';
+import { loadMeta, saveMeta, totalLevels } from './meta.js';
+import { SKINS } from './skins.js';
 
 const KEY = 'wild.daily.v1';
 
@@ -36,12 +37,14 @@ const KEY = 'wild.daily.v1';
  *   累计口径留给成就。
  */
 export const DAILY_POOL = [
-  { id: 'd_kill500',  name: '以一敌百', desc: '单局击杀 500 个敌人',       metric: 'kills',      target: 500, op: 'run',   reward: 120 },
-  { id: 'd_kill1200', name: '割草不休', desc: '单局击杀 1200 个敌人',      metric: 'kills',      target: 1200, op: 'run', reward: 260 },
+  // ★ 阶段11·P0-4：击杀刻度按实测重标（满局 ~15527 杀，旧值 500/1200 是满局的 3%/8%，
+  //   几乎每局自动完成）。id / 顺序 / reward 一个字不动。
+  { id: 'd_kill500',  name: '以一敌百', desc: '单局击杀 2500 个敌人',      metric: 'kills',      target: 2500, op: 'run',   reward: 120 },
+  { id: 'd_kill1200', name: '割草不休', desc: '单局击杀 6000 个敌人',      metric: 'kills',      target: 6000, op: 'run', reward: 260 },
   { id: 'd_surv300',  name: '固守五分钟', desc: '单局存活满 5 分钟',        metric: 'survivalSec', target: 300, op: 'run', reward: 150 },
   { id: 'd_surv540',  name: '九分钟生还', desc: '单局存活满 9 分钟',        metric: 'survivalSec', target: 540, op: 'run', reward: 300 },
-  { id: 'd_lv25',     name: '登高望远', desc: '单局等级达到 25',          metric: 'level',      target: 25, op: 'run',   reward: 140 },
-  { id: 'd_lv35',     name: '接近极限', desc: '单局等级达到 35',          metric: 'level',      target: 35, op: 'run',   reward: 240 },
+  { id: 'd_lv25',     name: '登高望远', desc: '单局等级达到 30',          metric: 'level',      target: 30, op: 'run',   reward: 140 },
+  { id: 'd_lv35',     name: '接近极限', desc: '单局等级达到 40',          metric: 'level',      target: 40, op: 'run',   reward: 240 },
   { id: 'd_flame',    name: '赤焰试炼', desc: '使用「赤焰」皮肤完成一局',  metric: 'skin',       target: 'flame', op: 'run', reward: 100 },
   { id: 'd_frost',    name: '幽霜试炼', desc: '使用「幽霜」皮肤完成一局',  metric: 'skin',       target: 'frost', op: 'run', reward: 100 },
   { id: 'd_gold',     name: '鎏金试炼', desc: '使用「鎏金」皮肤完成一局',  metric: 'skin',       target: 'gold',  op: 'run', reward: 100 },
@@ -100,18 +103,37 @@ export function dailyDone(task, res) {
   return dailyProgress(task, res) >= task.target;
 }
 
+/** 当前档位下**真的能完成**的任务 id。
+ *  ★ 皮肤从内容批 P1-9 起按阶段解锁（默认 0 / 赤焰 1 / 幽霜·灰烬·玄曜 2 / 鎏金·苔痕·余烬 3），
+ *    锁着的皮肤 selectSkin 会静默 no-op ⟹ res.skin 永远不是那个 id ⟹ 那条任务永远判不完成。
+ *    而 pickDaily 是盲抽的，新档第一天就可能抽到「鎏金试炼」（要总 50 级 ≈ 20 局）。
+ *  ★ 用 max(当前等级, peakLevels)：与装备解锁（meta.js 的 normalizeUnlocked）同一个口径 ——
+ *    转生清空 levels 之后，已经解锁过的皮肤不该重新上锁。
+ *  ★ 未传 / 传空 ⟹ 视为"整池都可做"（pickDaily 的旧调用点行为不变）。 */
+function allowedTaskIds() {
+  const m = loadMeta();
+  const tier = tierOf(Math.max(totalLevels(m), Number(m.peakLevels) || 0));
+  const locked = new Set(SKINS.filter((s) => tier < (Number(s.tier) || 0)).map((s) => s.id));
+  const out = new Set();
+  for (const t of DAILY_POOL) if (t.metric !== 'skin' || !locked.has(t.target)) out.add(t.id);
+  return out;
+}
+
 /**
  * 确定性发牌：给定日期种子（`dateKey` 字符串），取 3 条互不相同的任务。
  * ★ 不用 rng、不用 Date.now()：同一个 dateKey 永远给出同一组，
  *   于是"刷新页面"不会换任务，同一天玩家和测试看到的是同一张表。
+ * ★ 第三参 allowed（可选）：只从可完成任务里抽。不传 ⟹ 整池，行为与旧版逐条相同。
  */
-export function pickDaily(dateKey, history = {}) {
+export function pickDaily(dateKey, history = {}, allowed = null) {
   let h = 2166136261;
   for (let i = 0; i < dateKey.length; i++) {
     h ^= dateKey.charCodeAt(i);
     h = (h * 16777619) >>> 0;
   }
-  const n = DAILY_POOL.length;
+  // ★ 阶段11·P0-1：allowed 为空/未传 ⟹ 用整池（测试与所有旧调用点行为逐条不变）。
+  const pool = (allowed && allowed.size) ? DAILY_POOL.filter((t) => allowed.has(t.id)) : DAILY_POOL;
+  const n = pool.length;
   // ── 阶段10·内容批P0-1：DAILY_ROLL 落地（原来只是个没人读的常量）──
   // ★ 近 DAILY_ROLL 天出过的 id 记进 recent，尽量避开 ⟹ 一周内不重复同一组。
   // ★ **只算过去的天**（k < dateKey）：今天的自条目被排除，于是
@@ -127,12 +149,12 @@ export function pickDaily(dateKey, history = {}) {
     let idx = h % n;
     let guard = 0;
     // 兜底：若 recent 把整个池子都盖住了（理论上不会），guard 走完后照样选，绝不死循环。
-    while ((used.has(idx) || recent.has(DAILY_POOL[idx].id)) && guard++ < n * 3) {
+    while ((used.has(idx) || recent.has(pool[idx].id)) && guard++ < n * 3) {
       h = (h * 1664525 + 1013904223) >>> 0;
       idx = h % n;
     }
     used.add(idx);
-    picked.push(DAILY_POOL[idx]);
+    picked.push(pool[idx]);
   }
   return picked;
 }
@@ -143,10 +165,15 @@ function emptyDaily(dateKey, tasks) {
   return { dateKey, ids: tasks.map((t) => t.id), done: [], claimed: [], claimedDays: {}, progress: {}, history: {} };
 }
 
-function normalize(d, dateKey, tasks) {
+function normalize(d, dateKey, tasks, allowed) {
   const base = emptyDaily(dateKey, tasks);
   if (!d || typeof d !== 'object') return base;
-  const ids = Array.isArray(d.ids) ? d.ids.filter((id) => tasks.some((t) => t.id === id)) : [];
+  // ★ 阶段11·P0-1：白名单必须是**整个池子**，不能是"今天重抽出来的那 3 条"。
+  //   旧写法（filter 到 tasks 里）在历史避重一生效时就会 id 不足 3 条 ⟹ 每次读档都走重抽分支
+  //   —— 现在只是"重抽出同一组"侥幸没出事，加上 allowed 之后就真的会换任务了。
+  const ids = Array.isArray(d.ids)
+    ? d.ids.filter((id) => DAILY_POOL.some((t) => t.id === id) && (!allowed || allowed.has(id)))
+    : [];
   // ★ 阶段10·P0-1：history 是"每天各发了哪 3 条"的历史表，供 DAILY_ROLL 避重。
   //   它**不能**和 claimedDays 混在一起（跨天整份重置语义不同），单独一个键。
   const history = (d.history && typeof d.history === 'object') ? { ...d.history } : {};
@@ -154,7 +181,7 @@ function normalize(d, dateKey, tasks) {
   //   ids 用旧存档的（若仍属于今天的任务池），否则按「今天 + 历史」重新发 3 条。
   const useIds = d.dateKey === dateKey && ids.length === tasks.length
     ? ids
-    : pickDaily(dateKey, history).map((t) => t.id);
+    : pickDaily(dateKey, history, allowed).map((t) => t.id);
   return {
     dateKey,
     ids: useIds.slice(0, DAILY_COUNT),
@@ -171,10 +198,13 @@ function normalize(d, dateKey, tasks) {
 
 /** 读当日任务状态（dateKey 由调用方从本地日期算出，形如 '2026-10-03'）。 */
 export function loadDaily(store, dateKey) {
-  const tasks = pickDaily(dateKey);
+  // ★ 阶段11·P0-1：先算"当前档位能做完哪些任务"，再发牌 / 归一化。
+  //   两处必须用同一个 allowed，否则读档与发牌会各按一套池子，出现"重抽出不同任务"。
+  const allowed = allowedTaskIds();
+  const tasks = pickDaily(dateKey, {}, allowed);
   try {
     const raw = store.getItem(KEY);
-    if (raw) return normalize(JSON.parse(raw), dateKey, tasks);
+    if (raw) return normalize(JSON.parse(raw), dateKey, tasks, allowed);
   } catch { /* 忽略，走默认 */ }
   return emptyDaily(dateKey, tasks);
 }

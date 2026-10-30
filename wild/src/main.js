@@ -17,6 +17,7 @@ import { heroById, CLASS_PASSIVES, WEAPONS, offerById, evoById, EVOLUTIONS } fro
 import { loadBest, bestLines, submitRun, toNextGrade, scoreParts, gradeOf, scoreOf } from './best.js';
 import { loadChallenge, submitChallenge, challengeSeed } from './challenge.js';
 import { loadCodex, mergeCodex } from './codex.js';
+import { SKINS } from './skins.js';
 import { loadAccount, setName, submitRun as submitAccount, titleOf } from './account.js';
 import { settleRun, dailyBoard, achievementBoard, loadDaily, DAILY_COUNT, streakOf } from './daily.js';
 import { Sfx } from './sfx.js';
@@ -51,6 +52,10 @@ const btnRetry = document.getElementById('btn-retry');
 const btnHome = document.getElementById('btn-home');        // 阶段10 · P0-1：结算 → 标题
 const skinSum = document.getElementById('skin-sum');        // 阶段10 · P0-7：折叠摘要
 const loadoutSum = document.getElementById('loadout-sum');
+// 阶段11·P1-11：每日/成就/图鉴三块的折叠摘要
+const dailySum = document.getElementById('daily-sum');
+const achSum = document.getElementById('ach-sum');
+const codexSum = document.getElementById('codex-sum');
 
 const usePilot = params.get('pilot') === '1';
 // 阶段 9：?speed=N 现在设「开局局内倍速」初值（合法档见 GAME_SPEEDS；非法值回落 1x）。
@@ -135,7 +140,8 @@ function showResult(res) {
     <div class="rs-row">
       <div class="rs-cell"><span class="rs-k">等级</span><span class="rs-v sm">${res.level}</span></div>
       <!-- 阶段 8-2：结算页的「冲击波」格已删除（res.casts 这个读数也一并取消）。 -->
-      <div class="rs-cell"><span class="rs-k">拾取宝石</span><span class="rs-v sm">${res.gems}</span></div>
+      <!-- 阶段11 顺手修：精英宝石的 xp 可能是小数，gainXp 原样累加 ⟹ 结算会显示 56441.42… -->
+      <div class="rs-cell"><span class="rs-k">拾取宝石</span><span class="rs-v sm">${Math.round(Number(res.gems) || 0)}</span></div>
       <div class="rs-cell"><span class="rs-k">出场敌人</span><span class="rs-v sm">${res.spawned}</span></div>
     </div>`;
   // ── 阶段 4-3 目标感：评级 + 新纪录 ──
@@ -497,6 +503,11 @@ function renderDailyPanel() {
   }).join('');
   dailyPanel.innerHTML =
     `<div class="prog-head">每日任务（${dateKey}）${streak > 0 ? ` · 连续 ${streak} 天` : ''}</div>${cells}`;
+  // 阶段11·P1-11：折叠摘要（面板默认 hidden，摘要行常驻）
+  if (dailySum) {
+    dailySum.textContent = `每日任务 · ${board.filter((t) => t.claimed).length}/${board.length} 已领`
+      + (streak > 0 ? ` · 连续 ${streak} 天` : '');
+  }
 }
 
 /** 阶段 7：标题页成就面板（永久里程碑，奖励大额灵魂）。 */
@@ -520,6 +531,8 @@ function renderAchPanel() {
       + `<span class="pc-rew">+${a.reward} 灵魂 · ${a.unlocked ? '已解锁' : '未解锁'}</span></div>`;
   }).join('');
   achPanel.innerHTML = `<div class="prog-head">成就 ${got}/${board.length}</div>${cells}`;
+  // 阶段11·P1-11：折叠摘要
+  if (achSum) achSum.textContent = `成就 ${got}/${board.length}`;
 }
 
 /** 阶段10·P1-10：标题页「今日挑战」块（同一天同种子 + 本地榜）。 */
@@ -548,16 +561,34 @@ function renderCodexPanel() {
   const cell = (label, n, unit = '次') => (n > 0
     ? `<div class="prog-cell done"><span class="pc-name">${label}</span><span class="pc-desc">×${n} ${unit}</span></div>`
     : `<div class="prog-cell open"><span class="pc-name">???</span><span class="pc-desc">未遇见</span></div>`);
+  // 阶段11·P1-10：图鉴只画了三类，而 codex.js 一直在收 weapons / skins ——
+  //   收而不显 = 玩家永远不知道自己还差哪几套皮肤。
+  const seenW = WEAPONS.filter((w) => c.weapons.includes(w.id)).length;
+  const seenS = SKINS.filter((s) => c.skins.includes(s.id)).length;
+  // 武器/皮肤都是"有没有"，不是次数 ⟹ 不用 cell() 的「×N 次」那套，另写一个二元格。
+  const hasCell = (id, label, arr, yes, no) => (arr.includes(id)
+    ? `<div class="prog-cell done"><span class="pc-name">${label}</span><span class="pc-desc">${yes}</span></div>`
+    : `<div class="prog-cell open"><span class="pc-name">???</span><span class="pc-desc">${no}</span></div>`);
   const enemies = enemyKeys.map((k) => cell(ENEMY_TYPES[k].label || k, c.kinds[k] || 0)).join('');
   const bosses = bossKeys.map((k) => cell(BOSS_TYPES[k].label || k, c.kinds[k] || 0)).join('');
   const evos = EVOLUTIONS.map((e) => (c.evolutions.includes(e.id)
     ? `<div class="prog-cell done"><span class="pc-name">${e.label}</span><span class="pc-desc">已达成</span></div>`
     : `<div class="prog-cell open"><span class="pc-name">???</span><span class="pc-desc">未达成</span></div>`)).join('');
+  const weapons = WEAPONS.map((w) => hasCell(w.id, w.label, c.weapons, '已持有', '未持有')).join('');
+  const skins = SKINS.map((s) => hasCell(s.id, s.name, c.skins, '已穿过', '未穿过')).join('');
   codexPanel.innerHTML =
-    `<div class="prog-head">图鉴 · 敌人 ${seenEnemies}/${enemyKeys.length} · Boss ${seenBosses}/${bossKeys.length} · 进化 ${seenEvos}/${EVOLUTIONS.length}</div>`
+    `<div class="prog-head">图鉴 · 敌人 ${seenEnemies}/${enemyKeys.length} · Boss ${seenBosses}/${bossKeys.length}`
+    + ` · 进化 ${seenEvos}/${EVOLUTIONS.length} · 武器 ${seenW}/${WEAPONS.length} · 皮肤 ${seenS}/${SKINS.length}</div>`
     + `<div class="prog-sub">敌人</div>${enemies}`
     + `<div class="prog-sub">Boss</div>${bosses}`
-    + `<div class="prog-sub">进化</div>${evos}`;
+    + `<div class="prog-sub">进化</div>${evos}`
+    + `<div class="prog-sub">武器</div>${weapons}`
+    + `<div class="prog-sub">皮肤</div>${skins}`;
+  // 阶段11·P1-11：折叠摘要（武器/皮肤也进摘要，否则收起后完全看不出收集度）
+  if (codexSum) {
+    codexSum.textContent = `图鉴 · 敌 ${seenEnemies}/${enemyKeys.length} · Boss ${seenBosses}/${bossKeys.length}`
+      + ` · 进化 ${seenEvos}/${EVOLUTIONS.length} · 武器 ${seenW}/${WEAPONS.length} · 皮肤 ${seenS}/${SKINS.length}`;
+  }
 }
 
 // 英雄 id → 中文名（结算页展示用，避免暴露内部 id）

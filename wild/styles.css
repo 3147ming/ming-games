@@ -387,6 +387,12 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
   padding: 0 12px;
   z-index: 54;
   pointer-events: none;
+  /* 阶段11·P1-8：持有栏高度护栏。5 把武器 + 12 条被动原先能长到 6~9 行，
+     从 bottom:76px 往上糊住角色所在的中央区。最多 3 行，超出裁掉最上面一行。 */
+  /* 实测 chip 行高 ≈18px + 5px gap：88px 会放 4 行 ⟹ 压到 68px 才是 3 行。 */
+  max-height: 68px;
+  overflow: hidden;
+  align-content: flex-end;
 }
 .inv-chip {
   font-size: 10px;
@@ -457,6 +463,8 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
 }
 .shop-choice:hover { background: #251f33; }
 .shop-choice.cant { opacity: .45; }
+/* 阶段11·P0-2：已购的货灰化（与"买不起"区分：这里用边框而不是纯透明度堆叠）。 */
+.shop-choice.sold { opacity: .45; border-color: var(--line); }
 .shop-name { font-size: 15px; color: var(--paper); }
 .shop-desc { font-size: 12px; color: var(--ink, #8d8677); }
 .shop-cost { font-size: 11px; letter-spacing: .08em; color: var(--flux); }
