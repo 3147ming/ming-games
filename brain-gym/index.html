@@ -1159,11 +1159,14 @@ function lvStarKey(id){return 'btstar_'+id+'_stars'}
 function lvAllKey(id){return 'btstar_'+id+'_all'}
 /* 通用插值：lv 1..12 → t=0..1，在 lo/hi 之间取整 */
 function lerpLv(lv,lo,hi){var t=(Math.max(1,Math.min(LEVELS_PER_GAME,lv||1))-1)/(LEVELS_PER_GAME-1);return Math.round(lo+(hi-lo)*t)}
+/* P0-3 通用插值器：把 lv 在「简单档再松 10%」↔「困难档再紧 15%」之间线性外推（沿 d0→d2 方向） */function L(cfgArr,d,lv,fields){var di=Math.max(0,Math.min(cfgArr.length-1,d|0));var base=cfgArr[di],first=cfgArr[0],last=cfgArr[cfgArr.length-1];var c={};for(var k in base)c[k]=base[k];var t=(Math.max(1,Math.min(12,lv||1))-1)/11;for(var i=0;i<fields.length;i++){var f=fields[i],a=first[f],b=last[f];if(a==null||b==null||a===b)continue;var lo=a-(b-a)*0.10;var hi=b+(b-a)*0.15;var v=lo+(hi-lo)*t;c[f]=(Number.isInteger(a)&&Number.isInteger(b))?Math.round(v):Math.round(v*1000)/1000}return c}/* P0-3 rule F：盘面/连答类用「一局连解 needRounds 盘」表达关卡 */function needRounds(lv){return 1+Math.floor((Math.max(1,Math.min(12,lv||CUR_LV||1))-1)/4)}
 function lvUnlocked(id){var v=+(S.getItem(lvKey(id))||1);if(!isFinite(v)||v<1)v=1;return Math.min(LEVELS_PER_GAME,v)}
 function lvStarArr(id){try{var a=JSON.parse(S.getItem(lvStarKey(id))||'[]');return (Array.isArray(a)?a:[]).slice(0,LEVELS_PER_GAME)}catch(e){return[]}}
 function lvStarOf(id,lv){return lvStarArr(id)[lv-1]||0}
 function lvStarStr(n){n=Math.max(0,Math.min(3,n||0));return '★★★'.slice(0,n)+'☆☆☆'.slice(0,3-n)}
 function lvAllCleared(id){return +(S.getItem(lvAllKey(id))||0)===1}
+/* 第三批：明确豁免关卡系统的游戏——不显示 12 关选关面板 */
+var LEVEL_EXEMPT={tomato:1};
 /* 表现分 → 1~3 星：以同难度历史中位为基准（1.3 倍 = 三星，0.85 倍 = 两星） */
 function calcStars(g,score,list){
   try{if(g&&typeof g.lvClear==='function'&&g.lvClear(score)===false)return 0}catch(e){}
@@ -1184,8 +1187,9 @@ function settleLevel(id,lv,stars){
   }
   return {unlocked:nu,stars:Math.max(old,stars||0),all:lvAllCleared(id)};
 }
+var BG_RND={};
 function openGame(g,skipIntro,lv0){try{MENUSCROLL=window.pageYOffset||(document.documentElement&&document.documentElement.scrollTop)||0}catch(e){MENUSCROLL=0}
-commitExit();LIVE=null;CURRENT=g;stopTimers();document.onkeydown=null;CURDIFF=0;CUR_ENDLESS=false;
+commitExit();LIVE=null;CURRENT=g;stopTimers();document.onkeydown=null;CURDIFF=0;CUR_ENDLESS=false;BG_RND={};
 CUR_LV=Math.min(lvUnlocked(g.id),Math.max(1,lv0||LEVELS_PER_GAME));
 if(g.diffs){var _raw=S.getItem('bd_'+g.id);var sv=_raw==null?-1:(+_raw);if(sv>=0&&sv<g.diffs.length)CURDIFF=sv;else{var _bv=baseDiffOf(g.id);if(_bv!=null&&_bv>=0&&_bv<g.diffs.length)CURDIFF=_bv}}
 var NEEDFILL={tiles:1,snake:1};
@@ -1207,6 +1211,7 @@ g.diffs.forEach(function(df,i){var bk=bestKey(g.id,i,false);var bv=+(S.getItem(b
 p.appendChild(dr)}
 /* P0-5 选关面板：已通关显示 ★，未解锁灰显 */
 var lvUn=lvUnlocked(g.id),curLv=CUR_LV;
+if(!LEVEL_EXEMPT[g.id]){
 p.appendChild(h('div','hint','🗺 选择关卡（1~'+LEVELS_PER_GAME+'）：'));
 var lvr=h('div','lvrow');
 for(var li=1;li<=LEVELS_PER_GAME;li++)(function(lv){
@@ -1220,7 +1225,7 @@ for(var li=1;li<=LEVELS_PER_GAME;li++)(function(lv){
   };
   lvr.appendChild(b);
 })(li);
-p.appendChild(lvr);
+p.appendChild(lvr);}
 if(ENDLESS_GAMES[g.id]){CUR_ENDLESS=+(S.getItem('be_'+g.id)||0)?true:false;
 var _eb=h('button','diffbtn'+(CUR_ENDLESS?' sel':''),'🌌 无尽模式<small>'+(CUR_ENDLESS?'已开启 · 直到阵亡/失误':'关闭 · 有限轮次')+'</small>');
 _eb.onclick=function(){CUR_ENDLESS=!CUR_ENDLESS;try{S.setItem('be_'+g.id,CUR_ENDLESS?1:0)}catch(e){}
@@ -1530,14 +1535,16 @@ function openLevels(game,d,startFn){
  var info=progGet(game.id,d);
  var maxShow=(LEVELCOUNT[game.id]&&LEVELCOUNT[game.id][d])||Math.min(300,Math.max(info.cleared+info.skip+16,20));
  var frontier=Math.min(info.cleared+info.skip+1,maxShow);
- st.appendChild(h('div','hud','<span>'+game.icon+' '+game.name+'</span><span>'+game.diffs[d].n+'</span>'));
+ st.appendChild(h('div','hud','<span>'+game.icon+' '+game.name+(lvAllCleared(game.id)?' 🏆':'')+'</span><span>'+game.diffs[d].n+'</span>'));
  var hint=h('div','hint','✅ 已通关可重玩 · ⏭ 已跳过可重玩 · 🔓 下一关。通关记录自动保存，下次进来的选关界面会保留。');
  st.appendChild(hint);
  var grid=h('div','lvgrid');st.appendChild(grid);
  for(var lv=1;lv<=maxShow;lv++){
   var state= lv<=info.cleared?'cleared': lv<=info.skip?'skipped': (lv===frontier?'next':'locked');
+  var _ic=state==='cleared'?'✅':state==='skipped'?'⏭':state==='next'?'🔓':'🔒';
+  var _sr=state==='cleared'?('<span class="st">'+lvStarStr(lvStarOf(game.id,lv))+'</span>'):'';
   var b=h('button','lvbtn '+state);
-  b.innerHTML=(state==='cleared'?'✅':state==='skipped'?'⏭':state==='next'?'🔓':'🔒')+'<span>'+lv+'</span>';
+  b.innerHTML=_ic+'<span>'+lv+'</span>'+_sr;
   if(state==='locked'){b.disabled=true;}else b.onclick=(function(L){return function(){startFn(L)}})(lv);
   grid.appendChild(b);
  }
@@ -1549,7 +1556,7 @@ function openLevels(game,d,startFn){
  bar.appendChild(skipB);bar.appendChild(diffB);bar.appendChild(menuB);st.appendChild(bar);
 }
 // ================= 1. 修理大师（原修理大师＋矩阵序列 合并升级版） =================
-function gRepair(d){stopTimers();d=d||0;var cfg=[{t:620,f:420,lv1:1,cap:10},{t:500,f:340,lv1:3,cap:12},{t:400,f:270,lv1:5,cap:14}][d];var lv=cfg.lv1,busy=true;var st=$('stage');st.innerHTML='';
+function gRepair(d,lv){stopTimers();d=d||0;var cfg=L([{t:620,f:420,lv1:1,cap:10},{t:500,f:340,lv1:3,cap:12},{t:400,f:270,lv1:5,cap:14}], d, lv, ["t","lv1"]);var lv=cfg.lv1,busy=true;var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>第 <b id="rpLv">1</b> 关</span><span>需修复 <b id="rpN">3</b> 台</span><span style="color:#999">第 4 关升级 4×4 车间</span>'));
 var hint=h('div','hint','');st.appendChild(hint);
 var wrap=h('div');st.appendChild(wrap);
@@ -1571,8 +1578,8 @@ later(flash,500);seq=s}
 round()}
 
 // ================= 2. 眼疾手快 =================
-function gQuick(d){stopTimers();d=d||0;
-var cfg=[{t:30,gap:850,life:1300},{t:30,gap:680,life:950},{t:25,gap:500,life:730}][d];var ENDL=!!CUR_ENDLESS;
+function gQuick(d,lv){stopTimers();d=d||0;
+var cfg=L([{t:30,gap:850,life:1300},{t:30,gap:680,life:950},{t:25,gap:500,life:730}], d, lv, ["t","gap","life"]);var ENDL=!!CUR_ENDLESS;
 var t=cfg.t,hits=0,combo=0,best=0;var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>⏱ <b id="qT">'+cfg.t+'</b>s</span><span>🎯 命中 <b id="qH">0</b></span><span>🔥 连击 <b id="qC">0</b></span>'+(ENDL?'<span style="color:#7c5cff">🌌 无尽</span>':'')+''));;
 var arena=h('div');arena.id='arena';st.appendChild(arena);
@@ -1585,8 +1592,8 @@ if(ENDL){every(function(){cfg.life=Math.max(340,cfg.life-12)},1500);every(spawn,
 
 // ================= 3. 火眼金睛 =================
 var EMOJI_PAIRS=[['😀','😃'],['🐶','🐺'],['🍊','🍑'],['🐭','🐹'],['🌰','🥜'],['🍅','🍎'],['⭐','🌟'],['🥔','🍠'],['🌚','🌝'],['🧦','🧤']];
-function gEagle(d){stopTimers();d=d||0;
-var cfg=[{t:75,pen:2,grow:4},{t:60,pen:3,grow:3},{t:45,pen:5,grow:2}][d];var ENDL=!!CUR_ENDLESS;
+function gEagle(d,lv){stopTimers();d=d||0;
+var cfg=L([{t:75,pen:2,grow:4},{t:60,pen:3,grow:3},{t:45,pen:5,grow:2}], d, lv, ["t","grow"]);var ENDL=!!CUR_ENDLESS;
 var t=cfg.t,ok=0;var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>⏱ <b id="egT">'+cfg.t+'</b>s</span><span>✅ 找到 <b id="egO">0</b> 个</span><span style="color:#999">点错 −'+cfg.pen+'s</span>'+(ENDL?'<span style="color:#7c5cff">🌌 无尽</span>':'')+''));;
 var hint=h('div','hint','找出网格里不一样的那个');st.appendChild(hint);
@@ -1618,10 +1625,10 @@ if(!ENDL)every(function(){t--;$('egT').textContent=t;if(t<=0)finish(ok)},1000);r
 
 // ================= 4. 对色入库（扳道岔 · 未来之光风格） =================
 var SORTC=[['#e53935','红'],['#1e88e5','蓝'],['#fdd835','黄'],['#43a047','绿']];
-function gSort(d){stopTimers();d=d||0;
-var cfg=[{sp:1,v0:0.020,vk:0.0009,g0:4300,gk:52,pen:3},
+function gSort(d,lv){stopTimers();d=d||0;
+var cfg=L([{sp:1,v0:0.020,vk:0.0009,g0:4300,gk:52,pen:3},
          {sp:2,v0:0.024,vk:0.0011,g0:3300,gk:46,pen:3},
-         {sp:3,v0:0.028,vk:0.0013,g0:2600,gk:40,pen:4}][d];
+         {sp:3,v0:0.028,vk:0.0013,g0:2600,gk:40,pen:4}], d, lv, ["v0","g0"]);
 var t=60,ok=0,combo=0,alive=true;
 var cols=shuffle(SORTC.slice());
 var st=$('stage');st.innerHTML='';
@@ -1753,7 +1760,7 @@ upd();updPrev();later(spawn,600)}
 
 // ================= 6. 烹饪大师 =================
 var ING=['🍅','🥬','🧄','🧅','🍄','🥕','🥩','🧂'];
-function gCook(d){stopTimers();d=d||0;var cfg=[{sp:660,lv1:1,cap:8},{sp:530,lv1:3,cap:9},{sp:430,lv1:5,cap:10}][d];var lv=cfg.lv1,dish=0,busy=true;var st=$('stage');st.innerHTML='';
+function gCook(d,lv){stopTimers();d=d||0;var cfg=L([{sp:660,lv1:1,cap:8},{sp:530,lv1:3,cap:9},{sp:430,lv1:5,cap:10}], d, lv, ["sp","lv1"]);var lv=cfg.lv1,dish=0,busy=true;var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>第 <b id="ckLv">1</b> 关</span><span>🍳 完成 <b id="ckD">0</b> 道</span>'));
 var hint=h('div','hint','');st.appendChild(hint);
 var rrow=h('div','rrow');st.appendChild(rrow);
@@ -1777,7 +1784,7 @@ round()}
 
 
 // ================= 9. 精打细算 =================
-function gCalc(d){stopTimers();d=d||0;var cfg=[{t:120,mx:99},{t:90,mx:99},{t:70,mx:150}][d];var round=0,t=cfg.t,nums=[],target=0,sel=-1,op=null;var st=$('stage');st.innerHTML='';
+function gCalc(d,lv){stopTimers();d=d||0;var cfg=L([{t:120,mx:99},{t:90,mx:99},{t:70,mx:150}], d, lv, ["t","mx"]);var round=0,t=cfg.t,nums=[],target=0,sel=-1,op=null;var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>第 <b id="ccR">1</b> 题</span><span>⏱ <b id="ccT">'+cfg.t+'</b>s</span>'));
 var targetEl=h('div','target','🎯 目标：--');st.appendChild(targetEl);
 var numsEl=h('div','nums');st.appendChild(numsEl);
@@ -1811,7 +1818,7 @@ refresh()}
 every(function(){t--;$('ccT').textContent=t;if(t<=0)finish(round)},1000);gen()}
 
 // ================= 10. 纵横填数 =================
-function gCross(d){stopTimers();d=d||0;var cfg=[{hid:5,err:3},{hid:6,err:3},{hid:6,err:2}][d];var round=0,err=0;var st=$('stage');st.innerHTML='';
+function gCross(d,lv){stopTimers();d=d||0;var cfg=L([{hid:5,err:3},{hid:6,err:3},{hid:6,err:2}], d, lv, ["hid","err"]);var round=0,err=0;var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>第 <b id="cfR">1</b> 关</span><span>❌ 错误 <b id="cfE">0</b>/'+cfg.err+'</span>'));
 var hint=h('div','hint','填入数字，使每行每列的和都等于边上的数字');st.appendChild(hint);
 var wrap=h('div');st.appendChild(wrap);
@@ -1851,7 +1858,7 @@ else hint.textContent='❌ 标红的行列里数字不对，请修改'}}
 gen()}
 
 // ================= 11. 竖式接龙 =================
-function gVert(d){stopTimers();d=d||0;var cfg=[{t:75,pen:2,w2:6,w3:12},{t:60,pen:2,w2:4,w3:10},{t:50,pen:3,w2:2,w3:5}][d];var t=cfg.t,ok=0,hidden=-1;var st=$('stage');st.innerHTML='';
+function gVert(d,lv){stopTimers();d=d||0;var cfg=L([{t:75,pen:2,w2:6,w3:12},{t:60,pen:2,w2:4,w3:10},{t:50,pen:3,w2:2,w3:5}], d, lv, ["t","pen","w2","w3"]);var t=cfg.t,ok=0,hidden=-1;var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>⏱ <b id="vtT">'+cfg.t+'</b>s</span><span>✅ 完成 <b id="vtO">0</b> 题</span><span style="color:#999">答错 −'+cfg.pen+'s</span>'));
 var hint=h('div','hint','算出竖式中 <b>?</b> 处应该是数字几');st.appendChild(hint);
 var wrap=h('div','vwrap');st.appendChild(wrap);
@@ -1884,7 +1891,7 @@ later(function(){wrap.style.transform='translateX(-6px)';later(function(){wrap.s
 every(function(){t--;$('vtT').textContent=t;if(t<=0)finish(ok)},1000);gen()}
 
 // ================= 12. 环形幻方 =================
-function gRing(d){stopTimers();d=d||0;var cfg=[{t:75,pen:3},{t:60,pen:3},{t:50,pen:4}][d];var t=cfg.t,ok=0,answer=-1;var st=$('stage');st.innerHTML='';
+function gRing(d,lv){stopTimers();d=d||0;var cfg=L([{t:75,pen:3},{t:60,pen:3},{t:50,pen:4}], d, lv, ["t","pen"]);var t=cfg.t,ok=0,answer=-1;var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>⏱ <b id="rgT">'+cfg.t+'</b>s</span><span>✅ 答对 <b id="rgO">0</b> 题</span><span style="color:#999">答错 −'+cfg.pen+'s</span>'));
 var hint=h('div','hint','圆环上<b>相对的两个数之和都相等</b>，算出 <b>?</b> 处的数字');st.appendChild(hint);
 var board=h('div','ringwrap');st.appendChild(board);
@@ -1916,7 +1923,7 @@ input.clear()}
 every(function(){t--;$('rgT').textContent=t;if(t<=0)finish(ok)},1000);gen()}
 
 // ================= 13. 积少成多 =================
-function gAcc(d){stopTimers();d=d||0;var cfg=[{lives:5,n0:3,sp:0},{lives:3,n0:4,sp:0},{lives:2,n0:5,sp:1}][d];var ENDL=!!CUR_ENDLESS;var round=0,lives=ENDL?1:cfg.lives,busy=true;var st=$('stage');st.innerHTML='';
+function gAcc(d,lv){stopTimers();d=d||0;var cfg=L([{lives:5,n0:3,sp:0},{lives:3,n0:4,sp:0},{lives:2,n0:5,sp:1}], d, lv, ["n0","sp"]);var ENDL=!!CUR_ENDLESS;var round=0,lives=ENDL?1:cfg.lives,busy=true;var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>第 <b id="acR">1</b> 题</span><span>❤️ <b id="acL">'+"❤".repeat(lives)+'</b></span>'+(ENDL?'<span style="color:#7c5cff">🌌 无尽</span>':'')+''));;
 var hint=h('div','hint','');st.appendChild(hint);
 var disp=h('div','big','');st.appendChild(disp);
@@ -1948,7 +1955,7 @@ var g=h('div','sgrid');g.style.gridTemplateColumns='repeat(4,'+size+'px)';
 for(var r=0;r<4;r++)for(var c=0;c<4;c++){var e=h('div','sc'+(set[r+','+c]?' on':''));
 e.style.width=size+'px';e.style.height=size+'px';g.appendChild(e)}
 return g}
-function gRotate(d){stopTimers();d=d||0;var cfg=[{t:75,lives:5},{t:60,lives:3},{t:48,lives:2}][d];var t=cfg.t,ok=0,lives=cfg.lives;var st=$('stage');st.innerHTML='';
+function gRotate(d,lv){stopTimers();d=d||0;var cfg=L([{t:75,lives:5},{t:60,lives:3},{t:48,lives:2}], d, lv, ["t"]);var t=cfg.t,ok=0,lives=cfg.lives;var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>⏱ <b id="rtT">'+cfg.t+'</b>s</span><span>✅ 答对 <b id="rtO">0</b></span><span>❤️ <b id="rtL">'+"❤".repeat(cfg.lives)+'</b></span>'));
 var hint=h('div','hint','选出原图<b>旋转后</b>的形状，镜像翻转的是错误选项！');st.appendChild(hint);
 var wrap=h('div');st.appendChild(wrap);
@@ -1978,7 +1985,7 @@ wrap.appendChild(row)}
 every(function(){t--;upd();if(t<=0)finish(ok)},1000);gen()}
 
 // ================= 15. 层叠消融 =================
-function gOverlay(d){stopTimers();d=d||0;var cfg=[{t:75,lives:5,opt:3},{t:60,lives:3,opt:3},{t:48,lives:2,opt:4}][d];var t=cfg.t,ok=0,lives=cfg.lives;var st=$('stage');st.innerHTML='';
+function gOverlay(d,lv){stopTimers();d=d||0;var cfg=L([{t:75,lives:5,opt:3},{t:60,lives:3,opt:3},{t:48,lives:2,opt:4}], d, lv, ["t","opt"]);var t=cfg.t,ok=0,lives=cfg.lives;var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>⏱ <b id="ovT">'+cfg.t+'</b>s</span><span>✅ 答对 <b id="ovO">0</b></span><span>❤️ <b id="ovL">'+"❤".repeat(cfg.lives)+'</b></span>'));
 var hint=h('div','hint','图层A叠上未知图层B 得到下方结果：<b>重叠处互相消融，其余保留</b>，选出图层B');st.appendChild(hint);
 var wrap=h('div');st.appendChild(wrap);
@@ -2012,7 +2019,7 @@ wrap.appendChild(row)}
 every(function(){t--;upd();if(t<=0)finish(ok)},1000);gen()}
 
 // ================= 16. 点线谜团 =================
-function gDots(d){stopTimers();d=d||0;var cfg=[{mem:3000,cap:8,lv1:1},{mem:2400,cap:9,lv1:2},{mem:1900,cap:10,lv1:4}][d];var lv=cfg.lv1,busy=true;var st=$('stage');st.innerHTML='';
+function gDots(d,lv){stopTimers();d=d||0;var cfg=L([{mem:3000,cap:8,lv1:1},{mem:2400,cap:9,lv1:2},{mem:1900,cap:10,lv1:4}], d, lv, ["mem","lv1"]);var lv=cfg.lv1,busy=true;var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>第 <b id="dtLv">1</b> 关</span><span>线段 <b id="dtN">3</b> 条</span>'));
 var hint=h('div','hint','');st.appendChild(hint);
 var board=h('div','dotwrap');st.appendChild(board);
@@ -2056,7 +2063,7 @@ else{busy=true;hint.textContent='❌ 连线不对！';later(function(){finish(lv
 gen()}
 
 // ================= 17. 像素拼图 =================
-function gPixel(d){stopTimers();d=d||0;var cfg=[{lives:5,mem:3000,dens:0.42},{lives:3,mem:2300,dens:0.46},{lives:2,mem:1700,dens:0.5}][d];var ENDL=!!CUR_ENDLESS;var round=0,lives=ENDL?1:cfg.lives,busy=false;var st=$('stage');st.innerHTML='';
+function gPixel(d,lv){stopTimers();d=d||0;var cfg=L([{lives:5,mem:3000,dens:0.42},{lives:3,mem:2300,dens:0.46},{lives:2,mem:1700,dens:0.5}], d, lv, ["mem","dens"]);var ENDL=!!CUR_ENDLESS;var round=0,lives=ENDL?1:cfg.lives,busy=false;var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>第 <b id="pxR">1</b> 关</span><span>❤️ <b id="pxL">'+"❤".repeat(lives)+'</b></span>'+(ENDL?'<span style="color:#7c5cff">🌌 无尽</span>':'')+''));;
 var hint=h('div','hint','');st.appendChild(hint);
 var g=h('div','pxgrid');st.appendChild(g);
@@ -2087,7 +2094,7 @@ if(lives<=0)later(function(){finish(round)},1400);else later(gen,1600)}};
 buildCells();gen()}
 
 // ================= 18. 数字快闪 =================
-function gFlash(d){stopTimers();d=d||0;var cfg=[{lives:5,nd0:4,cap:8,tm:1.25},{lives:3,nd0:5,cap:9,tm:1},{lives:2,nd0:6,cap:10,tm:0.78}][d];var ENDL=!!CUR_ENDLESS;var round=0,lives=ENDL?1:cfg.lives,busy=true;var st=$('stage');st.innerHTML='';
+function gFlash(d,lv){stopTimers();d=d||0;var cfg=L([{lives:5,nd0:4,cap:8,tm:1.25},{lives:3,nd0:5,cap:9,tm:1},{lives:2,nd0:6,cap:10,tm:0.78}], d, lv, ["nd0","tm"]);var ENDL=!!CUR_ENDLESS;var round=0,lives=ENDL?1:cfg.lives,busy=true;var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>第 <b id="flR">1</b> 题</span><span>❤️ <b id="flL">'+"❤".repeat(lives)+'</b></span>'+(ENDL?'<span style="color:#7c5cff">🌌 无尽</span>':'')+''));;
 var hint=h('div','hint','');st.appendChild(hint);
 var disp=h('div','big','');st.appendChild(disp);
@@ -2111,7 +2118,7 @@ gen()}
 
 // ================= 19/20. 色彩追踪 & 视觉追踪 =================
 var TRACKPAL=[['#e53935','红'],['#1e88e5','蓝'],['#fdd835','黄'],['#43a047','绿'],['#8e24aa','紫'],['#fb8c00','橙'],['#26c6da','青']];
-function runTrack(eye,d){stopTimers();d=d||0;var cfg=[{sw:560,base:3,mem:1300},{sw:470,base:4,mem:1000},{sw:380,base:5,mem:800}][d];var lv=1,busy=true;var st=$('stage');st.innerHTML='';
+function runTrack(eye,d,lv){stopTimers();d=d||0;var cfg=L([{sw:560,base:3,mem:1300},{sw:470,base:4,mem:1000},{sw:380,base:5,mem:800}], d, lv, ["sw","mem"]);;var lv=1,busy=true;var st=$('stage');st.innerHTML='';
 var hudEl=h('div','hud','<span>第 <b id="tkLv">1</b> 关</span>');st.appendChild(hudEl);
 var hint=h('div','hint','');st.appendChild(hint);
 var board=h('div','tboard');st.appendChild(board);
@@ -2160,10 +2167,10 @@ balls[i2].el.style.transform='translate('+(p2.x-28)+'px,'+(p2.y-28)+'px)';
 k++;later(doSwap,cfg.sw)}
 doSwap()}}
 gen()}
-function gEyeTrack(d){runTrack(true,d)}
+function gEyeTrack(d,lv){runTrack(true,d,lv)}
 
 // ================= 21. 色彩感知 =================
-function gTone(d){stopTimers();d=d||0;var cfg=[{lives:5,d0:17,step:1.1},{lives:3,d0:14,step:1.1},{lives:2,d0:11,step:0.9}][d];var ENDL=!!CUR_ENDLESS;var ok=0,lives=ENDL?1:cfg.lives;var st=$('stage');st.innerHTML='';
+function gTone(d,lv){stopTimers();d=d||0;var cfg=L([{lives:5,d0:17,step:1.1},{lives:3,d0:14,step:1.1},{lives:2,d0:11,step:0.9}], d, lv, ["d0","step"]);var ENDL=!!CUR_ENDLESS;var ok=0,lives=ENDL?1:cfg.lives;var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>✅ 找到 <b id="tnO">0</b> 个</span><span>❤️ <b id="tnL">'+"❤".repeat(lives)+'</b></span>'+(ENDL?'<span style="color:#7c5cff">🌌 无尽</span>':'')+''));;
 var hint=h('div','hint','找出颜色<b>略有不同</b>的那一块，越往后色差越小');st.appendChild(hint);
 var wrap=h('div');st.appendChild(wrap);
@@ -2184,8 +2191,8 @@ g.appendChild(c)})(i);wrap.appendChild(g)}
 gen()}
 
 // ================= 数独（6×6 / 9×9 · 唯一解生成器） =================
-function gSudoku(d){stopTimers();d=d||0;
-var cfg=[{N:6,giv:24,lives:3,mul:1},{N:9,giv:40,lives:3,mul:2},{N:9,giv:30,lives:2,mul:3}][d];
+function gSudoku(d,lv){stopTimers();d=d||0;
+var cfg=L([{N:6,giv:24,lives:3,mul:1},{N:9,giv:40,lives:3,mul:2},{N:9,giv:30,lives:2,mul:3}], d, lv, ["giv"]);
 var N=cfg.N,br=N===6?2:3,bc=N===6?3:3;
 var st=$('stage');st.innerHTML='';
 var sec=0,lives=cfg.lives,selCell=null,solved=false,notes=[],noteMode=false,lastSave=0;
@@ -2284,8 +2291,8 @@ every(function(){sec++;$('sdT').textContent=sec},1000);updL()}
 
 // ================= 2048 =================
 var C2048={2:['#eee4da','#776e65'],4:['#ede0c8','#776e65'],8:['#f2b179','#fff'],16:['#f59563','#fff'],32:['#f67c5f','#fff'],64:['#f65e3b','#fff'],128:['#edcf72','#fff'],256:['#edcc61','#fff'],512:['#edc850','#fff'],1024:['#edc53f','#fff'],2048:['#edc22e','#fff']};
-function g2048(d){stopTimers();d=d||0;
-var cfg=[{goal:512,undo:5,four:0},{goal:1024,undo:3,four:0.1},{goal:2048,undo:0,four:0.35}][d];
+function g2048(d,lv){stopTimers();d=d||0;
+var cfg=L([{goal:512,undo:5,four:0},{goal:1024,undo:3,four:0.1},{goal:2048,undo:0,four:0.35}], d, lv, ["goal"]);
 var grid=[],score=0,won=false,over=false,hist=[],tiles=[],anim=false;
 for(var i=0;i<4;i++)grid.push([0,0,0,0]);
 var st=$('stage');st.innerHTML='';
@@ -2407,8 +2414,8 @@ addTile();addTile();render();upd()}
 // ================= 静默鱼塘（专注喂食） =================
 var POND_COLS=[['#e53935','红虫'],['#1e88e5','蓝藻'],['#fdd835','黄粒'],['#43a047','绿藻']];
 function fishSVG(col){return '<svg viewBox="0 0 64 40"><path d="M12 20 C12 7 32 2 44 11 L58 3 L53 20 L58 37 L44 29 C32 38 12 33 12 20 Z" fill="'+col+'" stroke="rgba(0,0,0,.28)" stroke-width="1.6"/><circle cx="20" cy="17" r="2.8" fill="#fff"/><circle cx="20.8" cy="17.5" r="1.4" fill="#222"/><path d="M17 26 Q24 31 31 28" stroke="rgba(255,255,255,.45)" stroke-width="2" fill="none" stroke-linecap="round"/></svg>'}
-function gPond(d){stopTimers();d=d||0;
-var cfg=[{n:4,sp:0.55,puf:0,shark:0,lock:0},{n:5,sp:0.9,puf:1,shark:0,lock:0},{n:6,sp:1.3,puf:1,shark:1,lock:1}][d];
+function gPond(d,lv){stopTimers();d=d||0;
+var cfg=L([{n:4,sp:0.55,puf:0,shark:0,lock:0},{n:5,sp:0.9,puf:1,shark:0,lock:0},{n:6,sp:1.3,puf:1,shark:1,lock:1}], d, lv, ["sp","n"]);
 var t=60,ok=0,lives=3,sel=null,alive=true,lockTimer=null;
 var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>⏱ <b id="pdT">60</b>s</span><span>🍽️ 喂对 <b id="pdO">0</b></span><span>❤️ <b id="pdL">❤❤❤</b></span>'));
@@ -2463,7 +2470,7 @@ every(function(){t--;upd();if(t<=0){alive=false;finish(ok)}},1000);
 upd()}
 
 // ================= 反应速度测试 =================
-function gReactTest(d){stopTimers();d=d||0;var cfg=[{n:3,r:2200},{n:5,r:2200},{n:7,r:3200}][d];var ENDL=!!CUR_ENDLESS;
+function gReactTest(d,lv){stopTimers();d=d||0;var cfg=L([{n:3,r:2200},{n:5,r:2200},{n:7,r:3200}], d, lv, ["n"]);var ENDL=!!CUR_ENDLESS;
 var times=[],idx=0,state='idle',t0=0,waitTimer=null;
 var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>第 <b id="rxR">1</b> / '+(ENDL?'∞':cfg.n)+' 轮</span><span>⚡ 最快 <b id="rxB">—</b></span>'+(ENDL?'<span style="color:#7c5cff">🌌 无尽</span>':'')+''));;
@@ -2496,7 +2503,7 @@ LAST_META={avg:avg,rating:rating};finish(best,true);}
 upd()}
 
 // ================= 记忆广度测试 =================
-function gSpanTest(d){stopTimers();d=d||0;var cfg=[{s0:3,sp:1.2,f:2},{s0:4,sp:1,f:2},{s0:5,sp:0.82,f:1}][d];
+function gSpanTest(d,lv){stopTimers();d=d||0;var cfg=L([{s0:3,sp:1.2,f:2},{s0:4,sp:1,f:2},{s0:5,sp:0.82,f:1}], d, lv, ["s0","sp"]);
 var span=cfg.s0,fails=0,best=0,cur='';
 var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>当前广度 <b id="spN">'+cfg.s0+'</b> 位</span><span>🏆 最好 <b id="spB">—</b></span><span>❌ 失误 <b id="spF">0</b>/'+cfg.f+'</span>'));
@@ -2553,22 +2560,78 @@ function traceStick(entry,slash,N){
   }
   return null;
 }
-/* 生成一局面：返回 {slash, entry, exit, len}；出口==入口或路径过短时重新生成 */
-function dgGenLayout(N,cnt){
-  for(var att=0;att<240;att++){
+/* P0-2：每局至少经过 needTurns(lv) 次折射（≥2，禁止直球路径）
+   构造优先：先铺一条含 k 个拐点的自避折线，在拐点逆推木棍朝向，再补 1~3 根干扰木棍；
+   干扰木棍绝不落在折线上（否则会改变路径）。400 次都失败则退化为 2 拐点 + 0 干扰（仍保证 ≥2 折射）。 */
+var MIN_TURNS=[2,2,2,3,3,3,3,3,3,4,4,4];
+function needTurns(lv){return MIN_TURNS[Math.max(1,Math.min(12,lv||1))-1]}
+var DG_IN={t:'d',b:'u',l:'r',r:'l'};
+var DG_L={u:'l',l:'u',d:'r',r:'d'},DG_R={u:'r',r:'u',d:'l',l:'d'};
+function dgCell(r,c,N,dir){
+  var nr=r+(dir==='u'?-1:dir==='d'?1:0), nc=c+(dir==='r'?1:dir==='l'?-1:0);
+  return {r:nr,c:nc,out:(nr<0||nr>=N||nc<0||nc>=N)};
+}
+function dgBuildPath(N,entry,k){
+  var dir=DG_IN[entry.side];
+  var r0=entry.side==='t'?0:(entry.side==='b'?N-1:entry.idx);
+  var c0=entry.side==='l'?0:(entry.side==='r'?N-1:entry.idx);
+  var cells=[{r:r0,c:c0}],vis={};vis[r0*N+c0]=1,turns=0,att=0;
+  while(att++<800){
+    var last=cells[cells.length-1];
+    var nx=dgCell(last.r,last.c,N,dir);
+    if(nx.out){
+      if(turns>=k)return cells;
+      var tdf=ri(2)?DG_L[dir]:DG_R[dir], txf=dgCell(last.r,last.c,N,tdf);
+      if(txf.out||vis[txf.r*N+txf.c])return null;
+      last.inDir=dir;last.outDir=tdf;dir=tdf;turns++;continue;
+    }
+    if(vis[nx.r*N+nx.c])return null;
+    if(turns<k&&ri(2)===0){
+      var td=ri(2)?DG_L[dir]:DG_R[dir];
+      if(!vis[nx.r*N+nx.c]){cells.push({r:nx.r,c:nx.c,inDir:dir,outDir:td});vis[nx.r*N+nx.c]=1;dir=td;turns++;continue;}
+    }
+    cells.push({r:nx.r,c:nx.c});vis[nx.r*N+nx.c]=1;
+  }
+  return null;
+}
+function dgGenLayout(N,minTurns){
+  for(var att=0;att<400;att++){
+    var e={side:['t','b','l','r'][ri(4)],idx:ri(N)};
+    var k=minTurns+(ri(2)?1:0); if(k<2)k=2; if(k>6)k=6;
+    var path=dgBuildPath(N,e,k);
+    if(!path)continue;
     var slash=[];for(var r=0;r<N;r++){slash.push([]);for(var c=0;c<N;c++)slash[r].push(0)}
-    var sides=['t','b','l','r'];
-    var e={side:sides[ri(4)],idx:ri(N)};
-    var er=e.side==='t'?0:e.side==='b'?N-1:e.idx;
-    var ec=e.side==='l'?0:e.side==='r'?N-1:e.idx;
-    var slots=[];for(var rr=0;rr<N;rr++)for(var cc=0;cc<N;cc++)if(!(rr===er&&cc===ec))slots.push(rr*N+cc);
+    var onPath={};
+    for(var i=0;i<path.length;i++)onPath[path[i].r*N+path[i].c]=1;
+    var turns=0;
+    for(var i=0;i<path.length;i++){var pc=path[i];if(pc.inDir){slash[pc.r][pc.c]=(DG_L[pc.inDir]===pc.outDir)?1:2;turns++}}
+    if(turns<minTurns)continue;
+    var slots=[];for(var rr=0;rr<N;rr++)for(var cc=0;cc<N;cc++)if(!onPath[rr*N+cc]&&slash[rr][cc]===0)slots.push(rr*N+cc);
     slots=shuffle(slots);
-    for(var i=0;i<cnt&&i<slots.length;i++){var ix=slots[i];slash[Math.floor(ix/N)][ix%N]=1+ri(2)}
+    var dN=1+ri(3),cnt=turns;
+    for(var i=0;i<dN&&i<slots.length;i++){var ix=slots[i];slash[Math.floor(ix/N)][ix%N]=1+ri(2);cnt++}
     var tr=traceStick(e,slash,N);
     if(!tr)continue;
     if(tr.exit.side===e.side&&tr.exit.idx===e.idx)continue;
     if(tr.len<3)continue;
-    return {slash:slash,entry:e,exit:tr.exit,len:tr.len};
+    var realTurns=tr.segs.filter(function(s){return s.turn}).length;
+    if(realTurns<minTurns)continue;
+    if(cnt>Math.floor(N*N*0.4))continue;
+    return {slash:slash,entry:e,exit:tr.exit,len:tr.len,turns:realTurns,cnt:cnt};
+  }
+  for(var att2=0;att2<400;att2++){
+    var e2={side:['t','b','l','r'][ri(4)],idx:ri(N)};
+    var p2=dgBuildPath(N,e2,2);
+    if(!p2)continue;
+    var s2=[];for(var r=0;r<N;r++){s2.push([]);for(var c=0;c<N;c++)s2[r].push(0)}
+    for(var i=0;i<p2.length;i++){var q=p2[i];if(q.inDir)s2[q.r][q.c]=(DG_L[q.inDir]===q.outDir)?1:2}
+    var t2=traceStick(e2,s2,N);
+    if(!t2)continue;
+    if(t2.exit.side===e2.side&&t2.exit.idx===e2.idx)continue;
+    if(t2.len<3)continue;
+    var rt2=t2.segs.filter(function(s){return s.turn}).length;
+    if(rt2<2)continue;
+    return {slash:s2,entry:e2,exit:t2.exit,len:t2.len,turns:rt2,cnt:rt2};
   }
   return null;
 }
@@ -2639,7 +2702,7 @@ function flashStick(r,c){
 function runBall(){
   var tr=traceStick(entry,slash,N);
   if(!tr){hint.textContent='❌ 局面异常，重新出题';later(function(){gen()},700);return}
-  if(dbg)console.log('[dotsgold] entry='+entry.side+entry.idx+' exit='+tr.exit.side+tr.exit.idx+' segs='+tr.segs.length);
+  if(dbg){var _tns=tr.segs.filter(function(s){return s.turn}).length;console.log('[dotsgold] entry='+entry.side+entry.idx+' exit='+tr.exit.side+tr.exit.idx+' segs='+tr.segs.length+' turns='+_tns)}
   var pts=[ptXY(tr.segs[0].r1,tr.segs[0].c1)];
   var total=0;
   for(var i=0;i<tr.segs.length;i++){pts.push(ptXY(tr.segs[i].r2,tr.segs[i].c2));total+=tr.segs[i].turn?160:100}
@@ -2687,11 +2750,11 @@ function gen(){
   gridEl.innerHTML='';stickMap={};
   var ars=wrap.querySelectorAll('.dg-arrow');for(var q0=0;q0<ars.length;q0++)ars[q0].remove();
   pl.setAttribute('points','');
-  cnt=Math.min(CFG.sticks+Math.floor(lv/2),Math.floor(N*N*0.4));
+  var need=needTurns(lv);
   var mem=lerpLv(lv,CFG.mem,1200);
-  var lay=dgGenLayout(N,cnt);
+  var lay=dgGenLayout(N,need);
   if(!lay){entry={side:'t',idx:0};slash=[];for(var r2=0;r2<N;r2++){slash.push([]);for(var c2=0;c2<N;c2++)slash[r2].push(0)}cnt=0}
-  else{slash=lay.slash;entry=lay.entry}
+  else{slash=lay.slash;entry=lay.entry;cnt=lay.cnt}
   for(var rr2=0;rr2<N;rr2++)for(var cc2=0;cc2<N;cc2++){
     var cell=h('div','dg-cell');cell.style.width=CELL+'px';cell.style.height=CELL+'px';
     if(slash[rr2][cc2]){var sk=h('div','dg-stick s'+slash[rr2][cc2]);cell.appendChild(sk);stickMap[rr2+','+cc2]=sk}
@@ -2719,7 +2782,7 @@ function gen(){
 gen()}
 
 // ================= 27. 魔法符石（三消游戏） =================
-function gMagicStone(d){stopTimers();d=d||0;var cfg=[{tg:300,lv:1,step:400},{tg:500,lv:2,step:500},{tg:700,lv:3,step:600}][d];var st=$('stage');st.innerHTML='';
+function gMagicStone(d,lv){stopTimers();d=d||0;var cfg=L([{tg:300,lv:1,step:400},{tg:500,lv:2,step:500},{tg:700,lv:3,step:600}], d, lv, ["tg","lv","step"]);var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>第 <b id="msL">1</b> 关</span><span>🎯 <b id="msO">0</b></span><span>❤️ <b id="msH">❤❤❤</b></span>'));
 var hint=h('div','hint','<b>三消玩法</b>：点击相邻两颗符石交换，连成 3 颗或以上同色即消除。<b>4 连</b>变直线宝石（清整行/列），<b>5 连</b>变万能宝石。');st.appendChild(hint);
 var GEM=['💎','🔥','💧','🌿','✨','💜'];
@@ -2940,8 +3003,8 @@ paint();
 var tt=every(function(){if(over)return;$('moT').textContent=Math.round((nowClock()-t0)/1000)},1000)}
 
 // ================= 30. 点阵封锁 =================
-function gDotBlock(d){stopTimers();d=d||0;
-var cfg=[{N:6,ln:11,t:120},{N:7,ln:10,t:90},{N:8,ln:9,t:70}][d];
+function gDotBlock(d,lv){stopTimers();d=d||0;
+var cfg=L([{N:6,ln:11,t:120},{N:7,ln:10,t:90},{N:8,ln:9,t:70}], d, lv, ["ln","t"]);
 var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>已封锁 <b id="dbE">0</b>/3</span><span>线条 <b id="dbL">'+cfg.ln+'</b>/'+cfg.ln+'</span><span>⏱ <b id="dbT">'+cfg.t+'</b>s</span>'));
 var hint=h('div','hint','点击两个<b>相邻白点</b>画紫色封锁线，<b>'+cfg.ln+' 条</b>用完即结束。让 3 个红点都处于某个闭合圈内即胜。');st.appendChild(hint);
@@ -3016,13 +3079,13 @@ var timer=every(function(){if(over)return;curT--;$('dbT').textContent=curT;
 // ================= 31. 双雄争霸（横版 · 每个分区的方块只左右移动） =================
 /* 玩法（用户原版规则）：分区方块只能左右移动，⭐/💣 从上方垂直落下，靠左右走位接金币、躲炸弹。
    每个分区各自跟踪自己的 pointerId —— 手机多指可同时拖不同分区，互不干扰。 */
-function gDual(d){stopTimers();d=d||0;
+function gDual(d,lv){stopTimers();d=d||0;
 var cfgs=[
  {zones:2,fall:2.4,spd:3.6,spawn:880,bad:.24,target:12,time:50,lives:3},
  {zones:3,fall:3.0,spd:4.2,spawn:740,bad:.34,target:16,time:55,lives:3},
  {zones:3,fall:3.7,spd:4.8,spawn:600,bad:.44,target:20,time:55,lives:2}
 ];
-var cfg=cfgs[d];
+var cfg=L(cfgs,d,lv,["fall","spd","spawn","bad","target","time"]);
 /* 键位必须按【分区数】给够：简单档 2 区就要 2 组键，否则 KMAP[z] 是 undefined */
 var LABEL=[['A / D','J / L'],['A / D','J / L','← / →'],['A / D','J / L','← / →']][d];
 var KMAP=[[['a','d'],['j','l']],[['a','d'],['j','l'],['arrowleft','arrowright']],[['a','d'],['j','l'],['arrowleft','arrowright']]][d];
@@ -3117,13 +3180,13 @@ else{every(spawn,cfg.spawn);
    原实现里物体是纵向穿过整个分区的 —— 无论怎么上下移动都会撞上，炸弹必吃。
    改为物体【横向飞行】后，高度差才有意义：躲炸弹、对金币，玩法才成立。
    同时每个分区只跟踪自己的 pointerId（原来是全局 pointerup 把所有分区一起松开，多指必崩）。 */
-function gBlitz(d){stopTimers();d=d||0;
+function gBlitz(d,lv){stopTimers();d=d||0;
 var cfgs=[
  {zones:2,acc:.55,maxV:6.5,spd:2.8,spawn:820,bad:.26,target:12,time:50,lives:3},
  {zones:3,acc:.62,maxV:7.5,spd:3.4,spawn:700,bad:.36,target:16,time:55,lives:3},
  {zones:3,acc:.74,maxV:9,spd:4.1,spawn:580,bad:.46,target:20,time:55,lives:2}
 ];
-var cfg=cfgs[d];
+var cfg=L(cfgs,d,lv,["acc","maxV","spd","spawn","bad","target","time"]);
 var KEYS=[['A','L'],['A','S','L'],['A','S','L']][d];
 var PH=44;
 var ZH=Math.min(360,Math.max(240,(window.innerHeight||700)-290));
@@ -3214,7 +3277,7 @@ else{every(spawn,cfg.spawn);
 }
 
 // ================= 32. 快问快答 =================
-function gQuiz(d){stopTimers();d=d||0;var cfg=[{q:8,t:15},{q:10,t:12},{q:12,t:8}][d];var ENDL=!!CUR_ENDLESS;var st=$('stage');st.innerHTML='';
+function gQuiz(d,lv){stopTimers();d=d||0;var cfg=L([{q:8,t:15},{q:10,t:12},{q:12,t:8}], d, lv, ["q","t"]);var ENDL=!!CUR_ENDLESS;var st=$('stage');st.innerHTML='';
 var QBANK=[
 {q:'3 + 5 = ?',opts:['6','7','8','9'],a:2,d:0},
 {q:'12 × 3 = ?',opts:['24','30','36','42'],a:2,d:0},
@@ -3325,7 +3388,8 @@ card.appendChild(ops);curT=time;
 tick=every(function(){curT--;$('quT').textContent=curT;if(curT<=0){clearInterval(tick);card.querySelectorAll('.qq-opt').forEach(function(x){x.style.pointerEvents='none';var o=opts.find(function(z){return z.bt===x});if(o&&o.orig===item.a)x.classList.add('right')});setTimeout(nextQ,700)}},1000)}
 nextQ()}
 // ================= 34. 数字迷图 (Nonogram) =================
-function gNonogram(d){stopTimers();d=d||0;
+function gNonogram(d,lv){stopTimers();d=d||0;
+var _rk='nono_'+d+'_'+lv;if(!BG_RND[_rk])BG_RND[_rk]={acc:0,r:1,need:needRounds(lv)};var _R=BG_RND[_rk];
 var cfg=[{N:8,name:'8×8 简单'},{N:10,name:'10×10 中等'},{N:12,name:'12×12 困难'}][d];
 var N=cfg.N;
 var st=$('stage');st.innerHTML='';
@@ -3394,8 +3458,8 @@ for(var r=0;r<N;r++)for(var c=0;c<N;c++){
 if(user[r][c]===1&&!answer[r][c])wrong++;
 else if(user[r][c]!==1&&answer[r][c])miss++}
 if(wrong===0&&miss===0){over=true;
-var ts=Math.round((nowClock()-t0)/1000);hint.innerHTML='🎉 完全正确！用时 '+ts+'s';
-later(function(){finish(Math.max(10,500-ts*5)+d*100)},900)}
+var ts=Math.round((nowClock()-t0)/1000);var _sc0=Math.max(10,500-ts*5)+d*100;_R.acc+=_sc0;
+if(_R.r<_R.need){_R.r++;hint.innerHTML='🎉 第 '+_R.r+' 关完成！准备下一关…';later(function(){gNonogram(d,lv)},800)}else{var _a0=_R.acc;delete BG_RND[_rk];hint.innerHTML='🎉 全部完成！';later(function(){finish(_a0)},900)}}
 else if(wrong===0){hint.innerHTML='✅ 没错误但还有 '+miss+' 格未填，继续涂~'}
 else{hint.innerHTML='❌ 有 '+wrong+' 个错误格'}}
 btnFill.onclick=function(){curMode=1};
@@ -3404,8 +3468,8 @@ btnCheck.onclick=check;
 every(function(){if(over)return;$('ngT').textContent=Math.round((nowClock()-t0)/1000)},1000)}
 
 // ================= 35. 锯齿数独 (Jigsaw) =================
-function gJigsaw(d){stopTimers();d=d||0;
-var cfg=[{giv:42},{giv:34},{giv:28}][d];
+function gJigsaw(d,lv){stopTimers();d=d||0;
+var cfg=L([{giv:42},{giv:34},{giv:28}], d, lv, ["giv"]);
 var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>锯齿数独 · 第 <b id="jgL">1</b> 关</span><span>⏱ <b id="jgT">0</b>s</span><span>❌ <b id="jgE">0</b>/3</span>'));
 var hint=h('div','hint','<b>锯齿数独</b>：9×9 + 9 个不规则宫区域。每行/每列/每宫各含 1~9。点空格→数字键填入（⌫ 擦除），✔ 检查。');st.appendChild(hint);
@@ -3500,7 +3564,8 @@ every(function(){if($('jgL')&&$('jgL').textContent==='🎉')return;$('jgT')&&($(
 buildLevel()}
 
 // ================= 36. 对角线数独 =================
-function gSudokuX(d){stopTimers();d=d||0;
+function gSudokuX(d,lv){stopTimers();d=d||0;
+var _rk='sx_'+d+'_'+lv;if(!BG_RND[_rk])BG_RND[_rk]={acc:0,r:1,need:needRounds(lv)};var _R=BG_RND[_rk];
 var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>对角线数独 · 第 <b id="sxL">1</b> 关</span><span>⏱ <b id="sxT">0</b>s</span><span>❤️ <b id="sxH">❤❤</b></span>'));
 var hint=h('div','hint','<b>对角线数独</b>：9×9 + 两条主对角线。每行/每列/每宫/两对角线都含 1~9。');st.appendChild(hint);
@@ -3573,7 +3638,9 @@ function check(){var wrong=0;
 for(var r=0;r<N;r++)for(var c=0;c<N;c++)if(user[r][c]&&user[r][c]!==sol[r][c])wrong++;
 var complete=true;for(var r=0;r<N;r++)for(var c=0;c<N;c++)if(!user[r][c])complete=false;
 if(wrong===0&&complete){hint.innerHTML='🎉 对角线数独完成！';
-$('sxL').textContent='🎉';later(function(){finish(Math.max(10,500-Math.round((nowClock()-t0)/1000))+d*120)},1100)}
+var _sc0=Math.max(10,500-Math.round((nowClock()-t0)/1000))+d*120;_R.acc+=_sc0;
+if(_R.r<_R.need){_R.r++;hint.innerHTML='🎉 第 '+_R.r+' 关完成！准备下一关…';$('sxL').textContent=_R.r;later(function(){gSudokuX(d,lv)},1100)}
+else{var _a0=_R.acc;delete BG_RND[_rk];later(function(){finish(_a0)},1100)}}
 else if(wrong===0){hint.innerHTML='✓ 全正确但还没填完'}
 else{errs++;$('sxH').textContent='❤'.repeat(Math.max(maxErrs-errs,0));hint.innerHTML='❌ '+wrong+' 个错误'}}
 document.onkeydown=function(e){var v=+e.key;if(v>=1&&v<=9)inputVal(v);else if(e.key==='Backspace')inputVal(0);else if(e.key==='Enter')check()};
@@ -3725,7 +3792,7 @@ for(var k=0;k<8;k++){
   sectors.push(p);
 }
 st.appendChild(svg);
-var qn=0,correct=0,curAz=0,answered=true,over=false,reactSum=0,reactN=0,playedAt=0;
+var qn=0,correct=0,curAz=0,answered=true,over=false,reactSum=0,reactN=0,playedAt=0,qTok=0,toId=null;function clearQTimer(){if(toId){clearTimeout(toId);toId=null}}
 var FRONT=[7,0,1,2],BACK=[3,4,5,6];
 function pickAz(){
   if(base.half){var set=ri(2)?FRONT:BACK;return set[ri(set.length)]}
@@ -3738,6 +3805,7 @@ function upd(){
 }
 function answer(k){
   if(answered||over)return;
+  clearQTimer();
   answered=true;
   var react=Math.max(0,(nowClock()-playedAt)/1000);
   reactSum+=react;reactN++;
@@ -3759,20 +3827,24 @@ function timeout(){
 function nextQ(){
   if(over)return;
   if(qn>=TOTAL){over_();return}
+  clearQTimer();
+  qTok++;
   for(var i=0;i<8;i++)sectors[i].setAttribute('fill',sectors[i].getAttribute('data-base'));
   curAz=pickAz();
-  playedAt=nowClock();
+  playedAt=nowClock()+30;
   answered=false;
   qn++;
   if(!cueSound(curAz*45)){
     hint.innerHTML='🔇 未检测到音频输出，无法进行听声辨位。请检查设备后重试。';
-    over=true;later(function(){finish(0)},1400);return;
+    over=true;clearQTimer();later(function(){finish(0)},1400);return;
   }
   upd();
-  later(timeout,gap);
+  var myTok=qTok;
+  toId=later(function(){if(myTok===qTok)timeout()},gap);
 }
 function over_(){
   if(over)return;
+  clearQTimer();
   over=true;
   var avg=reactN?reactSum/reactN:0;
   var sc=correct*10+Math.max(0,Math.round(30-avg*10));
@@ -4215,9 +4287,10 @@ function flowCfg(diff,lv){
     困难档反而把网格收回到 6×6、组数保持 4 组，
     但强制要求【更长的总路径】与【更高的路径穿插冲突数】，
     让难点来自"布线顺序与让路推理"，而不是盘面大小。 */
- if(diff===0)return{n:5,pairs:3,time:70,minLen:9,minConf:0};
- if(diff===1)return{n:6,pairs:4,time:78,minLen:14,minConf:1};
- return{n:6,pairs:4,time:88,minLen:18,minConf:2};
+ var BASE=[{n:5,pairs:3,time:70,minLen:9,minConf:0},{n:6,pairs:4,time:78,minLen:14,minConf:1},{n:6,pairs:4,time:88,minLen:18,minConf:2}];
+ var HI=[{n:6,pairs:4,time:60,minLen:14,minConf:1},{n:6,pairs:5,time:66,minLen:18,minConf:2},{n:7,pairs:6,time:74,minLen:24,minConf:3}];
+ var di=Math.max(0,Math.min(2,diff||0));
+ return L([BASE[di],HI[di]],0,lv,["n","pairs","time","minLen","minConf"]);
 }
 function startFlow(game,diff,lv){
  stopTimers();var cfg=flowCfg(diff,lv),N=cfg.n;
@@ -4362,9 +4435,9 @@ function startFlow(game,diff,lv){
 
 
 // ================= 火眼金睛·文字（斯特鲁普） =================
-function gStroop(d){stopTimers();d=d||0;
+function gStroop(d,lv){stopTimers();d=d||0;
 var cfgs=[{t:60},{t:45},{t:35}];
-var cfg=cfgs[d],t=cfg.t,score=0,right=0,wrong=0;
+var cfg=L(cfgs,d,lv,["t"]),t=cfg.t,score=0,right=0,wrong=0;
 var CW=[['红','#e53935'],['蓝','#1e88e5'],['粉','#ec407a'],['绿','#43a047'],['浅蓝','#00acc1'],['黄','#fbc02d']];
 var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>⏱ <b id="spT">'+t+'</b>s</span><span>✅<b id="spR">0</b> ❌<b id="spW">0</b></span>'));
@@ -4386,9 +4459,9 @@ every(function(){t--;$('spT').textContent=t;if(t<=0){stopTimers();finish(right)}
 round()}
 
 // ================= 点石成金·光线（反射） =================
-function gReflect(d){stopTimers();d=d||0;
+function gReflect(d,lv){stopTimers();d=d||0;
 var cfgs=[{n:6,K:3,plain:1,time:120},{n:7,K:4,plain:2,time:110},{n:8,K:5,plain:3,time:100}];
-var cfg=cfgs[Math.min(d,cfgs.length-1)],N=cfg.n,K=cfg.K;
+var cfg=L(cfgs,d,lv,["n","K","plain","time"]),N=cfg.n,K=cfg.K;
 var dr=[-1,0,1,0],dc=[0,1,0,-1];
 var COLORS=['#ffd54f','#34d399','#60a5fa','#f472b6','#c084fc'];
 var SZ=Math.min(420,window.innerWidth-56),CELL=SZ/N;
@@ -4503,9 +4576,9 @@ newBoard();
 every(function(){var tt=+$('rfT').textContent-1;$('rfT').textContent=Math.max(0,tt);
  if(tt<=0){stopTimers();finish(solved*120+litCount(mir)*10)}},1000)}
 // ================= 魔法符石·记忆（八角星符号复原） =================
-function gOctMem(d){stopTimers();d=d||0;
+function gOctMem(d,lv){stopTimers();d=d||0;
 var cfgs=[{mem:6000,lives:3},{mem:4000,lives:2},{mem:3000,lives:2}];
-var cfg=cfgs[d];
+var cfg=L(cfgs,d,lv,["mem"]);
 var POOL=['🔥','💧','⚡','❄️','🌿','⭐','🌙','🔆'];
 var petals=[];do{petals=[];for(var k=0;k<8;k++)petals.push(pick(POOL))}while(distinctCnt(petals)<3);
 function distinctCnt(arr){var u=[];arr.forEach(function(s){if(u.indexOf(s)<0)u.push(s)});return u.length}
@@ -4540,7 +4613,8 @@ buildOpts();
 later(function(){phase='fill';petalEls.forEach(function(p){p.textContent='';p.classList.add('blank')});hint.textContent='选择符号，点击空白星瓣复原'},cfg.mem)}
 
 // ================= 杀手数独（Killer Sudoku） =================
-function gKiller(d){stopTimers();d=d||0;
+function gKiller(d,lv){stopTimers();d=d||0;
+var _rk='killer_'+d+'_'+lv;if(!BG_RND[_rk])BG_RND[_rk]={acc:0,r:1,need:needRounds(lv)};var _R=BG_RND[_rk];
 var cfg=[{giv:20,lives:3},{giv:10,lives:3},{giv:0,lives:2}][d];
 var st=$('stage');st.innerHTML='';
 var selCell=null,solved=false,lives=cfg.lives,sec=0,notes=[],noteMode=false;
@@ -4641,17 +4715,19 @@ var full=true;for(var i=0;i<81;i++)if(!user[Math.floor(i/9)][i%9]){full=false;br
 if(!full){hint.textContent='还有空格没填，继续推理吧';return}
 var bad=findConflicts();
 if(!Object.keys(bad).length){solved=true;hint.textContent='🎉 杀手数独完成！';
-var score=Math.max(200,2000-sec*5-(cfg.lives-lives)*300);later(function(){finish(score)},900);return}
+var _sc0=Math.max(200,2000-sec*5-(cfg.lives-lives)*300);_R.acc+=_sc0;
+if(_R.r<_R.need){_R.r++;hint.innerHTML='🎉 第 '+_R.r+' 关完成！准备下一关…';later(function(){gKiller(d,lv)},900);return}
+var _a0=_R.acc;delete BG_RND[_rk];later(function(){finish(_a0)},900);return}
 lives--;updL();
 Object.keys(bad).forEach(function(i2){cells[+i2].classList.add('bad')});
-if(lives<=0){hint.textContent='❌ 机会用完！';later(function(){finish(0)},1200)}
+if(lives<=0){hint.textContent='❌ 机会用完！';var _a1=_R.acc;delete BG_RND[_rk];later(function(){finish(_a1)},1200)}
 else{hint.textContent='❌ 有 '+Object.keys(bad).length+' 处冲突（红色），已清除…';
 later(function(){Object.keys(bad).forEach(function(i3){var idx=+i3,r=Math.floor(idx/9),c=idx%9;user[r][c]=0;cells[idx].textContent='';cells[idx].classList.remove('bad')});updateCageHints()},1000)}}
 every(function(){sec++;$('klT').textContent=sec},1000);updL()}
 
 // ================= 武士数独（Samurai · 5宫重叠） =================
-function gSamurai(d){stopTimers();d=d||0;
-var cfg=[{giv:40},{giv:34},{giv:28}][d];
+function gSamurai(d,lv){stopTimers();d=d||0;
+var cfg=L([{giv:40},{giv:34},{giv:28}], d, lv, ["giv"]);
 var st=$('stage');st.innerHTML='';
 var selCell=null,solved=false,sec=0,notes=[],noteMode=false;
 st.appendChild(h('div','hud','<span>⏱ <b id="smrT">0</b>s</span><span>🎌 5宫重叠</span>'));
@@ -4800,7 +4876,7 @@ function syncSolve(rows,cap){
 }
 var SYNCPAR={};
 // ================= 同调滑块（Slide & Sync） =================
-function gSync(d){stopTimers();d=d||0;var cfg=[{l0:0},{l0:2},{l0:4}][d];var st=$('stage');st.innerHTML='';
+function gSync(d,lv){stopTimers();d=d||0;var cfg=L([{l0:0},{l0:2},{l0:4}], d, lv, ["l0"]);var st=$('stage');st.innerHTML='';
 var LEVELS=[
 ['#######','#BA1###','#.....#','#.2...#','#.....#','##.#..#','#######'],
 ['#######','##....#','##....#','#B.#.##','#A12..#','#..#..#','#######'],
@@ -4929,8 +5005,8 @@ function startSok(game,diff,lv){
 
 // ============ 新增热门小游戏（第一批） ============
 // ---------------- 🧱 俄罗斯方块 ----------------
-function gTetris(d){stopTimers();d=d||0;
-var W=10,H=24,sp=[620,430,300][d],slowT=0;
+function gTetris(d,lv){stopTimers();d=d||0;
+var W=10,H=24,slowT=0;var sp=L([{sp:620},{sp:430},{sp:300}],d,lv,["sp"]).sp;
 var SH=[
  {s:[[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],c:'var(--sk1)'},
  {s:[[1,1],[1,1]],c:'var(--sk2)'},
@@ -4995,10 +5071,10 @@ ITEMHOOKS['tetris']={bomb:function(){for(var c=0;c<W;c++)g[H-1][c]=0;render()},s
 }
 
 // ---------------- 🐍 贪吃蛇 ----------------
-function gSnake(d){stopTimers();d=d||0;
+function gSnake(d,lv){stopTimers();d=d||0;
 var N=[40,46,52][d];
-var ENEMY=[2,2,3][d];
-var baseSpeed=[6.5,8,9.5][d];
+var _sc=L([{enemy:2,speed:6.5},{enemy:2,speed:8},{enemy:3,speed:9.5}],d,lv,["enemy","speed"]);
+var ENEMY=_sc.enemy,baseSpeed=_sc.speed;
 var VIEW=18;
 var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>得分 <b id="snS">0</b></span><span>长度 <b id="snL">4</b></span><span id="snEn">🤖×'+ENEMY+'</span>'));
@@ -5055,8 +5131,8 @@ ITEMHOOKS['snake']={slow:function(){slowT=nowClock()+5000}};
 }
 
 // ---------------- 💣 扫雷 ----------------
-function gMines(d){stopTimers();d=d||0;
-var cfg=[{n:12,m:18},{n:16,m:40},{n:20,m:70}][d];
+function gMines(d,lv){stopTimers();d=d||0;
+var cfg=L([{n:12,m:18},{n:16,m:40},{n:20,m:70}], d, lv, ["m"]);
 var N=cfg.n,NM=cfg.m,first=true,over=false,win=false;
 var mine=[],opn=[],flg=[],cnt=[],t=0,flagMode=false;
 for(var mi=0;mi<N;mi++){mine.push([]);opn.push([]);flg.push([]);cnt.push([]);
@@ -5148,8 +5224,8 @@ render();
 }
 
 // ---------------- 🧱 打砖块 ----------------
-function gBreak(d){stopTimers();d=d||0;
-var cfg=[{rows:4,sp:3.2,pw:96},{rows:5,sp:4,pw:84},{rows:6,sp:4.8,pw:72}][d],slowT=0;
+function gBreak(d,lv){stopTimers();d=d||0;
+var cfg=L([{rows:4,sp:3.2,pw:96},{rows:5,sp:4,pw:84},{rows:6,sp:4.8,pw:72}], d, lv, ["sp","rows"]),slowT=0;
 var CW=Math.min(340,(window.innerWidth||360)-40),CH=480,BH=14,BW=Math.round(CW/8);
 var cols=8,rows=cfg.rows;
 var px=(CW-BW)/2,bx=CW/2,by=CH-70,vx=cfg.sp*0.7,vy=-cfg.sp;
@@ -5208,8 +5284,8 @@ ITEMHOOKS['breaker']={bomb:function(){var rem=0;for(var i=0;i<bcells.length;i++)
 }
 
 // ---------------- 🐦 飞扬的小鸟 ----------------
-function gFlappy(d){stopTimers();d=d||0;
-var cfg=[{gap:158,sp:2.5,int:1600},{gap:136,sp:3.1,int:1350},{gap:116,sp:3.8,int:1150}][d],slowT=0;
+function gFlappy(d,lv){stopTimers();d=d||0;
+var cfg=L([{gap:158,sp:2.5,int:1600},{gap:136,sp:3.1,int:1350},{gap:116,sp:3.8,int:1150}], d, lv, ["gap","sp"]),slowT=0;
 var CW=Math.min(340,(window.innerWidth||360)-40),CH=520;
 var by=CH/2,vy=0,GR=0.42,JP=-7.4;
 var pipes=[],score=0,over=false,started=false;
@@ -5252,7 +5328,7 @@ ITEMHOOKS['flappy']={slow:function(){slowT=nowClock()+5000}};
 
 
 // ---------------- 🎹 别踩白块儿 ----------------
-function gTiles(d){stopTimers();d=d||0;var ENDL=!!CUR_ENDLESS;
+function gTiles(d,lv){stopTimers();d=d||0;var lvSel=Math.max(1,Math.min(12,lv||CUR_LV||1));var nr=needRounds(lvSel);var ENDL=!!CUR_ENDLESS;
 var SEMI={C:0,'C#':1,D:2,'D#':3,E:4,F:5,'F#':6,G:7,'G#':8,A:9,'A#':10,B:11};
 function freqOf(n){var m=n.match(/^([A-G]#?)(\d)$/);if(!m)return 440;var s=SEMI[m[1]],oct=parseInt(m[2],10);return 440*Math.pow(2,((oct+1)*12+s-69)/12);}
 function colOf(n){var m=n.match(/^([A-G]#?)(\d)$/);if(!m)return 0;var s=SEMI[m[1]],oct=parseInt(m[2],10);return ((oct*12+s)%4+4)%4;}
@@ -5280,7 +5356,7 @@ function resize(){var r=cv.getBoundingClientRect?cv.getBoundingClientRect():{wid
 resize();
 var S=null,curLevel=0,running=false,gScore=0;
 function buildNotes(songKey){var arr=SONGS[songKey].notes,out=[];for(var i=0;i<arr.length;i++)out.push({col:colOf(arr[i]),freq:freqOf(arr[i]),tapped:false});return out;}
-function startLevel(idx,carry){var L=BASE[idx];var notes=buildNotes(L.song);var tileH=playH/L.vis;S={songKey:L.song,songName:SONGS[L.song].name,notes:notes,total:notes.length,tileH:tileH,speed:L.speed*spdMul*(ENDL?Math.pow(1.012,curLevel):1),scrollY:0,startY:playH-tileH*1.6,score:carry||0,levelScore:0,combo:0,maxCombo:0,running:true,t:0,pulse:0,pops:[]};curLevel=idx;running=true;if(CURRENT)setLive(CURRENT.id,carry||0,false);var e=$('tlS');if(e)e.textContent=(carry||0);}
+function startLevel(idx,carry){var L=BASE[idx];var notes=buildNotes(L.song);var tileH=playH/L.vis;S={songKey:L.song,songName:SONGS[L.song].name,notes:notes,total:notes.length,tileH:tileH,speed:L.speed*spdMul*(ENDL?Math.pow(1.012,curLevel):1)*(1+(lvSel-1)*0.05),scrollY:0,startY:playH-tileH*1.6,score:carry||0,levelScore:0,combo:0,maxCombo:0,running:true,t:0,pulse:0,pops:[]};curLevel=idx;running=true;if(CURRENT)setLive(CURRENT.id,carry||0,false);var e=$('tlS');if(e)e.textContent=(carry||0);}
 function yOf(r){return S.startY-r*S.tileH+S.scrollY;}
 function activeRow(){for(var r=0;r<S.notes.length;r++)if(!S.notes[r].tapped)return r;return -1;}
 function tap(col){if(!S||!S.running)return;var r=activeRow();if(r<0)return;if(S.notes[r].col===col){S.notes[r].tapped=true;S.notes[r].tappedAt=S.t;S.pops.push({x:S.notes[r].col*colW+colW/2,y:yOf(r)+S.tileH*0.6,t0:S.t,txt:'+1'});gScore++;S.score=gScore;S.levelScore++;S.combo++;if(S.combo>S.maxCombo)S.maxCombo=S.combo;piano(S.notes[r].freq);S.pulse=1;var e=$('tlS');if(e)e.textContent=gScore;var p=$('tlP');if(p)p.textContent=Math.min(100,Math.round(100*gScore/TOTAL_NOTES))+'%';if(CURRENT)setLive(CURRENT.id,gScore,false);if(S.levelScore>=S.total){if(ENDL){startLevel((curLevel+1)%BASE.length,gScore);}else if(curLevel+1<BASE.length)startLevel(curLevel+1,gScore);else win();}}else{lose('误触白块');}}
@@ -5297,8 +5373,8 @@ every(loop,16);
 }
 
 // ---------------- ✈️ 飞机大战 ----------------
-function gPlane(d){stopTimers();d=d||0;
-var cfg=[{esp:1.6,espawn:900,bsp:2.4,lives:3},{esp:2.2,espawn:700,bsp:2.8,lives:3},{esp:3,espawn:520,bsp:3.2,lives:2}][d];
+function gPlane(d,lv){stopTimers();d=d||0;
+var cfg=L([{esp:1.6,espawn:900,bsp:2.4,lives:3},{esp:2.2,espawn:700,bsp:2.8,lives:3},{esp:3,espawn:520,bsp:3.2,lives:2}], d, lv, ["esp","espawn"]);
 var CW=Math.min(340,(window.innerWidth||360)-40),CH=520;
 var px=CW/2,score=0,lives=cfg.lives,over=false;
 var enemies=[],bullets=[];
@@ -5349,8 +5425,8 @@ every(tick,26);every(shoot,260);every(addEnemy,cfg.espawn);later(addEnemy,500);
 }
 
 // ---------------- 🫧 泡泡龙 ----------------
-function gBubble(d){stopTimers();d=d||0;
-var cfg=[{cols:9,rows:9,colors:4},{cols:10,rows:11,colors:5},{cols:11,rows:12,colors:6}][d];
+function gBubble(d,lv){stopTimers();d=d||0;
+var cfg=L([{cols:9,rows:9,colors:4},{cols:10,rows:11,colors:5},{cols:11,rows:12,colors:6}], d, lv, ["colors"]);
 var C=cfg.cols,R=cfg.rows,NC=cfg.colors;
 var COLR=['var(--sk5)','var(--sk1)','var(--sk4)','var(--sk2)','var(--sk3)','var(--sk6)'];
 var grid=[],score=0,over=false,angle=0,bubble=1,ready=true;
@@ -5458,8 +5534,8 @@ init();newBubble();updAim();
 }
 
 // ---------------- 🏓 乒乓对决 ----------------
-function gPong(d){stopTimers();d=d||0;
-var cfg=[{ai:3.4,bs:3.4,win:5},{ai:4.6,bs:4.2,win:7},{ai:6,bs:5.2,win:9}][d],slowT=0;
+function gPong(d,lv){stopTimers();d=d||0;
+var cfg=L([{ai:3.4,bs:3.4,win:5},{ai:4.6,bs:4.2,win:7},{ai:6,bs:5.2,win:9}], d, lv, ["ai","win"]),slowT=0;
 var CW=Math.min(320,(window.innerWidth||360)-40),CH=460,PW=76,PH=10;
 var px=(CW-PW)/2,ax=(CW-PW)/2,bx=CW/2,by=CH/2,vx=cfg.bs*0.7,vy=cfg.bs;
 var ps=0,as=0,over=false;
@@ -5514,7 +5590,8 @@ ITEMHOOKS['pong']={slow:function(){slowT=nowClock()+5000}};
 }
 
 
-function gQA(d){stopTimers();d=d||0;
+function gQA(d,lv){stopTimers();d=d||0;
+var _nr=needRounds(lv);
 var st=$('stage');st.innerHTML='';
 var score=0,total=0,ok=0,qidx=0,qlist=[],typeLabel='',typeKey='',locked=false,autoMode=false,selfRank=0,combo=0,wrongCombo=0,reviewMode=false,AUTO_TOTAL=10,UP_COMBO=2,DOWN_COMBO=2;
 // ================= 题库数据（可自由扩展的类型）=================
@@ -5795,7 +5872,7 @@ function startOnline(){typeKey='b:online';typeLabel='🌐 联网';if(ONLINE_BANK
   sp.textContent=netFailText(reason)+'，即将切换到本地题库';
   later(function(){try{hint.innerHTML='⚠️ '+netFailText(reason);startType('common',null,qaDiffDefault('common'))}catch(e){startType('common',null)}},1200);});}
 function beginOnline(){typeKey='b:online';typeLabel=(ONLINE_SRC==='offline')?'📴 联网（离线兜底）':'🌐 联网';curDiff=-1;curDiffLabel='';
- qlist=shuffle(ONLINE_BANK.slice()).slice(0,Math.min(10,ONLINE_BANK.length)).map(function(it){return {q:it.q,a:it.a,opts:it.opts,src:it.src}});
+ qlist=shuffle(ONLINE_BANK.slice()).slice(0,Math.min(10*_nr,ONLINE_BANK.length)).map(function(it){return {q:it.q,a:it.a,opts:it.opts,src:it.src}});
  ok=0;qidx=0;score=0;total=qlist.length;showQuestion();}
 // ================= 工具 =================
 function norm(s){return (s||'').trim().toLowerCase().replace(/[\s.,，。！!?？、]/g,'')}
@@ -5886,7 +5963,7 @@ function doStartType(bk,cn,d){var ds=bk?qaDiffs(bk):null;
  curDiffLabel=(curDiff>=0)?ds[curDiff].n:'';
  typeKey=bk?('b:'+bk):('c:'+cn);typeLabel=bk?QA_TYPES[bk].name:cn;
  combo=0;wrongCombo=0;
- if(bk){if(autoMode){qlist=[];total=AUTO_TOTAL}else{var cnt=(curDiff>=0&&ds[curDiff].cnt)?ds[curDiff].cnt:10;qlist=QA_TYPES[bk].gen(cnt,Math.max(0,curDiff));total=qlist.length}}
+ if(bk){if(autoMode){qlist=[];total=AUTO_TOTAL*_nr}else{var cnt=((curDiff>=0&&ds[curDiff].cnt)?ds[curDiff].cnt:10)*_nr;qlist=QA_TYPES[bk].gen(cnt,Math.max(0,curDiff));total=qlist.length}}
  else{var pairs=custom[cn]||[];if(!pairs.length){hint.innerHTML='⚠️ 该题库还没有题目，先去录入';return}qlist=shuffle(pairs.slice()).slice(0,Math.min(10,pairs.length)).map(function(p){return {q:p.q,a:p.a,opts:null,custom:true}});total=qlist.length}
  ok=0;qidx=0;score=0;showQuestion()}
 function showQuestion(){st.innerHTML='';locked=false;
@@ -5967,8 +6044,8 @@ function openEditor(preset){st.innerHTML='';locked=false;
 }
 
 // ===== 新增 4 款游戏（Phase 7）=====
-function gBackSpan(d){stopTimers();d=d||0;
-var cfg=[{s0:3,sp:1.2,f:2},{s0:4,sp:1,f:2},{s0:5,sp:0.82,f:1}][d];
+function gBackSpan(d,lv){stopTimers();d=d||0;
+var cfg=L([{s0:3,sp:1.2,f:2},{s0:4,sp:1,f:2},{s0:5,sp:0.82,f:1}], d, lv, ["s0","sp"]);
 var span=cfg.s0,fails=0,best=0,cur='',target='';
 var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>当前 <b id="bspN">'+cfg.s0+'</b> 位</span><span>🏆 最好 <b id="bspB">—</b></span><span>❌ <b id="bspF">0</b>/'+cfg.f+'</span>'));
@@ -5988,8 +6065,8 @@ var k=0;var speed=Math.max(Math.round((900-span*40)*cfg.sp),450);
 function show(){if(k>=digits.length){disp.textContent='❓';hint.textContent='🔁 倒着输入（先输最后一位）';input.style.visibility='visible';return}
 disp.textContent=digits[k];k++;later(show,speed)}later(show,700)}round()}
 
-function gRhythm(d){stopTimers();d=d||0;
-var cfg=[{n:6,beat:700,tol:0.45},{n:8,beat:560,tol:0.4},{n:10,beat:430,tol:0.35}][d];
+function gRhythm(d,lv){stopTimers();d=d||0;
+var cfg=L([{n:6,beat:700,tol:0.45},{n:8,beat:560,tol:0.4},{n:10,beat:430,tol:0.35}], d, lv, ["n","beat"]);
 var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>第 <b id="rhN">1</b>/'+cfg.n+' 拍</span><span>⏱ 间隔 '+Math.round(cfg.beat/100)+'s</span><span>🎯 命中 <b id="rhH">0</b></span>'));
 var hint=h('div','hint','圆盘闪亮的<b>瞬间</b>点击它（或按空格）！');st.appendChild(hint);
@@ -6082,8 +6159,8 @@ function next(){
 }
 for(var s=3;s<n;s++){if(s%switchEvery===0)switchAt[s]=true}
 next()}
-function gTimer(d){stopTimers();d=d||0;
-var cfg=[{n:4,base:3,v:2},{n:5,base:5,v:3},{n:6,base:7,v:4}][d];
+function gTimer(d,lv){stopTimers();d=d||0;
+var cfg=L([{n:4,base:3,v:2},{n:5,base:5,v:3},{n:6,base:7,v:4}], d, lv, ["n","base"]);
 var st=$('stage');st.innerHTML='';
 st.appendChild(h('div','hud','<span>第 <b id="tmN">1</b>/'+cfg.n+' 轮</span><span>误差 <b id="tmE">—</b>ms</span><span>🎯 达标 <b id="tmH">0</b></span>'));
 var hint=h('div','hint','点「开始」，在心里默数到提示的秒数，觉得<b>刚好到了</b>就点「停」');st.appendChild(hint);
@@ -6290,7 +6367,7 @@ function buildMenu(){var m=$('menu');m.innerHTML='';
       var cb=best>0?(g.low?'⚡ 最快 '+best:'🏆 最佳 '+best+(g.unit||'')):'未挑战';
       var dur=DUR[id]?'<div class="cd">⏱ '+DUR[id]+'</div>':'';
       var lU=lvUnlocked(id),lS=lvStarOf(id,lU);
-      var lvt='第 '+lU+' 关'+(lS?(' · '+lvStarStr(lS)):'');
+      var lvt='第 '+lU+' 关'+(lS?(' · '+lvStarStr(lS)):'')+(lvAllCleared(id)?' 🏆':'');
       c.innerHTML='<div class="ci" style="background:linear-gradient(135deg,'+CATCOLORS[ci]+'26,'+CATCOLORS[ci]+'4d)">'+g.icon+'</div><div class="cn">'+g.name+'</div><div class="cb">'+cb+'</div><div class="cl" id="clv_'+id+'">🗺 '+lvt+'</div>'+dur;
       c.onclick=function(){openGame(g)};cards.appendChild(c)});
     m.appendChild(cards);
