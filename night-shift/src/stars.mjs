@@ -15,7 +15,7 @@
  * 与"连续 3 夜"的字面承诺不符。所以断档即归零（UI 上要显示 streak，玩家能看见断点）。
  */
 
-import { STAR_UNLOCKS, ARRIVALS_PER_NIGHT, NIGHTS_PER_WEEK, nightCurve } from './config.mjs';
+import { STAR_UNLOCKS, ARRIVALS_PER_NIGHT, NIGHTS_PER_WEEK, nightCurve, nightInWeek } from './config.mjs';
 
 /** 双达标门槛基准值（第 1 周的营业额基准；实际门槛按夜次缩放，见 starTargets） */
 export const STAR_TARGETS = { revenue: 350, satisfaction: 62 };
@@ -32,7 +32,9 @@ export const STAR_WEEK_BONUS = true;
  * 几乎不可能达标、第 7 夜空手就过线 —— 门槛必须跟着客流一起涨。
  */
 export function starTargets(night) {
-  const cur = nightCurve(night);
+  /* P0-5：门槛按**周内夜次**缩放，不按绝对夜号。
+   * 否则第 8 夜（第 2 周第 1 夜）会按第 7 夜的客流门槛算，与第 1 周手感彻底错位。 */
+  const cur = nightCurve(nightInWeek(night));
   const scale = (cur.arrivalsMul ?? 1);
   return {
     revenue: Math.round(STAR_TARGETS.revenue * scale),
@@ -103,7 +105,7 @@ export function createStars(opts = {}) {
     /* 周终加冕：第 7 夜双达标再 +1 星。
      * 没有这一下，一周最多 3★ —— 4★/5★ 的机器、装修、成就、CG 全是死内容。 */
     if (STAR_WEEK_BONUS && level() < STAR_MAX
-        && numOr(report?.night, 0) >= NIGHTS_PER_WEEK) {
+        && nightInWeek(numOr(report?.night, 0)) === NIGHTS_PER_WEEK) {
       state.star = level() + 1;
       leveled = true;
       weekBonus = true;

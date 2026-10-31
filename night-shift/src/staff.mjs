@@ -15,7 +15,7 @@
  *
  * 表现副作用（店员 mesh 移动 / toast）由 main.mjs 统一收口（onEvent 回调）。
  */
-import { STAFF, WAREHOUSE, SKU_BY_ID } from './config.mjs';
+import { STAFF, WAREHOUSE, SKU_BY_ID, NIGHT_WALL_SECONDS } from './config.mjs';
 import { availableSkus } from './economy.mjs';
 import { fmtYuan } from './fmt.mjs';
 
@@ -69,11 +69,13 @@ export function createStaff(opts = {}) {
       stamina: 100,
       resting: false,
       working: false,
-      status: 'idle',     // idle | working | resting | errand | stopped
+      status: 'idle',     // idle | working | resting | errand | stopped | off
       cooldownUntil: 0,
       errandUntil: 0,
       pending: null,      // 采购员外出期间挂起的采购单
       targetId: null,
+      /* P1-9 排班：false = 今夜不上班（不扣薪资、不干活）。旧档无此字段 → 用 `!== false` 口径视为上班。 */
+      onDuty: true,
     });
     onEvent('hire', { type, name: def.name, emoji: def.emoji });
     return { ok: true, type };
@@ -91,7 +93,8 @@ export function createStaff(opts = {}) {
   /* ---------- 薪资 ---------- */
 
   function paySalary() {
-    const arr = roster();
+    /* P1-9：只给**今夜上班**的人发薪。旧档没有 onDuty 字段 → `!== false` 视为上班。 */
+    const arr = roster().filter((m) => m.onDuty !== false);
     if (arr.length === 0) return;
     const total = arr.reduce((s, m) => s + (defOf(m.type).salary | 0), 0);
     if (state.cash >= total) {
@@ -104,10 +107,42 @@ export function createStaff(opts = {}) {
     }
   }
 
+  /* ---------- 排班（P1-9） ---------- */
+  /** 设置某人今夜是否上班。关闭时立刻收工（清 working、状态标 off），不影响已发工资。 */
+  function setDuty(type, on) {
+    const m = roster().find((s) => s.type === type);
+    if (!m) return { ok: false, reason: '未雇佣' };
+    m.onDuty = on !== false;
+    if (!m.onDuty) {
+      m.working = false;
+      m.resting = false;
+      m.status = 'off';
+    } else if (m.status === 'off') {
+      m.status = 'idle';
+    }
+    onEvent('duty', { type, name: defOf(type).name, onDuty: m.onDuty });
+    return { ok: true, type, onDuty: m.onDuty };
+  }
+
+  /** 翻转排班（HUD 按钮用）。 */
+  function toggleDuty(type) {
+    const m = roster().find((s) => s.type === type);
+    if (!m) return { ok: false, reason: '未雇佣' };
+    return setDuty(type, m.onDuty === false);
+  }
+
   /* ---------- 单店员推进 ---------- */
 
   function updateMember(s, dt, now) {
     const def = defOf(s.type);
+
+    /* P1-9：今夜不上班 → 不干活、也不掉体力。旧档缺字段按"上班"处理（!== false）。 */
+    if (s.onDuty === false) {
+      s.working = false;
+      s.resting = false;
+      s.status = 'off';
+      return;
+    }
 
     /* 体力：工作掉、休息回 */
     if (s.resting) {
@@ -301,8 +336,11 @@ export function createStaff(opts = {}) {
           emoji: def.emoji,
           hireCost: def.hireCost,
           salary: def.salary,
+          /* P1-9：每夜薪资 = 单次薪资 × 每夜扣薪次数（480/180 只够扣 2 次，第 3 次在打烊后）。 */
+          salaryPerNight: def.salary * Math.floor(NIGHT_WALL_SECONDS / STAFF.salarySec),
           desc: def.desc,
           hired: !!entry,
+          onDuty: entry ? entry.onDuty !== false : true,
           stamina: entry ? Math.round(entry.stamina) : 0,
           status: entry ? entry.status : 'idle',
         };
@@ -312,10 +350,13 @@ export function createStaff(opts = {}) {
 
   return {
     hire, fire, canHire,
+    setDuty, toggleDuty,
     update,
     snapshot,
     isStopped: () => stopped,
     /** 当前雇佣人数 */
     count: () => roster().length,
+    /** 今夜上班人数（P1-9） */
+    onDutyCount: () => roster().filter((m) => m.onDuty !== false).length,
   };
 }

@@ -92,7 +92,9 @@ html, body {
   font-family: var(--font);
 }
 
-#app { position: relative; width: 100vw; height: 100vh; }
+/* P1-12：dvh 双写 —— iOS Safari 地址栏伸缩时 100vh 会大于可视高度，
+ * 底部按钮被顶到可视区外（"点不到"）。老浏览器取第一条 100vh。 */
+#app { position: relative; width: 100vw; height: 100vh; height: 100dvh; }
 
 #scene-canvas { display: block; width: 100%; height: 100%; }
 
@@ -470,6 +472,7 @@ html, body {
 .modal {
   width: min(560px, 92vw);
   max-height: 84vh;
+  max-height: 84dvh;   /* P1-12：dvh 双写，避免移动端地址栏伸缩顶掉底部按钮 */
   overflow: auto;
   background: var(--surface);
   border: 1px solid var(--border-strong);
@@ -1185,6 +1188,20 @@ html, body {
 }
 .set-sec .sec-head { font-size: 13.5px; font-weight: 700; color: var(--brand); }
 .set-sec .sec-sub { margin-top: 4px; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+/* P1-12：结算页的折叠段（事件账本 / 本周常客 / 店铺星级）。
+ * summary 复用 .sec-head 的排版，但必须给"可点开"的视觉提示；去掉浏览器默认三角。 */
+details.set-sec > summary.sec-head {
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+details.set-sec > summary.sec-head::-webkit-details-marker { display: none; }
+details.set-sec > summary.sec-head::after { content: '展开 ▾'; font-size: 11px; font-weight: 400; color: var(--text-muted); }
+details.set-sec[open] > summary.sec-head::after { content: '收起 ▴'; }
 
 /* 定价页 */
 .price-row {
@@ -1400,6 +1417,7 @@ html, body {
 .phone {
   width: min(380px, 92vw);
   max-height: 84vh;
+  max-height: 84dvh;   /* P1-12：dvh 双写 */
   display: flex;
   flex-direction: column;
   background: #1C2322;
@@ -1727,6 +1745,21 @@ html, body { overscroll-behavior: none; }
   .toast { font-size: 12px; padding: 5px 11px; }
 }
 
+/* ---------- P1-12：窄屏/触屏下弹窗按钮常驻 ----------
+ * 结算面板有 20+ 行账目 + 4 项升级，横屏 667×375 时 `.modal` 的 84dvh ≈ 315px，
+ * 主按钮在滚动区最底部 = 要滚 3 屏才点得到。sticky 让按钮组贴着面板底部常驻，
+ * 内容仍可滚（`.modal` 的 max-height + overflow 不变）。
+ * 桌面 `(pointer: fine)` 且宽度 > 600px 时不命中 → 布局与改前一致。 */
+@media (max-width: 600px), (pointer: coarse) {
+  .modal .actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    padding: 10px 0 calc(6px + env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, rgba(20, 24, 33, 0) 0%, var(--surface, #1A2230) 38%);
+  }
+}
+
 /* ---------- 手机竖屏紧凑适配（窄屏 ≤600px：HUD 整体收一号） ----------
  * 放在 (pointer: coarse) 之后：手机同时命中两条时，这里更紧凑的字号/内边距压过 coarse 的默认。
  * 注意：角块真实类名为 .corner.tl / .corner.tr（见 src/hud.mjs），不是 left/right；
@@ -1763,13 +1796,16 @@ html, body { overscroll-behavior: none; }
   .queue { bottom: 96px; }              /* 让开右下按钮组 */
   #ns-joy { bottom: 18px; }
   .topbar { padding: 5px 8px; }
+  /* P1-12：竖屏升级区改单列 —— 效果文案与价格按钮上下排，避免挤成两行/截断。 */
+  .upgrades .upgrade { flex-direction: column; align-items: stretch; gap: 8px; }
+  .upgrades .upgrade button { width: 100%; }
 }
 
 /* 手机横屏（高度紧张）：手机面板的 .phone-screen 有 320px 硬性最小高 + overflow:hidden，
  * 会把整个面板撑出屏幕上下两端 —— 关闭按钮在 .phone-actions（面板底部）就永远点不到（2026-10-05 实测）。
  * 横屏下让 screen 收缩到视口内 + 屏幕内滚动，关闭按钮恒可见。 */
 @media (pointer: coarse) and (orientation: landscape) {
-  .phone { max-height: calc(100vh - 24px); }
+  .phone { max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); }
   .phone-screen { min-height: 0; overflow-y: auto; }
 }
 

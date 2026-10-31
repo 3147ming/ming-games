@@ -6,10 +6,13 @@ import {
   SKU_BY_ID, OPEN_HOUR, NIGHTS_PER_WEEK, CLERK, MODULE_MAX_PER_DEVICE, MODULE_REFUND,
   STAFF, WAREHOUSE, SECONDHAND, MONITOR, DELIVERY, GARBAGE, nightCurve, GAME_HOURS,
   TUTORIAL_STOCK_GOAL, TUTORIAL_SERVE_GOAL, nightInWeek,
+  RENT_PER_NIGHT, UTILITIES_PER_NIGHT, weekMod, weekOf, COFFEE_BONUS, SKUS, UPGRADES,
 } from './config.mjs';
 import { state, NIGHT_SECONDS } from './state.mjs';
 import { RESET_SCOPE } from './reset.mjs';
 import { availableSkus, sellable } from './economy.mjs';
+/* P1-8：定价页的"满意度预估"直接读 PRICING.repPenaltyK，避免在展示层硬编码一份会漂的常数。 */
+import { PRICING } from './pricing.mjs';
 import {
   settings, RANGES, DEFAULTS, setSettings, resetSettings,
 } from './settings.mjs';
@@ -79,6 +82,8 @@ export function mountHud(root) {
 
     <div class="corner tl">
       <div><span class="label">第</span> <span class="value" data-el="night">1</span> <span class="label">夜 / ${NIGHTS_PER_WEEK}</span> <span class="label ntag" data-el="ntag"></span></div>
+      <!-- P1-11：星级 + 下一星要什么（数据由 main 的 envSnapshot 传入，hud 不 import stars） -->
+      <div><span class="label">星级</span> <span class="value brand" data-el="starline">★☆☆☆☆</span> <span class="label" data-el="starnext"></span></div>
       <div><span class="label">今夜客数</span> <span class="value" data-el="ntarget">0</span></div>
       <div><span class="label">满意度</span> <span class="value brand" data-el="rep">50</span></div>
       <!-- 疲劳系统：玩家疲劳读数（独立于店员的 barFatigue，不混用） -->
@@ -126,6 +131,7 @@ export function mountHud(root) {
   els = {
     crosshair: q('crosshair'), clock: q('clock'), segment: q('segment'), track: q('track'),
     night: q('night'), ntag: q('ntag'), ntarget: q('ntarget'), rep: q('rep'), cash: q('cash'), rev: q('rev'),
+    starline: q('starline'), starnext: q('starnext'),
     tokens: q('tokens'), envline: q('envline'),
     prompt: q('prompt'), held: q('held'), hint: q('hint'),
     custPortrait: q('cust-portrait'),
@@ -275,7 +281,8 @@ function firstNightGoalHtml() {
 
 /** 夜次难度标签（P0-5）：随 NIGHT_CURVE 的客流量倍率变化 */
 function nightDifficultyTag(night) {
-  const c = nightCurve(night);
+  /* P0-5：顶栏难度标签按**周内夜次**取曲线，第 8 夜（第 2 周第 1 夜）显示"轻松"而非"爆满"。 */
+  const c = nightCurve(nightInWeek(night));
   if (c.arrivalsMul >= 1.4) return '· 爆满';
   if (c.arrivalsMul >= 1.25) return '· 繁忙';
   if (c.arrivalsMul >= 1.1) return '· 渐忙';
@@ -293,6 +300,25 @@ export function renderHud(env) {
 
   els.night.textContent = String(state.night);
   if (els.ntag) els.ntag.textContent = nightDifficultyTag(state.night);
+  /* P1-11：星级 + 下一星要什么。env.stars / env.nextUnlock 由 main 传入；
+   * 缺省（旧调用/单测）时静默跳过，不引入对 stars 模块的依赖。 */
+  if (els.starline || els.starnext) {
+    const st = env?.stars ?? null;
+    const nu = env?.nextUnlock ?? null;
+    if (els.starline) {
+      const lv = Number(st?.level) || 1;
+      const max = Number(st?.max) || 5;
+      els.starline.textContent = '★'.repeat(lv) + '☆'.repeat(Math.max(0, max - lv));
+    }
+    if (els.starnext) {
+      if (nu) {
+        const left = Math.max(0, (Number(st?.need) || 2) - (Number(st?.streak) || 0));
+        els.starnext.textContent = `· 下一星 ${nu.name}（再 ${left} 夜双达标）`;
+      } else {
+        els.starnext.textContent = '· 已满星';
+      }
+    }
+  }
   if (els.ntarget) els.ntarget.textContent = String(state.arrivalsTarget ?? 0);
   const cashShown = easeNum('cash', state.cash);
   els.rep.textContent = String(Math.round(easeNum('rep', state.reputation)));
@@ -686,19 +712,30 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
    * 所以底部结算区要分行显示：货值 / 运费 / 总计 / 余额 / 仓库剩余。 */
   function buyContent() {
     const list = availableSkus();
-    const rows = list.map((s) => `
+    /* P1-7：进货依据 —— 读昨夜战报（state.lastReport.sku），给每行"昨夜 售/缺"。
+     * 没有昨夜数据（首夜/刚读档）显示"暂无数据"。 */
+    const lastSku = state.lastReport?.sku ?? null;
+    const rows = list.map((s) => {
+      const sold = lastSku?.sold?.[s.id] ?? 0;
+      const missed = lastSku?.missed?.[s.id] ?? 0;
+      const skuTip = lastSku ? `· 昨夜 售 ${sold}/缺 ${missed}` : '· 暂无数据';
+      const autoTarget = Number(state.autoOrder?.[s.id]) || 0;
+      return `
       <div class="row" data-sku="${s.id}">
         <div>
           <div class="name">${s.emoji} ${s.name}</div>
           <div class="meta">进 ${fmtYuan(s.cost)} / 售 ${fmtYuan(state.prices[s.id] ?? s.price)} · 保质 ${s.shelfLife} 夜 · 起订 ${s.moq}
-            · 库存箱 ${state.backroom[s.id] ?? 0} · 货架 ${sellable(s.id)}</div>
+            · 库存箱 ${state.backroom[s.id] ?? 0} · 货架 ${sellable(s.id)} ${skuTip}</div>
         </div>
         <div class="qty">
           <button data-act="minus">−</button>
           <input type="number" value="${s.moq}" min="${s.moq}" step="1" data-act="qty">
           <button data-act="plus">+</button>
+          <input class="auto-qty" type="number" value="${autoTarget}" min="0" step="1"
+            placeholder="每夜补到" title="常备库存：每夜开局自动补齐到该目标件数" data-act="auto">
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     const dlv = typeof deliveryApi?.panel === 'function' ? deliveryApi.panel() : null;
     /* 在途区：需求要求"进货页能看到订单"。为空时不占位。 */
     const transitRows = (dlv?.transit ?? []).map((o) => `
@@ -784,6 +821,7 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
   const STAFF_STATUS = {
     idle: '待命', working: '工作中', resting: '休息中', errand: '外出采购', stopped: '停工',
     repair: '维修中', clean: '清理中', 'stock-shelf': '补货架', 'stock-vending': '补售货机', 'stock-claw': '补娃娃机',
+    off: '今夜休息',   // P1-9：排班关闭（不扣薪、不干活）
   };
   function staffContent() {
     const snap = staffApi.snapshot();
@@ -793,7 +831,10 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
       const statusLabel = STAFF_STATUS[r.status] ?? r.status;
       const barColor = r.stamina < STAFF.restStamina ? 'var(--warning)' : 'var(--brand)';
       const btn = r.hired
-        ? `<button class="mini-btn danger" data-act="fire" data-type="${r.type}">解雇</button>`
+        ? `<div class="s-actions">
+            <button class="mini-btn duty ${r.onDuty ? 'on' : ''}" data-act="duty" data-type="${r.type}">${r.onDuty ? '✅ 上班' : '💤 休息'}</button>
+            <button class="mini-btn danger" data-act="fire" data-type="${r.type}">解雇</button>
+          </div>`
         : `<button class="mini-btn" data-act="hire" data-type="${r.type}" ${can.ok ? '' : 'disabled'}>雇用 · ${fmtYuan(r.hireCost)}</button>`;
       const why = (!r.hired && !can.ok) ? `<span class="warn"> · ${can.reason}</span>` : '';
       const bar = r.hired ? `<div class="s-bar"><i style="width:${r.stamina}%;background:${barColor}"></i></div>` : '';
@@ -801,9 +842,9 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
         ? `<span class="s-status ${r.status}">${statusLabel}</span>`
         : `<span class="s-status idle">未雇佣</span>`;
       const meta = r.hired
-        ? `薪资 ${fmtYuan(r.salary)}/次 · 体力 ${r.stamina} · 下次发薪 ${Math.ceil(snap.salaryDueIn)}s${snap.stopped ? ' · <span class="warn">已停工</span>' : ''}`
+        ? `薪资 ${fmtYuan(r.salary)}/次 · 今夜 ${fmtYuan(r.salaryPerNight ?? 0)} · 体力 ${r.stamina} · 下次发薪 ${Math.ceil(snap.salaryDueIn)}s${snap.stopped ? ' · <span class="warn">已停工</span>' : ''}`
         : `薪资 ${fmtYuan(r.salary)}/次`;
-      return `<div class="staff-row ${r.hired ? 'hired' : ''}">
+      return `<div class="staff-row ${r.hired ? 'hired' : ''} ${r.hired && !r.onDuty ? 'off' : ''}">
         <div class="s-emoji">${r.emoji}</div>
         <div>
           <div class="s-name">${def.name}</div>
@@ -817,7 +858,10 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
     /* 上限来自快照而不是 config：星级每升 1 级，店员总上限 +1 */
     const cap = snap.cap ?? STAFF.maxTotal;
     const per = cap > STAFF.order.length ? '（升星后可增聘同岗位）' : '（各 1 人）';
-    return `<div class="sub staff-head">${clerkPortraitHtml()}<div>店员 ${snap.headcount ?? 0}/${cap} 名${per} · 每 ${STAFF.salarySec}s 扣一次薪资 · 现金不足全员停工</div></div>${rows}`;
+    /* P1-9：今夜薪资合计只算上班的（与 paySalary 同一口径）。 */
+    const dutyRows = snap.roster.filter((r) => r.hired && r.onDuty);
+    const dutyTotal = dutyRows.reduce((s, r) => s + (r.salaryPerNight ?? 0), 0);
+    return `<div class="sub staff-head">${clerkPortraitHtml()}<div>店员 ${snap.headcount ?? 0}/${cap} 名${per} · 今夜薪资合计 <b>${fmtYuan(dutyTotal)}</b>（上班 ${dutyRows.length} 人）· 每 ${STAFF.salarySec}s 扣一次 · 现金不足全员停工</div></div>${rows}`;
   }
 
   /* ---------- 仓库页（需求J） ---------- */
@@ -869,14 +913,33 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
   /* ---------- 定价页（单品调价 ±20% / 限时促销 / 情报服务 / 临期提醒） ---------- */
   function priceContent() {
     const snap = growthApi.snapshot();
+    /* P1-8：定价依据 —— 读昨夜战报（state.lastReport.sku），每行给"昨夜 售/缺/毛利"与"预估"。 */
+    const lastSku = state.lastReport?.sku ?? null;
     const rows = snap.sheet.map((r) => {
       const pct = Math.round((r.mul - 1) * 100);
       const cls = pct > 0 ? 'up' : pct < 0 ? 'down' : '';
+      const cost = SKU_BY_ID[r.skuId]?.cost ?? 0;
+      const soldLast = lastSku?.sold?.[r.skuId] ?? 0;
+      const missedLast = lastSku?.missed?.[r.skuId] ?? 0;
+      const grossLast = soldLast * (r.price - cost);
+      /* 预估：基准销量取"昨夜售"，首夜/未卖过则取 3（保守占位）。
+       * 预计毛利 = 基准 × 需求倍率 ×（现价 − 进价）；对照"建议价下毛利"给 ▲/▼。 */
+      const baseQty = soldLast > 0 ? soldLast : 3;
+      const estQty = baseQty * r.demand;
+      const estProfit = estQty * (r.price - cost);
+      const baseProfit = baseQty * (r.base - cost);
+      const diff = estProfit - baseProfit;
+      const arrow = diff > 0.5 ? '▲' : diff < -0.5 ? '▼' : '＝';
+      /* mul>1 时把满意度代价显式写出来（与 checkout 的同一公式，见 pricing.repPenaltyK）。 */
+      const repCost = r.mul > 1 ? ` · 满意度 −${((r.mul - 1) * 10 * PRICING.repPenaltyK).toFixed(2)}` : '';
+      const stallTip = (soldLast === 0 && missedLast === 0) ? ' · <b>没卖动也没缺货，试试降价</b>' : '';
       return `<div class="price-row ${cls}">
         <div>
           <div class="p-name">${r.emoji} ${r.name}</div>
           <div class="p-meta">建议 ${fmtYuan(r.base)} → 现价 <b>${fmtYuan(r.price)}</b>（${pct >= 0 ? '+' : ''}${pct}%）
-            · 需求 ×${r.demand.toFixed(2)}</div>
+            · 需求 ×${r.demand.toFixed(2)}${repCost}</div>
+          <div class="p-meta">昨夜 售 ${soldLast}/缺 ${missedLast}/毛利 ${fmtYuan(grossLast)}
+            · 预估 售 ${estQty.toFixed(1)} → 毛利 ${fmtYuan(estProfit)} ${arrow}（建议价 ${fmtYuan(baseProfit)}）${stallTip}</div>
         </div>
         <div class="p-btns">
           <button class="mini-btn" data-act="price-minus" data-sku="${r.skuId}">−</button>
@@ -1067,14 +1130,16 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
       if (isOwned) {
         btn = '<span class="e-owned">✓ 已购</span>';
       } else {
-        const reason = !starOk ? `需要 ★${e.star}` : (!cashOk ? '现金不足' : '');
+        /* P1-10：缺钱不再只说"现金不足"，直接给还差多少。 */
+        const reason = !starOk ? `需要 ★${e.star}` : (!cashOk ? `还差 ${fmtYuan(e.cost - state.cash)}` : '');
         if (reason) why = ` · <span class="warn">${reason}</span>`;
         btn = `<button class="mini-btn" data-act="exp-buy" data-id="${e.id}" ${can ? '' : 'disabled'}>${fmtYuan(e.cost)}</button>`;
       }
+      const payback = paybackText(e.id, e.cost);
       return `<div class="exp-row">
         <div>
           <div class="e-name">${e.name} · <span class="star-req">★${e.star}</span></div>
-          <div class="e-desc">${e.desc}${why}</div>
+          <div class="e-desc">${e.desc}${payback ? ` · <span class="lb-sub">${payback}</span>` : ''}${why}</div>
         </div>
         ${btn}
       </div>`;
@@ -1082,9 +1147,26 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
     const stallLine = owned.nightStall
       ? `<div class="growth-note">今夜夜市摊被动收入预计 <b style="color:#E6C75A">+${fmtYuan(expansionApi.stall())}</b></div>`
       : '';
+    /* P1-11：解锁路线三行 —— 下一星 / 下一周 / 下一个 SKU。数据全从 api/既有常量来，
+     * 不让 hud 去 import stars（保持"展示层不反向依赖业务模块"）。 */
+    const nu = typeof expansionApi.nextUnlock === 'function' ? expansionApi.nextUnlock() : null;
+    const weekLabel = typeof expansionApi.nextWeekLabel === 'function' ? expansionApi.nextWeekLabel() : '';
+    const keyOfSku = (s) => (s.locked === true ? s.id : s.locked);
+    const nextLocked = SKUS.find((s) => s.locked && !state.upgrades[keyOfSku(s)]) ?? null;
+    const upgradeName = nextLocked
+      ? (UPGRADES.find((u) => u.id === keyOfSku(nextLocked))?.name ?? keyOfSku(nextLocked))
+      : '';
+    const routeRows = [
+      nu ? `下一星 · ★${nu.star} ${nu.name}：${nu.desc}` : '⭐ 已满星 · 全部设施已解锁',
+      weekLabel ? `下一周 · ${weekLabel}` : '',
+      nextLocked
+        ? `下一个 SKU · ${nextLocked.emoji} ${nextLocked.name}（需「${upgradeName}」升级）`
+        : '🛍️ 全部 SKU 已解锁',
+    ].filter(Boolean).map((s) => `<div class="growth-note">${s}</div>`).join('');
     return `
       <div class="shop-sec">
         <div class="sec-head">🏗️ 扩张投资 <span class="sec-sub">现金 + 星级门槛 · 永久生效</span></div>
+        ${routeRows}
         ${rows}
         ${stallLine}
       </div>`;
@@ -1122,8 +1204,21 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
   }
 
   function bind() {
-    els.modal.oninput = () => {
-      if (current === 'buy') recalcBuy();
+    els.modal.oninput = (e) => {
+      if (current === 'buy') {
+        /* P1-7：常备库存目标（每夜开局自动补到该件数）。输入即写 state.autoOrder，
+         * 0 / 空 = 关闭该 SKU 的常备补货。 */
+        const t = e?.target;
+        if (t?.dataset?.act === 'auto') {
+          const skuId = t.closest('.row')?.dataset?.sku;
+          const v = Math.max(0, Math.floor(Number(t.value) || 0));
+          if (skuId) {
+            if (v <= 0) delete state.autoOrder[skuId];
+            else state.autoOrder[skuId] = v;
+          }
+        }
+        recalcBuy();
+      }
     };
     els.modal.onclick = (e) => {
       const el = e.target.closest('button, .tab, .chip');
@@ -1183,6 +1278,15 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
           const r = staffApi.fire(el.dataset.type);
           const def = STAFF.types[el.dataset.type];
           toast(r?.ok ? `已解雇 ${def.name}` : (r?.reason ?? '解雇失败'), r?.ok ? 'info' : 'bad');
+          render(); return;
+        }
+        if (act === 'duty') {
+          /* P1-9：排班开关。只对已雇佣的人有效；关掉后不扣薪、不干活。 */
+          const r = staffApi.toggleDuty(el.dataset.type);
+          const def = STAFF.types[el.dataset.type];
+          toast(r?.ok
+            ? (r.onDuty ? `✅ ${def.name} 今夜上班` : `💤 ${def.name} 今夜休息（不扣薪）`)
+            : (r?.reason ?? '排班失败'), r?.ok ? 'ok' : 'bad');
           render(); return;
         }
         return;
@@ -1694,9 +1798,45 @@ export function showIncident(info, duration = 4200) {
  * 它们已经真实地改过现金，这里只是把它们从"营业收入"里拆出来单独展示，
  * 绝不二次加减（见 ledger.mjs 文件头）。
  */
-export function openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNight, onOpenShop) {
+/* P1-10：升级回本周期。按 config 的**真实数值**算，不写死：
+ *   · 咖啡机 → COFFEE_BONUS/夜（settleNight 的 coffee 行就是它）
+ *   · 夜市摊 → ¥40/夜（expansion.stallIncome 的下限：40 + round(rep/100*20)）
+ *   · 其余升级没有直接现金收益（功能/解锁/视觉），不编造回本数字 */
+const PAYBACK_PER_NIGHT = {
+  coffee: COFFEE_BONUS,
+  nightStall: 40,
+};
+function paybackText(id, cost) {
+  const per = Number(PAYBACK_PER_NIGHT[id]) || 0;
+  if (!per) return id === 'renovation' ? '纯视觉 · 不加收益' : '';
+  const n = Math.ceil(Number(cost) / per);
+  return Number.isFinite(n) && n > 0 ? `回本 ≈ ${n} 夜` : '';
+}
+
+export function openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNight, onOpenShop, extra = null) {
   const line = (label, v, cls = '') =>
     `<div class="line"><span>${label}</span><span class="${cls}">${v}</span></div>`;
+
+  /* ---------- P1-6：结论（按"缺货 / 报废 / 固定支出"取最大，给一句可执行建议） ---------- */
+  const lostByReason = report.lostByReason ?? { outOfStock: 0, queueFull: 0, impatient: 0 };
+  const perCustomer = (Number(report.served) || 0) > 0
+    ? (Number(report.revenue) || 0) / report.served
+    : 0;
+  const conclusion = (() => {
+    const lostPeople = lostByReason.outOfStock || 0;
+    const lostMoney = lostPeople * perCustomer;
+    const expiredLoss = Number(report.loss) || 0;
+    const fixed = (Number(report.rent) || 0) + (Number(report.utilities) || 0);
+    const top = Math.max(lostMoney, expiredLoss, fixed);
+    if (top === 0) return '';
+    if (lostMoney >= expiredLoss && lostMoney >= fixed) {
+      return `💡 缺货 ${lostPeople} 人 ≈ 少赚 ${fmtYuan(lossMoney)}，明晚先补货`;
+    }
+    if (expiredLoss >= fixed) {
+      return `💡 过期报废 ${fmtYuan(expiredLoss)}，明晚少进易过期 SKU`;
+    }
+    return `💡 固定支出 ${fmtYuan(fixed)}（房租+水电），先别急着扩设施`;
+  })();
 
   /* ---------- 主题段 ---------- */
   const th = report.theme;
@@ -1708,27 +1848,28 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNi
 
   /* ---------- 事件类账本：每条一行 ---------- */
   const led = Array.isArray(report.ledger) ? report.ledger : [];
+  /* P1-12：次要信息折进原生 <details>（不写 JS），首屏只留核心账目。 */
   const ledgerBlock = led.length ? `
-    <div class="set-sec">
-      <div class="sec-head">📋 事件与特殊收支</div>
+    <details class="set-sec">
+      <summary class="sec-head">📋 事件与特殊收支（${led.length}）</summary>
       ${led.map((e) => line(
         `${e.count > 1 ? `${e.label} ×${e.count}` : e.label}`,
         `${e.value >= 0 ? '+' : ''}${fmtMoney(e.value)}`.replace('+-', '-'),
         e.value >= 0 ? 'pos' : 'neg',
       )).join('')}
-    </div>` : '';
+    </details>` : '';
 
   /* ---------- 升星提示 ---------- */
   const st = report.star;
   const starBlock = st ? `
-    <div class="set-sec">
-      <div class="sec-head">⭐ 店铺星级 ${'★'.repeat(st.level)}${'☆'.repeat(Math.max(0, 5 - st.level))}</div>
+    <details class="set-sec">
+      <summary class="sec-head">⭐ 店铺星级 ${'★'.repeat(st.level)}${'☆'.repeat(Math.max(0, 5 - st.level))}</summary>
       <div class="sec-sub">${
         st.leveled
           ? `🎉 升到 ${st.level} 星！已解锁：${(st.unlocked ?? []).join('、') || '—'}`
           : `连续达标 ${st.streak}/${st.need} 夜（营业额 ≥${fmtYuan(st.targets.revenue)} 且满意度 ≥${st.targets.satisfaction}）`
       }</div>
-    </div>` : '';
+    </details>` : '';
 
   /* ---------- 口碑档位 + 忠诚度榜单（2026-10-06 块2） ---------- */
   /* 口碑：原来只有一行"顾客满意度 68"，玩家看不出这个数字会怎么影响客流。
@@ -1755,8 +1896,8 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNi
    * "忠诚度 3 级"是个抽象数字，玩家真正有感觉的是"老周这周来了 6 次"。 */
   const loy = Array.isArray(report.loyalty) ? report.loyalty.filter((x) => x && x.level >= 1) : [];
   const loyalBlock = loy.length ? `
-    <div class="set-sec">
-      <div class="sec-head">\u{1F49B} 本周常客</div>
+    <details class="set-sec">
+      <summary class="sec-head">\u{1F49B} 本周常客（${loy.length}）</summary>
       ${loy.slice(0, 5).map((x) => {
         const disc = x.discount >= 1 ? '无折扣' : `${Math.round(x.discount * 100)}折`;
         const reason = x.persona?.reason ? ` <span class="lb-sub">（${x.persona.reason}）</span>` : '';
@@ -1766,11 +1907,32 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNi
         </div>`;
       }).join('')}
       ${loy.length > 5 ? `<div class="sec-sub">\u2026另有 ${loy.length - 5} 位常客</div>` : ''}
+    </details>` : '';
+
+  /* P1-7：今夜货架战报 —— 按 SKU 的销量/缺货/报废，给玩家"昨夜哪样卖空、哪样报废"的实感。
+   * 数据来自 report.sku（settleNight 汇总当夜逐件累计）。无数据时不显示该块。 */
+  const skuRep = report.sku ?? { sold: {}, missed: {}, spoiled: {} };
+  const soldTop = Object.entries(skuRep.sold || {}).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const missedList = Object.entries(skuRep.missed || {}).filter(([, v]) => v > 0);
+  const spoiledList = Object.entries(skuRep.spoiled || {}).filter(([, v]) => v > 0);
+  const skuBlock = (soldTop.length || missedList.length || spoiledList.length) ? `
+    <div class="set-sec">
+      <div class="sec-head">🍱 今夜货架战报</div>
+      ${soldTop.length ? `<div class="sec-sub">销量 Top3：${soldTop.map(([id, n]) => `${SKU_BY_ID[id]?.name ?? id} ${n}`).join(' · ')}</div>` : ''}
+      ${missedList.length ? `<div class="sec-sub">卖空：${missedList.map(([id, n]) => `${SKU_BY_ID[id]?.name ?? id} 缺 ${n}`).join(' · ')}</div>` : ''}
+      ${spoiledList.length ? `<div class="sec-sub">报废：${spoiledList.map(([id, n]) => `${SKU_BY_ID[id]?.name ?? id} ${n}`).join(' · ')}</div>` : ''}
     </div>` : '';
 
   /* P1-10：全部升级买完后，把升级列表换成一句"已满配"。
    * 留一排永远 disabled 的按钮会让玩家以为"还有东西没解锁，只是我钱不够"。 */
   const allOwned = upgradesList.length > 0 && upgradesList.every((u) => !!state.upgrades[u.id]);
+  /* P1-10：缺钱时给一条"最便宜的还差多少"的明路，而不是一排灰按钮。 */
+  const cheapest = upgradesList
+    .filter((u) => !state.upgrades[u.id])
+    .sort((a, b) => a.cost - b.cost)[0] ?? null;
+  const shortHint = cheapest && state.cash < cheapest.cost
+    ? `<div class="sec-sub">现金不足：最便宜的「${cheapest.name}」还差 <b class="warn">${fmtYuan(cheapest.cost - state.cash)}</b></div>`
+    : '';
   const ups = allOwned ? `
     <div class="upgrades">
       <div class="upgrade" style="justify-content:center;opacity:.7">
@@ -1781,8 +1943,15 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNi
       ${upgradesList.map((u) => {
         const owned = !!state.upgrades[u.id];
         const afford = state.cash >= u.cost;
+        const payback = paybackText(u.id, u.cost);
+        const cashPct = state.cash > 0 ? Math.min(999, Math.round((u.cost / state.cash) * 100)) : 0;
+        const short = !owned && !afford ? `还差 ${fmtYuan(u.cost - state.cash)}` : '';
         return `<div class="upgrade">
-          <div><div class="u-name">${u.name}</div><div class="u-eff">${u.eff}</div></div>
+          <div>
+            <div class="u-name">${u.name}</div>
+            <div class="u-eff">${u.eff}${payback ? ` · <span class="lb-sub">${payback}</span>` : ''}</div>
+            ${!owned && cashPct ? `<div class="u-eff">占现金 ${cashPct}%${short ? ` · <span class="warn">${short}</span>` : ''}</div>` : ''}
+          </div>
           <button data-up="${u.id}" ${owned || !afford ? 'disabled' : ''}>
             ${owned ? '已拥有' : fmtYuan(u.cost)}
           </button>
@@ -1797,6 +1966,7 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNi
         <div class="sub">${report.closeEarly
           ? `实际营业 22:00 → ${fmtClock(report.closedAtHour ?? GAME_HOURS)}（提前打烊）`
           : '营业时间 22:00 → 06:00 结束'}</div>
+        ${conclusion ? `<div class="set-tip">${conclusion}</div>` : ''}
         ${themeBlock}
         <div class="report">
           ${line('营业收入', fmtMoney(report.revenue), 'pos')}
@@ -1809,6 +1979,31 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNi
           ${report.coffee ? line('咖啡机增益', fmtMoney(report.coffee), 'pos') : ''}
           ${report.stall ? line('夜市摊收入', `+${fmtMoney(report.stall)}`, 'pos') : ''}
           ${line('本夜净利', fmtMoney(report.netProfit), report.netProfit >= 0 ? 'pos' : 'neg')}
+          ${(() => {
+            /* P1-6：结算复盘。让"净利 +¥86"不再是孤立数字 ——
+             * ① 较昨夜（第 1 夜无对比，显示占位不显示 +¥0/NaN）；
+             * ② 客单价（served=0 → 占位，禁止 NaN）；
+             * ③ 明夜固定支出（房租×夜次曲线×周难度 + 水电×设备台数）；
+             *    现金已不足以付明夜固定支出时标红 + ⚠。 */
+            const prev = (extra?.history?.lastNights ?? []).find((e) => e.night === report.night - 1) ?? null;
+            const perCust = (Number(report.served) || 0) > 0 ? (Number(report.revenue) || 0) / report.served : 0;
+            const nextNight = report.night + 1;
+            const nextRent = Math.round(
+              RENT_PER_NIGHT * nightCurve(nightInWeek(nextNight)).rentMul
+              * weekMod(weekOf(nextNight)).rentMul);
+            const nextUtil = UTILITIES_PER_NIGHT * (Number(extra?.deviceCount) || 0);
+            const nextFixed = nextRent + nextUtil;
+            const rows = [];
+            if (prev) rows.push(line('较昨夜', fmtYuanSigned((report.netProfit || 0) - (prev.netProfit || 0))));
+            else rows.push(line('较昨夜', '—（首夜无对比）', 'muted'));
+            rows.push(line('客单价', report.served > 0 ? `${fmtYuan(perCust)} / 人` : '—', 'muted'));
+            const broke = Number(state.cash) < nextFixed;
+            rows.push(line(
+              '明夜固定支出',
+              `−${fmtMoney(nextFixed)}（房租 ${nextRent} + 水电 ${nextUtil}）${broke ? ' ⚠ 明晚开门就欠钱' : ''}`,
+              broke ? 'neg' : ''));
+            return rows.join('');
+          })()}
           ${line('服务 / 失销', `${report.served} 人 / ${report.lostSales} 人`)}
           ${(() => {
             /* P1-8：失销拆成三行。只在真有失销时展开 —— 满分夜没必要占三行，
@@ -1832,8 +2027,10 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNi
         ${tbBlock}
         ${womBlock}
         ${loyalBlock}
+        ${skuBlock}
         ${starBlock}
         ${ups}
+        ${shortHint}
         <div class="actions">
           <button class="btn primary" data-act="next">开始第 ${report.night + 1} 夜</button>
           ${onRetryNight ? `<button class="btn" data-act="retry-night">🔄 重打第 ${report.night} 夜</button>` : ''}
@@ -1848,7 +2045,7 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNi
     if (!btn) return;
     if (btn.dataset.up) {
       const res = buyUpgradeFn?.(btn.dataset.up);
-      if (res?.ok) { toast(`已购买：${res.up.name}`, 'ok'); openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNight, onOpenShop); }
+      if (res?.ok) { toast(`已购买：${res.up.name}`, 'ok'); openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNight, onOpenShop, extra); }
       else toast(res?.reason ?? '购买失败', 'bad');
       return;
     }
@@ -1911,13 +2108,20 @@ export function openWeekEnd(passed, onRestart, onRetryNight, extra = null) {
   const nextWeek = Number(extra?.nextWeek) || weekNo + 1;
   const endless = extra?.nextMod?.endless === true;
   const nextModLabel = extra?.nextMod?.label ?? '';
+  /* P1-11：下一周到底有没有新东西，必须说实话 ——
+   * 第 2 周起会解锁周目主题（由 main 传 nextUnlocks，hud 不认识 themes 模块）；
+   * 没有就明确写"无新解锁（纪录仍在累积）"，别让玩家以为还有。 */
+  const nextUnlocks = Array.isArray(extra?.nextUnlocks) ? extra.nextUnlocks : [];
+  const nextUnlockLine = nextUnlocks.length
+    ? ` · 解锁 ${nextUnlocks.join(' / ')}`
+    : ' · 无新解锁（纪录仍在累积）';
   const nextBtn = passed
     ? (endless
       ? `进入无尽周 · 只比纪录`
       /* 难度写进按钮但压短：375px 竖屏下"进入第 2 周（难度 ×1.25）"会折成两行，
        * 把"难度"二字去掉后一行放得下（'难度 ×1.25' → '×1.25'）。 */
       : `进入第 ${nextWeek} 周${nextModLabel ? ` · ${nextModLabel.replace(/^难度\s*/, '')}` : ''}`)
-    : '重开本周';
+    : `重开第 ${weekNo} 周 · 从第 1 夜`;
 
   /* ---------- P1-3：本周七夜条形图 ---------- */
   const nights = Array.isArray(extra?.nights) ? extra.nights : [];
@@ -1951,6 +2155,10 @@ export function openWeekEnd(passed, onRestart, onRetryNight, extra = null) {
   const bestLine = Number.isFinite(bestNet) && bestNet > 0
     ? `<div class="line"><span>历史最佳单夜净利（本机）</span><span class="pos">${fmtMoney(bestNet)}</span></div>`
     : '';
+  /* P0-3：撑过一周进下一周时，明确告诉玩家"我的店"里继承了什么 ——
+   * 这是二周目保留店产（升级/店员/设备/库存/扩建/代币增益）的可见性落点。 */
+  const carryLine = passed ? `
+    <div class="line"><span>带进第 ${nextWeek} 周</span><span class="muted">⭐${state.star} · 升级 ${Object.keys(state.upgrades).length} 项 · 店员 ${state.staff.length} 名 · 设备 ${Object.keys(state.deviceLevels).length} 项</span></div>` : '';
 
   els.modal.innerHTML = `
     <div class="modal-mask">
@@ -1958,14 +2166,16 @@ export function openWeekEnd(passed, onRestart, onRetryNight, extra = null) {
         <h2>${passed ? '🎉 撑过一周！' : '本周结束'}<span class="lb-sub"> · 第 ${weekNo} 周</span></h2>
         <div class="sub">${passed
           ? `你成功经营了第 ${weekNo} 周的 7 个夜班，没有破产。`
-          : `现金见底，第 ${weekNo} 周没能撑住（软失败，可重开）。`}</div>
+          : `现金见底，第 ${weekNo} 周没能撑住（软失败，可重开 · 本周难度不变）。`}</div>
         <div class="report">
           <div class="line"><span>最终现金</span><span class="${state.cash >= 0 ? 'pos' : 'neg'}">${fmtMoney(state.cash)}</span></div>
           <div class="line"><span>本周总净利</span><span class="${(Number(extra?.weekNet) || 0) >= 0 ? 'pos' : 'neg'}">${fmtYuan(Number(extra?.weekNet) || 0)}</span></div>
           <div class="line"><span>顾客满意度</span><span>${Math.round(state.reputation)}</span></div>
           ${bestLine}
+          ${carryLine}
         </div>
         ${bars}
+        ${passed ? `<div class="growth-note">第 ${nextWeek} 周：${endless ? '无尽周' : (nextModLabel || '标准难度')}${nextUnlockLine}</div>` : ''}
         ${attribution}
         <div class="actions">
           <button class="btn primary" data-act="restart">${nextBtn}</button>

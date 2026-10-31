@@ -98,6 +98,11 @@ function baseState() {
     /** P1-10：当夜卖出的节日礼盒数（节日夜专属任务指标；跨夜清零，**不进**存档白名单）。 */
     soldFestival: 0,
     placed: 0,             // 从库存箱上架的件数
+    /* P1-7：当夜按 SKU 的货架流水（与 soldFestival 同口径：跨夜清零、**不进** STATE_FIELDS 白名单）。
+     * 结算面板据此给出"今夜货架战报"，进货页据此给出"昨夜 售/缺"。 */
+    skuSold: {},           // { [skuId]: 件数 }
+    skuMissed: {},         // { [skuId]: 件数 }（顾客想买但货不够）
+    skuSpoiled: {},        // { [skuId]: 件数 }（过期报废，结算时算）
     cleared: 0,            // 清仓卖出的格数
     /** 块6：当夜垃圾/空箱件数（拆箱 + 临期清仓产生，最多叠 GARBAGE.cap 件）；
      * 堆满后不再增加，靠对准垃圾桶按 E 清空。属于"某一夜里"的维护职责，跨夜清零。 */
@@ -255,6 +260,10 @@ function baseState() {
     /** 常客脸谱：{ [faceId]: { nights:[夜号数组去重], name, emoji } }，跨夜保留 */
     regularFaces: {},
 
+    /* P1-7：常备库存 —— { [skuId]: 目标件数 }。每夜开局自动补齐差额（走 delivery.order，
+     * 仍 45 秒到货）。**新增存档字段**：只加不改既有白名单（见 save.mjs 的 STATE_FIELDS）。 */
+    autoOrder: {},
+
     /* ---------- 任务6 CG：已弹过的 CG id ----------
      * 只做"已经弹过"的标记（见 cgs.mjs），**不是**进度数据：
      * 它进存档白名单（save.mjs 的 'cgSeen'），读档后里程碑 CG 不会重复弹。
@@ -323,6 +332,10 @@ export function resetForNewNight() {
   /* P1-10：节日礼盒是"当夜可售"的限时货，销量计数必须每夜清零，
    * 否则节日夜之后的任务板进度会把上一夜的礼盒也算进去。 */
   state.soldFestival = 0;
+  /* P1-7：当夜按 SKU 的流水每夜清零（同口径，不进存档）。 */
+  state.skuSold = {};
+  state.skuMissed = {};
+  state.skuSpoiled = {};
   state.placed = 0;
   state.cleared = 0;
   state.garbage = 0;       // 块6：当夜垃圾件数（跨夜清零，与 cleared 同口径）
@@ -447,6 +460,20 @@ export function resetGame(opts = {}) {
     achievements: state.achievements,
     achProgress: state.achProgress,
     cgSeen: state.cgSeen,
+    /* 以下是"我的店"：花过钱的永久资产，第二周不该重买。
+     * 刻意不继承：cash / slots / backroom / regularFaces / reviews ——
+     * 那些是"这一周攒的"，归零才有重开的味道。
+     * ⚠ 只做"读取 + 深拷贝"，不新增任何字段（STATE_FIELDS 不动）。 */
+    upgrades: { ...state.upgrades },
+    expansions: { ...state.expansions },
+    expansion: { ...state.expansion },
+    deviceLevels: { ...state.deviceLevels },
+    deviceMods: JSON.parse(JSON.stringify(state.deviceMods ?? {})),
+    inventory: { ...state.inventory },
+    boons: { ...state.boons },
+    staff: JSON.parse(JSON.stringify(state.staff ?? [])),
+    warehouse: JSON.parse(JSON.stringify(state.warehouse ?? { level: 0, goods: {} })),
+    secondHand: { listings: [], owned: JSON.parse(JSON.stringify(state.secondHand?.owned ?? [])) },
   } : null;
 
   Object.assign(state, baseState());
@@ -463,6 +490,37 @@ export function resetGame(opts = {}) {
     if (growth.achievements && typeof growth.achievements === 'object') state.achievements = growth.achievements;
     if (growth.achProgress && typeof growth.achProgress === 'object') state.achProgress = growth.achProgress;
     if (Array.isArray(growth.cgSeen)) state.cgSeen = growth.cgSeen;
+    /* P0-3：二周目保留"我的店" —— 花过钱的永久资产，第二周不该重买。 */
+    if (growth.upgrades && typeof growth.upgrades === 'object') state.upgrades = growth.upgrades;
+    if (growth.expansions && typeof growth.expansions === 'object') state.expansions = growth.expansions;
+    if (growth.expansion && typeof growth.expansion === 'object') state.expansion = growth.expansion;
+    if (growth.deviceLevels && typeof growth.deviceLevels === 'object') state.deviceLevels = growth.deviceLevels;
+    if (growth.deviceMods && typeof growth.deviceMods === 'object') state.deviceMods = growth.deviceMods;
+    if (growth.inventory && typeof growth.inventory === 'object') state.inventory = growth.inventory;
+    if (growth.boons && typeof growth.boons === 'object') state.boons = growth.boons;
+    /* warehouse：goods.snack 映射回 backroom，而 backroom 此刻已归零 —— 把 snack 归 0 避免对不上。 */
+    if (growth.warehouse && typeof growth.warehouse === 'object') {
+      state.warehouse = growth.warehouse;
+      if (state.warehouse.goods) state.warehouse.goods.snack = 0;
+    }
+    if (Array.isArray(growth.staff)) state.staff = growth.staff;
+    if (growth.secondHand && Array.isArray(growth.secondHand.owned)) {
+      state.secondHand = { listings: [], owned: growth.secondHand.owned };
+    }
+    /* 升级 / 扩建加出来的货架格要在恢复后补回来（只恢复标记不会把格子加回来）。 */
+    if (state.upgrades.slot) expandSlots(4);
+    if (state.expansion.shelfRow) expandSlots(2);
+    /* 店员逐人复位当夜瞬时态（resting/working/cooldownUntil/errandUntil/pending/targetId）。
+     * status 也要一起复位 —— 否则面板会显示"工作中"而实际已经下班。 */
+    for (const m of state.staff) {
+      m.resting = false;
+      m.working = false;
+      m.cooldownUntil = 0;
+      m.errandUntil = 0;
+      m.pending = null;
+      m.targetId = null;
+      m.status = m.onDuty === false ? 'off' : 'idle';
+    }
   }
   state.arrivalsTarget = ARRIVALS_PER_NIGHT;
 }

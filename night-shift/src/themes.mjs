@@ -21,7 +21,7 @@
  */
 
 import { viewNextTheme, lockNextTheme } from './boons.mjs';
-import { nightInWeek } from './config.mjs';
+import { nightInWeek, weekOf } from './config.mjs';
 
 /** 情报服务（Tab 商店购买）：花少量金币预知明晚主题 */
 export const INTEL_COST = 60;
@@ -135,6 +135,18 @@ export const THEMES = [
       priceMul: 0.9, arrivalMul: 1.4, playProfitMul: 1.2, tipMul: 1.3,
     },
   },
+  /* ---------- 周目主题（P1-11）：第 2 周起才进池 ----------
+   * 纯数据、零新几何：只复用既有 effects 字段，第 1 周行为与现在完全一致（minWeek 缺省 = 1）。 */
+  {
+    id: 'stocktake', name: '盘点夜', emoji: '📋', weight: 8, minWeek: 2,
+    desc: '客人不多但客单更高 · 适合清临期与补货',
+    effects: { arrivalMul: 0.8, spendMul: 1.25, litterMul: 0.8 },
+  },
+  {
+    id: 'payday', name: '发薪日夜', emoji: '💴', weight: 8, minWeek: 2,
+    desc: '发薪日 · 客流与客单齐升 · 小费更高',
+    effects: { arrivalMul: 1.2, spendMul: 1.12, tipMul: 1.2, priceMul: 0.95 },
+  },
 ];
 
 /** 是否为节日限定夜（模块 4：用于提前一夜预告） */
@@ -190,12 +202,16 @@ export function rollTheme(rng = Math.random, pool = THEMES) {
  * ⚠ 明晚（themeNextId）也要按**它自己那一夜**的池子摇，否则"第 7 夜必是节日"
  * 会被提前一天摇出来的随机结果顶掉。
  */
-export function poolForNight(night) {
+export function poolForNight(night, week = 1) {
   const n = Number.isFinite(night) ? night : 1;
+  /* P1-11：周目主题（minWeek）过滤。默认 week=1 → 与旧行为完全一致
+   * （所有老主题 minWeek 缺省 1，两个新主题 minWeek=2 被排除）。 */
+  const wk = Number.isFinite(week) ? week : 1;
+  const minWeekOk = (t) => (t.minWeek ?? 1) <= wk;
   const anchors = NIGHT_PLAN.anchor[n];
-  if (anchors) return THEMES.filter((t) => anchors.includes(t.id));
+  if (anchors) return THEMES.filter((t) => anchors.includes(t.id) && minWeekOk(t));
   const from = NIGHT_PLAN.festivalFromNight ?? 1;
-  return THEMES.filter((t) => !(t.festival && n < from));
+  return THEMES.filter((t) => !(t.festival && n < from) && minWeekOk(t));
 }
 
 /**
@@ -231,11 +247,12 @@ export function createThemes(opts = {}) {
     /* P1-9：锚点表 NIGHT_PLAN.anchor 的键是**周内夜次**（1..7）。
      * night 是绝对夜号（第 8 夜 = 第 2 周第 1 夜），所以这里必须先折算，
      * 否则第二周起"第 7 夜必是节日"的锚点会失效（poolForNight(14) 找不到 anchor[14]）。 */
-    const tonight = locked ?? (THEME_BY_ID[state.themeNextId] ? state.themeNextId : rollTheme(rng, poolForNight(nightInWeek(state.night))).id);
+    const tonight = locked ?? (THEME_BY_ID[state.themeNextId] ? state.themeNextId : rollTheme(rng, poolForNight(nightInWeek(state.night), weekOf(state.night))).id);
     state.themeId = tonight;
     /* 明晚同样按"明晚那一夜"的池子摇 —— 保证第 7 夜（= 第 6 夜的明晚）落在节日池里。
-     * 第 7 夜的明晚 = 第 8 夜 = 下一周第 1 夜，折算回 1 后自然落"普通夜"锚点。 */
-    state.themeNextId = rollTheme(rng, poolForNight(nightInWeek(state.night + 1))).id;
+     * 第 7 夜的明晚 = 第 8 夜 = 下一周第 1 夜，折算回 1 后自然落"普通夜"锚点。
+     * P1-11：周号也要按**明晚那一夜**取 —— 第 7 夜摇明晚（第 8 夜）时已经该用第 2 周的池子。 */
+    state.themeNextId = rollTheme(rng, poolForNight(nightInWeek(state.night + 1), weekOf(state.night + 1))).id;
     // 上一夜买的情报只对"上一夜所预知的那一夜"有效，翻页后失效
     state.intelNight = null;
     // 锁定与情报都是"一次性"：翻页即消耗（无论今晚是否真的用了锁定）
@@ -335,9 +352,10 @@ export function createThemes(opts = {}) {
       return { ...r, theme: THEME_BY_ID[themeId] ?? null };
     },
 
-    /** 锁定候选池：非节日限定主题 */
+    /** 锁定候选池：非节日限定、且当前周目已解锁的主题（P1-11：第 1 周不能锁第 2 周主题） */
     lockCandidates() {
-      return THEMES.filter((t) => !t.festival);
+      const wk = weekOf(state.night);
+      return THEMES.filter((t) => !t.festival && (t.minWeek ?? 1) <= wk);
     },
   };
 }

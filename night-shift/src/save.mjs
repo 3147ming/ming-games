@@ -106,6 +106,8 @@ export const STATE_FIELDS = [
   'reviews', 'inbox', 'errand', 'errandsDoneTonight', 'remedy', 'badReviewStreak',
   /* 模块 4：二手市场（owned 跨夜保留）/ 常客脸谱（跨夜累积）；thief 每夜临时不存 */
   'secondHand', 'regularFaces',
+  /* P1-7：常备库存目标（只加字段，既有白名单项一个都不许改） */
+  'autoOrder',
   /* 任务6 CG：已弹过的 CG id 数组。存了才不会读档后把里程碑 CG 再弹一遍。
    * 纯字符串数组、无 mesh 引用；它只是"已弹"标记，绝不携带进度数据。 */
   'cgSeen',

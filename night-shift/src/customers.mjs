@@ -302,7 +302,7 @@ export function createCustomers(scene, opts = {}) {
       route: routeToShelf(targetIdx),
       routeIdx: 0,
       target: new THREE.Vector3(),
-      patience: PATIENCE_SEC * (id?.patienceMul ?? 1) * nightCurve(state.night).patienceMul, // 块7 身份系数 × P0-5 夜次曲线
+      patience: PATIENCE_SEC * (id?.patienceMul ?? 1) * nightCurve(nightInWeek(state.night)).patienceMul, // 块7 身份系数 × P0-5 夜次曲线（按周内夜次，第 8 夜=第 1 夜难度）
       taken: false,
       /** 情绪反馈（需求）：'happy' 成交 / 'angry' 失销；moodT 为剩余显示秒数 */
       mood: null,
@@ -535,7 +535,15 @@ export function createCustomers(scene, opts = {}) {
 
       if (c.phase === 'toShelf' && arrived) {
         // 到货架：逐件核对在架库存，只保留能买到的（搭配件缺货就丢弃，不强制失销）
-        const buyable = (c.items || [{ skuId: c.skuId, qty: c.qty }])
+        const items = c.items || [{ skuId: c.skuId, qty: c.qty }];
+        /* P1-7：按 SKU 累计缺货需求（顾客想买但货不够）。这是"缺货维度"，
+         * 与 lostByReason.outOfStock（失销总数）独立 —— 后者仍是结算归因三桶的总口径。 */
+        for (const it of items) {
+          if (sellable(it.skuId) < it.qty) {
+            state.skuMissed[it.skuId] = (state.skuMissed[it.skuId] | 0) + it.qty;
+          }
+        }
+        const buyable = items
           .filter((it) => sellable(it.skuId) >= it.qty);
         if (buyable.length === 0) {
           loseCustomer(c, 'out-of-stock');

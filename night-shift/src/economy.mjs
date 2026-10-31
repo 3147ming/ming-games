@@ -193,6 +193,8 @@ export function restockShelfIfPossible() {
   if (over > 0) {
     slot.qty -= over;
     state.backroom[skuId] = (state.backroom[skuId] | 0) + over;
+    /* 吐回的那 over 件不计入净上架（P0-1 口径：placed 记"留在货架上的件数"）。 */
+    state.placed = Math.max(0, (state.placed | 0) - over);
     notify();
   }
   return true;
@@ -267,6 +269,10 @@ export function place(slotIndex) {
   const life = effectiveShelfLife(state.held.skuId);
   slot.expiryNight = slot.placedAtNight + life;
   state.held.qty -= put;
+  /* 上架计数收口（P0-1）：所有上货动作——QTE 成功、同 SKU 直上货、员工补货——
+   * 都只走这一个 place() 出口，所以"上架件数"也只在这里记，避免别处再写一份导致重复计数。
+   * 任务板 `stock_up` 指标、首夜目标卡 `state.placed`、引导第 4 步都读它。 */
+  state.placed = (state.placed | 0) + put;
   if (state.held.qty <= 0) state.held = null;
   notify();
   return { ok: true, put, slotIndex, sku: SKU_BY_ID[slot.skuId] };
@@ -507,9 +513,12 @@ export function settleNight() {
    * 不动保质期本身（那会让"冰柜升级"的价值随周次漂移），只放大损失，口径可解释。 */
   const spoilMul = weekMod(state.week).spoilMul;
   let loss = 0;
+  /* P1-7：按 SKU 累计过期报废（结算"今夜货架战报"的报废清单来源）。 */
+  const spoiledBySku = {};
   for (const s of state.slots) {
     if (s.skuId && state.night > s.expiryNight && s.qty > 0) {
       loss += s.qty * (SKU_BY_ID[s.skuId]?.cost ?? 0) * spoilMul;
+      spoiledBySku[s.skuId] = (spoiledBySku[s.skuId] | 0) + s.qty;
       s.skuId = null;
       s.qty = 0;
     }
@@ -574,8 +583,18 @@ export function settleNight() {
     reputation: Math.round(state.reputation),
     cashBefore,
     cashEnd: state.cash,
+    /* P1-7：结算"今夜货架战报"的数据源。sold/missed 来自当夜逐件累计（state.sku*），
+     * spoiled 来自本函数内的过期报废循环。下一夜进货页读 state.lastReport.sku 即得"昨夜战报"。 */
+    sku: {
+      sold: { ...state.skuSold },
+      missed: { ...state.skuMissed },
+      spoiled: { ...spoiledBySku },
+    },
     ...extras,
   };
+  /* P1-7：把本夜报废按 SKU 写进 state.skuSpoiled（跨夜清零、不进存档），
+   * 供测试与"战报"核对口径（sold/missed 已在主循环写好）。 */
+  state.skuSpoiled = { ...spoiledBySku };
   state.lastReport = report;
 
   // 6) 周目标判定（软目标：撑过一周不破产，无硬 game over）

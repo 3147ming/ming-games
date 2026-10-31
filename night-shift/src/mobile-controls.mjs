@@ -31,8 +31,15 @@ function isCoarsePointer() {
   return false;
 }
 
-export function createMobileControls({ player, interaction, panels = {} } = {}) {
+export function createMobileControls({ player, interaction, interact, panels = {} } = {}) {
   if (!isCoarsePointer()) return null; // 桌面端：不挂载任何东西
+
+  /* P0-2：优先用 main 注入的统一交互入口（interactOnce），它内部会处理找零窗口 / 引导标记 /
+   * 上货计数 / 清仓计数 —— 与桌面 E 键逐字一致。未注入时退回旧签名（interaction.tryInteract），
+   * 保证旧接线 / 探针不炸。 */
+  const fire = (typeof interact === 'function')
+    ? interact
+    : (() => { if (interaction && typeof interaction.tryInteract === 'function') interaction.tryInteract(); });
 
   /** 触屏轻震动反馈。iOS Safari 不支持 navigator.vibrate，调用即无副作用；
    * 仅在粗指针（触屏）设备触发，桌面端（鼠标/键盘）一律不震动。 */
@@ -138,9 +145,9 @@ export function createMobileControls({ player, interaction, panels = {} } = {}) 
           player.setTouchMove(0, 0);
         } else if (t.identifier === lookId) {
           const dt = Date.now() - t0;
-          if (moved < 14 && dt < 250 && interaction && typeof interaction.tryInteract === 'function') {
+          if (moved < 14 && dt < 250) {
             haptic(); // 轻触交互给一点震动反馈
-            interaction.tryInteract(); // 右半屏轻触 = 交互（等价 E 键）
+            fire(); // 右半屏轻触 = 交互（等价 E 键，走统一入口）
           }
           lookId = null;
         }
@@ -156,7 +163,7 @@ export function createMobileControls({ player, interaction, panels = {} } = {}) 
   /* ---------------- 右下按钮 ---------------- */
   root.querySelector('#ns-act-interact').addEventListener('click', () => {
     haptic();
-    if (interaction && typeof interaction.tryInteract === 'function') interaction.tryInteract();
+    fire(); // 右下"交互"按钮（等价 E 键，走统一入口）
   });
   sprintBtn.addEventListener('click', () => {
     haptic();
