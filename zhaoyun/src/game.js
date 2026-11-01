@@ -141,7 +141,8 @@
       const c2 = u.col + 1;
       if (state.grid[u.row] && state.grid[u.row][c2] === u) state.grid[u.row][c2] = null;
     }
-    if (!silent) state.fx.push({ type: 'die', row: u.row, col: u.col, big: (u.elite || u.boss) });
+    if (!silent) state.fx.push({ type: 'die', row: u.row, col: u.col, big: (u.elite || u.boss),
+                                 dir: (u.side === 'player' ? 1 : -1) });   // 第四批 P0-3：碎屑朝行进反方向散
   }
 
   function restatUnit(state, u) {
@@ -180,6 +181,7 @@
     state.fx.push({ type: 'hit', row: tgt.row, col: tgt.col });
     state.fx.push({ type: 'dmg', row: tgt.row, col: tgt.col, text: Math.round(dmg) });
     if (src && src.side === 'player') ZY.Audio.play('attack');
+    else if (tgt.side === 'player') ZY.Audio.play('hurtPlayer');   // 第四批 P0-3：我方被砸终于有声
     if (tgt.hp <= 0) killUnit(state, src, tgt);
     return dmg;
   }
@@ -190,6 +192,7 @@
     tgt.hp -= amount;
     state.fx.push({ type: 'hit', row: tgt.row, col: tgt.col });
     state.fx.push({ type: 'dmg', row: tgt.row, col: tgt.col, text: Math.round(amount) });
+    if (tgt.side === 'player') ZY.Audio.play('hurtPlayer');        // 第四批 P0-3：Boss 雷落砸塔有声
     if (tgt.hp <= 0) killUnit(state, { side: side }, tgt);
     return amount;
   }
@@ -911,6 +914,9 @@
       ZY.Audio.play('hero');
       state.banner = { text: '合成武将 · ' + h.name, life: 1.8 };
       state.fx.push({ type: 'toast', text: '「' + h.name + '」合成！拖到塔位落下（横跨 2 格）' });
+      // 第四批 P0-4：卡还没落地，先在自家阿斗格升起一道光柱，给个可见的"成了"落点
+      const a = B.adouAt(state.mode, side, state.levelIdx);
+      if (a) state.fx.push({ type: 'pillar', row: a.row, col: a.col });
     }
     return card;
   }
@@ -937,6 +943,8 @@
       ZY.Audio.play('hero');
       state.banner = { text: '武将升星 · ' + h.name + ' ' + lv + '★', life: 1.8 };
       state.fx.push({ type: 'toast', text: '「' + h.name + '」升星至 ' + lv + ' 星！' });
+      const a2 = B.adouAt(state.mode, side, state.levelIdx);
+      if (a2) state.fx.push({ type: 'pillar', row: a2.row, col: a2.col });
     }
     return card;
   }

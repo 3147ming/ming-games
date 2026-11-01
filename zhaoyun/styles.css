@@ -239,7 +239,8 @@ body {
   stroke-linecap: square;          /* 相邻轮廓边端头互相搭接，拐角自然接成直角 */
 }
 /* 这些标记本来就要"盖在路面上"，主路层压上来后单独提回去 */
-.cell.enter, .cell.break, .cell.warn, .cell.hl, .cell.bad { z-index: 2; }
+.cell.enter, .cell.break, .cell.warn, .cell.hl, .cell.bad,
+.cell.hl2, .cell.bad2 { z-index: 2; }
 .cell {
   position: relative;
   background: #e8e0c8;   /* V7.1：普通空地底色（浅米/宣纸） */
@@ -248,6 +249,9 @@ body {
 .cell:nth-child(8n) { border-right: none; }
 .cell.hl { background: rgba(76,122,74,.28); box-shadow: inset 0 0 0 2px var(--green); }
 .cell.bad { background: rgba(179,53,47,.22); box-shadow: inset 0 0 0 2px var(--red); }
+/* 第四批 P0-1：武将塔横跨 2 格 —— 第二格同色更淡，提示"这一格也占"，可放/不可放同色系 */
+.cell.hl2 { background: rgba(76,122,74,.16); box-shadow: inset 0 0 0 2px rgba(76,122,74,.5); }
+.cell.bad2 { background: rgba(179,53,47,.12); box-shadow: inset 0 0 0 2px rgba(179,53,47,.5); }
 /* 来袭预警：入口首段主路打 ▼ */
 .cell.warn::before {
   content: "▼"; position: absolute; left: 0; right: 0; top: 2px;
@@ -319,7 +323,7 @@ body {
   font-weight: 700;
   touch-action: none;
 }
-.unit.anim { transition: transform .28s linear; }
+.unit.anim { transition: transform .28s cubic-bezier(.2,.8,.3,1); }   /* 第四批 P0-2：缓出，落定有收尾 */
 .unit.born { animation: born .28s ease-out; }
 @keyframes born { from { transform-origin: center; opacity: 0; filter: blur(2px); } to { opacity: 1; } }
 
@@ -397,7 +401,8 @@ body {
   20% { opacity: 1; transform: translate(-50%, -2px) scale(1.05); }
   100% { opacity: 0; transform: translate(-50%, -22px) scale(1); }
 }
-.p-merge { color: var(--green); }
+/* 第四批 P0-4：合成飘字比伤害数字更醒目；主路是白底，绿色压深 + 加粗才读得清 */
+.p-merge { color: #2f6b3c; font-size: 15px; font-weight: 800; text-shadow: 0 1px 0 rgba(255,255,255,.95), 0 0 5px rgba(255,255,255,.7); }
 .p-hero { color: var(--purple); font-size: 14px; }
 .p-up { color: var(--purple); }
 .p-bun { color: var(--gold-deep); }
@@ -598,7 +603,7 @@ body {
 .dock-row .recruit { flex: 1 1 auto; }
 .items { flex: 0 0 auto; display: flex; gap: 6px; }
 .item-slot {
-  flex: 1 1 0; width: auto; height: clamp(38px, 11cqh, 76px); border-radius: 10px;
+  flex: 1 1 0; width: auto; height: clamp(40px, 11cqh, 76px); border-radius: 10px;   /* 第四批 P1-4：下限 38 → 40，拖拽起点更稳 */
   border: 1px solid var(--line); background: rgba(255,255,255,.5);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   font-size: 15px; font-weight: 700; color: #7a6a52; cursor: grab;
@@ -626,7 +631,8 @@ body {
 /* 拖拽幽灵 */
 .ghost {
   position: fixed; z-index: 999; pointer-events: none;
-  width: 52px !important; height: 52px !important;
+  /* 第四批 P1-1：固定 52px 在桌面偏小、竖持旋转态偏大 → 跟随视口短边缩放（44~64） */
+  width: clamp(44px, min(7cqh, 7cqw), 64px) !important; height: clamp(44px, min(7cqh, 7cqw), 64px) !important;
   transform: translate(-50%, -50%) scale(1.12) rotate(-3deg);
   opacity: .92; box-shadow: 0 8px 18px rgba(0,0,0,.3);
 }
@@ -687,6 +693,8 @@ body {
 .fx-particle.p-burn  { background: radial-gradient(circle,#ffd27a,#ff5a3c); box-shadow: 0 0 8px #ff5a3c; }
 .fx-particle.p-roar  { background: transparent; border: 2px solid rgba(255,170,80,.9); box-shadow: 0 0 10px rgba(255,150,40,.6); animation-name: particleRing; }
 .fx-particle.p-boss  { background: transparent; border: 2px solid rgba(255,210,90,.95); box-shadow: 0 0 14px rgba(255,200,60,.7); animation-name: particleRing; }
+/* 第四批 P0-3：击杀碎屑（浅金灰白，朝行进反方向散开） */
+.fx-particle.p-diebit { background: radial-gradient(circle, #fff7e2, #b9a888); box-shadow: 0 0 6px rgba(255,226,160,.65); }
 @keyframes particleRing {
   0%   { transform: translate(-50%,-50%) scale(.2); opacity: .95; }
   100% { transform: translate(-50%,-50%) scale(1.9); opacity: 0; }
@@ -706,13 +714,34 @@ body {
 .overlay {
   position: absolute; inset: 0; z-index: 60;
   background: rgba(24,20,15,.55); backdrop-filter: blur(3px);
-  display: flex; align-items: center; justify-content: center; padding: 8%;
+  display: flex; align-items: flex-start; justify-content: center; padding: 8%;
+  overflow: auto;   /* 短屏（667×375）胜利面板比视口高：宁可滚，也不能把按钮裁掉 */
+  /* 第四批 P0-5：胜负揭晓不再硬切 —— 遮罩淡入、面板上浮放大 */
+  animation: overlayIn .22s ease-out both;
 }
+@keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
 .panel {
   width: 100%; background: var(--paper); border-radius: 16px;
   padding: 22px 18px 18px; text-align: center;
   border: 1px solid var(--line);
   box-shadow: 0 10px 30px rgba(0,0,0,.4);
+  margin: auto 0;   /* 够高就垂直居中；超高则贴顶可滚，不会被居中裁掉上半截 */
+  animation: panelIn .28s cubic-bezier(.2,.8,.3,1) both;
+}
+@keyframes panelIn {
+  from { opacity: 0; transform: scale(.92) translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+/* 短屏横屏（667×375 等）：结算面板内容偏多，压缩一档排版让它不滚也能看全 */
+@media (max-height: 470px) {
+  .overlay { padding: 6px 8%; }
+  .overlay .panel { padding: 13px 14px 11px; }
+  .overlay .panel h2 { font-size: 20px; margin-bottom: 4px; letter-spacing: .16em; }
+  .overlay .panel p { font-size: 12px; margin: 2px 0; line-height: 1.45; }
+  .overlay .panel p.dim, .overlay .panel .p-sub { font-size: 11px; }
+  .overlay .panel .stars i { font-size: 18px; }
+  .overlay .panel .btns { gap: 5px; margin-top: 8px; }
+  .overlay .panel .btn { padding: 6px 0; font-size: 13px; min-height: 30px; }
 }
 .panel h2 { margin: 0 0 10px; font-size: 26px; letter-spacing: .22em; }
 .panel.win h2 { color: var(--red); }
@@ -914,10 +943,56 @@ body {
 .adou b { transform-box: fill-box; transform-origin: 50% 80%; animation: adouSway 3s ease-in-out infinite; }
 @keyframes adouSway { 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
 
+/* =============================================================================
+ * 第四批 P1-3：桌面键鼠的 hover / 键盘 focus
+ * 只做边框 / 投影 / 1px 位移，不改配色；@media (hover:hover) 让触屏设备完全不受影响。
+ * ========================================================================== */
+@media (hover: hover) and (pointer: fine) {
+  .card, .icon-btn, .mode-btn, .btn, .item-slot, .recruit {
+    transition: border-color .12s ease-out, box-shadow .12s ease-out, transform .12s ease-out;
+  }
+  .card:hover, .icon-btn:hover, .mode-btn:hover, .btn:hover, .item-slot:hover, .recruit:hover {
+    border-color: var(--gold);
+    box-shadow: 0 3px 10px rgba(120,90,30,.22);
+    transform: translateY(-1px);
+  }
+  .card:hover { box-shadow: 0 0 0 2px var(--gold), 0 4px 10px rgba(0,0,0,.25); }
+  .item-slot:active, .card:active, .icon-btn:active, .btn:active { transform: translateY(0) scale(.98); }
+}
+/* 键盘 Tab：金色 focus 环（触屏点按不会触发 :focus-visible，不打扰移动端） */
+.icon-btn:focus-visible, .btn:focus-visible, .mode-btn:focus-visible,
+.card:focus-visible, .item-slot:focus-visible, .recruit:focus-visible {
+  outline: 2px solid var(--gold); outline-offset: 2px;
+}
+
 /* 降低动效偏好：关闭非必要常驻动画（保留攻击/死亡等功能性动画） */
 @media (prefers-reduced-motion: reduce) {
-  .unit.anim .fig-img, .unit.hero.anim .fig-img, .unit.gold, .adou b { animation: none; }
+  /* 第四批 P1-2：这里是"循环播放"的装饰动画清单 —— 待机浮动、摆尾、拉弓、来袭脉冲、
+     突破口呼吸、阿斗红圈、金字对子发光、武将光晕。用 !important 压过 :not() 链的高特异性。
+     一次性反馈（a-attack 挥砍 / a-hit 闪白 / pop / dmg / hit / ring / a-levelup 金光 / 粒子）一律保留。 */
+  .unit.anim .fig-img, .unit.hero.anim .fig-img,
+  .unit .fig-body, .unit.t-qi .fig-tail, .unit.t-gong .fig-bow,
+  .cell.warn::before, .cell.break, .adou.hurt, .adou b,
+  .card.pair, .unit.gold, .banner, .skill-banner { animation: none !important; }
+  /* 背景模糊在低端 GPU 上最贵，晕动症用户也不需要 */
+  .overlay { backdrop-filter: none; background: rgba(24,20,15,.72); }
+  .overlay, .panel { animation: none; }
 }
+
+/* =============================================================================
+ * 第四批 P1-6：低配模式（双击静音键切换，存 localStorage）
+ * 只砍"渲染贵"的东西：滤镜 / 投影 / 背景模糊 / 发光，保留色块、边框、文字与全部功能性反馈。
+ * ========================================================================== */
+body.lowfx .unit .fig-img,
+body.lowfx .unit.boss .fig-img,
+body.lowfx .unit.hero .fig-img,
+body.lowfx .unit.elite .fig-img { filter: none !important; }
+body.lowfx .fx-particle, body.lowfx .boom, body.lowfx .hit, body.lowfx .pillar { filter: none !important; }
+body.lowfx .overlay { backdrop-filter: none; background: rgba(24,20,15,.74); }
+body.lowfx .board, body.lowfx .unit, body.lowfx .card, body.lowfx .btn,
+body.lowfx .icon-btn, body.lowfx .item-slot, body.lowfx .panel { box-shadow: none !important; }
+body.lowfx .banner, body.lowfx .skill-banner, body.lowfx .pop, body.lowfx .dmg { text-shadow: none !important; }
+body.lowfx .card.pair { animation: none; box-shadow: 0 0 0 2px var(--gold) !important; }
 
 /* =============================================================================
  * V4 · 塔防化新增特效：火球爆炸 / 神兵符拖拽轨迹

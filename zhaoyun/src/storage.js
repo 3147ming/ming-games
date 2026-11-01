@@ -12,6 +12,7 @@
     waveBest: P + 'wave_best',  // 无尽最高波数
     killTotal: P + 'kill_total',// 累计击杀
     muted: P + 'muted',         // 静音
+    lowfx: P + 'lowfx',         // 第四批 P1-6：低配模式（双击静音键切换）
     /* —— 第一批新增 6 键 ——
      * 旧存档里这 6 个键不存在，所有读取都带默认值（''/{} /[] /0），
      * 不迁移、不清档、不报错；写入一律 try/catch（隐私模式静默失败）。 */
@@ -71,6 +72,8 @@
     addKills: function (v) { writeNum(KEYS.killTotal, Save.getKillTotal() + (v || 0)); },
     getMuted: function () { try { return localStorage.getItem(KEYS.muted) === '1'; } catch (e) { return false; } },
     setMuted: function (v) { try { localStorage.setItem(KEYS.muted, v ? '1' : '0'); } catch (e) { /* noop */ } },
+    getLowFx: function () { try { return localStorage.getItem(KEYS.lowfx) === '1'; } catch (e) { return false; } },
+    setLowFx: function (v) { try { localStorage.setItem(KEYS.lowfx, v ? '1' : '0'); } catch (e) { /* noop */ } },
 
     /* ---------------- 星级（8 位数字串，逐位 0~5，只增不减） ----------------
      * 两种调用口径都支持，避免两个批次各写一套：

@@ -1179,6 +1179,16 @@ section('第三批 P1-10：清空存档全键');
     det.starTotal === 0 && det.star0 === 0 && det.asc === 0 && det.codex === 0 && det.log === 0 &&
     det.waveBest === 0 && det.kills === 0 && det.level === 0 && det.rank === 0,
     JSON.stringify(det));
+
+  /* 第四批 P1-6：低配模式只多一个偏好键，读写闭环、默认关 */
+  ok('第四批 P1-6：lowfx 键存在且默认关闭',
+    ZY.Save.KEYS.lowfx === 'zhaoyun_lowfx' && ZY.Save.getLowFx() === false,
+    'key=' + ZY.Save.KEYS.lowfx);
+  ZY.Save.setLowFx(true);
+  const lfOn = ZY.Save.getLowFx();
+  ZY.Save.setLowFx(false);
+  ok('第四批 P1-6：setLowFx 落盘后能读回、再关也生效',
+    lfOn === true && ZY.Save.getLowFx() === false, 'on=' + lfOn + ' off=' + ZY.Save.getLowFx());
 }
 
 console.log('\n──────────────────────────────');

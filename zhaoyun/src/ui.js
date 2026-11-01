@@ -29,6 +29,8 @@
 
   const el = {};
   function $(id) { return document.getElementById(id); }
+  /** 第四批 P1-6：低配模式（body.lowfx）—— 特效预算减半、CSS 关掉滤镜/模糊/投影 */
+  function lowFx() { return document.body.classList.contains('lowfx'); }
 
   /* ======================================================== 初始化 */
   function init() {
@@ -109,6 +111,7 @@
     bindGame();
     refreshSave();
     setMute(ZY.Save.getMuted());
+    applyLowFx(ZY.Save.getLowFx ? ZY.Save.getLowFx() : false);   // 第四批 P1-6：低配模式随存档恢复
     syncRotate();
     window.addEventListener('resize', syncRotate);
     window.addEventListener('orientationchange', function () { setTimeout(syncRotate, 90); });
@@ -187,7 +190,7 @@
     $('btn-reset').addEventListener('click', function () {
       if (!window.confirm('确定清空本机存档？星数 / 图鉴 / 成就 / 战绩 / 修罗层数会一起清空，无法恢复。')) return;
       Object.keys(ZY.Save.KEYS).forEach(function (k) {
-        if (k === 'muted') return;                 // 静音是偏好，保留
+        if (k === 'muted' || k === 'lowfx') return;   // 静音 / 低配模式是偏好，保留
         try { localStorage.removeItem(ZY.Save.KEYS[k]); } catch (e) { /* noop */ }
       });
       ascPick = 0; dailyMode = false;              // 内存里的档位一起重置
@@ -227,6 +230,19 @@
     ZY.Audio.setMuted(v);
     el.btnMute.textContent = v ? '静' : '音';
     el.btnMute.classList.toggle('off', v);
+  }
+
+  /* 第四批 P1-6：低配模式 —— 不新增 HUD 按钮，双击静音键切换，落 localStorage */
+  function applyLowFx(v) {
+    const on = !!v;
+    document.body.classList.toggle('lowfx', on);
+    if (ZY.Save.setLowFx) ZY.Save.setLowFx(on);
+  }
+  function toggleLowFx() {
+    const on = !lowFx();
+    applyLowFx(on);
+    ZY.Audio.play('tap');
+    toast(on ? '低配模式已开启：滤镜 / 模糊 / 投影关闭，特效减半' : '低配模式已关闭');
   }
 
   /* ======================================================== 棋盘格子 */
@@ -619,6 +635,10 @@
         : (u.pi === 0 ? Math.min(u.move > 0 ? u.move : 0.5, (ZY.TUNE && ZY.TUNE.gateExit) || 0.5)
                       : (u.move > 0 ? Math.min(2.2, u.move * 0.9) : 0.18));
       if (e._dur !== stepSec) { e._dur = stepSec; e.style.transitionDuration = stepSec + 's'; }
+      /* 第四批 P0-2：我方塔换位走缓出（慢进快停），敌兵保持 linear 匀速行军。
+         只写一次（_tf 缓存判重），不逐帧碰 style。 */
+      const tf = u.side === 'player' ? 'cubic-bezier(.2,.8,.3,1)' : 'linear';
+      if (e._tf !== tf) { e._tf = tf; e.style.transitionTimingFunction = tf; }
       place(e, u.row, u.col, u.span);
       if ((e._r !== u.row || e._c !== u.col) && u.move > 0) {
         e._r = u.row; e._c = u.col;
@@ -858,8 +878,20 @@
       if (state.paused) showPause(); else { el.overlay.hidden = true; el.overlay.innerHTML = ''; }
       ZY.Audio.play('tap');
     });
+    /* 第四批 P1-6：静音键单击 = 静音；400ms 内双击 = 切低配模式（并把第一下的静音改动撤回，
+       避免"想开低配却顺手静了音"）。不新增 HUD 按钮，不动布局。 */
+    let muteAt = 0, mutePrev = false;
     el.btnMute.addEventListener('click', function () {
-      setMute(!ZY.Save.getMuted());
+      const now = Date.now();
+      if (now - muteAt < 400) {
+        muteAt = 0;
+        setMute(mutePrev);
+        toggleLowFx();
+        return;
+      }
+      muteAt = now;
+      mutePrev = ZY.Save.getMuted();
+      setMute(!mutePrev);
     });
     el.btnSpeed.addEventListener('click', function () {
       if (!state || state.over) return;
@@ -1160,7 +1192,7 @@
   }
 
   function highlight(t) {
-    for (let r = 0; r < B.ROWS; r++) for (let c = 0; c < B.COLS; c++) cellEls[r][c].classList.remove('hl', 'bad');
+    for (let r = 0; r < B.ROWS; r++) for (let c = 0; c < B.COLS; c++) cellEls[r][c].classList.remove('hl', 'bad', 'hl2', 'bad2');
     if (!t || !state) return;
     if (drag.src === 'board') {
       const u = state.units.find(function (x) { return x.id === drag.unitId; });
@@ -1200,6 +1232,15 @@
       } else {
         const span = ZY.cardSpan(card);
         ok = B.canPlace(state, 'player', t.row, t.col, span) || isMergeTarget(t, card);
+        if (span > 1) {
+          /* 第四批 P0-1：武将塔横跨 2 格 —— 预览必须一起亮，否则松手才弹「右侧放不下」。
+             两格都合法才绿；任一格非法就两格都红（bad 优先，让玩家立刻看出是哪一侧挡了）。 */
+          const c2 = t.col + 1;
+          const both = ok && c2 < B.COLS && B.canPlace(state, 'player', t.row, c2, 1);
+          cellEls[t.row][t.col].classList.add(both ? 'hl' : 'bad');
+          if (c2 < B.COLS) cellEls[t.row][c2].classList.add(both ? 'hl2' : 'bad2');
+          return;
+        }
       }
     }
     cellEls[t.row][t.col].classList.add(ok ? 'hl' : 'bad');
@@ -1412,11 +1453,12 @@
       top: ((row + 0.5) / B.ROWS * 100) + '%',
     };
   }
-  // 控制特效层总量 ≤ 60 个（常驻 range-ring 不计）
+  // 控制特效层总量 ≤ 60 个（常驻 range-ring 不计）；低配模式收紧到 30
   function trimFx() {
+    const cap = lowFx() ? 30 : 60;
     let count = el.fx.childElementCount;
     let node = el.fx.firstElementChild;
-    while (count > 60 && node) {
+    while (count > cap && node) {
       const next = node.nextElementSibling;
       if (node !== el.rangeRing) { el.fx.removeChild(node); count--; }
       node = next;
@@ -1458,6 +1500,33 @@
     spawnFx(d, 300);
   }
   function pillarFx(f) { spawnFx(nodeAt(f.row, f.col, 'pillar'), 700); }
+  /* 第四批 P0-3：击杀碎屑 —— 3~5 粒浅金灰白朝行进反方向散开（视觉闭环），
+     仍走 .fx-particle 与总粒子预算，单次 ≤ 5 粒。低配模式直接跳过。 */
+  function dieFx(f) {
+    fxAt(f.row, f.col, '', 'p-die');                       // 保留原来的小圆点淡出
+    if (lowFx()) return;
+    const layer = el.skillFx;
+    if (!layer || particleCount >= particleCap()) return;
+    const n = Math.min(3 + ((Math.random() * 3) | 0), particleCap() - particleCount);
+    const dir = f.dir || 1;
+    for (let i = 0; i < n; i++) {
+      const p = document.createElement('div');
+      p.className = 'fx-particle p-diebit';
+      const size = 3 + Math.random() * 3;
+      p.style.left = ((f.col + 0.5) / B.COLS * 100) + '%';
+      p.style.top = ((f.row + 0.5) / B.ROWS * 100) + '%';
+      p.style.width = size + 'px'; p.style.height = size + 'px';
+      p.style.setProperty('--dx', (-dir * (8 + Math.random() * 22)).toFixed(1) + 'px');
+      p.style.setProperty('--dy', ((Math.random() - 0.5) * 18).toFixed(1) + 'px');
+      const dur = 380 + Math.random() * 180;
+      p.style.animationDuration = dur + 'ms';
+      layer.appendChild(p);
+      particleCount++;
+      (function (node, ms) {
+        setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); particleCount--; }, ms + 80);
+      })(p, dur);
+    }
+  }
   function hitFx(f) { spawnFx(nodeAt(f.row, f.col, 'hit'), 200); }
   /** 火球爆炸：爆裂火光 + 冲击波（3×3 范围视觉） */
   function boomFx(f) {
@@ -1592,12 +1661,19 @@
       if (f.type === 'pillar') { pillarFx(f); continue; }
       if (f.type === 'hit') { hitFx(f); flashUnitAt(f.row, f.col, 'a-hit', 260); continue; }
       if (f.type === 'dmg') { dmgFx(f); continue; }
+      if (f.type === 'die') { dieFx(f); continue; }
       if (f.row == null) continue;
-      if (f.type === 'merge' || f.type === 'up') flashUnitAt(f.row, f.col, 'a-levelup', 520); // 合成 / 升级金光
+      if (f.type === 'merge' || f.type === 'up') {
+        flashUnitAt(f.row, f.col, 'a-levelup', 520);      // 合成 / 升级金光
+        /* 第四批 P0-4：合成是核心爽点 —— 金光 + 光柱（700ms）+ 轻震，三连给足「我合出了更强的塔」。
+           升级（up）只加光柱不震屏：经验升级一场几十次，频繁震屏反而干扰。 */
+        pillarFx(f);
+        if (f.type === 'merge') shakeBoard();
+      }
       const map = {
         merge: 'p-merge', hero: 'p-hero', up: 'p-up', bun: 'p-bun', adou: 'p-adou',
         crit: 'p-crit', stun: 'p-stun', heal: 'p-heal', open: 'p-open',
-        brush: 'p-brush', big: 'p-big', die: 'p-die',
+        brush: 'p-brush', big: 'p-big',
       };
       const cls = map[f.type] || '';
       fxAt(f.row, f.col, f.text || '', cls);
@@ -1632,8 +1708,9 @@
     el.skillBanner.classList.add('show');
   }
 
-  const PARTICLE_CAP = 80;          // V8：存活上限 60 → 80（性能预算内）
+  const PARTICLE_CAP = 80;          // V8：存活上限 60 → 80（性能预算内）；低配模式减半到 40
   let particleCount = 0;
+  function particleCap() { return lowFx() ? 40 : PARTICLE_CAP; }
   const PARTICLE_CFG = {
     sweep:  { n: 10, dist: 50, lift: 7,  size: 5,  dur: 520, tall: true },   // 横扫剑气：青白剑光
     roar:   { n: 9,  dist: 0,  lift: 0,  size: 46, dur: 600, ring: true },   // 怒吼：橙色震波圆环
@@ -1646,14 +1723,14 @@
   function spawnSkillParticles(u, type) {
     // 粒子位置由棋盘几何推算，不依赖单位 DOM 元素 —— 武将刚部署、立绘还没建出来的同帧放技能也能正常出特效
     const layer = el.skillFx;
-    if (!layer || particleCount >= PARTICLE_CAP) return;
+    if (!layer || particleCount >= particleCap()) return;
     const ctr = unitCenter(u);
     if (!ctr) return;
     const cfg = PARTICLE_CFG[type] || PARTICLE_CFG.sweep;
     const key = PARTICLE_CFG[type] ? type : 'sweep';
     // V8 性能：单位中心用棋盘几何推算（与 place() 同算法），复用每帧缓存的 frameRect，杜绝逐次 getBoundingClientRect 强制重排
     const cx = ctr.cx, cy = ctr.cy;
-    const n = Math.min(cfg.n, PARTICLE_CAP - particleCount, 20);   // V8：单帧创建上限 20，护住 zy-perf 预算
+    const n = Math.min(cfg.n, particleCap() - particleCount, 20);   // V8：单帧创建上限 20，护住 zy-perf 预算
     for (let i = 0; i < n; i++) {
       const p = document.createElement('div');
       p.className = 'fx-particle p-' + key;
@@ -1996,7 +2073,7 @@
       'background:rgba(255,255,255,.08);color:inherit;cursor:pointer}',
       '.hud-btn.dis{opacity:.4;cursor:not-allowed}',
       /* 第三批 P0-6：「收兵」挪进 .dock（HUD 只留 倍速 / 静音 / 暂停 三颗图标键） */
-      '.dock-collect{align-self:flex-start;margin:2px 0 4px;min-height:30px;padding:4px 12px;font-size:12px}',
+      '.dock-collect.btn.small{align-self:flex-start;margin:2px 0 4px;min-height:clamp(38px,6cqh,46px);padding:6px 14px;font-size:13px}',
       '.dock-collect.dis{opacity:.4}',
       /* 第三批 P0-6：图标键放大 + 安全区（无刘海环境 env() 解析为 0，桌面零变化） */
       '.icon-btn{width:clamp(34px,5.6cqh,44px);height:clamp(34px,5.6cqh,44px);font-size:clamp(13px,4.2cqh,17px)}',

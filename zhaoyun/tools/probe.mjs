@@ -1156,7 +1156,13 @@ const part8 = await evalJs(`(async () => {
   })));
   mo.observe(fxLayer, { childList: true });
   z.skillT = 0;
-  await new Promise(r => setTimeout(r, 200));
+  /* V8 粒子计数也曾偶发 single=0：无头 Edge 负载下 rAF 掉帧，200ms 窗口内可能一次都没 tick 到。
+     改手动 tick（与 V7 技能断言同法）：同步推进 20 步直到这一发技能真的放出来。 */
+  for (let i = 0; i < 20 && single === 0; i++) {
+    extras.forEach(e => { e.move = 0; e.target = 'player'; });   // 敌人别走开：castSkill 无目标不释放
+    G.tick(s, 0.1);
+    await new Promise(r => setTimeout(r, 0));                    // 让 MutationObserver 的回调落地
+  }
   mo.disconnect();
   muted.forEach(pair => { pair[0].skillT = pair[1]; });
   const g = mkH('guanyu',slots[1][0],slots[1][1]);
@@ -1407,6 +1413,200 @@ ok('第三批 P1-10：清档后星数/关卡/击杀/波数/修罗全归零且面
   wipe.before > 0 && wipe.stars === 0 && wipe.level === 0 && wipe.kills === 0 &&
   wipe.best === 0 && wipe.asc === 0 && wipe.info.indexOf('星级 0') >= 0,
   JSON.stringify(wipe).slice(0, 160));
+
+/* ========================================================= 第四批：手感与画质 */
+console.log('\n== 第四批：span2 落点 / 缓出 / 击杀碎屑 / 合成光柱 / 结算入场 / 低配 ==');
+await send('Emulation.setDeviceMetricsOverride', { width: 667, height: 375, deviceScaleFactor: 2, mobile: true });
+await send('Page.navigate', { url: URL });
+await sleep(1400);
+await evalJs(DRAG_HELPERS);
+await evalJs(`document.querySelector('.mode-btn[data-mode="level"]').click()`);
+await sleep(360);
+
+/* —— P0-1 / P0-2 / P1-1：武将卡（span2）两格同亮 + 我方塔缓出 + 幽灵跟随视口 —— */
+const span2 = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  const tick = (ms) => new Promise((r) => setTimeout(r, ms));
+  const mk = (t, x, y) => new PointerEvent(t, { clientX: x, clientY: y, bubbles: true, cancelable: true, pointerId: 1, pointerType: 'touch', isPrimary: true });
+  const slots = [...document.querySelectorAll('.cell.deploy')];
+  const good = slots.find((c) => {
+    const r = +c.dataset.r, cc = +c.dataset.c;
+    return slots.some((x) => +x.dataset.r === r && +x.dataset.c === cc + 1) && !s.grid[r][cc] && !s.grid[r][cc + 1];
+  });
+  const path = document.querySelector('.cell.path');
+  if (!good || !path) return { err: 'no cell' };
+  const gr = +good.dataset.r, gc = +good.dataset.c;
+  s.player.hand.push({ uid: 940001, kind: 'hero', heroId: 'zhaoyun', char: '赵云', level: 1, span: 2 });
+  await tick(280);                       // 等主循环把新手牌同步进 DOM，再对真实卡片起手
+
+  const dragTo = async (r, c) => {
+    const card = document.querySelector('#hand .card');
+    if (!card) return { err: 'no card' };
+    card.dataset.uid = '940001';
+    const b = card.getBoundingClientRect();
+    card.dispatchEvent(mk('pointerdown', b.left + b.width / 2, b.top + b.height / 2));
+    await tick(70);
+    const g = document.querySelector('.ghost');
+    const pw = g ? g.offsetWidth : 0;
+    const p = window.__cellXY(r, c);
+    window.dispatchEvent(mk('pointermove', p.x, p.y));
+    await tick(110);
+    const snap = {
+      hl: document.querySelectorAll('.cell.hl').length, hl2: document.querySelectorAll('.cell.hl2').length,
+      bad: document.querySelectorAll('.cell.bad').length, bad2: document.querySelectorAll('.cell.bad2').length,
+      ghostW: pw,
+    };
+    window.dispatchEvent(mk('pointerup', p.x, p.y));
+    await tick(300);
+    return snap;
+  };
+
+  const onPath = await dragTo(+path.dataset.r, +path.dataset.c);
+  const onGood = await dragTo(gr, gc);
+  const t = s.grid[gr][gc];
+  const ue = t ? document.querySelector('.unit.p[data-uid="' + t.id + '"]') : null;
+  return { onPath: onPath, onGood: onGood, placed: !!t, spans2: !!(t && s.grid[gr][gc + 1] === t),
+           tf: ue ? getComputedStyle(ue).transitionTimingFunction : '' };
+})()`);
+ok('第四批 P0-1：武将卡（span2）拖过塔位 → 本格 .hl + 右邻 .hl2 一起亮',
+  span2.onGood && span2.onGood.hl === 1 && span2.onGood.hl2 === 1,
+  JSON.stringify(span2.onGood));
+ok('第四批 P0-1：拖到主路 → 两格一起红（.bad + .bad2）',
+  span2.onPath && span2.onPath.bad === 1 && span2.onPath.bad2 === 1, JSON.stringify(span2.onPath));
+ok('第四批 P0-1：松手后武将塔真的横跨 2 格（预览与实际一致）',
+  span2.placed === true && span2.spans2 === true, JSON.stringify({ placed: span2.placed, spans2: span2.spans2 }));
+ok('第四批 P0-2：我方塔移动用缓出（cubic-bezier），不是 linear',
+  String(span2.tf || '').indexOf('cubic-bezier') >= 0, 'tf=' + span2.tf);
+ok('第四批 P1-1：拖拽幽灵尺寸跟随视口（44~64px，不再固定 52）',
+  span2.onGood && span2.onGood.ghostW >= 44 && span2.onGood.ghostW <= 64,
+  'ghost=' + (span2.onGood && span2.onGood.ghostW));
+
+/* —— P0-3：击杀碎屑 3~5 粒 + 原小圆点保留 —— */
+const dieBits = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  s.fx.push({ type: 'die', row: 3, col: 4, dir: -1 });
+  await new Promise((r) => setTimeout(r, 160));
+  const bits = document.querySelectorAll('.fx-particle.p-diebit').length;
+  const dot = document.querySelectorAll('#fx .p-die').length;
+  return { bits: bits, dot: dot };
+})()`);
+ok('第四批 P0-3：击杀弹出 3~5 粒方向性碎屑 + 原小圆点淡出',
+  dieBits.bits >= 3 && dieBits.bits <= 5 && dieBits.dot >= 1, JSON.stringify(dieBits));
+
+/* —— P0-4：合成 = 金光 + 光柱 + 轻震 + 加大的「刀²」飘字 —— */
+const mergeFx = await evalJs(`(async () => {
+  const s = ZY.UI.getState();
+  s.fx.push({ type: 'merge', row: 5, col: 2, text: '刀² 合成 Lv2' });
+  await new Promise((r) => setTimeout(r, 120));
+  const pillar = document.querySelectorAll('#fx .pillar').length;
+  const shake = document.getElementById('board').classList.contains('shake');
+  const pm = document.querySelector('#fx .p-merge');
+  const fs = pm ? parseFloat(getComputedStyle(pm).fontSize) : 0;
+  const txt = pm ? pm.textContent : '';
+  return { pillar: pillar, shake: shake, fs: fs, txt: txt };
+})()`);
+ok('第四批 P0-4：合成瞬间有光柱 + 棋盘轻震',
+  mergeFx.pillar >= 1 && mergeFx.shake === true, JSON.stringify(mergeFx));
+ok('第四批 P0-4：合成飘字「刀² 合成 Lv2」字号放大到 15px',
+  mergeFx.fs >= 15 && mergeFx.txt.indexOf('合成') >= 0, 'fs=' + mergeFx.fs + ' txt=' + mergeFx.txt);
+
+/* —— P0-5：结算/暂停弹层有入场动画 —— */
+const ovAnim = await evalJs(`(async () => {
+  document.getElementById('btn-pause').click();
+  await new Promise((r) => setTimeout(r, 120));
+  const ov = document.getElementById('overlay');
+  const pn = ov.querySelector('.panel');
+  const a1 = getComputedStyle(ov).animationName;
+  const a2 = pn ? getComputedStyle(pn).animationName : '';
+  document.getElementById('btn-pause').click();
+  await new Promise((r) => setTimeout(r, 120));
+  return { overlay: a1, panel: a2 };
+})()`);
+ok('第四批 P0-5：弹层入场动画（overlayIn 淡入 + panelIn 上浮放大）',
+  ovAnim.overlay === 'overlayIn' && ovAnim.panel === 'panelIn', JSON.stringify(ovAnim));
+
+/* —— P1-3：桌面 hover / 键盘 focus 规则存在（触屏不受影响） —— */
+const hoverCss = await evalJs(`(() => {
+  let hov = 0, foc = 0;
+  for (const sh of document.styleSheets) {
+    let rules;
+    try { rules = sh.cssRules; } catch (e) { continue; }
+    for (const r of rules) {
+      const t = r.cssText || '';
+      if (t.indexOf(':hover') >= 0) hov++;
+      if (t.indexOf(':focus-visible') >= 0) foc++;
+    }
+  }
+  return { hov: hov, foc: foc };
+})()`);
+ok('第四批 P1-3：桌面 hover 态 + 键盘 focus-visible 环（各 ≥1 条规则）',
+  hoverCss.hov >= 1 && hoverCss.foc >= 1, JSON.stringify(hoverCss));
+
+/* —— P1-4：收兵键热区 ≥ 38px（原 30px） —— */
+const collect = await evalJs(`(() => {
+  const b = document.querySelector('.dock-collect');
+  return { h: b ? Math.round(b.getBoundingClientRect().height) : 0, txt: b ? b.textContent : '' };
+})()`);
+ok('第四批 P1-4：收兵键高度 ≥ 38px（原 30px）', collect.h >= 38 && collect.txt === '收兵',
+  'h=' + collect.h);
+
+/* —— P1-6：双击静音键切低配模式（且不改静音态），再双击恢复 —— */
+const lowfx = await evalJs(`(async () => {
+  const btn = document.getElementById('btn-mute');
+  const mutedBefore = ZY.Save.getMuted();
+  btn.click();
+  await new Promise((r) => setTimeout(r, 90));
+  btn.click();
+  await new Promise((r) => setTimeout(r, 180));
+  const on = document.body.classList.contains('lowfx');
+  const savedOn = localStorage.getItem(ZY.Save.KEYS.lowfx);
+  const mutedAfter = ZY.Save.getMuted();
+  const blur = getComputedStyle(document.querySelector('.overlay')).backdropFilter;
+  btn.click();
+  await new Promise((r) => setTimeout(r, 90));
+  btn.click();
+  await new Promise((r) => setTimeout(r, 180));
+  const off = document.body.classList.contains('lowfx');
+  const savedOff = localStorage.getItem(ZY.Save.KEYS.lowfx);
+  const mutedEnd = ZY.Save.getMuted();
+  return { on: on, savedOn: savedOn, off: off, savedOff: savedOff,
+           mutedBefore: mutedBefore, mutedAfter: mutedAfter, mutedEnd: mutedEnd,
+           blur: blur, btnTxt: btn.textContent };
+})()`);
+ok('第四批 P1-6：双击静音键开低配（body.lowfx + 存 localStorage），再双击关',
+  lowfx.on === true && lowfx.savedOn === '1' && lowfx.off === false && lowfx.savedOff === '0',
+  JSON.stringify(lowfx).slice(0, 150));
+ok('第四批 P1-6：双击切低配不误改静音态', lowfx.mutedAfter === lowfx.mutedBefore && lowfx.mutedEnd === lowfx.mutedBefore,
+  JSON.stringify({ b: lowfx.mutedBefore, m: lowfx.mutedAfter, e: lowfx.mutedEnd, txt: lowfx.btnTxt }));
+
+/* —— P1-2：系统「减弱动态效果」下停循环动画、保功能反馈、去背景模糊 —— */
+await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+await sleep(160);
+const reduce = await evalJs(`(() => {
+  const warn = document.querySelector('.cell.warn');
+  const warnAnim = warn ? getComputedStyle(warn, '::before').animationName : 'none';
+  const bodyAnim = (() => {
+    const u = document.querySelector('.unit .fig-body');
+    return u ? getComputedStyle(u).animationName : 'none';
+  })();
+  const adouAnim = (() => {
+    const b = document.querySelector('.adou b');
+    return b ? getComputedStyle(b).animationName : 'none';
+  })();
+  const pop = document.createElement('div');
+  pop.className = 'pop';
+  document.getElementById('fx').appendChild(pop);
+  const popAnim = getComputedStyle(pop).animationName;
+  pop.remove();
+  const ov = document.getElementById('overlay');
+  const blur = getComputedStyle(ov).backdropFilter;
+  return { warnAnim: warnAnim, bodyAnim: bodyAnim, adouAnim: adouAnim, popAnim: popAnim, blur: blur };
+})()`);
+await send('Emulation.setEmulatedMedia', { features: [] });
+ok('第四批 P1-2：reduce 下停掉来袭脉冲 / 待机浮动 / 阿斗摆字（animation: none）',
+  reduce.warnAnim === 'none' && reduce.bodyAnim === 'none' && reduce.adouAnim === 'none', JSON.stringify(reduce));
+ok('第四批 P1-2：reduce 仍保留一次性飘字（功能反馈）+ 去掉 backdrop blur',
+  reduce.popAnim === 'pop' && (reduce.blur === 'none' || reduce.blur === ''), JSON.stringify(reduce));
 
 console.log('\n== 外部请求检查 ==');
 const external = requests.filter((u) => !u.startsWith('file://') && !u.startsWith('data:') && !u.startsWith('blob:'));

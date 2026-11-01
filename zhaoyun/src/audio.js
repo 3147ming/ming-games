@@ -37,19 +37,26 @@
     osc.start(t0); osc.stop(t0 + dur + 0.02);
   }
 
-  /** 噪声（用于打击/受击的“沙”声） */
+  /** 噪声（用于打击/受击的“沙”声）
+   *  第四批 P0-3/P1-5：补淡入 + 淡出包络 —— 原实现只有恒定增益，
+   *  缓冲到尾就硬切，听感上有一声「咔哒」；与 tone() 同风格做 12ms 淡入、dur 内线性归零。 */
   function noise(dur, gain, freq) {
     const ac = ensure();
     if (!ac) return;
+    const t0 = ac.currentTime;
     const len = Math.floor(ac.sampleRate * dur);
     const buf = ac.createBuffer(1, len, ac.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
     const src = ac.createBufferSource(); src.buffer = buf;
     const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq || 900;
-    const g = ac.createGain(); g.gain.value = gain || 0.06;
+    const g = ac.createGain();
+    const lvl = gain || 0.06;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(lvl, t0 + Math.min(0.012, dur * 0.4));
+    g.gain.linearRampToValueAtTime(0.0001, t0 + dur);
     src.connect(bp); bp.connect(g); g.connect(ac.destination);
-    src.start();
+    src.start(t0); src.stop(t0 + dur + 0.01);
   }
 
   /** 节流：同一音效在 ms 毫秒内只响一次 */
@@ -66,8 +73,20 @@
     hero:    function () { tone(392, 0.16, 'sawtooth', 0.10, 784); setTimeout(function () { tone(784, 0.22, 'triangle', 0.10, 1175); }, 120); },
     place:   function () { tone(300, 0.07, 'sine', 0.08, 220); },
     attack:  function () { if (throttled('atk', 110)) noise(0.05, 0.035, 1600); },
-    hurt:    function () { if (throttled('hurt', 160)) noise(0.09, 0.05, 420); },
-    kill:    function () { tone(240, 0.09, 'square', 0.05, 140); },
+    /* 第四批 P1-5：受击更沉更闷（320Hz），与我方攻击的 1600Hz 脆响区分开 */
+    hurt:    function () { if (throttled('hurt', 160)) noise(0.10, 0.06, 320); },
+    /* 第四批 P0-3/P1-5：我方单位被砸 —— 闷噪声 + 短下滑低频，比 hurt 更有「重物砸下来」的分量 */
+    hurtPlayer: function () {
+      if (!throttled('hurtp', 160)) return;
+      noise(0.09, 0.055, 360);
+      tone(180, 0.08, 'sine', 0.04, 120);
+    },
+    /* 第四批 P0-3：击杀 = 两拍轻击 + 碎尾音，90ms 节流防连击刺耳 */
+    kill:    function () {
+      if (!throttled('kill', 90)) return;
+      tone(360, 0.06, 'square', 0.06, 180);
+      setTimeout(function () { tone(240, 0.09, 'square', 0.05, 140); noise(0.06, 0.03, 800); }, 60);
+    },
     adou:    function () { tone(180, 0.28, 'sawtooth', 0.14, 90); noise(0.2, 0.05, 300); },
     skill:   function () { tone(880, 0.14, 'triangle', 0.10, 1320); setTimeout(function () { tone(660, 0.20, 'triangle', 0.09, 990); }, 90); },
     item:    function () { tone(740, 0.10, 'sine', 0.10, 980); },
