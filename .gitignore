@@ -8,6 +8,8 @@ quiz/.build/
 quiz/audio/
 # 发布目录里的音频同样不进仓库（由 surge 部署带上，避免 80MB+ 入库）
 _deploy_gym/quiz/audio/
+# brain-gym 的背景音乐音频同样不入库（77MB，发布时单独带上）
+brain-gym/audio/
 
 # 系统/编辑器噪音
 .DS_Store
