@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>电路实验模拟器</title>
+  <meta name="description" content="网页版数字电路与模拟电路实验模拟器：面包板搭电路、仿真、测量与实验报告。">
+  <!-- 内联图标，避免浏览器额外请求 /favicon.ico 产生 404 噪音 -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e1e28'/%3E%3Crect x='10.5' y='10.5' width='11' height='11' rx='2' fill='none' stroke='%23f2a93b' stroke-width='2'/%3E%3Ccircle cx='14' cy='14' r='1.4' fill='%23f2a93b'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+  <!-- 顶部标题栏：应用名 + 配置导入导出入口 -->
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <rect x="9" y="9" width="14" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
+        <circle cx="13.2" cy="13.2" r="1.4" fill="currentColor"></circle>
+        <path d="M9 12H4M9 16H4M9 20H4M23 12h5M23 16h5M23 20h5"
+              stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"></path>
+      </svg>
+      <div class="brand-text">
+        <h1 class="brand-title">电路实验模拟器</h1>
+        <p class="brand-sub">CIRCUIT LAB SIMULATOR</p>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <button class="btn btn-ghost" id="btn-import" type="button">导入实验配置</button>
+      <button class="btn btn-primary" id="btn-export" type="button">导出配置模板</button>
+      <!-- 隐藏的文件选择器，由"导入实验配置"按钮触发 -->
+      <input type="file" id="file-input" accept=".json,application/json" hidden>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <!-- 视图 A：实验列表（默认显示） -->
+    <section class="view is-active" id="view-list" aria-labelledby="list-heading">
+      <div class="view-head">
+        <div class="view-head-main">
+          <p class="eyebrow">EXPERIMENTS</p>
+          <h2 class="view-title" id="list-heading">实验列表</h2>
+        </div>
+        <p class="view-note" id="list-count">—</p>
+      </div>
+      <div class="exp-grid" id="exp-grid"></div>
+    </section>
+
+    <!-- 视图 B：实验工作区（三栏：元件库 / 2.5D 画布 / 信息面板） -->
+    <section class="view view-workspace" id="view-workspace" aria-labelledby="workspace-title" hidden>
+      <div class="ws-head">
+        <button class="btn btn-quiet btn-back" id="btn-back" type="button">← 实验列表</button>
+        <div class="ws-head-main">
+          <p class="eyebrow">WORKBENCH</p>
+          <h2 class="view-title" id="workspace-title">未选择实验</h2>
+        </div>
+        <div class="ws-head-tools">
+          <!-- 视图切换：实验台 / 原理图，两个画布同时存在，只切显隐 -->
+          <div class="view-switch" role="group" aria-label="视图切换">
+            <button class="view-switch-btn is-active" id="btn-view-bench" type="button"
+                    data-view="bench" aria-pressed="true">实验台</button>
+            <button class="view-switch-btn" id="btn-view-schematic" type="button"
+                    data-view="schematic" aria-pressed="false">原理图</button>
+          </div>
+          <span class="ws-platform" id="ws-platform">实验箱</span>
+          <button class="btn btn-ghost btn-switch" id="btn-switch-platform" type="button">切换平台</button>
+          <p class="ws-meta" id="workspace-meta"></p>
+        </div>
+      </div>
+
+      <div class="ws-grid">
+        <!-- 左栏：元件库 -->
+        <aside class="panel">
+          <div class="panel-head">
+            <span class="panel-label">元件库</span>
+            <span class="panel-tag">PARTS</span>
+          </div>
+          <div class="panel-body panel-fill panel-palette" id="parts-palette"></div>
+          <div class="panel-foot">
+            <p class="foot-hint">拖拽到画布，或点选后在画布上落点</p>
+          </div>
+        </aside>
+
+        <!-- 中栏：双视图画布（2.5D 实验台 / 原理图，互斥显示） -->
+        <section class="panel panel-canvas">
+          <div class="panel-head">
+            <span class="panel-label" id="canvas-label">实验台</span>
+            <span class="panel-tag" id="canvas-tag">BREADBOARD</span>
+            <!-- 包 7A：视图缩放 / 放大镜工具栏 -->
+            <div class="canvas-tools" id="canvas-tools">
+              <button class="tool-btn" id="btn-zoom-in" type="button" title="放大 ( + / = )">放大</button>
+              <button class="tool-btn" id="btn-zoom-reset" type="button" title="复位 1× ( 0 )">1×</button>
+              <button class="tool-btn" id="btn-zoom-out" type="button" title="缩小 ( - )">缩小</button>
+              <span class="zoom-level" id="zoom-level" aria-live="polite">1×</span>
+              <button class="tool-btn tool-btn--lens" id="btn-lens" type="button"
+                      aria-pressed="false" title="放大镜 ( M )">放大镜</button>
+              <button class="tool-btn" id="btn-continuous-place" type="button"
+                      aria-pressed="false" title="连续放置：连点同类元件，Esc 退出">连续</button>
+            </div>
+          </div>
+          <div class="canvas-stack">
+            <div class="canvas-area" id="canvas-area">
+              <canvas id="breadboard-canvas" class="bench-canvas" aria-label="2.5D 电路实验台画布"></canvas>
+              <p class="canvas-hint" id="canvas-hint" hidden></p>
+              <div class="canvas-status" id="canvas-status" aria-live="polite"></div>
+            </div>
+            <div class="canvas-area canvas-area--schem" id="schematic-area" hidden>
+              <canvas id="schematic-canvas" class="schem-canvas" aria-label="电路原理图画布"></canvas>
+              <div class="canvas-status canvas-status--schem" id="schem-status" aria-live="polite"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 右栏：信息面板（三个标签页） -->
+        <aside class="panel">
+          <div class="tabs" role="tablist" aria-label="实验信息面板">
+            <button class="tab is-active" id="tab-info" type="button" role="tab"
+                    data-tab="info" aria-selected="true" aria-controls="panel-info">实验信息</button>
+            <button class="tab" id="tab-steps" type="button" role="tab"
+                    data-tab="steps" aria-selected="false" aria-controls="panel-steps" tabindex="-1">步骤</button>
+            <button class="tab" id="tab-data" type="button" role="tab"
+                    data-tab="data" aria-selected="false" aria-controls="panel-data" tabindex="-1">数据</button>
+          </div>
+          <div class="panel-body panel-fill">
+            <div class="tab-panel is-active" id="panel-info" role="tabpanel" aria-labelledby="tab-info" data-panel="info">
+              <div class="info-block" id="exp-info-block"></div>
+              <div class="props-panel" id="props-panel"></div>
+              <!-- 直流工作点结果：由 board.js 用 DOM API 填充 -->
+              <div class="sim-panel" id="sim-panel" aria-live="polite"></div>
+              <!-- 数字逻辑状态 + 时钟/脉冲控制条：同样由 board.js 填充 -->
+              <div class="sim-panel" id="dig-panel" aria-live="polite"></div>
+              <!-- 暂态波形查看器（指令包 7）：由 waveview.js 渲染，app.js 接线 -->
+              <div class="sim-panel" id="wave-panel" aria-live="polite"></div>
+
+              <!-- 测量仪器（万用表/示波器/逻辑分析/函数发生）：由 instruments.js 填充 -->
+              <div class="sim-panel" id="instrument-panel" aria-live="polite"></div>
+
+              <!-- 示例实验指导书（步骤/预期值/报告）：由 app.js 填充 -->
+              <div class="sim-panel" id="guide-panel" hidden></div>
+
+              <!-- 数据面板（记录/对比/导出）：由 data-panel.js 填充 -->
+              <div class="sim-panel" id="data-panel" aria-live="polite"></div>
+            </div>
+            <div class="tab-panel" id="panel-steps" role="tabpanel" aria-labelledby="tab-steps" data-panel="steps">
+              <p class="placeholder">实验步骤（待后续指令包）</p>
+            </div>
+            <div class="tab-panel" id="panel-data" role="tabpanel" aria-labelledby="tab-data" data-panel="data">
+              <p class="placeholder">测量数据（待后续指令包）</p>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- 视图 C：报告页（初始隐藏） -->
+    <section class="view view-report" id="view-report" aria-labelledby="report-heading" hidden>
+      <div class="ws-head">
+        <button class="btn btn-quiet btn-back" id="btn-back-report" type="button">← 实验列表</button>
+        <div class="ws-head-main">
+          <p class="eyebrow">REPORT</p>
+          <h2 class="view-title" id="report-heading">实验报告</h2>
+        </div>
+        <p class="ws-meta">待后续指令包</p>
+      </div>
+      <div class="panel">
+        <div class="panel-body">
+          <p class="placeholder">报告页（待后续指令包）</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 轻提示容器（aria-live 保证读屏可感知） -->
+  <div class="toast-host" id="toast-host" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- 覆盖确认对话框（静态骨架，文本由脚本注入） -->
+  <div class="modal-host" id="modal-host" hidden>
+    <div class="modal-backdrop" data-modal-cancel></div>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-desc">
+      <p class="eyebrow modal-eyebrow">CONFIRM</p>
+      <h3 class="modal-title" id="modal-title">确认操作</h3>
+      <p class="modal-desc" id="modal-desc"></p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" type="button" data-modal-cancel>取消</button>
+        <button class="btn btn-primary" type="button" data-modal-ok>确定</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+
+  <script>
+    // 经典脚本兜底：file:// 下 ES 模块会被 CORS 拦截，此时给出明确指引而不是白屏
+    window.addEventListener('load', function () {
+      window.setTimeout(function () {
+        if (window.__labSimReady || window.location.protocol !== 'file:') return;
+        var box = document.createElement('div');
+        box.className = 'boot-hint';
+        var card = document.createElement('div');
+        card.className = 'boot-card';
+        var title = document.createElement('h2');
+        title.textContent = '需要通过本地服务器打开';
+        var desc = document.createElement('p');
+        desc.textContent = '浏览器禁止 file:// 协议加载 ES 模块。请在项目目录执行 node server.mjs，然后访问 http://127.0.0.1:5360/';
+        var code = document.createElement('code');
+        code.textContent = 'cd D:\\Projects\\lab-simulator\nnode server.mjs';
+        card.appendChild(title);
+        card.appendChild(desc);
+        card.appendChild(code);
+        box.appendChild(card);
+        document.body.appendChild(box);
+      }, 500);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,106 @@
+{
+  "id": "ex-e1-divider",
+  "title": "示例 E1：电阻分压",
+  "desc": "5V 经 1k:1k 分压，验证中点电压",
+  "platform": "breadboard",
+  "difficulty": 1,
+  "durationMin": 15,
+  "tags": [
+    "模拟",
+    "分压"
+  ],
+  "equipment": [
+    "万用表"
+  ],
+  "circuit": {
+    "platform": "breadboard",
+    "components": [
+      {
+        "id": "v1",
+        "type": "vsource",
+        "x": 2,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "voltage": 5
+        }
+      },
+      {
+        "id": "r1",
+        "type": "resistor",
+        "x": 6,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "resistance": 1000
+        }
+      },
+      {
+        "id": "r2",
+        "type": "resistor",
+        "x": 10,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "resistance": 1000
+        }
+      }
+    ],
+    "wires": [
+      {
+        "a": {
+          "componentId": "v1",
+          "terminal": "+"
+        },
+        "b": {
+          "componentId": "r1",
+          "terminal": "1"
+        }
+      },
+      {
+        "a": {
+          "componentId": "r1",
+          "terminal": "2"
+        },
+        "b": {
+          "componentId": "r2",
+          "terminal": "1"
+        }
+      },
+      {
+        "a": {
+          "componentId": "r2",
+          "terminal": "2"
+        },
+        "b": {
+          "componentId": "v1",
+          "terminal": "-"
+        }
+      }
+    ]
+  },
+  "guide": {
+    "steps": [
+      "把万用表打到电压档，黑表笔接电源负端（地）。",
+      "红表笔接 R1 与 R2 的连接点，读中点电压。",
+      "用欧姆档量 R1、R2，确认都是 1kΩ。"
+    ],
+    "expected": [
+      {
+        "label": "中点电压",
+        "target": "2.500",
+        "unit": "V",
+        "tolerance": 0.001,
+        "measured": 2.5
+      },
+      {
+        "label": "R1 阻值",
+        "target": "1000",
+        "unit": "Ω",
+        "tolerance": 0.005,
+        "measured": 1000
+      }
+    ]
+  },
+  "recomputedAt": "2026-11-03T13:14:38.449Z"
+}

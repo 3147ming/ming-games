@@ -1,0 +1,106 @@
+{
+  "id": "ex-e4-diode",
+  "title": "示例 E4：二极管特性",
+  "desc": "5V-1k-1N4148，测正向压降与电流",
+  "platform": "breadboard",
+  "difficulty": 2,
+  "durationMin": 20,
+  "tags": [
+    "模拟",
+    "半导体"
+  ],
+  "equipment": [
+    "万用表"
+  ],
+  "circuit": {
+    "platform": "breadboard",
+    "components": [
+      {
+        "id": "v1",
+        "type": "vsource",
+        "x": 2,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "voltage": 5
+        }
+      },
+      {
+        "id": "r1",
+        "type": "resistor",
+        "x": 6,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "resistance": 1000
+        }
+      },
+      {
+        "id": "d1",
+        "type": "diode",
+        "x": 10,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "model": "1N4148"
+        }
+      }
+    ],
+    "wires": [
+      {
+        "a": {
+          "componentId": "v1",
+          "terminal": "+"
+        },
+        "b": {
+          "componentId": "r1",
+          "terminal": "1"
+        }
+      },
+      {
+        "a": {
+          "componentId": "r1",
+          "terminal": "2"
+        },
+        "b": {
+          "componentId": "d1",
+          "terminal": "A"
+        }
+      },
+      {
+        "a": {
+          "componentId": "d1",
+          "terminal": "K"
+        },
+        "b": {
+          "componentId": "v1",
+          "terminal": "-"
+        }
+      }
+    ]
+  },
+  "guide": {
+    "steps": [
+      "用二极管档测 1N4148 的正向压降（注意红笔接 A、黑笔接 K）。",
+      "把二极管反接，再测一次，观察是否截止。",
+      "用电压档测 1k 电阻两端电压，换算回路电流。"
+    ],
+    "expected": [
+      {
+        "label": "正向压降",
+        "target": "0.68",
+        "unit": "V",
+        "tolerance": 0.03,
+        "measured": 0.680376
+      },
+      {
+        "label": "回路电流",
+        "target": "0.00432",
+        "unit": "A",
+        "tolerance": 0.02,
+        "measured": 0.00431962
+      }
+    ]
+  },
+  "recomputedAt": "2026-11-03T13:14:38.529Z"
+}

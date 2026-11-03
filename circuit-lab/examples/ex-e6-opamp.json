@@ -1,0 +1,119 @@
+{
+  "id": "ex-e6-opamp",
+  "title": "示例 E6：运放跟随器",
+  "desc": "LM741 电压跟随，验证虚短",
+  "platform": "breadboard",
+  "difficulty": 3,
+  "durationMin": 25,
+  "tags": [
+    "模拟",
+    "运放"
+  ],
+  "equipment": [
+    "万用表"
+  ],
+  "circuit": {
+    "platform": "breadboard",
+    "components": [
+      {
+        "id": "v1",
+        "type": "vsource",
+        "x": 2,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "voltage": 5
+        }
+      },
+      {
+        "id": "vin",
+        "type": "vsource",
+        "x": 2,
+        "y": 8,
+        "rotation": 0,
+        "params": {
+          "voltage": 2
+        }
+      },
+      {
+        "id": "u1",
+        "type": "opamp",
+        "x": 12,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "model": "LM741"
+        }
+      }
+    ],
+    "wires": [
+      {
+        "a": {
+          "componentId": "vin",
+          "terminal": "+"
+        },
+        "b": {
+          "componentId": "u1",
+          "terminal": "+"
+        }
+      },
+      {
+        "a": {
+          "componentId": "vin",
+          "terminal": "-"
+        },
+        "b": {
+          "componentId": "v1",
+          "terminal": "-"
+        }
+      },
+      {
+        "a": {
+          "componentId": "u1",
+          "terminal": "V+"
+        },
+        "b": {
+          "componentId": "v1",
+          "terminal": "+"
+        }
+      },
+      {
+        "a": {
+          "componentId": "u1",
+          "terminal": "V-"
+        },
+        "b": {
+          "componentId": "v1",
+          "terminal": "-"
+        }
+      },
+      {
+        "a": {
+          "componentId": "u1",
+          "terminal": "OUT"
+        },
+        "b": {
+          "componentId": "u1",
+          "terminal": "-"
+        }
+      }
+    ]
+  },
+  "guide": {
+    "steps": [
+      "把输出直接接回反相输入端（跟随器）。",
+      "同相端给 2V，测输出应等于 2V。",
+      "把反馈断开，观察输出饱和到电源摆幅。"
+    ],
+    "expected": [
+      {
+        "label": "输出电压",
+        "target": "2.000",
+        "unit": "V",
+        "tolerance": 0.005,
+        "measured": 1.99999
+      }
+    ]
+  },
+  "recomputedAt": "2026-11-03T13:14:38.545Z"
+}

@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "generatedAt": "2026-11-03T13:14:38.676Z",
+  "items": [
+    {
+      "id": "ex-e1-divider",
+      "title": "示例 E1：电阻分压",
+      "file": "ex-e1-divider.json"
+    },
+    {
+      "id": "ex-e2-led",
+      "title": "示例 E2：LED 限流",
+      "file": "ex-e2-led.json"
+    },
+    {
+      "id": "ex-e3-rc",
+      "title": "示例 E3：RC 充放电",
+      "file": "ex-e3-rc.json"
+    },
+    {
+      "id": "ex-e4-diode",
+      "title": "示例 E4：二极管特性",
+      "file": "ex-e4-diode.json"
+    },
+    {
+      "id": "ex-e5-npn",
+      "title": "示例 E5：NPN 开关",
+      "file": "ex-e5-npn.json"
+    },
+    {
+      "id": "ex-e6-opamp",
+      "title": "示例 E6：运放跟随器",
+      "file": "ex-e6-opamp.json"
+    },
+    {
+      "id": "ex-e7-nand",
+      "title": "示例 E7：74LS00 与非门",
+      "file": "ex-e7-nand.json"
+    },
+    {
+      "id": "ex-e8-divider74",
+      "title": "示例 E8：74LS74 分频",
+      "file": "ex-e8-divider74.json"
+    }
+  ]
+}

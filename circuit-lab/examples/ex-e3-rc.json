@@ -1,0 +1,107 @@
+{
+  "id": "ex-e3-rc",
+  "title": "示例 E3：RC 充放电",
+  "desc": "10k + 10µF，测量时间常数 τ=RC",
+  "platform": "breadboard",
+  "difficulty": 2,
+  "durationMin": 30,
+  "tags": [
+    "模拟",
+    "暂态",
+    "RC"
+  ],
+  "equipment": [
+    "示波器"
+  ],
+  "circuit": {
+    "platform": "breadboard",
+    "components": [
+      {
+        "id": "v1",
+        "type": "vsource",
+        "x": 2,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "voltage": 5
+        }
+      },
+      {
+        "id": "r1",
+        "type": "resistor",
+        "x": 6,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "resistance": 10000
+        }
+      },
+      {
+        "id": "c1",
+        "type": "capacitor",
+        "x": 10,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "capacitance": 0.00001
+        }
+      }
+    ],
+    "wires": [
+      {
+        "a": {
+          "componentId": "v1",
+          "terminal": "+"
+        },
+        "b": {
+          "componentId": "r1",
+          "terminal": "1"
+        }
+      },
+      {
+        "a": {
+          "componentId": "r1",
+          "terminal": "2"
+        },
+        "b": {
+          "componentId": "c1",
+          "terminal": "1"
+        }
+      },
+      {
+        "a": {
+          "componentId": "c1",
+          "terminal": "2"
+        },
+        "b": {
+          "componentId": "v1",
+          "terminal": "-"
+        }
+      }
+    ]
+  },
+  "guide": {
+    "steps": [
+      "把示波器 CH1 挂在电容上端，运行暂态 0.3s（步长 0.1ms）。",
+      "读出 t=τ（0.1s）处的电压，应为 3.16V。",
+      "把电容换成 5µF，解释 τ 与曲线斜率的变化。"
+    ],
+    "expected": [
+      {
+        "label": "t=τ 处电压",
+        "target": "3.16",
+        "unit": "V",
+        "tolerance": 0.02,
+        "measured": 3.1606
+      },
+      {
+        "label": "时间常数 τ",
+        "target": "0.1",
+        "unit": "s",
+        "tolerance": 0.02,
+        "measured": 0.1
+      }
+    ]
+  },
+  "recomputedAt": "2026-11-03T13:14:38.520Z"
+}

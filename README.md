@@ -14,6 +14,7 @@
 | 脑力训练场 | 53 款脑力小游戏：记忆 / 反应 / 视觉 / 数学 / 益智，九大类每日开练 | https://3147ming.github.io/ming-games/brain-gym/ |
 | 夜班便利店 | 深夜营业的 3D 模拟经营：补货、收银、应付夜客，撑过七个夜班 | https://3147ming.github.io/ming-games/night-shift/ |
 | 传统割草游戏 | 3D 战场原型：地形、光照、摄像机、战斗系统与敌人分层 AI | https://3147ming.github.io/ming-games/grass-cutter/ |
+| 电路实验模拟器 | 面包板 / 数字实验箱上搭电路，实时仿真直流·数字·暂态，配万用表与示波器 | https://3147ming.github.io/ming-games/circuit-lab/ |
 
 ## 📁 目录结构
 
@@ -26,7 +27,8 @@ ming-games/
 ├── one-card/         # 一世一牌
 ├── brain-gym/        # 脑力训练场
 ├── night-shift/      # 夜班便利店
-└── grass-cutter/     # 传统割草游戏（原型）
+├── grass-cutter/     # 传统割草游戏（原型）
+└── circuit-lab/      # 电路实验模拟器
 ```
 
 ## 🚀 更新部署

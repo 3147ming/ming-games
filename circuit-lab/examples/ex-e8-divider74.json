@@ -1,0 +1,171 @@
+{
+  "id": "ex-e8-divider74",
+  "title": "示例 E8：74LS74 分频",
+  "desc": "时钟 1kHz，Q 输出 500Hz",
+  "platform": "exp-box",
+  "difficulty": 3,
+  "durationMin": 30,
+  "tags": [
+    "数字",
+    "时序"
+  ],
+  "equipment": [
+    "逻辑分析仪",
+    "示波器"
+  ],
+  "circuit": {
+    "platform": "exp-box",
+    "components": [
+      {
+        "id": "u1",
+        "type": "ic74xx",
+        "x": 8,
+        "y": 4,
+        "rotation": 0,
+        "params": {
+          "type": "74LS74"
+        }
+      },
+      {
+        "id": "clk",
+        "type": "clock",
+        "x": 2,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "frequency": 1000,
+          "duty": 50
+        }
+      },
+      {
+        "id": "v1",
+        "type": "vsource",
+        "x": 2,
+        "y": 10,
+        "rotation": 0,
+        "params": {
+          "voltage": 5
+        }
+      },
+      {
+        "id": "rq",
+        "type": "resistor",
+        "x": 20,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "resistance": 1000
+        }
+      }
+    ],
+    "wires": [
+      {
+        "a": {
+          "componentId": "v1",
+          "terminal": "+"
+        },
+        "b": {
+          "componentId": "u1",
+          "terminal": "14"
+        }
+      },
+      {
+        "a": {
+          "componentId": "v1",
+          "terminal": "-"
+        },
+        "b": {
+          "componentId": "u1",
+          "terminal": "7"
+        }
+      },
+      {
+        "a": {
+          "componentId": "clk",
+          "terminal": "+"
+        },
+        "b": {
+          "componentId": "u1",
+          "terminal": "3"
+        }
+      },
+      {
+        "a": {
+          "componentId": "clk",
+          "terminal": "GND"
+        },
+        "b": {
+          "componentId": "v1",
+          "terminal": "-"
+        }
+      },
+      {
+        "a": {
+          "componentId": "u1",
+          "terminal": "2"
+        },
+        "b": {
+          "componentId": "u1",
+          "terminal": "6"
+        }
+      },
+      {
+        "a": {
+          "componentId": "u1",
+          "terminal": "4"
+        },
+        "b": {
+          "componentId": "v1",
+          "terminal": "+"
+        }
+      },
+      {
+        "a": {
+          "componentId": "u1",
+          "terminal": "1"
+        },
+        "b": {
+          "componentId": "v1",
+          "terminal": "+"
+        }
+      },
+      {
+        "a": {
+          "componentId": "u1",
+          "terminal": "5"
+        },
+        "b": {
+          "componentId": "rq",
+          "terminal": "1"
+        }
+      },
+      {
+        "a": {
+          "componentId": "rq",
+          "terminal": "2"
+        },
+        "b": {
+          "componentId": "v1",
+          "terminal": "-"
+        }
+      }
+    ]
+  },
+  "guide": {
+    "steps": [
+      "把 74LS74 的 D 接 Q̄（2 接 6），组成 T 触发器。",
+      "时钟 1kHz 从 3 脚输入，PRE/CLR 接高。",
+      "用逻辑分析仪挂 Q（5 脚），读频率应为 500Hz。"
+    ],
+    "expected": [
+      {
+        "label": "Q 输出频率",
+        "target": "500",
+        "unit": "Hz",
+        "tolerance": 0.02,
+        "measured": 499.875
+      }
+    ]
+  },
+  "recomputedAt": "2026-11-03T13:14:38.672Z"
+}

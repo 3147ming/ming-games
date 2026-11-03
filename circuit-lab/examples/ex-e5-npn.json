@@ -1,0 +1,137 @@
+{
+  "id": "ex-e5-npn",
+  "title": "示例 E5：NPN 开关",
+  "desc": "Rb 47k / Rc 1k，观察饱和导通",
+  "platform": "breadboard",
+  "difficulty": 3,
+  "durationMin": 30,
+  "tags": [
+    "模拟",
+    "三极管"
+  ],
+  "equipment": [
+    "万用表"
+  ],
+  "circuit": {
+    "platform": "breadboard",
+    "components": [
+      {
+        "id": "v1",
+        "type": "vsource",
+        "x": 2,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "voltage": 5
+        }
+      },
+      {
+        "id": "rb",
+        "type": "resistor",
+        "x": 6,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "resistance": 47000
+        }
+      },
+      {
+        "id": "rc",
+        "type": "resistor",
+        "x": 10,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "resistance": 1000
+        }
+      },
+      {
+        "id": "q1",
+        "type": "transistor",
+        "x": 16,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "model": "2N2222",
+          "beta": 100
+        }
+      }
+    ],
+    "wires": [
+      {
+        "a": {
+          "componentId": "v1",
+          "terminal": "+"
+        },
+        "b": {
+          "componentId": "rb",
+          "terminal": "1"
+        }
+      },
+      {
+        "a": {
+          "componentId": "rb",
+          "terminal": "2"
+        },
+        "b": {
+          "componentId": "q1",
+          "terminal": "B"
+        }
+      },
+      {
+        "a": {
+          "componentId": "v1",
+          "terminal": "+"
+        },
+        "b": {
+          "componentId": "rc",
+          "terminal": "1"
+        }
+      },
+      {
+        "a": {
+          "componentId": "rc",
+          "terminal": "2"
+        },
+        "b": {
+          "componentId": "q1",
+          "terminal": "C"
+        }
+      },
+      {
+        "a": {
+          "componentId": "q1",
+          "terminal": "E"
+        },
+        "b": {
+          "componentId": "v1",
+          "terminal": "-"
+        }
+      }
+    ]
+  },
+  "guide": {
+    "steps": [
+      "基极经 47k 接 5V，集电极经 1k 接 5V，发射极接地。",
+      "测 C-E 电压：饱和时约 0.1~0.2V。",
+      "把 Rb 换成 470k，重新测 Ic 与 Vce，判断工作区。"
+    ],
+    "expected": [
+      {
+        "label": "集电极电流",
+        "target": "0.00488",
+        "unit": "A",
+        "tolerance": 0.05,
+        "measured": 0.00488005
+      },
+      {
+        "label": "Vce",
+        "target": "0.12",
+        "unit": "V",
+        "tolerance": 0.35,
+        "measured": 0.119952
+      }
+    ]
+  },
+  "recomputedAt": "2026-11-03T13:14:38.538Z"
+}

@@ -1,0 +1,107 @@
+{
+  "id": "ex-e2-led",
+  "title": "示例 E2：LED 限流",
+  "desc": "5V-330Ω-LED，验证限流电阻与工作电流",
+  "platform": "breadboard",
+  "difficulty": 1,
+  "durationMin": 20,
+  "tags": [
+    "模拟",
+    "LED"
+  ],
+  "equipment": [
+    "万用表"
+  ],
+  "circuit": {
+    "platform": "breadboard",
+    "components": [
+      {
+        "id": "v1",
+        "type": "vsource",
+        "x": 2,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "voltage": 5
+        }
+      },
+      {
+        "id": "r1",
+        "type": "resistor",
+        "x": 6,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "resistance": 330
+        }
+      },
+      {
+        "id": "d1",
+        "type": "led",
+        "x": 10,
+        "y": 2,
+        "rotation": 0,
+        "params": {
+          "color": "red",
+          "model": "red"
+        }
+      }
+    ],
+    "wires": [
+      {
+        "a": {
+          "componentId": "v1",
+          "terminal": "+"
+        },
+        "b": {
+          "componentId": "r1",
+          "terminal": "1"
+        }
+      },
+      {
+        "a": {
+          "componentId": "r1",
+          "terminal": "2"
+        },
+        "b": {
+          "componentId": "d1",
+          "terminal": "A"
+        }
+      },
+      {
+        "a": {
+          "componentId": "d1",
+          "terminal": "K"
+        },
+        "b": {
+          "componentId": "v1",
+          "terminal": "-"
+        }
+      }
+    ]
+  },
+  "guide": {
+    "steps": [
+      "按图接好 5V → 330Ω → LED → 地（注意 LED 极性，长脚为 A）。",
+      "用电流档串在回路里读电流（或测 330Ω 两端电压再除以阻值）。",
+      "把限流电阻换成 1kΩ，观察电流变化并解释原因。"
+    ],
+    "expected": [
+      {
+        "label": "LED 电流",
+        "target": "0.0091",
+        "unit": "A",
+        "tolerance": 0.05,
+        "measured": 0.00911152
+      },
+      {
+        "label": "LED 压降",
+        "target": "2.00",
+        "unit": "V",
+        "tolerance": 0.08,
+        "measured": 1.9932
+      }
+    ]
+  },
+  "recomputedAt": "2026-11-03T13:14:38.460Z"
+}
