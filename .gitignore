@@ -8,8 +8,9 @@ quiz/.build/
 quiz/audio/
 # 发布目录里的音频同样不进仓库（由 surge 部署带上，避免 80MB+ 入库）
 _deploy_gym/quiz/audio/
-# brain-gym 的背景音乐音频同样不入库（77MB，发布时单独带上）
-brain-gym/audio/
+# brain-gym 背景音乐：原始大格式（flac/wav）不入库，压缩版 mp3 入库（约 9MB，Cloudflare/GitHub Pages 均可播放）
+brain-gym/audio/*.flac
+brain-gym/audio/*.wav
 
 # 系统/编辑器噪音
 .DS_Store
