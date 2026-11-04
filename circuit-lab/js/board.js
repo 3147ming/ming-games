@@ -171,6 +171,49 @@ function setSkin(id) {
   return next;
 }
 
+/* --------------------------------------------------------------------------
+   HEP 实物外观的显示偏好（独立于皮肤开关，也不进电路存档 v4）
+   silk: 机箱丝印；teach: 教学模式（全部标签/面板常驻）；all: 模块面板总开关
+   -------------------------------------------------------------------------- */
+const HEP_VIEW_KEY = 'lab-sim:hep-view';
+const HEP_VIEW_DEFAULT = { silk: true, teach: false, all: false };
+
+function readHepView() {
+  try {
+    const raw = window.localStorage.getItem(HEP_VIEW_KEY);
+    if (!raw) return { ...HEP_VIEW_DEFAULT };
+    const d = JSON.parse(raw);
+    return {
+      silk: d.silk !== false,
+      teach: d.teach === true,
+      all: d.all === true,
+    };
+  } catch (_) {
+    return { ...HEP_VIEW_DEFAULT };
+  }
+}
+
+function writeHepView(pref) {
+  try { window.localStorage.setItem(HEP_VIEW_KEY, JSON.stringify(pref)); } catch (_) { /* 隐私模式忽略 */ }
+}
+
+function hepPrefs() {
+  if (!board) return { ...HEP_VIEW_DEFAULT };
+  const h = board.view.hep;
+  return { silk: Boolean(h.silk), teach: Boolean(h.teach), all: Boolean(h.all) };
+}
+
+function setHepPref(name, value) {
+  if (!board || !Object.prototype.hasOwnProperty.call(HEP_VIEW_DEFAULT, name)) return null;
+  const h = board.view.hep;
+  h[name] = Boolean(value);
+  writeHepView(hepPrefs());
+  invalidatePlatformLayer();
+  requestRender();
+  if (board.onHepPrefChange) board.onHepPrefChange(name, h[name], hepPrefs());
+  return h[name];
+}
+
 /* ==========================================================================
    存档
    ========================================================================== */
@@ -328,6 +371,9 @@ function requestRender() {
     rafHandle = 0;
     if (!board) return;
     const start = performance.now();
+    // 帧前钩子：HEP 状态灯 / 悬停高亮必须在 ensurePlatformLayer 计算缓存键之前写好，
+    // 否则平台层会晚一帧才反映开关状态。只写 view，不在这里再次 requestRender。
+    if (board.onBeforeRender) board.onBeforeRender(board.view);
     renderScene(board.view, board.scene);
     // DOM 覆盖层（画布探针标记）跟同一帧的视图变换对齐，避免平移/缩放漂移
     if (board.onAfterRender) board.onAfterRender(board.view);
@@ -1393,6 +1439,7 @@ export function initBoard(options) {
     onToast = () => {},
     onPlatformChange = () => {},
     onSkinChange = () => {},
+    onHepPrefChange = () => {},
   } = options || {};
 
   const canvas = document.getElementById('breadboard-canvas');
@@ -1423,6 +1470,8 @@ export function initBoard(options) {
   const view = createView(canvas);
   // 实物外观偏好（localStorage，不写进电路存档 v4）
   view.skin = readSkin();
+  // HEP 显示偏好同样只在渲染层；runtime / hoverModule 由 hep-panel 每帧写入
+  Object.assign(view.hep, readHepView());
   const scene = {
     platform: platforms.getPlatform(restoredPlatform),
     // 始终取活引用：model.loadCircuit / createCircuit 会整体替换 state 对象，
@@ -1460,6 +1509,7 @@ export function initBoard(options) {
     onToast,
     onPlatformChange,
     onSkinChange,
+    onHepPrefChange,
     propsKey: '',
     report: null,
     sim: null,
@@ -1601,6 +1651,16 @@ export function initBoard(options) {
       if (board) board.onAfterRender = typeof fn === 'function' ? fn : null;
       return Boolean(board && board.onAfterRender);
     },
+    // 帧前钩子：HEP 状态灯 / 悬停高亮在平台层缓存键计算前写入 view（传 null 注销）
+    onBeforeRender: (fn) => {
+      if (board) board.onBeforeRender = typeof fn === 'function' ? fn : null;
+      return Boolean(board && board.onBeforeRender);
+    },
+    // 供 DOM 覆盖层在 hover / 点击后主动排一帧（rAF 合并，不会重复绘制）
+    requestRender: () => requestRender(),
+    // HEP 显示偏好：机箱丝印 / 教学模式 / 模块面板总开关
+    hepPrefs: () => hepPrefs(),
+    setHepPref: (name, value) => setHepPref(name, value),
     pick: (x, y) => pickAt(view, board ? board.scene : scene, x, y),
     nodeAt: (gx, gy) => (board ? platforms.nodesAt(board.platformId, gx, gy) : []),
     // 7B 探针支持：端子的网格/屏幕坐标（拖拽连线、光标、右键删除探针需要真实坐标）

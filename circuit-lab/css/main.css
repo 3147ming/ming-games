@@ -2411,6 +2411,42 @@ button {
 }
 .tool-btn--skin:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* HEP 显示分层：模块面板总开关 + 显示选项 popover */
+.tool-btn--hep { border-color: rgba(140, 200, 245, 0.4); }
+.tool-btn--hep:disabled { opacity: 0.4; cursor: not-allowed; }
+.hep-display-wrap { position: relative; display: inline-flex; }
+.hep-display-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 190px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+  font-size: 12px;
+}
+.hep-display-menu[hidden] { display: none; }
+.hep-opt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.hep-opt input { margin: 0; }
+.hep-opt-hint {
+  margin: 6px 0 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--text-faint);
+  white-space: normal;
+}
+
 /* ---- 6 模块 DOM 覆盖层：容器不吃事件，只有按钮可点 ---- */
 .hep-panel-layer {
   position: absolute;
@@ -2420,6 +2456,35 @@ button {
   pointer-events: none;
 }
 .hep-panel-layer[hidden] { display: none; }
+
+/* 悬停信息卡：两行、纯展示、不吃事件，移开即隐 */
+.hep-hover-card {
+  position: absolute;
+  z-index: 5;
+  width: 200px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  border: 1px solid rgba(150, 205, 255, 0.6);
+  background: rgba(8, 28, 60, 0.94);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.42);
+  color: #e8f2ff;
+  pointer-events: none;
+  backdrop-filter: blur(2px);
+}
+.hep-hover-card[hidden] { display: none; }
+.hep-hover-title {
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hep-hover-sub {
+  margin-top: 3px;
+  font-size: 9px;
+  line-height: 1.4;
+  color: rgba(206, 226, 250, 0.78);
+}
 
 .hep-module-card {
   position: absolute;
@@ -2436,21 +2501,54 @@ button {
   pointer-events: none;
   backdrop-filter: blur(2px);
 }
+.hep-module-card[hidden] { display: none; }
+.hep-module-card.is-open {
+  z-index: 2;
+  border-color: rgba(140, 245, 200, 0.85);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(140, 245, 200, 0.28);
+}
 .hep-module-card--switches { border-color: rgba(242, 169, 59, 0.5); }
 .hep-module-card--display { border-color: rgba(226, 104, 95, 0.5); }
 .hep-module-card--pulse { border-color: rgba(95, 211, 154, 0.5); }
 .hep-module-card--utility { border-color: rgba(90, 169, 230, 0.5); }
 
 .hep-card-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 9.5px;
   font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   color: #f2f7ff;
   border-bottom: 1px solid rgba(206, 226, 250, 0.22);
   padding-bottom: 4px;
   margin-bottom: 5px;
+}
+.hep-card-title-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hep-pin {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 8.5px;
+  line-height: 1.2;
+  padding: 1px 4px;
+  border-radius: 4px;
+  border: 1px solid rgba(206, 226, 250, 0.35);
+  background: rgba(20, 52, 96, 0.9);
+  color: #dceaff;
+  cursor: pointer;
+}
+.hep-pin:hover { background: rgba(40, 86, 145, 0.95); }
+.hep-pin.is-pinned,
+.hep-pin[aria-pressed="true"] {
+  background: rgba(95, 211, 154, 0.24);
+  border-color: #5fd39a;
+  color: #b8f5da;
 }
 .hep-card-body { min-height: 16px; }
 .hep-card-note { font-size: 8.5px; color: rgba(206, 226, 250, 0.72); line-height: 1.4; }
@@ -2696,4 +2794,26 @@ button {
   .hep-module-card { width: 112px; padding: 5px; }
   .hep-seven-seg { font-size: 20px; }
   .hep-fgen-num { grid-template-columns: repeat(3, 15px); }
+  /* 窄屏：展开的模块改底部抽屉，纵向堆叠不互相压住，也不遮画布中心 */
+  .hep-panel-layer {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: stretch;
+    gap: 6px;
+    padding: 8px;
+  }
+  .hep-module-card,
+  .hep-module-card.is-open {
+    position: relative;
+    left: auto !important;
+    top: auto !important;
+    right: auto;
+    bottom: auto;
+    transform: none;
+    width: auto;
+    max-height: 42vh;
+    overflow: auto;
+  }
+  .hep-display-menu { right: auto; left: 0; }
 }

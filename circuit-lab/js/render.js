@@ -100,6 +100,17 @@ export function createView(canvas) {
     // 平台外观皮肤：'classic' 通用实验箱 / 'hep' HEP-DCTS-01 实物外观
     // 纯渲染层状态，不进 model、不进存档（由 board.js 从 localStorage 恢复）
     skin: 'classic',
+    // HEP 实物外观的显示偏好与运行时状态（纯渲染层，不进 model / 存档）
+    // silk: 机箱丝印显隐；teach/all: 教学模式 / 模块面板总开关；
+    // hoverModule: 当前悬停模块 id；runtime: 状态灯数据；runtimeKey: 平台层缓存指纹
+    hep: {
+      silk: true,
+      teach: false,
+      all: false,
+      hoverModule: null,
+      runtime: null,
+      runtimeKey: '',
+    },
   };
 }
 
@@ -322,8 +333,13 @@ const platformLayer = { key: '', canvas: null };
  * renderScene 的 drawImage 矩阵负责，所以 zoom 改变不该触发平台层重建。
  */
 function layerKey(view) {
-  // skin 参与缓存键：实物外观 / 通用实验箱是两套平台层，切换时必须重建
-  return `${view.platformId}|${view.skin || 'classic'}|${view.width}x${view.height}|${view.dpr}|${view.fitTileW.toFixed(2)}`;
+  // skin 参与缓存键：实物外观 / 通用实验箱是两套平台层，切换时必须重建。
+  // HEP 的丝印开关、悬停高亮与状态灯都画在平台层里，任一变化都要重建离屏画布。
+  const h = view.hep || {};
+  const hepKey = view.skin === HEP_SKIN_ID
+    ? `${h.silk ? 1 : 0}${h.teach ? 1 : 0}${h.all ? 1 : 0}|${h.hoverModule || '-'}|${h.runtimeKey || ''}`
+    : '-';
+  return `${view.platformId}|${view.skin || 'classic'}|${hepKey}|${view.width}x${view.height}|${view.dpr}|${view.fitTileW.toFixed(2)}`;
 }
 
 /** 取（必要时重建）平台层。平台层固定以 fit（zoom=1）投影绘制。 */

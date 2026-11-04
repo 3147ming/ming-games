@@ -99,6 +99,25 @@
               <!-- HEP-DCTS-01 实物外观：只换平台层画法，几何 / 存档不变 -->
               <button class="tool-btn tool-btn--skin" id="btn-skin" type="button"
                       aria-pressed="true" title="切换 HEP-DCTS-01 实物外观 / 通用实验箱">实物外观</button>
+              <!-- HEP 显示分层：默认 0 张卡片；悬停出信息、点击展开单张 -->
+              <button class="tool-btn tool-btn--hep" id="btn-hep-panel" type="button"
+                      aria-pressed="false" title="模块面板总开关：一键展开 / 收起全部 6 块模块">模块面板</button>
+              <div class="hep-display-wrap" id="hep-display-wrap">
+                <button class="tool-btn tool-btn--hep" id="btn-hep-display" type="button"
+                        aria-expanded="false" aria-controls="hep-display-menu"
+                        title="显示选项：机箱丝印 / 教学模式">显示</button>
+                <div class="hep-display-menu" id="hep-display-menu" hidden>
+                  <label class="hep-opt">
+                    <input type="checkbox" id="hep-opt-silk" checked>
+                    <span>机箱丝印</span>
+                  </label>
+                  <label class="hep-opt">
+                    <input type="checkbox" id="hep-opt-teach">
+                    <span>教学模式（全部常驻）</span>
+                  </label>
+                  <p class="hep-opt-hint">默认：悬停看信息、点击展开单张；Esc 收起</p>
+                </div>
+              </div>
             </div>
           </div>
           <div class="canvas-stack">

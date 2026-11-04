@@ -18,6 +18,18 @@
 
 export const HEP_SKIN_ID = 'hep';
 
+/**
+ * 机箱丝印总开关（模块名 / 档位 / 电源标识等文字）。
+ * 由 drawHepPlatform 每帧从 view.hep.silk 同步；品牌铭牌用 stamp({force:true}) 常驻。
+ */
+let SILK_ON = true;
+
+/** BCD 0–F 对应的共阴七段亮段 */
+const SEG_MAP = [
+  'abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc',
+  'abcdefg', 'abcdfg', 'abcefg', 'cdefg', 'adef', 'bcdeg', 'adefg', 'aefg',
+];
+
 /** 6 大模块分区（网格坐标；仅用于绘制与前面板控件定位，不产生节点） */
 export const HEP_MODULES = [
   { id: 'm1', label: 'LED 逻辑开关模块 A', sub: '8 路电平 · 8 路指示', x: 0.6, y: 0.6, w: 11.6, h: 7.8, kind: 'switches' },
@@ -165,6 +177,8 @@ function silkLine(ctx, P, x0, y0, x1, y1, color, width) {
 
 /** 在网格坐标处写水平文字（不随等距倾斜，与现有 drawExpBox 一致） */
 function stamp(ctx, P, gx, gy, text, opts = {}) {
+  // 极简模式：隐藏模块名 / 档位 / 电源标识等机箱丝印；品牌铭牌 force 常驻
+  if (!SILK_ON && !opts.force) return;
   const p = P(gx, gy);
   const size = opts.size || 10;
   ctx.font = `${opts.weight || 500} ${size}px ${opts.mono ? '"Cascadia Mono", Consolas, monospace' : '"Microsoft YaHei", "PingFang SC", sans-serif'}`;
@@ -232,6 +246,9 @@ function drawCase(ctx, view, P) {
 }
 
 function drawBrand(ctx, view, P) {
+  // 品牌铭牌是设备身份，不随「隐藏丝印」开关消失
+  const savedSilk = SILK_ON;
+  SILK_ON = true;
   const h = Math.max(3, view.tileH * 0.42);
   // 下半部白色铭牌区（模块板下方）
   fillQuad(ctx, P, 0.6, 16.9, 34.8, 2.6, '#f7f5ec', 'rgba(160,156,140,0.5)', 1);
@@ -258,6 +275,7 @@ function drawBrand(ctx, view, P) {
   stamp(ctx, P, 2.6, cy + 1.05, '北京中教仪装备技术有限公司', {
     size: Math.max(6, Math.min(9, view.tileW * 0.24)), color: C.brandMuted,
   });
+  SILK_ON = savedSilk;
   void h;
 }
 
@@ -307,6 +325,11 @@ function drawModuleBoards(ctx, view, P) {
     [[mod.x + 0.42, mod.y + 0.42], [mod.x + mod.w - 0.42, mod.y + 0.42],
       [mod.x + 0.42, mod.y + mod.h - 0.42], [mod.x + mod.w - 0.42, mod.y + mod.h - 0.42]]
       .forEach(([x, y]) => screw(ctx, P, x, y, r));
+    // 悬停反馈：模块板描一圈亮边，让「这里可点」有画布级反馈
+    if (view.hep && view.hep.hoverModule === mod.id) {
+      fillQuad(ctx, P, mod.x + 0.12, mod.y + 0.12, mod.w - 0.24, mod.h - 0.24,
+        'rgba(95, 211, 154, 0.10)', 'rgba(140, 245, 200, 0.95)', 2);
+    }
     // 顶部铭牌
     const labelSize = Math.max(7, Math.min(11, view.tileW * 0.29));
     stamp(ctx, P, mod.x + mod.w / 2, mod.y + 0.28, mod.label, {
@@ -568,6 +591,98 @@ function drawDecor(ctx, view, P) {
 }
 
 /* ==========================================================================
+   可交互热点 + 实物状态灯：画在机箱上，不用 DOM 文字，天然零遮挡
+   ========================================================================== */
+
+/** 6 个模块右上角各一个 LED 热点，提示「这里可以悬停 / 点击」；悬停时放大高亮 */
+function drawHotspots(ctx, view, P) {
+  const hep = view.hep || {};
+  const r = Math.max(1.8, view.tileW * 0.09);
+  HEP_MODULES.forEach((mod) => {
+    const p = P(mod.x + mod.w - 0.62, mod.y + 0.62);
+    const active = hep.hoverModule === mod.id;
+    disc(ctx, p.x, p.y, r * (active ? 1.85 : 1.45),
+      active ? 'rgba(140,245,200,0.28)' : 'rgba(6,24,52,0.55)',
+      active ? 'rgba(140,245,200,0.9)' : 'rgba(206,226,250,0.35)', 1);
+    disc(ctx, p.x, p.y, r * 0.72,
+      active ? '#8cf5c8' : '#5aa9e6', active ? '#2f8f66' : '#1c4d7d', 1);
+  });
+}
+
+/**
+ * 运行时状态灯：8 路逻辑电平、BCD 七段数码管、逻辑笔电平、频率档位。
+ * 数据由 hep-panel.js 在帧前钩子写入 view.hep.runtime，不读 model，保持皮肤层纯净。
+ */
+function drawStatus(ctx, view, P, runtime) {
+  if (!runtime) return;
+  const onColor = '#ff6b58';
+
+  // ① 8 路逻辑电平指示灯（模块 A 顶部，拨动开关列上方）
+  const bits = Array.isArray(runtime.bits) ? runtime.bits : [];
+  for (let i = 0; i < 8; i += 1) {
+    const p = P(1.4 + i * 1.35, 4.75);
+    const lit = bits[i] === 1 || bits[i] === true;
+    const r = Math.max(2.2, view.tileW * 0.11);
+    disc(ctx, p.x, p.y, r * 1.35, 'rgba(6,24,52,0.8)', 'rgba(206,226,250,0.28)', 1);
+    disc(ctx, p.x, p.y, r, lit ? onColor : '#3a2020', lit ? '#8c2f24' : '#241416', 1);
+  }
+
+  // ④ BCD → 共阴七段数码管（屏幕 + a–g 七段，按 SEG_MAP 点亮）
+  const c = P(9.6, 11.6);
+  const w = Math.max(16, view.tileW * 0.95);
+  const h = w * 1.7;
+  const sx = c.x - w / 2;
+  const sy = c.y - h / 2;
+  ctx.fillStyle = '#080e15';
+  ctx.fillRect(sx - 5, sy - 5, w + 10, h + 10);
+  ctx.strokeStyle = 'rgba(180,200,225,0.35)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(sx - 5, sy - 5, w + 10, h + 10);
+  const litSegs = runtime.digit != null
+    ? (SEG_MAP[parseInt(runtime.digit, 16)] || '')
+    : '';
+  const t = Math.max(2.2, w * 0.13);
+  const segs = {
+    a: [c.x - w * 0.31, sy, w * 0.62, t],
+    g: [c.x - w * 0.31, c.y - t / 2, w * 0.62, t],
+    d: [c.x - w * 0.31, sy + h - t, w * 0.62, t],
+    f: [c.x - w * 0.31 - t, sy, t, h / 2],
+    b: [c.x + w * 0.31, sy, t, h / 2],
+    e: [c.x - w * 0.31 - t, c.y, t, h / 2],
+    cSeg: [c.x + w * 0.31, c.y, t, h / 2],
+  };
+  Object.keys(segs).forEach((key) => {
+    const [x, y, sw, sh] = segs[key];
+    const name = key === 'cSeg' ? 'c' : key;
+    ctx.fillStyle = litSegs.indexOf(name) >= 0 ? onColor : 'rgba(255,110,88,0.13)';
+    ctx.fillRect(x, y, sw, sh);
+  });
+  stamp(ctx, P, 9.6, 14.3, 'DS1 · BCD', {
+    size: Math.max(6, Math.min(9, view.tileW * 0.2)), color: C.modSub, mono: true,
+  });
+
+  // ⑤ 当前连续脉冲频率档位：给对应丝印套一个琥珀高亮框
+  const fi = [1, 10, 100, 1000, 10000].indexOf(Number(runtime.freq));
+  if (fi >= 0) {
+    const p = P(14.6 + fi * 1.7, 14.1);
+    const fw = Math.max(14, view.tileW * 0.72);
+    const fh = Math.max(9, view.tileW * 0.42);
+    ctx.strokeStyle = '#f2a93b';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(p.x - fw / 2, p.y - fh / 2, fw, fh);
+  }
+
+  // ⑥ 逻辑笔电平灯：1 红亮 / 0 绿亮 / — 灰
+  const probe = P(32.6, 13.35);
+  const lv = runtime.probe;
+  const pr = Math.max(2.6, view.tileW * 0.14);
+  disc(ctx, probe.x, probe.y, pr * 1.35, 'rgba(6,24,52,0.8)', 'rgba(206,226,250,0.35)', 1);
+  disc(ctx, probe.x, probe.y, pr,
+    lv === '1' ? onColor : (lv === '0' ? '#5fd39a' : '#4a5566'),
+    lv === '1' ? '#8c2f24' : (lv === '0' ? '#1d6e4c' : '#2a3340'), 1);
+}
+
+/* ==========================================================================
    孔位（严格按 platform.nodes，保证拾取与存档）
    ========================================================================== */
 
@@ -601,6 +716,9 @@ export function drawHepPlatform(ctx, view, platform, api) {
   const projectFn = api && api.project;
   if (typeof projectFn !== 'function') return;
   const P = (x, y) => projectFn(view, x, y);
+  // 每帧同步：机箱丝印显隐、悬停高亮、状态灯都只影响平台层，不碰几何 / 存档
+  const hep = view.hep || {};
+  SILK_ON = hep.silk !== false;
 
   drawCase(ctx, view, P);
   drawPcb(ctx, view, P);
@@ -621,6 +739,8 @@ export function drawHepPlatform(ctx, view, platform, api) {
   });
 
   drawDecor(ctx, view, P);
+  drawHotspots(ctx, view, P);
+  drawStatus(ctx, view, P, hep.runtime);
   drawNodes(ctx, view, P, platform);
   drawBrand(ctx, view, P);
 }

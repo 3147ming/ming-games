@@ -105,6 +105,11 @@ const dom = {
   zoomLevel: document.getElementById('zoom-level'),
   btnContPlace: document.getElementById('btn-continuous-place'),
   btnSkin: document.getElementById('btn-skin'),
+  btnHepPanel: document.getElementById('btn-hep-panel'),
+  btnHepDisplay: document.getElementById('btn-hep-display'),
+  hepDisplayMenu: document.getElementById('hep-display-menu'),
+  hepOptSilk: document.getElementById('hep-opt-silk'),
+  hepOptTeach: document.getElementById('hep-opt-teach'),
   toastHost: document.getElementById('toast-host'),
   modalHost: document.getElementById('modal-host'),
 };
@@ -375,14 +380,21 @@ function wireInstruments() {
     onToast: (message, kind) => showToast(message, kind || 'info'),
   });
   window.__labBoard.hepPanel = hepPanel;
+  // 帧前：状态灯数据必须在平台层缓存键计算前写入 view.hep
+  if (window.__labBoard.onBeforeRender) {
+    window.__labBoard.onBeforeRender((view) => {
+      if (hepPanel) hepPanel.writeRuntime(view);
+    });
+  }
   if (window.__labBoard.onAfterRender) {
     window.__labBoard.onAfterRender((view) => {
       if (probeMarkers) probeMarkers.onViewFrame(view);
       if (hepPanel) hepPanel.onViewFrame(view);
     });
   }
-  // 首帧同步：onAfterRender 要等下一次 requestRender 才触发
+  // 首帧同步：两个帧钩子要等下一次 requestRender 才触发
   if (hepPanel) hepPanel.sync();
+  if (window.__labBoard.requestRender) window.__labBoard.requestRender();
 }
 
 /** 离开实验：销毁仪器面板 */
@@ -396,6 +408,7 @@ function destroyInstruments() {
     window.__labBoard.probeMarkers = null;
     window.__labBoard.hepPanel = null;
     if (window.__labBoard.onAfterRender) window.__labBoard.onAfterRender(null);
+    if (window.__labBoard.onBeforeRender) window.__labBoard.onBeforeRender(null);
   }
   instruments = null;
 }
@@ -952,12 +965,21 @@ function openExperiment(expId) {
         ? '该实验已标注平台，平台已锁定'
         : '切换实验箱 / 面包板';
       // 实物外观只作用于数字电路实验箱；面包板保持原绘制
+      const hepAvailable = platformId === 'exp-box';
       if (dom.btnSkin) {
-        dom.btnSkin.disabled = platformId !== 'exp-box';
-        if (platformId !== 'exp-box') {
-          dom.btnSkin.title = '实物外观仅在「数字电路实验箱」平台可用';
-        }
+        dom.btnSkin.disabled = !hepAvailable;
+        if (!hepAvailable) dom.btnSkin.title = '实物外观仅在「数字电路实验箱」平台可用';
       }
+      [dom.btnHepPanel, dom.btnHepDisplay].forEach((btn) => {
+        if (!btn) return;
+        btn.disabled = !hepAvailable;
+        btn.title = hepAvailable
+          ? (btn === dom.btnHepPanel
+            ? '模块面板总开关：一键展开 / 收起全部 6 块模块'
+            : '显示选项：机箱丝印 / 教学模式')
+          : '实物外观仅在「数字电路实验箱」平台可用';
+      });
+      if (!hepAvailable && dom.hepDisplayMenu) dom.hepDisplayMenu.hidden = true;
       // 画布标签只在实验台视图显示平台；原理图视图显示 SCHEMATIC
       syncCanvasHead();
     },
@@ -967,10 +989,19 @@ function openExperiment(expId) {
         instruments.setSkin(skin === 'hep');
       }
     },
+    onHepPrefChange: (name, value, pref) => {
+      syncHepDisplayUI(pref);
+      if (name === 'teach') {
+        showToast(value ? '教学模式：6 块模块标签与面板常驻' : '教学模式已关闭', 'info');
+      }
+    },
   });
   // initBoard 内部会先回调 onPlatformChange（此时 __labBoard 尚未赋值），
   // 所以外观按钮的初始按下态在这里按真实 view.skin 再同步一次
   setSkinPressed(window.__labBoard && window.__labBoard.skin === 'hep');
+  syncHepDisplayUI(window.__labBoard && window.__labBoard.hepPrefs
+    ? window.__labBoard.hepPrefs()
+    : null);
 
   // 示例实验：每次打开都从只读模板恢复（用户改动不写回模板）
   const example = getExample(exp.id);
@@ -1538,6 +1569,24 @@ function setSkinPressed(on) {
     : '当前：通用实验箱（点击切到 HEP-DCTS-01 实物外观）';
 }
 
+/** 同步 HEP 显示分层工具栏：模块面板总开关 + popover 内两个 checkbox */
+function syncHepDisplayUI(pref) {
+  const p = pref || { silk: true, teach: false, all: false };
+  if (dom.btnHepPanel) {
+    dom.btnHepPanel.setAttribute('aria-pressed', String(Boolean(p.all)));
+    dom.btnHepPanel.classList.toggle('is-active', Boolean(p.all));
+  }
+  if (dom.hepOptSilk) dom.hepOptSilk.checked = p.silk !== false;
+  if (dom.hepOptTeach) dom.hepOptTeach.checked = Boolean(p.teach);
+}
+
+/** 关闭「显示选项」popover */
+function closeHepDisplayMenu() {
+  if (!dom.hepDisplayMenu || dom.hepDisplayMenu.hidden) return;
+  dom.hepDisplayMenu.hidden = true;
+  if (dom.btnHepDisplay) dom.btnHepDisplay.setAttribute('aria-expanded', 'false');
+}
+
 /** 绑定视图缩放 / 放大镜工具栏（包 7A） */
 function bindZoomControls() {
   const zoomApi = () => (window.__labBoard && window.__labBoard.zoom) ? window.__labBoard.zoom : null;
@@ -1600,6 +1649,50 @@ function bindZoomControls() {
       const next = board.skin === 'hep' ? 'classic' : 'hep';
       board.setSkin(next);
       showToast(next === 'hep' ? '已切换到 HEP-DCTS-01 实物外观' : '已切回通用实验箱', 'success');
+    });
+  }
+
+  // HEP 显示分层：模块面板总开关（一键全展开 / 收起）
+  if (dom.btnHepPanel) {
+    dom.btnHepPanel.addEventListener('click', () => {
+      const board = window.__labBoard;
+      if (!board || board.platformId !== 'exp-box') {
+        showToast('实物外观仅在「数字电路实验箱」平台可用', 'info');
+        return;
+      }
+      const next = !board.hepPrefs().all;
+      board.setHepPref('all', next);
+      showToast(next ? '模块面板：全部展开' : '模块面板：已收起（悬停看信息、点击展开单张）', 'info');
+    });
+  }
+
+  // 显示选项 popover：机箱丝印 / 教学模式
+  if (dom.btnHepDisplay && dom.hepDisplayMenu) {
+    dom.btnHepDisplay.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const open = dom.hepDisplayMenu.hidden;
+      dom.hepDisplayMenu.hidden = !open;
+      dom.btnHepDisplay.setAttribute('aria-expanded', String(open));
+    });
+    document.addEventListener('click', (event) => {
+      if (dom.hepDisplayMenu.hidden) return;
+      if (event.target && event.target.closest && event.target.closest('#hep-display-wrap')) return;
+      closeHepDisplayMenu();
+    });
+  }
+  if (dom.hepOptSilk) {
+    dom.hepOptSilk.addEventListener('change', () => {
+      const board = window.__labBoard;
+      if (!board) return;
+      board.setHepPref('silk', dom.hepOptSilk.checked);
+      showToast(dom.hepOptSilk.checked ? '机箱丝印：显示' : '机箱丝印：隐藏（极简模式）', 'info');
+    });
+  }
+  if (dom.hepOptTeach) {
+    dom.hepOptTeach.addEventListener('change', () => {
+      const board = window.__labBoard;
+      if (!board) return;
+      board.setHepPref('teach', dom.hepOptTeach.checked);
     });
   }
 
