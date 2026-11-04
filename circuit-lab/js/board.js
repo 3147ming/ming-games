@@ -11,6 +11,7 @@
 import * as model from './model.js';
 import * as platforms from './platforms.js';
 import { getPart, terminalPos } from './parts.js';
+import { HEP_SKIN_ID } from './hep-skin.js';
 import {
   createView,
   layoutView,
@@ -136,6 +137,39 @@ const perf = { frames: [], durations: [] };
 
 /** 平台中文名 */
 const PLATFORM_LABEL = { 'exp-box': '数字电路实验箱', breadboard: '面包板' };
+
+/* ==========================================================================
+   外观皮肤（纯渲染层偏好，不进 model / 不进存档 v4）
+   ========================================================================== */
+
+const SKIN_KEY = 'lab-sim:skin';
+
+function readSkin() {
+  try {
+    return window.localStorage.getItem(SKIN_KEY) === 'classic' ? 'classic' : HEP_SKIN_ID;
+  } catch (_) {
+    return HEP_SKIN_ID;
+  }
+}
+
+function writeSkin(id) {
+  try { window.localStorage.setItem(SKIN_KEY, id); } catch (_) { /* 隐私模式忽略 */ }
+}
+
+/**
+ * 切换平台外观：只改 drawPlatform 的分派，几何 / 节点 / 拾取 / 存档全不动。
+ * 面包板没有实物皮肤，但保留偏好值，切回实验箱时自动恢复。
+ */
+function setSkin(id) {
+  if (!board) return null;
+  const next = id === HEP_SKIN_ID ? HEP_SKIN_ID : 'classic';
+  board.view.skin = next;
+  writeSkin(next);
+  invalidatePlatformLayer();
+  requestRender();
+  if (board.onSkinChange) board.onSkinChange(next);
+  return next;
+}
 
 /* ==========================================================================
    存档
@@ -1358,6 +1392,7 @@ export function initBoard(options) {
     locked = false,
     onToast = () => {},
     onPlatformChange = () => {},
+    onSkinChange = () => {},
   } = options || {};
 
   const canvas = document.getElementById('breadboard-canvas');
@@ -1386,6 +1421,8 @@ export function initBoard(options) {
   resetDigState();
 
   const view = createView(canvas);
+  // 实物外观偏好（localStorage，不写进电路存档 v4）
+  view.skin = readSkin();
   const scene = {
     platform: platforms.getPlatform(restoredPlatform),
     // 始终取活引用：model.loadCircuit / createCircuit 会整体替换 state 对象，
@@ -1422,6 +1459,7 @@ export function initBoard(options) {
     platformId: restoredPlatform,
     onToast,
     onPlatformChange,
+    onSkinChange,
     propsKey: '',
     report: null,
     sim: null,
@@ -1546,6 +1584,11 @@ export function initBoard(options) {
     get platformId() {
       return board ? board.platformId : null;
     },
+    // 外观皮肤（HEP-DCTS-01 实物 / 通用实验箱），纯渲染层偏好
+    get skin() {
+      return board ? board.view.skin : 'classic';
+    },
+    setSkin: (id) => setSkin(id),
     get report() {
       return board ? board.report : null;
     },

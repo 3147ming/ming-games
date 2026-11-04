@@ -2396,3 +2396,304 @@ button {
   line-height: 1.5;
   color: var(--muted, #9aa6bd);
 }
+
+/* ==========================================================================
+   HEP-DCTS-01 实物外观（用户 5 张实拍照片复刻）
+   —— 工具栏开关 / 6 模块行为卡片 / SIGLENT SDS 1102CNL / UTG9005A 前面板
+   ========================================================================== */
+
+.tool-btn--skin { border-color: rgba(90, 169, 230, 0.45); }
+.tool-btn--skin.is-active,
+.tool-btn--skin[aria-pressed="true"] {
+  background: rgba(90, 169, 230, 0.18);
+  border-color: #5aa9e6;
+  color: #8ecbff;
+}
+.tool-btn--skin:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---- 6 模块 DOM 覆盖层：容器不吃事件，只有按钮可点 ---- */
+.hep-panel-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  overflow: hidden;
+  pointer-events: none;
+}
+.hep-panel-layer[hidden] { display: none; }
+
+.hep-module-card {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 132px;
+  padding: 6px 7px 7px;
+  border-radius: 7px;
+  border: 1px solid rgba(150, 205, 255, 0.42);
+  background: rgba(8, 28, 60, 0.87);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: #e8f2ff;
+  font-size: 9.5px;
+  line-height: 1.35;
+  pointer-events: none;
+  backdrop-filter: blur(2px);
+}
+.hep-module-card--switches { border-color: rgba(242, 169, 59, 0.5); }
+.hep-module-card--display { border-color: rgba(226, 104, 95, 0.5); }
+.hep-module-card--pulse { border-color: rgba(95, 211, 154, 0.5); }
+.hep-module-card--utility { border-color: rgba(90, 169, 230, 0.5); }
+
+.hep-card-title {
+  font-size: 9.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #f2f7ff;
+  border-bottom: 1px solid rgba(206, 226, 250, 0.22);
+  padding-bottom: 4px;
+  margin-bottom: 5px;
+}
+.hep-card-body { min-height: 16px; }
+.hep-card-note { font-size: 8.5px; color: rgba(206, 226, 250, 0.72); line-height: 1.4; }
+.hep-card-actions { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
+
+.hep-btn {
+  pointer-events: auto;
+  font: inherit;
+  font-size: 8.5px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(206, 226, 250, 0.35);
+  background: rgba(20, 52, 96, 0.9);
+  color: #dceaff;
+  cursor: pointer;
+  line-height: 1.3;
+}
+.hep-btn:hover { background: rgba(40, 86, 145, 0.95); }
+.hep-btn.is-active { background: rgba(95, 211, 154, 0.24); border-color: #5fd39a; color: #b8f5da; }
+.hep-btn--primary { background: rgba(242, 169, 59, 0.22); border-color: #f2a93b; color: #ffd894; }
+.hep-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.hep-bit-row { display: flex; gap: 2px; margin-bottom: 4px; }
+.hep-bit {
+  pointer-events: auto;
+  flex: 1 1 0;
+  min-width: 0;
+  font: 600 8px "Cascadia Mono", Consolas, monospace;
+  padding: 2px 0;
+  border-radius: 3px;
+  border: 1px solid rgba(206, 226, 250, 0.3);
+  background: #1b2740;
+  color: #8fa6c6;
+  cursor: pointer;
+}
+.hep-bit.is-on {
+  background: #c0453c;
+  border-color: #ff8b7d;
+  color: #fff;
+  box-shadow: 0 0 6px rgba(255, 90, 74, 0.7);
+}
+.hep-bit:disabled { opacity: 0.38; cursor: not-allowed; }
+
+.hep-chip-list { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 4px; }
+.hep-chip {
+  font: 8px "Cascadia Mono", Consolas, monospace;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: #10141b;
+  border: 1px solid rgba(198, 204, 214, 0.5);
+  color: #d6dde9;
+}
+
+.hep-seven-seg {
+  font: 700 26px "Cascadia Mono", Consolas, monospace;
+  line-height: 1;
+  text-align: center;
+  color: #ff4b3a;
+  background: #0a1017;
+  border: 1px solid rgba(180, 200, 225, 0.28);
+  border-radius: 4px;
+  padding: 3px 0 4px;
+  margin-bottom: 4px;
+  text-shadow: 0 0 10px rgba(255, 75, 58, 0.55);
+}
+.hep-seg-row { display: flex; gap: 3px; justify-content: center; margin-bottom: 3px; }
+.hep-seg {
+  font: 7px "Cascadia Mono", Consolas, monospace;
+  width: 11px;
+  height: 11px;
+  line-height: 11px;
+  text-align: center;
+  border-radius: 2px;
+  background: #3a1c1e;
+  color: #7d4242;
+}
+.hep-seg.is-on { background: #ff4b3a; color: #fff; box-shadow: 0 0 5px rgba(255, 75, 58, 0.8); }
+
+.hep-freq-row { display: flex; gap: 2px; flex-wrap: wrap; }
+
+.hep-probe { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; }
+.hep-probe-lamp {
+  display: inline-block;
+  min-width: 18px;
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+  font: 700 12px "Cascadia Mono", Consolas, monospace;
+  border-radius: 3px;
+  background: #1b2740;
+  color: #8fa6c6;
+  border: 1px solid rgba(206, 226, 250, 0.35);
+}
+.hep-probe-lamp.is-hi { background: #c0453c; border-color: #ff8b7d; color: #fff; box-shadow: 0 0 8px rgba(255, 90, 74, 0.7); }
+.hep-probe-lamp.is-lo { background: #2f7a52; border-color: #5fd39a; color: #fff; }
+.hep-probe-label { font-size: 8px; color: rgba(206, 226, 250, 0.72); }
+
+.hep-rails { display: flex; gap: 3px; margin: 4px 0; }
+.hep-rail {
+  font: 7.5px "Cascadia Mono", Consolas, monospace;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: #1b2740;
+  color: #8fa6c6;
+  border: 1px solid rgba(206, 226, 250, 0.3);
+}
+.hep-rail.is-pos { color: #ff8b7d; border-color: rgba(255, 139, 125, 0.5); }
+.hep-rail.is-on { color: #5fd39a; border-color: rgba(95, 211, 154, 0.5); }
+
+/* ---- 两台真实仪器前面板（纯装饰，aria-hidden，不吃事件） ---- */
+.hep-face {
+  pointer-events: none;
+  border-radius: 6px;
+  margin: 0 0 8px;
+  padding: 7px 9px 9px;
+  color: #2c2c26;
+  background: linear-gradient(#e9e3c8, #d8d1b0);
+  border: 1px solid #a9a184;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+.hep-scope-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid rgba(60, 60, 50, 0.3);
+  padding-bottom: 5px;
+  margin-bottom: 6px;
+}
+.hep-brand-logo { font: 700 13px "Cascadia Mono", Consolas, monospace; color: #2b4b8b; letter-spacing: 0.06em; }
+.hep-brand-model { font: 700 11px "Cascadia Mono", Consolas, monospace; color: #1f1f1a; }
+.hep-brand-spec { font: 8px "Cascadia Mono", Consolas, monospace; color: #5a5a4c; }
+
+.hep-scope-rig { display: flex; gap: 5px; margin-bottom: 6px; }
+.hep-rig-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+  padding: 4px;
+  border-radius: 4px;
+  background: linear-gradient(#d4ceb2, #c6c0a4);
+  border: 1px solid #a9a184;
+}
+.hep-rig-title {
+  flex: 0 0 100%;
+  font: 700 7.5px "Cascadia Mono", Consolas, monospace;
+  color: #4a4a3c;
+  letter-spacing: 0.08em;
+}
+.hep-knob {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #f6f1d8, #cfc8a8 60%, #9b957a);
+  border: 1px solid #8f8a70;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+}
+.hep-rig-btn {
+  font: 7px "Cascadia Mono", Consolas, monospace;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: #efe9cf;
+  border: 1px solid #9b957a;
+  color: #3a3a30;
+}
+.hep-rig-btn--auto { background: #2f7fd0; border-color: #1f5f9f; color: #fff; }
+
+.hep-scope-bnc, .hep-fgen-out { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.hep-bnc { display: inline-flex; align-items: center; gap: 4px; font: 7.5px "Cascadia Mono", Consolas, monospace; color: #3a3a30; }
+.hep-bnc i {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #f0e0a0, #b8a860 60%, #6e6438);
+  border: 2px solid #8c814f;
+  box-shadow: inset 0 0 0 2px #2a2c28;
+}
+
+.hep-scope-bezel {
+  padding: 6px;
+  border-radius: 6px;
+  background: linear-gradient(#c9c2a4, #b3ac90);
+  border: 2px solid #8f8a70;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+.hep-scope-bezel .inst-scope-canvas { border-radius: 3px; border-color: #2a2c28; background: #0f1419; }
+
+.hep-fgen-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin: 0 0 7px;
+  border-radius: 4px;
+  background: #14171c;
+  color: #e8e6da;
+}
+.hep-fgen-model { font-size: 9.5px; font-weight: 600; }
+.hep-fgen-range { font: 9px "Cascadia Mono", Consolas, monospace; color: #cfc9a6; margin-left: auto; }
+.hep-fgen-knob {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #f2ecd0, #cfc8a8 58%, #8f8a70);
+  border: 2px solid #6e6a54;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+}
+
+.hep-fgen-keys { display: flex; gap: 8px; margin-bottom: 6px; }
+.hep-fgen-func { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+.hep-fgen-func span {
+  font-size: 7.5px;
+  text-align: center;
+  padding: 3px 1px;
+  border-radius: 3px;
+  background: linear-gradient(#efe9cf, #d6d0b2);
+  border: 1px solid #9b957a;
+  color: #3a3a30;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hep-fgen-num { display: grid; grid-template-columns: repeat(3, 18px); gap: 3px; }
+.hep-fgen-num span {
+  font: 8px "Cascadia Mono", Consolas, monospace;
+  text-align: center;
+  line-height: 16px;
+  border-radius: 9px;
+  background: radial-gradient(circle at 35% 30%, #b9e49a, #7dbf68);
+  border: 1px solid #5d9c4c;
+  color: #1e3a18;
+}
+.hep-fgen-out { border-top: 1px solid rgba(60, 60, 50, 0.3); padding-top: 6px; }
+
+@media (max-width: 720px) {
+  .hep-module-card { width: 112px; padding: 5px; }
+  .hep-seven-seg { font-size: 20px; }
+  .hep-fgen-num { grid-template-columns: repeat(3, 15px); }
+}

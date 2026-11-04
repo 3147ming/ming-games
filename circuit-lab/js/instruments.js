@@ -50,6 +50,10 @@ export function createInstruments(host, api = {}) {
     lastRead: null,
   };
 
+  // HEP-DCTS-01 实物外观：示波器 / 函数发生 tab 是否套写实前面板。
+  // 装饰层是纯 DOM、aria-hidden + pointer-events:none，现有控件结构一字不改。
+  let skinOn = Boolean(api.hepSkin && api.hepSkin());
+
   const wrap = document.createElement('div');
   wrap.className = 'inst-panel';
 
@@ -136,6 +140,71 @@ export function createInstruments(host, api = {}) {
       body.append(hint);
     }
     notifyProbeChange();
+  }
+
+  /* ------------------------------------------------- HEP 实物仪器前面板装饰 */
+
+  /** SIGLENT SDS 1102CNL 前面板（纯装饰，不接管任何控件） */
+  function hepScopeFace() {
+    const face = document.createElement('div');
+    face.className = 'hep-face hep-scope-face';
+    face.setAttribute('aria-hidden', 'true');
+    face.innerHTML = [
+      '<div class="hep-scope-brand">',
+      '<span class="hep-brand-logo">SIGLENT</span>',
+      '<span class="hep-brand-model">SDS 1102CNL</span>',
+      '<span class="hep-brand-spec">DIGITAL STORAGE OSCILLOSCOPE · 100MHz · 1GSa/s</span>',
+      '</div>',
+      '<div class="hep-scope-rig">',
+      '<div class="hep-rig-col"><span class="hep-rig-title">VERTICAL</span>',
+      '<span class="hep-knob"></span><span class="hep-knob"></span>',
+      '<span class="hep-rig-btn">CH1</span><span class="hep-rig-btn">CH2</span></div>',
+      '<div class="hep-rig-col"><span class="hep-rig-title">HORIZONTAL</span>',
+      '<span class="hep-knob"></span><span class="hep-knob"></span>',
+      '<span class="hep-rig-btn">MENU</span><span class="hep-rig-btn">POSITION</span></div>',
+      '<div class="hep-rig-col"><span class="hep-rig-title">TRIGGER</span>',
+      '<span class="hep-knob"></span>',
+      '<span class="hep-rig-btn hep-rig-btn--auto">AUTO</span>',
+      '<span class="hep-rig-btn">RUN / STOP</span></div>',
+      '</div>',
+      '<div class="hep-scope-bnc">',
+      '<span class="hep-bnc"><i></i>CH1</span>',
+      '<span class="hep-bnc"><i></i>CH2</span>',
+      '<span class="hep-bnc"><i></i>EXT TRIG</span>',
+      '</div>',
+    ].join('');
+    return face;
+  }
+
+  /** UTG9005A 型数字合成函数信号发生器前面板（纯装饰） */
+  function hepFgenFace() {
+    const face = document.createElement('div');
+    face.className = 'hep-face hep-fgen-face';
+    face.setAttribute('aria-hidden', 'true');
+    face.innerHTML = [
+      '<div class="hep-fgen-brand">',
+      '<span class="hep-fgen-model">UTG9005A 型数字合成函数信号发生器</span>',
+      '<span class="hep-fgen-range">1μHz~5MHz</span>',
+      '<span class="hep-fgen-knob"></span>',
+      '</div>',
+      '<div class="hep-fgen-keys">',
+      '<div class="hep-fgen-func">',
+      '<span>频率/周期</span><span>幅度/脉宽</span><span>键控</span><span>菜单</span>',
+      '<span>调频</span><span>调幅</span><span>扫描</span><span>突发</span>',
+      '</div>',
+      '<div class="hep-fgen-num">',
+      '<span>7</span><span>8</span><span>9</span>',
+      '<span>4</span><span>5</span><span>6</span>',
+      '<span>1</span><span>2</span><span>3</span>',
+      '<span>0</span><span>·</span><span>−</span>',
+      '</div>',
+      '</div>',
+      '<div class="hep-fgen-out">',
+      '<span class="hep-bnc"><i></i>TTL 输出</span>',
+      '<span class="hep-bnc"><i></i>42V MAX</span>',
+      '</div>',
+    ].join('');
+    return face;
   }
 
   /* ---------------------------------------------------------------- 通用控件 */
@@ -290,6 +359,10 @@ export function createInstruments(host, api = {}) {
   function renderScope() {
     const box = document.createElement('div');
     box.className = 'inst-scope';
+    if (skinOn) {
+      box.classList.add('is-hep');
+      box.append(hepScopeFace());
+    }
 
     const chOptions = [{ value: '', label: '— 未挂 —' }].concat(
       analogChannels().map((ch) => ({ value: ch.netId, label: `${ch.netId}（${ch.driver}）` })),
@@ -333,7 +406,15 @@ export function createInstruments(host, api = {}) {
     const canvas = document.createElement('canvas');
     canvas.className = 'inst-scope-canvas';
     canvas.setAttribute('aria-label', '示波器波形');
-    box.append(canvas);
+    if (skinOn) {
+      // 写实屏幕外框：canvas 仍是同一个节点，class / 查询契约不变
+      const bezel = document.createElement('div');
+      bezel.className = 'hep-scope-bezel';
+      bezel.append(canvas);
+      box.append(bezel);
+    } else {
+      box.append(canvas);
+    }
 
     const measureBox = document.createElement('div');
     measureBox.className = 'inst-measure';
@@ -525,6 +606,10 @@ export function createInstruments(host, api = {}) {
   function renderFgen() {
     const box = document.createElement('div');
     box.className = 'inst-fgen';
+    if (skinOn) {
+      box.classList.add('is-hep');
+      box.append(hepFgenFace());
+    }
     const comp = api.fgenComponent ? api.fgenComponent() : null;
 
     if (!comp) {
@@ -580,6 +665,12 @@ export function createInstruments(host, api = {}) {
 
   return {
     selectTab,
+    /** 切换 HEP 实物外观（由 app 的 onSkinChange 驱动，重绘当前 tab） */
+    setSkin(on) {
+      skinOn = Boolean(on);
+      renderBody();
+      return skinOn;
+    },
     refresh() {
       if (state.tab === 'dmm') refreshDmm();
       else if (state.tab === 'scope') drawScope();

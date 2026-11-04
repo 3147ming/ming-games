@@ -25,6 +25,7 @@ import {
 import { createWaveView } from './waveview.js';
 import { createInstruments } from './instruments.js';
 import { createProbeMarkers } from './probe-markers.js';
+import { createHepPanel } from './hep-panel.js';
 import { createDataPanel } from './data-panel.js';
 import { migrateArchive } from './datastore.js';
 import { EXAMPLES, getExample, cloneExample } from './examples-data.js';
@@ -60,6 +61,9 @@ let instruments = null;
 
 /** 画布可拖拽探针标记层（包 15 遗留建议 2） */
 let probeMarkers = null;
+
+/** HEP-DCTS-01 实物外观：6 模块行为面板 */
+let hepPanel = null;
 
 /** 存档里带的仪器段：面板还没创建时先存这儿，创建后补恢复 */
 let pendingInstrumentData = null;
@@ -100,6 +104,7 @@ const dom = {
   btnLens: document.getElementById('btn-lens'),
   zoomLevel: document.getElementById('zoom-level'),
   btnContPlace: document.getElementById('btn-continuous-place'),
+  btnSkin: document.getElementById('btn-skin'),
   toastHost: document.getElementById('toast-host'),
   modalHost: document.getElementById('modal-host'),
 };
@@ -322,6 +327,11 @@ function wireInstruments() {
     onProbeChange: () => { if (probeMarkers) probeMarkers.sync(); },
     // 面板头部的「画布探针」复选框
     onToggleMarkers: (on) => { if (probeMarkers) probeMarkers.setVisible(on); },
+    // HEP-DCTS-01 实物外观：示波器 / 函数发生 tab 换写实前面板
+    hepSkin: () => {
+      const board = B();
+      return Boolean(board && board.skin === 'hep' && board.platformId === 'exp-box');
+    },
   });
 
   // 存档里带的仪器段：面板创建后补恢复
@@ -355,9 +365,24 @@ function wireInstruments() {
     onToast: (message) => showToast(message, 'info'),
   });
   window.__labBoard.probeMarkers = probeMarkers;
-  if (window.__labBoard.onAfterRender && probeMarkers) {
-    window.__labBoard.onAfterRender((view) => probeMarkers.onViewFrame(view));
+
+  // HEP-DCTS-01 实物外观：6 模块行为面板（与探针标记共用同一个 onAfterRender）
+  if (hepPanel) hepPanel.destroy();
+  hepPanel = createHepPanel({
+    host: document.getElementById('canvas-area'),
+    board: () => window.__labBoard,
+    instruments,
+    onToast: (message, kind) => showToast(message, kind || 'info'),
+  });
+  window.__labBoard.hepPanel = hepPanel;
+  if (window.__labBoard.onAfterRender) {
+    window.__labBoard.onAfterRender((view) => {
+      if (probeMarkers) probeMarkers.onViewFrame(view);
+      if (hepPanel) hepPanel.onViewFrame(view);
+    });
   }
+  // 首帧同步：onAfterRender 要等下一次 requestRender 才触发
+  if (hepPanel) hepPanel.sync();
 }
 
 /** 离开实验：销毁仪器面板 */
@@ -365,9 +390,11 @@ function destroyInstruments() {
   const host = document.getElementById('instrument-panel');
   if (host) host.replaceChildren();
   if (probeMarkers) { probeMarkers.destroy(); probeMarkers = null; }
+  if (hepPanel) { hepPanel.destroy(); hepPanel = null; }
   if (window.__labBoard) {
     window.__labBoard.instruments = null;
     window.__labBoard.probeMarkers = null;
+    window.__labBoard.hepPanel = null;
     if (window.__labBoard.onAfterRender) window.__labBoard.onAfterRender(null);
   }
   instruments = null;
@@ -924,10 +951,26 @@ function openExperiment(expId) {
       dom.btnSwitchPlatform.title = locked
         ? '该实验已标注平台，平台已锁定'
         : '切换实验箱 / 面包板';
+      // 实物外观只作用于数字电路实验箱；面包板保持原绘制
+      if (dom.btnSkin) {
+        dom.btnSkin.disabled = platformId !== 'exp-box';
+        if (platformId !== 'exp-box') {
+          dom.btnSkin.title = '实物外观仅在「数字电路实验箱」平台可用';
+        }
+      }
       // 画布标签只在实验台视图显示平台；原理图视图显示 SCHEMATIC
       syncCanvasHead();
     },
+    onSkinChange: (skin) => {
+      setSkinPressed(skin === 'hep');
+      if (instruments && typeof instruments.setSkin === 'function') {
+        instruments.setSkin(skin === 'hep');
+      }
+    },
   });
+  // initBoard 内部会先回调 onPlatformChange（此时 __labBoard 尚未赋值），
+  // 所以外观按钮的初始按下态在这里按真实 view.skin 再同步一次
+  setSkinPressed(window.__labBoard && window.__labBoard.skin === 'hep');
 
   // 示例实验：每次打开都从只读模板恢复（用户改动不写回模板）
   const example = getExample(exp.id);
@@ -1485,6 +1528,16 @@ function setContPlacePressed(on) {
   dom.btnContPlace.classList.toggle('is-active', on);
 }
 
+/** 更新「实物外观」按钮的按下态与提示 */
+function setSkinPressed(on) {
+  if (!dom.btnSkin) return;
+  dom.btnSkin.setAttribute('aria-pressed', String(Boolean(on)));
+  dom.btnSkin.classList.toggle('is-active', Boolean(on));
+  dom.btnSkin.title = on
+    ? '当前：HEP-DCTS-01 实物外观（点击切回通用实验箱）'
+    : '当前：通用实验箱（点击切到 HEP-DCTS-01 实物外观）';
+}
+
 /** 绑定视图缩放 / 放大镜工具栏（包 7A） */
 function bindZoomControls() {
   const zoomApi = () => (window.__labBoard && window.__labBoard.zoom) ? window.__labBoard.zoom : null;
@@ -1532,6 +1585,21 @@ function bindZoomControls() {
       api.continuousPlace(on);
       setContPlacePressed(on);
       showToast(on ? '连续放置：开（Esc 退出）' : '连续放置：关', 'info');
+    });
+  }
+
+  // HEP-DCTS-01 实物外观：只换平台层画法，几何 / 节点 / 存档不变
+  if (dom.btnSkin) {
+    dom.btnSkin.addEventListener('click', () => {
+      const board = window.__labBoard;
+      if (!board) return;
+      if (board.platformId !== 'exp-box') {
+        showToast('实物外观仅在「数字电路实验箱」平台可用', 'info');
+        return;
+      }
+      const next = board.skin === 'hep' ? 'classic' : 'hep';
+      board.setSkin(next);
+      showToast(next === 'hep' ? '已切换到 HEP-DCTS-01 实物外观' : '已切回通用实验箱', 'success');
     });
   }
 

@@ -14,6 +14,7 @@
 
 import { getPart, footprintOf, terminalPos, poly, lift, prism } from './parts.js';
 import { resolveRef, refFallbackPos } from './model.js';
+import { drawHepPlatform, HEP_SKIN_ID } from './hep-skin.js';
 
 /** 基准菱形贴片尺寸（缩放前的像素） */
 export const BASE_TILE_W = 34;
@@ -96,6 +97,9 @@ export function createView(canvas) {
     fitOriginY: 0,
     fitScale: 1,
     platformId: null,
+    // 平台外观皮肤：'classic' 通用实验箱 / 'hep' HEP-DCTS-01 实物外观
+    // 纯渲染层状态，不进 model、不进存档（由 board.js 从 localStorage 恢复）
+    skin: 'classic',
   };
 }
 
@@ -318,7 +322,8 @@ const platformLayer = { key: '', canvas: null };
  * renderScene 的 drawImage 矩阵负责，所以 zoom 改变不该触发平台层重建。
  */
 function layerKey(view) {
-  return `${view.platformId}|${view.width}x${view.height}|${view.dpr}|${view.fitTileW.toFixed(2)}`;
+  // skin 参与缓存键：实物外观 / 通用实验箱是两套平台层，切换时必须重建
+  return `${view.platformId}|${view.skin || 'classic'}|${view.width}x${view.height}|${view.dpr}|${view.fitTileW.toFixed(2)}`;
 }
 
 /** 取（必要时重建）平台层。平台层固定以 fit（zoom=1）投影绘制。 */
@@ -366,6 +371,11 @@ export function invalidatePlatformLayer() {
 
 /** 画整个平台：底板 → 部件 → 孔位 */
 function drawPlatform(ctx, view, platform) {
+  // HEP-DCTS-01 实物外观：只替换「实验箱」的画法，几何 / 节点 / 拾取一律不变
+  if (view.skin === HEP_SKIN_ID && platform.id === 'exp-box') {
+    drawHepPlatform(ctx, view, platform, { project });
+    return;
+  }
   const theme = themeOf(platform.id);
   if (platform.id === 'breadboard') drawBreadboard(ctx, view, platform, theme);
   else drawExpBox(ctx, view, platform, theme);
