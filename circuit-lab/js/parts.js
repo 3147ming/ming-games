@@ -79,6 +79,8 @@ function drawLead(ctx, from, to, color, width) {
 
 /** 元件下方投影：让元件"坐"在台面上 */
 function drawContactShadow(ctx, frame, gx0, gy0, gx1, gy1) {
+  // LOD 降档（拖拽/缩放中）直接跳过：接触阴影是纯装饰，省下来的填充很可观
+  if (frame.flat) return;
   const a = frame.project(gx0, gy0);
   const b = frame.project(gx1, gy0);
   const c = frame.project(gx1, gy1);

@@ -113,6 +113,13 @@ const dom = {
   hepOptTeach: document.getElementById('hep-opt-teach'),
   toastHost: document.getElementById('toast-host'),
   modalHost: document.getElementById('modal-host'),
+  btnTheme: document.getElementById('btn-theme'),
+  btnKeys: document.getElementById('btn-keys'),
+  keysHost: document.getElementById('keys-host'),
+  keysTip: document.getElementById('keys-tip'),
+  keysTipClose: document.getElementById('keys-tip-close'),
+  stepsBody: document.getElementById('steps-body'),
+  dataBody: document.getElementById('data-body'),
 };
 
 /* ==========================================================================
@@ -427,6 +434,8 @@ let currentExample = null;
  */
 function renderGuide(example) {
   currentExample = example || null;
+  // 步骤 tab 跟着当前实验走（指令包 18）
+  renderStepsTab(currentExample);
   const host = document.getElementById('guide-panel');
   if (!host) return;
   host.replaceChildren();
@@ -1053,6 +1062,9 @@ function activateTab(name) {
   dom.tabPanels.forEach((panel) => {
     panel.classList.toggle('is-active', panel.dataset.panel === name);
   });
+  // 指令包 18：步骤 / 数据 tab 是真实内容，切过去时按当前实验与实时读数重建
+  if (name === 'steps') renderStepsTab(currentExample);
+  else if (name === 'data') renderDataTab();
 }
 
 /* ==========================================================================
@@ -1523,6 +1535,38 @@ function bindEvents() {
     });
   });
 
+  /* ---- 指令包 18：主题 / 快捷键面板 / 首次角标 ---- */
+  if (dom.btnTheme) dom.btnTheme.addEventListener('click', toggleTheme);
+  if (dom.btnKeys) dom.btnKeys.addEventListener('click', () => openKeys());
+  if (dom.keysHost) {
+    dom.keysHost.querySelectorAll('[data-keys-close]').forEach((el) => {
+      el.addEventListener('click', () => closeKeys());
+    });
+  }
+  if (dom.keysTipClose) {
+    dom.keysTipClose.addEventListener('click', () => {
+      if (dom.keysTip) dom.keysTip.hidden = true;
+      try {
+        window.localStorage.setItem(KEYS_TIP_KEY, '3');
+      } catch (_) {
+        /* 忽略 */
+      }
+    });
+  }
+  document.addEventListener('keydown', (event) => {
+    const t = event.target;
+    const typing = t && (t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');
+    if (event.key === '?' && !typing) {
+      event.preventDefault();
+      if (isKeysOpen()) closeKeys();
+      else openKeys();
+      return;
+    }
+    if (event.key === 'Escape' && isKeysOpen()) {
+      closeKeys();
+    }
+  });
+
   // 空格 = 时钟步进（手不离开键盘就能一下一下打时序，等同实验箱上的单脉冲键）
   document.addEventListener('keydown', (event) => {
     if (event.key !== ' ' || event.repeat) return;
@@ -1727,6 +1771,197 @@ function bindZoomControls() {
   });
 }
 
+/* ==========================================================================
+   指令包 18：浅色投影模式 / 快捷键面板 / 步骤·数据 tab
+   ========================================================================== */
+
+const THEME_KEY = 'lab-sim:theme';
+const KEYS_TIP_KEY = 'lab-sim:keys-tip';
+
+/** 应用主题：只切 body[data-theme]，视觉全部交给 CSS 变量覆盖 */
+function applyTheme(theme) {
+  const light = theme === 'light';
+  document.body.dataset.theme = light ? 'light' : 'dark';
+  if (dom.btnTheme) {
+    dom.btnTheme.setAttribute('aria-pressed', String(light));
+    dom.btnTheme.textContent = light ? '深色' : '浅色';
+    dom.btnTheme.title = light ? '切回深色工作模式' : '切换浅色投影模式（白底深字）';
+  }
+  return light ? 'light' : 'dark';
+}
+
+function initTheme() {
+  let theme = 'dark';
+  try {
+    theme = window.localStorage.getItem(THEME_KEY) || 'dark';
+  } catch (_) {
+    /* 隐私模式：用默认深色 */
+  }
+  applyTheme(theme);
+}
+
+function toggleTheme() {
+  const next = document.body.dataset.theme === 'light' ? 'dark' : 'light';
+  applyTheme(next);
+  try {
+    window.localStorage.setItem(THEME_KEY, next);
+  } catch (_) {
+    /* 忽略 */
+  }
+  showToast(next === 'light' ? '浅色投影模式：开' : '深色工作模式：开', 'info');
+  return next;
+}
+
+/* ---- 快捷键面板 ---- */
+function openKeys() {
+  if (!dom.keysHost) return false;
+  dom.keysHost.hidden = false;
+  return true;
+}
+
+function closeKeys() {
+  if (!dom.keysHost) return false;
+  dom.keysHost.hidden = true;
+  return true;
+}
+
+function isKeysOpen() {
+  return Boolean(dom.keysHost && !dom.keysHost.hidden);
+}
+
+/** 首次进入的角标：显示 3 次后不再出现 */
+function maybeShowKeysTip() {
+  if (!dom.keysTip) return;
+  let shown = 0;
+  try {
+    shown = Number(window.localStorage.getItem(KEYS_TIP_KEY) || '0') || 0;
+  } catch (_) {
+    return;
+  }
+  if (shown >= 3) {
+    dom.keysTip.hidden = true;
+    return;
+  }
+  dom.keysTip.hidden = false;
+  try {
+    window.localStorage.setItem(KEYS_TIP_KEY, String(shown + 1));
+  } catch (_) {
+    /* 忽略 */
+  }
+}
+
+/* ---- 步骤 / 数据 tab ---- */
+
+function tabEmpty(text) {
+  const p = document.createElement('p');
+  p.className = 'tab-empty';
+  p.textContent = text;
+  return p;
+}
+
+function tabSection(title) {
+  const h = document.createElement('p');
+  h.className = 'tab-section';
+  h.textContent = title;
+  return h;
+}
+
+/** 步骤 tab：当前实验的分步指导 + 预期值表（没有示例时给引导文案） */
+function renderStepsTab(example) {
+  const host = dom.stepsBody;
+  if (!host) return;
+  host.replaceChildren();
+  if (!example) {
+    host.append(tabEmpty('选一个实验后，这里会列出可直接照做的步骤与预期值。'));
+    return;
+  }
+  const steps = (example.guide && example.guide.steps) || [];
+  if (steps.length === 0) {
+    host.append(tabEmpty('这个实验没有分步指导，直接在画布上搭电路即可。'));
+  } else {
+    const ol = document.createElement('ol');
+    ol.className = 'tab-steps';
+    steps.forEach((text) => {
+      const li = document.createElement('li');
+      li.textContent = text;
+      ol.append(li);
+    });
+    host.append(ol);
+  }
+  const expected = (example.guide && example.guide.expected) || [];
+  if (expected.length > 0) {
+    host.append(tabSection('预期值'));
+    const dl = document.createElement('dl');
+    dl.className = 'tab-expect';
+    expected.forEach((item) => {
+      const dt = document.createElement('dt');
+      dt.textContent = item.label;
+      const dd = document.createElement('dd');
+      const tol = item.tolerance ? `（容差 ${(item.tolerance * 100).toFixed(1)}%）` : '';
+      dd.textContent = `${item.target}${item.unit ? ` ${item.unit}` : ''}${tol}`;
+      dl.append(dt, dd);
+    });
+    host.append(dl);
+  }
+}
+
+/** 数据 tab：万用表 / 示波器 / 逻辑分析仪的当前读数汇总 */
+function renderDataTab() {
+  const host = dom.dataBody;
+  if (!host) return;
+  host.replaceChildren();
+  const board = window.__labBoard;
+  if (!board || !board.instruments) {
+    host.append(tabEmpty('进入实验后，这里会汇总万用表 / 示波器 / 逻辑分析仪的读数。'));
+    return;
+  }
+  let read = null;
+  try {
+    read = board.instruments.read();
+  } catch (_) {
+    read = null;
+  }
+  if (!read) {
+    host.append(tabEmpty('暂时读不到仪器数据；先放一个元件并接线再试。'));
+    return;
+  }
+
+  const dl = document.createElement('dl');
+  dl.className = 'tab-expect';
+  const row = (label, value) => {
+    const dt = document.createElement('dt');
+    dt.textContent = label;
+    const dd = document.createElement('dd');
+    dd.textContent = value;
+    dl.append(dt, dd);
+  };
+
+  const dmm = read.dmm;
+  if (dmm) row('万用表', dmm.ok ? `${dmm.text || dmm.value}${dmm.note ? ` · ${dmm.note}` : ''}` : `未就绪（${dmm.error || '无测点'}）`);
+  const ch1 = read.scope && read.scope.measures ? read.scope.measures[0] : null;
+  const ch2 = read.scope && read.scope.measures ? read.scope.measures[1] : null;
+  [['CH1', ch1], ['CH2', ch2]].forEach(([name, m]) => {
+    if (!m || !m.netId) row(name, '未挂测点');
+    else if (m.freq) row(name, `${m.freq.toFixed(1)} Hz · Vpp ${Number(m.vpp).toFixed(2)} V`);
+    else if (m.vpp !== null && m.vpp !== undefined) row(name, `Vpp ${Number(m.vpp).toFixed(2)} V`);
+    else row(name, '无波形');
+  });
+  const la = read.la;
+  if (la) row('逻辑分析仪', la.nets && la.nets.length ? `${la.nets.length} 条通道 · ${la.bytes || 0} 字节` : '未挂通道');
+  const markers = read.markers || {};
+  const markerCount = Object.values(markers).filter(Boolean).length;
+  row('画布探针', markerCount ? `${markerCount} 枚已挂` : '未挂');
+
+  host.append(dl);
+  host.append(tabEmpty('提示：切到「实验信息 → 数据」可以保存记录，或生成报告导出全部读数。'));
+}
+
+/** 刷新两个 tab（切换示例或切 tab 时调用） */
+function refreshTabPanels() {
+  renderStepsTab(currentExample);
+  renderDataTab();
+}
+
 /** 启动应用：绑定事件、渲染列表、进入默认视图 */
 function init() {
   // 示例实验：注册到实验列表（只补缺失，避免每次启动重复写入）
@@ -1745,8 +1980,12 @@ function init() {
   });
 
   bindEvents();
+  initTheme();
+  maybeShowKeysTip();
   activateTab('info');
   renderList();
+  renderStepsTab(null);
+  renderDataTab();
   switchView('view-list');
   window.__labSimReady = true;
 }

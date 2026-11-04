@@ -880,6 +880,8 @@ export function createInteraction(config) {
 
       if (!drag.active) {
         drag.active = true;
+        // LOD：拖拽期间降档绘制（关引脚标签与接触阴影），松手补全
+        scene.lod = true;
         drag.ghostEl = document.createElement('div');
         drag.ghostEl.className = 'drag-ghost';
         drag.ghostEl.textContent = labelOf(type);
@@ -910,6 +912,8 @@ export function createInteraction(config) {
       if (drag.ghostEl) drag.ghostEl.remove();
       state.drag = null;
       state.dragCleanup = null;
+      // 拖拽结束：恢复高保真绘制（引脚标签 / 接触阴影）
+      scene.lod = false;
 
       if (!drag.active) {
         // 没拖动 → 进入"点选后落点"模式

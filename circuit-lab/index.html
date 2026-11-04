@@ -26,6 +26,11 @@
     </div>
 
     <div class="topbar-actions">
+      <!-- 明 / 暗开关（指令包 18）：白底深字，教室投影与强光下更可读 -->
+      <button class="btn btn-ghost" id="btn-theme" type="button"
+              aria-pressed="false" title="切换浅色投影模式 / 深色工作模式">浅色</button>
+      <button class="btn btn-ghost" id="btn-keys" type="button"
+              aria-haspopup="dialog" title="快捷键一览 ( ? )">快捷键</button>
       <button class="btn btn-ghost" id="btn-import" type="button">导入实验配置</button>
       <button class="btn btn-primary" id="btn-export" type="button">导出配置模板</button>
       <!-- 隐藏的文件选择器，由"导入实验配置"按钮触发 -->
@@ -43,7 +48,33 @@
         </div>
         <p class="view-note" id="list-count">—</p>
       </div>
-      <div class="exp-grid" id="exp-grid"></div>
+      <!-- 30 秒上手（指令包 18）：首屏三步引导，不占实验列表的注意力 -->
+      <ol class="onboard" id="onboard" aria-label="30 秒上手">
+        <li class="onboard-item">
+          <span class="onboard-step">1</span>
+          <span class="onboard-body"><b>选实验</b><span>下面挑一个模板；D01–D12 是数字电路实验</span></span>
+        </li>
+        <li class="onboard-item">
+          <span class="onboard-step">2</span>
+          <span class="onboard-body"><b>拖元件</b><span>从左侧元件库拖到画布，或点选后在画布落点</span></span>
+        </li>
+        <li class="onboard-item">
+          <span class="onboard-step">3</span>
+          <span class="onboard-body"><b>连导线 / 读表</b><span>端子之间拖拽连线；右栏万用表、示波器实时读数</span></span>
+        </li>
+      </ol>
+      <div class="exp-grid" id="exp-grid">
+        <!-- 骨架卡片：模块加载完成前占位，避免「共 0 个实验」一闪而过 -->
+        <div class="exp-card exp-card--skeleton" aria-hidden="true">
+          <span class="skel skel-title"></span><span class="skel skel-line"></span><span class="skel skel-line skel-short"></span>
+        </div>
+        <div class="exp-card exp-card--skeleton" aria-hidden="true">
+          <span class="skel skel-title"></span><span class="skel skel-line"></span><span class="skel skel-line skel-short"></span>
+        </div>
+        <div class="exp-card exp-card--skeleton" aria-hidden="true">
+          <span class="skel skel-title"></span><span class="skel skel-line"></span><span class="skel skel-line skel-short"></span>
+        </div>
+      </div>
     </section>
 
     <!-- 视图 B：实验工作区（三栏：元件库 / 2.5D 画布 / 信息面板） -->
@@ -70,7 +101,7 @@
 
       <div class="ws-grid">
         <!-- 左栏：元件库 -->
-        <aside class="panel">
+        <aside class="panel panel-library">
           <div class="panel-head">
             <span class="panel-label">元件库</span>
             <span class="panel-tag">PARTS</span>
@@ -137,7 +168,7 @@
         </section>
 
         <!-- 右栏：信息面板（三个标签页） -->
-        <aside class="panel">
+        <aside class="panel panel-side">
           <div class="tabs" role="tablist" aria-label="实验信息面板">
             <button class="tab is-active" id="tab-info" type="button" role="tab"
                     data-tab="info" aria-selected="true" aria-controls="panel-info">实验信息</button>
@@ -167,10 +198,14 @@
               <div class="sim-panel" id="data-panel" aria-live="polite"></div>
             </div>
             <div class="tab-panel" id="panel-steps" role="tabpanel" aria-labelledby="tab-steps" data-panel="steps">
-              <p class="placeholder">实验步骤（待后续指令包）</p>
+              <div class="tab-body" id="steps-body">
+                <p class="tab-empty">选一个实验后，这里会列出可直接照做的步骤与预期值。</p>
+              </div>
             </div>
             <div class="tab-panel" id="panel-data" role="tabpanel" aria-labelledby="tab-data" data-panel="data">
-              <p class="placeholder">测量数据（待后续指令包）</p>
+              <div class="tab-body" id="data-body">
+                <p class="tab-empty">测量数据会在这里汇总；也可以生成实验报告导出全部记录。</p>
+              </div>
             </div>
           </div>
         </aside>
@@ -210,6 +245,36 @@
         <button class="btn btn-primary" type="button" data-modal-ok>确定</button>
       </div>
     </div>
+  </div>
+
+  <!-- 快捷键面板（指令包 18）：按 ? 或点顶部「快捷键」打开，Esc / 点遮罩关闭 -->
+  <div class="keys-host" id="keys-host" hidden>
+    <div class="keys-backdrop" data-keys-close></div>
+    <div class="keys-card" role="dialog" aria-modal="true" aria-labelledby="keys-title">
+      <div class="keys-head">
+        <h3 class="keys-title" id="keys-title">快捷键</h3>
+        <button class="btn btn-ghost keys-close" type="button" data-keys-close>关闭</button>
+      </div>
+      <dl class="keys-list">
+        <div class="keys-row"><dt><kbd>1</kbd> / <kbd>M</kbd></dt><dd>放大镜</dd></div>
+        <div class="keys-row"><dt><kbd>G</kbd></dt><dd>显示 / 隐藏网格</dd></div>
+        <div class="keys-row"><dt><kbd>N</kbd></dt><dd>导线工具</dd></div>
+        <div class="keys-row"><dt><kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd></dt><dd>放大 / 缩小 / 复位 1×</dd></div>
+        <div class="keys-row"><dt><kbd>Del</kbd> / <kbd>Backspace</kbd></dt><dd>删除选中元件或导线</dd></div>
+        <div class="keys-row"><dt><kbd>Ctrl</kbd>+<kbd>Z</kbd></dt><dd>撤销</dd></div>
+        <div class="keys-row"><dt><kbd>Ctrl</kbd>+<kbd>Y</kbd></dt><dd>重做</dd></div>
+        <div class="keys-row"><dt><kbd>空格</kbd></dt><dd>时钟步进（单脉冲，打时序用）</dd></div>
+        <div class="keys-row"><dt><kbd>Esc</kbd></dt><dd>取消连线 / 退出连续放置 / 收起面板</dd></div>
+        <div class="keys-row"><dt><kbd>?</kbd></dt><dd>打开这个面板</dd></div>
+      </dl>
+      <p class="keys-hint">提示：把鼠标移到端子上会变成十字，拖拽即可连线；拖动元件时松开即落点。</p>
+    </div>
+  </div>
+
+  <!-- 首次进入的快捷键角标：显示 3 次后不再出现（localStorage 计数） -->
+  <div class="keys-tip" id="keys-tip" hidden>
+    <span>按 <kbd>?</kbd> 看快捷键</span>
+    <button class="keys-tip-close" type="button" id="keys-tip-close" aria-label="关闭提示">×</button>
   </div>
 
   <script type="module" src="js/app.js"></script>

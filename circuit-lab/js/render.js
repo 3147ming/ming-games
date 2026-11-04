@@ -191,6 +191,14 @@ export function applyZoomPan(view) {
   const anchorY = (z - 1) * (view.fitOriginY - cy);
   view.originX = view.fitOriginX + anchorX + view.panX;
   view.originY = view.fitOriginY + anchorY + view.panY;
+  // LOD：缩放/平移后 160ms 内降档绘制（关引脚标签与接触阴影），松手再补全
+  view.lodUntil = performance.now() + 160;
+}
+
+/** 当前是否处于降档绘制（拖拽中由 scene.lod 置位，缩放/平移由 lodUntil 兜底） */
+function isLodActive(view, scene) {
+  if (scene && scene.lod) return true;
+  return (view.lodUntil || 0) > performance.now();
 }
 
 /** 设定绝对缩放值（夹在档位区间内） */
@@ -942,8 +950,8 @@ function drawWires(ctx, view, scene, theme) {
     const info = lvOn ? lv.byWire.get(wire.id) : null;
     const dimmed = Boolean(hoverNet && info && info.net !== hoverNet);
 
-    ctx.save();
-    if (dimmed) ctx.globalAlpha = 0.3;
+    // 不 save/restore：逐帧每条导线都 save 一次是纯开销，直接管好 alpha 即可
+    ctx.globalAlpha = dimmed ? 0.3 : 1;
 
     // 落地光晕，让导线看起来"浮在板子上"
     strokePath(ctx, points);
@@ -993,7 +1001,7 @@ function drawWires(ctx, view, scene, theme) {
     if (flow && info && (info.level === 1 || info.level === 0)) {
       drawFlowDots(ctx, view, points, LEVEL_STYLE[info.level].color, flow.phase, info.level);
     }
-    ctx.restore();
+    ctx.globalAlpha = 1;
   });
 }
 
@@ -1017,7 +1025,9 @@ function drawFlowDots(ctx, view, points, color, phase, level) {
 
 /** 元件 */
 function drawComponents(ctx, view, scene, theme) {
-  const pinLabels = view.tileW > 14;
+  // LOD 三档：静止全画 / 拖拽中画骨架 / 缩放中关引脚标签与接触阴影
+  const lod = isLodActive(view, scene);
+  const pinLabels = view.tileW > 14 && !lod;
   scene.circuit.components.forEach((comp) => {
     const def = getPart(comp.type);
     if (!def) return;
@@ -1037,8 +1047,11 @@ function drawComponents(ctx, view, scene, theme) {
     const origin = project(view, comp.x, comp.y);
     ctx.translate(origin.x, origin.y);
     applyComponentRotation(ctx, comp.rotation, def.size.w, def.size.h, view.tileW);
+    const frame = componentFrame(view, comp);
+    // flat = 降档：各元件 draw 里的 drawContactShadow 会直接跳过
+    frame.flat = lod;
     def.draw(ctx, comp, {
-      frame: componentFrame(view, comp),
+      frame,
       theme,
       scale: view.scale,
       pinLabels,

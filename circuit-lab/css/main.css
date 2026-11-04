@@ -52,6 +52,12 @@
   box-sizing: border-box;
 }
 
+/* hidden 必须真的不渲染：作者样式里的 display 会盖掉 UA 的 [hidden]{display:none}，
+   一旦某个浮层写了 display:grid/flex 又用 hidden 控制显隐，就会变成"看不见但吃事件"的透明遮罩 */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -2866,4 +2872,359 @@ button {
     transform: none;
   }
 }
+
+/* ==========================================================================
+   指令包 18：浅色投影 / 首屏引导 / 骨架 / 快捷键面板 / 移动端抽屉
+   ========================================================================== */
+
+/* ---- 浅色投影模式：只覆盖令牌，组件样式一处不用改 ---- */
+body[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f2f3f7;
+  --bg-deep: #e8eaf1;
+  --panel: #ffffff;
+  --panel-soft: #f6f7fb;
+  --line: #d5d9e4;
+  --line-soft: #e4e7f0;
+  --text: #1d2130;
+  --text-dim: #4b5468;
+  --text-faint: #77809a;
+  --amber-soft: rgba(242, 169, 59, 0.2);
+  --canvas: #eef1f6;
+}
+
+body[data-theme="light"] .topbar {
+  box-shadow: 0 1px 0 rgba(20, 24, 40, 0.08);
+}
+
+body[data-theme="light"] .modal,
+body[data-theme="light"] .keys-card {
+  box-shadow: 0 24px 60px rgba(24, 30, 48, 0.18);
+}
+
+/* ---- 30 秒上手 ---- */
+.onboard {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.onboard-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+}
+
+.onboard-step {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--amber-ink);
+  background: var(--amber);
+}
+
+.onboard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.onboard-body b {
+  font-size: 13px;
+}
+
+.onboard-body span {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+/* ---- 骨架卡片 ---- */
+.exp-card--skeleton {
+  pointer-events: none;
+  cursor: default;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 132px;
+  justify-content: center;
+}
+
+.skel {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--panel-soft) 25%, var(--line-soft) 37%, var(--panel-soft) 63%);
+  background-size: 400% 100%;
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+}
+
+.skel-title { height: 18px; width: 62%; }
+.skel-short { width: 44%; }
+
+@keyframes skel-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+/* ---- 步骤 / 数据 tab ---- */
+.tab-body {
+  padding: 4px 2px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tab-empty {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-faint);
+}
+
+.tab-section {
+  margin: 6px 0 0;
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.tab-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-dim);
+}
+
+.tab-steps li::marker {
+  color: var(--amber);
+  font-family: var(--font-mono);
+}
+
+.tab-expect {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.tab-expect dt {
+  min-width: 0;
+  color: var(--text-dim);
+}
+
+.tab-expect dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  color: var(--text);
+  text-align: right;
+}
+
+/* ---- 快捷键面板 ---- */
+.keys-host {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+}
+
+.keys-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 10, 16, 0.55);
+}
+
+.keys-card {
+  position: relative;
+  width: min(540px, calc(100vw - 32px));
+  max-height: 80vh;
+  overflow: auto;
+  padding: 18px 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.keys-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.keys-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+}
+
+.keys-list {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 12px;
+}
+
+.keys-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--line-soft);
+}
+
+.keys-row dt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.keys-row dd {
+  margin: 0;
+  font-size: 13px;
+  text-align: right;
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.keys-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-faint);
+}
+
+/* ---- 首次进入的快捷键角标 ---- */
+.keys-tip {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  border-radius: 999px;
+  color: #e8e9f2;
+  background: rgba(30, 32, 44, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(6px);
+  /* 角标只是提示，绝不能挡住下面的按钮 */
+  pointer-events: none;
+}
+
+body[data-theme="light"] .keys-tip {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.94);
+  border-color: var(--line);
+}
+
+.keys-tip-close {
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* ---- 移动端：画布优先 + 元件库横向托盘 + 信息面板底部抽屉 ---- */
+@media (max-width: 767px) {
+  .onboard {
+    grid-template-columns: 1fr;
+    padding: 10px;
+  }
+
+  .ws-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .panel-canvas {
+    order: 1;
+    min-height: 50vh;
+  }
+
+  .panel-library {
+    order: 2;
+  }
+
+  .panel-side {
+    order: 3;
+    max-height: 44vh;
+  }
+
+  /* 元件库改成横向滚动托盘：一排图标，不再吃掉半屏高度 */
+  #parts-palette.panel-palette {
+    display: flex;
+    gap: 8px;
+    padding: 8px 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x proximity;
+  }
+
+  #parts-palette .palette-group {
+    display: contents;
+  }
+
+  #parts-palette .palette-group-title {
+    display: none;
+  }
+
+  #parts-palette .palette-item {
+    flex: 0 0 auto;
+    min-width: 84px;
+    scroll-snap-align: start;
+  }
+
+  #parts-palette .palette-meta {
+    display: none;
+  }
+
+  .panel-library .panel-foot {
+    display: none;
+  }
+}
+
 

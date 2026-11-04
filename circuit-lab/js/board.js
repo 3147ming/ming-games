@@ -785,6 +785,8 @@ function updateLevelView() {
   if (!board) return;
   const view = board.scene.levelView;
   view.byWire = new Map();
+  // 着色关掉时不必建映射：省掉一次网表遍历，连点/拖拽时更轻
+  if (!view.on) return;
   const sim = board.sim;
   const dig = sim && sim.dig;
   if (!dig || !dig.ok || !dig.netLevels) return;
@@ -810,6 +812,8 @@ function setLevelColor(on) {
   } catch (_) {
     /* 忽略：隐私模式下写不了 localStorage */
   }
+  // 打开时立刻用最近一次仿真结果补上映射，不必等下一次重仿
+  updateLevelView();
   requestRender();
   return next;
 }
