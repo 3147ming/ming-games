@@ -2280,3 +2280,119 @@ button {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ==========================================================================
+   画布可拖拽探针标记（包 15 遗留建议 2）
+   画布是浅色绘图纸，标记用深色胶囊 + 彩色圆点，保证对比度。
+   ========================================================================== */
+
+.probe-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.probe-layer.is-hidden { display: none; }
+
+.probe-marker {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 172px;
+  padding: 3px 7px 3px 6px;
+  border: 1px solid rgba(24, 30, 46, 0.28);
+  border-left: 3px solid var(--probe-color, #f2a93b);
+  border-radius: 999px;
+  background: rgba(28, 34, 50, 0.92);
+  color: #eef2fb;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: 0 3px 10px rgba(20, 26, 40, 0.28);
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  transition: box-shadow 0.15s var(--ease-out), opacity 0.15s var(--ease-out);
+}
+
+.probe-marker:hover { box-shadow: 0 5px 16px rgba(20, 26, 40, 0.4); }
+.probe-marker:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.probe-marker.is-dragging {
+  cursor: grabbing;
+  z-index: 3;
+  box-shadow: 0 10px 24px rgba(20, 26, 40, 0.5);
+  transition: none;
+}
+.probe-marker.is-docked { opacity: 0.72; }
+
+/* 尖角：让胶囊底部对准被测网格点 */
+.probe-marker.is-live::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 8px;
+  height: 8px;
+  background: rgba(28, 34, 50, 0.92);
+  border-right: 1px solid rgba(24, 30, 46, 0.28);
+  border-bottom: 1px solid rgba(24, 30, 46, 0.28);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.probe-marker-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--probe-color, #f2a93b);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.16);
+}
+
+.probe-marker-label { overflow: hidden; text-overflow: ellipsis; }
+
+.probe-marker-x {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #eef2fb;
+  font-size: 11px;
+  line-height: 15px;
+  text-align: center;
+  cursor: pointer;
+}
+.probe-marker-x:hover { background: rgba(226, 104, 95, 0.85); }
+
+/* 仪器面板头部：开关 + 收起按钮成组，避免 space-between 把三者拉散 */
+.inst-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.inst-probe-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: var(--muted, #9aa6bd);
+  cursor: pointer;
+  user-select: none;
+}
+.inst-probe-toggle input { margin: 0; cursor: pointer; }
+
+.inst-probe-hint {
+  margin: 8px 8px 2px;
+  padding-top: 7px;
+  border-top: 1px dashed rgba(120, 140, 175, 0.28);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted, #9aa6bd);
+}

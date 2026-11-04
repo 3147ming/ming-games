@@ -23,6 +23,18 @@ const TABS = [
   { id: 'fgen', label: '函数发生' },
 ];
 
+/**
+ * 画布探针槽位（包 15 遗留建议 2）：一枚标记 = 一个测点。
+ * scope/key 指向 instruments 的状态字段，标记与下拉共用同一份数据，
+ * 所以「拖标记」和「选下拉」永远同步，存档也只存这一份。
+ */
+export const PROBE_SLOTS = [
+  { id: 'dmm', label: 'DMM', color: '#f2a93b', scope: 'dmm', key: 'netId', hint: '万用表主测点' },
+  { id: 'dmmB', label: 'DMM B', color: '#e2685f', scope: 'dmm', key: 'netB', hint: '电阻/二极管档参考端' },
+  { id: 'ch1', label: 'CH1', color: '#5fd39a', scope: 'scope', key: 'ch1', hint: '示波器通道 1' },
+  { id: 'ch2', label: 'CH2', color: '#5aa9e6', scope: 'scope', key: 'ch2', hint: '示波器通道 2' },
+];
+
 /** 创建仪器面板 */
 export function createInstruments(host, api = {}) {
   if (!host) return null;
@@ -33,6 +45,8 @@ export function createInstruments(host, api = {}) {
     dmm: { mode: 'volt', netId: null, netB: null, componentId: null, real: false },
     scope: { ch1: null, ch2: null, timebase: 0.001, vdiv: 1, coupling: 'dc', cursor1: 0, cursor2: 0 },
     la: { nets: [], baud: 9600, bytes: [], error: '' },
+    // 画布探针标记位置：slotId → { gx, gy }（网格坐标，随存档保存）
+    markers: {},
     lastRead: null,
   };
 
@@ -49,7 +63,7 @@ export function createInstruments(host, api = {}) {
   fold.className = 'inst-fold';
   fold.textContent = '收起';
   fold.setAttribute('aria-expanded', 'true');
-  head.append(title, fold);
+  head.append(title);
 
   const tabs = document.createElement('div');
   tabs.className = 'inst-tabs';
@@ -58,6 +72,24 @@ export function createInstruments(host, api = {}) {
 
   wrap.append(head, tabs, body);
   host.append(wrap);
+
+  // 画布探针标记总开关（标记层由 app 注入 onToggleMarkers）
+  const headActions = document.createElement('div');
+  headActions.className = 'inst-head-actions';
+  const probeToggle = document.createElement('label');
+  probeToggle.className = 'inst-probe-toggle';
+  const probeCb = document.createElement('input');
+  probeCb.type = 'checkbox';
+  probeCb.checked = true;
+  probeCb.setAttribute('aria-label', '显示画布探针标记');
+  probeCb.addEventListener('change', () => {
+    if (api.onToggleMarkers) api.onToggleMarkers(probeCb.checked);
+  });
+  const probeText = document.createElement('span');
+  probeText.textContent = '画布探针';
+  probeToggle.append(probeCb, probeText);
+  headActions.append(probeToggle, fold);
+  head.append(headActions);
 
   fold.addEventListener('click', () => {
     const folded = wrap.classList.toggle('is-folded');
@@ -86,12 +118,24 @@ export function createInstruments(host, api = {}) {
     renderBody();
   }
 
+  /** 测点变更 → 通知画布标记层重新对齐（回调由 app 注入） */
+  function notifyProbeChange() {
+    if (api.onProbeChange) api.onProbeChange();
+  }
+
   function renderBody() {
     body.replaceChildren();
     if (state.tab === 'dmm') renderDmm();
     else if (state.tab === 'scope') renderScope();
     else if (state.tab === 'la') renderLa();
     else renderFgen();
+    if (state.tab === 'dmm' || state.tab === 'scope') {
+      const hint = document.createElement('p');
+      hint.className = 'inst-probe-hint';
+      hint.textContent = '测点也可直接拖画布上的彩色探针标记到端子 / 孔位';
+      body.append(hint);
+    }
+    notifyProbeChange();
   }
 
   /* ---------------------------------------------------------------- 通用控件 */
@@ -122,7 +166,10 @@ export function createInstruments(host, api = {}) {
       el.append(item);
     });
     el.value = value === null || value === undefined ? '' : String(value);
-    el.addEventListener('change', () => onChange(el.value));
+    el.addEventListener('change', () => {
+      onChange(el.value);
+      notifyProbeChange();
+    });
     return el;
   }
 
@@ -546,6 +593,7 @@ export function createInstruments(host, api = {}) {
         dmm: { ...state.dmm },
         scope: { ...state.scope },
         la: { nets: [...state.la.nets], baud: state.la.baud },
+        markers: Object.fromEntries(Object.entries(state.markers).map(([k, v]) => [k, { ...v }])),
       };
     },
     restore(data) {
@@ -556,6 +604,7 @@ export function createInstruments(host, api = {}) {
       if (data.dmm) Object.assign(state.dmm, data.dmm);
       if (data.scope) Object.assign(state.scope, data.scope);
       if (data.la) Object.assign(state.la, data.la);
+      state.markers = data.markers ? { ...data.markers } : {};
       renderBody();
     },
     /** 探针读数（探针/自动化用，不经过 DOM） */
@@ -571,6 +620,7 @@ export function createInstruments(host, api = {}) {
           }),
         },
         la: { nets: [...state.la.nets], baud: state.la.baud, bytes: state.la.bytes },
+        markers: { ...state.markers },
       };
     },
     /** 设置 DMM（探针直接用，省得点 DOM） */
@@ -588,6 +638,37 @@ export function createInstruments(host, api = {}) {
       Object.assign(state.la, patch || {});
       if (state.tab === 'la') renderBody();
       return { ...state.la };
+    },
+    /* 画布探针标记（包 15 遗留建议 2）：与下拉共用同一份测点状态 */
+    probes() {
+      return PROBE_SLOTS.map((slot) => ({
+        id: slot.id,
+        label: slot.label,
+        color: slot.color,
+        hint: slot.hint,
+        netId: state[slot.scope][slot.key] || null,
+      }));
+    },
+    setProbe(slotId, netId) {
+      const slot = PROBE_SLOTS.find((item) => item.id === slotId);
+      if (!slot) return false;
+      state[slot.scope][slot.key] = netId || null;
+      if (state.tab === slot.scope) renderBody();
+      else notifyProbeChange();
+      return true;
+    },
+    markerPositions() {
+      return Object.fromEntries(Object.entries(state.markers).map(([k, v]) => [k, { ...v }]));
+    },
+    setMarkerPositions(map) {
+      state.markers = {};
+      Object.entries(map || {}).forEach(([id, pos]) => {
+        if (PROBE_SLOTS.some((s) => s.id === id) && pos
+          && Number.isFinite(pos.gx) && Number.isFinite(pos.gy)) {
+          state.markers[id] = { gx: pos.gx, gy: pos.gy };
+        }
+      });
+      return { ...state.markers };
     },
   };
 }

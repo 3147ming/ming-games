@@ -51,6 +51,8 @@ import {
   resetDigState,
   levelBadge,
   collectDigitalUnits,
+  digPlanCacheStats,
+  resetDigPlanCache,
 } from './simdig.js';
 import { levelText } from './digmodels.js';
 import {
@@ -293,6 +295,8 @@ function requestRender() {
     if (!board) return;
     const start = performance.now();
     renderScene(board.view, board.scene);
+    // DOM 覆盖层（画布探针标记）跟同一帧的视图变换对齐，避免平移/缩放漂移
+    if (board.onAfterRender) board.onAfterRender(board.view);
     // 仿真标注画在同一张画布上、紧跟场景之后：LED 光晕与端子电平标签
     // 需要跟元件同帧对齐，另开一层反而会漂移。
     drawSimOverlay(board.view, board.scene, board.sim);
@@ -1549,6 +1553,11 @@ export function initBoard(options) {
       return board ? board.locked : false;
     },
     project: (gx, gy) => project(view, gx, gy),
+    // 画布覆盖层注册每帧回调（当前仅探针标记用；传 null 注销）
+    onAfterRender: (fn) => {
+      if (board) board.onAfterRender = typeof fn === 'function' ? fn : null;
+      return Boolean(board && board.onAfterRender);
+    },
     pick: (x, y) => pickAt(view, board ? board.scene : scene, x, y),
     nodeAt: (gx, gy) => (board ? platforms.nodesAt(board.platformId, gx, gy) : []),
     // 7B 探针支持：端子的网格/屏幕坐标（拖拽连线、光标、右键删除探针需要真实坐标）
@@ -1603,6 +1612,9 @@ export function initBoard(options) {
     // 数字域：稳态结果 / 时钟步进 / 脉冲触发 / LED 亮灭
     simdig: {
       solve: (reason) => simulateNow(reason || 'probe-dig'),
+      // 结构缓存统计（指令包 14 遗留建议 1）：探针用它证明缓存命中且结果不变
+      cache: () => digPlanCacheStats(),
+      resetCache: () => { resetDigPlanCache(); return true; },
       last: () => (board && board.sim ? board.sim.dig : null),
       leds: () => (board && board.sim ? board.sim.leds : []),
       stepClock: () => runClockStep(),

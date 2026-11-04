@@ -24,6 +24,7 @@ import {
 } from './board.js';
 import { createWaveView } from './waveview.js';
 import { createInstruments } from './instruments.js';
+import { createProbeMarkers } from './probe-markers.js';
 import { createDataPanel } from './data-panel.js';
 import { migrateArchive } from './datastore.js';
 import { EXAMPLES, getExample, cloneExample } from './examples-data.js';
@@ -56,6 +57,9 @@ let waveView = null;
 
 /** 仪器面板句柄（指令包 10） */
 let instruments = null;
+
+/** 画布可拖拽探针标记层（包 15 遗留建议 2） */
+let probeMarkers = null;
 
 /** 存档里带的仪器段：面板还没创建时先存这儿，创建后补恢复 */
 let pendingInstrumentData = null;
@@ -314,6 +318,10 @@ function wireInstruments() {
       simulateNow('fgen');
       if (instruments) instruments.refresh();
     },
+    // 测点（下拉 / setProbe / restore）一变，画布标记立刻对齐
+    onProbeChange: () => { if (probeMarkers) probeMarkers.sync(); },
+    // 面板头部的「画布探针」复选框
+    onToggleMarkers: (on) => { if (probeMarkers) probeMarkers.setVisible(on); },
   });
 
   // 存档里带的仪器段：面板创建后补恢复
@@ -337,14 +345,32 @@ function wireInstruments() {
 
   window.__labBoard = window.__labBoard || {};
   window.__labBoard.instruments = instruments;
+
+  // 画布可拖拽探针标记：与仪器面板同生共死，位置随仪器存档保存
+  if (probeMarkers) probeMarkers.destroy();
+  probeMarkers = createProbeMarkers({
+    host: document.getElementById('canvas-area'),
+    board: () => window.__labBoard,
+    instruments,
+    onToast: (message) => showToast(message, 'info'),
+  });
+  window.__labBoard.probeMarkers = probeMarkers;
+  if (window.__labBoard.onAfterRender && probeMarkers) {
+    window.__labBoard.onAfterRender((view) => probeMarkers.onViewFrame(view));
+  }
 }
 
 /** 离开实验：销毁仪器面板 */
 function destroyInstruments() {
   const host = document.getElementById('instrument-panel');
   if (host) host.replaceChildren();
+  if (probeMarkers) { probeMarkers.destroy(); probeMarkers = null; }
+  if (window.__labBoard) {
+    window.__labBoard.instruments = null;
+    window.__labBoard.probeMarkers = null;
+    if (window.__labBoard.onAfterRender) window.__labBoard.onAfterRender(null);
+  }
   instruments = null;
-  if (window.__labBoard) window.__labBoard.instruments = null;
 }
 
 /* ==========================================================================

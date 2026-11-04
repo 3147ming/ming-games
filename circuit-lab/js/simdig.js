@@ -50,6 +50,8 @@ export function resetDigState() {
   ffMemory.clear();
   // 边界元件的比较器输出/ADC 码值同样是"上电状态"，一起清零
   resetMixState();
+  // 结构缓存也一起清：断电重上后再求值等价于新电路
+  resetDigPlanCache();
 }
 
 /** 读时钟/脉冲的当前电平 */
@@ -141,55 +143,52 @@ function findCycle(nodes, consumers) {
  *   analog       可选的直流结果：数字输入网没有数字驱动时，按节点电压判电平
  *   ttlFloatHigh 悬空 TTL 输入是否读作高（默认 true，符合 74LS 真实行为）
  */
-export function solveDig(modelApi, options = {}) {
-  const started = timeNow();
-  const warnings = [];
-  const result = {
-    ok: true,
-    error: null,
-    detail: '',
-    warnings,
-    digNets: [],
-    compStates: [],
-    units: [],
-    cycle: [],
-    conflicts: [],
-    netLevels: {},
-    hasDigital: false,
-    analogInputsUsed: 0,
-    mix: { units: [], analogDrives: [] },
-    elapsedMs: 0,
+/* ==========================================================================
+   结构缓存："收集 + 拓扑"只跟电路结构有关，按电路指纹缓存；
+   电平 / 触发器状态每步都会变，绝不缓存（否则时钟与开关会冻住）。
+   ========================================================================== */
+
+let digPlanCache = { key: null, plan: null, hits: 0, misses: 0 };
+
+/** 清空结构缓存（换电路、重置数字状态时调用） */
+export function resetDigPlanCache() {
+  digPlanCache = { key: null, plan: null, hits: 0, misses: 0 };
+}
+
+/** 缓存统计（探针 / 性能面板用） */
+export function digPlanCacheStats() {
+  const plan = digPlanCache.plan;
+  return {
+    cached: Boolean(plan),
+    hits: digPlanCache.hits,
+    misses: digPlanCache.misses,
+    units: plan && plan.units ? plan.units.length : 0,
   };
+}
 
-  if (!modelApi || typeof modelApi.getState !== 'function' || typeof modelApi.getNetlist !== 'function') {
-    result.ok = false;
-    result.error = '仿真引擎缺少 model 接口';
-    result.elapsedMs = elapsedSince(started);
-    return result;
-  }
+/**
+ * 电路指纹：元件（id/类型/参数）+ 端子→网映射 + TTL 悬空策略。
+ * 任一元件参数或任一根导线变化都会改变指纹；O(n) 字符串拼接，远低于重建拓扑。
+ */
+function circuitSignature(state, netOf, ttlFloatHigh) {
+  const parts = [];
+  state.components.forEach((comp) => {
+    parts.push(`${comp.id}|${comp.type}|${JSON.stringify(comp.params || {})}`);
+  });
+  const nets = [];
+  netOf.forEach((net, key) => { nets.push(`${key}=${net}`); });
+  return `${ttlFloatHigh ? 1 : 0}|${state.platform || ''}|${parts.join(';')}|${nets.join(';')}`;
+}
 
-  const state = modelApi.getState();
-  if (!state || !Array.isArray(state.components) || state.components.length === 0) {
-    result.warnings.push('电路为空，放几个数字元件再仿真');
-    result.elapsedMs = elapsedSince(started);
-    return result;
-  }
-
-  const ttlFloatHigh = options.ttlFloatHigh !== false;
-  const netlist = modelApi.getNetlist();
-  const netOf = netlist && netlist.netOf ? netlist.netOf : new Map();
-  const netOfPin = (comp, pin) => netOf.get(`c:${comp.id}:${pin}`) || null;
-
-  /* ---- 直流结果 → 模拟节点电压（混合电路的数字输入用） ---- */
-  const analogVoltages = new Map();
-  if (options.analog && Array.isArray(options.analog.nodeVoltages)) {
-    options.analog.nodeVoltages.forEach((node) => {
-      if (node && node.v !== null && Number.isFinite(node.v)) analogVoltages.set(node.netId, node.v);
-    });
-  }
-
-  const netLevel = new Map(); // netId → 0|1|X（已求出的驱动电平）
-  const levelConflicts = new Set();
+/**
+ * 建立数字结构：收集单元 / 驱动表 / 拓扑序 / 冲突 / 跨域环路判定。
+ * 纯结构、不写任何求值结果，因此可安全缓存。
+ */
+function buildDigPlan(state, netOf, netOfPin, ttlFloatHigh, warnings) {
+  let hasDigital = false;
+  let overflow = false;
+  let mixCount = 0;
+  const conflicts = [];
 
   /* ---- 第一步：收集数字元件 ---- */
   const drivers = new Map(); // netId → [{ unitKey, compId, pin }]
@@ -212,7 +211,7 @@ export function solveDig(modelApi, options = {}) {
         warnings.push(`${comp.id}：型号 ${comp.params ? comp.params.type : '?'} 不在数字模型库里，已跳过`);
         return;
       }
-      result.hasDigital = true;
+      hasDigital = true;
 
       model.units.forEach((unit) => {
         const key = `${comp.id}#${unit.id}`;
@@ -220,8 +219,8 @@ export function solveDig(modelApi, options = {}) {
         const outputs = unit.outputs.map((pin) => ({ pin, net: netOfPin(comp, pin) }));
 
         if (units.length >= MAX_UNITS) {
-          if (!result.overflow) {
-            result.overflow = true;
+          if (!overflow) {
+            overflow = true;
             warnings.push(`数字元件超过 ${MAX_UNITS} 个门，只评估前 ${MAX_UNITS} 个`);
           }
           return;
@@ -243,7 +242,7 @@ export function solveDig(modelApi, options = {}) {
 
     const spec = DIG_SOURCES[comp.type];
     if (!spec) return;
-    result.hasDigital = true;
+    hasDigital = true;
     const level = levelOfSource(comp);
     const outNet = netOfPin(comp, spec.out);
     sources.push({ comp, spec, level, net: outNet });
@@ -253,57 +252,38 @@ export function solveDig(modelApi, options = {}) {
   /* ---- 混合信号边界元件（指令包 8） ---- */
   const mix = collectMix(state, netOf);
   const mixUnits = mix.units;
-  if (mixUnits.length > 0) result.hasDigital = true;
+  if (mixUnits.length > 0) hasDigital = true;
   // 先给出边界元件计数：环路早退时状态行也要知道"这是混合仿真"
-  result.mix = { units: mixUnits.length, types: mix.types, analogDrives: [], detail: [] };
+  mixCount = mixUnits.length;
 
-  // 供电电压：VCC 脚实测电压 − GND 脚实测电压，缺省 5V
-  const mixSupplyOf = (unit) => {
-    const read = (net) => (net && analogVoltages.has(net) ? analogVoltages.get(net) : null);
-    const vcc = read(unit.vccNet);
-    if (vcc === null) return 5;
-    const gnd = read(unit.gndNet);
-    return Math.max(0.1, vcc - (gnd === null ? 0 : gnd));
-  };
-  // 收集阶段只能读模拟电压（数字电平还没算出来）
-  const mixVoltageCtx = {
-    supplyOf: mixSupplyOf,
-    voltage: (net) => (net && analogVoltages.has(net) ? analogVoltages.get(net) : null),
-    level: (net) => {
-      if (!net) return X;
-      if (netLevel.has(net)) return netLevel.get(net);
-      return analogVoltages.has(net) ? levelFromVoltage(analogVoltages.get(net)) : X;
-    },
-  };
-  // 求值后可以读三值电平
-  const mixLevelCtx = {
-    supplyOf: mixSupplyOf,
-    voltage: mixVoltageCtx.voltage,
-    level: (net) => {
-      if (!net) return X;
-      if (netLevel.has(net)) return netLevel.get(net);
-      return analogVoltages.has(net) ? levelFromVoltage(analogVoltages.get(net)) : X;
-    },
-  };
-
-  const registerMixSource = (unit, pin, level) => {
+  /**
+   * 混信源只登记「结构」：网、驱动表、spec。
+   * 比较器 / ADC 的输出电平依赖模拟电压，属于运行态；由 solveDig 每步用
+   * evalMixUnit 重算，绝不写进结构缓存（否则输出会被冻在第一次求值上）。
+   */
+  const registerMixSource = (unit, pin, runtime) => {
     const net = netOfPin(unit.comp, pin);
-    sources.push({ comp: unit.comp, spec: { id: unit.spec.id, label: unit.spec.label, out: pin }, level, net });
+    sources.push({
+      comp: unit.comp,
+      spec: { id: unit.spec.id, label: unit.spec.label, out: pin },
+      level: 0,
+      net,
+      runtimeUnit: unit,
+      runtimePin: pin,
+      runtime: runtime || null,
+    });
     addDriver(net, { unitKey: null, compId: unit.componentId, pin });
   };
 
   mixUnits.forEach((unit) => {
     if (unit.kind === 'comparator') {
-      const r = evalMixUnit(unit, mixVoltageCtx);
       const out = unit.outputs.find((item) => item.pin === 'OUT');
-      if (out && out.net) registerMixSource(unit, 'OUT', r.level);
+      if (out && out.net) registerMixSource(unit, 'OUT', 'comparator');
       return;
     }
     if (unit.kind === 'adc') {
-      const r = evalMixUnit(unit, mixVoltageCtx);
-      const levels = bitsToLevels(r.bits || 0);
       unit.outputs.forEach((out) => {
-        if (out.net) registerMixSource(unit, out.pin, levels[out.pin] === 1 ? 1 : 0);
+        if (out.net) registerMixSource(unit, out.pin, 'adc');
       });
       return;
     }
@@ -357,13 +337,18 @@ export function solveDig(modelApi, options = {}) {
   if (mixUnits.length > 0) {
     const loop = analyzeMixLoops({ state, netOf, mixUnits, digitalUnits: units });
     if (!loop.ok) {
-      result.ok = false;
-      result.error = '检测到跨域组合环路（请检查连线）';
-      result.cycle = loop.cycle;
-      result.detail = `环上元件：${loop.cycle.join(' → ')}`
-        + (loop.via.length > 0 ? `（经由 ${loop.via.join('、')}）` : '');
-      result.elapsedMs = elapsedSince(started);
-      return result;
+      return {
+        fatal: {
+          error: '检测到跨域组合环路（请检查连线）',
+          cycle: loop.cycle,
+          detail: `环上元件：${loop.cycle.join(' → ')}`
+            + (loop.via.length > 0 ? `（经由 ${loop.via.join('、')}）` : ''),
+        },
+        mixCount,
+        mixTypes: mix.types,
+        hasDigital: true,
+        warnings: warnings.slice(),
+      };
     }
   }
 
@@ -377,17 +362,15 @@ export function solveDig(modelApi, options = {}) {
     );
   });
 
-  if (!result.hasDigital) {
-    result.warnings.push('没有数字元件，数字仿真跳过');
-    result.elapsedMs = elapsedSince(started);
-    return result;
+  if (!hasDigital) {
+    return { empty: true, hasDigital: false, warnings: warnings.slice() };
   }
 
   /* ---- 第二步：多驱动检测 ---- */
   drivers.forEach((list, net) => {
     if (list.length > 1) {
       const who = list.map((item) => `${item.compId}.${item.pin}`).join('、');
-      result.conflicts.push(net);
+      conflicts.push(net);
       warnings.push(`驱动竞争：${net} 有 ${list.length} 个数字输出（${who}）`);
     }
   });
@@ -441,16 +424,189 @@ export function solveDig(modelApi, options = {}) {
   if (blocked.length > 0 || selfLoop.length > 0) {
     const blockedSet = new Set(blocked.concat(selfLoop));
     const path = findCycle(blockedSet, consumers);
-    result.ok = false;
-    result.error = '检测到组合逻辑环路（请检查连线）';
-    result.cycle = (path.length > 0 ? path : blocked).map((key) => {
+    const cycle = (path.length > 0 ? path : blocked).map((key) => {
       const item = unitByKey.get(key);
       return item ? `${item.comp.id}.${item.unit.label}` : key;
     });
-    result.detail = result.cycle.length > 0 ? `环上元件：${result.cycle.join(' → ')}` : '';
+    return {
+      fatal: {
+        error: '检测到组合逻辑环路（请检查连线）',
+        cycle,
+        detail: cycle.length > 0 ? `环上元件：${cycle.join(' → ')}` : '',
+      },
+      mixCount,
+      mixTypes: mix.types,
+      hasDigital: hasDigital || mixCount > 0,
+      warnings: warnings.slice(),
+    };
+  }
+
+
+  return {
+    units,
+    sources,
+    drivers,
+    order,
+    unitByKey,
+    conflicts,
+    hasDigital,
+    overflow,
+    mixUnits,
+    mix,
+    mixCount,
+    warnings: warnings.slice(),
+  };
+}
+
+export function solveDig(modelApi, options = {}) {
+  const started = timeNow();
+  const warnings = [];
+  const result = {
+    ok: true,
+    error: null,
+    detail: '',
+    warnings,
+    digNets: [],
+    compStates: [],
+    units: [],
+    cycle: [],
+    conflicts: [],
+    netLevels: {},
+    hasDigital: false,
+    analogInputsUsed: 0,
+    mix: { units: [], analogDrives: [] },
+    elapsedMs: 0,
+  };
+
+  if (!modelApi || typeof modelApi.getState !== 'function' || typeof modelApi.getNetlist !== 'function') {
+    result.ok = false;
+    result.error = '仿真引擎缺少 model 接口';
     result.elapsedMs = elapsedSince(started);
     return result;
   }
+
+  const state = modelApi.getState();
+  if (!state || !Array.isArray(state.components) || state.components.length === 0) {
+    result.warnings.push('电路为空，放几个数字元件再仿真');
+    result.elapsedMs = elapsedSince(started);
+    return result;
+  }
+
+  const ttlFloatHigh = options.ttlFloatHigh !== false;
+  const netlist = modelApi.getNetlist();
+  const netOf = netlist && netlist.netOf ? netlist.netOf : new Map();
+  const netOfPin = (comp, pin) => netOf.get(`c:${comp.id}:${pin}`) || null;
+
+  /* ---- 直流结果 → 模拟节点电压（混合电路的数字输入用） ---- */
+  const analogVoltages = new Map();
+  if (options.analog && Array.isArray(options.analog.nodeVoltages)) {
+    options.analog.nodeVoltages.forEach((node) => {
+      if (node && node.v !== null && Number.isFinite(node.v)) analogVoltages.set(node.netId, node.v);
+    });
+  }
+
+  const netLevel = new Map(); // netId → 0|1|X（已求出的驱动电平）
+  const levelConflicts = new Set();
+
+  /* ---- 混合信号边界元件求值上下文（运行态：每次求解重建，不进结构缓存） ---- */
+  // 供电电压：VCC 脚实测电压 − GND 脚实测电压，缺省 5V
+  const mixSupplyOf = (unit) => {
+    const read = (net) => (net && analogVoltages.has(net) ? analogVoltages.get(net) : null);
+    const vcc = read(unit.vccNet);
+    if (vcc === null) return 5;
+    const gnd = read(unit.gndNet);
+    return Math.max(0.1, vcc - (gnd === null ? 0 : gnd));
+  };
+  // 拓扑求值前：只能读模拟电压（数字电平还没算出来）
+  const mixVoltageCtx = {
+    supplyOf: mixSupplyOf,
+    voltage: (net) => (net && analogVoltages.has(net) ? analogVoltages.get(net) : null),
+    level: (net) => {
+      if (!net) return X;
+      if (netLevel.has(net)) return netLevel.get(net);
+      return analogVoltages.has(net) ? levelFromVoltage(analogVoltages.get(net)) : X;
+    },
+  };
+  // 拓扑求值后：可以读三值电平
+  const mixLevelCtx = {
+    supplyOf: mixSupplyOf,
+    voltage: mixVoltageCtx.voltage,
+    level: (net) => {
+      if (!net) return X;
+      if (netLevel.has(net)) return netLevel.get(net);
+      return analogVoltages.has(net) ? levelFromVoltage(analogVoltages.get(net)) : X;
+    },
+  };
+
+  /* ---- 结构：按电路指纹缓存（收集 + 拓扑；求值绝不缓存） ---- */
+  const signature = circuitSignature(state, netOf, ttlFloatHigh);
+  let plan;
+  if (digPlanCache.key === signature && digPlanCache.plan) {
+    plan = digPlanCache.plan;
+    digPlanCache.hits += 1;
+  } else {
+    plan = buildDigPlan(state, netOf, netOfPin, ttlFloatHigh, []);
+    digPlanCache = { key: signature, plan, hits: digPlanCache.hits, misses: digPlanCache.misses + 1 };
+  }
+  plan.warnings.forEach((text2) => warnings.push(text2));
+  // hasDigital 必须在早退分支之前落地：组合/跨域环路会提前 return，
+  // 面板与状态行靠它区分「仿真出错」和「电路里没有数字元件」。
+  result.hasDigital = Boolean(plan.hasDigital || (plan.mixCount || 0) > 0);
+
+  if (plan.empty) {
+    result.warnings.push('没有数字元件，数字仿真跳过');
+    result.elapsedMs = elapsedSince(started);
+    return result;
+  }
+  if (plan.fatal) {
+    result.ok = false;
+    result.error = plan.fatal.error;
+    result.cycle = plan.fatal.cycle;
+    result.detail = plan.fatal.detail;
+    if (plan.mixCount > 0) {
+      result.mix = { units: plan.mixCount, types: plan.mixTypes, analogDrives: [], detail: [] };
+    }
+    result.elapsedMs = elapsedSince(started);
+    return result;
+  }
+
+  const { units, sources, drivers, order, unitByKey, mixUnits, mix } = plan;
+  if (mixUnits.length > 0) {
+    result.mix = { units: mixUnits.length, types: mix.types, analogDrives: [], detail: [] };
+  }
+  plan.conflicts.forEach((net) => {
+    if (!result.conflicts.includes(net)) result.conflicts.push(net);
+  });
+  // 复用同一批 unit 对象：清掉上一步留下的求值痕迹
+  units.forEach((item) => {
+    item.levelIn = {};
+    item.levelOut = {};
+    item.edge = undefined;
+    item.mode = undefined;
+    item.invalid = undefined;
+  });
+  // 源电平是运行态，每步重算：
+  //   · 逻辑开关 / 时钟 / 脉冲 → 读运行态或元件参数
+  //   · 比较器 / ADC（混信源）  → 用本步模拟电压重新求值，绝不读缓存
+  const runtimeEval = new Map();
+  sources.forEach((source) => {
+    if (!source.runtimeUnit) {
+      source.level = levelOfSource(source.comp);
+      return;
+    }
+    let r = runtimeEval.get(source.runtimeUnit);
+    if (!r) {
+      r = evalMixUnit(source.runtimeUnit, mixVoltageCtx);
+      runtimeEval.set(source.runtimeUnit, r);
+    }
+    if (source.runtime === 'adc') {
+      const levels = bitsToLevels(r.bits || 0);
+      source.level = levels[source.runtimePin] === 1 ? 1 : 0;
+    } else {
+      source.level = r.level === 1 ? 1 : 0;
+    }
+  });
+
 
   /* ---- 第四步：按拓扑序求值 ---- */
   // netLevel / levelConflicts 提前到收集阶段声明：边界元件求值要读它们
