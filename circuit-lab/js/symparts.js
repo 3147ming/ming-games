@@ -280,10 +280,12 @@ function drawClock(ctx, comp, g) {
 function drawIc(ctx, comp, g) {
   const sym = g.sym;
   const ink = g.color.ink;
+  // 本体左右内缩固定 1.2，纵向按符号高度收 0.6：
+  //   DIP-14（h=8）→ y0=0.6 / y1=7.4；DIP-16（h=9）→ y0=0.6 / y1=8.4
   const x0 = 1.2;
-  const x1 = 5.8;
+  const x1 = sym.size.w - 1.2;
   const y0 = 0.6;
-  const y1 = 7.4;
+  const y1 = sym.size.h - 0.6;
 
   box(ctx, g, x0, y0, x1, y1);
 
@@ -609,6 +611,30 @@ function buildIcPins() {
   return pins;
 }
 
+/** DIP-16：左侧 1..8，右侧 9..16（8=GND、16=VCC） */
+function buildIc16Pins() {
+  const pins = [];
+  for (let pin = 1; pin <= 8; pin += 1) {
+    pins.push({
+      name: String(pin),
+      dx: 0,
+      dy: pin,
+      side: 'left',
+      role: pin === 8 ? 'GND' : 'io',
+    });
+  }
+  for (let pin = 9; pin <= 16; pin += 1) {
+    pins.push({
+      name: String(pin),
+      dx: 7,
+      dy: 17 - pin,
+      side: 'right',
+      role: pin === 16 ? 'VCC' : 'io',
+    });
+  }
+  return pins;
+}
+
 /**
  * 符号定义表。
  * size  —— 未旋转占位（逻辑格）
@@ -672,6 +698,15 @@ export const SYMBOLS = {
     pins: buildIcPins(),
     draw: drawIc,
     labelText: (comp) => normalizeType(comp.params.type) || '74LS00',
+  },
+
+  ic74xx16: {
+    id: 'ic74xx16',
+    label: '74LS 芯片（16 脚）',
+    size: { w: 7, h: 9 },
+    pins: buildIc16Pins(),
+    draw: drawIc,
+    labelText: (comp) => normalizeType(comp.params.type) || '74LS138',
   },
 
   vsource: {

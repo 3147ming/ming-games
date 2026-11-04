@@ -880,9 +880,54 @@ function drawHoverGroup(ctx, view, scene) {
   });
 }
 
+/* ==========================================================================
+   电平语义色（与主题色分开：绿=高、蓝灰=低、琥珀=未知、半透明灰=未驱动）
+   ========================================================================== */
+
+const LEVEL_STYLE = {
+  1: { color: '#5fd39a', dash: false },
+  0: { color: '#6f83a8', dash: false },
+  X: { color: '#f2a93b', dash: true },
+  F: { color: 'rgba(120, 140, 168, 0.5)', dash: false },
+};
+
+/** 折线路径上按比例取点（流动点用） */
+function pointAlongPath(points, t) {
+  if (!points || points.length < 2) return null;
+  const clamped = Math.max(0, Math.min(1, t));
+  let total = 0;
+  const segs = [];
+  for (let i = 1; i < points.length; i += 1) {
+    const len = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    segs.push(len);
+    total += len;
+  }
+  if (total <= 0) return points[0];
+  let target = clamped * total;
+  for (let i = 0; i < segs.length; i += 1) {
+    if (target <= segs[i] || i === segs.length - 1) {
+      const k = segs[i] > 0 ? target / segs[i] : 0;
+      return {
+        x: points[i].x + (points[i + 1].x - points[i].x) * k,
+        y: points[i].y + (points[i + 1].y - points[i].y) * k,
+      };
+    }
+    target -= segs[i];
+  }
+  return points[points.length - 1];
+}
+
 /** 导线 */
 function drawWires(ctx, view, scene, theme) {
   const dangling = scene.dangling || new Set();
+  // 电平着色：仿真结果按 net 上色；悬停某条导线时其余 net 压暗到 30%
+  const lv = scene.levelView;
+  const lvOn = Boolean(lv && lv.on && lv.byWire instanceof Map);
+  const hoverWireId = scene.hover && scene.hover.type === 'wire' ? scene.hover.wireId : null;
+  const hoverNet = lvOn && hoverWireId && lv.byWire.has(hoverWireId)
+    ? lv.byWire.get(hoverWireId).net : null;
+  // 流动点只在暂态运行中开（scene.flow.on），尊重 prefers-reduced-motion
+  const flow = scene.flow && scene.flow.on ? scene.flow : null;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
@@ -894,6 +939,11 @@ function drawWires(ctx, view, scene, theme) {
     const isDangling = dangling.has(wire.id) || !ends.valid;
     const isSelected = scene.selection && scene.selection.type === 'wire' && scene.selection.id === wire.id;
     const isHover = scene.hover && scene.hover.type === 'wire' && scene.hover.wireId === wire.id;
+    const info = lvOn ? lv.byWire.get(wire.id) : null;
+    const dimmed = Boolean(hoverNet && info && info.net !== hoverNet);
+
+    ctx.save();
+    if (dimmed) ctx.globalAlpha = 0.3;
 
     // 落地光晕，让导线看起来"浮在板子上"
     strokePath(ctx, points);
@@ -912,6 +962,11 @@ function drawWires(ctx, view, scene, theme) {
     } else if (isHover) {
       ctx.strokeStyle = '#8fd8ea';
       ctx.setLineDash([]);
+    } else if (info) {
+      // 电平着色优先于主题色：整块板子因此变成一张"真值表热力图"
+      const style = LEVEL_STYLE[info.level] || LEVEL_STYLE.F;
+      ctx.strokeStyle = style.color;
+      ctx.setLineDash(style.dash ? [5, 4] : []);
     } else {
       ctx.strokeStyle = theme.wire;
       ctx.setLineDash([]);
@@ -928,10 +983,36 @@ function drawWires(ctx, view, scene, theme) {
       if (!valid) return;
       ctx.beginPath();
       ctx.arc(point.x, point.y, Math.max(2, view.tileW * 0.1), 0, Math.PI * 2);
-      ctx.fillStyle = isDangling ? '#e2685f' : (isSelected ? '#f2a93b' : theme.wire);
+      ctx.fillStyle = isDangling
+        ? '#e2685f'
+        : (isSelected ? '#f2a93b' : (info ? (LEVEL_STYLE[info.level] || LEVEL_STYLE.F).color : theme.wire));
       ctx.fill();
     });
+
+    // 数字信号流动点：被驱动的 net 上跑 2 个亮点，方向 起点→终点
+    if (flow && info && (info.level === 1 || info.level === 0)) {
+      drawFlowDots(ctx, view, points, LEVEL_STYLE[info.level].color, flow.phase, info.level);
+    }
+    ctx.restore();
   });
+}
+
+/** 流动点：沿导线路径匀速跑 2 个亮点（相位由 board 的 rAF 推进） */
+function drawFlowDots(ctx, view, points, color, phase, level) {
+  const radius = Math.max(1.8, view.tileW * 0.1);
+  for (let i = 0; i < 2; i += 1) {
+    const t = ((phase || 0) + i * 0.5) % 1;
+    const p = pointAlongPath(points, t);
+    if (!p) continue;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius * 2.1, 0, Math.PI * 2);
+    ctx.fillStyle = level === 1 ? 'rgba(95, 211, 154, 0.22)' : 'rgba(111, 131, 168, 0.22)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
 }
 
 /** 元件 */
@@ -1190,17 +1271,40 @@ export function pickAt(view, scene, sx, sy) {
   const platform = scene.platform;
   const circuit = scene.circuit;
 
+  // 先算网格坐标与"落在哪个元件本体里"：命中优先级要用它做仲裁
+  const point = unproject(view, sx, sy);
+  let bodyHit = null;
+  for (let i = circuit.components.length - 1; i >= 0; i -= 1) {
+    const comp = circuit.components[i];
+    const def = getPart(comp.type);
+    const footprint = footprintOf(def, comp.rotation);
+    // 命中区比占位放大 1.15×：抓取手感更接近"伸手就能拿到"，不必精确压在边框里
+    const padX = footprint.w * 0.075;
+    const padY = footprint.h * 0.075;
+    if (
+      point.gx >= comp.x - padX && point.gx <= comp.x + footprint.w + padX
+      && point.gy >= comp.y - padY && point.gy <= comp.y + footprint.h + padY
+    ) {
+      bodyHit = { type: 'component', componentId: comp.id };
+      break;
+    }
+  }
+
   // 1. 元件端子
-  let best = null;
-  let bestDistance = Math.max(9, view.tileW * 0.42);
+  //    触屏友好：命中半径取 max(12px, tileW*0.5)。鼠标够用的 9px 对手指偏小，
+  //    而实验箱孔位密集，放大到 12px 后"点一下就能连上"的成功率明显提升。
+  //    仲裁规则：指针落在元件本体内部、又不是真的压在引脚上时让本体赢——
+  //    小元件（电阻 3×1）的两个引脚会把整个本体都罩进 12px，否则就拖不动了。
+  let pinHit = null;
+  let pinDistance = Math.max(12, view.tileW * 0.5);
   circuit.components.forEach((comp) => {
     comp.terminals.forEach((terminal) => {
       const p = terminalScreenPos(view, comp, terminal.name);
       if (!p) return;
       const distance = Math.hypot(p.x - sx, p.y - sy);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = {
+      if (distance < pinDistance) {
+        pinDistance = distance;
+        pinHit = {
           type: 'terminal',
           componentId: comp.id,
           terminal: terminal.name,
@@ -1210,21 +1314,12 @@ export function pickAt(view, scene, sx, sy) {
       }
     });
   });
-  if (best) return best;
-
-  // 2. 元件本体（元件压在台面上，点它就应当选中元件，而不是选中被它遮住的孔位）
-  const point = unproject(view, sx, sy);
-  for (let i = circuit.components.length - 1; i >= 0; i -= 1) {
-    const comp = circuit.components[i];
-    const def = getPart(comp.type);
-    const footprint = footprintOf(def, comp.rotation);
-    if (
-      point.gx >= comp.x && point.gx <= comp.x + footprint.w
-      && point.gy >= comp.y && point.gy <= comp.y + footprint.h
-    ) {
-      return { type: 'component', componentId: comp.id };
-    }
+  if (bodyHit) {
+    const pinRadius = Math.max(6, view.tileW * 0.22);
+    if (pinHit && pinDistance <= pinRadius) return pinHit;
+    return bodyHit;
   }
+  if (pinHit) return pinHit;
 
   // 3. 导线（绘制在孔位之上，命中优先于孔位：实验箱孔位密集、命中半径又比导线大，
   //    若让孔位先赢，导线在实验箱上几乎点不中——右键删导线 / 悬停导线会失效）

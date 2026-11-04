@@ -12,7 +12,7 @@
  * 不直接接触画布原点，因此同一套 draw 既可用于主画布也可用于元件库图标。
  */
 
-import { normalizeType, pinLabel, DIG_MODEL_ORDER, DIG_MODELS } from './digmodels.js';
+import { normalizeType, pinLabel, getDigModel, DIG_MODEL_ORDER, DIG_MODELS } from './digmodels.js';
 
 /* ==========================================================================
    等距绘制基元
@@ -243,8 +243,11 @@ function drawIc(ctx, comp, style) {
   drawContactShadow(ctx, frame, 0.05, 0.55, frame.w - 0.05, frame.h - 0.55);
   prism(ctx, frame, 0.1, 0.55, frame.w - 0.1, frame.h - 0.55, 8, '#32323e', '#1e1e26', '#191920', 'rgba(0,0,0,0.55)');
 
-  // 引脚：从本体边缘伸到端子
-  const def = PARTS.ic74xx;
+  // 14 脚（ic74xx）/ 16 脚（ic74xx16）共用这一套画法：
+  // 端子几何、顶边脚数、电源脚位置全部从元件定义与数字模型读，不再写死
+  const def = PARTS[comp.type] || PARTS.ic74xx;
+  const model = getDigModel(comp.type, comp.params);
+  const powerPins = model ? [model.power.gnd, model.power.vcc] : ['7', '14'];
   const topCount = def.terminals.filter((t) => t.dy === 0).length;
   const pinColor = '#c2c7d4';
   for (let i = 0; i < topCount; i += 1) {
@@ -270,14 +273,15 @@ function drawIc(ctx, comp, style) {
   ctx.fillStyle = 'rgba(226, 231, 242, 0.78)';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(String(comp.params.type || '7408'), label.x, label.y);
+  ctx.fillText(String(comp.params.type || (def.defaultParams && def.defaultParams.type) || '74LS00'),
+    label.x, label.y);
 
   if (pinLabels) {
     const modelId = normalizeType(comp.params.type);
     def.terminals.forEach((t) => {
       const name = pinLabel(modelId, t.name);
-      // 电源脚用琥珀色强调：接错 7/14 是实验台上最常见的"不工作"原因
-      drawPinLabel(ctx, frame.project(t.dx, t.dy), name, t.name === '7' || t.name === '14');
+      // 电源脚用琥珀色强调：接错 7/14（或 8/16）是实验台上最常见的"不工作"原因
+      drawPinLabel(ctx, frame.project(t.dx, t.dy), name, powerPins.includes(t.name));
     });
   }
 }
@@ -889,6 +893,21 @@ function drawPinLabel(ctx, point, text, highlight) {
    类型注册表
    ========================================================================== */
 
+/**
+ * 型号下拉选项按**封装脚数**过滤。
+ * 14 脚座（ic74xx）不能列 16 脚芯片，反之亦然——否则学生把 74LS160 插进 14 脚座，
+ * 实物画不出 8/16 脚，逻辑求解也会按错的电源脚接法报"不工作"。
+ * 脚数唯一来源是数字模型的 power.vcc（'14' / '16'），不另维护一张表。
+ */
+function modelOptionsByPins(pinCount) {
+  return DIG_MODEL_ORDER
+    .filter((id) => {
+      const model = DIG_MODELS[id];
+      return Boolean(model && model.power && Number(model.power.vcc) === pinCount);
+    })
+    .map((id) => ({ value: id, label: DIG_MODELS[id].label }));
+}
+
 export const PARTS = {
   resistor: {
     id: 'resistor',
@@ -1008,9 +1027,45 @@ export const PARTS = {
         key: 'type',
         label: '型号',
         type: 'select',
-        // 直接由数字模型表生成：两边不可能对不上
-        options: DIG_MODEL_ORDER.map((id) => ({ value: id, label: DIG_MODELS[id].label })),
+        // 只列 14 脚芯片：16 脚的 74LS138/148/151/283/85/112/160/194 走 ic74xx16
+        options: modelOptionsByPins(14),
         // 旧存档写的是 7408 这种四位短号，显示时归一化到 74LS08
+        normalize: (value) => normalizeType(value),
+      },
+    ],
+    draw: drawIc,
+  },
+
+  ic74xx16: {
+    id: 'ic74xx16',
+    label: '74LS 芯片（16 脚）',
+    group: '集成电路',
+    size: { w: 8, h: 3 },
+    // DIP-16：1..8 在顶边（1 在左），9..16 在底边（16 在最左），与真实封装一致。
+    // 8=GND、16=VCC；其余端子统一 bidir，方向交给 digmodels 的 pins.dir 决定。
+    terminals: (() => {
+      const list = [];
+      for (let pin = 1; pin <= 16; pin += 1) {
+        const isTop = pin <= 8;
+        const col = isTop ? pin - 1 : 16 - pin;
+        list.push({
+          name: String(pin),
+          dx: col,
+          dy: isTop ? 0 : 2,
+          direction: pin === 8 || pin === 16 ? 'power' : 'bidir',
+          role: pin === 8 ? 'GND' : pin === 16 ? 'VCC' : 'io',
+        });
+      }
+      return list;
+    })(),
+    defaultParams: { type: '74LS138' },
+    paramFields: [
+      {
+        key: 'type',
+        label: '型号',
+        type: 'select',
+        // 只列 16 脚芯片，避免把 74LS00 插到 16 脚座上
+        options: modelOptionsByPins(16),
         normalize: (value) => normalizeType(value),
       },
     ],
@@ -1639,6 +1694,7 @@ export const PART_ORDER = [
   'pulse',
   'clock',
   'ic74xx',
+  'ic74xx16',
   'comparator',
   'buffer74',
   'dac8',

@@ -102,6 +102,7 @@ const dom = {
   btnZoomOut: document.getElementById('btn-zoom-out'),
   btnZoomReset: document.getElementById('btn-zoom-reset'),
   btnLens: document.getElementById('btn-lens'),
+  btnLevels: document.getElementById('btn-levels'),
   zoomLevel: document.getElementById('zoom-level'),
   btnContPlace: document.getElementById('btn-continuous-place'),
   btnSkin: document.getElementById('btn-skin'),
@@ -1622,6 +1623,23 @@ function bindZoomControls() {
       if (!api) return;
       if (api.isOn()) { api.off(); setLensPressed(false); }
       else { api.on(); setLensPressed(true); }
+    });
+  }
+
+  // 电平着色开关（指令包 17）：只影响画布上色，不改电路与存档
+  if (dom.btnLevels) {
+    const board = window.__labBoard;
+    const on = board && board.levels ? board.levels.on() : true;
+    dom.btnLevels.setAttribute('aria-pressed', String(on));
+    dom.btnLevels.classList.toggle('is-active', on);
+    dom.btnLevels.addEventListener('click', () => {
+      const api = window.__labBoard && window.__labBoard.levels;
+      if (!api) return;
+      const next = !api.on();
+      api.set(next);
+      dom.btnLevels.setAttribute('aria-pressed', String(next));
+      dom.btnLevels.classList.toggle('is-active', next);
+      showToast(next ? '电平着色：开（高绿 / 低蓝灰 / X 琥珀）' : '电平着色：关', 'info');
     });
   }
 

@@ -338,6 +338,14 @@ const ic74xxModel = {
   reason: '数字元件，包 6 处理',
 };
 
+/** DIP-16 封装的 74LS 芯片（74LS138/148/151/283/85/112/160/194），同样只走数字域 */
+const ic74xx16Model = {
+  id: 'ic74xx16',
+  label: '74 系列芯片（16 脚）',
+  skip: true,
+  reason: '数字元件，指令包 16 处理',
+};
+
 /* ==========================================================================
    指令包 9：半导体 / 动态 / 机电元件
    ========================================================================== */
@@ -994,6 +1002,7 @@ export const MODELS = {
   vsource: vsourceModel,
   isource: isourceModel,
   ic74xx: ic74xxModel,
+  ic74xx16: ic74xx16Model,
   diode: diodeModel,
   zener: zenerModel,
   transistor: transistorModel,

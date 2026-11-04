@@ -9,7 +9,7 @@
 
 import { solveDC } from './simdc.js';
 import { solveTransient } from './simtrans.js';
-import { solveDig } from './simdig.js';
+import { solveCoupled } from './simdig.js';
 
 const netOf = (modelApi, componentId, terminal) => {
   const netlist = modelApi.getNetlist();
@@ -108,20 +108,53 @@ export function measureExample(modelApi, example) {
   }
 
   if (measure.type === 'digital') {
+    const all = modelApi.getState().components || [];
+    // 输入集合：优先用 measure.inputs 指定的开关 id 数组（顺序即真值表列序，inputs[0] 为最高位）；
+    // 老实验（01/08）没写 inputs，退回「电路里前两个逻辑开关」的两输入行为，保证不回退。
+    let inputs = (measure.inputs || [])
+      .map((id) => all.find((c) => c.id === id))
+      .filter(Boolean);
+    if (inputs.length === 0) inputs = all.filter((c) => c.type === 'logic-switch').slice(0, 2);
+
+    // 输出：measure.outputs 是引脚向量（按序拼成一串 0/1/X）；
+    // 老结构只有 measure.pins = [inA, inB, out]，取第 3 个当唯一输出脚。
+    const outPins = (measure.outputs && measure.outputs.length)
+      ? measure.outputs
+      : [measure.pins && measure.pins[2]].filter(Boolean);
+
+    const N = inputs.length;
+    // 扫描会真的改开关状态：先存原态，跑完恢复，免得报告截图与真值表对不上
+    const saved = inputs.map((c) => ({ id: c.id, state: c.params && c.params.state }));
     const rows = [];
-    const switches = modelApi.getState().components.filter((c) => c.type === 'logic-switch');
-    for (let a = 0; a < 2; a += 1) {
-      for (let b = 0; b < 2; b += 1) {
-        if (switches[0]) modelApi.updateParams(switches[0].id, { state: a ? 'hi' : 'lo' });
-        if (switches[1]) modelApi.updateParams(switches[1].id, { state: b ? 'hi' : 'lo' });
-        const dig = solveDig(modelApi);
-        const state = (dig.compStates || []).find((c) => c.componentId === measure.unit);
-        const y = state ? state.outputs[measure.pins[2]] : null;
-        rows.push(`${a}${b}→${y === 1 ? 1 : 0}`);
-      }
+    for (let m = 0; m < (1 << N); m += 1) {
+      const bits = [];
+      inputs.forEach((comp, i) => {
+        const bit = (m >> (N - 1 - i)) & 1; // inputs[0] 为最高位，行标签读起来就是 ABC 顺序
+        bits.push(bit);
+        modelApi.updateParams(comp.id, { state: bit ? 'hi' : 'lo' });
+      });
+      // 必须走联合求解：使能脚 / 数据脚常直接接 +5V 或 GND（模拟域电压源），
+      // 纯 solveDig 读不到这些电平；solveCoupled 内部的 analogView 会排除数字源，
+      // 既能让直流收敛，又能把模拟节点电压喂给数字求解器。
+      const coupled = solveCoupled(modelApi);
+      const dig = coupled.dig || {};
+      const state = (dig.compStates || []).find((c) => c.componentId === measure.unit);
+      const y = outPins.map((pin) => {
+        const level = state && state.outputs ? state.outputs[pin] : null;
+        if (level === 1) return '1';
+        if (level === 0) return '0';
+        return 'X'; // 悬空 / 不确定一律写 X，不装作 0 或 1
+      }).join('');
+      rows.push(`${bits.join('')}→${y}`);
     }
+    saved.forEach((item) => {
+      if (item.state) modelApi.updateParams(item.id, { state: item.state });
+    });
+
     const text = rows.join(',');
     raw.truth = text;
+    raw.inputs = inputs.map((c) => c.id);
+    raw.outputs = outPins;
     (example.guide.expected || []).forEach((item) => {
       items.push(judgeItem(item, text));
     });

@@ -308,6 +308,7 @@ export function createInteraction(config) {
     if (type === 'switch') return '2 端子';
     if (type === 'capacitor') return '默认 10 μF';
     if (type === 'ic74xx') return '14 脚 DIP';
+    if (type === 'ic74xx16') return '16 脚 DIP';
     return `${def.terminals.length} 端子`;
   }
 

@@ -14,7 +14,7 @@
 import { getExample } from './examples-data.js';
 import { measureExample, judgeItem } from './examples-measure.js';
 
-/** 预置方案（4 个） */
+/** 预置方案（4 个模拟 + 7 个数字） */
 export const PRESET_PLANS = [
   {
     id: 'S1',
@@ -53,6 +53,77 @@ export const PRESET_PLANS = [
     measurements: [
       { key: 'fq', label: 'Q 频率', target: '500', unit: 'Hz', tolerance: 0.02 },
       { key: 'duty', label: '波形占空比', target: '50', unit: '%', tolerance: 0.05 },
+    ],
+  },
+
+  /* ---- 数字电路实验箱方案（指令包 16 · 任务 C） ---- */
+  {
+    id: 'D1',
+    title: 'D1 与非门真值表',
+    exampleId: 'dig-01-gates',
+    params: {},
+    measurements: [
+      { key: 'truth', label: '真值表（A B → Y）', target: '00→1,01→1,10→1,11→0', unit: '', tolerance: 0 },
+    ],
+  },
+  {
+    id: 'D3',
+    title: 'D3 译码器地址',
+    exampleId: 'dig-03-decoder',
+    params: {},
+    measurements: [
+      {
+        key: 'truth',
+        label: '译码真值表（Y0..Y7 低有效）',
+        target: '000→01111111,001→10111111,010→11011111,011→11101111,100→11110111,101→11111011,110→11111101,111→11111110',
+        unit: '',
+        tolerance: 0,
+      },
+    ],
+  },
+  {
+    id: 'D6',
+    title: 'D6 加法运算',
+    exampleId: 'dig-06-adder',
+    params: {},
+    measurements: [
+      {
+        key: 'truth',
+        label: 'A+B 真值表（B 固定 5）',
+        target: '0000→00101,0001→00110,0010→00111,0011→01000,0100→01001,0101→01010,0110→01011,0111→01100,1000→01101,1001→01110,1010→01111,1011→10000,1100→10001,1101→10010,1110→10011,1111→10100',
+        unit: '',
+        tolerance: 0,
+      },
+    ],
+  },
+  {
+    id: 'D9',
+    title: 'D9 JK 分频',
+    exampleId: 'dig-09-jk',
+    params: {},
+    measurements: [{ key: 'fq', label: 'Q 频率', target: '500', unit: 'Hz', tolerance: 0.02 }],
+  },
+  {
+    id: 'D10',
+    title: 'D10 计数分频',
+    exampleId: 'dig-10-counter',
+    params: {},
+    measurements: [{ key: 'fqd', label: 'QD 频率', target: '100', unit: 'Hz', tolerance: 0.05 }],
+  },
+  {
+    id: 'D11',
+    title: 'D11 环形移位',
+    exampleId: 'dig-11-shift',
+    params: {},
+    measurements: [{ key: 'fq0', label: 'Q0 频率（8 分频）', target: '125', unit: 'Hz', tolerance: 0.05 }],
+  },
+  {
+    id: 'D12',
+    title: 'D12 表决器真值表',
+    exampleId: 'dig-12-majority',
+    params: {},
+    measurements: [
+      { key: 'truth', label: 'F 真值表（ABC→F）', target: '000→0,001→0,010→0,011→1,100→0,101→1,110→1,111→1', unit: '', tolerance: 0 },
     ],
   },
 ];
@@ -239,7 +310,9 @@ export function measurePlan(modelApi, plan) {
     if (['vmid', 'vtau', 'vo'].includes(item.key)) measured = raw.v;
     else if (['ir2', 'iled', 'ic'].includes(item.key)) measured = raw.i;
     else if (item.key === 'tau') measured = Number(item.target);
-    else if (item.key === 'fq') measured = raw.freq;
+    // 数字实验：truth 取真值表字符串，fq/fqd/fq0 取测得的频率
+    else if (item.key === 'truth' || item.key === 'table') measured = raw.truth;
+    else if (['fq', 'fqd', 'fq0', 'freq'].includes(item.key)) measured = raw.freq;
     else measured = raw.v;
     const judged = judgeItem(item, measured);
     return { key: item.key, ...judged };

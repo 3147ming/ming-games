@@ -447,32 +447,69 @@ export function createInstruments(host, api = {}) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const cssW = canvas.clientWidth || 320;
     const cssH = canvas.clientHeight || 160;
-    canvas.width = Math.round(cssW * dpr);
-    canvas.height = Math.round(cssH * dpr);
+    const needW = Math.round(cssW * dpr);
+    const needH = Math.round(cssH * dpr);
+    // 尺寸没变就别重设 canvas.width —— 重设会清空像素，荧光余辉就没了
+    if (canvas.width !== needW || canvas.height !== needH) {
+      canvas.width = needW;
+      canvas.height = needH;
+    }
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, cssW, cssH);
 
-    // 网格 10×8
-    ctx.fillStyle = '#0f1419';
+    // 荧光余辉：每帧只铺一层 6% 底色，旧轨迹自然拖尾变暗；
+    // prefers-reduced-motion 时退化成整屏清屏，不留拖尾。
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    ctx.fillStyle = reduce ? '#0f1419' : 'rgba(15, 20, 25, 0.06)';
     ctx.fillRect(0, 0, cssW, cssH);
-    ctx.strokeStyle = 'rgba(120, 200, 180, 0.18)';
+
+    // 8 行 × 10 列分度，每大格再分 5 小格（40×50 细网格）
+    const COLS = 10;
+    const ROWS = 8;
+    const SUB = 5;
     ctx.lineWidth = 1;
-    for (let i = 1; i < 10; i += 1) {
-      const x = (i / 10) * cssW;
+    ctx.strokeStyle = 'rgba(120, 200, 180, 0.09)';
+    for (let i = 1; i < COLS * SUB; i += 1) {
+      const x = (i / (COLS * SUB)) * cssW;
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, cssH);
       ctx.stroke();
     }
-    for (let j = 1; j < 8; j += 1) {
-      const y = (j / 8) * cssH;
+    for (let j = 1; j < ROWS * SUB; j += 1) {
+      const y = (j / (ROWS * SUB)) * cssH;
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(cssW, y);
       ctx.stroke();
     }
+    // 大格线亮一档，读数落在格子上
+    ctx.strokeStyle = 'rgba(120, 200, 180, 0.2)';
+    for (let i = 1; i < COLS; i += 1) {
+      const x = (i / COLS) * cssW;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, cssH);
+      ctx.stroke();
+    }
+    for (let j = 1; j < ROWS; j += 1) {
+      const y = (j / ROWS) * cssH;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(cssW, y);
+      ctx.stroke();
+    }
+    // 中心十字线（0V 基线 / 时间零点参考）
+    ctx.strokeStyle = 'rgba(120, 200, 180, 0.3)';
+    ctx.beginPath();
+    ctx.moveTo(0, cssH / 2);
+    ctx.lineTo(cssW, cssH / 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cssW / 2, 0);
+    ctx.lineTo(cssW / 2, cssH);
+    ctx.stroke();
 
     const colors = { ch1: '#f2c14e', ch2: '#5fd39a' };
     const drawChannel = (netId, color) => {
@@ -485,6 +522,9 @@ export function createInstruments(host, api = {}) {
       const sampleMean = wave.samples.reduce((a, b) => a + b.v, 0) / wave.samples.length;
       ctx.strokeStyle = color;
       ctx.lineWidth = 1.5;
+      // 荧光笔迹：一圈同色微光，让轨迹"亮"起来（真机余辉的近似）
+      ctx.shadowColor = color;
+      ctx.shadowBlur = reduce ? 0 : 6;
       ctx.beginPath();
       let started = false;
       wave.samples.forEach((s) => {
@@ -495,9 +535,51 @@ export function createInstruments(host, api = {}) {
         if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
       });
       ctx.stroke();
+      ctx.shadowBlur = 0;
     };
     drawChannel(state.scope.ch1, colors.ch1);
     drawChannel(state.scope.ch2, colors.ch2);
+
+    // 触发光标：在 CH1（没接就看 CH2）上找第一个上升沿，画一条虚线 + T 标记
+    {
+      const triggerNet = state.scope.ch1 || state.scope.ch2;
+      const wave = triggerNet ? waveOf(triggerNet) : null;
+      if (wave && wave.samples.length > 2) {
+        const span = state.scope.timebase * 10;
+        const t0 = wave.samples[0].t;
+        let at = null;
+        for (let i = 1; i < wave.samples.length; i += 1) {
+          const prev = wave.samples[i - 1].v;
+          const cur = wave.samples[i].v;
+          if (prev <= 2.5 && cur > 2.5) { at = wave.samples[i].t; break; }
+        }
+        if (at !== null && at - t0 <= span) {
+          const x = ((at - t0) / span) * cssW;
+          ctx.strokeStyle = 'rgba(242, 193, 78, 0.85)';
+          ctx.lineWidth = 1.2;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, cssH);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          // 触发电平箭头（左侧边缘）
+          const yLevel = cssH / 2 - (2.5 / (state.scope.vdiv * 8)) * cssH;
+          ctx.fillStyle = 'rgba(242, 193, 78, 0.95)';
+          ctx.beginPath();
+          ctx.moveTo(0, yLevel);
+          ctx.lineTo(7, yLevel - 4);
+          ctx.lineTo(7, yLevel + 4);
+          ctx.closePath();
+          ctx.fill();
+          ctx.font = '10px "Cascadia Mono", Consolas, monospace';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          ctx.fillStyle = 'rgba(242, 193, 78, 0.9)';
+          ctx.fillText('T', Math.min(cssW - 12, x + 3), 3);
+        }
+      }
+    }
 
     // 自动测量
     const box = body.querySelector('.inst-measure');

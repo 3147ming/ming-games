@@ -2817,3 +2817,53 @@ button {
   }
   .hep-display-menu { right: auto; left: 0; }
 }
+
+/* ==========================================================================
+   指令包 17 · 任务 E：动效令牌 + 电平语义色
+   ==========================================================================
+   规则：只动 transform / opacity，不动布局属性（避免触发重排）。
+   语义色与主题色分开维护：绿=逻辑高、蓝灰=逻辑低、琥珀=未知、半透明灰=未驱动。
+   ========================================================================== */
+
+:root {
+  --dur-fast: 90ms;    /* 按钮按下 / 悬停 */
+  --dur-med: 180ms;    /* 面板折叠 / 卡片 hover */
+  --dur-slow: 260ms;   /* 视图切换 / toast 进入 */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --lv-hi: #5fd39a;
+  --lv-lo: #6f83a8;
+  --lv-x: #f2a93b;
+  --lv-fl: rgba(120, 140, 168, 0.5);
+}
+
+/* 电平着色按钮：开启时用逻辑高的绿做强调，一眼看出"状态可视化已开" */
+.tool-btn--levels.is-active,
+.tool-btn--levels[aria-pressed="true"] {
+  border-color: rgba(95, 211, 154, 0.55);
+  color: var(--lv-hi);
+  background: rgba(95, 211, 154, 0.12);
+}
+
+/* 统一动效：按钮按下与卡片悬停 */
+.tool-btn,
+.btn {
+  transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+}
+.tool-btn:active,
+.btn:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool-btn,
+  .btn,
+  .exp-card {
+    transition: none !important;
+    animation: none !important;
+  }
+  .tool-btn:active,
+  .btn:active {
+    transform: none;
+  }
+}
+

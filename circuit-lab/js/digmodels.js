@@ -14,61 +14,27 @@
  *   这样 parts.js 的 14 个端子对七种芯片通用，不需要为每型芯片重排端子。
  */
 
-/** 未知态 */
-export const X = 'X';
-
-/** TTL 输入阈值（74LS 系列 datasheet：Vih ≥ 2.0V，Vil ≤ 0.8V） */
-export const TTL = Object.freeze({ vih: 2.0, vil: 0.8 });
-
-/** 传播延迟：74LS 门典型 10ns，触发器 20ns。本包只用于报告，不驱动暂态波形 */
-export const TPD_GATE = 10e-9;
-export const TPD_FF = 20e-9;
-
-/* ==========================================================================
-   三值逻辑
-   ========================================================================== */
-
-/** 归一化成 0 / 1 / X（外部可能传布尔或字符串） */
-export function norm(value) {
-  if (value === 0 || value === '0' || value === false) return 0;
-  if (value === 1 || value === '1' || value === true) return 1;
-  return X;
-}
-
-/** AND：任一输入为 0 就一定是 0；否则有 X 就是 X */
-export function logicAnd(values) {
-  if (values.some((v) => norm(v) === 0)) return 0;
-  if (values.some((v) => norm(v) !== 1)) return X;
-  return 1;
-}
-
-/** OR：任一输入为 1 就一定是 1；否则有 X 就是 X */
-export function logicOr(values) {
-  if (values.some((v) => norm(v) === 1)) return 1;
-  if (values.some((v) => norm(v) !== 0)) return X;
-  return 0;
-}
-
-export function logicNot(value) {
-  const v = norm(value);
-  if (v === 0) return 1;
-  if (v === 1) return 0;
-  return X;
-}
+import {
+  X, TTL, TPD_GATE, TPD_FF, norm, logicAnd, logicOr, logicNot, logicXor,
+} from './digprims.js';
+import {
+  NEW_DIG_MODELS, NEW_PIN_LABELS, NEW_LEGACY_TYPES, NEW_ORDER,
+} from './digital-chips.js';
 
 /**
- * XOR：按"未知传播"实现——任一输入 X 即输出 X。
- * 严格三值代数里 X XOR 1 可以化简成 X̅，但那样会让"某个输入没接好"
- * 看起来像"电路正常工作"，这里宁可保守。
+ * 三值逻辑原语从 `digprims.js` 统一提供（零依赖 leaf 模块），本文件继续 re-export，
+ * 因此 `import { norm, X, TTL } from './digmodels.js'` 这类既有写法完全不变。
+ *
+ * 拆出去的原因：`digital-chips.js` 也要用这些原语，如果它反向 import 本文件就形成
+ * ESM 循环 —— 求值顺序上它会先跑，而本文件的 `const TPD_GATE` 还在 TDZ，
+ * 芯片构造时读它直接 ReferenceError。下沉成 leaf 后依赖是单向的：
+ *     digmodels → digital-chips → digprims
  */
-export function logicXor(values) {
-  if (values.some((v) => norm(v) !== 0 && norm(v) !== 1)) return X;
-  let acc = 0;
-  values.forEach((v) => {
-    acc ^= norm(v);
-  });
-  return acc;
-}
+export { X, TTL, TPD_GATE, TPD_FF, norm, logicAnd, logicOr, logicNot, logicXor };
+
+/* ==========================================================================
+   三值逻辑（实现见 digprims.js）
+   ========================================================================== */
 
 const OPS = {
   and: (values) => logicAnd(values),
@@ -419,6 +385,22 @@ export const DIG_MODELS = {
 /** 型号下拉框顺序（与 parts.js 的 paramFields 对齐） */
 export const DIG_MODEL_ORDER = ['74LS00', '74LS02', '74LS04', '74LS08', '74LS32', '74LS86', '74LS74'];
 
+/* ==========================================================================
+   MSI 芯片扩展（指令包 16 · 任务 A）：8 颗 DIP-16 芯片合并进注册表
+   ==========================================================================
+   合并必须发生在 `DIGITAL_TYPES` 求值之前，否则元件库 / 覆盖断言会漏掉新型号。
+   顺序也有讲究：先并模型（DIG_MODELS），再并 PIN_LABELS / LEGACY_TYPES，
+   最后 push 下拉顺序 —— `normalizeType()` 是函数，调用时才查表，位置无所谓。
+   ========================================================================== */
+
+Object.assign(DIG_MODELS, NEW_DIG_MODELS);
+Object.assign(PIN_LABELS, NEW_PIN_LABELS);
+Object.assign(LEGACY_TYPES, NEW_LEGACY_TYPES);
+DIG_MODEL_ORDER.push(...NEW_ORDER);
+
+/** 反向导出：便于测试与工具只拿"新增的那 8 颗"做断言 */
+export { NEW_DIG_MODELS, NEW_PIN_LABELS, NEW_LEGACY_TYPES, NEW_ORDER };
+
 /** 数字源元件（不是 IC，但属于数字域） */
 export const DIG_SOURCES = {
   'logic-switch': {
@@ -456,16 +438,21 @@ export const DIGITAL_TYPES = Object.freeze([
   ...Object.keys(DIG_SOURCES),
 ]);
 
-/** 取数字模型：ic74xx 走 params.type，其余按 type 直接命中 */
+/**
+ * 取数字模型：`ic74xx`（DIP-14）/ `ic74xx16`（DIP-16）都走 params.type，其余按 type 直接命中。
+ * 封装不同不影响查表——同一颗 74LS138 只能装在 16 脚座上，型号过滤在 parts.js 做。
+ */
 export function getDigModel(type, params) {
-  if (type === 'ic74xx') return DIG_MODELS[normalizeType(params ? params.type : '')] || null;
+  if (type === 'ic74xx' || type === 'ic74xx16') {
+    return DIG_MODELS[normalizeType(params ? params.type : '')] || null;
+  }
   if (DIG_MODELS[type]) return DIG_MODELS[type];
   return null;
 }
 
-/** 是否数字域元件 */
+/** 是否数字域元件（含两种 DIP 封装） */
 export function isDigital(type) {
-  if (type === 'ic74xx') return true;
+  if (type === 'ic74xx' || type === 'ic74xx16') return true;
   return Object.prototype.hasOwnProperty.call(DIG_SOURCES, type);
 }
 

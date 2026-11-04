@@ -205,7 +205,8 @@ function buildDigPlan(state, netOf, netOfPin, ttlFloatHigh, warnings) {
   state.components.forEach((comp) => {
     if (!isDigital(comp.type)) return;
 
-    if (comp.type === 'ic74xx' || DIG_MODELS[comp.type]) {
+    // 两种 DIP 封装（ic74xx = 14 脚 / ic74xx16 = 16 脚）都按 params.type 查模型
+    if (comp.type === 'ic74xx' || comp.type === 'ic74xx16' || DIG_MODELS[comp.type]) {
       const model = getDigModel(comp.type, comp.params);
       if (!model) {
         warnings.push(`${comp.id}：型号 ${comp.params ? comp.params.type : '?'} 不在数字模型库里，已跳过`);

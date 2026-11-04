@@ -759,6 +759,92 @@ function handlePropsClick(event) {
    直流工作点仿真
    ========================================================================== */
 
+/* ==========================================================================
+   电平着色 / 流动点（指令包 17 · 任务 E）
+   ========================================================================== */
+
+const LEVEL_KEY = 'lab-sim:level-color';
+let flowRaf = 0;
+
+/** 电平着色偏好（默认开） */
+function readLevelColor() {
+  try {
+    const raw = window.localStorage.getItem(LEVEL_KEY);
+    return raw === null ? true : raw !== '0';
+  } catch (_) {
+    return true;
+  }
+}
+
+/**
+ * 用最近一次仿真结果刷新 `scene.levelView.byWire`。
+ * 只有数字驱动过的 net 才有电平（`dig.netLevels`），其余一律标 `F`（未驱动）。
+ * 导线没有 netId 字段，所以从它 a 端（回落 b 端）的端子查并查集网表。
+ */
+function updateLevelView() {
+  if (!board) return;
+  const view = board.scene.levelView;
+  view.byWire = new Map();
+  const sim = board.sim;
+  const dig = sim && sim.dig;
+  if (!dig || !dig.ok || !dig.netLevels) return;
+  const netlist = model.getNetlist();
+  const netOf = netlist && netlist.netOf ? netlist.netOf : null;
+  if (!netOf) return;
+  (model.getState().wires || []).forEach((wire) => {
+    const net = netOf.get(`c:${wire.a.componentId}:${wire.a.terminal}`)
+      || netOf.get(`c:${wire.b.componentId}:${wire.b.terminal}`);
+    if (!net) return;
+    const raw = dig.netLevels[net];
+    view.byWire.set(wire.id, { net, level: raw === undefined || raw === null ? 'F' : raw });
+  });
+}
+
+/** 工具栏「电平着色」开关 */
+function setLevelColor(on) {
+  if (!board) return null;
+  const next = Boolean(on);
+  board.scene.levelView.on = next;
+  try {
+    window.localStorage.setItem(LEVEL_KEY, next ? '1' : '0');
+  } catch (_) {
+    /* 忽略：隐私模式下写不了 localStorage */
+  }
+  requestRender();
+  return next;
+}
+
+function startFlowLoop() {
+  if (!board || flowRaf) return;
+  // 尊重系统的「减少动态效果」设置
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  board.scene.flow.on = true;
+  board.scene.flow.phase = 0;
+  const step = () => {
+    if (!board || !board.transientRun.active) {
+      stopFlowLoop();
+      return;
+    }
+    board.scene.flow.phase = (board.scene.flow.phase + 0.018) % 1;
+    requestRender();
+    flowRaf = window.requestAnimationFrame(step);
+  };
+  flowRaf = window.requestAnimationFrame(step);
+}
+
+function stopFlowLoop() {
+  if (flowRaf) {
+    window.cancelAnimationFrame(flowRaf);
+    flowRaf = 0;
+  }
+  if (!board) return;
+  if (board.scene.flow.on || board.scene.flow.phase !== 0) {
+    board.scene.flow.on = false;
+    board.scene.flow.phase = 0;
+    requestRender();
+  }
+}
+
 /**
  * 立即跑一次仿真并刷新面板。
  * 手动点「重新仿真」时先取消挂起的防抖，避免紧接着又跑第二次。
@@ -821,6 +907,8 @@ export function simulateNow(reason = 'manual') {
   };
   renderSimPanel();
   renderDigPanel();
+  // 电平着色：把每条导线的 net 电平映射好，render 层据此上色
+  updateLevelView();
   // 计算完成：清除 pending 标志，状态行恢复结果摘要（2.11）
   board.scene.simPending = false;
   refreshHealth();
@@ -1488,6 +1576,10 @@ export function initBoard(options) {
     lens: { on: false },
     // 删除预告：临时保存将被删导线的几何，render 层用醒目色闪一下（~150ms）
     pendingFlash: null,
+    // 电平着色（指令包 17）：byWire: wireId → { net, level }；level ∈ 1/0/'X'/'F'
+    levelView: { on: readLevelColor(), byWire: new Map() },
+    // 数字信号流动点：只在暂态运行中打开，phase 由 rAF 推进
+    flow: { on: false, phase: 0 },
     // 仿真计算"进行中"标志（防抖等待期即置位，供状态行显示"计算中…"）
     simPending: false,
   };
@@ -1712,6 +1804,24 @@ export function initBoard(options) {
       },
       stats: () => ({ ...simStats }),
     },
+    // 电平着色 / 流动点（指令包 17 · 任务 E）：探针用它断言着色映射与开关持久化
+    levels: {
+      on: () => (board ? board.scene.levelView.on : false),
+      set: (on) => setLevelColor(on),
+      /** 每条导线的电平映射：[{ wireId, net, level }] */
+      map: () => {
+        if (!board) return [];
+        return [...board.scene.levelView.byWire.entries()]
+          .map(([wireId, info]) => ({ wireId, net: info.net, level: info.level }));
+      },
+      /** 某条导线的着色：{ net, level } | null */
+      of: (wireId) => {
+        if (!board) return null;
+        const info = board.scene.levelView.byWire.get(wireId);
+        return info ? { net: info.net, level: info.level } : null;
+      },
+      flow: () => (board ? { on: board.scene.flow.on, phase: board.scene.flow.phase } : null),
+    },
     // 数字域：稳态结果 / 时钟步进 / 脉冲触发 / LED 亮灭
     simdig: {
       solve: (reason) => simulateNow(reason || 'probe-dig'),
@@ -1786,6 +1896,8 @@ export function initBoard(options) {
       start: (opts, hooks) => {
         if (board.transientRun.active) return { ok: false, error: '暂态仿真正在运行中', stop: () => {} };
         board.transientRun.active = true;
+        // 流动点：运行期间才开 rAF 循环，停止即关（不烧电）
+        startFlowLoop();
         const handle = runTransient(simModel(), opts || {}, {
           onProgress: (done, total) => {
             if (hooks && typeof hooks.onProgress === 'function') hooks.onProgress(done, total);
@@ -1798,12 +1910,14 @@ export function initBoard(options) {
             board.transientRun.active = false;
             board.transientRun.handle = null;
             board.transientRun.last = merged;
+            stopFlowLoop();
             if (hooks && typeof hooks.onDone === 'function') hooks.onDone(merged, cancelled);
           },
           onError: (part) => {
             board.transientRun.active = false;
             board.transientRun.handle = null;
             board.transientRun.last = part;
+            stopFlowLoop();
             if (hooks && typeof hooks.onError === 'function') hooks.onError(part);
           },
         });
@@ -1812,6 +1926,7 @@ export function initBoard(options) {
       },
       stop: () => {
         if (board.transientRun.handle) board.transientRun.handle.stop();
+        stopFlowLoop();
         return true;
       },
       waveforms: () => (board.transientRun.last ? board.transientRun.last.waveforms : []),
