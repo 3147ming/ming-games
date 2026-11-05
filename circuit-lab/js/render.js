@@ -12,7 +12,7 @@
  *     所以拖拽时不会把 900 多个孔位重画一遍。
  */
 
-import { getPart, footprintOf, terminalPos, poly, lift, prism } from './parts.js';
+import { getPart, footprintOf, terminalPos, poly, lift, prism, setFlatShading } from './parts.js';
 import { resolveRef, refFallbackPos } from './model.js';
 import { drawHepPlatform, HEP_SKIN_ID } from './hep-skin.js';
 
@@ -61,10 +61,15 @@ export function themeOf(platformId) {
    视图与投影
    ========================================================================== */
 
-/** 缩放档位：1× 为基准（fit 视图），向上放大 */
+/** 缩放档位：1× 为基准（fit 视图），向上放大。档位只用于「跳档」（2/3 键、工具栏按钮） */
 export const ZOOM_LEVELS = [1, 1.5, 2, 3];
-const ZOOM_MIN = ZOOM_LEVELS[0];
-const ZOOM_MAX = ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
+/** 连续缩放区间（滚轮 / 双指）：比档位更宽，0.5×–4× */
+export const ZOOM_MIN = 0.5;
+export const ZOOM_MAX = 4;
+/** 复位基准：fit 视图 = 1× */
+const ZOOM_FIT = 1;
+/** 单次滚轮缩放的指数步长（一格 ≈ ×1.12，与画布软件手感一致） */
+export const WHEEL_ZOOM_STEP = 1.12;
 
 /**
  * 创建视图对象（持有 canvas 与投影参数）。
@@ -87,7 +92,7 @@ export function createView(canvas) {
     tileH: BASE_TILE_H,
     scale: 1,
     // 渲染层视图状态（纯视觉）
-    zoom: ZOOM_MIN,
+    zoom: ZOOM_FIT,
     panX: 0,
     panY: 0,
     // fit（zoom=1）基准投影，缩放/平移在其上叠加
@@ -100,6 +105,15 @@ export function createView(canvas) {
     // 平台外观皮肤：'classic' 通用实验箱 / 'hep' HEP-DCTS-01 实物外观
     // 纯渲染层状态，不进 model、不进存档（由 board.js 从 localStorage 恢复）
     skin: 'classic',
+    // 视图投影：'iso' 2.5D 等轴测（默认，保持老画面）/ 'flat' 水平正视
+    // 纯渲染层状态，不进 model、不进存档（偏好由 board.js 存 localStorage）
+    projection: 'iso',
+    // 整页旋转（仅 flat 生效）：0 / 90 / 180 / 270，绕画布中心转
+    rotate: 0,
+    rotCos: 1,
+    rotSin: 0,
+    // 网格显隐（面包板 CSS 网格 + 原理图点阵同步）
+    gridOn: true,
     // HEP 实物外观的显示偏好与运行时状态（纯渲染层，不进 model / 存档）
     // silk: 机箱丝印显隐；teach/all: 教学模式 / 模块面板总开关；
     // hoverModule: 当前悬停模块 id；runtime: 状态灯数据；runtimeKey: 平台层缓存指纹
@@ -133,23 +147,45 @@ export function layoutView(view, platform, cssWidth, cssHeight, options) {
   const availW = Math.max(60, cssWidth - pad * 2);
   const availH = Math.max(60, cssHeight - pad * 2);
 
-  const baseW = (cols + rows) * BASE_TILE_W / 2;
-  const baseH = (cols + rows) * BASE_TILE_H / 2;
-  const scale = Math.max(0.16, Math.min(availW / baseW, availH / baseH, 2.2));
+  let fitTileW;
+  let fitTileH;
+  let fitOriginX;
+  let fitOriginY;
+  let scale;
 
-  const fitTileW = BASE_TILE_W * scale;
-  const fitTileH = BASE_TILE_H * scale;
-  const boardW = (cols + rows) * fitTileW / 2;
-  const boardH = (cols + rows) * fitTileH / 2;
-
-  const fitOriginX = pad + Math.max(0, (availW - boardW) / 2) + rows * fitTileW / 2;
-  const fitOriginY = pad + Math.max(0, (availH - boardH) / 2);
+  if (view.projection === 'flat') {
+    // 水平正视：正投影，没有 (gx-gy) 倾斜。旋转 90/270 时按旋转后的长宽比适配，
+    // 这样「横着看长电路」不会溢出画布。
+    const quarter = view.rotate === 90 || view.rotate === 270;
+    const spanX = quarter ? rows : cols;
+    const spanY = quarter ? cols : rows;
+    const cell = Math.max(4, Math.min(availW / spanX, availH / spanY, 44));
+    fitTileW = cell;
+    fitTileH = cell;
+    // origin 以「未旋转」的板面计算，板面中心恒在画布中心；旋转再绕中心做，
+    // 所以旋转前后都居中，只是长宽互换。
+    fitOriginX = pad + Math.max(0, (availW - cols * cell) / 2);
+    fitOriginY = pad + Math.max(0, (availH - rows * cell) / 2);
+    scale = cell / BASE_TILE_W;
+  } else {
+    const baseW = (cols + rows) * BASE_TILE_W / 2;
+    const baseH = (cols + rows) * BASE_TILE_H / 2;
+    scale = Math.max(0.16, Math.min(availW / baseW, availH / baseH, 2.2));
+    fitTileW = BASE_TILE_W * scale;
+    fitTileH = BASE_TILE_H * scale;
+    const boardW = (cols + rows) * fitTileW / 2;
+    const boardH = (cols + rows) * fitTileH / 2;
+    fitOriginX = pad + Math.max(0, (availW - boardW) / 2) + rows * fitTileW / 2;
+    fitOriginY = pad + Math.max(0, (availH - boardH) / 2);
+  }
 
   const changed = Math.abs(view.fitTileW - fitTileW) > 0.01
     || Math.abs(view.fitOriginX - fitOriginX) > 0.01
     || Math.abs(view.fitOriginY - fitOriginY) > 0.01
     || view.width !== cssWidth
     || view.height !== cssHeight
+    || view.projection !== (view.fitProjection || 'iso')
+    || view.rotate !== (view.fitRotate || 0)
     || view.platformId !== (platform ? platform.id : null);
 
   view.width = cssWidth;
@@ -159,6 +195,8 @@ export function layoutView(view, platform, cssWidth, cssHeight, options) {
   view.fitOriginX = fitOriginX;
   view.fitOriginY = fitOriginY;
   view.fitScale = scale;
+  view.fitProjection = view.projection;
+  view.fitRotate = view.rotate;
   view.scale = scale;
   view.platformId = platform ? platform.id : null;
 
@@ -191,6 +229,17 @@ export function applyZoomPan(view) {
   const anchorY = (z - 1) * (view.fitOriginY - cy);
   view.originX = view.fitOriginX + anchorX + view.panX;
   view.originY = view.fitOriginY + anchorY + view.panY;
+  // 旋转角三角函数缓存在 view 上：project() 每帧要被调用上千次（近千孔位），
+  // 不能每次都算 sin/cos。旋转只绕画布中心，与 zoom/pan 正交。
+  const deg = view.projection === 'flat' ? (view.rotate || 0) : 0;
+  if (deg) {
+    const r = deg * Math.PI / 180;
+    view.rotCos = Math.cos(r);
+    view.rotSin = Math.sin(r);
+  } else {
+    view.rotCos = 1;
+    view.rotSin = 0;
+  }
   // LOD：缩放/平移后 160ms 内降档绘制（关引脚标签与接触阴影），松手再补全
   view.lodUntil = performance.now() + 160;
 }
@@ -201,10 +250,28 @@ function isLodActive(view, scene) {
   return (view.lodUntil || 0) > performance.now();
 }
 
-/** 设定绝对缩放值（夹在档位区间内） */
+/** 设定绝对缩放值（夹在连续区间内） */
 export function setZoom(view, z) {
   view.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
   applyZoomPan(view);
+}
+
+/**
+ * 以屏幕点 (sx, sy) 为锚点连续缩放：缩放前后，该点下的网格点在屏幕上原地不动。
+ * 实现上不算解析解，而是「取网格点 → 改 zoom → 量偏移 → 反补 pan」，
+ * 对 iso / flat / 任意旋转角都成立，不依赖投影公式的具体形式。
+ */
+export function setZoomAt(view, z, sx, sy) {
+  const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+  if (Math.abs(next - view.zoom) < 1e-6) return view.zoom;
+  const gp = unproject(view, sx, sy);
+  view.zoom = next;
+  applyZoomPan(view);
+  const p = project(view, gp.gx, gp.gy);
+  view.panX += sx - p.x;
+  view.panY += sy - p.y;
+  applyZoomPan(view);
+  return view.zoom;
 }
 
 /** 设定平移偏移（屏幕像素） */
@@ -219,9 +286,32 @@ export function getZoom(view) {
   return view.zoom;
 }
 
+/**
+ * 切换投影模式（'iso' 等轴测 / 'flat' 水平正视）。
+ * 只改投影，不动 zoom/pan；返回是否真的变了。
+ * 切到 iso 时旋转自动归零（整页旋转只对 flat 有意义）。
+ */
+export function setProjection(view, mode) {
+  const next = mode === 'flat' ? 'flat' : 'iso';
+  if (view.projection === next) return false;
+  view.projection = next;
+  if (next === 'iso') view.rotate = 0;
+  applyZoomPan(view);
+  return true;
+}
+
+/** 整页旋转（仅 flat 生效）：角度归一化到 0/90/180/270 */
+export function setRotate(view, deg) {
+  if (view.projection !== 'flat') return 0;
+  const norm = ((Math.round(Number(deg) / 90) * 90) % 360 + 360) % 360;
+  view.rotate = norm;
+  applyZoomPan(view);
+  return norm;
+}
+
 /** 复位到 fit（zoom=1、无平移） */
 export function resetView(view) {
-  view.zoom = ZOOM_MIN;
+  view.zoom = ZOOM_FIT;
   view.panX = 0;
   view.panY = 0;
   applyZoomPan(view);
@@ -233,13 +323,13 @@ export function zoomIn(view) {
   setZoom(view, idx < 0 ? ZOOM_LEVELS[ZOOM_LEVELS.length - 1] : ZOOM_LEVELS[idx]);
 }
 
-/** 降一档（优先取小于当前的最近档，否则停在最底档） */
+/** 降一档（优先取小于当前的最近档；已到最低档时继续降到连续区间下限 0.5×） */
 export function zoomOut(view) {
   let idx = -1;
   for (let i = ZOOM_LEVELS.length - 1; i >= 0; i -= 1) {
     if (ZOOM_LEVELS[i] < view.zoom - 1e-6) { idx = i; break; }
   }
-  setZoom(view, idx < 0 ? ZOOM_LEVELS[0] : ZOOM_LEVELS[idx]);
+  setZoom(view, idx < 0 ? ZOOM_MIN : ZOOM_LEVELS[idx]);
 }
 
 /**
@@ -256,18 +346,55 @@ export function focusOnGrid(view, gx, gy, zoom) {
   setPan(view, cx - before.x, cy - before.y);
 }
 
-/** 网格 → 屏幕 */
+/**
+ * 网格 → 屏幕。
+ *   iso  ：sx = originX + (gx-gy)*tileW/2，sy = originY + (gx+gy)*tileH/2
+ *   flat ：sx = originX + gx*tileW，     sy = originY + gy*tileH
+ * 之后若开启了整页旋转（仅 flat），再绕画布中心把点转过去。
+ * 所有绘制与拾取都只走这两个函数，禁止在别处写死等距公式——flat / 旋转才能天然一致。
+ */
 export function project(view, gx, gy) {
-  return {
-    x: view.originX + (gx - gy) * view.tileW / 2,
-    y: view.originY + (gx + gy) * view.tileH / 2,
-  };
+  let lx;
+  let ly;
+  if (view.projection === 'flat') {
+    lx = gx * view.tileW;
+    ly = gy * view.tileH;
+  } else {
+    lx = (gx - gy) * view.tileW / 2;
+    ly = (gx + gy) * view.tileH / 2;
+  }
+  const x = view.originX + lx;
+  const y = view.originY + ly;
+  const cos = view.rotCos;
+  const sin = view.rotSin;
+  if (cos === 1 && sin === 0) return { x, y };
+  const cx = view.width / 2;
+  const cy = view.height / 2;
+  const dx = x - cx;
+  const dy = y - cy;
+  return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
 }
 
-/** 屏幕 → 网格（浮点） */
+/** 屏幕 → 网格（浮点），project 的逆运算 */
 export function unproject(view, sx, sy) {
-  const a = (sx - view.originX) / (view.tileW / 2); // gx - gy
-  const b = (sy - view.originY) / (view.tileH / 2); // gx + gy
+  let x = sx;
+  let y = sy;
+  const cos = view.rotCos;
+  const sin = view.rotSin;
+  if (!(cos === 1 && sin === 0)) {
+    const cx = view.width / 2;
+    const cy = view.height / 2;
+    const dx = sx - cx;
+    const dy = sy - cy;
+    // 逆旋转（θ → -θ）
+    x = cx + dx * cos + dy * sin;
+    y = cy - dx * sin + dy * cos;
+  }
+  if (view.projection === 'flat') {
+    return { gx: (x - view.originX) / view.tileW, gy: (y - view.originY) / view.tileH };
+  }
+  const a = (x - view.originX) / (view.tileW / 2); // gx - gy
+  const b = (y - view.originY) / (view.tileH / 2); // gx + gy
   return { gx: (a + b) / 2, gy: (b - a) / 2 };
 }
 
@@ -292,36 +419,47 @@ export function componentCorners(view, comp) {
   ];
 }
 
-/** 给 parts.js 的 draw() 用的坐标系包装（局部相对坐标，旋转由外层 canvas 变换完成） */
+/**
+ * 给 parts.js 的 draw() 用的坐标系包装（局部相对坐标）。
+ *
+ * 关键：局部坐标先按元件的 rotation 折回网格坐标，再用**同一个 project()** 投影，
+ * 最后减去元件原点的投影。这样元件本体、丝印、缺口、引脚与平台孔位/插座共用
+ * 一套投影——iso 下芯片和 DIP 座同斜同角度，flat 下两者同为水平矩形。
+ * （旧实现用 dx*tileW / dy*tileH 的屏幕正矩形直绘，iso 下就会「斜座水平芯」。）
+ */
 function componentFrame(view, comp) {
   const def = getPart(comp.type);
-  const footprint = footprintOf(def, 0); // 始终按未旋转尺寸绘制，旋转交给 canvas 变换
+  const footprint = footprintOf(def, 0);
+  const w = def.size.w;
+  const h = def.size.h;
+  const r = comp.rotation || 0;
+  const origin = project(view, comp.x, comp.y);
+
+  // 与 parts.js 的 terminalPos 完全一致的局部→网格映射（四向旋转）
+  const toGrid = (dx, dy) => {
+    if (r === 90) return { gx: comp.x + (h - 1 - dy), gy: comp.y + dx };
+    if (r === 180) return { gx: comp.x + (w - 1 - dx), gy: comp.y + (h - 1 - dy) };
+    if (r === 270) return { gx: comp.x + dy, gy: comp.y + (w - 1 - dx) };
+    return { gx: comp.x + dx, gy: comp.y + dy };
+  };
+
   return {
     w: footprint.w,
     h: footprint.h,
     tileW: view.tileW,
     tileH: view.tileH,
-    project: (dx, dy) => ({ x: dx * view.tileW, y: dy * view.tileH }),
+    projection: view.projection,
+    rotate: r,
+    project: (dx, dy) => {
+      const g = toGrid(dx, dy);
+      const p = project(view, g.gx, g.gy);
+      return { x: p.x - origin.x, y: p.y - origin.y };
+    },
   };
 }
 
-/**
- * 面包板元件旋转：绕整数网格矩形 [0..w-1]×[0..h-1] 的左上角旋转，
- * 与 parts.js 的 terminalPos 四向公式严格一致（已验证端子屏幕坐标重合）。
- * 仅当 rotation 非 0 生效；0° 时不做任何变换。
- */
-function applyComponentRotation(ctx, rotation, w, h, cell) {
-  if (rotation === 90) {
-    ctx.translate((h - 1) * cell, 0);
-    ctx.rotate(Math.PI / 2);
-  } else if (rotation === 180) {
-    ctx.translate((w - 1) * cell, (h - 1) * cell);
-    ctx.rotate(Math.PI);
-  } else if (rotation === 270) {
-    ctx.translate(0, (w - 1) * cell);
-    ctx.rotate(-Math.PI / 2);
-  }
-}
+/** 旧的四向 canvas 旋转已被 componentFrame 的网格映射取代（保留注释说明为何删除） */
+// function applyComponentRotation(...) { ... }
 
 /** 把"整个视图"包装成 prism 需要的 frame 接口 */
 function platePrism(ctx, view, gx0, gy0, gx1, gy1, height, top, side1, side2, edge) {
@@ -347,7 +485,7 @@ function layerKey(view) {
   const hepKey = view.skin === HEP_SKIN_ID
     ? `${h.silk ? 1 : 0}${h.teach ? 1 : 0}${h.all ? 1 : 0}|${h.hoverModule || '-'}|${h.runtimeKey || ''}`
     : '-';
-  return `${view.platformId}|${view.skin || 'classic'}|${hepKey}|${view.width}x${view.height}|${view.dpr}|${view.fitTileW.toFixed(2)}`;
+  return `${view.platformId}|${view.skin || 'classic'}|${hepKey}|${view.projection || 'iso'}|${view.rotate || 0}|${view.width}x${view.height}|${view.dpr}|${view.fitTileW.toFixed(2)}`;
 }
 
 /** 取（必要时重建）平台层。平台层固定以 fit（zoom=1）投影绘制。 */
@@ -395,14 +533,18 @@ export function invalidatePlatformLayer() {
 
 /** 画整个平台：底板 → 部件 → 孔位 */
 function drawPlatform(ctx, view, platform) {
+  // 正投影下所有「立起来」的棱柱只画顶面（无斜边厚度），否则零件会互相错位
+  setFlatShading(view.projection === 'flat');
   // HEP-DCTS-01 实物外观：只替换「实验箱」的画法，几何 / 节点 / 拾取一律不变
   if (view.skin === HEP_SKIN_ID && platform.id === 'exp-box') {
     drawHepPlatform(ctx, view, platform, { project });
+    setFlatShading(false);
     return;
   }
   const theme = themeOf(platform.id);
   if (platform.id === 'breadboard') drawBreadboard(ctx, view, platform, theme);
   else drawExpBox(ctx, view, platform, theme);
+  setFlatShading(false);
 }
 
 /** 等距矩形填充：以网格矩形描述一块面 */
@@ -838,6 +980,8 @@ export function renderScene(view, scene) {
 
   const theme = themeOf(platform ? platform.id : 'exp-box');
 
+  // 动态层与平台层用同一套「正投影无厚度」开关，元件才不会被画成带斜边的盒子
+  setFlatShading(view.projection === 'flat');
   drawHoverGroup(ctx, view, scene);
   drawWires(ctx, view, scene, theme);
   drawComponents(ctx, view, scene, theme);
@@ -848,6 +992,7 @@ export function renderScene(view, scene) {
   drawConnectableHints(ctx, view, scene);
   drawFlashWires(ctx, view, scene);
   drawMagnifier(ctx, view, scene);
+  setFlatShading(false);
 }
 
 /** 删除预告：把即将被删的导线以醒目色闪一下（约 150ms，由 scene.pendingFlash 控制） */
@@ -1046,7 +1191,7 @@ function drawComponents(ctx, view, scene, theme) {
     ctx.save();
     const origin = project(view, comp.x, comp.y);
     ctx.translate(origin.x, origin.y);
-    applyComponentRotation(ctx, comp.rotation, def.size.w, def.size.h, view.tileW);
+    // 旋转已在 componentFrame 的局部→网格映射里完成，这里不再做 canvas 旋转
     const frame = componentFrame(view, comp);
     // flat = 降档：各元件 draw 里的 drawContactShadow 会直接跳过
     frame.flat = lod;
@@ -1117,7 +1262,7 @@ function drawGhost(ctx, view, scene, theme) {
   ctx.globalAlpha = 0.72;
   const ghostOrigin = project(view, x, y);
   ctx.translate(ghostOrigin.x, ghostOrigin.y);
-  applyComponentRotation(ctx, fakeComp.rotation, def.size.w, def.size.h, view.tileW);
+  // 落点预览与真实元件共用 componentFrame（投影 + 旋转都在里面），不再单独做 canvas 旋转
   def.draw(ctx, fakeComp, {
     frame: componentFrame(view, fakeComp),
     theme,

@@ -7,8 +7,8 @@
  *     所以拾取、连线、存档 v4、935 项探针完全不受影响。
  *   - 写实绘制全部落在「平台层」（离屏缓存），动态层（元件 / 导线 / 悬停 /
  *     探针标记）一行不动，run6 / runA 的 getImageData 像素断言不受干扰。
- *   - 本文件零 import：project / poly / lift 由调用方通过 api 传入，
- *     避免与 render.js 形成 ESM 循环依赖。
+ *   - 本文件只 import parts.js 的常量（IC_BODY_INSET），project / poly / lift
+ *     仍由调用方通过 api 传入，避免与 render.js 形成 ESM 循环依赖。
  *
  * 实物对应（用户 5 张照片）：
  *   白色机箱 + 提手 + 「数字电路实验平台 / HEP」铭牌 + 6 块深蓝模块板（2×3）；
@@ -16,9 +16,9 @@
  *   频率/脉宽调节、单次脉冲、逻辑笔、拨码开关、LED 指示、七段数码管。
  */
 
-export const HEP_SKIN_ID = 'hep';
+import { IC_BODY_INSET } from './parts.js';
 
-/**
+export const HEP_SKIN_ID = 'hep';/**
  * 机箱丝印总开关（模块名 / 档位 / 电源标识等文字）。
  * 由 drawHepPlatform 每帧从 view.hep.silk 同步；品牌铭牌用 stamp({force:true}) 常驻。
  */
@@ -368,29 +368,45 @@ function drawHolesPart(ctx, view, P, part) {
 
 function drawDipSocket(ctx, view, P, part) {
   const rect = partRect(part);
+  const half = part.pins / 2;
+  // 座体（蓝色 PCB 上的浅槽）
   prism(ctx, P, rect.x, rect.y, rect.w, rect.h, Math.max(1.6, view.tileH * 0.12),
     '#0b2f61', '#061f42', '#051a36', 'rgba(206,226,250,0.3)');
-  const half = part.pins / 2;
-  // 黑色锁紧座本体
-  const bodyH = Math.max(3, view.tileH * 0.42);
-  prism(ctx, P, part.x - 0.55, part.y + 0.3, half - 0.0 + 1.1, 1.45, bodyH,
+
+  // 黑色锁紧座内腔：与芯片本体**完全同一矩形**（parts.js 的 IC_BODY_INSET），
+  // 芯片插上去严丝合缝，不会再出现「斜座水平芯」。四角误差 0，靠共用常量保证。
+  const cavity = {
+    x: part.x + IC_BODY_INSET.x,
+    y: part.y + IC_BODY_INSET.y,
+    w: half - IC_BODY_INSET.x * 2,
+    h: 3 - IC_BODY_INSET.y * 2,
+  };
+  const bodyH = Math.max(2, view.tileH * 0.3);
+  prism(ctx, P, cavity.x, cavity.y, cavity.w, cavity.h, bodyH,
     C.socket, C.socketHi, '#0a0e13', '#05080b');
-  // 两端银色扳手
+  // 腔沿高光：一圈极细的亮边，让「空座」和「已插芯片」一眼能分
+  fillQuad(ctx, P, cavity.x, cavity.y, cavity.w, cavity.h,
+    'rgba(0,0,0,0)', 'rgba(160,190,225,0.34)', 1);
+
+  // 两端银色扳手（放在腔体之外，压不到芯片）
   const leverH = bodyH + Math.max(1, view.tileH * 0.12);
-  prism(ctx, P, part.x - 0.62, part.y + 0.32, 0.42, 1.4, leverH,
+  const leverW = 0.42;
+  prism(ctx, P, part.x - 0.75, cavity.y + 0.1, leverW, cavity.h - 0.2, leverH,
     C.lever, C.leverDark, '#5c636f', '#444b55');
-  prism(ctx, P, part.x + half - 0.3, part.y + 0.32, 0.42, 1.4, leverH,
+  prism(ctx, P, part.x + half + 0.33, cavity.y + 0.1, leverW, cavity.h - 0.2, leverH,
     C.lever, C.leverDark, '#5c636f', '#444b55');
-  // 1 脚缺口
-  const notch = lift(P(part.x - 0.35, part.y + 1.0), bodyH);
+
+  // 1 脚缺口：腔体左上角（与 drawIc 的缺口同侧）
+  const notch = lift(P(cavity.x + 0.45, cavity.y), bodyH);
   disc(ctx, notch.x, notch.y, Math.max(1.6, view.tileW * 0.075), '#05080b');
-  // 型号丝印
-  stamp(ctx, P, part.x + half / 2 - 0.3, part.y + 2.55, `${part.pins}P 锁紧座`, {
+
+  // 型号丝印：挪到腔体上方，避免被插上的芯片盖住
+  stamp(ctx, P, part.x + half / 2 - 0.3, part.y - 0.32, `${part.pins}P 锁紧座`, {
     size: Math.max(6, Math.min(9, view.tileW * 0.23)), color: C.modInk,
     pill: 'rgba(6, 24, 52, 0.66)',
   });
   if (view.tileW > 16) {
-    stamp(ctx, P, part.x - 0.1, part.y - 0.28, '1', {
+    stamp(ctx, P, part.x - 0.42, part.y - 0.02, '1', {
       size: Math.max(6, view.tileW * 0.2), color: '#f2a93b', mono: true,
     });
   }

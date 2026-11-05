@@ -18,6 +18,7 @@ import {
   renderScene,
   invalidatePlatformLayer,
   project,
+  unproject,
   pickAt,
   terminalScreenPos,
   setZoom,
@@ -27,7 +28,12 @@ import {
   zoomOut,
   resetView,
   focusOnGrid,
+  setProjection,
+  setRotate,
+  setZoomAt,
   ZOOM_LEVELS,
+  ZOOM_MIN,
+  ZOOM_MAX,
 } from './render.js';
 import { createInteraction } from './interact.js';
 import {
@@ -38,6 +44,7 @@ import {
   relayoutSchematic,
   schematicApi,
 } from './schematic.js';
+import { invalidateSchematicLayer } from './symrender.js';
 import {
   reportFormat,
   formatVolt,
@@ -212,6 +219,93 @@ function setHepPref(name, value) {
   requestRender();
   if (board.onHepPrefChange) board.onHepPrefChange(name, h[name], hepPrefs());
   return h[name];
+}
+
+/* --------------------------------------------------------------------------
+   视角偏好（纯渲染层，不进 model / 不进存档 v4）
+   projection: 'iso' 等轴测 / 'flat' 水平正视
+   rotate:     整页旋转 0/90/180/270（仅 flat 生效）
+   grid:       画布网格显隐
+   -------------------------------------------------------------------------- */
+const VIEW_KEY = 'lab-sim:view';
+const VIEW_DEFAULT = { projection: 'iso', rotate: 0, grid: true };
+
+function readViewPrefs() {
+  try {
+    const raw = window.localStorage.getItem(VIEW_KEY);
+    if (!raw) return { ...VIEW_DEFAULT };
+    const d = JSON.parse(raw);
+    return {
+      projection: d.projection === 'flat' ? 'flat' : 'iso',
+      rotate: [0, 90, 180, 270].includes(Number(d.rotate)) ? Number(d.rotate) : 0,
+      grid: d.grid !== false,
+    };
+  } catch (_) {
+    return { ...VIEW_DEFAULT };
+  }
+}
+
+function writeViewPrefs(pref) {
+  try { window.localStorage.setItem(VIEW_KEY, JSON.stringify(pref)); } catch (_) { /* 隐私模式忽略 */ }
+}
+
+function viewPrefs() {
+  if (!board) return { ...VIEW_DEFAULT };
+  const v = board.view;
+  return {
+    projection: v.projection === 'flat' ? 'flat' : 'iso',
+    rotate: v.rotate || 0,
+    grid: v.gridOn !== false,
+  };
+}
+
+function notifyViewPref() {
+  if (board && board.onViewPrefChange) board.onViewPrefChange(viewPrefs());
+}
+
+/** 切换投影：fit 基准变了，必须重排（否则 flat 下板面会按 iso 的比例缩放） */
+function setProjectionMode(mode) {
+  if (!board) return null;
+  const next = mode === 'flat' ? 'flat' : 'iso';
+  const changed = setProjection(board.view, next);
+  if (!changed) return next;
+  writeViewPrefs(viewPrefs());
+  relayout();
+  invalidatePlatformLayer();
+  requestRender();
+  notifyViewPref();
+  return next;
+}
+
+/** 整页旋转 +90°（仅在 flat 下有效） */
+function rotateView(step = 90) {
+  if (!board) return null;
+  if (board.view.projection !== 'flat') {
+    onToast('整页旋转只在「水平正视」下可用', 'info');
+    return board.view.rotate || 0;
+  }
+  const next = setRotate(board.view, (board.view.rotate || 0) + step);
+  writeViewPrefs(viewPrefs());
+  relayout();
+  invalidatePlatformLayer();
+  requestRender();
+  notifyViewPref();
+  return next;
+}
+
+/** 网格显隐（面包板 CSS 网格 + 原理图点阵同步） */
+function setGrid(on) {
+  if (!board) return null;
+  const next = Boolean(on);
+  board.view.gridOn = next;
+  const sym = schematicApi();
+  if (sym && sym.view) sym.view.gridOn = next;
+  invalidateSchematicLayer();
+  writeViewPrefs(viewPrefs());
+  if (board.onGridChange) board.onGridChange(next);
+  requestRender();
+  notifyViewPref();
+  return next;
 }
 
 /* ==========================================================================
@@ -1532,6 +1626,8 @@ export function initBoard(options) {
     onPlatformChange = () => {},
     onSkinChange = () => {},
     onHepPrefChange = () => {},
+    onViewPrefChange = () => {},
+    onGridChange = () => {},
   } = options || {};
 
   const canvas = document.getElementById('breadboard-canvas');
@@ -1564,6 +1660,11 @@ export function initBoard(options) {
   view.skin = readSkin();
   // HEP 显示偏好同样只在渲染层；runtime / hoverModule 由 hep-panel 每帧写入
   Object.assign(view.hep, readHepView());
+  // 视角偏好：投影 / 整页旋转 / 网格（同样只存 localStorage）
+  const vp = readViewPrefs();
+  view.projection = vp.projection;
+  view.rotate = vp.projection === 'flat' ? vp.rotate : 0;
+  view.gridOn = vp.grid;
   const scene = {
     platform: platforms.getPlatform(restoredPlatform),
     // 始终取活引用：model.loadCircuit / createCircuit 会整体替换 state 对象，
@@ -1606,6 +1707,8 @@ export function initBoard(options) {
     onPlatformChange,
     onSkinChange,
     onHepPrefChange,
+    onViewPrefChange,
+    onGridChange,
     propsKey: '',
     report: null,
     sim: null,
@@ -1742,6 +1845,8 @@ export function initBoard(options) {
       return board ? board.locked : false;
     },
     project: (gx, gy) => project(view, gx, gy),
+    // 反投影：探针用它把屏幕点还原成网格点（与 project 严格互逆）
+    unproject: (sx, sy) => unproject(view, sx, sy),
     // 画布覆盖层注册每帧回调（当前仅探针标记用；传 null 注销）
     onAfterRender: (fn) => {
       if (board) board.onAfterRender = typeof fn === 'function' ? fn : null;
@@ -1788,6 +1893,10 @@ export function initBoard(options) {
       rotate: () => board.interaction.rotateSelection(),
       continuousPlace: (on) => board.interaction.setContinuousPlace(on),
       isContinuousPlace: () => board.interaction.isContinuousPlace(),
+      wireMode: (on) => board.interaction.setWireMode(on),
+      isWireMode: () => board.interaction.isWireMode(),
+      findAnchor: (type, gx, gy) => board.interaction.findAnchor(type, gx, gy),
+      isBusy: () => board.interaction.isBusy(),
       contextmenu: (clientX, clientY) => {
         if (!board || !board.canvas) return false;
         board.canvas.dispatchEvent(
@@ -1955,11 +2064,35 @@ export function initBoard(options) {
     zoom: {
       levels: () => ZOOM_LEVELS.slice(),
       level: () => getZoom(view),
+      min: () => ZOOM_MIN,
+      max: () => ZOOM_MAX,
       set: (scale) => { setZoom(view, scale); requestRender(); },
+      setAt: (scale, sx, sy) => { const z = setZoomAt(view, scale, sx, sy); requestRender(); return z; },
       in: () => { zoomIn(view); requestRender(); },
       out: () => { zoomOut(view); requestRender(); },
       reset: () => { resetView(view); requestRender(); },
       pan: (x, y) => { setPan(view, x, y); requestRender(); },
+    },
+    // 视角控制：投影模式 / 整页旋转 / 网格（纯渲染层状态）
+    // 注意 view 本身已直接暴露（view.projection / view.rotate / view.gridOn 可读）
+    camera: {
+      projection: () => view.projection,
+      setProjection: (mode) => setProjectionMode(mode),
+      rotate: () => view.rotate || 0,
+      rotateBy: (deg) => rotateView(deg),
+      setRotate: (deg) => {
+        if (view.projection !== 'flat') return view.rotate || 0;
+        const next = setRotate(view, deg);
+        writeViewPrefs(viewPrefs());
+        relayout();
+        invalidatePlatformLayer();
+        requestRender();
+        notifyViewPref();
+        return next;
+      },
+      grid: () => view.gridOn !== false,
+      setGrid: (on) => setGrid(on),
+      prefs: () => viewPrefs(),
     },
     focus: {
       enable: (mode) => { if (scene.lens) { scene.lens.on = true; requestRender(); } },

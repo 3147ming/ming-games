@@ -105,6 +105,9 @@ const dom = {
   btnLevels: document.getElementById('btn-levels'),
   zoomLevel: document.getElementById('zoom-level'),
   btnContPlace: document.getElementById('btn-continuous-place'),
+  btnProjection: document.getElementById('btn-projection'),
+  btnRotateView: document.getElementById('btn-rotate-view'),
+  btnGrid: document.getElementById('btn-grid'),
   btnSkin: document.getElementById('btn-skin'),
   btnHepPanel: document.getElementById('btn-hep-panel'),
   btnHepDisplay: document.getElementById('btn-hep-display'),
@@ -1005,12 +1008,20 @@ function openExperiment(expId) {
         showToast(value ? '教学模式：6 块模块标签与面板常驻' : '教学模式已关闭', 'info');
       }
     },
+    onViewPrefChange: (pref) => syncViewUI(pref),
+    onGridChange: (on) => {
+      if (dom.benchArea) dom.benchArea.classList.toggle('is-no-grid', !on);
+      if (dom.schemArea) dom.schemArea.classList.toggle('is-no-grid', !on);
+    },
   });
   // initBoard 内部会先回调 onPlatformChange（此时 __labBoard 尚未赋值），
   // 所以外观按钮的初始按下态在这里按真实 view.skin 再同步一次
   setSkinPressed(window.__labBoard && window.__labBoard.skin === 'hep');
   syncHepDisplayUI(window.__labBoard && window.__labBoard.hepPrefs
     ? window.__labBoard.hepPrefs()
+    : null);
+  syncViewUI(window.__labBoard && window.__labBoard.camera
+    ? window.__labBoard.camera.prefs()
     : null);
 
   // 示例实验：每次打开都从只读模板恢复（用户改动不写回模板）
@@ -1538,6 +1549,25 @@ function bindEvents() {
   /* ---- 指令包 18：主题 / 快捷键面板 / 首次角标 ---- */
   if (dom.btnTheme) dom.btnTheme.addEventListener('click', toggleTheme);
   if (dom.btnKeys) dom.btnKeys.addEventListener('click', () => openKeys());
+  // F1（F1 由 interact.js 统一拦截，避免和输入框抢键）
+  window.addEventListener('helpkey', () => {
+    if (isKeysOpen()) closeKeys();
+    else openKeys();
+  });
+  // 导线工具高亮：工具条没有独立按钮，用画布边光 + 光标体现
+  window.addEventListener('wiremode', (event) => {
+    const on = Boolean(event.detail && event.detail.on);
+    if (dom.benchArea) dom.benchArea.classList.toggle('is-wire-mode', on);
+  });
+  // 双指旋转松手吸附后，由 board 重排 fit 基准（长宽互换）
+  window.addEventListener('viewrotate', (event) => {
+    const api = window.__labBoard && window.__labBoard.camera;
+    if (!api) return;
+    const deg = event.detail ? event.detail.deg : api.rotate();
+    api.setRotate(deg);
+    syncViewUI(api.prefs());
+    showToast(`视图已旋转 ${deg}°`, 'info');
+  });
   if (dom.keysHost) {
     dom.keysHost.querySelectorAll('[data-keys-close]').forEach((el) => {
       el.addEventListener('click', () => closeKeys());
@@ -1625,6 +1655,34 @@ function syncHepDisplayUI(pref) {
   if (dom.hepOptTeach) dom.hepOptTeach.checked = Boolean(p.teach);
 }
 
+/** 同步视角工具栏 + 画布网格显隐（投影 / 旋转 / 网格都是纯渲染层偏好） */
+function syncViewUI(pref) {
+  const p = pref || { projection: 'iso', rotate: 0, grid: true };
+  const flat = p.projection === 'flat';
+  if (dom.btnProjection) {
+    dom.btnProjection.setAttribute('aria-pressed', String(flat));
+    dom.btnProjection.classList.toggle('is-active', flat);
+    dom.btnProjection.textContent = flat ? '立体' : '水平';
+    dom.btnProjection.title = flat
+      ? `当前：水平正视（旋转 ${p.rotate || 0}°）· 点击切回 2.5D 立体`
+      : '当前：2.5D 立体 · 点击切到水平正视（面板水平横着）';
+  }
+  if (dom.btnRotateView) {
+    dom.btnRotateView.disabled = !flat;
+    dom.btnRotateView.title = flat
+      ? `整页旋转 90°（当前 ${p.rotate || 0}°）`
+      : '整页旋转只在「水平正视」下可用';
+  }
+  if (dom.btnGrid) {
+    const on = p.grid !== false;
+    dom.btnGrid.setAttribute('aria-pressed', String(on));
+    dom.btnGrid.classList.toggle('is-active', on);
+  }
+  const off = p.grid === false;
+  if (dom.benchArea) dom.benchArea.classList.toggle('is-no-grid', off);
+  if (dom.schemArea) dom.schemArea.classList.toggle('is-no-grid', off);
+}
+
 /** 关闭「显示选项」popover */
 function closeHepDisplayMenu() {
   if (!dom.hepDisplayMenu || dom.hepDisplayMenu.hidden) return;
@@ -1684,6 +1742,41 @@ function bindZoomControls() {
       dom.btnLevels.setAttribute('aria-pressed', String(next));
       dom.btnLevels.classList.toggle('is-active', next);
       showToast(next ? '电平着色：开（高绿 / 低蓝灰 / X 琥珀）' : '电平着色：关', 'info');
+    });
+  }
+
+  // 视角：水平正视 / 整页旋转 / 网格（指令包 16）
+  if (dom.btnProjection) {
+    dom.btnProjection.addEventListener('click', () => {
+      const api = window.__labBoard && window.__labBoard.camera;
+      if (!api) return;
+      const next = api.projection() === 'flat' ? 'iso' : 'flat';
+      api.setProjection(next);
+      syncViewUI(api.prefs());
+      showToast(next === 'flat' ? '视角：水平正视（面板水平横着）' : '视角：2.5D 立体', 'info');
+    });
+  }
+  if (dom.btnRotateView) {
+    dom.btnRotateView.addEventListener('click', () => {
+      const api = window.__labBoard && window.__labBoard.camera;
+      if (!api) return;
+      if (api.projection() !== 'flat') {
+        showToast('整页旋转只在「水平正视」下可用', 'info');
+        return;
+      }
+      const deg = api.rotateBy(90);
+      syncViewUI(api.prefs());
+      showToast(`视图已旋转 ${deg}°`, 'info');
+    });
+  }
+  if (dom.btnGrid) {
+    dom.btnGrid.addEventListener('click', () => {
+      const api = window.__labBoard && window.__labBoard.camera;
+      if (!api) return;
+      const next = !api.grid();
+      api.setGrid(next);
+      syncViewUI(api.prefs());
+      showToast(next ? '网格：显示' : '网格：隐藏', 'info');
     });
   }
 

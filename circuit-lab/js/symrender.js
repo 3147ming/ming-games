@@ -61,6 +61,8 @@ export function createSymView(canvas) {
     cols: 0,
     rows: 0,
     visible: false,
+    // 网格显隐（与实验台共用 G 键 / 工具栏开关）
+    gridOn: true,
   };
 }
 
@@ -281,6 +283,7 @@ function gridLayerKeyOf(view, rows, cols) {
     view.cell.toFixed(3),
     view.originX.toFixed(2),
     view.originY.toFixed(2),
+    view.gridOn === false ? 'g0' : 'g1',
     rows,
     cols,
   ].join('|');
@@ -301,12 +304,15 @@ function buildGridLayer(view, rows, cols) {
   const step = view.cell * 2;
   const startX = view.originX - Math.ceil(view.originX / step) * step;
   const startY = view.originY - Math.ceil(view.originY / step) * step;
-  g.fillStyle = SCHEM_COLORS.grid;
-  for (let x = startX; x < view.width; x += step) {
-    if (x < 0) continue;
-    for (let y = startY; y < view.height; y += step) {
-      if (y < 0) continue;
-      g.fillRect(x, y, 1.2, 1.2);
+  // 网格开关（G 键）：关掉点阵但仍画板框，符号不会被裁切
+  if (view.gridOn !== false) {
+    g.fillStyle = SCHEM_COLORS.grid;
+    for (let x = startX; x < view.width; x += step) {
+      if (x < 0) continue;
+      for (let y = startY; y < view.height; y += step) {
+        if (y < 0) continue;
+        g.fillRect(x, y, 1.2, 1.2);
+      }
     }
   }
 

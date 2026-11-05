@@ -15,12 +15,15 @@ import {
   pickAt,
   terminalScreenPos,
   setZoom,
+  setZoomAt,
   setPan,
   getZoom,
   zoomIn,
   zoomOut,
   resetView,
   focusOnGrid,
+  applyZoomPan,
+  setRotate,
 } from './render.js';
 
 /** 拖拽判定阈值：超过才算"拖"，否则按点击处理 */
@@ -50,8 +53,15 @@ export function createInteraction(config) {
     pan: null, // 画布空白处拖拽平移：{ startX, startY, panX, panY, moved }
     continuousPlace: false, // 连续放置模式（7B.2）：开启后放一个不退出放置模式
     placeCount: 0, // 连续放置计数（供 toast 合并为"已放置 N 个"）
+    // 导线工具（N 键）：进入后画布空白处不再平移/取消选中，只等服务连第二个端子
+    wireMode: false,
     attached: false,
   };
+
+  /** 触屏多点：pointerId → 画布坐标（双指捏合 / 平移用） */
+  const pointers = new Map();
+  /** 双指手势快照：{ dist, midX, midY, zoom, moved } */
+  let pinch = null;
 
   /* ---------------------------------------------------------------- 工具 */
 
@@ -172,7 +182,164 @@ export function createInteraction(config) {
     } catch (err) { /* 老浏览器无 CustomEvent 时静默 */ }
   }
 
+  /* ---------------------------------------------------------------- 手势（滚轮 / 双指） */
+
+  /**
+   * 滚轮缩放：连续、以鼠标位置为锚点。
+   * - 普通滚轮：一格（deltaY≈100）约 ×0.80 / ×1.25
+   * - 触控板捏合：浏览器派发 wheel 且 ctrlKey=true，deltaY 很小，用更大的系数
+   * - deltaMode=1 是「按行」滚动，先换算成像素
+   * 返回是否真的缩放了（供探针断言）。
+   */
+  function handleWheel(event) {
+    const point = canvasPoint(event);
+    if (!point.inside) return;
+    event.preventDefault();
+    let delta = event.deltaY;
+    if (event.deltaMode === 1) delta *= 16;
+    else if (event.deltaMode === 2) delta *= 100;
+    if (!delta) return;
+    const k = event.ctrlKey ? 0.01 : 0.0022;
+    const factor = Math.exp(-delta * k);
+    const before = getZoom(view);
+    const after = setZoomAt(view, before * factor, point.x, point.y);
+    if (Math.abs(after - before) > 1e-6) {
+      emitZoom();
+      requestRender();
+    }
+  }
+
+  /** 双指：记录第二根手指，切到捏合手势 */
+  function beginPinch() {
+    const pts = [...pointers.values()];
+    if (pts.length < 2) return;
+    const [a, b] = pts;
+    pinch = {
+      dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+      midX: (a.x + b.x) / 2,
+      midY: (a.y + b.y) / 2,
+      zoom: getZoom(view),
+      // 双指旋转：记录起始夹角与起始页面角，角度差超过 8° 才进入旋转，
+      // 避免「想缩放却把画面拧歪」。松手吸附到最近 90°（指令包 16 §2.3）。
+      angle: Math.atan2(b.y - a.y, b.x - a.x),
+      rotate0: view.rotate || 0,
+      rotating: false,
+      zoomed: false,
+      moved: false,
+    };
+    // 第二根手指落下时，第一根可能已经起了平移 / 连线：全部取消，手势优先
+    state.pan = null;
+    state.dragWire = null;
+    scene.ghost = null;
+    if (scene.wiring) scene.pointer = null;
+    canvas.style.cursor = 'grabbing';
+  }
+
+  /** 双指更新：距离比 → 缩放（锚在双指中点），中点位移 → 平移，夹角差 → 旋转（仅 flat） */
+  function updatePinch() {
+    const pts = [...pointers.values()];
+    if (!pinch || pts.length < 2) return false;
+    const [a, b] = pts;
+    const dist = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+    const midX = (a.x + b.x) / 2;
+    const midY = (a.y + b.y) / 2;
+
+    // 旋转优先判定：夹角变化够大就认为用户在拧画面，此时不再缩放（避免双手感打架）
+    const angle = Math.atan2(b.y - a.y, b.x - a.x);
+    let delta = angle - pinch.angle;
+    while (delta > Math.PI) delta -= Math.PI * 2;
+    while (delta < -Math.PI) delta += Math.PI * 2;
+    if (view.projection === 'flat' && Math.abs(delta) > 0.14) {
+      pinch.rotating = true;
+      view.rotate = ((pinch.rotate0 + delta * 180 / Math.PI) % 360 + 360) % 360;
+      applyZoomPan(view);
+      pinch.moved = true;
+      emitZoom();
+      requestRender();
+      return true;
+    }
+
+    const factor = dist / pinch.dist;
+    // 距离变化小于 1.5% 视为「只是平移」，zoom 不动，避免手指抖动把画面缩掉。
+    // 但只要已经缩放过一次，就必须继续跟随——两指先后抬落的中间帧会让距离
+    // 先变大再变回来，若继续走阈值门，画面会停在错误倍率上。
+    if (pinch.zoomed || Math.abs(factor - 1) > 0.015) {
+      setZoomAt(view, pinch.zoom * factor, midX, midY);
+      pinch.zoomed = true;
+      pinch.moved = true;
+    }
+    const dx = midX - pinch.midX;
+    const dy = midY - pinch.midY;
+    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+      setPan(view, view.panX + dx, view.panY + dy);
+      pinch.midX = midX;
+      pinch.midY = midY;
+      pinch.moved = true;
+    }
+    if (pinch.moved) {
+      emitZoom();
+      requestRender();
+    }
+    return true;
+  }
+
+  /** 双指旋转松手：吸附到最近 90°，并把重排交给 board（fit 基准会变） */
+  function snapPinchRotation() {
+    if (!pinch || !pinch.rotating) return;
+    const snapped = ((Math.round((view.rotate || 0) / 90) * 90) % 360 + 360) % 360;
+    setRotate(view, snapped);
+    pinch.rotating = false;
+    try {
+      canvas.dispatchEvent(new CustomEvent('viewrotate', { bubbles: true, detail: { deg: snapped } }));
+    } catch (err) { /* 忽略 */ }
+    requestRender();
+  }
+
+  /** 双指结束：保留缩放/平移，不做吸附（避免松手时画面跳一下） */
+  function endPinchIfNeeded() {
+    if (!pinch) return false;
+    if (pointers.size >= 2) return true;
+    pinch = null;
+    canvas.style.cursor = '';
+    return true;
+  }
+
+  /** 导线工具（N）：只影响"点空白"的行为，连线本身仍走既有 点A→点B 链路 */
+  function setWireMode(on) {
+    const next = Boolean(on);
+    if (state.wireMode === next) return state.wireMode;
+    state.wireMode = next;
+    if (!next) state.placeCount = 0;
+    try {
+      canvas.dispatchEvent(new CustomEvent('wiremode', { bubbles: true, detail: { on: next } }));
+    } catch (err) { /* 忽略 */ }
+    return state.wireMode;
+  }
+
   /* ---------------------------------------------------------------- 放置吸附 */
+
+  /**
+   * 判断芯片落点是否落在某个 DIP 锁紧座上。
+   * 只认「脚数对得上」的座：74LS00 这类 14 脚芯片只能进 U1 14P，74LS138 这类
+   * 16 脚只能进 U2 16P——否则插上去引脚数对不齐，等于画了个假动作。
+   * 容差 0.9 格：用户手指落点常常偏一两毫米，仍希望「一丢就进座」。
+   */
+  function findDipSocket(type, gx, gy) {
+    if (type !== 'ic74xx' && type !== 'ic74xx16') return null;
+    const platform = scene.platform;
+    if (!platform || !Array.isArray(platform.boxParts)) return null;
+    const def = getPart(type);
+    if (!def) return null;
+    const { w, h } = def.size;
+    const pad = 0.9;
+    const part = platform.boxParts.find((item) => item.kind === 'dip'
+      && item.pins / 2 === w
+      && gx >= item.x - pad && gx <= item.x + w + pad
+      && gy >= item.y - pad && gy <= item.y + h + pad);
+    if (!part) return null;
+    // 插座朝向来自平台数据（当前两个座都是 0°）；芯片必须跟着插座，不允许单独转
+    return { id: part.id, x: part.x, y: part.y, rotation: part.rotation || 0 };
+  }
 
   /**
    * 计算落点。
@@ -210,6 +377,18 @@ export function createInteraction(config) {
         return pos && platforms.nodesAt(platform.id, pos.x, pos.y).length > 0;
       });
     };
+
+    // 芯片插锁紧座：位置吸附到插座引脚，朝向继承插座（插座在平台数据里恒为 0°）。
+    // 这条优先于通用吸附——用户把芯片丢在 U1/U2 附近时，一定要落在座里、不能歪。
+    const socket = findDipSocket(type, gx, gy);
+    if (socket) {
+      if (!free(socket.x, socket.y)) {
+        return { x: socket.x, y: socket.y, valid: false, reason: '锁紧座已被占用' };
+      }
+      return {
+        x: socket.x, y: socket.y, valid: true, snapped: true, socket: socket.id, rotation: socket.rotation,
+      };
+    }
 
     // 先判基础锚点：用户把元件故意丢在已占位置时，宁可如实拒绝，
     // 也不能"偷偷挪到旁边空位"——那会把重叠冲突藏起来，用户完全无法感知。
@@ -332,6 +511,14 @@ export function createInteraction(config) {
   /** 指针移动：更新悬停、悬停分组、放置预览、连线橡皮筋 */
   function handlePointerMove(event) {
     const point = canvasPoint(event);
+    // 双指手势优先：先更新指位再判捏合，滑动过程中完全接管
+    if (pointers.has(event.pointerId === undefined ? 1 : event.pointerId)) {
+      pointers.set(event.pointerId === undefined ? 1 : event.pointerId, { x: point.x, y: point.y });
+      if (pointers.size >= 2 && pinch) {
+        updatePinch();
+        return;
+      }
+    }
     if (!point.inside) {
       if (scene.hover || scene.hoverGroup) {
         scene.hover = null;
@@ -405,6 +592,13 @@ export function createInteraction(config) {
     const point = canvasPoint(event);
     if (!point.inside) return;
 
+    // 多点触控：记下每根手指；第二根落下即进入捏合，抢在放置/连线/平移之前
+    pointers.set(event.pointerId === undefined ? 1 : event.pointerId, { x: point.x, y: point.y });
+    if (pointers.size >= 2) {
+      beginPinch();
+      return;
+    }
+
     // 放置模式：点击落点
     if (state.pendingType) {
       const grid = unproject(view, point.x, point.y);
@@ -413,7 +607,7 @@ export function createInteraction(config) {
         toast(anchor.reason || '无法放置', 'error');
         return;
       }
-      placeComponent(state.pendingType, anchor.x, anchor.y);
+      placeComponent(state.pendingType, anchor.x, anchor.y, anchor);
       return;
     }
 
@@ -459,6 +653,11 @@ export function createInteraction(config) {
     }
 
     if (!hit) {
+      // 导线工具模式下点空白：不平移、不清选中，提示去点端子
+      if (state.wireMode) {
+        toast('导线工具：点两个端子 / 孔位完成连线（Esc 退出）');
+        return;
+      }
       // 空白处：可能是「平移画布」的起点（拖动）或「点击取消选中」（松手无位移时）
       state.pan = { startX: point.x, startY: point.y, panX: view.panX, panY: view.panY, moved: false };
       return;
@@ -484,6 +683,15 @@ export function createInteraction(config) {
 
   /** 指针抬起：收尾平移（无位移视为点击空白）/ 收尾拖拽连线 */
   function handlePointerUp(event) {
+    const pid = event.pointerId === undefined ? 1 : event.pointerId;
+    if (pointers.has(pid)) {
+      pointers.delete(pid);
+      const wasPinch = Boolean(pinch);
+      if (wasPinch && pointers.size < 2) snapPinchRotation();
+      endPinchIfNeeded();
+      // 双指结束：不触发点击/选中，也不把手指抬起当成"点空白取消"
+      if (wasPinch) return;
+    }
     if (state.pan) {
       const wasMoved = state.pan.moved;
       state.pan = null;
@@ -518,6 +726,9 @@ export function createInteraction(config) {
 
   /** 指针离开画布：清掉悬停与预览，恢复默认光标 */
   function handlePointerLeave() {
+    // 指针离开画布 = 这根手指不可能再参与手势，直接摘掉，避免状态卡死
+    pointers.clear();
+    pinch = null;
     scene.pointerInside = false;
     scene.pointer = null;
     canvas.style.cursor = '';
@@ -529,11 +740,23 @@ export function createInteraction(config) {
     }
   }
 
+  /** 触摸被系统打断（来电 / 手势被接管）：等同于抬起，但不触发点击 */
+  function handlePointerCancel(event) {
+    const pid = event.pointerId === undefined ? 1 : event.pointerId;
+    pointers.delete(pid);
+    if (pointers.size < 2) pinch = null;
+    state.pan = null;
+    state.dragWire = null;
+    canvas.style.cursor = '';
+    requestRender();
+  }
+
   /* ---------------------------------------------------------------- 动作 */
 
   /** 放置元件（支持连续放置模式） */
-  function placeComponent(type, x, y) {
-    const result = model.addComponent(type, x, y);
+  function placeComponent(type, x, y, opts) {
+    const options = opts && opts.rotation ? { rotation: opts.rotation } : {};
+    const result = model.addComponent(type, x, y, options);
     if (!result.ok) {
       toast(result.error || '放置失败', 'error');
       requestRender();
@@ -766,28 +989,63 @@ export function createInteraction(config) {
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
   }
 
+  /** 放大镜开关（工具栏按钮 / 1 / M 共用） */
+  function toggleLens(next) {
+    if (!scene.lens) return false;
+    const on = next === undefined ? !scene.lens.on : Boolean(next);
+    scene.lens.on = on;
+    if (!on && scene.pointer) requestRender();
+    try {
+      canvas.dispatchEvent(new CustomEvent('lensstate', { bubbles: true, detail: { on } }));
+    } catch (err) { /* 忽略 */ }
+    toast(on ? '放大镜：开' : '放大镜：关');
+    return on;
+  }
+
+  /** Ctrl+F 全屏：浏览器全屏 API，失败只提示不抛错 */
+  function toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().then(() => toast('已退出全屏')).catch(() => {});
+        return;
+      }
+      const el = document.documentElement;
+      if (el && el.requestFullscreen) {
+        el.requestFullscreen().then(() => toast('已进入全屏（Ctrl+F 退出）')).catch(() => toast('浏览器拒绝了全屏请求', 'warn'));
+      } else {
+        toast('当前浏览器不支持全屏', 'warn');
+      }
+    } catch (err) {
+      toast('全屏切换失败', 'warn');
+    }
+  }
+
   function handleKeyDown(event) {
     if (isTypingTarget(event.target)) return;
 
+    // 指令包 16 §2.5：本包所有键位都不得依赖 Shift。
+    // 这里直接吞掉含 Shift 的组合，从根上保证「Shift + 任意键」不产生任何功能
+    //（旧的 Ctrl+Shift+Z 重做分支已按规格删除）。
+    if (event.shiftKey) return;
+
     const key = event.key;
+    const mod = event.ctrlKey || event.metaKey;
 
-    if ((event.ctrlKey || event.metaKey) && event.shiftKey && (key === 'z' || key === 'Z')) {
-      event.preventDefault();
-      redo();
-      return;
-    }
-    if ((event.ctrlKey || event.metaKey) && (key === 'z' || key === 'Z')) {
-      event.preventDefault();
-      undo();
-      return;
-    }
-    if ((event.ctrlKey || event.metaKey) && (key === 'y' || key === 'Y')) {
-      event.preventDefault();
-      redo();
-      return;
+    // —— 带 Ctrl 的组合：严格清单，全部不含 Shift ——
+    if (mod) {
+      if (key === 'z' || key === 'Z') { event.preventDefault(); undo(); return; }
+      if (key === 'y' || key === 'Y') { event.preventDefault(); redo(); return; }
+      if (key === 's' || key === 'S') {
+        event.preventDefault();
+        const api = window.__labBoard;
+        if (api && typeof api.save === 'function') { api.save(); toast('已保存'); }
+        return;
+      }
+      if (key === 'f' || key === 'F') { event.preventDefault(); toggleFullscreen(); return; }
+      return; // 其它 Ctrl 组合不拦，交还浏览器
     }
 
-    if (key === 'Delete' || key === 'Backspace') {
+    if (key === 'Delete' || key === 'Backspace' || key === 'd' || key === 'D') {
       if (!scene.selection) return;
       event.preventDefault();
       deleteSelection();
@@ -801,17 +1059,17 @@ export function createInteraction(config) {
       return;
     }
 
-    // 视图缩放：+ / = 放大，- 缩小，0 复位（与工具栏按钮一致）
-    if (key === '+' || key === '=') {
+    // 视图缩放：2 升档 / 3 降档 / 0 复位；+ = - 作为兼容别名保留
+    if (key === '2' || key === '+' || key === '=') {
       zoomIn(view);
       emitZoom();
       requestRender();
       return;
     }
-    if (key === '-' || key === '_') {
+    if (key === '3' || key === '-' || key === '_') {
       zoomOut(view);
-      requestRender();
       emitZoom();
+      requestRender();
       return;
     }
     if (key === '0') {
@@ -820,20 +1078,43 @@ export function createInteraction(config) {
       requestRender();
       return;
     }
-    // 放大镜开关（与工具栏按钮一致）
-    if (key === 'm' || key === 'M') {
-      if (scene.lens) {
-        scene.lens.on = !scene.lens.on;
-        if (!scene.lens.on && scene.pointer) requestRender();
-        try {
-          canvas.dispatchEvent(new CustomEvent('lensstate', { bubbles: true, detail: { on: scene.lens.on } }));
-        } catch (err) { /* 忽略 */ }
-        toast(scene.lens.on ? '放大镜：开' : '放大镜：关');
-      }
+
+    // 放大镜：1 与 M 等价
+    if (key === 'm' || key === 'M' || key === '1') {
+      toggleLens();
+      return;
+    }
+
+    // 网格：实验台 CSS 网格 + 原理图点阵同步
+    if (key === 'g' || key === 'G') {
+      const api = window.__labBoard && window.__labBoard.camera;
+      if (!api) return;
+      const next = !api.grid();
+      api.setGrid(next);
+      toast(next ? '网格：显示' : '网格：隐藏');
+      return;
+    }
+
+    // 导线工具：进入后点空白不再平移/取消选中
+    if (key === 'n' || key === 'N') {
+      const next = !state.wireMode;
+      setWireMode(next);
+      requestRender();
+      toast(next ? '导线工具：点两个端子 / 孔位完成连线（Esc 退出）' : '导线工具：关');
+      return;
+    }
+
+    // 帮助面板：F1 主键（? 由 app.js 保留为别名）
+    if (key === 'F1') {
+      event.preventDefault();
+      try {
+        canvas.dispatchEvent(new CustomEvent('helpkey', { bubbles: true }));
+      } catch (err) { /* 忽略 */ }
       return;
     }
 
     if (key === 'Escape') {
+      // 优先级链：连接线 → 待放置 → 连续放置 → 导线工具 → 清选中
       if (scene.wiring) {
         cancelWiring();
         state.pendingType = null;
@@ -851,6 +1132,10 @@ export function createInteraction(config) {
       } else if (state.continuousPlace) {
         setContinuousPlace(false);
         toast('已退出连续放置');
+        requestRender();
+      } else if (state.wireMode) {
+        setWireMode(false);
+        toast('已退出导线工具');
         requestRender();
       } else if (scene.selection) {
         clearSelection();
@@ -939,7 +1224,7 @@ export function createInteraction(config) {
         toast(anchor.reason || '无法放置', 'error');
         return;
       }
-      placeComponent(type, anchor.x, anchor.y);
+      placeComponent(type, anchor.x, anchor.y, anchor);
     };
 
     // 指针捕获可能因浏览器策略失败，事件监听直接挂 document 更稳
@@ -974,8 +1259,11 @@ export function createInteraction(config) {
     canvas.addEventListener('pointermove', handlePointerMove);
     canvas.addEventListener('pointerdown', handlePointerDown);
     canvas.addEventListener('pointerup', handlePointerUp);
+    canvas.addEventListener('pointercancel', handlePointerCancel);
     canvas.addEventListener('pointerleave', handlePointerLeave);
     canvas.addEventListener('contextmenu', handleContextMenu);
+    // passive:false —— 滚轮缩放必须 preventDefault，否则整页会跟着滚
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
     if (paletteHost) paletteHost.addEventListener('pointerdown', handlePalettePointerDown);
     document.addEventListener('keydown', handleKeyDown);
     state.attached = true;
@@ -986,8 +1274,10 @@ export function createInteraction(config) {
     canvas.removeEventListener('pointermove', handlePointerMove);
     canvas.removeEventListener('pointerdown', handlePointerDown);
     canvas.removeEventListener('pointerup', handlePointerUp);
+    canvas.removeEventListener('pointercancel', handlePointerCancel);
     canvas.removeEventListener('pointerleave', handlePointerLeave);
     canvas.removeEventListener('contextmenu', handleContextMenu);
+    canvas.removeEventListener('wheel', handleWheel);
     if (paletteHost) paletteHost.removeEventListener('pointerdown', handlePalettePointerDown);
     document.removeEventListener('keydown', handleKeyDown);
     if (state.dragCleanup) state.dragCleanup();
@@ -996,6 +1286,9 @@ export function createInteraction(config) {
     state.pendingType = null;
     state.continuousPlace = false;
     state.placeCount = 0;
+    state.wireMode = false;
+    pointers.clear();
+    pinch = null;
     scene.hover = null;
     scene.ghost = null;
     scene.wiring = null;
@@ -1026,8 +1319,24 @@ export function createInteraction(config) {
     findAnchor,
     setContinuousPlace,
     isContinuousPlace: () => state.continuousPlace,
+    setWireMode,
+    isWireMode: () => state.wireMode,
+    toggleLens,
     getPendingType: () => state.pendingType,
     isWiring: () => Boolean(scene.wiring),
+    /**
+     * 是否有「进行中的语义」：拖拽 / 平移 / 连线 / 待放置 / 连续放置 / 导线工具。
+     * 纯悬停信息卡靠它判门（指令包 16 §2.6），避免拖拽或连线时还挂着说明卡。
+     */
+    isBusy: () => Boolean(
+      scene.wiring
+      || state.pendingType
+      || state.continuousPlace
+      || state.wireMode
+      || (state.drag && state.drag.active)
+      || (state.pan && state.pan.moved)
+      || scene.ghost,
+    ),
   };
 }
 

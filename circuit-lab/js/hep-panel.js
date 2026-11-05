@@ -58,7 +58,6 @@ export function createHepPanel(options = {}) {
   let openId = null;                 // 当前点击展开的模块（一次只有一张）
   let hoverId = null;                // 当前悬停的模块
   let hoverHit = null;               // 当前悬停的真实元件 { id, type }
-  let hoverPinned = false;           // 点击真实元件后把信息卡钉住
   const pinned = new Set();          // 图钉钉住的模块
   let lastViewKey = '';
   let lastStateKey = '';
@@ -170,9 +169,31 @@ export function createHepPanel(options = {}) {
     return Boolean(visible && board && board.skin === HEP_SKIN && board.platformId === 'exp-box');
   }
 
+  /** 卡片是否出现在画布上（教学模式 / 总开关 / 图钉 / 单张展开） */
   function isShown(mod, board) {
     const hep = (board && board.view && board.view.hep) || {};
     return hep.teach === true || hep.all === true || pinned.has(mod.id) || openId === mod.id;
+  }
+
+  /**
+   * 卡片是否展开正文。收起态只留名称——这是「默认不要霸占屏幕」的延伸：
+   * 教学模式把 6 个名字摆出来当索引，要看细节再点开。
+   */
+  function isOpen(mod, board) {
+    const hep = (board && board.view && board.view.hep) || {};
+    return hep.all === true || pinned.has(mod.id) || openId === mod.id;
+  }
+
+  /**
+   * 纯悬停门（指令包 16 §2.6）：只有「指针停在元件/模块上 + 没有进行中的语义」
+   * 才显示信息卡。选中元件后即使把鼠标移到面板上也不显示。
+   */
+  function canHover() {
+    const board = B();
+    if (!board) return false;
+    if (board.scene && board.scene.selection) return false;
+    if (board.interact && typeof board.interact.isBusy === 'function' && board.interact.isBusy()) return false;
+    return true;
   }
 
   function stateKey(st, dmm, dig, active) {
@@ -349,7 +370,7 @@ export function createHepPanel(options = {}) {
   /* ------------------------------------------------------------ 悬停信息卡 */
 
   function updateHoverCard() {
-    const key = `${hoverId}|${hoverHit ? hoverHit.id + hoverHit.type : '-'}|${hoverPinned}`;
+    const key = `${hoverId}|${hoverHit ? hoverHit.id + hoverHit.type : '-'}`;
     if (key === lastHoverKey) return;
     lastHoverKey = key;
     hoverCard.replaceChildren();
@@ -360,12 +381,13 @@ export function createHepPanel(options = {}) {
       const comp = st ? st.comps.find((c) => c.id === hoverHit.id) : null;
       const mod = hoverId ? HEP_MODULES.find((m) => m.id === hoverId) : null;
       title = comp ? `${comp.id} · ${comp.type}` : hoverHit.id;
-      sub = `${mod ? mod.label : '画布元件'} · ${hoverPinned ? '已钉住，点空白处取消' : '悬停查看 · 点击可钉住'}`;
+      // 纯悬停：不提供"钉住"，移开即消失（指令包 16 §2.6）
+      sub = `${mod ? mod.label : '画布元件'} · 移开即隐藏`;
     } else if (hoverId) {
       const mod = HEP_MODULES.find((m) => m.id === hoverId);
       if (mod) {
         title = mod.label;
-        sub = `${mod.sub} · ${moduleSummary(mod, st)} · 点击展开操作`;
+        sub = `${mod.sub} · ${moduleSummary(mod, st)} · 点击展开`;
       }
     }
     if (!title) return;
@@ -426,18 +448,25 @@ export function createHepPanel(options = {}) {
     if (!force && key === lastStateKey) return;
     lastStateKey = key;
 
+    // 纯悬停：选中元件 / 拖拽 / 连线 / 待放置 时，信息卡必须立刻消失
+    if (!canHover() && (hoverId || hoverHit)) {
+      hoverId = null;
+      hoverHit = null;
+    }
+
     HEP_MODULES.forEach((mod) => {
       const entry = cards.get(mod.id);
       const shown = active && isShown(mod, board);
+      const open = shown && isOpen(mod, board);
       entry.card.hidden = !shown;
-      entry.card.classList.toggle('is-open', openId === mod.id);
+      entry.card.classList.toggle('is-open', open);
       entry.pinBtn.classList.toggle('is-pinned', pinned.has(mod.id));
       entry.pinBtn.setAttribute('aria-pressed', String(pinned.has(mod.id)));
-      if (shown && st) renderCard(entry, st, dmm, dig);
+      if (shown && open && st) renderCard(entry, st, dmm, dig);
     });
 
     const anyShown = active && HEP_MODULES.some((mod) => isShown(mod, board));
-    const hoverShown = active && Boolean(hoverId || hoverHit);
+    const hoverShown = active && canHover() && Boolean(hoverId || hoverHit);
     layer.hidden = !active || (!anyShown && !hoverShown);
     hoverCard.hidden = !hoverShown;
     updateHoverCard();
@@ -497,11 +526,10 @@ export function createHepPanel(options = {}) {
 
   /* ------------------------------------------------------------ DOM 事件 */
 
-  function clearHover(keepPinned) {
+  function clearHover() {
     const changed = Boolean(hoverId || hoverHit);
     hoverId = null;
     hoverHit = null;
-    if (!keepPinned) hoverPinned = false;
     updateHoverCard();
     refresh(true);
     if (changed) requestFrame();
@@ -509,6 +537,11 @@ export function createHepPanel(options = {}) {
 
   function onPointerMove(event) {
     if (!isActive()) return;
+    // 纯悬停门：有任何进行中的语义（选中 / 拖拽 / 连线 / 待放置）就不显示
+    if (!canHover()) {
+      if (hoverId || hoverHit) clearHover();
+      return;
+    }
     const g = pointerToGrid(event);
     if (!g) return;
     lastPointer = { x: event.clientX, y: event.clientY };
@@ -525,7 +558,7 @@ export function createHepPanel(options = {}) {
   }
 
   function onPointerLeave() {
-    clearHover(false);
+    clearHover();
   }
 
   function onClick(event) {
@@ -543,16 +576,12 @@ export function createHepPanel(options = {}) {
     const mod = gridToModule(g.gx, g.gy);
     const hit = pickComponent(board, g.sx, g.sy);
 
-    // 点到真实元件：把信息卡钉住 / 取消钉住，不展开操作面板（避免抢选中与连线）
+    // 点到真实元件：交给画布去选中（选中后信息卡立即消失），这里不钉任何东西
     if (hit) {
-      hoverPinned = !hoverPinned;
-      hoverHit = hit;
-      hoverId = mod ? mod.id : null;
-      lastPointer = { x: event.clientX, y: event.clientY };
-      positionHoverCard();
+      hoverId = null;
+      hoverHit = null;
       updateHoverCard();
       refresh(true);
-      requestFrame();
       return;
     }
 
@@ -561,7 +590,6 @@ export function createHepPanel(options = {}) {
       // 点空白：收起展开面板，同时撤掉悬停信息卡
       //（真实指针通常先触发 pointermove 清空 hover，但触摸 / 注入式点击没有这一步）
       openId = null;
-      hoverPinned = false;
       hoverId = null;
       hoverHit = null;
     }
@@ -571,10 +599,9 @@ export function createHepPanel(options = {}) {
 
   function onKeyDown(event) {
     if (event.key !== 'Escape') return;
-    const had = Boolean(openId || hoverPinned);
+    const had = Boolean(openId || hoverId || hoverHit);
     openId = null;
-    hoverPinned = false;
-    if (had) { clearHover(false); refresh(true); requestFrame(); }
+    if (had) { clearHover(); refresh(true); requestFrame(); }
   }
 
   host.addEventListener('pointermove', onPointerMove);
@@ -619,7 +646,7 @@ export function createHepPanel(options = {}) {
       const board = B();
       const hep = (board && board.view && board.view.hep) || {};
       return {
-        openId, hoverId, hoverHit, hoverPinned,
+        openId, hoverId, hoverHit,
         pinned: [...pinned], visible,
         layerHidden: layer.hidden,
         hoverCardHidden: hoverCard.hidden,
@@ -636,13 +663,13 @@ export function createHepPanel(options = {}) {
       return openId;
     },
     close() {
-      openId = null; hoverPinned = false;
-      clearHover(false); refresh(true); requestFrame();
+      openId = null;
+      clearHover(); refresh(true); requestFrame();
       return true;
     },
     /** 探针用：一键回到「默认 0 张卡片」状态 */
     resetView() {
-      openId = null; hoverId = null; hoverHit = null; hoverPinned = false;
+      openId = null; hoverId = null; hoverHit = null;
       pinned.clear();
       const board = B();
       if (board && typeof board.setHepPref === 'function') {
@@ -688,12 +715,19 @@ export function createHepPanel(options = {}) {
       } else {
         // 与 onClick 的空白分支保持一致：点空白同时撤掉悬停信息卡
         openId = null;
-        hoverPinned = false;
         hoverId = null;
         hoverHit = null;
       }
       positionHoverCard(); updateHoverCard(); refresh(true); requestFrame();
       return openId;
+    },
+    /** 探针用：纯悬停判门的三路状态（选中 / 进行中语义 / 最终结论） */
+    hoverGate() {
+      const board = B();
+      const sel = Boolean(board && board.scene && board.scene.selection);
+      const busy = Boolean(board && board.interact && typeof board.interact.isBusy === 'function'
+        && board.interact.isBusy());
+      return { selection: sel, busy, canHover: canHover(), hint: hoverCard.hidden ? null : hoverCard.textContent };
     },
     destroy() {
       host.removeEventListener('pointermove', onPointerMove);

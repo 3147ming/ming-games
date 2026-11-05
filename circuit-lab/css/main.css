@@ -591,6 +591,8 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  /* 工具栏按钮变多后允许换行到第二行，右侧面板头不再被顶破 */
+  flex-wrap: wrap;
   padding: 10px 14px;
   border-bottom: 1px solid var(--line-soft);
   background: var(--panel-soft);
@@ -615,6 +617,29 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  /* 指令包 16 加了视角 / 旋转 / 网格三枚按钮：窄屏允许换行，不允许把标题挤掉 */
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* 网格开关（G）：只关画布底纹，不影响任何几何与拾取 */
+.canvas-area.is-no-grid {
+  background-image: none;
+}
+
+/* 导线工具（N）：画布内侧一圈琥珀色边光，提示"当前点空白不会取消" */
+.canvas-area.is-wire-mode::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 2px rgba(242, 169, 59, 0.5);
+  z-index: 3;
+}
+
+.tool-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
 }
 
 .tool-btn {
@@ -2528,6 +2553,17 @@ button {
   border-bottom: 1px solid rgba(206, 226, 250, 0.22);
   padding-bottom: 4px;
   margin-bottom: 5px;
+}
+
+/* 收起态只显示名称（指令包 16 §2.6）：教学模式把 6 个名字当索引，点开才给正文 */
+.hep-module-card:not(.is-open) .hep-card-title {
+  border-bottom: 0;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+.hep-module-card:not(.is-open) .hep-card-body,
+.hep-module-card:not(.is-open) .hep-card-actions {
+  display: none;
 }
 .hep-card-title-text {
   flex: 1 1 auto;

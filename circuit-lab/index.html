@@ -30,7 +30,7 @@
       <button class="btn btn-ghost" id="btn-theme" type="button"
               aria-pressed="false" title="切换浅色投影模式 / 深色工作模式">浅色</button>
       <button class="btn btn-ghost" id="btn-keys" type="button"
-              aria-haspopup="dialog" title="快捷键一览 ( ? )">快捷键</button>
+              aria-haspopup="dialog" title="快捷键一览 ( F1 / ? )">快捷键</button>
       <button class="btn btn-ghost" id="btn-import" type="button">导入实验配置</button>
       <button class="btn btn-primary" id="btn-export" type="button">导出配置模板</button>
       <!-- 隐藏的文件选择器，由"导入实验配置"按钮触发 -->
@@ -119,12 +119,19 @@
             <span class="panel-tag" id="canvas-tag">BREADBOARD</span>
             <!-- 包 7A：视图缩放 / 放大镜工具栏 -->
             <div class="canvas-tools" id="canvas-tools">
-              <button class="tool-btn" id="btn-zoom-in" type="button" title="放大 ( + / = )">放大</button>
+              <button class="tool-btn" id="btn-zoom-in" type="button" title="放大 ( 2 / + )">放大</button>
               <button class="tool-btn" id="btn-zoom-reset" type="button" title="复位 1× ( 0 )">1×</button>
-              <button class="tool-btn" id="btn-zoom-out" type="button" title="缩小 ( - )">缩小</button>
+              <button class="tool-btn" id="btn-zoom-out" type="button" title="缩小 ( 3 / - )">缩小</button>
               <span class="zoom-level" id="zoom-level" aria-live="polite">1×</span>
               <button class="tool-btn tool-btn--lens" id="btn-lens" type="button"
-                      aria-pressed="false" title="放大镜 ( M )">放大镜</button>
+                      aria-pressed="false" title="放大镜 ( 1 / M )">放大镜</button>
+              <!-- 视角：水平正视 / 2.5D 等轴测（指令包 16） -->
+              <button class="tool-btn tool-btn--proj" id="btn-projection" type="button"
+                      aria-pressed="false" title="视角：立体 / 水平（面板水平横着看）">水平</button>
+              <button class="tool-btn tool-btn--rotate" id="btn-rotate-view" type="button"
+                      title="整页旋转 90°（仅水平正视下可用）">旋转</button>
+              <button class="tool-btn tool-btn--grid" id="btn-grid" type="button"
+                      aria-pressed="true" title="显示 / 隐藏网格 ( G )">网格</button>
               <!-- 电平着色（指令包 17）：仿真后导线按 net 逻辑电平上色 -->
               <button class="tool-btn tool-btn--levels" id="btn-levels" type="button"
                       aria-pressed="true" title="电平着色：高=绿 / 低=蓝灰 / X=琥珀 / 未驱动=灰">电平</button>
@@ -247,7 +254,7 @@
     </div>
   </div>
 
-  <!-- 快捷键面板（指令包 18）：按 ? 或点顶部「快捷键」打开，Esc / 点遮罩关闭 -->
+  <!-- 快捷键面板（指令包 18/16）：按 F1（或 ?）或点顶部「快捷键」打开，Esc / 点遮罩关闭 -->
   <div class="keys-host" id="keys-host" hidden>
     <div class="keys-backdrop" data-keys-close></div>
     <div class="keys-card" role="dialog" aria-modal="true" aria-labelledby="keys-title">
@@ -256,24 +263,27 @@
         <button class="btn btn-ghost keys-close" type="button" data-keys-close>关闭</button>
       </div>
       <dl class="keys-list">
-        <div class="keys-row"><dt><kbd>1</kbd> / <kbd>M</kbd></dt><dd>放大镜</dd></div>
+        <div class="keys-row"><dt><kbd>1</kbd> / <kbd>M</kbd></dt><dd>放大镜开关</dd></div>
         <div class="keys-row"><dt><kbd>G</kbd></dt><dd>显示 / 隐藏网格</dd></div>
-        <div class="keys-row"><dt><kbd>N</kbd></dt><dd>导线工具</dd></div>
-        <div class="keys-row"><dt><kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd></dt><dd>放大 / 缩小 / 复位 1×</dd></div>
-        <div class="keys-row"><dt><kbd>Del</kbd> / <kbd>Backspace</kbd></dt><dd>删除选中元件或导线</dd></div>
+        <div class="keys-row"><dt><kbd>N</kbd></dt><dd>导线工具（点两个端子即连一条，Esc 退出）</dd></div>
+        <div class="keys-row"><dt><kbd>2</kbd> / <kbd>3</kbd> / <kbd>0</kbd></dt><dd>放大 / 缩小 / 复位 1×</dd></div>
+        <div class="keys-row"><dt><kbd>Del</kbd> / <kbd>Backspace</kbd> / <kbd>D</kbd></dt><dd>删除选中元件或导线</dd></div>
+        <div class="keys-row"><dt><kbd>R</kbd></dt><dd>旋转选中元件（90°）</dd></div>
         <div class="keys-row"><dt><kbd>Ctrl</kbd>+<kbd>Z</kbd></dt><dd>撤销</dd></div>
         <div class="keys-row"><dt><kbd>Ctrl</kbd>+<kbd>Y</kbd></dt><dd>重做</dd></div>
+        <div class="keys-row"><dt><kbd>Ctrl</kbd>+<kbd>S</kbd></dt><dd>保存当前电路</dd></div>
+        <div class="keys-row"><dt><kbd>Ctrl</kbd>+<kbd>F</kbd></dt><dd>进入 / 退出全屏</dd></div>
         <div class="keys-row"><dt><kbd>空格</kbd></dt><dd>时钟步进（单脉冲，打时序用）</dd></div>
-        <div class="keys-row"><dt><kbd>Esc</kbd></dt><dd>取消连线 / 退出连续放置 / 收起面板</dd></div>
-        <div class="keys-row"><dt><kbd>?</kbd></dt><dd>打开这个面板</dd></div>
+        <div class="keys-row"><dt><kbd>Esc</kbd></dt><dd>取消连线 / 退出连续放置 / 退出导线工具 / 收起面板 / 清选中</dd></div>
+        <div class="keys-row"><dt><kbd>F1</kbd></dt><dd>打开这个面板（<kbd>?</kbd> 同效）</dd></div>
       </dl>
-      <p class="keys-hint">提示：把鼠标移到端子上会变成十字，拖拽即可连线；拖动元件时松开即落点。</p>
+      <p class="keys-hint">滚轮 / 双指捏合可连续缩放；「水平」按钮把面板切成水平正视，再点「旋转」可整页转 90°。</p>
     </div>
   </div>
 
   <!-- 首次进入的快捷键角标：显示 3 次后不再出现（localStorage 计数） -->
   <div class="keys-tip" id="keys-tip" hidden>
-    <span>按 <kbd>?</kbd> 看快捷键</span>
+    <span>按 <kbd>F1</kbd> 看快捷键</span>
     <button class="keys-tip-close" type="button" id="keys-tip-close" aria-label="关闭提示">×</button>
   </div>
 

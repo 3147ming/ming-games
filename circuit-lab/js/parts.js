@@ -26,8 +26,24 @@ export function poly(ctx, points) {
   ctx.closePath();
 }
 
-/** 把点整体上移 */
+/**
+ * 正投影（flat）模式标记：为 true 时所有「立起来」的高度归零，
+ * 棱柱只剩顶面 = 纯正视图（无斜边厚度），元件也不会因为抬高而与孔位错位。
+ * 由 render.js 在每帧绘制前设置，绘制是同步的，模块级开关安全。
+ */
+let FLAT_SHADING = false;
+
+export function setFlatShading(on) {
+  FLAT_SHADING = Boolean(on);
+}
+
+export function isFlatShading() {
+  return FLAT_SHADING;
+}
+
+/** 把点整体上移（flat 模式下不抬高） */
 export function lift(point, height) {
+  if (FLAT_SHADING) return { x: point.x, y: point.y };
   return { x: point.x, y: point.y - height };
 }
 
@@ -240,10 +256,21 @@ function drawCapacitor(ctx, comp, style) {
 }
 
 /** 74 系列 DIP 芯片壳：黑色本体 + 缺口 + 两排引脚 */
+/**
+ * 芯片本体相对占位矩形的内缩（局部网格）。
+ * DIP 锁紧座（hep-skin.drawDipSocket）与芯片本体共用这一组常量，
+ * 两边算出来的四角必须完全一致——这是「芯片按插座朝向插入」的几何基准。
+ */
+export const IC_BODY_INSET = { x: 0.1, y: 0.55 };
+
 function drawIc(ctx, comp, style) {
   const { frame, pinLabels } = style;
-  drawContactShadow(ctx, frame, 0.05, 0.55, frame.w - 0.05, frame.h - 0.55);
-  prism(ctx, frame, 0.1, 0.55, frame.w - 0.1, frame.h - 0.55, 8, '#32323e', '#1e1e26', '#191920', 'rgba(0,0,0,0.55)');
+  const bx0 = IC_BODY_INSET.x;
+  const by0 = IC_BODY_INSET.y;
+  const bx1 = frame.w - IC_BODY_INSET.x;
+  const by1 = frame.h - IC_BODY_INSET.y;
+  drawContactShadow(ctx, frame, 0.05, by0, frame.w - 0.05, by1);
+  prism(ctx, frame, bx0, by0, bx1, by1, 8, '#32323e', '#1e1e26', '#191920', 'rgba(0,0,0,0.55)');
 
   // 14 脚（ic74xx）/ 16 脚（ic74xx16）共用这一套画法：
   // 端子几何、顶边脚数、电源脚位置全部从元件定义与数字模型读，不再写死
@@ -253,16 +280,16 @@ function drawIc(ctx, comp, style) {
   const topCount = def.terminals.filter((t) => t.dy === 0).length;
   const pinColor = '#c2c7d4';
   for (let i = 0; i < topCount; i += 1) {
-    const from = frame.project(0.1 + i, 0.55);
+    const from = frame.project(bx0 + i, by0);
     const to = frame.project(i, 0);
     drawLead(ctx, from, to, pinColor, 1.6);
-    const from2 = frame.project(0.1 + i, frame.h - 0.55);
+    const from2 = frame.project(bx0 + i, by1);
     const to2 = frame.project(i, frame.h - 1);
     drawLead(ctx, from2, to2, pinColor, 1.6);
   }
 
   // 缺口：靠近 1 脚的半圆
-  const notch = lift(frame.project(0.5, 0.55), 8);
+  const notch = lift(frame.project(0.5, by0), 8);
   ctx.beginPath();
   ctx.arc(notch.x, notch.y, Math.max(2.5, frame.tileW * 0.13), 0, Math.PI * 2);
   ctx.fillStyle = '#12121a';
