@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { WEAPONS, WEAPON_ORDER, WEAPON_UNLOCKED } from '../config/weapon.js';
 import { AMMO_TYPES, ELEMENTS, deriveWeapon } from '../config/mods.js';
+import { AMMO_SHOP } from '../config/progression.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -60,9 +61,11 @@ export class GunSystem {
     this.damageMul = 1;
     this.reloadMul = 1;
     this.fireRateMul = 1;
-    // 波间商店临时增益（每波开始时重置为 1，不与成长/机甲叠加残留）
-    this.waveDamageMul = 1;
-    this.waveFireRateMul = 1;
+    // 科研加成：暴击与弱点
+    this.critChance = 0;
+    this.critMul = 1.5;
+    this.headshotMulBonus = 1;
+    this.bossMul = 1;
 
     // 开镜
     this.baseFov = this.camera.fov;
@@ -300,7 +303,7 @@ export class GunSystem {
     const recoilScale = 1 - aimK * 0.4;
 
     st.mag -= 1;
-    this.cooldown = W.fireInterval / ((this.fireRateMul || 1) * (this.waveFireRateMul || 1));
+    this.cooldown = W.fireInterval / (this.fireRateMul || 1);
     this.shotCount += 1;
     st.burstCount += 1;
     st.heat = Math.min(8, st.heat + 0.9);
@@ -367,7 +370,12 @@ export class GunSystem {
         let mult = 1;
         if (enemyHit.part === 'head') mult = W.headshotMultiplier;
         else if (enemyHit.part === 'limb') mult = W.limbMultiplier;
-        const damage = W.damage * mult * ammo.damageMul * (this.damageMul || 1) * (this.waveDamageMul || 1);
+        let damage = W.damage * mult * ammo.damageMul * (this.damageMul || 1);
+        // 科研：爆头 / 首领 / 暴击加成
+        if (enemyHit.part === 'head') damage *= this.headshotMulBonus || 1;
+        if (enemyHit.enemy.variant?.id === 'boss') damage *= this.bossMul || 1;
+        const crit = this.critChance > 0 && Math.random() < this.critChance;
+        if (crit) damage *= this.critMul || 1.5;
         const killed = enemyHit.enemy.takeDamage(damage, enemyHit.head);
         const headshot = enemyHit.part === 'head';
         this.effects.spawnEnemyHit(enemyHit.point);
@@ -532,6 +540,31 @@ export class GunSystem {
       this._states[id].reserve += Math.max(0, rounds);
     }
     this._syncHud();
+  }
+
+  /**
+   * 把局外备弹库存带入本局（闯关 / 无尽）。
+   * 每把武器弹匣免费装满，备弹取库存，库存上限按科研加成放大。
+   */
+  applyAmmoStock(stock = {}, capMul = 1) {
+    for (const id of WEAPON_UNLOCKED) {
+      const st = this._states[id];
+      const cap = Math.round((AMMO_SHOP[id]?.cap || 120) * capMul);
+      st.mag = this.weapons[id].magazineSize;
+      st.reserve = Math.min(cap, Math.max(0, Math.floor(stock[id] || 0)));
+      st.heat = 0;
+      st.burstCount = 0;
+    }
+    this._syncHud();
+  }
+
+  /** 将本局剩余备弹写回局外库存（进入结算时调用） */
+  collectAmmoStock() {
+    const out = {};
+    for (const id of WEAPON_UNLOCKED) {
+      out[id] = Math.max(0, Math.floor(this._states[id].reserve));
+    }
+    return out;
   }
 
   resetAmmo() {

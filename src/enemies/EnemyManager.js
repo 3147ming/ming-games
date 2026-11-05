@@ -28,6 +28,7 @@ export class EnemyManager {
     this.hud = opts.hud;
     this.supply = opts.supply || null;      // 敌人死亡掉落：注入 SupplyManager
     this.onKill = opts.onKill || (() => {});
+    this.onDeath = opts.onDeath || (() => {});   // 死亡事件（带变体信息，用于材料掉落）
     this.onWaveStart = opts.onWaveStart || (() => {});
     this.onWaveClear = opts.onWaveClear || (() => {});
     this.onVictory = opts.onVictory || (() => {});
@@ -260,6 +261,11 @@ export class EnemyManager {
     if (this.audio) this.audio.play('kill', { volume: 0.7, rate: 1.0 });
     // 敌人死亡掉落：按变体概率吐出血包/护甲/弹药箱
     if (this.supply) this.supply.spawnDrop(enemy.position, enemy.variant);
+    if (this.supply) {
+      const mul = this.supply.dropChanceMul || 1;
+      if (mul > 1 && Math.random() < (mul - 1)) this.supply.spawnDrop(enemy.position, enemy.variant);
+    }
+    this.onDeath(enemy);
     this.onKill(enemy);
   }
 

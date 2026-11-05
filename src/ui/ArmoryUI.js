@@ -1,11 +1,14 @@
 /**
  * 大厅「军械库」改装面板
  *
- * 数据流：SaveManager.loadout -> 玩家选择配件 -> onChange 让 GunSystem 重新合成。
- * 只负责 UI，不直接修改武器运行时状态。
+ * 解锁规则：
+ *  - 槽位需要金币解锁；
+ *  - 配件需要"制造"（花金币）后才可装配；
+ *  - 元素类配件额外需要声望 + 首领核心。
  */
 import { WEAPONS, WEAPON_UNLOCKED } from '../config/weapon.js';
 import { MOD_SLOTS, ATTACHMENTS, ELEMENTS, deriveWeapon } from '../config/mods.js';
+import { MOD_UNLOCK } from '../config/progression.js';
 
 export class ArmoryUI {
   /**
@@ -20,7 +23,6 @@ export class ArmoryUI {
     this.infoEl = document.getElementById('armory-info');
     this.slotsEl = document.getElementById('armory-slots');
     this.resetBtn = document.getElementById('btn-reset-mods');
-
     this._buildWeaponNav();
     this._bindEvents();
     this.refresh();
@@ -50,9 +52,28 @@ export class ArmoryUI {
     }
 
     if (this.slotsEl) {
+      this.feedbackEl = document.createElement('p');
+      this.feedbackEl.className = 'mission-feedback';
+      this.slotsEl.parentElement?.insertBefore(this.feedbackEl, this.slotsEl.nextSibling);
       this.slotsEl.addEventListener('click', (e) => {
+        const unlockBtn = e.target.closest('[data-unlock-slot]');
+        if (unlockBtn) {
+          const res = this.save.unlockModSlot(unlockBtn.dataset.unlockSlot);
+          this._feedback(res.message);
+          this.refresh();
+          if (res.ok) this.onChange();
+          return;
+        }
         const btn = e.target.closest('.armory-option');
         if (!btn) return;
+        // 未制造：先花钱解锁制造权限
+        if (btn.dataset.crafted !== '1') {
+          const res = this.save.craftAttachment(btn.dataset.slot, btn.dataset.att);
+          this._feedback(res.message);
+          this.refresh();
+          if (res.ok) this.onChange();
+          return;
+        }
         this.save.setMod(this.weaponId, btn.dataset.slot, btn.dataset.att);
         this.refresh();
         this.onChange();
@@ -66,6 +87,10 @@ export class ArmoryUI {
         this.onChange();
       });
     }
+  }
+
+  _feedback(text) {
+    if (this.feedbackEl) this.feedbackEl.textContent = text || '';
   }
 
   refresh() {
@@ -115,18 +140,46 @@ export class ArmoryUI {
 
         const options = document.createElement('div');
         options.className = 'armory-options';
+
+        // 槽位未解锁：只显示解锁按钮
+        if (!this.save.isModSlotUnlocked(slot.id)) {
+          card.classList.add('locked');
+          const lock = document.createElement('p');
+          lock.className = 'armory-lock-hint';
+          lock.textContent = `槽位未解锁 · ${MOD_UNLOCK.slots[slot.id]} 金币`;
+          const unlockBtn = document.createElement('button');
+          unlockBtn.type = 'button';
+          unlockBtn.className = 'btn mini';
+          unlockBtn.dataset.unlockSlot = slot.id;
+          unlockBtn.textContent = '解锁槽位';
+          card.appendChild(lock);
+          card.appendChild(unlockBtn);
+          this.slotsEl.appendChild(card);
+          continue;
+        }
+
         for (const att of ATTACHMENTS[slot.id]) {
+          const crafted = this.save.isAttachmentCrafted(att.id);
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'armory-option';
           btn.dataset.slot = slot.id;
           btn.dataset.att = att.id;
+          btn.dataset.crafted = crafted ? '1' : '0';
           if (att.id === loadout[slot.id]) btn.classList.add('active');
+          if (!crafted) btn.classList.add('uncrafted');
 
           const name = document.createElement('b');
-          name.textContent = att.name;
+          name.textContent = crafted ? att.name : `${att.name} · 未制造`;
           const desc = document.createElement('small');
-          desc.textContent = att.desc;
+          if (crafted) {
+            desc.textContent = att.desc;
+          } else if (att.element) {
+            const c = MOD_UNLOCK.elementCraft;
+            desc.textContent = `元素配件 · 声望 ${c.reputation} + 首领核心 ${c.bossCore}`;
+          } else {
+            desc.textContent = `制造费 ${MOD_UNLOCK.craft} 金币`;
+          }
           btn.appendChild(name);
           btn.appendChild(desc);
           options.appendChild(btn);

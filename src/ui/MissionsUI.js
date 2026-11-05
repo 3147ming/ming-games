@@ -2,12 +2,9 @@
  * 任务 / 奖励面板（大厅）
  * 进度来自存档累计战绩，领取后发放金币 / 声望 / 核心 / 材料。
  */
+import { MATERIALS } from '../config/progression.js';
 
-const MATERIAL_LABEL = {
-  awaken: '觉醒材料',
-  mecha: '机甲材料',
-  research: '科研材料',
-};
+const materialLabel = (key) => MATERIALS[key]?.name || key;
 
 export class MissionsUI {
   /**
@@ -42,7 +39,7 @@ export class MissionsUI {
     if (granted.reputation) parts.push(`声望 +${granted.reputation}`);
     if (granted.cores) parts.push(`核心 +${granted.cores}`);
     for (const [key, value] of Object.entries(granted.materials || {})) {
-      if (value) parts.push(`${MATERIAL_LABEL[key] || key} +${value}`);
+      if (value) parts.push(`${materialLabel(key)} +${value}`);
     }
     this.feedback.textContent = parts.length ? `已领取：${parts.join(' · ')}` : '奖励已领取';
     this.feedback.classList.add('show');
@@ -58,7 +55,7 @@ export class MissionsUI {
     if (r.reputation) parts.push(`${r.reputation} 声望`);
     if (r.cores) parts.push(`${r.cores} 核心`);
     for (const [key, value] of Object.entries(r.materials || {})) {
-      if (value) parts.push(`${value} ${MATERIAL_LABEL[key] || key}`);
+      if (value) parts.push(`${value} ${materialLabel(key)}`);
     }
     return parts.join(' · ') || '—';
   }

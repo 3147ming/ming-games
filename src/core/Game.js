@@ -9,7 +9,8 @@
  */
 import * as THREE from 'three';
 import { WORLD, MATCH, WEAPON } from '../config/weapon.js';
-import { ENDLESS, DEFENSE, DEFENSE_WAVES, defenseWave, endlessWave, isDefenseMode, parseMode, RUN_SHOP } from '../config/modes.js';
+import { ENDLESS, DEFENSE, DEFENSE_WAVES, defenseWave, endlessWave, isDefenseMode, parseMode } from '../config/modes.js';
+import { MAP_MATERIAL, MATERIALS } from '../config/progression.js';
 import { DEFENSE_LEVEL_INDEX } from '../world/levels.js';
 import { Input } from './Input.js';
 import { AssetManager } from './AssetManager.js';
@@ -33,6 +34,8 @@ import { Menu } from '../ui/Menu.js';
 import { SettingsUI } from '../ui/SettingsUI.js';
 import { ArmoryUI } from '../ui/ArmoryUI.js';
 import { MissionsUI } from '../ui/MissionsUI.js';
+import { ExchangeUI } from '../ui/ExchangeUI.js';
+import { ResearchUI } from '../ui/ResearchUI.js';
 import { DefenseUI } from '../ui/DefenseUI.js';
 import { GrowthUI } from '../ui/GrowthUI.js';
 import { MechSystem } from '../player/MechSystem.js';
@@ -59,16 +62,6 @@ export class Game {
       endedAt: 0,
       wavesCleared: 0,
     };
-  }
-
-  /** 重置局内临时状态：波间金币 / 波次增益 / 商店临时乘子 */
-  _resetRunState() {
-    this.runGold = 0;
-    this._waveBuff = null;
-    if (this.gun) {
-      this.gun.waveDamageMul = 1;
-      this.gun.waveFireRateMul = 1;
-    }
   }
 
   async init() {
@@ -160,6 +153,7 @@ export class Game {
       // 实例池按无尽同屏上限预建，保证大厅切模式后无需重建对象池
       poolSize: Math.max(ENDLESS.maxAlive, DEFENSE.maxAlive),
       onKill: () => this._onKill(),
+      onDeath: (enemy) => this._onEnemyDeath(enemy),
       onWaveStart: (i, total) => this._onWaveStart(i, total),
       onWaveClear: (i, isLast) => this._onWaveClear(i, isLast),
       onVictory: () => this._onVictory(),
@@ -262,6 +256,14 @@ export class Game {
       save: this.save,
       onChange: () => this._refreshLobby(),
     });
+    this.exchange = new ExchangeUI({
+      save: this.save,
+      onChange: () => this._refreshLobby(),
+    });
+    this.research = new ResearchUI({
+      save: this.save,
+      onChange: () => this._refreshLobby(),
+    });
 
     // 初始数值同步
     this.hud.reset();
@@ -352,7 +354,6 @@ export class Game {
     this.stats = this._emptyStats();
     this.stats.startedAt = performance.now();
     this.stats.wavesCleared = 0;
-    this._resetRunState();
 
     this.hud.setVisible(true);
     this.hud.reset(this.enemies.infinite ? null : this.enemies.waves.length);
@@ -367,7 +368,13 @@ export class Game {
     this.input.requestLock();
     // 应用大厅最新改装后再补满弹药
     this.gun.applyLoadout(this.save.data.loadout);
-    this.gun.resetAmmo();
+    if (isDefenseMode(this.mode)) {
+      // 守城模式弹药免费
+      this.gun.resetAmmo();
+    } else {
+      // 闯关 / 无尽：带入局外购买的备弹（弹匣免费装满）
+      this.gun.applyAmmoStock(this.save.data.meta.ammoStock, this.save.researchTotals().ammoCapMul);
+    }
     // 应用局外成长（属性点 / 天赋）后再复活，生命上限才是最新值
     this._applyGrowth();
     this.mech?.reset();
@@ -512,10 +519,10 @@ export class Game {
     this.player.respawn(this.map.playerSpawn);
     this.player.health.reset();
     this.mouseLook.reset();
-    this.gun.resetAmmo();
+    if (isDefenseMode(this.mode)) this.gun.resetAmmo();
+    else this.gun.applyAmmoStock(this.save.data.meta.ammoStock, this.save.researchTotals().ammoCapMul);
     this.stats = this._emptyStats();
     this.stats.startedAt = performance.now();
-    this._resetRunState();
     this.enemies.startMatch();
     this.supplies.reset();
     if (this.defense) this.defense.resetRun();
@@ -537,7 +544,7 @@ export class Game {
   /** 结算面板"返回主菜单" */
   backToMenu() {
     if (this.state === 'result') this.stats.endedAt = performance.now();
-    this._resetRunState();
+    else this._persistAmmoStock();
     this.state = 'menu';
     this.input.enabled = false;
     this.input.releaseLock();
@@ -556,6 +563,9 @@ export class Game {
     const d = this.save.data;
     this.menu.lobby.setResources(d.meta.cores, d.meta.coins || 0, d.meta.reputation || 0);
     this.missions?.refresh();
+    this.exchange?.refresh();
+    this.research?.refresh();
+    this.armory?.refresh();
     this.menu.lobby.renderGrowth();
     this.menu.lobby.setStats({
       runs: d.stats.runs,
@@ -583,14 +593,21 @@ export class Game {
       on ? '靠近补给箱自动拾取' : '按 F 手动拾取');
   }
 
-  /** 应用局外成长（属性点 + 天赋）到玩家与枪械 */
+  /** 应用局外成长（属性点 + 天赋 + 科研）到玩家与枪械 */
   _applyGrowth() {
     const t = growthTotals(this.save.data);
-    this.player.health.setBonus(t.maxHpBonus, t.maxArmorBonus);
+    const r = this.save.researchTotals();
+    this.player.health.setBonus(t.maxHpBonus + r.hpBonus, t.maxArmorBonus + r.armorBonus);
     this.player.speedMul = t.speedMul;
-    this.gun.damageMul = t.dmgMul;
+    this.gun.damageMul = t.dmgMul * r.dmgMul;
     this.gun.fireRateMul = t.fireRateMul;
-    this.gun.reloadMul = t.reloadMul;
+    // 科研：换弹变快、暴击、爆头与首领伤害
+    this.gun.reloadMul = Math.max(0.45, t.reloadMul - r.reloadCut);
+    this.gun.critChance = r.critChance;
+    this.gun.critMul = 1.6;
+    this.gun.headshotMulBonus = r.headshotMul;
+    this.gun.bossMul = r.bossMul;
+    if (this.supplies) this.supplies.dropChanceMul = r.dropChanceMul;
   }
 
   // ---------------- 成长面板（TAB：机甲 / 天赋 / 觉醒） ----------------
@@ -644,11 +661,35 @@ export class Game {
     this.stats.kills += 1;
     if (this.defense && this.state === 'playing') {
       this.defense.addGold(DEFENSE.goldPerKill);
-    } else if (this.state === 'playing') {
-      // 非守城模式：击杀积累局内金币，波间商店消费
-      this.runGold = (this.runGold || 0) + RUN_SHOP.goldPerKill;
     }
     this._updateMissionObjective();
+  }
+
+  /**
+   * 敌人死亡：首领掉首领核心；地图材料与科研材料按概率直接写入局外存档。
+   * 掉率在平衡阶段统一调整。
+   */
+  _onEnemyDeath(enemy) {
+    if (!this.save || this.state !== 'playing' || !enemy?.variant) return;
+    const drop = (id, chance) => {
+      if (Math.random() < chance) {
+        this.save.addMaterial(id, 1);
+        this.hud.showSupplyToast(`获得 ${MATERIALS[id].name}`, '已存入局外仓库');
+      }
+    };
+    if (enemy.variant.id === 'boss') {
+      this.save.addMaterial('bossCore', 1);
+      this.save.addMaterial('mecha', 1);
+      this.save.addMaterial('awaken', 2);
+      this.hud.showSupplyToast('首领战利品', '首领核心 +1 · 机甲材料 +1 · 觉醒材料 +2');
+    } else if (enemy.variant.id === 'brute' || enemy.variant.id === 'howler') {
+      drop('awaken', 0.06);
+    }
+    const mapMat = MAP_MATERIAL[this.map?.level?.id];
+    if (mapMat) drop(mapMat, 0.06);
+    const researchIds = ['researchAmmo', 'researchCombat', 'researchLogistics'];
+    const pick = researchIds[Math.floor(Math.random() * researchIds.length)];
+    drop(pick, 0.08);
   }
 
   /** 每一发子弹都记一次，用于算命中率与爆头数 */
@@ -671,29 +712,25 @@ export class Game {
 
   _onWaveClear(index, isLast) {
     this.stats.wavesCleared = index + 1;
-    // 波次增益只持续一波：本波结束即失效，进入商店时状态干净
-    this.gun.waveDamageMul = 1;
-    this.gun.waveFireRateMul = 1;
     this._updateMissionObjective();
     if (isLast) return;   // 最后一波直接走胜利流程
     if (this.defense) {
-      // 守城：局内金币奖励 + 打开波间商店（期间敌人暂停推进）
+      // 守城：局内金币奖励 + 免费补给（商店改为 TAB 随时打开）
       this.defense.addGold(DEFENSE.goldPerWave);
       this.gun.addSupply(MATCH.waveClearAmmo);
       this.player.health.addArmor(MATCH.waveClearArmor);
-      this._openShop(index + 1);
+      this.hud.showSupplyToast('战地军需', '按 TAB 打开商店补充火力');
       return;
     }
-    // 闯关 / 无尽：波间军需商店（用局内金币买补给）
-    this.runGold = (this.runGold || 0) + RUN_SHOP.goldPerWave;
-    this.gun.addSupply(MATCH.waveClearAmmo);
+    // 闯关 / 无尽：只给小量免费补给，弹药主要靠局外购买与掉落
+    this.gun.addSupply(MATCH.waveClearAmmoSmall);
     this.player.health.addArmor(MATCH.waveClearArmor);
-    this._openShop(index + 1);
   }
 
-  // ---------------- 波间商店 ----------------
-  _openShop(clearedWave) {
-    if (!this.defenseUI) return;
+  // ---------------- 守城商店（TAB 常驻） ----------------
+  /** 守城模式下随时打开军需商店；关闭后继续当前战斗 */
+  _openDefenseShop() {
+    if (!this.defense || !this.defenseUI) return;
     this.state = 'shop';
     this.input.enabled = false;
     this.input.releaseLock();
@@ -703,70 +740,24 @@ export class Game {
       this._ammoWheelOpen = false;
       this.gun.closeAmmoWheel();
     }
-    if (this.defense) {
-      this.defenseUI.showShop(this.defense.getShopState(), clearedWave);
-    } else {
-      this.defenseUI.showShop(this._getRunShopState(), clearedWave, '购买');
-      // 非守城模式副标题文案
-      this.defenseUI.shopSub.textContent = `第 ${clearedWave} 波已肃清 · 补充物资后继续推进`;
-    }
-  }
-
-  _getRunShopState() {
-    const gold = this.runGold || 0;
-    const items = RUN_SHOP.items.map((it) => ({
-      id: it.id,
-      name: it.name,
-      desc: it.desc,
-      costLabel: `局内金币 ${it.cost}`,
-      tip: it.tip,
-      disabled: false,
-      affordable: gold >= it.cost,
-    }));
-    return { gold, items };
+    this.defenseUI.showShop(this.defense.getShopState(), this.enemies.waveIndex + 1);
+    this.defenseUI.shopSub.textContent = '战地军需 · 随时补给（TAB 打开 / Esc 关闭）';
   }
 
   _closeShop() {
     if (this.state !== 'shop') return;
     this.defenseUI.hideShop();
-    // 应用本波的临时增益（伤害 / 射速），下一波结束时清掉
-    if (this._waveBuff) this._applyWaveBuff();
     this.state = 'playing';
     this.input.enabled = true;
     this._ignoreBlurUntil = performance.now() + 800;
     this.input.requestLock();
-    this.enemies.skipBreak();
-  }
-
-  _applyWaveBuff() {
-    const b = this._waveBuff || {};
-    // 写入波次独立乘子（本波结束时清掉，不污染成长 / 机甲倍率）
-    this.gun.waveDamageMul = b.damage || 1;
-    this.gun.waveFireRateMul = b.fireRate || 1;
-    this._waveBuff = null;
   }
 
   _buyDefenseItem(id) {
-    if (this.defense) {
-      const res = this.defense.buy(id);
-      const state = this.defense.getShopState();
-      this.defenseUI.updateShop(state, res.message);
-      if (res.ok) this._refreshLobby();
-      if (!res.ok) this.hud.showSupplyToast('军需购买失败', res.message);
-      return;
-    }
-    // 非守城模式：波间军需商店
-    const item = RUN_SHOP.items.find((it) => it.id === id);
-    if (!item) return;
-    const gold = this.runGold || 0;
-    if (gold < item.cost) {
-      this.defenseUI.updateShop(this._getRunShopState(), '局内金币不足');
-      this.hud.showSupplyToast('军需购买失败', '局内金币不足');
-      return;
-    }
-    this.runGold = gold - item.cost;
-    item.apply(this);
-    this.defenseUI.updateShop(this._getRunShopState(), `${item.name} 已购买`);
+    if (!this.defense) return;
+    const res = this.defense.buy(id);
+    this.defenseUI.updateShop(this.defense.getShopState(), res.message);
+    if (!res.ok) this.hud.showSupplyToast('军需购买失败', res.message);
   }
 
   // ---------------- 局内任务目标 ----------------
@@ -815,10 +806,17 @@ export class Game {
     this._endMatch(true);
   }
 
+  /** 把本局剩余备弹写回局外库存（闯关 / 无尽；守城免费不结算） */
+  _persistAmmoStock() {
+    if (isDefenseMode(this.mode) || !this.gun || !this.save) return;
+    this.save.data.meta.ammoStock = this.gun.collectAmmoStock();
+    this.save.save();
+  }
+
   /** 结束一局：true 胜利 / false 阵亡 */
   _endMatch(win) {
     this.stats.endedAt = performance.now();
-    this._resetRunState();
+    this._persistAmmoStock();
     this.state = 'result';
     this.input.enabled = false;
     this.input.releaseLock();
@@ -1009,7 +1007,11 @@ export class Game {
       // 尚未接入的交互（背包 / 地图 / 面板 / 技能）
       if (input.consumeAction('backpack')) this._featureSoon('背包', '物资系统开发中');
       if (input.consumeAction('map')) this._featureSoon('地图', '战术地图开发中');
-      if (input.consumeAction('panel')) this._openGrowthPanel();
+      if (input.consumeAction('panel')) {
+        // 守城模式：TAB = 常驻军需商店；其他模式：TAB = 成长面板
+        if (this.defense) this._openDefenseShop();
+        else this._openGrowthPanel();
+      }
       for (let i = 1; i <= 7; i++) {
         if (input.consumeAction('skill' + i)) this._featureSoon(`技能 ${i}`, '技能系统开发中');
       }

@@ -21,6 +21,8 @@ export class SupplyManager {
     this.playerHealth = opts.playerHealth;
     this.hud = opts.hud;
     this.audio = opts.audio;
+    // 科研·后勤：掉落率倍率（1 = 基础）
+    this.dropChanceMul = 1;
 
     this.group = new THREE.Group();
     this.points = [];

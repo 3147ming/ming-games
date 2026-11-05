@@ -365,7 +365,8 @@ export const MATCH = {
   spawnGap: 0.7,         // 同波内补位刷新的最小间隔
   minSpawnDist: 13,      // 出生点与玩家的最小距离
   fallbackSpawnDist: 8,  // 所有出生点都太近时的兜底距离
-  waveClearAmmo: 60,     // 每波肃清补给：备弹
+  waveClearAmmo: 60,     // 每波肃清补给：备弹（守城）
+  waveClearAmmoSmall: 8, // 闯关 / 无尽：小量免费补给（弹药主要靠购买与掉落）
   waveClearArmor: 20,    // 每波肃清补给：护甲
   grades: [
     { grade: 'S', min: 2400 },
@@ -381,6 +382,7 @@ export const SUPPLY = {
   respawnSec: 24,        // 被拾取后重新刷新的时间
   types: {
     ammo:  { label: '弹药箱', hint: '+90 发备弹',   ammo: 90,  heal: 0,  armor: 0,  color: 0x4f7a3a },
+    ammoSmall: { label: '弹药包', hint: '+10 发备弹', ammo: 10, heal: 0,  armor: 0,  color: 0x5d8a45 },
     med:   { label: '医疗包', hint: '+45 生命',     ammo: 0,   heal: 45, armor: 0,  color: 0xb43a34 },
     armor: { label: '护甲板', hint: '+35 护甲',     ammo: 0,   heal: 0,  armor: 35, color: 0x3a5fb4 },
     cache: { label: '物资箱', hint: '+60 弹药 +30 生命 +25 护甲', ammo: 60, heal: 30, armor: 25, color: 0xb8862e },
@@ -406,50 +408,51 @@ export const DROP = {
   // 掉落物在地面存在的时间（秒）
   lifetime: 30,
   // 每只敌人死亡时的掉落表
+  // 普通敌人只掉"小弹药包"（10 发），避免免费弹药冲垮局外弹药经济
   byType: {
     walker: {
       drops: [
-        { type: 'ammo',  chance: 0.75 },
-        { type: 'med',   chance: 0.22 },
+        { type: 'ammoSmall', chance: 0.20 },
+        { type: 'med',       chance: 0.15 },
       ],
     },
     swift: {
       drops: [
-        { type: 'ammo',  chance: 0.8 },
-        { type: 'med',   chance: 0.18 },
+        { type: 'ammoSmall', chance: 0.22 },
+        { type: 'med',       chance: 0.12 },
       ],
     },
     brute: {
       drops: [
-        { type: 'ammo',  chance: 0.8 },
-        { type: 'armor', chance: 0.7 },
-        { type: 'med',   chance: 0.5 },
+        { type: 'ammoSmall', chance: 0.35 },
+        { type: 'armor',     chance: 0.55 },
+        { type: 'med',       chance: 0.4 },
       ],
     },
     spitter: {
       drops: [
-        { type: 'ammo',  chance: 0.6 },
-        { type: 'med',   chance: 0.3 },
+        { type: 'ammoSmall', chance: 0.18 },
+        { type: 'med',       chance: 0.22 },
       ],
     },
     bomber: {
       drops: [
-        { type: 'ammo',  chance: 0.7 },
+        { type: 'ammoSmall', chance: 0.22 },
       ],
     },
     howler: {
       drops: [
-        { type: 'med',   chance: 0.7 },
-        { type: 'ammo',  chance: 0.55 },
+        { type: 'med',       chance: 0.55 },
+        { type: 'ammoSmall', chance: 0.2 },
       ],
     },
-    // 首领级：必掉综合物资箱 + 医疗 + 护甲
+    // 首领级：必掉综合物资箱 + 医疗 + 护甲 + 一箱完整弹药
     boss: {
       drops: [
         { type: 'cache', chance: 1.0 },
         { type: 'med',   chance: 1.0 },
         { type: 'armor', chance: 1.0 },
-        { type: 'ammo',  chance: 0.8 },
+        { type: 'ammo',  chance: 1.0 },
       ],
     },
   },

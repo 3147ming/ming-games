@@ -419,7 +419,7 @@ export class DefenseManager {
     if (w.overheated || w.ammo <= 0 || w.cooldown > 0) {
       if (w.wasTriggered !== true) {
         w.wasTriggered = true;
-        if (w.ammo <= 0) this._toast(`${w.cfg.name} 弹药耗尽`, '波间商店可补给');
+        if (w.ammo <= 0) this._toast(`${w.cfg.name} 弹药耗尽`, '按 TAB 打开战地军需补给');
         else if (w.overheated) this._toast(`${w.cfg.name} 过热`, '松开扳机等待降温');
       }
       return;

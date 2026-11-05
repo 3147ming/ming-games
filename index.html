@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>仓库行动 - 丧尸生存 FPS</title>
+  <title>行动 - 丧尸生存 FPS</title>
   <link rel="icon" href="data:," />
   <link rel="stylesheet" href="./styles/hud.css" />
   <!--
@@ -119,8 +119,8 @@
   <!-- ===================== 加载界面 ===================== -->
   <div id="loading" class="overlay">
     <div class="panel loading-panel">
-      <h1 class="game-title">仓库行动</h1>
-      <p class="game-sub">WAREHOUSE STRIKE · 丧尸生存</p>
+      <h1 class="game-title">行动</h1>
+      <p class="game-sub">OPERATION · 丧尸生存</p>
       <div class="loading-bar"><i id="loading-fill"></i></div>
       <p class="loading-text" id="loading-text">正在加载资源 0%</p>
       <p class="loading-hint">首次加载需要下载货场素材，请稍候…</p>
@@ -132,8 +132,8 @@
     <div class="panel lobby-panel">
       <header class="lobby-head">
         <div>
-          <h1 class="game-title">仓库行动</h1>
-          <p class="game-sub">WAREHOUSE STRIKE · 丧尸生存</p>
+          <h1 class="game-title">行动</h1>
+          <p class="game-sub">OPERATION · 丧尸生存</p>
         </div>
         <div class="lobby-res">
           <span class="res-item"><i class="res-dot core"></i>丧尸核心 <b id="lobby-cores">0</b></span>
@@ -146,6 +146,8 @@
         <nav class="lobby-nav" id="lobby-nav">
           <button class="nav-item active" data-tab="battle">作战模式</button>
           <button class="nav-item" data-tab="missions">任务奖励</button>
+          <button class="nav-item" data-tab="exchange">物资交易所</button>
+          <button class="nav-item" data-tab="research">科研所</button>
           <button class="nav-item" data-tab="armory">军械库</button>
           <button class="nav-item" data-tab="mech">机甲库</button>
           <button class="nav-item" data-tab="talent">身体觉醒</button>
@@ -161,7 +163,7 @@
                 <span class="mode-badge">主线</span>
                 <h3>闯关行动</h3>
                 <p>5 个区域逐关推进，最终在决斗场遭遇首领。每关有独立地图与刷怪配置。</p>
-                <p class="mode-meta">5 关 · 首领战 · 局间商店</p>
+                <p class="mode-meta">5 关 · 首领战 · 局外养成</p>
               </div>
               <div class="mode-card" data-mode="endless">
                 <span class="mode-badge">无限</span>
@@ -215,7 +217,39 @@
             </div>
             <div class="mission-list" id="mission-list"></div>
             <p class="mission-feedback" id="mission-feedback"></p>
-            <p class="menu-foot">金币用于守城模式局内商店与人机雇佣 · 声望用于雇佣人机 · 材料用于觉醒 / 机甲 / 科研</p>
+            <p class="menu-foot">金币用于守城模式局内商店与人机雇佣 · 声望用于解锁功能 · 材料用于觉醒 / 机甲 / 科研</p>
+          </div>
+
+          <!-- 物资交易所 -->
+          <div class="tab-page" id="tab-exchange">
+            <div class="mission-head-row">
+              <h3>物资交易所</h3>
+              <span class="muted">金币采购备弹与材料 · 材料价格随购买次数递增 · 三币互换有买卖差价</span>
+            </div>
+            <div class="exchange-block">
+              <h4>备弹补给（闯关 / 无尽生效）</h4>
+              <div class="shop-grid" id="exchange-ammo"></div>
+            </div>
+            <div class="exchange-block">
+              <h4>材料采购</h4>
+              <div class="shop-grid" id="exchange-materials"></div>
+            </div>
+            <div class="exchange-block">
+              <h4>货币兑换</h4>
+              <div class="shop-grid" id="exchange-currency"></div>
+            </div>
+            <p class="mission-feedback" id="exchange-feedback"></p>
+          </div>
+
+          <!-- 科研所 -->
+          <div class="tab-page" id="tab-research">
+            <div class="mission-head-row">
+              <h3>科研所</h3>
+              <span class="muted">消耗科研材料与金币 · 声望 / 等级 / 属性达标后解锁研究线</span>
+            </div>
+            <div class="research-list" id="research-list"></div>
+            <p class="mission-feedback" id="research-feedback"></p>
+            <p class="menu-foot">科研提供永久加成，同时是高级能力的前置门槛 · 高级研究需要首领核心与地图材料</p>
           </div>
 
           <!-- 军械库（枪械改装） -->

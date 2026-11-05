@@ -1,5 +1,5 @@
 /* =========================================================
-   仓库行动 HUD 样式
+   行动 HUD 样式
    纯 CSS，无外部依赖；使用 CSS 变量便于统一调整
    ========================================================= */
 :root {
@@ -1318,6 +1318,38 @@ html, body {
   color: var(--accent);
 }
 
+/* 大厅：物资交易所 / 科研所 */
+.exchange-block { margin-bottom: 18px; }
+.exchange-block h4 {
+  margin-bottom: 8px;
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: var(--accent);
+}
+.research-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  max-height: 56vh;
+  overflow-y: auto;
+}
+.research-card {
+  padding: 12px 14px;
+  background: rgba(18, 24, 30, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-left: 3px solid var(--accent);
+}
+.research-card.locked { opacity: 0.6; }
+.research-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.research-head h3 { font-size: 14px; letter-spacing: 2px; color: #fff; }
+.research-lv { font-family: "Consolas", monospace; color: var(--accent); font-size: 12px; }
+.research-desc { margin: 6px 0 4px; font-size: 11px; line-height: 1.6; color: var(--muted); }
+.research-need { margin: 0 0 10px; font-size: 11px; line-height: 1.6; color: #b9c6d0; }
+.armory-slot.locked { opacity: 0.75; }
+.armory-lock-hint { margin: 9px 0; font-size: 11px; color: var(--muted); }
+.armory-option.uncrafted { border-style: dashed; opacity: 0.8; }
+.armory-option.uncrafted b { color: var(--muted); }
+
 /* 小屏适配 */
 @media (max-width: 720px) {
   .vitals { width: 210px; top: 16px; left: 16px; padding: 10px 12px; }
@@ -1332,6 +1364,7 @@ html, body {
   .lobby-head { flex-direction: column; align-items: flex-start; gap: 10px; }
   .lobby-body { grid-template-columns: 1fr; gap: 14px; }
   .lobby-nav { flex-direction: row; flex-wrap: wrap; }
+  .research-list { grid-template-columns: 1fr; }
   .nav-item { flex: 1 1 auto; text-align: center; border-left: 1px solid transparent; border-bottom: 3px solid transparent; padding: 10px; font-size: 12px; }
   .nav-item.active { border-left-color: transparent; border-bottom-color: var(--accent); }
   .mode-cards,

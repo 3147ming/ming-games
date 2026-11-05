@@ -53,37 +53,37 @@ export const MATERIAL_SHOP = {
     name: '觉醒材料',
     basePrice: 600,
     priceStep: 300,
-    unlock: { reputation: 50, level: 3 },
+    unlock: { reputation: 20, level: 3 },
   },
   mecha: {
     name: '机甲材料',
     basePrice: 900,
     priceStep: 500,
-    unlock: { reputation: 150, level: 8 },
+    unlock: { reputation: 60, level: 8 },
   },
   researchAmmo: {
     name: '弹道研究数据',
     basePrice: 500,
     priceStep: 250,
-    unlock: { reputation: 200, level: 10 },
+    unlock: { reputation: 60, level: 10 },
   },
   researchCombat: {
     name: '战斗研究数据',
     basePrice: 500,
     priceStep: 250,
-    unlock: { reputation: 200, level: 10 },
+    unlock: { reputation: 60, level: 10 },
   },
   researchLogistics: {
     name: '后勤研究数据',
     basePrice: 500,
     priceStep: 250,
-    unlock: { reputation: 200, level: 10 },
+    unlock: { reputation: 60, level: 10 },
   },
   bossCore: {
     name: '首领核心',
     basePrice: 3000,
     priceStep: 1500,
-    unlock: { reputation: 500, level: 20 },
+    unlock: { reputation: 200, level: 20 },
   },
 };
 
@@ -103,7 +103,7 @@ export const EXCHANGE_OPS = [
 ];
 
 /** 货币兑换整体解锁门槛 */
-export const EXCHANGE_UNLOCK = { reputation: 30, level: 2 };
+export const EXCHANGE_UNLOCK = { reputation: 20, level: 2 };
 
 /**
  * 科研所：6 条研究线，各 5 级。
@@ -116,7 +116,7 @@ export const RESEARCH = {
     name: '弹道研究',
     desc: '备弹上限 +20% · 换弹速度 +5% / 级',
     material: 'researchAmmo',
-    unlock: { reputation: 100, level: 5, attr: { dmg: 3 } },
+    unlock: { reputation: 40, level: 5, attr: { dmg: 3 } },
     levels: [
       { coins: 200, material: 1 },
       { coins: 350, material: 2 },
@@ -129,9 +129,9 @@ export const RESEARCH = {
   firepower: {
     id: 'firepower',
     name: '火力研究',
-    desc: '武器伤害 +2% · 暴击率 +1.5% / 级',
+    desc: '武器伤害 +2% · 暴击率 +2% / 级',
     material: 'researchCombat',
-    unlock: { reputation: 150, level: 8, attr: { dmg: 5 } },
+    unlock: { reputation: 60, level: 8, attr: { dmg: 5 } },
     levels: [
       { coins: 250, material: 1 },
       { coins: 400, material: 2 },
@@ -139,14 +139,14 @@ export const RESEARCH = {
       { coins: 900, material: 5, bossCore: 1 },
       { coins: 1400, material: 8, bossCore: 1, map: 'mapDock' },
     ],
-    effects: { dmgMul: 0.02, critChance: 0.015 },
+    effects: { dmgMul: 0.02, critChance: 0.02 },
   },
   survival: {
     id: 'survival',
     name: '生存研究',
     desc: '最大生命 +8 · 最大护甲 +4 / 级',
     material: 'researchLogistics',
-    unlock: { reputation: 120, level: 6, attr: { hp: 3 } },
+    unlock: { reputation: 40, level: 6, attr: { hp: 3 } },
     levels: [
       { coins: 200, material: 1 },
       { coins: 350, material: 2 },
@@ -161,7 +161,7 @@ export const RESEARCH = {
     name: '后勤研究',
     desc: '敌人掉落率 +8% / 级',
     material: 'researchLogistics',
-    unlock: { reputation: 120, level: 6, attr: { speed: 3 } },
+    unlock: { reputation: 40, level: 6, attr: { speed: 3 } },
     levels: [
       { coins: 200, material: 1 },
       { coins: 350, material: 2 },
@@ -176,7 +176,7 @@ export const RESEARCH = {
     name: '弱点研究',
     desc: '爆头伤害 +5% · 首领伤害 +5% / 级',
     material: 'researchCombat',
-    unlock: { reputation: 250, level: 12, attr: { dmg: 8 } },
+    unlock: { reputation: 100, level: 12, attr: { dmg: 8 } },
     levels: [
       { coins: 350, material: 2 },
       { coins: 550, material: 3 },
@@ -191,7 +191,7 @@ export const RESEARCH = {
     name: '收益研究',
     desc: '结算金币 +5% · 经验 +5% / 级',
     material: 'researchAmmo',
-    unlock: { reputation: 180, level: 10, attr: { speed: 5 } },
+    unlock: { reputation: 60, level: 10, attr: { speed: 5 } },
     levels: [
       { coins: 250, material: 1 },
       { coins: 400, material: 2 },
@@ -236,9 +236,9 @@ export function researchTotals(data = {}) {
 
 /** 机甲额外解锁门槛（声望 / 等级 / 属性点） */
 export const MECH_GATES = {
-  armor: { reputation: 300, level: 10, attr: { hp: 5 } },
-  heavy: { reputation: 500, level: 18, attr: { hp: 10 } },
-  turret: { reputation: 200, level: 6, attr: { dmg: 3 } },
+  armor: { reputation: 120, level: 10, attr: { hp: 5 } },
+  heavy: { reputation: 200, level: 18, attr: { hp: 10 } },
+  turret: { reputation: 60, level: 6, attr: { dmg: 3 } },
 };
 
 /** 枪械改装：槽位解锁金币 / 配件制造 / 元素配件声望 */
@@ -255,4 +255,4 @@ export const MOD_UNLOCK = {
 };
 
 /** 科研所整体解锁门槛 */
-export const RESEARCH_UNLOCK = { reputation: 100, level: 5 };
+export const RESEARCH_UNLOCK = { reputation: 60, level: 5 };

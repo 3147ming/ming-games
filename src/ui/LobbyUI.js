@@ -4,6 +4,7 @@
  * 后续 P3/P4/P5 会把机甲、天赋、商店的真实交互接到这里。
  */
 import { ATTRIBUTES, MECHS, TALENTS, talentCost } from '../config/growth.js';
+import { MECH_GATES } from '../config/progression.js';
 export class LobbyUI {
   constructor() {
     this.root = document.getElementById('menu');
@@ -11,6 +12,8 @@ export class LobbyUI {
     this.pages = {
       battle: document.getElementById('tab-battle'),
       missions: document.getElementById('tab-missions'),
+      exchange: document.getElementById('tab-exchange'),
+      research: document.getElementById('tab-research'),
       armory: document.getElementById('tab-armory'),
       mech: document.getElementById('tab-mech'),
       talent: document.getElementById('tab-talent'),
@@ -159,11 +162,15 @@ export class LobbyUI {
       const def = MECHS[id];
       if (!def) continue;
       const unlocked = save.hasMech(id);
+      const gate = MECH_GATES[id];
       card.classList.toggle('locked', !unlocked);
       const cost = card.querySelector('.mech-cost');
       const btn = card.querySelector('.mech-buy');
       if (cost) {
-        cost.textContent = unlocked ? '已解锁 · 局内 TAB 召唤' : `${def.cost.coins} 金币 + ${def.cost.mecha} 机甲材料`;
+        const gateText = gate ? ` · 解锁消耗：${save.requirementText(gate)}` : '';
+        cost.textContent = unlocked
+          ? '已解锁 · 局内 TAB 召唤'
+          : `${def.cost.coins} 金币 + ${def.cost.mecha} 机甲材料${gateText}`;
       }
       if (btn) {
         btn.textContent = unlocked ? '已解锁' : '解锁';

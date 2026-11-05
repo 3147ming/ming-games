@@ -7,6 +7,13 @@ import assert from 'node:assert/strict';
 import { endlessWave, ENDLESS, BALANCE, DEFENSE, DEFENSE_WAVES, defenseWave, isDefenseMode } from '../src/config/modes.js';
 import { SaveManager, SAVE_KEY, defaultSave, SAVE_VERSION } from '../src/core/SaveManager.js';
 import { DEFAULT_BINDS, normalizeBinds, formatBind } from '../src/config/keybinds.js';
+import { RUN_REWARDS } from '../src/config/economy.js';
+import { AMMO_SHOP, MATERIAL_SHOP, MOD_UNLOCK } from '../src/config/progression.js';
+
+/** 按配置计算单局声望，避免平衡调整后测试写死过期数值 */
+const repOf = (kills, waves, win) => Math.floor(kills / RUN_REWARDS.repPerKillDiv)
+  + Math.floor(waves / RUN_REWARDS.repPerWaveDiv)
+  + (win ? RUN_REWARDS.repWin : RUN_REWARDS.repLose);
 
 class MemStorage {
   constructor() { this.map = new Map(); }
@@ -174,10 +181,10 @@ test('经济：单局结算金币 / 声望 / 核心', () => {
   const s = new SaveManager(new MemStorage());
   const rw = s.recordRun({ kills: 12, seconds: 90, level: 1, wave: 3, win: true });
   assert.equal(rw.coins, 166);       // 12*3 + 3*10 + 100
-  assert.equal(rw.reputation, 4);    // 0 + 1 + 3
+  assert.equal(rw.reputation, repOf(12, 3, true));
   assert.equal(rw.cores, 2);
   assert.equal(s.data.meta.coins, 166);
-  assert.equal(s.data.meta.reputation, 4);
+  assert.equal(s.data.meta.reputation, repOf(12, 3, true));
   assert.equal(s.data.meta.cores, 2);
 });
 
@@ -185,7 +192,7 @@ test('经济：失败结算仍给保底金币与声望', () => {
   const s = new SaveManager(new MemStorage());
   const rw = s.recordRun({ kills: 0, seconds: 20, level: 1, wave: 0, win: false });
   assert.equal(rw.coins, 15);
-  assert.equal(rw.reputation, 1);
+  assert.equal(rw.reputation, repOf(0, 0, false));
   assert.equal(rw.cores, 0);
 });
 
@@ -222,4 +229,103 @@ test('经济：消费余额不足时不扣款', () => {
   assert.equal(s.spend({ coins: 300, reputation: 5 }), true);
   assert.equal(s.data.meta.coins, 0);
   assert.equal(s.data.meta.reputation, 0);
+});
+
+test('弹药：局外采购按口径计价并受库存上限约束', () => {
+  const s = new SaveManager(new MemStorage());
+  const def = AMMO_SHOP.rifle;
+  s.data.meta.coins = 1000;
+  const before = s.data.meta.ammoStock.rifle;
+  const res = s.buyAmmo('rifle');
+  assert.equal(res.ok, true);
+  assert.equal(s.data.meta.coins, 1000 - def.price);
+  assert.equal(s.data.meta.ammoStock.rifle, before + def.rounds);
+
+  s.data.meta.ammoStock.rifle = def.cap;
+  const full = s.buyAmmo('rifle');
+  assert.equal(full.ok, false);
+  assert.equal(s.data.meta.ammoStock.rifle, def.cap);
+});
+
+test('材料：采购价格随购买次数递增，余额不足不扣款', () => {
+  const s = new SaveManager(new MemStorage());
+  s.data.meta.coins = 2000;
+  s.data.meta.reputation = 50;
+  s.data.progress.level = 5;
+  const def = MATERIAL_SHOP.awaken;
+  const p1 = s.materialShopPrice('awaken');
+  assert.equal(s.buyMaterial('awaken').ok, true);
+  const p2 = s.materialShopPrice('awaken');
+  assert.equal(p2, p1 + def.priceStep);
+  assert.equal(s.materialCount('awaken'), 1);
+
+  s.data.meta.coins = 0;
+  const fail = s.buyMaterial('awaken');
+  assert.equal(fail.ok, false);
+  assert.equal(s.materialCount('awaken'), 1);
+});
+
+test('货币：买卖差价与门槛', () => {
+  const s = new SaveManager(new MemStorage());
+  s.data.progress.level = 2;
+  s.data.meta.reputation = 20;
+  s.data.meta.cores = 1;
+  s.data.meta.coins = 0;
+  assert.equal(s.exchange('sellCoreCoins').ok, true);
+  assert.equal(s.data.meta.cores, 0);
+  assert.equal(s.data.meta.coins, 10000);
+
+  s.data.meta.coins = 50000;
+  assert.equal(s.exchange('buyCoreCoins').ok, true);
+  assert.equal(s.data.meta.cores, 1);
+  assert.equal(s.data.meta.coins, 0);
+});
+
+test('改装：槽位金币解锁 + 普通配件制造 + 元素配件门槛', () => {
+  const s = new SaveManager(new MemStorage());
+  s.data.meta.coins = 5000;
+  assert.equal(s.isModSlotUnlocked('optic'), false);
+  assert.equal(s.unlockModSlot('optic').ok, true);
+  assert.equal(s.isModSlotUnlocked('optic'), true);
+  assert.equal(s.data.meta.coins, 5000 - MOD_UNLOCK.slots.optic);
+
+  assert.equal(s.craftAttachment('optic', 'reddot').ok, true);
+  assert.equal(s.isAttachmentCrafted('reddot'), true);
+
+  s.data.meta.materials.bossCore = 0;
+  s.data.meta.reputation = 0;
+  assert.equal(s.craftAttachment('muzzle', 'muzzle_fire').ok, false);   // 槽位未解锁
+  assert.equal(s.unlockModSlot('muzzle').ok, true);
+  const noRep = s.craftAttachment('muzzle', 'muzzle_fire');
+  assert.equal(noRep.ok, false);
+  assert.equal(s.isAttachmentCrafted('muzzle_fire'), false);
+});
+
+test('科研：门槛满足后升级并消耗科研材料', () => {
+  const s = new SaveManager(new MemStorage());
+  s.data.meta.reputation = 0;
+  s.data.progress.level = 1;
+  assert.equal(s.upgradeResearch('ballistics').ok, false);
+
+  s.data.meta.reputation = 60;
+  s.data.progress.level = 10;
+  s.data.permanent.dmg = 5;
+  s.data.meta.coins = 1000;
+  s.data.meta.materials.researchAmmo = 3;
+  const res = s.upgradeResearch('ballistics');
+  assert.equal(res.ok, true);
+  assert.equal(s.researchLevel('ballistics'), 1);
+  assert.equal(s.data.meta.materials.researchAmmo, 2);
+  assert.equal(s.data.meta.coins, 800);
+});
+
+test('存档：旧版单一 research 材料迁移为研究数据', () => {
+  const storage = new MemStorage();
+  const legacy = defaultSave();
+  legacy.meta.materials = { awaken: 1, mecha: 2, research: 5 };
+  storage.setItem(SAVE_KEY, JSON.stringify(legacy));
+  const s = new SaveManager(storage);
+  assert.equal(s.materialCount('awaken'), 1);
+  assert.equal(s.materialCount('mecha'), 2);
+  assert.equal(s.materialCount('researchAmmo'), 5);
 });

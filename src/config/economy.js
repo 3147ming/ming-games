@@ -12,10 +12,10 @@ export const RUN_REWARDS = {
   coinPerWave: 10,
   coinWin: 100,
   coinLose: 15,
-  repPerKillDiv: 25,     // 每 25 击杀 +1 声望
-  repPerWaveDiv: 3,      // 每 3 波 +1 声望
-  repWin: 3,
-  repLose: 1,
+  repPerKillDiv: 12,     // 每 12 击杀 +1 声望
+  repPerWaveDiv: 2,      // 每 2 波 +1 声望
+  repWin: 5,
+  repLose: 2,
   coresPerWin: 2,
 };
 

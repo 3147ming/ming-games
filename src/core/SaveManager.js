@@ -43,7 +43,8 @@ export function defaultSave() {
       },
       claimedMissions: [],
       // 局外备弹库存（按武器口径；闯关/无尽开局带入）
-      ammoStock: { rifle: 0, pistol: 0, shotgun: 0, sniper: 0 },
+      // 新兵配发：够打第一局，之后需要采购或捡掉落
+      ammoStock: { rifle: 60, pistol: 30, shotgun: 18, sniper: 10 },
       // 材料采购累计次数（价格递增）
       shopBuys: {},
     },
@@ -56,6 +57,8 @@ export function defaultSave() {
       levels: 1,
       modSlots: [],
       attachments: [],
+      // 一次性解锁权限（声望门槛达成后永久保留，避免扣声望后倒退）
+      features: [],
     },
     // 科研等级（6 条线，各 0~5）
     research: {
@@ -296,6 +299,15 @@ export class SaveManager {
     if (!def) return { ok: false, message: '未知机甲' };
     const mechs = this.data.unlocks.mechs || [];
     if (mechs.includes(id)) return { ok: false, message: '已解锁' };
+    const gate = MECH_GATES[id];
+    if (gate && !this.hasFeature('mech_' + id)) {
+      if (!this.meets(gate)) return { ok: false, message: `需要 ${this.requirementText(gate)}` };
+      // 声望作为一次性解锁消耗
+      if (!this.spend({ reputation: gate.reputation || 0 })) {
+        return { ok: false, message: `需要 ${gate.reputation} 声望` };
+      }
+      this.grantFeature('mech_' + id);
+    }
     const cost = def.cost;
     if (!this.spend({ coins: cost.coins, materials: { mecha: cost.mecha } })) {
       return { ok: false, message: `需要 ${cost.coins} 金币 + ${cost.mecha} 机甲材料` };
@@ -303,6 +315,257 @@ export class SaveManager {
     mechs.push(id);
     this.save();
     return { ok: true, message: `已解锁：${def.name}` };
+  }
+
+  // ---------------- 材料 / 备弹 / 兑换 / 解锁 / 科研 ----------------
+  /** 门槛检查：声望 / 等级 / 局外属性点 */
+  meets(req = {}) {
+    const meta = this.data.meta;
+    if (req.reputation != null && (meta.reputation || 0) < req.reputation) return false;
+    if (req.level != null && this.data.progress.level < req.level) return false;
+    if (req.attr) {
+      for (const [key, value] of Object.entries(req.attr)) {
+        if ((this.data.permanent[key] || 0) < value) return false;
+      }
+    }
+    return true;
+  }
+
+  hasFeature(id) {
+    return (this.data.unlocks.features || []).includes(id);
+  }
+
+  /** 达成门槛后永久记录权限（声望被扣也不会倒退） */
+  grantFeature(id) {
+    if (this.hasFeature(id)) return;
+    this.data.unlocks.features.push(id);
+    this.save();
+  }
+
+  /** 门槛文本（用于 UI 与失败提示） */
+  requirementText(req = {}) {
+    const parts = [];
+    if (req.reputation != null) parts.push(`声望 ${req.reputation}`);
+    if (req.level != null) parts.push(`Lv.${req.level}`);
+    if (req.attr) {
+      for (const [key, value] of Object.entries(req.attr)) {
+        parts.push(`${ATTRIBUTES[key]?.name || key} ${value} 点`);
+      }
+    }
+    return parts.length ? parts.join(' · ') : '无门槛';
+  }
+
+  materialName(id) {
+    return MATERIALS[id]?.name || id;
+  }
+
+  materialCount(id) {
+    return this.data.meta.materials[id] || 0;
+  }
+
+  /** 发放材料（掉落 / 任务） */
+  addMaterial(id, amount = 1) {
+    if (!(id in this.data.meta.materials)) return false;
+    this.data.meta.materials[id] += Math.max(0, amount);
+    this.save();
+    return true;
+  }
+
+  /** 材料当前售价（按累计购买次数递增） */
+  materialShopPrice(id) {
+    const def = MATERIAL_SHOP[id];
+    if (!def) return 0;
+    const key = def.material || id;
+    return materialPrice(def, this.data.meta.shopBuys[key] || 0);
+  }
+
+  /** 商店档位是否已解锁（一次性权限，达成后永久保留） */
+  materialUnlocked(id) {
+    const def = MATERIAL_SHOP[id];
+    if (!def) return false;
+    return this.hasFeature('shop_' + id) || this.meets(def.unlock);
+  }
+
+  /** 购买一份材料：金币够、门槛达标才成交 */
+  buyMaterial(id) {
+    const def = MATERIAL_SHOP[id];
+    if (!def) return { ok: false, message: '未知商品' };
+    if (!this.hasFeature('shop_' + id)) {
+      if (!this.meets(def.unlock)) {
+        return { ok: false, message: `购买权限需要 ${this.requirementText(def.unlock)}` };
+      }
+      if (!this.spend({ reputation: def.unlock.reputation || 0 })) {
+        return { ok: false, message: `解锁该档位需要 ${def.unlock.reputation} 声望` };
+      }
+      this.grantFeature('shop_' + id);
+    }
+    const key = def.material || id;
+    const price = this.materialShopPrice(id);
+    if ((this.data.meta.coins || 0) < price) {
+      return { ok: false, message: `金币不足（需要 ${price}）` };
+    }
+    this.data.meta.coins -= price;
+    this.data.meta.shopBuys[key] = (this.data.meta.shopBuys[key] || 0) + 1;
+    this.data.meta.materials[key] = (this.data.meta.materials[key] || 0) + 1;
+    this.save();
+    return { ok: true, message: `购入 ${def.name}（${price} 金币）`, price };
+  }
+
+  /** 购买一格备弹（按口径），库存上限内 */
+  buyAmmo(weaponId) {
+    const def = AMMO_SHOP[weaponId];
+    if (!def) return { ok: false, message: '未知弹种' };
+    const stock = this.data.meta.ammoStock[weaponId] || 0;
+    if (stock >= def.cap) return { ok: false, message: `${def.name}库存已满` };
+    if ((this.data.meta.coins || 0) < def.price) {
+      return { ok: false, message: `金币不足（需要 ${def.price}）` };
+    }
+    this.data.meta.coins -= def.price;
+    this.data.meta.ammoStock[weaponId] = Math.min(def.cap, stock + def.rounds);
+    this.save();
+    return { ok: true, message: `补充 ${def.name} +${def.rounds}`, price: def.price };
+  }
+
+  exchangeUnlocked() {
+    return this.hasFeature('exchange') || this.meets(EXCHANGE_UNLOCK);
+  }
+
+  /** 货币兑换（双向差价） */
+  exchange(opId) {
+    const op = EXCHANGE_OPS.find((o) => o.id === opId);
+    if (!op) return { ok: false, message: '未知兑换' };
+    if (!this.exchangeUnlocked()) {
+      return { ok: false, message: `兑换功能需要 ${this.requirementText(EXCHANGE_UNLOCK)}` };
+    }
+    if (!this.hasFeature('exchange')) {
+      if (!this.spend({ reputation: EXCHANGE_UNLOCK.reputation || 0 })) {
+        return { ok: false, message: `解锁兑换功能需要 ${EXCHANGE_UNLOCK.reputation} 声望` };
+      }
+      this.grantFeature('exchange');
+    }
+    const meta = this.data.meta;
+    const names = { coins: '金币', reputation: '声望', cores: '核心' };
+    if ((meta[op.from] || 0) < op.fromAmount) {
+      return { ok: false, message: `${names[op.from] || op.from} 不足（需要 ${op.fromAmount}）` };
+    }
+    meta[op.from] -= op.fromAmount;
+    meta[op.to] = (meta[op.to] || 0) + op.toAmount;
+    this.save();
+    return { ok: true, message: `${op.label} 完成` };
+  }
+
+  // ---------------- 枪械改装解锁 ----------------
+  isModSlotUnlocked(slotId) {
+    return (this.data.unlocks.modSlots || []).includes(slotId);
+  }
+
+  unlockModSlot(slotId) {
+    const price = MOD_UNLOCK.slots[slotId];
+    if (price == null) return { ok: false, message: '未知槽位' };
+    if (this.isModSlotUnlocked(slotId)) return { ok: false, message: '槽位已解锁' };
+    if (!this.spend({ coins: price })) {
+      return { ok: false, message: `需要 ${price} 金币解锁槽位` };
+    }
+    this.data.unlocks.modSlots.push(slotId);
+    this.save();
+    return { ok: true, message: '槽位已解锁' };
+  }
+
+  isAttachmentCrafted(attachmentId) {
+    if (attachmentId === 'none') return true;
+    return (this.data.unlocks.attachments || []).includes(attachmentId);
+  }
+
+  /** 制造配件：普通配件花金币；元素配件额外声望 + 首领核心 */
+  craftAttachment(slotId, attachmentId) {
+    const att = (ATTACHMENTS[slotId] || []).find((a) => a.id === attachmentId);
+    if (!att || att.id === 'none') return { ok: false, message: '无需制造' };
+    if (!this.isModSlotUnlocked(slotId)) {
+      return { ok: false, message: '请先解锁该槽位' };
+    }
+    if (this.isAttachmentCrafted(attachmentId)) {
+      return { ok: false, message: '已拥有该配件' };
+    }
+    if (att.element) {
+      const c = MOD_UNLOCK.elementCraft;
+      const firstElement = !this.hasFeature('elementCraft');
+      if (firstElement && (this.data.meta.reputation || 0) < c.reputation) {
+        return { ok: false, message: `元素配件需要声望 ${c.reputation}` };
+      }
+      if (this.materialCount('bossCore') < c.bossCore) {
+        return { ok: false, message: `需要首领核心 ${c.bossCore}` };
+      }
+      if (!this.spend({ coins: c.coins, reputation: firstElement ? c.reputation : 0, materials: { bossCore: c.bossCore } })) {
+        return { ok: false, message: `需要 ${c.coins} 金币 + ${c.bossCore} 首领核心` };
+      }
+      if (firstElement) this.grantFeature('elementCraft');
+    } else if (!this.spend({ coins: MOD_UNLOCK.craft })) {
+      return { ok: false, message: `需要 ${MOD_UNLOCK.craft} 金币制造` };
+    }
+    this.data.unlocks.attachments.push(attachmentId);
+    this.save();
+    return { ok: true, message: `已制造：${att.name}` };
+  }
+
+  // ---------------- 科研所 ----------------
+  researchLevel(id) {
+    return this.data.research[id] || 0;
+  }
+
+  /** 科研所是否已开放（一次性权限，声望被扣后不倒退） */
+  researchUnlocked() {
+    return this.hasFeature('researchLab') || this.meets(RESEARCH_UNLOCK);
+  }
+
+  /** 研究线是否已解锁（等级 > 0 或已记录权限） */
+  researchLineUnlocked(id) {
+    const def = RESEARCH[id];
+    if (!def) return false;
+    return this.data.research[id] > 0 || this.hasFeature('research_' + id) || this.meets(def.unlock);
+  }
+
+  /** 升级一条研究线；返回 {ok, message} */
+  upgradeResearch(id) {
+    const def = RESEARCH[id];
+    if (!def) return { ok: false, message: '未知研究线' };
+    if (!this.researchUnlocked()) {
+      return { ok: false, message: `科研所需要 ${this.requirementText(RESEARCH_UNLOCK)}` };
+    }
+    this.grantFeature('researchLab');
+    const cur = this.researchLevel(id);
+    if (cur >= def.levels.length) return { ok: false, message: '该研究线已满级' };
+    const firstLine = cur === 0 && !this.hasFeature('research_' + id);
+    if (firstLine && !this.meets(def.unlock)) {
+      return { ok: false, message: `研究线解锁需要 ${this.requirementText(def.unlock)}` };
+    }
+    const cost = def.levels[cur];
+    const mat = def.material;
+    const needMat = cost.material || 0;
+    const repCost = firstLine ? (def.unlock.reputation || 0) : 0;
+    if (this.materialCount(mat) < needMat) {
+      return { ok: false, message: `需要 ${MATERIALS[mat]?.name || mat} ${needMat}` };
+    }
+    if (cost.bossCore && this.materialCount('bossCore') < cost.bossCore) {
+      return { ok: false, message: `需要首领核心 ${cost.bossCore}` };
+    }
+    if (cost.map && this.materialCount(cost.map) < 1) {
+      return { ok: false, message: `需要 ${MATERIALS[cost.map]?.name || cost.map} 1` };
+    }
+    const materials = { [mat]: needMat };
+    if (cost.bossCore) materials.bossCore = cost.bossCore;
+    if (cost.map) materials[cost.map] = 1;
+    if (!this.spend({ coins: cost.coins, reputation: repCost, materials })) {
+      return { ok: false, message: `需要 ${cost.coins} 金币${repCost ? ` + ${repCost} 声望` : ''}` };
+    }
+    this.data.research[id] = cur + 1;
+    if (firstLine) this.grantFeature('research_' + id);
+    this.save();
+    return { ok: true, message: `${def.name} → ${cur + 1} 级` };
+  }
+
+  /** 汇总科研加成 */
+  researchTotals() {
+    return researchTotals(this.data);
   }
 
   /** 机甲是否已解锁 */
@@ -352,8 +615,11 @@ export class SaveManager {
       this.data.unlocks.levels = Math.max(this.data.unlocks.levels, level + 1);
     }
     const rewards = calcRunRewards({ kills, waves: wave || 0, win });
+    // 收益研究：结算金币加成
+    const rt = this.researchTotals();
+    rewards.coins = Math.round(rewards.coins * rt.coinMul);
     this._grantReward(rewards);
-    const xp = runXp({ kills, waves: wave || 0, win });
+    const xp = Math.round(runXp({ kills, waves: wave || 0, win }) * rt.xpMul);
     const up = this.addXp(xp);
     rewards.xp = xp;
     rewards.levelUp = up.points > 0 ? up.points : 0;

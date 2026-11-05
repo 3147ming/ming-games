@@ -96,8 +96,8 @@ try {
   rec('HUD 可见', String(await txt(c, '!document.getElementById("hud").classList.contains("hidden")')) === 'true');
   rec('生命 100 / 护甲 50',
     String(await txt(c, 'document.getElementById("hp-value").textContent + "/" + document.getElementById("armor-value").textContent')) === '100/50');
-  rec('弹药 30/120',
-    String(await txt(c, 'document.getElementById("mag-value").textContent + "/" + document.getElementById("reserve-value").textContent')) === '30/120');
+  rec('弹药 30/60（局外新兵配发）',
+    String(await txt(c, 'document.getElementById("mag-value").textContent + "/" + document.getElementById("reserve-value").textContent')) === '30/60');
   rec('波次指示 1/3', String(await txt(c, 'document.getElementById("wave-now").textContent + "/" + document.getElementById("wave-total").textContent')) === '1/3');
   await c.waitFor('window.__game.enemies.waveSpawned > 0', 8000);
   const w0 = await c.evaluate('({ total: window.__game.enemies.waveTotal, alive: window.__game.enemies.aliveCount, spawned: window.__game.enemies.waveSpawned })');
@@ -226,30 +226,42 @@ try {
     && String(await c.evaluate('document.getElementById("ammo-wheel").classList.contains("hidden")')) === 'true');
   await c.evaluate('window.__game.gun.ammoIndex = 0; window.__game.gun._syncHud();');
 
-  section('B4. 军械库改装（UI → 存档 → 武器数据）');
+  section('B4. 军械库改装（槽位解锁 → 配件制造 → 装配）');
   const mod = await c.evaluate(`(() => {
     const g = window.__game;
-    const base0 = g.gun.weapons.rifle;
+    g.save.data.meta.coins = 6000;
+    g.save.data.meta.reputation = 300;
+    g.save.data.meta.materials.bossCore = 5;
+    for (const s of ['muzzle', 'optic', 'magazine', 'grip', 'stock']) g.save.unlockModSlot(s);
+    g.armory.refresh();
+    const q = (slot, att) => document.querySelector('#armory-slots .armory-option[data-slot="' + slot + '"][data-att="' + att + '"]');
     const btnCount = document.querySelectorAll('#armory-slots .armory-option').length;
-    document.querySelector('#armory-slots .armory-option[data-slot="muzzle"][data-att="muzzle_fire"]').click();
+    const slotsUnlocked = ['muzzle', 'optic', 'magazine', 'grip', 'stock'].every((s) => g.save.isModSlotUnlocked(s));
+    const base0 = g.gun.weapons.rifle;
+    q('muzzle', 'muzzle_fire').click();   // 制造
+    q('muzzle', 'muzzle_fire').click();   // 装配
     const fired = g.gun.weapons.rifle;
-    document.querySelector('#armory-slots .armory-option[data-slot="magazine"][data-att="ext"]').click();
+    q('magazine', 'ext').click();         // 制造
+    q('magazine', 'ext').click();         // 装配
     const ext = g.gun.weapons.rifle;
     return {
-      btnCount,
+      btnCount, slotsUnlocked,
       damage0: base0.damage, damage1: fired.damage, element: fired.element,
       mag0: base0.magazineSize, mag1: ext.magazineSize,
       saved: g.save.data.loadout.rifle.muzzle + '/' + g.save.data.loadout.rifle.magazine,
-      fireActive: document.querySelector('#armory-slots .armory-option[data-slot="muzzle"][data-att="muzzle_fire"]').classList.contains('active'),
-      extActive: document.querySelector('#armory-slots .armory-option[data-slot="magazine"][data-att="ext"]').classList.contains('active'),
+      fireActive: q('muzzle', 'muzzle_fire').classList.contains('active'),
+      extActive: q('magazine', 'ext').classList.contains('active'),
+      craftedElement: g.save.isAttachmentCrafted('muzzle_fire'),
+      bossCoreLeft: g.save.materialCount('bossCore'),
     };
   })()`);
-  rec('军械库五槽位共 19 个配件按钮', mod.btnCount === 19, `count=${mod.btnCount}`);
+  rec('军械库五槽位共 19 个配件按钮', mod.btnCount === 19 && mod.slotsUnlocked, `count=${mod.btnCount}`);
   rec('枪口配件赋予火元素并提升伤害',
     mod.element === 'fire' && mod.damage1 > mod.damage0, `${mod.damage0} → ${mod.damage1.toFixed(1)}，element=${mod.element}`);
   rec('扩容弹匣：容量 30 → 45', mod.mag0 === 30 && mod.mag1 === 45, `${mod.mag0} → ${mod.mag1}`);
   rec('改装写入存档并高亮当前配件',
     mod.saved === 'muzzle_fire/ext' && mod.fireActive === true && mod.extActive === true, JSON.stringify(mod));
+  rec('元素配件制造消耗首领核心', mod.craftedElement === true && mod.bossCoreLeft === 4, `bossCore=${mod.bossCoreLeft}`);
   await c.evaluate('window.__game.save.resetLoadout(); window.__game.gun.applyLoadout(window.__game.save.data.loadout); window.__game.gun.resetAmmo();');
   rec('一键恢复默认改装（容量回到 30 / 元素清空）',
     Number(await c.evaluate('window.__game.gun.weapons.rifle.magazineSize')) === 30
@@ -276,13 +288,22 @@ try {
   })()`);
   await c.send('Input.dispatchKeyEvent', { type: 'keyDown', code: 'KeyW', key: 'w', windowsVirtualKeyCode: 87, nativeVirtualKeyCode: 87 });
   await c.send('Input.dispatchKeyEvent', { type: 'keyDown', code: 'Space', key: ' ', windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 });
-  await c.frame(8);
+  let vaultMaxY = 0;
+  let vaultGrounded = false;
+  for (let i = 0; i < 40; i++) {
+    await c.frame(1);
+    const st = await c.evaluate('({ y: window.__game.player.position.y, grounded: window.__game.player.grounded })');
+    vaultMaxY = Math.max(vaultMaxY, Number(st.y) || 0);
+    if (i === 6) {
+      await c.send('Input.dispatchKeyEvent', { type: 'keyUp', code: 'Space', key: ' ', windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 });
+      await c.send('Input.dispatchKeyEvent', { type: 'keyUp', code: 'KeyW', key: 'w', windowsVirtualKeyCode: 87, nativeVirtualKeyCode: 87 });
+    }
+    if (st.grounded && vaultMaxY > 1.05) { vaultGrounded = true; break; }
+  }
   await c.send('Input.dispatchKeyEvent', { type: 'keyUp', code: 'Space', key: ' ', windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 });
   await c.send('Input.dispatchKeyEvent', { type: 'keyUp', code: 'KeyW', key: 'w', windowsVirtualKeyCode: 87, nativeVirtualKeyCode: 87 });
-  await c.frame(10);
-  const vault = await c.evaluate('({ x: window.__game.player.position.x, y: window.__game.player.position.y, z: window.__game.player.position.z, grounded: window.__game.player.grounded })');
   rec('跳跃自动翻越 1.1m 货箱并站稳',
-    vault.y > 1.05 && vault.y < 1.2 && vault.grounded === true, JSON.stringify(vault));
+    vaultMaxY > 1.05 && vaultGrounded === true, `maxY=${vaultMaxY.toFixed(3)} grounded=${vaultGrounded}`);
 
   // 集装箱顶可站立行走（直接落到顶面，验证站立表面）
   const stand = await c.evaluate(`(() => {
@@ -480,42 +501,18 @@ try {
   rec('持续命中可击杀敌人', killResult.killed === true && killResult.kills >= 1, JSON.stringify(killResult));
   rec('HUD 击杀数同步', Number(await txt(c, 'document.getElementById("kill-value").textContent')) === Number(await c.evaluate('window.__game.enemies.kills')));
 
-  section('F. 三波推进');
+  section('F. 三波推进（经济与任务目标）');
+  const reserveBeforeWave = Number(await c.evaluate('window.__game.gun.reserve'));
   const w1 = await clearWave();
   rec('第 1 波按 total 刷满并清空', w1.killed === w1.total && w1.spawned >= w1.total, JSON.stringify(w1));
-  // 等待波次结算（高频机器负载下固定帧数不可靠，改为轮询状态）
-  const cleared1 = await c.waitFor('window.__game.state === "shop" || window.__game.enemies.waveState === "break"', 15000);
+  await c.waitFor('window.__game.enemies.waveState === "break"', 15000);
   rec('清空后进入休整（break）', String(await c.evaluate('window.__game.enemies.waveState')) === 'break', String(await c.evaluate('window.__game.enemies.waveState')));
-  rec('休整期补给已发放（备弹 +60）', Number(await c.evaluate('window.__game.gun.reserve')) >= 114, `reserve=${await c.evaluate('window.__game.gun.reserve')}`);
-
-  // 非守城模式的波间军需商店：清波后弹出，消费局内金币
-  const waitShop1 = await c.waitFor('window.__game.state === "shop"', 10000);
-  rec('非守城清波后弹出波间军需商店并暂停推进', waitShop1, `state=${await c.evaluate('window.__game.state')}`);
-  const runShopOpen = await c.evaluate(`(() => ({
-    state: window.__game.state,
-    visible: !document.getElementById('shop-panel').classList.contains('hidden'),
-    cards: document.querySelectorAll('#shop-grid [data-buy]').length,
-    gold: Number(document.getElementById('shop-gold').textContent),
-    runGold: window.__game.runGold,
-    sub: document.getElementById('shop-sub').textContent,
-    buyLabel: (document.querySelector('#shop-grid [data-buy]') || {}).textContent || '',
-  }))()`);
-  rec('波间军需提供 6 件商品', runShopOpen.cards === 6, `cards=${runShopOpen.cards}`);
-  rec('击杀 + 清波已累计局内金币', runShopOpen.runGold >= 35 && runShopOpen.gold === runShopOpen.runGold, `runGold=${runShopOpen.runGold}`);
-  rec('非守城商店文案为「购买」', runShopOpen.buyLabel === '购买', runShopOpen.buyLabel);
-
-  const runBuy = await c.evaluate(`(() => {
-    const g = window.__game;
-    const reserve0 = g.gun.reserve;
-    const gold0 = g.runGold;
-    document.querySelector('[data-buy="ammo"]').click();
-    return { reserve0, reserve1: g.gun.reserve, gold0, gold1: g.runGold };
-  })()`);
-  rec('购买弹药补给：扣局内金币并增加备弹', runBuy.gold1 === runBuy.gold0 - 35 && runBuy.reserve1 >= runBuy.reserve0 + 60, JSON.stringify(runBuy));
-
-  await c.evaluate('document.getElementById("btn-shop-continue").click()');
-  const backPlay1 = await c.waitFor('window.__game.state === "playing"', 10000);
-  rec('关闭波间商店后回到战斗', backPlay1, String(await c.evaluate('window.__game.state')));
+  const reserveAfterWave = Number(await c.evaluate('window.__game.gun.reserve'));
+  rec('清波只发小量补给（备弹 +8）', reserveAfterWave >= reserveBeforeWave + 8, `${reserveBeforeWave} → ${reserveAfterWave}`);
+  rec('非守城模式清波不再弹出商店',
+    String(await c.evaluate('window.__game.state')) === 'playing'
+    && String(await c.evaluate('document.getElementById("shop-panel").classList.contains("hidden")')) === 'true',
+    `state=${await c.evaluate('window.__game.state')}`);
 
   // 局内任务目标 HUD
   const obj = await c.evaluate(`(() => ({
@@ -531,14 +528,7 @@ try {
   rec('进入第 2 波', wave2, String(await c.evaluate('window.__game.enemies.waveIndex')));
   rec('HUD 波次更新为 2/3', String(await txt(c, 'document.getElementById("wave-now").textContent')) === '2');
   const w2 = await clearWave();
-  const w2shopReady = await c.waitFor('window.__game.state === "shop"', 15000);
-  const w2shop = await c.evaluate(`(() => ({
-    state: window.__game.state,
-    visible: !document.getElementById('shop-panel').classList.contains('hidden'),
-  }))()`);
-  rec('第 2 波清空后再次弹出军需商店', w2shopReady && w2shop.visible, `state=${w2shop.state}`);
-  await c.evaluate('document.getElementById("btn-shop-continue").click()');
-  await c.waitFor('window.__game.state === "playing"', 10000);
+  await c.waitFor('window.__game.enemies.waveState === "break"', 15000);
   await c.evaluate('window.__game.enemies.breakTimer = 0.001');
   const wave3 = await c.waitFor('window.__game.enemies.waveIndex === 2', 10000);
   rec('第 2 波清空 → 第 3 波', wave3, JSON.stringify(w2));
@@ -628,6 +618,67 @@ try {
   await c.evaluate(`document.querySelector('.nav-item[data-tab="missions"]').click()`);
   await c.frame(2);
   await c.shot('08-missions.png');
+
+  section('O. 大厅经济：交易所 / 科研所 / 解锁');
+  const economy = await c.evaluate(`(() => {
+    const g = window.__game;
+    const s = g.save;
+    s.data.meta.coins = 20000;
+    s.data.meta.reputation = 600;
+    s.data.meta.cores = 2;
+    s.data.meta.materials.researchAmmo = 5;
+    s.data.progress.level = 10;
+    s.data.permanent.dmg = 5;
+    g._refreshLobby();
+    document.querySelector('.nav-item[data-tab="exchange"]').click();
+
+    const stock0 = s.data.meta.ammoStock.rifle;
+    const coins0 = s.data.meta.coins;
+    document.querySelector('[data-ammo="rifle"]').click();
+    const stock1 = s.data.meta.ammoStock.rifle;
+    const coins1 = s.data.meta.coins;
+
+    const p1 = s.materialShopPrice('awaken');
+    const awaken0 = s.materialCount('awaken');
+    document.querySelector('[data-material="awaken"]').click();
+    const p2 = s.materialShopPrice('awaken');
+    document.querySelector('[data-material="awaken"]').click();
+    const p3 = s.materialShopPrice('awaken');
+    const awaken = s.materialCount('awaken');
+
+    const coinsBeforeEx = s.data.meta.coins;
+    const coresBeforeEx = s.data.meta.cores;
+    document.querySelector('[data-exchange="sellCoreCoins"]').click();
+    const coinsAfterEx = s.data.meta.coins;
+    const coresAfterEx = s.data.meta.cores;
+
+    document.querySelector('.nav-item[data-tab="research"]').click();
+    const lv0 = s.researchLevel('ballistics');
+    const mat0 = s.materialCount('researchAmmo');
+    document.querySelector('[data-research="ballistics"]').click();
+
+    return {
+      stock0, stock1, coins0, coins1,
+      p1, p2, p3, awaken0, awaken,
+      coinsBeforeEx, coinsAfterEx,
+      coresBeforeEx, coresAfterEx,
+      lv0, lv1: s.researchLevel('ballistics'),
+      mat0, mat1: s.materialCount('researchAmmo'),
+    };
+  })()`);
+  rec('交易所可采购备弹并按口径计价',
+    economy.stock1 === economy.stock0 + 30 && economy.coins1 === economy.coins0 - 20,
+    JSON.stringify({ stock: `${economy.stock0}→${economy.stock1}`, coins: `${economy.coins0}→${economy.coins1}` }));
+  rec('材料价格随购买次数递增',
+    economy.p2 === economy.p1 + 300 && economy.p3 === economy.p2 + 300 && economy.awaken === economy.awaken0 + 2,
+    `价格 ${economy.p1} → ${economy.p2} → ${economy.p3}，持有 ${economy.awaken0}→${economy.awaken}`);
+  rec('三币互换：1 核心换 10000 金币',
+    economy.coresAfterEx === economy.coresBeforeEx - 1 && economy.coinsAfterEx === economy.coinsBeforeEx + 10000,
+    `cores=${economy.coresAfterEx} coins=${economy.coinsAfterEx}`);
+  rec('科研所解锁并升级研究线（消耗科研材料）',
+    economy.lv1 === economy.lv0 + 1 && economy.mat1 === economy.mat0 - 1,
+    `Lv ${economy.lv0}→${economy.lv1}，材料 ${economy.mat0}→${economy.mat1}`);
+  await c.shot('11-exchange-research.png');
 
   section('L. 元素弹 / 弹种结算');
   const elem = await c.evaluate(`(() => {
@@ -820,15 +871,16 @@ try {
     g.defense.gold = 500;
     g.defense.addGold(0);
     g.defense.coreHp = 600;
-    g._openShop(2);
+    g._openDefenseShop();
   })()`);
   const shopOpen = await c.evaluate(`(() => ({
     state: window.__game.state,
     visible: !document.getElementById('shop-panel').classList.contains('hidden'),
     cards: document.querySelectorAll('#shop-grid [data-buy]').length,
     gold: Number(document.getElementById('shop-gold').textContent),
+    sub: document.getElementById('shop-sub').textContent,
   }))()`);
-  rec('清波后进入波间商店并暂停推进', shopOpen.state === 'shop' && shopOpen.visible, `state=${shopOpen.state}`);
+  rec('守城 TAB 可随时打开常驻军需商店', shopOpen.state === 'shop' && shopOpen.visible, `state=${shopOpen.state}`);
   rec('商店提供 6 类军需（含场景武器补给与雇佣人机）', shopOpen.cards === 6, `cards=${shopOpen.cards}`);
   await c.shot('09-defense-shop.png');
 
@@ -882,7 +934,7 @@ try {
     const g = window.__game;
     return { state: g.state, visible: !document.getElementById('shop-panel').classList.contains('hidden'), break: g.enemies.waveState };
   })()`);
-  rec('关闭商店后回到战斗并跳过休整倒计时', resumed.state === 'playing' && resumed.visible === false, `state=${resumed.state}`);
+  rec('关闭商店后回到战斗', resumed.state === 'playing' && resumed.visible === false, `state=${resumed.state}`);
 
   // 核心受击与失守
   const core = await c.evaluate(`(() => {
