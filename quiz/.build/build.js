@@ -1,7 +1,9 @@
 // 组装 quiz/index.html：head + 全局框架 + 引擎核心(抽取) + UI + 收尾
 const fs = require('fs');
+const crypto = require('crypto');
 const DIR = 'D:/Projects/_github_pages/ming-games/quiz/.build';
 const OUT = 'D:/Projects/_github_pages/ming-games/quiz/index.html';
+const DEPLOY_OUT = 'D:/Projects/_github_pages/ming-games/_deploy_gym/quiz/index.html';
 
 const head = fs.readFileSync(DIR + '/head.html', 'utf8');           // 末尾含 <script>
 const core = fs.readFileSync(DIR + '/engine_core.js', 'utf8');
@@ -35,7 +37,28 @@ const IDB = [
 'function loadBlob(key,cb){openIDB().then(function(db){var tx=db.transaction("blobs","readonly");var rq=tx.objectStore("blobs").get(key);rq.onsuccess=function(){cb(rq.result||null);};rq.onerror=function(){cb(null);};}).catch(function(){cb(null);});}'
 ].join('\n');
 
+/* 写产物之前先跑语言标签断言：不合规直接阻断，绝不产出会让语言闸漏题的 index.html */
+require('./_guard_tags.cjs');
+
 const html = head + '\n' + FRAMEWORK + '\n' + core + '\n' + IDB + '\n' + ui + '\n</script>\n</body>\n</html>\n';
 
 fs.writeFileSync(OUT, html, 'utf8');
+/* 部署包同源同值：构建时一次写齐，避免发布前漏 cp 导致线上与源码不一致 */
+if (fs.existsSync(DEPLOY_OUT)) fs.writeFileSync(DEPLOY_OUT, html, 'utf8');
 console.log('OK: index.html 已生成，字节=' + Buffer.byteLength(html, 'utf8'));
+
+/* Service Worker 版本号由产物内容自动生成，避免手工递增漏改让用户拿到旧缓存。
+   quiz- 前缀必须保留（activate 里按该前缀清理旧缓存），两处 sw.js 同源同值。 */
+const ver = 'quiz-' + crypto.createHash('md5').update(html, 'utf8').digest('hex').slice(0, 10);
+const SW_PATHS = [
+  'D:/Projects/_github_pages/ming-games/quiz/sw.js',
+  'D:/Projects/_github_pages/ming-games/_deploy_gym/quiz/sw.js'
+];
+SW_PATHS.forEach(function (swPath) {
+  if (!fs.existsSync(swPath)) { console.log('跳过（文件不存在）：' + swPath); return; }
+  const sw = fs.readFileSync(swPath, 'utf8');
+  const anchor = /var VERSION = 'quiz-[^']*';/;
+  if (sw.split(anchor).length - 1 !== 1) throw new Error('SW VERSION 锚点不唯一：' + swPath);
+  fs.writeFileSync(swPath, sw.replace(anchor, "var VERSION = '" + ver + "';"), 'utf8');
+});
+console.log('OK: SW VERSION = ' + ver + '（两处 sw.js 已同步）');

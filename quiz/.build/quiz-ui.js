@@ -399,15 +399,34 @@ function switchSection(){
     doStartType(bk,null,back);
   });
 }
+/* 当前语言档案下是否真的有手写题。手写题库目前只有 C 与 JavaScript：
+   勾选 Python / Java / SQL / HTML·CSS / 计算机通用时题池为空，
+   以前要点开开关才被降级回普通题，现在提前把入口禁用并说明原因。 */
+function handLangInfo(){
+  var st=codeLangState(),allowed=codeAllowedLangs();
+  var pool=CODE_TASKS.filter(function(x){
+    if(!allowed)return true;
+    var L=x.lang||'all';
+    return L==='all'||allowed.indexOf(L)>=0;
+  });
+  if(!pool.length)return {ok:false,why:'当前语言暂无手写题（仅 C / C++ 与 JavaScript）；点难度面板的语言提示可改选',hint:''};
+  var ls={};
+  pool.forEach(function(x){ls[x.lang||'all']=1;});
+  var names=Object.keys(ls).filter(function(k){return k!=='all';}).map(function(k){return langName(k);}).filter(Boolean);
+  if(st.mode==='only')return {ok:true,why:'',hint:'AI 当场评判 · 当前语言：'+(names.join(' / ')||'已选语言')};
+  return {ok:true,why:'',hint:'AI 当场评判 · C 与 JavaScript 混合出题'};
+}
 function setHandMode(on){
   if(on&&!canJudge()){toast('✍️ 手写代码要先配置 AI（点右上角 ⚙️，免费通道不用 Key）');return;}
+  var _hi=handLangInfo();
+  if(on&&!_hi.ok){toast(_hi.why);return;}
   if(locked)return;
   if(typeKey!=='b:code'||qaSection!=='code'){toast('手写代码只在「⌨️ 程序编写」板块可用');return;}
   handMode=!!on;
   if(handMode){
     var _ht=genHandTask(autoMode?autoQDiff():Math.max(0,curDiff));
     if(_ht){qlist[qidx]=_ht;}
-    else{toast('当前语言暂无手写题，已切回普通题');handMode=false;qlist[qidx]=sectionGen('code',1,Math.max(0,curDiff))[0];}
+    else{toast('当前语言暂无手写题，已切回普通题（仅 C / C++ 与 JavaScript 有手写题）');handMode=false;qlist[qidx]=sectionGen('code',1,Math.max(0,curDiff))[0];}
   }
   else{qlist[qidx]=sectionGen('code',1,Math.max(0,curDiff))[0];}
   showQuestion();
@@ -582,7 +601,7 @@ function showQuestion(){
       var _rec=loadRecent(_rk),_tries=0,_nq=null,_nk='';
       do{
         _nq=(typeKey==='b:code'&&qaSection==='code'&&handMode)?genHandTask(autoQDiff()):genAutoOne();
-        if(!_nq){if(handMode){toast('当前语言暂无手写题，已切回普通题');handMode=false;}_nq=genAutoOne();}
+        if(!_nq){if(handMode){toast('当前语言暂无手写题，已切回普通题（仅 C / C++ 与 JavaScript 有手写题）');handMode=false;}_nq=genAutoOne();}
         _nk=_nq.q+(_nq.code?('|'+_nq.code):'');
         _tries++;
       }while(_tries<8&&_rec.indexOf(_nk)>=0);
@@ -597,7 +616,7 @@ function showQuestion(){
     if(typeKey==='b:code'&&qaSection==='code'&&handMode&&Q&&!Q.hand){
       var _ht=genHandTask(Math.max(0,curDiff));
       if(_ht){Q=_ht;qlist[qidx]=Q;}
-      else{toast('当前语言暂无手写题，已切回普通题');handMode=false;}
+      else{toast('当前语言暂无手写题，已切回普通题（仅 C / C++ 与 JavaScript 有手写题）');handMode=false;}
     }
   }
   if(!Q){endQuiz();return;}
@@ -638,10 +657,12 @@ function showQuestion(){
   }
   if(typeKey==='b:code'&&qaSection==='code'){
     var swr=h('div','swrow');
-    var tg=h('button','toggle'+(handMode?' on':''),handMode?'✍️ 手写代码：开':'✍️ 手写代码：关');
-    tg.onclick=function(){setHandMode(!handMode);};
+    var _hi=handLangInfo();
+    var tg=h('button','toggle'+(handMode?' on':''),_hi.ok?(handMode?'✍️ 手写代码：开':'✍️ 手写代码：关'):'✍️ 手写代码：当前语言不可用');
+    if(!_hi.ok)tg.disabled=true;                 /* .toggle:disabled 已带灰化样式 */
+    tg.onclick=function(){if(!_hi.ok){toast(_hi.why);return;}setHandMode(!handMode);};
     swr.appendChild(tg);
-    swr.appendChild(ht('span','hint2',canJudge()?'AI 当场评判，语言不限':'手写题需先配置 AI（免费通道即可）'));
+    swr.appendChild(ht('span','hint2',!canJudge()?'手写题需先配置 AI（免费通道即可）':(_hi.ok?_hi.hint:_hi.why)));
     card.appendChild(swr);
   }
 
@@ -2379,7 +2400,7 @@ var CODE_TOPICS=[
   {k:'for 累加',lang:'c',ranks:[1],kb:7,gen:function(){
     var n=riN(3,9);
     return mkCodeQ('这段 C 代码输出什么？',
-      'int s = 0;\nfor (int i = 1; i <= '+n+'; i++) s += i;\nprintf("%d", s);',
+      'int s = 0;\nfor (int i = 1; i <= '+n+'; i++)\n{\n    s += i;\n}\nprintf("%d", s);',
       String(n*(n+1)/2),[String(n*n),String(n*(n+1)/2+1),String(n)],
       'for 循环把 1 到 '+n+' 累加到 s，等差数列求和 '+(n*(n+1))+'÷2 = '+(n*(n+1)/2));
   }},
@@ -2425,7 +2446,7 @@ var CODE_TOPICS=[
     var n=riN(3,5),arr=[],s=0;
     for(var i=0;i<n;i++){var v=riN(1,9);arr.push(v);s+=v;}
     return mkCodeQ('这段 C 代码输出什么？',
-      'int a['+n+'] = {'+arr.join(', ')+'};\nint s = 0;\nfor (int i = 0; i < '+n+'; i++) s += a[i];\nprintf("%d", s);',
+      'int a['+n+'] = {'+arr.join(', ')+'};\nint s = 0;\nfor (int i = 0; i < '+n+'; i++)\n{\n    s += a[i];\n}\nprintf("%d", s);',
       String(s),[String(s+1),String(s-1),String(s*n)],
       '循环把数组每个元素加起来：'+arr.join('+')+' = '+s);
   }},
@@ -2502,7 +2523,7 @@ var CODE_TOPICS=[
     var X=[5,6,7,9,10,11,12,13,14,17,19,21,23,25,27,29],x=X[riN(0,15)];
     var c=0,v=x;while(v){c+=v&1;v>>=1;}
     return mkCodeQ('这段 C 代码输出什么？',
-      'int n = '+x+';\nint c = 0;\nwhile (n) {\n    c += n & 1;\n    n >>= 1;\n}\nprintf("%d", c);',
+      'int n = '+x+';\nint c = 0;\nwhile (n)\n{\n    c += n & 1;\n    n >>= 1;\n}\nprintf("%d", c);',
       String(c),[String(c+1),String(c+2),String(c+3)],
       '这段在数二进制里 1 的个数：'+x+' = '+binOf(x)+'₂，共有 '+c+' 个 1');
   }},
@@ -3349,7 +3370,9 @@ function jsonp(url, cb, timeout){
   var sc=document.createElement('script');
   var done=false;
   function cleanup(){
-    try{delete window[name];}catch(e){window[name]=null;}
+    /* 留一个空函数而不是 delete：超时后迟到的 JSONP 脚本仍会调用 __jpXXX(...)，
+       delete 会让它变成未捕获 ReferenceError（慢网络下稳定复现）。 */
+    try{window[name]=function(){};}catch(e){}
     if(sc.parentNode)sc.parentNode.removeChild(sc);
   }
   window[name]=function(d){if(done)return;done=true;cleanup();cb(d);};

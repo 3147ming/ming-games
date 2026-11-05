@@ -66,6 +66,7 @@ const MIX = [
   if (USE_LOCAL) await sleep(700);
   const s = new Session({ width: 414, height: 896, port: 9387 });
   const txt = (sel) => s.eval("(function(){var e=document.querySelector('" + sel + "');return e?e.textContent:'';})()");
+  const fbTxt = () => s.eval("(function(){var e=document.querySelector('#fbzone .fb');return (e?e.textContent:'')+' | '+(window.__fbHistory||[]).join(' | ');})()");
   const clickText = (sel, t) => s.eval("(function(){var b=[].slice.call(document.querySelectorAll('" + sel + "')).filter(function(x){return x.textContent.indexOf('" + t + "')>=0;})[0];if(!b)return 0;b.click();return 1;})()");
   const submitInput = (v) => s.eval("(function(){var i=document.querySelector('#stage input[type=text]');if(!i)return 'no-input';i.value=" + JSON.stringify(v) + ";var b=[].slice.call(document.querySelectorAll('#stage .btn')).filter(function(x){return /提交/.test(x.textContent)})[0];if(!b)return 'no-btn';b.click();return 'ok';})()");
   const clickNext = () => s.eval("(function(){var b=document.querySelector('#fbzone .fb .fbnext');if(!b)return 'no-next';b.click();return 'clicked';})()");
@@ -98,6 +99,8 @@ const MIX = [
     await s.ensureLoaded();
     await s.waitFor('!!document.querySelector(".book")', 15000);
     await s.eval("window.confirm=function(){return true;};window.alert=function(){};1");
+    /* 反馈只停留 QUICK_JUMP_DELAY(1000ms)：页面内记录，不赌 CDP 往返耗时。 */
+    await s.eval("(function(){window.__fbHistory=[];if(window.__fbObs)window.__fbObs.disconnect();window.__fbObs=new MutationObserver(function(ms){ms.forEach(function(m){(m.addedNodes||[]).forEach(function(n){if(!n||n.nodeType!==1)return;if(n.classList&&n.classList.contains('fb'))window.__fbHistory.push(n.textContent||'');if(n.querySelectorAll)[].slice.call(n.querySelectorAll('.fb')).forEach(function(e){window.__fbHistory.push(e.textContent||'');});});});});window.__fbObs.observe(document.body,{childList:true,subtree:true});return 1;})()");
 
     /* ---------- D. 混合试卷：HUD + 渲染分支 ---------- */
     ck('书架出现自定义题库「混合试卷探测」', /混合试卷探测/.test(await txt('#shelf')));
@@ -112,6 +115,7 @@ const MIX = [
       await s.waitFor("!!document.querySelector('#stage .qcard')", 8000);
       const info = JSON.parse(await s.eval("(function(){var Q=qlist[qidx]||{};return JSON.stringify({ty:Q.type||'choice',n:document.querySelectorAll('#stage .obtn').length,inp:!!document.querySelector('#stage input[type=text]'),ph:(document.querySelector('#stage input[type=text]')||{}).placeholder||''});})()"));
       seen.push(info.ty);
+      await s.eval("window.__fbHistory=[];1");   /* 只认本题反馈 */
       if (info.ty === 'choice') {
         ck('第 ' + (i + 1) + ' 题（choice）渲染 4 个选项、无输入框', info.n === 4 && info.inp === false, JSON.stringify(info));
       } else {
@@ -123,7 +127,7 @@ const MIX = [
         const w0 = await s.eval('qidx');
         await submitInput('完全不相关的答案zzz');
         await sleep(400);
-        const fb = await txt('#fbzone .fb');
+        const fb = await fbTxt();
         ck('非选择题答错 → 给出正确答案与解析', /❌/.test(fb) && /正确答案：/.test(fb) && /💡 解析：/.test(fb), fb.replace(/\s+/g, ' ').slice(0, 100));
         await sleep(1300);
         ck('非选择题答错不自动跳', (await s.eval('qidx')) === w0, w0 + '→' + (await s.eval('qidx')));
@@ -134,12 +138,14 @@ const MIX = [
       if (info.ty === 'choice') {
         await s.eval("(function(){var Q=qlist[qidx];var t=String(Q.a);var bs=[].slice.call(document.querySelectorAll('#stage .obtn'));for(var j=0;j<bs.length;j++){if(bs[j].textContent===t){bs[j].click();return 1;}}return 0;})()");
         await sleep(350);
-        ck('choice 题答对给 +10 与解析', /✅/.test(await txt('#fbzone .fb')), (await txt('#fbzone .fb')).slice(0, 40));
+        const fb = await fbTxt();
+        ck('choice 题答对给 +10 与解析', /✅/.test(fb), fb.slice(0, 40));
       } else {
         const ans = await s.eval("(function(){var Q=qlist[qidx];return String(Q.a);})()");
         await submitInput(ans);
         await sleep(350);
-        ck('「' + info.ty + '」题输入标准答案判对', /✅/.test(await txt('#fbzone .fb')), (await txt('#fbzone .fb')).slice(0, 40));
+        const fb2 = await fbTxt();
+        ck('「' + info.ty + '」题输入标准答案判对', /✅/.test(fb2), fb2.slice(0, 40));
       }
       await clickNext();
       await sleep(400);

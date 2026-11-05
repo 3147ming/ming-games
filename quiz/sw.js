@@ -11,10 +11,11 @@
        · 静态资源   → 缓存优先（index.html / manifest / icons / audio）
        · 外部 API   → 完全不拦（opentdb、百度、AI 端点直连网络）
    升级
-   - 发布新版本时把 VERSION 加一（quiz-v1 → quiz-v2），旧缓存会在 activate 里被清掉。
+   - VERSION 由 .build/build.js 依据 index.html 内容自动生成（quiz-<内容哈希>），
+     不要手工改；产物一变缓存名就变，旧缓存会在 activate 里被清掉。
    ============================================================= */
 
-var VERSION = 'quiz-v33';
+var VERSION = 'quiz-cedbf768e5';
 var CACHE = VERSION;
 var BASE = self.registration ? self.registration.scope : self.location.href.replace(/sw\.js.*$/, '');
 

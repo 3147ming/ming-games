@@ -7,18 +7,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function httpGet(port, path) {
   return new Promise((res, rej) => {
-    http.get({ host: '127.0.0.1', port, path }, (r) => {
+    const req = http.get({ host: '127.0.0.1', port, path }, (r) => {
       let d = '';
       r.on('data', (c) => (d += c));
       r.on('end', () => res(d));
-    }).on('error', rej);
+    });
+    /* 端口处于 TIME_WAIT 时连接可能建立却不返回响应：没有超时就会永久挂起，
+       表现为整套探针无任何输出地被外层终止。每次探测都给硬上限。 */
+    req.setTimeout(1500, () => req.destroy(new Error('CDP_HTTP_TIMEOUT')));
+    req.on('error', rej);
   });
 }
 
 class Session {
   constructor(opts) {
     opts = opts || {};
-    this.port = opts.port || 9333;
+    /* 每次会话用独立随机端口：探针里传的固定端口（9342/9384…）在串行跑时
+       会撞上上一个会话留下的 TIME_WAIT，导致 Edge 起不来或 /json 挂住。 */
+    this.port = 20000 + Math.floor(Math.random() * 30000);
     this.width = opts.width || 414;
     this.height = opts.height || 896;
     this.edge = null;
@@ -64,9 +70,13 @@ class Session {
         this.send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {});
       }
     });
+    /* WebSocket 握手必须限时：连接不上时 open/error 都可能都不触发，
+       Promise 会永久挂起，整套探针表现为「零输出被外层终止」。 */
     await new Promise((res, rej) => {
-      this.ws.addEventListener('open', res);
-      this.ws.addEventListener('error', rej);
+      const t = setTimeout(() => rej(new Error('CDP_WS_OPEN_TIMEOUT')), 8000);
+      this.ws.addEventListener('open', () => { clearTimeout(t); res(); });
+      this.ws.addEventListener('error', () => { clearTimeout(t); rej(new Error('CDP_WS_OPEN_ERROR')); });
+      this.ws.addEventListener('close', () => { clearTimeout(t); rej(new Error('CDP_WS_CLOSED')); });
     });
     await this.send('Runtime.enable');
     await this.send('Page.enable');
@@ -81,9 +91,18 @@ class Session {
   send(method, params) {
     return new Promise((res, rej) => {
       const my = ++this.id;
-      this.pending[my] = (o) => (o.error ? rej(new Error(method + ': ' + JSON.stringify(o.error))) : res(o.result));
+      /* 超时定时器必须在收到响应时清掉、且不阻止进程退出：
+         以前每个 CDP 命令都留一个 45s 活跃 timer，探针打印完结果后 node 仍不退出，
+         外层 shell 一直挂住直到被终止。 */
+      const timer = setTimeout(() => {
+        if (this.pending[my]) { delete this.pending[my]; rej(new Error(method + ' timeout')); }
+      }, 45000);
+      if (timer.unref) timer.unref();
+      this.pending[my] = (o) => {
+        clearTimeout(timer);
+        o.error ? rej(new Error(method + ': ' + JSON.stringify(o.error))) : res(o.result);
+      };
       this.ws.send(JSON.stringify({ id: my, method, params: params || {} }));
-      setTimeout(() => { if (this.pending[my]) { delete this.pending[my]; rej(new Error(method + ' timeout')); } }, 45000);
     });
   }
 
@@ -167,7 +186,15 @@ class Session {
 
   async close() {
     try { this.ws && this.ws.close(); } catch (e) {}
-    try { this.edge && this.edge.kill('SIGKILL'); } catch (e) {}
+    try {
+      /* Edge 会 fork 出一整棵子进程树：只 kill 主进程会留残骸继承 stdio 句柄，
+         表现为探针明明跑完打印了结果，外层 shell 却挂住直到被 SIGTERM。 */
+      if (this.edge && this.edge.pid) {
+        spawn('taskkill', ['/PID', String(this.edge.pid), '/T', '/F'],
+          { stdio: 'ignore', detached: true }).unref();
+      }
+      this.edge && this.edge.kill('SIGKILL');
+    } catch (e) {}
   }
 }
 

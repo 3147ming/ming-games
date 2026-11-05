@@ -61,7 +61,7 @@ let ui = fs.readFileSync(DIR + '/quiz-ui.js', 'utf8');
 const iEnd = ui.lastIndexOf('})();');
 const exportLine = ';globalThis.__exp={POOLS:POOLS,mkFromPool:mkFromPool,validItem:validItem,'
   + 'fillEqual:fillEqual,parseJudge:parseJudge,windowAcc:windowAcc,finish:finish,selfWindow:selfWindow,'
-  + 'genHandTask:genHandTask,genStdPool:genStdPool,startReviewOne:startReviewOne,openWeakBook:openWeakBook,'
+  + 'genHandTask:genHandTask,handLangInfo:handLangInfo,genStdPool:genStdPool,startReviewOne:startReviewOne,openWeakBook:openWeakBook,'
   + 'weakSort:weakSort,weakCatName:weakCatName,weakAgo:weakAgo,'
   + 'codeEstimate:codeEstimate,codeEstimateParts:codeEstimateParts,codeTrial:codeTrial,'
   + 'retryRoundWrong:retryRoundWrong,dropRoundWrong:dropRoundWrong,buildBackup:buildBackup,applyBackup:applyBackup,'

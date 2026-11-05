@@ -4,14 +4,16 @@
 quiz/.build/*
 quiz/.build/shots/
 quiz/.build/shots10/
-quiz/.build/*.bak*
-quiz/.build/*.log
-quiz/.build/_edit*.cjs
-quiz/.build/_online_verify.cjs
 !quiz/.build/*.js
 !quiz/.build/*.cjs
 !quiz/.build/*.mjs
 !quiz/.build/*.html
+# 排除规则必须放在白名单否定之后，否则会被 !*.cjs 重新纳入
+quiz/.build/*.bak*
+quiz/.build/*.log
+quiz/.build/_edit*.cjs
+quiz/.build/_cdp_smoke.cjs
+quiz/.build/_c4trace.cjs
 
 # 音频文件体积大（flac/wav 单曲几十 MB），不进仓库
 # 想给 PWA 配乐：把 mp3 按 flower-dance/summer/luv-letter/canon 命名，

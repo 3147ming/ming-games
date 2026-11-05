@@ -39,6 +39,9 @@ const seeds = [
     ck('点「⏰ 待复习」进入复习局', started === 1);
     const revStarted = await s.waitFor("!!document.querySelector('#stage .qbox')", 8000);
     ck('SRS 复习局出题', revStarted === true);
+    /* 反馈只停留 QUICK_JUMP_DELAY(1000ms)：固定 sleep 后再读 .fb 会随 CDP 往返抖动漏掉。
+       用页面内 MutationObserver 记录每条反馈文本，探针读历史，不依赖往返耗时。 */
+    await s.eval("(function(){window.__fbHistory=[];if(window.__fbObs)window.__fbObs.disconnect();window.__fbObs=new MutationObserver(function(ms){ms.forEach(function(m){(m.addedNodes||[]).forEach(function(n){if(!n||n.nodeType!==1)return;if(n.classList&&n.classList.contains('fb'))window.__fbHistory.push(n.textContent||'');if(n.querySelectorAll)[].slice.call(n.querySelectorAll('.fb')).forEach(function(e){window.__fbHistory.push(e.textContent||'');});});});});window.__fbObs.observe(document.body,{childList:true,subtree:true});return 1;})()");
 
     let sawNext = false, sawTomorrow = false, sawMastered = false;
     for (let i = 0; i < 8; i++) {
@@ -49,9 +52,10 @@ const seeds = [
       let target = /SRS_A/.test(stem) ? 'A' : (/SRS_B/.test(stem) ? 'B' : (/SRS_C/.test(stem) ? 'C' : null));
       if (!target) { await s.wait(400); continue; }
       const corr = { A: 'ansA', B: 'ansB', C: 'ansC' }[target];
+      await s.eval("window.__fbHistory=[];1");   /* 每次作答前清空，保证断言只认本题反馈 */
       await s.eval("(function(){var btns=[].slice.call(document.querySelectorAll('#stage .obtn'));var corr='" + corr + "';var b=btns.filter(function(x){return x.textContent===corr;})[0];if('" + target + "'==='B'){b=btns.filter(function(x){return x.textContent!==corr&&!x.disabled;})[0];}if(b)b.click();})()");
       await s.wait(700);
-      const fb = await s.eval("(document.querySelector('.fb')||{}).textContent||''");
+      const fb = await s.eval("(function(){var e=document.querySelector('.fb');return (e?e.textContent:'')+' | '+(window.__fbHistory||[]).join(' | ');})()");
       if (target === 'A') { if (/下次复习/.test(fb)) sawNext = true; }
       if (target === 'B') { if (/明天再复习/.test(fb)) sawTomorrow = true; }
       if (target === 'C') { if (/已掌握/.test(fb)) sawMastered = true; }
@@ -85,20 +89,22 @@ const seeds = [
 
     // 进科学 → 选择题板块
     await s.eval("(function(){var b=[].slice.call(document.querySelectorAll('.book')).filter(function(x){return x.textContent.indexOf('科学')>=0;})[0];if(b)b.click();})()");
-    await s.wait(500);
+    await s.waitFor("!!document.querySelector('.secbtn')", 10000);
     await s.eval("(function(){var b=[].slice.call(document.querySelectorAll('.secbtn')).filter(function(x){return x.textContent.indexOf('选择题')>=0;})[0];if(b)b.click();})()");
-    await s.wait(600);
+    await s.waitFor("!!document.querySelector('#curOverlay')", 10000);
     // 难度面板应出现 📖 先学后练开关
     const toggle = await s.eval("!!document.querySelector('#curOverlay') && document.querySelector('#curOverlay').textContent.indexOf('（开局先看知识卡）')>=0");
     ck('难度面板含「📖 先学后练」开关', toggle === true);
     // 点「开始出题」→ 应弹知识卡覆盖层（而非直接进题）
     await s.eval("(function(){var g=[].slice.call(document.querySelectorAll('#curOverlay .btn')).filter(function(x){return x.textContent.indexOf('开始出题')>=0;})[0];if(g)g.click();})()");
-    await s.wait(500);
-    const cardShown = await s.eval("(function(){var o=document.querySelector('#curOverlay');var q=document.querySelector('#stage .qbox');return !!o && o.textContent.indexOf('先学后练')>=0 && !q;})()");
+    /* 难度面板也含「先学后练」四个字，不能拿它当知识卡出现的判据；
+       只有知识卡覆盖层才有「跳过知识卡」按钮，等它出现才不会读到关闭空窗。 */
+    await s.waitFor("(function(){var o=document.querySelector('#curOverlay');return !!o&&o.textContent.indexOf('跳过知识卡')>=0;})()", 10000);
+    const cardShown = await s.eval("(function(){var o=document.querySelector('#curOverlay');var q=document.querySelector('#stage .qbox');return !!o && o.textContent.indexOf('跳过知识卡')>=0 && !q;})()");
     ck('开启开关 → 开局先弹知识卡（题未出现）', cardShown === true);
     // 点「跳过知识卡，直接开始」→ 进题
     await s.eval("(function(){var b=[].slice.call(document.querySelectorAll('#curOverlay .btn')).filter(function(x){return x.textContent.indexOf('跳过知识卡')>=0;})[0];if(b)b.click();})()");
-    await s.wait(600);
+    await s.waitFor("!!document.querySelector('#stage .qbox')", 10000);
     const qAfterSkip = await s.eval("!!document.querySelector('#stage .qbox')");
     ck('点「跳过」后进入答题', qAfterSkip === true);
 

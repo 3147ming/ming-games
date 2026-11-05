@@ -134,6 +134,8 @@ function seed(q, a, lv, dueOff) {
     await s.reload();
     await s.waitFor('!!document.querySelector(".book")', 12000);
     await s.eval("window.confirm=function(){return true;};window.alert=function(){};1");
+    /* 答对反馈只停留 1000ms；用页面内 MutationObserver 记录，避免 CDP 往返抖动漏读。 */
+    await s.eval("(function(){window.__fbHistory=[];if(window.__fbObs)window.__fbObs.disconnect();window.__fbObs=new MutationObserver(function(ms){ms.forEach(function(m){(m.addedNodes||[]).forEach(function(n){if(!n||n.nodeType!==1)return;if(n.classList&&n.classList.contains('fb'))window.__fbHistory.push(n.textContent||'');if(n.querySelectorAll)[].slice.call(n.querySelectorAll('.fb')).forEach(function(e){window.__fbHistory.push(e.textContent||'');});});});});window.__fbObs.observe(document.body,{childList:true,subtree:true});return 1;})()");
     await s.eval("(function(){var b=[].slice.call(document.querySelectorAll('.act')).filter(function(x){return /薄弱题/.test(x.textContent)})[0];if(b)b.click();return 1;})()");
     /* 面板是「先出行、后出底部按钮」的渐进渲染：只等 .list-row 会在按钮还没挂上时抢跑。
        直接等「▶ 全部回顾」按钮本身；两次都没等到就把面板关掉重开一次。 */
@@ -154,13 +156,17 @@ function seed(q, a, lv, dueOff) {
     /* 线上踩过：点「全部回顾」后 #stage 会先渲染一批选项再整块重绘，
        而 waitFor 超时只返回 false 不抛错 —— 抢在空窗期点击会被吞掉。
        改为「点 + 看反馈」最多重试 6 次（每次重新取 DOM），稳过重绘窗口。 */
+    await s.eval("window.__fbHistory=[];1");   /* 只认本轮薄弱题答对的反馈 */
     let _clk = 'no-opt';
     for (let i = 0; i < 6; i++) {
       await s.waitFor("document.querySelectorAll('#stage .obtn').length > 0", 3000);
-      _clk = await s.eval("(function(){var bs=[].slice.call(document.querySelectorAll('#stage .obtn'));var b=bs.filter(function(x){return x.textContent==='巴黎';})[0];if(!b)return 'no-opt';b.click();return 'clicked';})()");
+      /* 上一题若仍 locked，选项会是 disabled，点上去什么都不会发生；
+         只点启用态的按钮，没找到就等下一轮重绘。 */
+      _clk = await s.eval("(function(){var bs=[].slice.call(document.querySelectorAll('#stage .obtn'));var b=bs.filter(function(x){return x.textContent==='巴黎'&&!x.disabled;})[0];if(!b)return 'no-opt';b.click();return 'clicked';})()");
       if (_clk !== 'clicked') { await sleep(400); continue; }
-      const got = await s.waitFor("!!document.querySelector('#fbzone .fb')", 1500);
-      if (got) break;
+      /* 反馈条可能是上一题残留；以存储里的等级变化作为「这一下真的点中了」的判据。 */
+      const advanced = await s.waitFor("(function(){try{var a=JSON.parse(localStorage.getItem('bt_qa_weak')||'[]');var r=a.filter(function(x){return x.q&&x.q.indexOf('WEAK_SRS')>=0;})[0];return !!(r&&r.srs&&r.srs.lv===1);}catch(e){return false;}})()", 2500);
+      if (advanced) break;
       await sleep(400);
     }
     await sleep(300);
@@ -168,7 +174,7 @@ function seed(q, a, lv, dueOff) {
     const rF = storeF.filter(function(x) { return x.q && x.q.indexOf('WEAK_SRS') >= 0; })[0];
     ck('薄弱题本答对 → 仍在题本（不一次移除）', !!rF, 'count=' + storeF.length + ' 回顾=' + _cl2 + ' 点击=' + _clk);
     ck('薄弱题本答对 → SRS 等级升到 1', !!(rF && rF.srs && rF.srs.lv === 1), rF ? JSON.stringify(rF.srs) : '缺失');
-    ck('薄弱题本答对 → 反馈提示下次复习', /下次复习/.test(await s.eval("(document.querySelector('#fbzone .fb')||{}).textContent||''")), '');
+    ck('薄弱题本答对 → 反馈提示下次复习', /下次复习/.test(await s.eval("(function(){var e=document.querySelector('#fbzone .fb');return (e?e.textContent:'')+' | '+(window.__fbHistory||[]).join(' | ');})()")), '');
 
     /* ===== G. 收尾 ===== */
     ck('全程无 JS 异常', s.errors.length === 0, s.errors.slice(0, 2).join(' | '));

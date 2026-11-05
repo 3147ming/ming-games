@@ -837,7 +837,7 @@ var CODE_TOPICS=[
   {k:'for 累加',lang:'c',ranks:[1],kb:7,gen:function(){
     var n=riN(3,9);
     return mkCodeQ('这段 C 代码输出什么？',
-      'int s = 0;\nfor (int i = 1; i <= '+n+'; i++) s += i;\nprintf("%d", s);',
+      'int s = 0;\nfor (int i = 1; i <= '+n+'; i++)\n{\n    s += i;\n}\nprintf("%d", s);',
       String(n*(n+1)/2),[String(n*n),String(n*(n+1)/2+1),String(n)],
       'for 循环把 1 到 '+n+' 累加到 s，等差数列求和 '+(n*(n+1))+'÷2 = '+(n*(n+1)/2));
   }},
@@ -883,7 +883,7 @@ var CODE_TOPICS=[
     var n=riN(3,5),arr=[],s=0;
     for(var i=0;i<n;i++){var v=riN(1,9);arr.push(v);s+=v;}
     return mkCodeQ('这段 C 代码输出什么？',
-      'int a['+n+'] = {'+arr.join(', ')+'};\nint s = 0;\nfor (int i = 0; i < '+n+'; i++) s += a[i];\nprintf("%d", s);',
+      'int a['+n+'] = {'+arr.join(', ')+'};\nint s = 0;\nfor (int i = 0; i < '+n+'; i++)\n{\n    s += a[i];\n}\nprintf("%d", s);',
       String(s),[String(s+1),String(s-1),String(s*n)],
       '循环把数组每个元素加起来：'+arr.join('+')+' = '+s);
   }},
@@ -960,7 +960,7 @@ var CODE_TOPICS=[
     var X=[5,6,7,9,10,11,12,13,14,17,19,21,23,25,27,29],x=X[riN(0,15)];
     var c=0,v=x;while(v){c+=v&1;v>>=1;}
     return mkCodeQ('这段 C 代码输出什么？',
-      'int n = '+x+';\nint c = 0;\nwhile (n) {\n    c += n & 1;\n    n >>= 1;\n}\nprintf("%d", c);',
+      'int n = '+x+';\nint c = 0;\nwhile (n)\n{\n    c += n & 1;\n    n >>= 1;\n}\nprintf("%d", c);',
       String(c),[String(c+1),String(c+2),String(c+3)],
       '这段在数二进制里 1 的个数：'+x+' = '+binOf(x)+'₂，共有 '+c+' 个 1');
   }},

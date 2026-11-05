@@ -87,7 +87,8 @@ function pngSize(file) {
     const hasIdx = ci.entries.some(u => /\/quiz\/(index\.html)?$/.test(u));
     const hasMani = ci.entries.some(u => /manifest\.json$/.test(u));
     const hasIcons = ci.entries.filter(u => /icons\/icon-\d+\.png$/.test(u)).length;
-    ok(/quiz-v\d+/.test(ci.keys.join(',')), '缓存名带版本号', ci.keys.join(','));
+    /* SW 版本号已改为「产物 md5 前 10 位」，旧格式 quiz-vN 也继续兼容（回滚时可用） */
+    ok(/quiz-(?:v\d+|[0-9a-f]{10})/.test(ci.keys.join(',')), '缓存名带版本号', ci.keys.join(','));
     ok(hasIdx, '已预缓存页面外壳', hasIdx ? 'yes' : ci.entries.slice(0, 6).join(' | '));
     ok(hasMani && hasIcons === 2, '已预缓存 manifest 与 2 枚图标', 'manifest=' + hasMani + ' icons=' + hasIcons);
     ok(!ci.entries.some(u => /opentdb|allorigins|baidu|openai|deepseek/i.test(u)), '外部 API 未进缓存（符合要求）', 'entries=' + ci.entries.length);
