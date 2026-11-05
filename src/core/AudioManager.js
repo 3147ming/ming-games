@@ -43,7 +43,9 @@ export class AudioManager {
     this.ctx = null;
     this.buffers = {};
     this.enabled = true;
-    this._lastPlay = {};   // 同名音效上次播放时间，防叠加爆音
+    this.volume = 1.0;       // 主音量（设置界面可调）
+    this.master = null;      // 总音量节点
+    this._lastPlay = {};     // 同名音效上次播放时间，防叠加爆音
   }
 
   /** 初始化音频上下文并解码全部音效 */
@@ -54,6 +56,10 @@ export class AudioManager {
       return;
     }
     this.ctx = new Ctx();
+    // 总音量节点：所有音效先汇入 master 再进扬声器
+    this.master = this.ctx.createGain();
+    this.master.gain.value = this.volume;
+    this.master.connect(this.ctx.destination);
     const entries = Object.entries(FILES);
     await Promise.all(
       entries.map(async ([name, file]) => {
@@ -92,8 +98,14 @@ export class AudioManager {
     src.buffer = this.buffers[name];
     src.playbackRate.value = rate;
     gain.gain.value = volume;
-    src.connect(gain).connect(this.ctx.destination);
+    src.connect(gain).connect(this.master);
     src.start();
+  }
+
+  /** 设置主音量（0~1） */
+  setMasterVolume(v) {
+    this.volume = Math.max(0, Math.min(1, Number(v) || 0));
+    if (this.master) this.master.gain.value = this.volume;
   }
 
   /**
@@ -109,7 +121,7 @@ export class AudioManager {
     src.buffer = this.buffers[name];
     src.loop = true;
     gain.gain.value = 0;
-    src.connect(gain).connect(this.ctx.destination);
+    src.connect(gain).connect(this.master);
     src.start();
 
     let stopped = false;

@@ -9,6 +9,7 @@ export class MouseLook {
     this.camera = camera;
     this.camera.rotation.order = 'YXZ';
     this.sensitivity = PLAYER.mouseSensitivity;
+    this.aimScale = 1;        // 开镜灵敏度系数（GunSystem 每帧写入）
     this.yaw = PLAYER.startYaw;
     this.pitch = 0;
     // 后坐力偏移（不与鼠标输入混在一起，方便自然回正）
@@ -21,10 +22,11 @@ export class MouseLook {
     this.shakeYaw = 0;
   }
 
-  /** 鼠标输入（像素位移） */
+  /** 鼠标输入（像素位移；开镜时按 aimScale 降低灵敏度） */
   onMouseMove(dx, dy) {
-    this.yaw -= dx * this.sensitivity;
-    this.pitch -= dy * this.sensitivity;
+    const s = this.sensitivity * (this.aimScale || 1);
+    this.yaw -= dx * s;
+    this.pitch -= dy * s;
     this.pitch = clamp(this.pitch, -1.45, 1.45);
   }
 
@@ -47,7 +49,7 @@ export class MouseLook {
     this.recoilPitch *= 1 - recover;
     this.recoilYaw *= 1 - recover;
     // 震动衰减更快
-    const shakeDecay = Math.exp(-22 * dt);
+    const shakeDecay = Math.exp(-26 * dt);
     this.shakePitch *= shakeDecay;
     this.shakeYaw *= shakeDecay;
 
@@ -67,6 +69,7 @@ export class MouseLook {
     this.bobPitch = 0;
     this.shakePitch = 0;
     this.shakeYaw = 0;
+    this.aimScale = 1;
   }
 
   /** 当前朝向（世界坐标单位向量） */

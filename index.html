@@ -36,6 +36,13 @@
       <div class="wave-remain-line">本波剩余 <b id="wave-remain">4</b></div>
     </div>
 
+    <!-- 顶部：当前任务目标 -->
+    <div id="mission-objective" class="mission-objective hidden">
+      <span class="mission-obj-label" id="mission-obj-label">任务目标</span>
+      <span class="mission-obj-name" id="mission-obj-name">清剿尸潮</span>
+      <span class="mission-obj-progress"><b id="mission-obj-now">0</b> / <span id="mission-obj-total">100</span></span>
+    </div>
+
     <!-- 左上角：生命 / 护甲 -->
     <div class="vitals">
       <div class="vitals-title">生命状态</div>
@@ -61,6 +68,7 @@
     <!-- 底部右侧：弹药 -->
     <div class="ammo">
       <div class="weapon-name" id="weapon-name">M4A1 <span class="weapon-tag" id="weapon-tag">突击步枪</span></div>
+      <div class="ammo-type" id="ammo-type">标准弹</div>
       <div class="ammo-line">
         <span class="weapon-icon" aria-hidden="true"></span>
         <span id="mag-value">30</span>
@@ -69,6 +77,9 @@
       </div>
       <div class="reload-tip" id="reload-tip">按 R 换弹</div>
     </div>
+
+    <!-- 狙击镜遮罩（重狙开镜时显示） -->
+    <div id="scope-overlay" class="scope-overlay hidden"></div>
 
     <!-- 准星 -->
     <div id="crosshair">
@@ -90,13 +101,15 @@
     <div id="killfeed"></div>
     <!-- 换弹进度条 -->
     <div id="reload-bar" class="hidden"><i></i></div>
+    <!-- 弹种轮盘（Ctrl+R 按住唤出，鼠标选择） -->
+    <div id="ammo-wheel" class="ammo-wheel hidden"></div>
     <!-- 开局操作提示（3 秒后自动淡出） -->
     <div id="tips" class="tips">
       <div class="tips-title">操作提示</div>
-      <div class="tips-row"><b>WASD</b> 移动　<b>Shift</b> 静步　<b>Ctrl</b> 蹲伏</div>
-      <div class="tips-row"><b>空格</b> 跳跃　<b>左键</b> 射击　<b>R</b> 换弹　<b>Esc</b> 暂停</div>
-      <div class="tips-row dim">三波尸潮 · 逐波肃清 · 靠近补给点自动拾取</div>
-      <div class="tips-row dim">按 <b>O</b> 显示 / 隐藏帧率</div>
+      <div class="tips-row"><b>WASD</b> 移动　<b>Shift</b> 疾跑　<b>C</b> 蹲下　<b>空格</b> 跳跃</div>
+      <div class="tips-row"><b>左键</b> 射击　<b>右键</b> 开镜　<b>R</b> 换弹　<b>1-4 / 滚轮</b> 切枪</div>
+      <div class="tips-row dim">三波尸潮 · 逐波肃清 · <b>F</b> 拾取　<b>P</b> 自动拾取　<b>Esc</b> 暂停</div>
+      <div class="tips-row dim">按 <b>F1</b> 显示 / 隐藏帧率 · 在大厅「设置」页可改键</div>
     </div>
   </div>
 
@@ -125,32 +138,48 @@
         <div class="lobby-res">
           <span class="res-item"><i class="res-dot core"></i>丧尸核心 <b id="lobby-cores">0</b></span>
           <span class="res-item"><i class="res-dot coin"></i>金币 <b id="lobby-coins">0</b></span>
+          <span class="res-item"><i class="res-dot rep"></i>声望 <b id="lobby-rep">0</b></span>
         </div>
       </header>
 
       <div class="lobby-body">
         <nav class="lobby-nav" id="lobby-nav">
           <button class="nav-item active" data-tab="battle">作战模式</button>
+          <button class="nav-item" data-tab="missions">任务奖励</button>
+          <button class="nav-item" data-tab="armory">军械库</button>
           <button class="nav-item" data-tab="mech">机甲库</button>
           <button class="nav-item" data-tab="talent">身体觉醒</button>
           <button class="nav-item" data-tab="stats">战绩统计</button>
+          <button class="nav-item" data-tab="settings">设置</button>
         </nav>
 
         <section class="lobby-main">
           <!-- 作战模式 -->
           <div class="tab-page active" id="tab-battle">
             <div class="mode-cards">
-              <div class="mode-card active">
+              <div class="mode-card active" data-mode="campaign">
                 <span class="mode-badge">主线</span>
                 <h3>闯关行动</h3>
                 <p>5 个区域逐关推进，最终在决斗场遭遇首领。每关有独立地图与刷怪配置。</p>
                 <p class="mode-meta">5 关 · 首领战 · 局间商店</p>
               </div>
-              <div class="mode-card locked">
-                <span class="mode-badge lock">开发中</span>
+              <div class="mode-card" data-mode="endless">
+                <span class="mode-badge">无限</span>
                 <h3>无尽生存</h3>
                 <p>波次无限循环，难度持续攀升，每 10 波出现首领。只与闯关共享局外成长。</p>
                 <p class="mode-meta">无限波 · 难度递增 · 排行榜</p>
+              </div>
+              <div class="mode-card" data-mode="defense">
+                <span class="mode-badge">守城</span>
+                <h3>领地守城</h3>
+                <p>驻守领地核心，用枪械、岸防炮、固定机枪与移动喷火器击退十轮尸潮。波间可布置炮塔与路障。</p>
+                <p class="mode-meta">10 波 · 场景武器 · 波间商店</p>
+              </div>
+              <div class="mode-card" data-mode="defense_endless">
+                <span class="mode-badge">无尽</span>
+                <h3>无尽守城</h3>
+                <p>同一张领地防线，尸潮没有尽头。核心血量与火力网配置决定你能守到第几波。</p>
+                <p class="mode-meta">无限波 · 核心血量 · 局内金币</p>
               </div>
             </div>
 
@@ -158,12 +187,13 @@
               <div class="lobby-block">
                 <h3>操作说明</h3>
                 <ul class="key-list">
-                  <li><b>W A S D</b><span>移动</span></li>
+                  <li><b>W A S D</b><span>移动（可在设置中改键）</span></li>
                   <li><b>Shift</b><span>疾跑（散布变大）</span></li>
                   <li><b>Alt</b><span>静步（精度最高）</span></li>
-                  <li><b>Ctrl</b><span>蹲伏</span></li>
-                  <li><b>1 2 3 4</b><span>步枪 / 手枪 / 霰弹 / 重狙</span></li>
+                  <li><b>C</b><span>蹲下（按住在掩体后）</span></li>
+                  <li><b>1 2 3 4 / 滚轮</b><span>步枪 / 手枪 / 霰弹 / 重狙</span></li>
                   <li><b>R</b><span>换弹 · <b>Esc</b> 暂停</span></li>
+                  <li><b>F / P</b><span>拾取 / 自动拾取开关</span></li>
                 </ul>
               </div>
               <div class="lobby-block">
@@ -177,59 +207,137 @@
             <p class="menu-foot">点击开始后将锁定鼠标 · 建议使用 Chrome / Edge 全屏游玩</p>
           </div>
 
+          <!-- 任务奖励 -->
+          <div class="tab-page" id="tab-missions">
+            <div class="mission-head-row">
+              <h3>军需任务</h3>
+              <span class="muted">进度按累计战绩自动推进，完成后领取奖励</span>
+            </div>
+            <div class="mission-list" id="mission-list"></div>
+            <p class="mission-feedback" id="mission-feedback"></p>
+            <p class="menu-foot">金币用于守城模式局内商店与人机雇佣 · 声望用于雇佣人机 · 材料用于觉醒 / 机甲 / 科研</p>
+          </div>
+
+          <!-- 军械库（枪械改装） -->
+          <div class="tab-page" id="tab-armory">
+            <div class="armory-head">
+              <div class="armory-weapons" id="armory-weapons"></div>
+              <button class="btn mini ghost" id="btn-reset-mods">全部卸下</button>
+            </div>
+            <div class="armory-body">
+              <div class="armory-info" id="armory-info"></div>
+              <div class="armory-slots" id="armory-slots"></div>
+            </div>
+            <p class="menu-foot">多槽位改装随存档保存 · 枪口配件赋予子弹风 / 火 / 雷 / 电 / 毒 / 连爆元素</p>
+          </div>
+
           <!-- 机甲库 -->
           <div class="tab-page" id="tab-mech">
             <div class="mech-grid">
-              <div class="mech-card locked">
+              <div class="mech-card locked" data-mech="heavy">
                 <h3>重装兵装</h3>
-                <p>重机枪 + 火箭筒，按 <b>5</b> 切换。火力覆盖但机动下降。</p>
-                <span class="mech-state">未解锁</span>
+                <p>独立 120 护盾 · 伤害 ×1.6 · 射速 ×1.5 · 移速 ×0.8 · 燃料 60 秒。</p>
+                <span class="mech-cost"></span>
+                <button class="btn mech-buy">解锁</button>
               </div>
-              <div class="mech-card locked">
+              <div class="mech-card locked" data-mech="turret">
                 <h3>哨戒炮塔</h3>
-                <p>花费金币部署，自动索敌，限一台，持续 20 秒。</p>
-                <span class="mech-state">未解锁</span>
+                <p>部署一台自动炮塔，自动索敌，限一台，持续 20 秒。</p>
+                <span class="mech-cost"></span>
+                <button class="btn mech-buy">解锁</button>
               </div>
-              <div class="mech-card locked">
+              <div class="mech-card locked" data-mech="armor">
                 <h3>装甲形态</h3>
-                <p>独立 250 生命，伤害 ×1.8，移速 ×0.55，燃料 90 秒。</p>
-                <span class="mech-state">未解锁</span>
+                <p>独立 250 护盾，伤害 ×1.8，移速 ×0.55，燃料 90 秒。</p>
+                <span class="mech-cost"></span>
+                <button class="btn mech-buy">解锁</button>
               </div>
             </div>
-            <p class="menu-foot">机甲通过丧尸核心素材解锁，后续版本开放</p>
+            <p class="menu-foot">解锁后局内按 <b>TAB</b> 打开机甲面板召唤 · 消耗金币与机甲材料</p>
           </div>
 
           <!-- 身体觉醒 -->
           <div class="tab-page" id="tab-talent">
             <div class="talent-branches">
-              <div class="talent-branch">
-                <h3>攻击</h3>
+              <div class="talent-branch" data-branch="atk">
+                <h3>攻击 <span class="talent-lv">0/5</span></h3>
                 <div class="talent-nodes"><i></i><i></i><i></i><i></i><i></i></div>
-                <p class="talent-desc">伤害与射速提升</p>
+                <p class="talent-desc">每级：伤害 +3% · 射速 +2%</p>
+                <button class="btn talent-up">升级</button>
               </div>
-              <div class="talent-branch">
-                <h3>防御</h3>
+              <div class="talent-branch" data-branch="def">
+                <h3>防御 <span class="talent-lv">0/5</span></h3>
                 <div class="talent-nodes"><i></i><i></i><i></i><i></i><i></i></div>
-                <p class="talent-desc">生命与护甲上限</p>
+                <p class="talent-desc">每级：最大生命 +10 · 最大护甲 +5</p>
+                <button class="btn talent-up">升级</button>
               </div>
-              <div class="talent-branch">
-                <h3>机动</h3>
+              <div class="talent-branch" data-branch="mob">
+                <h3>机动 <span class="talent-lv">0/5</span></h3>
                 <div class="talent-nodes"><i></i><i></i><i></i><i></i><i></i></div>
-                <p class="talent-desc">移速与换弹速度</p>
+                <p class="talent-desc">每级：移速 +3% · 换弹速度 +4%</p>
+                <button class="btn talent-up">升级</button>
               </div>
             </div>
-            <p class="menu-foot">局外天赋跨模式共享，消耗丧尸核心解锁</p>
+            <p class="menu-foot">局外天赋跨模式共享 · 消耗金币与觉醒材料升级</p>
           </div>
 
           <!-- 战绩统计 -->
           <div class="tab-page" id="tab-stats">
+            <div class="growth-block">
+              <div class="growth-lv-row">
+                <b id="lobby-level">Lv.1</b>
+                <span id="lobby-xp">0/100 EXP</span>
+                <b id="lobby-points">属性点 0</b>
+              </div>
+              <div class="growth-attr-grid" id="lobby-attrs"></div>
+            </div>
             <div class="stat-grid">
               <div class="stat-cell"><span>总场次</span><b id="st-runs">0</b></div>
               <div class="stat-cell"><span>总击杀</span><b id="st-kills">0</b></div>
               <div class="stat-cell"><span>最高关卡</span><b id="st-level">1</b></div>
               <div class="stat-cell"><span>无尽最佳波次</span><b id="st-wave">0</b></div>
             </div>
-            <p class="menu-foot">数据保存在本地浏览器，清除站点数据会重置进度</p>
+            <p class="menu-foot">经验来自击杀与清波 · 每级获得 1 点属性点 · 数据保存在本地浏览器</p>
+          </div>
+
+          <!-- 设置 -->
+          <div class="tab-page" id="tab-settings">
+            <div class="settings-grid">
+              <div class="settings-block">
+                <h3>操作设置</h3>
+                <label class="setting-row">
+                  <span>鼠标灵敏度</span>
+                  <input type="range" id="set-sens" min="0.0008" max="0.0060" step="0.0001" />
+                  <b id="set-sens-value">0.0022</b>
+                </label>
+                <label class="setting-row">
+                  <span>主音量</span>
+                  <input type="range" id="set-vol" min="0" max="1" step="0.05" />
+                  <b id="set-vol-value">100%</b>
+                </label>
+                <p class="setting-hint">灵敏度与音量即时生效，并自动保存到本地。</p>
+              </div>
+              <div class="settings-block">
+                <h3>快捷操作</h3>
+                <ul class="key-list compact">
+                  <li><b>右键</b><span>开镜</span></li>
+                  <li><b>Ctrl+R</b><span>弹种轮盘</span></li>
+                  <li><b>TAB</b><span>机甲 / 天赋 / 觉醒面板（开发中）</span></li>
+                  <li><b>·</b><span>地图 · <b>B</b> 背包</span></li>
+                  <li><b>Q E T Y U I O</b><span>技能（占位）</span></li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="settings-block">
+              <div class="settings-head">
+                <h3>键位设置</h3>
+                <button class="btn mini ghost" id="btn-reset-binds">恢复默认</button>
+              </div>
+              <div id="bind-groups" class="bind-groups"></div>
+              <p class="setting-hint">点击右侧按键后按下新按键即可改绑（支持 Ctrl / Shift / Alt 组合与鼠标键），Esc 取消。修改立即生效。</p>
+            </div>
+            <p class="menu-foot">键位与设置保存在本地浏览器，与存档一起重置</p>
           </div>
         </section>
       </div>
@@ -240,19 +348,22 @@
   <div id="pause" class="overlay hidden">
     <div class="panel small-panel">
       <h2>行动暂停</h2>
-      <p class="muted">鼠标已解锁，点击下方按钮继续或重新开始。</p>
+      <p class="muted">鼠标已解锁。可继续行动、重新开始本局，或退出回到大厅。</p>
       <button class="btn primary" id="btn-resume">继续行动</button>
       <button class="btn" id="btn-restart" style="margin-top:12px;background:linear-gradient(90deg,#8aa0b4,#5a6c7c);color:#fff;">重新开始</button>
+      <button class="btn" id="btn-exit-lobby" style="margin-top:12px;background:linear-gradient(90deg,#4a5a6a,#2c3a46);color:#fff;">退出到大厅</button>
       <div class="pause-keys">
         <h3>操作提示</h3>
         <ul class="key-list">
           <li><b>W A S D</b><span>移动</span></li>
-          <li><b>Shift</b><span>静步（声音小）</span></li>
-          <li><b>Ctrl</b><span>蹲伏</span></li>
+          <li><b>Shift</b><span>疾跑（散布变大）</span></li>
+          <li><b>Alt</b><span>静步（声音小）</span></li>
+          <li><b>C</b><span>蹲下</span></li>
           <li><b>空格</b><span>跳跃</span></li>
           <li><b>鼠标左键</b><span>射击</span></li>
+          <li><b>鼠标右键</b><span>开镜</span></li>
           <li><b>R</b><span>换弹</span></li>
-          <li><b>Esc</b><span>暂停</span></li>
+          <li><b>Esc</b><span>暂停 / 退出当前界面</span></li>
         </ul>
       </div>
     </div>
@@ -279,6 +390,7 @@
         <div class="result-cell"><span>承受伤害</span><b id="rs-dmg">0</b></div>
         <div class="result-cell"><span>肃清波次</span><b id="rs-wave">0/3</b></div>
       </div>
+      <p class="result-rewards" id="result-rewards"></p>
       <button class="btn primary" id="btn-again">再来一局</button>
       <button class="btn ghost" id="btn-menu">返回主菜单</button>
     </div>

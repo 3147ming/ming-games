@@ -155,14 +155,15 @@ export class Effects {
     return this.decalPool.find((d) => d.life <= 0) || this.decalPool[0];
   }
 
-  /** 子弹曳光（起点 -> 终点） */
-  spawnTracer(from, to, opacity = 0.85) {
+  /** 子弹曳光（起点 -> 终点；color 用于元素弹着色） */
+  spawnTracer(from, to, opacity = 0.85, color = 0xffd889) {
     const item = this._getTracer();
     const attr = item.line.geometry.attributes.position;
     attr.setXYZ(0, from.x, from.y, from.z);
     attr.setXYZ(1, to.x, to.y, to.z);
     attr.needsUpdate = true;
     item.line.material.opacity = opacity;
+    item.line.material.color.setHex(color);
     item.line.visible = true;
     item.life = item.maxLife;
   }

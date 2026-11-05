@@ -180,6 +180,7 @@ export class MapBuilder {
     this.assets = assets;
     this.layout = layout;
     this.group = new THREE.Group();
+    this.sceneObjects = [];   // 直接挂在 scene 上的灯光，切换地图时一并移除
 
     const spawn = layout.startPos || PLAYER.startPos;
     this.playerSpawn = new THREE.Vector3(spawn.x, spawn.y || 0, spawn.z);
@@ -221,6 +222,7 @@ export class MapBuilder {
   build() {
     this._buildSky();
     this._buildFloor();
+    this._buildMainRoad();
     this._buildCeiling();
     this._buildPerimeter();
     this._buildCrates();
@@ -263,6 +265,50 @@ export class MapBuilder {
     floor.receiveShadow = true;
     this.group.add(floor);
     this.collision.addBox(0, -0.5, 0, w, 1, d, 'floor');
+  }
+
+  // ---------------- 主路：贯穿场地的主干道（纯视觉，不参与碰撞） ----------------
+  _buildMainRoad() {
+    const road = this.layout.mainRoad;
+    if (!road) return;
+    const w = road.w != null ? road.w : 6;
+    const d = road.d != null ? road.d : this.layout.halfZ * 2;
+    const group = new THREE.Group();
+    group.name = 'main-road';
+    group.position.set(road.x || 0, 0, road.z || 0);
+    group.rotation.y = road.rot || 0;
+
+    // 沥青路面（略高于地面，避免与地面纹理 z-fighting）
+    const surface = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, d),
+      new THREE.MeshStandardMaterial({ color: 0x2c2e31, roughness: 0.98, metalness: 0.03 })
+    );
+    surface.rotation.x = -Math.PI / 2;
+    surface.position.y = 0.012;
+    surface.receiveShadow = true;
+    group.add(surface);
+
+    // 中央黄色虚线
+    const dashGeo = new THREE.PlaneGeometry(0.16, 2);
+    const dashMat = new THREE.MeshBasicMaterial({ color: 0xe0bd46 });
+    for (let z = -d / 2 + 2; z < d / 2 - 1; z += 4) {
+      const dash = new THREE.Mesh(dashGeo, dashMat);
+      dash.rotation.x = -Math.PI / 2;
+      dash.position.set(0, 0.018, z);
+      group.add(dash);
+    }
+
+    // 两侧边线
+    const edgeGeo = new THREE.PlaneGeometry(0.12, d);
+    const edgeMat = new THREE.MeshBasicMaterial({ color: 0xd6d6d0 });
+    for (const side of [-1, 1]) {
+      const edge = new THREE.Mesh(edgeGeo, edgeMat);
+      edge.rotation.x = -Math.PI / 2;
+      edge.position.set(side * (w / 2 - 0.22), 0.016, 0);
+      group.add(edge);
+    }
+
+    this.group.add(group);
   }
 
   // ---------------- 天花板（地下车库等室内图） ----------------
@@ -651,6 +697,7 @@ export class MapBuilder {
 
     const hemi = new THREE.HemisphereLight(cfg.hemiSky, cfg.hemiGround, cfg.hemiIntensity);
     this.scene.add(hemi);
+    this.sceneObjects.push(hemi);
 
     const dir = new THREE.DirectionalLight(cfg.sunColor, cfg.sunIntensity);
     dir.position.set(cfg.sunPos[0], cfg.sunPos[1], cfg.sunPos[2]);
@@ -665,13 +712,16 @@ export class MapBuilder {
     dir.shadow.bias = -0.0006;
     dir.shadow.normalBias = 0.025;
     this.scene.add(dir);
+    this.sceneObjects.push(dir);
 
     const fill = new THREE.DirectionalLight(cfg.fillColor, cfg.fillIntensity);
     fill.position.set(cfg.fillPos[0], cfg.fillPos[1], cfg.fillPos[2]);
     this.scene.add(fill);
+    this.sceneObjects.push(fill);
 
     const ambient = new THREE.AmbientLight(cfg.ambientColor, cfg.ambientIntensity);
     this.scene.add(ambient);
+    this.sceneObjects.push(ambient);
 
     // 场地灯柱
     const lamps = L.lamps || [];
@@ -688,7 +738,15 @@ export class MapBuilder {
         const lamp = new THREE.PointLight(0xffe0a8, 2.2, 22, 1.8);
         lamp.position.set(x, 6.1, z);
         this.scene.add(lamp);
+        this.sceneObjects.push(lamp);
       }
     }
+  }
+
+  /** 切换地图时移除本图所有对象（灯光 + 几何体），不做纹理释放以免误删共享资源 */
+  dispose() {
+    this.scene.remove(this.group);
+    for (const obj of this.sceneObjects) this.scene.remove(obj);
+    this.sceneObjects.length = 0;
   }
 }

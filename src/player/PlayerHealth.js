@@ -15,6 +15,17 @@ export class PlayerHealth {
     this.dead = false;
   }
 
+  /**
+   * 应用局外成长加成（属性点 + 防御天赋）。
+   * 只调整上限值，不自动回血；调用方通常在开局/复活前设置。
+   */
+  setBonus(hpBonus = 0, armorBonus = 0) {
+    this.maxHealth = PLAYER.maxHealth + Math.max(0, hpBonus);
+    this.maxArmor = PLAYER.maxArmor + Math.max(0, armorBonus);
+    this.health = Math.min(this.health, this.maxHealth);
+    this.armor = Math.min(this.armor, this.maxArmor);
+  }
+
   /** 承伤：护甲按固定比例吸收，剩余扣血。返回本次实际扣除的生命值 */
   damage(amount) {
     if (this.dead) return 0;

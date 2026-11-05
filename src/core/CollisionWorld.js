@@ -10,6 +10,11 @@ export class CollisionWorld {
     this.boxes = []; // { min: Vector3, max: Vector3, tag: string }
   }
 
+  /** 清空全部碰撞盒（切换地图时重建世界） */
+  clear() {
+    this.boxes.length = 0;
+  }
+
   /** 以中心点 + 尺寸添加碰撞盒 */
   addBox(cx, cy, cz, sx, sy, sz, tag = 'wall') {
     const box = {
@@ -189,5 +194,35 @@ export class CollisionWorld {
       if (this._overlaps(pos, radius, height, b)) return false;
     }
     return true;
+  }
+
+  /**
+   * 跳跃翻越探测：正前方是否有可以站上去的矮障碍（箱体 / 矮墙 / 集装箱）
+   * @param {THREE.Vector3} pos 脚底位置
+   * @param {number} dirX 朝向 X（无需归一化）
+   * @param {number} dirZ 朝向 Z
+   * @param {number} radius 角色半径
+   * @param {number} height 碰撞体高度
+   * @param {number} maxRise 最大可翻越高度差
+   * @returns {number|null} 可落脚顶面高度
+   */
+  findVaultTop(pos, dirX, dirZ, radius, height, maxRise = 2.65) {
+    const len = Math.hypot(dirX, dirZ);
+    if (len < 1e-4) return null;
+    // 探针点落在角色前方一个身位，要求落在盒顶内侧
+    const px = pos.x + (dirX / len) * (radius + 0.4);
+    const pz = pos.z + (dirZ / len) * (radius + 0.4);
+    let top = null;
+    for (const b of this.boxes) {
+      if (b.tag === 'floor') continue;
+      const rise = b.max.y - pos.y;
+      if (rise < 0.25 || rise > maxRise) continue;
+      if (px <= b.min.x + 0.05 || px >= b.max.x - 0.05 ||
+          pz <= b.min.z + 0.05 || pz >= b.max.z - 0.05) continue;
+      // 顶面必须站得下（避免翻越后头顶卡进堆叠物）
+      if (!this.canFit(new THREE.Vector3(px, b.max.y + 0.002, pz), radius, height)) continue;
+      if (top == null || b.max.y < top) top = b.max.y;
+    }
+    return top;
   }
 }

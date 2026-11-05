@@ -1,6 +1,6 @@
 /**
  * 玩家控制器（对应仓库 MovementScript.cs）
- * WASD 移动 / Shift 静步 / 空格跳跃 / 重力 / 碰撞 / 头部晃动 / 脚步声
+ * WASD 移动 / Shift 疾跑 / C 蹲下 / 空格跳跃 / 重力 / 碰撞 / 头部晃动 / 脚步声
  */
 import * as THREE from 'three';
 import { PLAYER } from '../config/weapon.js';
@@ -32,6 +32,10 @@ export class PlayerController {
     this.hitSlowTimer = 0;
     this.eyeHeight = PLAYER.eyeHeight;
     this.currentHeight = PLAYER.height;
+    // 局外成长 / 机甲形态的速度倍率；护盾值（机甲形态吸收伤害）
+    this.speedMul = 1;
+    this.shield = 0;
+    this.shieldMax = 0;
     this.footstep = audio ? audio.createLoop('walkLoop', 0) : null;
     this.runStep = audio ? audio.createLoop('runLoop', 0) : null;
   }
@@ -50,19 +54,19 @@ export class PlayerController {
     const forward = mouseLook.getForward();
     const right = { x: Math.cos(mouseLook.yaw), z: -Math.sin(mouseLook.yaw) };
 
-    // 输入方向（W 前 / S 后 / A 左 / D 右）
-    let ix = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);
-    let iz = (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0);
+    // 输入方向（动作映射：默认 W 前 / S 后 / A 左 / D 右，可在设置界面改键）
+    let ix = (input.actionDown('right') ? 1 : 0) - (input.actionDown('left') ? 1 : 0);
+    let iz = (input.actionDown('forward') ? 1 : 0) - (input.actionDown('backward') ? 1 : 0);
 
     let dx = right.x * ix + forward.x * iz;
     let dz = right.z * ix + forward.z * iz;
     const len = Math.hypot(dx, dz);
     if (len > 1) { dx /= len; dz /= len; }
 
-    // Shift 疾跑 / Alt 静步 / Ctrl 蹲伏
-    const sprint = input.isDown('ShiftLeft') || input.isDown('ShiftRight');
-    const slow = input.isDown('AltLeft') || input.isDown('AltRight');
-    let wantCrouch = input.isDown('ControlLeft') || input.isDown('ControlRight');
+    // 疾跑（长按 Shift）/ 静步（长按 Alt）/ 蹲下（长按 C）
+    const sprint = input.actionDown('sprint');
+    const slow = input.actionDown('walk');
+    let wantCrouch = input.actionDown('crouch');
     // 第三轮：起身前检测头顶空间，避免站起时卡进矮掩体
     if (!wantCrouch && this.isCrouching &&
         !this.collision.canFit(this.position, PLAYER.radius, PLAYER.height)) {
@@ -81,6 +85,7 @@ export class PlayerController {
       this.hitSlowTimer -= dt;
       speed *= PLAYER.hitSlowFactor;
     }
+    speed *= this.speedMul;
 
     // 蹲伏时平滑过渡眼睛高度与碰撞体高度
     const targetEye = wantCrouch ? PLAYER.crouchEyeHeight : PLAYER.eyeHeight;
@@ -96,9 +101,18 @@ export class PlayerController {
     this.velocity.x += (targetX - this.velocity.x) * k;
     this.velocity.z += (targetZ - this.velocity.z) * k;
 
-    // 跳跃（蹲伏状态下跳起会自然解除蹲伏）
-    if (this.grounded && input.consume('Space')) {
-      this.velocity.y = PLAYER.jumpSpeed;
+    // 跳跃 + 自动翻越（前方矮箱 / 矮墙 / 集装箱顶可直接跳上去）
+    if (this.grounded && input.consumeAction('jump')) {
+      const vaultTop = this.collision.findVaultTop(
+        this.position, dx, dz, PLAYER.radius, this.currentHeight, PLAYER.vaultHeight
+      );
+      if (vaultTop != null) {
+        // 翻越：抬到顶面并给一点上抛，随后由重力自然落到平台上
+        this.position.y = vaultTop + 0.001;
+        this.velocity.y = PLAYER.vaultLift;
+      } else {
+        this.velocity.y = PLAYER.jumpSpeed;
+      }
       this.grounded = false;
     }
 
@@ -117,7 +131,7 @@ export class PlayerController {
       this._peakFallSpeed = Math.max(this._peakFallSpeed, -this.velocity.y);
     } else if (this._wasAirborne) {
       // 刚落地：按下落峰值速度触发相机震动 + 落地音效
-      this.landShake = Math.min(0.09, this._peakFallSpeed * 0.012);
+      this.landShake = Math.min(0.05, this._peakFallSpeed * 0.007);
       if (this._peakFallSpeed > 2.2) {
         this.audio.play('land', {
           volume: Math.min(0.75, this._peakFallSpeed * 0.05),
@@ -175,7 +189,16 @@ export class PlayerController {
   /** 承伤；返回本次伤害值，并触发受击僵直 */
   takeDamage(amount) {
     if (this.dead) return 0;
-    const real = this.health.damage(amount);
+    // 机甲护盾优先吸收
+    let dmg = amount;
+    if (this.shield > 0 && dmg > 0) {
+      const absorbed = Math.min(this.shield, dmg);
+      this.shield -= absorbed;
+      dmg -= absorbed;
+      if (this.shield <= 0) this.shield = 0;
+    }
+    if (dmg <= 0) return 0;
+    const real = this.health.damage(dmg);
     if (this.health.dead) this.dead = true;
     this.applyHitSlow();
     return real;

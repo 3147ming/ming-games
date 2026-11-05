@@ -20,6 +20,7 @@ export class Menu {
     this.resultTitle = document.getElementById('result-title');
     this.resultGrade = document.getElementById('result-grade');
     this.resultScore = document.getElementById('result-score');
+    this.resultRewards = document.getElementById('result-rewards');
     this.rs = {
       kills: document.getElementById('rs-kills'),
       heads: document.getElementById('rs-heads'),
@@ -50,6 +51,13 @@ export class Menu {
     const btnMenu = document.getElementById('btn-menu');
     if (btnMenu) {
       btnMenu.addEventListener('click', () => {
+        this.callbacks.onMenu && this.callbacks.onMenu();
+      });
+    }
+    // 暂停面板：退出到大厅（与结算面板的返回主菜单共用同一回调）
+    const btnExit = document.getElementById('btn-exit-lobby');
+    if (btnExit) {
+      btnExit.addEventListener('click', () => {
         this.callbacks.onMenu && this.callbacks.onMenu();
       });
     }
@@ -89,11 +97,23 @@ export class Menu {
     if (!this.result) return;
     this.result.classList.toggle('win', !!r.win);
     this.result.classList.toggle('lose', !r.win);
-    this.resultKicker.textContent = r.win ? 'MISSION COMPLETE' : 'MISSION FAILED';
-    this.resultTitle.textContent = r.win ? '区域肃清' : '行动阵亡';
+    this.resultKicker.textContent = r.kicker || (r.win ? 'MISSION COMPLETE' : 'MISSION FAILED');
+    this.resultTitle.textContent = r.title || (r.win ? '区域肃清' : '行动阵亡');
     this.resultGrade.textContent = r.grade;
     this.resultGrade.dataset.grade = r.grade;
     this.resultScore.textContent = String(r.score);
+    if (this.resultRewards) {
+      const rw = r.rewards;
+      if (rw) {
+        const parts = [`金币 +${rw.coins}`, `声望 +${rw.reputation}`];
+        if (rw.cores) parts.push(`核心 +${rw.cores}`);
+        if (rw.xp) parts.push(`经验 +${rw.xp}`);
+        if (rw.levelUp) parts.push(`属性点 +${rw.levelUp}`);
+        this.resultRewards.textContent = `本局结算：${parts.join(' · ')}`;
+      } else {
+        this.resultRewards.textContent = '';
+      }
+    }
 
     if (this.rs.kills) this.rs.kills.textContent = String(r.kills);
     if (this.rs.heads) this.rs.heads.textContent = String(r.headshots);
@@ -105,13 +125,17 @@ export class Menu {
     }
     if (this.rs.dmg) this.rs.dmg.textContent = String(r.damageTaken);
     if (this.rs.wave) {
-      this.rs.wave.textContent = `${r.wavesCleared}/${r.waveTotal}`;
+      this.rs.wave.textContent = r.infinite
+        ? `${r.wavesCleared} 波`
+        : `${r.wavesCleared}/${r.waveTotal}`;
     }
 
     // 标题下方的小字：胜利说明战果，失败说明差多少
-    this.resultKicker.title = r.win
-      ? `共歼灭 ${r.totalEnemies} 名敌人`
-      : `已肃清 ${r.wavesCleared}/${r.waveTotal} 波`;
+    this.resultKicker.title = r.infinite
+      ? `无尽生存共坚守 ${r.wavesCleared} 波 · 歼灭 ${r.totalEnemies} 名敌人`
+      : (r.win
+        ? `共歼灭 ${r.totalEnemies} 名敌人`
+        : `已肃清 ${r.wavesCleared}/${r.waveTotal} 波`);
 
     this.menu.classList.add('hidden');
     this.pause.classList.add('hidden');

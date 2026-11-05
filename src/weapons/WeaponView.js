@@ -277,28 +277,36 @@ export class WeaponView {
     // 后坐力衰减
     this.kick += (0 - this.kick) * Math.min(1, dt * 12);
 
-    // 鼠标摆动（反向跟随）
-    const swayTargetX = -mouseDelta.x * 0.0018;
-    const swayTargetY = mouseDelta.y * 0.0016;
+    // 鼠标摆动（反向跟随；开镜时收敛）
+    const aimK = Math.max(0, Math.min(1, state.aiming || 0));
+    const swayTargetX = -mouseDelta.x * 0.0018 * (1 - aimK * 0.8);
+    const swayTargetY = mouseDelta.y * 0.0016 * (1 - aimK * 0.7);
     this.swayX += (swayTargetX - this.swayX) * Math.min(1, dt * 9);
     this.swayY += (swayTargetY - this.swayY) * Math.min(1, dt * 9);
 
     // 移动/呼吸摆动
-    const bob = state.moving ? Math.sin(this.idleTime * 9) * 0.012 : 0;
-    const breathe = Math.sin(this.idleTime * 1.7) * 0.004;
+    const bob = state.moving ? Math.sin(this.idleTime * 9) * 0.012 * (1 - aimK * 0.85) : 0;
+    const breathe = Math.sin(this.idleTime * 1.7) * 0.004 * (1 - aimK * 0.9);
     // 空中：枪身微微下沉并左右轻摆
     const airDrop = state.airborne ? 0.03 : 0;
     const airSway = state.airborne ? Math.sin(this.idleTime * 3.2) * 0.008 : 0;
 
     const p = this.pivot.position;
-    p.x = this.basePos.x + this.swayX + airSway;
-    p.y = this.basePos.y + this.swayY + bob + breathe - airDrop - this.kick * 0.008;
-    p.z = this.basePos.z + this.kick * 0.055;
+    const restX = this.basePos.x + this.swayX + airSway;
+    const restY = this.basePos.y + this.swayY + bob + breathe - airDrop - this.kick * 0.008;
+    const restZ = this.basePos.z + this.kick * 0.055;
+    // 开镜：枪身移到画面中线并抬高到准心位置
+    const adsX = 0;
+    const adsY = this.basePos.y + 0.075;
+    const adsZ = this.basePos.z + 0.03;
+    p.x = restX + (adsX - restX) * aimK;
+    p.y = restY + (adsY - restY) * aimK;
+    p.z = restZ + (adsZ - restZ) * aimK;
 
     const r = this.pivot.rotation;
-    r.x = this.baseRot.x + this.kick * 0.05;
-    r.y = this.baseRot.y + this.swayX * 1.4;
-    r.z = this.baseRot.z + this.swayX * 0.6;
+    r.x = this.baseRot.x + this.kick * 0.05 * (1 - aimK * 0.4);
+    r.y = this.baseRot.y + this.swayX * 1.4 * (1 - aimK * 0.75);
+    r.z = this.baseRot.z + this.swayX * 0.6 * (1 - aimK * 0.75);
 
     // 换弹动画（第三轮：拆成两段节奏 —— 0~55% 掏弹匣下压，55%~100% 插入弹匣回位）
     if (state.reloading) {

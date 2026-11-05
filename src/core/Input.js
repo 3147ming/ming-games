@@ -1,53 +1,97 @@
 /**
  * 输入管理：键盘、鼠标、指针锁定
- * 只负责采集原始输入，不处理游戏逻辑
+ * 只负责采集原始输入，不处理游戏逻辑。
+ *
+ * 支持两层接口：
+ *  1. 原始编码：isDown('KeyW') / consume('Space') —— 调试、特殊逻辑用；
+ *  2. 动作映射：actionDown('forward') / consumeAction('reload')
+ *     动作与按键的对应关系来自 config/keybinds.js，并可从设置界面改写。
  */
+import { DEFAULT_BINDS, normalizeBinds } from '../config/keybinds.js';
+
+/** 无论何时都不交给浏览器的功能键（避免 F5 刷新、F12 调试等打断游戏） */
+const BLOCK_FUNCTION_KEYS = new Set(['F3', 'F4', 'F5', 'F6', 'F7', 'F11', 'F12']);
+
+/** 游戏中要拦截的 Ctrl 组合键（浏览器刷新 / 保存 / 打印 / 搜索等） */
+const BLOCK_CTRL_KEYS = new Set([
+  'KeyS', 'KeyP', 'KeyO', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyN',
+  'KeyL', 'KeyT', 'KeyU', 'KeyR', 'KeyI', 'KeyA', 'KeyC', 'KeyV', 'KeyX',
+  'Digit0', 'Minus', 'Equal',
+]);
+
 export class Input {
-  constructor(canvas) {
+  constructor(canvas, binds = DEFAULT_BINDS) {
     this.canvas = canvas;
-    this.keys = new Set();          // 当前按下的按键
+    this.keys = new Set();          // 当前按下的按键（鼠标键编码为 Mouse0/Mouse1/Mouse2）
     this.pressed = new Set();       // 本帧刚按下的按键（边沿触发）
-    this.mouseDown = false;         // 左键是否按住
+    this.mouseDown = false;         // 左键是否按住（兼容旧逻辑）
     this.dx = 0;                    // 本帧鼠标水平位移
     this.dy = 0;                    // 本帧鼠标垂直位移
     this.wheelDelta = 0;            // 本帧滚轮累计
     this.locked = false;
-    this.enabled = true;            // 暂停/死亡时禁用视角移动
+    this.enabled = false;           // 暂停 / 大厅时禁用视角与滚轮
     this.onLockChange = null;
 
+    this.bindings = normalizeBinds(binds);
+    this._boundCodes = new Set();
+    this._rebuildBoundCodes();
+
     this._bind();
+  }
+
+  /** 更新键位映射（设置界面改键后立即调用） */
+  setBindings(binds) {
+    this.bindings = normalizeBinds(binds);
+    this._rebuildBoundCodes();
+  }
+
+  _rebuildBoundCodes() {
+    this._boundCodes.clear();
+    for (const bind of Object.values(this.bindings)) {
+      for (const code of String(bind).split('+')) {
+        if (code) this._boundCodes.add(code);
+      }
+    }
   }
 
   _bind() {
     // 键盘
     window.addEventListener('keydown', (e) => {
-      // 防止空格滚动页面 / Tab 切换焦点
-      if (['Space', 'Tab', 'KeyR'].includes(e.code)) e.preventDefault();
-      if (!e.repeat) this.pressed.add(e.code);
-      this.keys.add(e.code);
+      const code = e.code;
+      // 防止空格滚动页面 / Tab 切换焦点 / 游戏中浏览器快捷键生效
+      if (this.enabled) {
+        const blocked = this._boundCodes.has(code)
+          || BLOCK_FUNCTION_KEYS.has(code)
+          || (e.ctrlKey && BLOCK_CTRL_KEYS.has(code));
+        if (blocked) e.preventDefault();
+      }
+      if (!e.repeat) this.pressed.add(code);
+      this.keys.add(code);
     });
     window.addEventListener('keyup', (e) => {
       this.keys.delete(e.code);
     });
 
-    // 鼠标按键
+    // 鼠标按键（含右键开镜）
     this.canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 0) {
-        this.mouseDown = true;
-        this.pressed.add('Mouse0');
-      }
+      const code = 'Mouse' + e.button;
+      this.keys.add(code);
+      this.pressed.add(code);
+      if (e.button === 0) this.mouseDown = true;
     });
     window.addEventListener('mouseup', (e) => {
+      this.keys.delete('Mouse' + e.button);
       if (e.button === 0) this.mouseDown = false;
     });
     // 禁止右键菜单，保持沉浸感
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    // 滚轮（切枪用）
+    // 滚轮（切枪用；阻止页面滚动 / Ctrl+滚轮缩放）
     this.canvas.addEventListener('wheel', (e) => {
+      if (this.enabled) e.preventDefault();
       if (!this.enabled) return;
       this.wheelDelta += e.deltaY;
-    }, { passive: true });
+    }, { passive: false });
 
     // 鼠标移动（指针锁定后使用 movementX/Y；未锁定时同样累计，作为降级方案）
     document.addEventListener('mousemove', (e) => {
@@ -71,7 +115,7 @@ export class Input {
       console.warn('[Input] 指针锁定失败，请点击画布重试');
     });
 
-    // 第三轮：浏览器失去焦点时自动解锁鼠标，避免"卡视角"
+    // 浏览器失去焦点时自动解锁鼠标，避免"卡视角"
     window.addEventListener('blur', () => {
       this.keys.clear();
       this.mouseDown = false;
@@ -93,12 +137,42 @@ export class Input {
     if (document.pointerLockElement) document.exitPointerLock();
   }
 
-  /** 是否按住某键 */
+  /** 模式串（'ControlLeft+KeyR'）拆成需要同时按住的编码 */
+  _codesFor(action) {
+    const bind = this.bindings[action];
+    if (!bind) return [];
+    return String(bind).split('+').filter(Boolean);
+  }
+
+  /** 动作对应的按键是否全部按住 */
+  actionDown(action) {
+    const codes = this._codesFor(action);
+    if (codes.length === 0) return false;
+    for (const code of codes) {
+      if (!this.keys.has(code)) return false;
+    }
+    return true;
+  }
+
+  /** 动作是否在本帧刚触发（组合键任一键的边沿即可） */
+  actionPressed(action) {
+    if (!this.actionDown(action)) return false;
+    return this._codesFor(action).some((code) => this.pressed.has(code));
+  }
+
+  /** 消费动作的边沿触发，避免同一帧重复处理 */
+  consumeAction(action) {
+    if (!this.actionPressed(action)) return false;
+    for (const code of this._codesFor(action)) this.pressed.delete(code);
+    return true;
+  }
+
+  /** 是否按住某键（原始编码） */
   isDown(code) {
     return this.keys.has(code);
   }
 
-  /** 本帧是否刚按下（消费型） */
+  /** 本帧是否刚按下（消费型，原始编码） */
   consume(code) {
     if (this.pressed.has(code)) {
       this.pressed.delete(code);

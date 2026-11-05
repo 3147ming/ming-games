@@ -21,6 +21,11 @@ export class HUD {
     this.waveTotal = $('wave-total');
     this.waveRemain = $('wave-remain');
     this.waveHud = $('wave-hud');
+    // 局内任务目标
+    this.missionObj = $('mission-objective');
+    this.missionObjName = $('mission-obj-name');
+    this.missionObjNow = $('mission-obj-now');
+    this.missionObjTotal = $('mission-obj-total');
     this.magValue = $('mag-value');
     this.reserveValue = $('reserve-value');
     this.reloadTip = $('reload-tip');
@@ -32,6 +37,10 @@ export class HUD {
     this.reloadBarFill = this.reloadBar.querySelector('i');
     this.weaponName = $('weapon-name');
     this.weaponTag = $('weapon-tag');
+    this.ammoType = $('ammo-type');
+    this.ammoWheel = $('ammo-wheel');
+    this.scopeOverlay = $('scope-overlay');
+    this._wheelItems = null;
 
     this._lastHealth = -1;
   }
@@ -69,6 +78,50 @@ export class HUD {
     if (this.weaponTag && tag) this.weaponTag.textContent = tag;
   }
 
+  /** 当前弹种（Ctrl+R 轮盘切换后刷新） */
+  setAmmoType(name, color = 0xffd27a) {
+    if (!this.ammoType) return;
+    this.ammoType.textContent = name;
+    this.ammoType.style.color = '#' + color.toString(16).padStart(6, '0');
+  }
+
+  /** 开镜：收束 / 隐藏准星 */
+  setAiming(on) {
+    if (this.crosshair) this.crosshair.classList.toggle('aiming', !!on);
+  }
+
+  /** 重狙开镜：显示全屏瞄镜遮罩 */
+  setScope(on) {
+    if (this.scopeOverlay) this.scopeOverlay.classList.toggle('hidden', !on);
+  }
+
+  /** 弹种轮盘 */
+  showAmmoWheel(types, index) {
+    if (!this.ammoWheel) return;
+    if (!this._wheelItems) {
+      this.ammoWheel.innerHTML = '';
+      this._wheelItems = types.map((t) => {
+        const item = document.createElement('div');
+        item.className = 'ammo-wheel-item';
+        item.style.color = '#' + t.color.toString(16).padStart(6, '0');
+        const name = document.createElement('b');
+        name.textContent = t.name;
+        const desc = document.createElement('span');
+        desc.textContent = t.desc;
+        item.appendChild(name);
+        item.appendChild(desc);
+        this.ammoWheel.appendChild(item);
+        return item;
+      });
+    }
+    this._wheelItems.forEach((el, i) => el.classList.toggle('active', i === index));
+    this.ammoWheel.classList.remove('hidden');
+  }
+
+  hideAmmoWheel() {
+    if (this.ammoWheel) this.ammoWheel.classList.add('hidden');
+  }
+
   setKills(kills) {
     this.killValue.textContent = kills;
   }
@@ -98,14 +151,28 @@ export class HUD {
     if (this.waveRemain) this.waveRemain.textContent = n;
   }
 
-  /** 波次指示：当前第几波 / 共几波 / 本波剩余 */
+  /** 波次指示：当前第几波 / 共几波 / 本波剩余（total 为 null 表示无限模式） */
   setWave(current, total, remaining) {
     if (this.waveNow) this.waveNow.textContent = current;
-    if (this.waveTotal) this.waveTotal.textContent = total;
+    if (this.waveTotal) this.waveTotal.textContent = total == null ? '∞' : total;
     if (this.waveRemain) this.waveRemain.textContent = remaining;
     if (this.waveHud) {
-      this.waveHud.classList.toggle('final', current >= total);
+      this.waveHud.classList.toggle('final', total != null && current >= total);
     }
+  }
+
+  /** 局内任务目标：显示当前进度最高的未领取任务 */
+  setMissionObjective(name, progress, target) {
+    if (!this.missionObj) return;
+    if (this.missionObjName) this.missionObjName.textContent = name;
+    if (this.missionObjNow) this.missionObjNow.textContent = Math.min(progress, target);
+    if (this.missionObjTotal) this.missionObjTotal.textContent = target;
+    this.missionObj.classList.remove('hidden');
+  }
+
+  /** 隐藏任务目标（全部已领取 / 已达成时调用） */
+  hideMissionObjective() {
+    if (this.missionObj) this.missionObj.classList.add('hidden');
   }
 
   /** 准星散布（弧度 -> 像素） */
@@ -189,13 +256,13 @@ export class HUD {
     this.reloadBarFill.style.width = (Math.max(0, Math.min(1, t)) * 100) + '%';
   }
 
-  /** 复活时整体刷新 */
-  reset() {
+  /** 复活时整体刷新（total 为 null 时显示无限波） */
+  reset(total = MATCH.waves.length) {
     this._lastHealth = -1;
     this.setHealth(PLAYER.maxHealth);
     this.setArmor(PLAYER.maxArmor);
     this.setAmmo(WEAPON.magazineSize, WEAPON.reserveAmmo);
-    this.setWave(1, MATCH.waves.length, 0);
+    this.setWave(1, total, 0);
     this.showReloadBar(false);
     this.showReloadTip(false, false);
     // 第三轮：重置爆头击杀计数

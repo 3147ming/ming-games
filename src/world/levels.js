@@ -28,6 +28,9 @@ const LEVEL_1_YARD = {
   floorStyle: 'asphalt',
   silhouetteColor: 0x8fa2b4,
 
+  // 主路：从南门直达北侧的主干道（出生点就在路上）
+  mainRoad: { x: 8, z: 0, w: 5.6, d: 44 },
+
   perimeterSegs: [
     [-14, -21.6, 10, 1.15], [12, -21.6, 8, 1.15],
     [-10, 21.6, 12, 1.15], [14, 21.6, 9, 1.15],
@@ -50,7 +53,7 @@ const LEVEL_1_YARD = {
     { x: -21, z: -17, w: 1.8, h: 1.4, d: 1.2 },
     { x: 23, z: -3, w: 1.4, h: 1.4, d: 1.4 },
     { x: -23, z: 2, w: 1.2, h: 1.8, d: 1.2 },
-    { x: 7, z: 13, w: 1.6, h: 1.2, d: 1.6 },
+    { x: 4.4, z: 13, w: 1.6, h: 1.2, d: 1.6 },
     { x: -17, z: 12, w: 1.2, h: 1.0, d: 1.6 },
     { x: 5, z: -16, w: 1.5, h: 1.3, d: 1.5 },
     { x: -6, z: -16, w: 1.7, h: 1.5, d: 1.3 },
@@ -543,8 +546,145 @@ const LEVEL_5_ARENA = {
   lamps: [[-12, -12], [12, -12], [-12, 12], [12, 12]],
 };
 
+// ============================ 守城：领地防线 ============================
+const LEVEL_6_DEFENSE = {
+  id: 'defense',
+  name: '领地防线',
+
+  halfX: 30,
+  halfZ: 24,
+  fenceHeight: 1.55,
+  wallHeight: 7.2,
+
+  sky: {
+    top: 0x36506b,
+    bottom: 0xc3a68a,
+    fogColor: 0x9aa2a6,
+    fogNear: 40,
+    fogFar: 150,
+  },
+
+  floorStyle: 'asphalt',
+  silhouetteColor: 0x7b8794,
+
+  // 主干道从北侧尸潮入口直通领地核心
+  mainRoad: { x: 0, z: -2, w: 7, d: 48 },
+  startPos: { x: 0, y: 0, z: 15 },
+  startYaw: 0,
+
+  // 核心 / 场景武器 / 防线槽位（DefenseManager 读取）
+  // 核心横在主路上、玩家身后，丧尸必须突破核心才能威胁玩家
+  defense: {
+    core: { x: 0, z: 9 },
+    weapons: [
+      { type: 'cannon', x: -6.5, z: 8.5, yaw: 0 },
+      { type: 'mg', x: 6.5, z: 8.5, yaw: 0 },
+      { type: 'flamer', x: 0, z: 13, yaw: 0 },
+    ],
+    turretSlots: [
+      { x: -9, z: 8 }, { x: 9, z: 8 }, { x: 0, z: 4 }, { x: -14, z: -2 }, { x: 14, z: -2 },
+    ],
+    barricadeSlots: [
+      { x: -6, z: 6, rot: 0 }, { x: 6, z: 6, rot: 0 },
+      { x: -18, z: 2, rot: 0.35 }, { x: 18, z: 2, rot: -0.35 },
+    ],
+  },
+
+  perimeterSegs: [
+    [-20, -23.6, 16, 1.15], [20, -23.6, 16, 1.15],
+    [-20, 23.6, 16, 1.15], [20, 23.6, 16, 1.15],
+    [-29.6, -10, 1.15, 20], [-29.6, 10, 1.15, 20],
+    [29.6, -10, 1.15, 20], [29.6, 10, 1.15, 20],
+  ],
+
+  crates: [
+    { x: -12, z: -10, w: 1.6, h: 1.3, d: 1.6 },
+    { x: 12, z: -10, w: 1.6, h: 1.3, d: 1.6 },
+    { x: -20, z: 4, w: 1.6, h: 1.4, d: 1.4 },
+    { x: 20, z: 4, w: 1.6, h: 1.4, d: 1.4 },
+    { x: -4, z: -14, w: 2.0, h: 1.6, d: 1.6 },
+    { x: 4, z: -14, w: 2.0, h: 1.6, d: 1.6 },
+    { x: 0, z: -6, w: 2.2, h: 1.8, d: 1.8 },
+    { x: 12, z: 12, w: 1.4, h: 1.1, d: 1.4 },
+    { x: -12, z: 12, w: 1.4, h: 1.1, d: 1.4 },
+  ],
+
+  racks: [
+    { x: -26, z: -4, w: 1.0, h: 3.2, d: 10 },
+    { x: 26, z: -4, w: 1.0, h: 3.2, d: 10 },
+  ],
+
+  containers: [
+    { x: -19, z: 15, rot: 0, color: 0x3a5a44 },
+    { x: 19, z: 15, rot: 0, color: 0x4a4f2e },
+  ],
+
+  barrels: [
+    [-8, -16], [8, -16], [-16, 10], [16, 10], [-24, 12], [24, 12],
+  ],
+
+  sandbags: [
+    { x: -5, z: 16, count: 3, ry: 0.2 },
+    { x: 5, z: 16, count: 3, ry: -0.2 },
+    { x: 0, z: 5.2, count: 3, ry: 0 },
+    { x: -14, z: 8, count: 2, ry: 1.1 },
+    { x: 14, z: 8, count: 2, ry: -1.1 },
+  ],
+
+  tires: [
+    { x: -10, z: 0, n: 3 }, { x: 10, z: 0, n: 3 },
+    { x: -22, z: -6, n: 2 }, { x: 22, z: -6, n: 2 },
+  ],
+
+  lines: [
+    [0, -2, 30, 0.16], [0, 8, 22, 0.16],
+  ],
+
+  stacks: [
+    { x: -19, z: 15, rot: 0 },
+    { x: 19, z: 15, rot: 0 },
+  ],
+
+  cars: [],
+
+  silhouettes: [
+    [-70, -60, 26, 34, 20], [0, -80, 30, 40, 22], [70, -60, 26, 34, 20],
+    [-85, 20, 24, 30, 20], [85, 20, 24, 30, 20],
+  ],
+
+  lamps: [[-16, -12], [16, -12], [-16, 6], [16, 6]],
+
+  spawnPoints: [
+    { x: 0, z: -22 },
+    { x: -14, z: -22 },
+    { x: 14, z: -22 },
+    { x: -28, z: -4 },
+    { x: 28, z: -4 },
+    { x: -26, z: 14 },
+    { x: 26, z: 14 },
+  ],
+
+  patrolPoints: [
+    { x: -20, z: -14 }, { x: 20, z: -14 }, { x: 0, z: -10 },
+    { x: -10, z: 2 }, { x: 10, z: 2 }, { x: -18, z: 12 }, { x: 18, z: 12 },
+  ],
+
+  supplyPoints: [
+    { type: 'ammo', x: -5, z: 16.5 },
+    { type: 'ammo', x: 5, z: 16.5 },
+    { type: 'med', x: -10, z: 19 },
+    { type: 'med', x: 10, z: 19 },
+    { type: 'armor', x: 0, z: 17 },
+    { type: 'cache', x: -16, z: 18 },
+    { type: 'cache', x: 16, z: 18 },
+  ],
+};
+
 /** 关卡表：索引 0 = 第 1 关 */
-export const LEVELS = [LEVEL_1_YARD, LEVEL_2_DOCK, LEVEL_3_GARAGE, LEVEL_4_LOGISTICS, LEVEL_5_ARENA];
+export const LEVELS = [LEVEL_1_YARD, LEVEL_2_DOCK, LEVEL_3_GARAGE, LEVEL_4_LOGISTICS, LEVEL_5_ARENA, LEVEL_6_DEFENSE];
+
+/** 守城地图索引 */
+export const DEFENSE_LEVEL_INDEX = 5;
 
 /** 取关卡配置；越界时回退到第 1 关 */
 export function getLevel(index) {

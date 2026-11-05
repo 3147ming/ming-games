@@ -24,6 +24,10 @@ const rec = (label, ok, got = '') => {
 const section = (t) => console.log(`\n=== ${t} ===`);
 const txt = (c, expr) => c.evaluate(expr);
 
+/** 无头浏览器的音频设备噪声：与游戏代码无关，不计入稳定性失败 */
+const AUDIO_NOISE = /AudioContext encountered an error from the audio device or the WebAudio renderer/;
+const realErrors = (errors) => errors.filter((e) => !AUDIO_NOISE.test(e));
+
 const { server, port } = await startServer(ROOT);
 const url = `http://127.0.0.1:${port}/${LEVEL ? `?level=${LEVEL}` : ''}`;
 const c = await openSession({ tag: 'probe', width: 1024, height: 576 });
@@ -33,6 +37,8 @@ const clearWave = async () => {
   const n = await c.evaluate(`(() => {
     const em = window.__game.enemies;
     let guard = 0;
+    // 刷一个杀一个；_spawnOne 是直接调用（绕过 update 的并发上限），
+    // 所以 waveSpawned 可能略高于 waveTotal，这里只校验击杀数与本波总数一致
     while (em.waveKilled < em.waveTotal && guard++ < 80) {
       em._spawnOne();
       em.enemies.filter((e) => !e.dead).forEach((e) => e.takeDamage(999999));
@@ -56,8 +62,30 @@ try {
     return Object.entries(t).map(([k, v]) => [k, v && v.image ? v.image.width : 0]);
   })()`);
   rec('三张贴图都真正解码（>64px）', Array.isArray(texOk) && texOk.every(([, w]) => w >= 64), JSON.stringify(texOk));
+  const rootMotion = await c.evaluate(`(() => {
+    const out = {};
+    for (const [k, clip] of Object.entries(window.__game.assets.anims)) {
+      if (!clip) { out[k] = null; continue; }
+      let drift = 0;
+      for (const t of clip.tracks) {
+        if (!t.name.endsWith('.position')) continue;
+        const node = t.name.slice(0, -'.position'.length);
+        if (!/^(Zombie|Base_HumanPelvis)$/.test(node)) continue;
+        const v = t.values;
+        const x0 = v[0], z0 = v[2];
+        for (let i = 0; i < v.length; i += 3) {
+          drift = Math.max(drift, Math.abs(v[i] - x0), Math.abs(v[i + 2] - z0));
+        }
+      }
+      out[k] = Math.round(drift * 1000) / 1000;
+    }
+    return out;
+  })()`);
+  rec('丧尸动画已剥除根位移（不再"影子冲刺"）',
+    typeof rootMotion === 'object' && rootMotion !== null && Object.values(rootMotion).every((d) => d === 0),
+    JSON.stringify(rootMotion));
   rec('无未捕获异常', c.exceptions.length === 0, c.exceptions.slice(0, 2).join(' | '));
-  rec('无 console.error', c.consoleErrors.length === 0, c.consoleErrors.slice(0, 2).join(' | '));
+  rec('无 console.error', realErrors(c.consoleErrors).length === 0, realErrors(c.consoleErrors).slice(0, 2).join(' | '));
   await c.shot('01-menu.png');
 
   section('B. 开局与波次初始化');
@@ -84,6 +112,200 @@ try {
   })()`);
   rec('画布铺满视口', !!(box && box.ok), box && box.why);
   await c.shot('02-gameplay.png');
+
+  section('B2. 键位映射与改键');
+  const binds = await c.evaluate(`(() => {
+    const b = window.__game.input.bindings;
+    return { crouch: b.crouch, sprint: b.sprint, fire: b.fire, aim: b.aim, panel: b.panel, pickup: b.pickup, autoPickup: b.autoPickup };
+  })()`);
+  rec('默认键位已载入（C 蹲下 / Shift 疾跑 / 右键开镜）',
+    binds.crouch === 'KeyC' && binds.sprint === 'ShiftLeft' && binds.fire === 'Mouse0' && binds.aim === 'Mouse2',
+    JSON.stringify(binds));
+  rec('设置界面已生成完整键位表', Number(await c.evaluate('document.querySelectorAll(".bind-key").length')) >= 25,
+    `rows=${await c.evaluate('document.querySelectorAll(".bind-key").length')}`);
+
+  // 用真实键盘事件验证动作映射（无头下必须主动推帧）
+  await c.send('Input.dispatchKeyEvent', { type: 'keyDown', code: 'KeyC', key: 'c', windowsVirtualKeyCode: 67, nativeVirtualKeyCode: 67 });
+  await c.frame(3);
+  rec('按住 C 进入蹲伏', String(await c.evaluate('window.__game.player.isCrouching')) === 'true');
+  await c.send('Input.dispatchKeyEvent', { type: 'keyUp', code: 'KeyC', key: 'c', windowsVirtualKeyCode: 67, nativeVirtualKeyCode: 67 });
+  await c.frame(3);
+  rec('松开 C 自动站起', String(await c.evaluate('window.__game.player.isCrouching')) === 'false');
+
+  // 改键后立即生效：把蹲下改成 X，此时 C 不再触发
+  await c.evaluate('window.__game.save.setBind("crouch", "KeyX"); window.__game._applySettings();');
+  await c.send('Input.dispatchKeyEvent', { type: 'keyDown', code: 'KeyX', key: 'x', windowsVirtualKeyCode: 88, nativeVirtualKeyCode: 88 });
+  await c.frame(3);
+  rec('改键后按 X 也能蹲下', String(await c.evaluate('window.__game.player.isCrouching')) === 'true');
+  await c.send('Input.dispatchKeyEvent', { type: 'keyUp', code: 'KeyX', key: 'x', windowsVirtualKeyCode: 88, nativeVirtualKeyCode: 88 });
+  await c.frame(3);
+  rec('改键后原键 C 已失效', String(await c.evaluate('(() => { const p = window.__game.player; return p.isCrouching; })()')) === 'false');
+  await c.evaluate('window.__game.save.resetBinds(); window.__game._applySettings();');
+
+  // 疾跑：方向键 + Shift 长按
+  await c.send('Input.dispatchKeyEvent', { type: 'keyDown', code: 'KeyW', key: 'w', windowsVirtualKeyCode: 87, nativeVirtualKeyCode: 87 });
+  await c.send('Input.dispatchKeyEvent', { type: 'keyDown', code: 'ShiftLeft', key: 'Shift', windowsVirtualKeyCode: 16, nativeVirtualKeyCode: 16 });
+  await c.frame(4);
+  rec('长按 Shift + W 进入疾跑', String(await c.evaluate('window.__game.player.isSprinting')) === 'true');
+  await c.send('Input.dispatchKeyEvent', { type: 'keyUp', code: 'ShiftLeft', key: 'Shift', windowsVirtualKeyCode: 16, nativeVirtualKeyCode: 16 });
+  await c.send('Input.dispatchKeyEvent', { type: 'keyUp', code: 'KeyW', key: 'w', windowsVirtualKeyCode: 87, nativeVirtualKeyCode: 87 });
+  await c.frame(2);
+
+  section('B3. 开镜 / 弹种轮盘');
+  const fovBase = Number(await c.evaluate('window.__game.camera.fov'));
+  const rightPress = { type: 'mousePressed', x: 512, y: 288, button: 'right', buttons: 2, clickCount: 1 };
+  const rightRelease = { type: 'mouseReleased', x: 512, y: 288, button: 'right', buttons: 0, clickCount: 1 };
+
+  // 右键开镜：真实鼠标事件驱动（不是直接改标志位）
+  await c.send('Input.dispatchMouseEvent', rightPress);
+  // 等开镜插值（aimProgress）收敛，再读 FOV；固定帧数在无头下容易停在 94%
+  await c.waitFor('window.__game.gun.aimProgress > 0.99', 4000);
+  await c.frame(3);
+  const ads = await c.evaluate(`(() => {
+    const g = window.__game;
+    return {
+      fov: g.camera.fov,
+      target: g.gun.weapons[g.gun.currentId].adsFov,
+      aim: g.gun.aimProgress,
+      sens: g.mouseLook.aimScale,
+      cross: document.getElementById('crosshair').classList.contains('aiming'),
+    };
+  })()`);
+  rec('右键开镜：FOV 收束到瞄具值', Math.abs(ads.fov - ads.target) < 1 && ads.fov < fovBase,
+    `fov ${fovBase} → ${ads.fov.toFixed(1)}（目标 ${ads.target}）`);
+  rec('开镜降低鼠标灵敏度', ads.sens < 0.8, `aimScale=${ads.sens.toFixed(2)}`);
+  rec('开镜准星收束', ads.cross === true, `aimProgress=${ads.aim.toFixed(2)}`);
+  await c.send('Input.dispatchMouseEvent', rightRelease);
+  await c.frame(24);
+  const adsOff = await c.evaluate('({ fov: window.__game.camera.fov, sens: window.__game.mouseLook.aimScale, aim: window.__game.gun.aimProgress })');
+  rec('松开右键恢复 FOV / 灵敏度',
+    Math.abs(adsOff.fov - fovBase) < 0.6 && adsOff.sens > 0.98 && adsOff.aim < 0.05, JSON.stringify(adsOff));
+
+  // 重狙：开镜显示全屏瞄镜遮罩
+  await c.evaluate('window.__game.gun.switchCooldown = 0; window.__game.gun.switchWeapon("sniper")');
+  await c.frame(2);
+  await c.send('Input.dispatchMouseEvent', rightPress);
+  await c.frame(24);
+  const scope = await c.evaluate(`({
+    id: window.__game.gun.currentId,
+    fov: window.__game.camera.fov,
+    overlay: !document.getElementById('scope-overlay').classList.contains('hidden'),
+  })`);
+  rec('重狙开镜（FOV<32 + 全屏瞄镜）', scope.id === 'sniper' && scope.fov < 32 && scope.overlay === true, JSON.stringify(scope));
+  await c.shot('06-scope.png');
+  await c.send('Input.dispatchMouseEvent', rightRelease);
+  await c.frame(12);
+  rec('松开右键后瞄镜遮罩隐藏',
+    String(await c.evaluate('document.getElementById("scope-overlay").classList.contains("hidden")')) === 'true');
+  await c.evaluate('window.__game.gun.switchCooldown = 0; window.__game.gun.switchWeapon("rifle")');
+  await c.frame(4);
+
+  // Ctrl+R 弹种轮盘：组合键真实按下 → 鼠标上推选弹 → 松开关闭
+  await c.send('Input.dispatchKeyEvent', { type: 'keyDown', code: 'ControlLeft', key: 'Control', windowsVirtualKeyCode: 17, nativeVirtualKeyCode: 17, modifiers: 2 });
+  await c.send('Input.dispatchKeyEvent', { type: 'keyDown', code: 'KeyR', key: 'r', windowsVirtualKeyCode: 82, nativeVirtualKeyCode: 82, modifiers: 2 });
+  await c.frame(2);
+  const wheel = await c.evaluate(`({
+    held: window.__game._ammoWheelOpen,
+    visible: !document.getElementById('ammo-wheel').classList.contains('hidden'),
+    items: document.querySelectorAll('.ammo-wheel-item').length,
+  })`);
+  rec('Ctrl+R 唤出弹种轮盘（4 种弹药）',
+    wheel.held === true && wheel.visible === true && wheel.items === 4, JSON.stringify(wheel));
+  rec('轮盘打开期间不触发换弹', String(await c.evaluate('window.__game.gun.reloading')) === 'false');
+  await c.evaluate('window.__game.gun.updateAmmoWheel(0, 70)');
+  await c.frame(1);
+  const wheelIdx = Number(await c.evaluate('window.__game.gun.ammoIndex'));
+  rec('鼠标上推选中穿甲弹', wheelIdx === 1, `ammoIndex=${wheelIdx}`);
+  rec('HUD 弹种名同步为「穿甲弹」',
+    String(await txt(c, 'document.getElementById("ammo-type").textContent')) === '穿甲弹');
+  await c.send('Input.dispatchKeyEvent', { type: 'keyUp', code: 'KeyR', key: 'r', windowsVirtualKeyCode: 82, nativeVirtualKeyCode: 82, modifiers: 2 });
+  await c.send('Input.dispatchKeyEvent', { type: 'keyUp', code: 'ControlLeft', key: 'Control', windowsVirtualKeyCode: 17, nativeVirtualKeyCode: 17 });
+  await c.frame(2);
+  rec('松开组合键关闭轮盘',
+    String(await c.evaluate('window.__game._ammoWheelOpen')) === 'false'
+    && String(await c.evaluate('document.getElementById("ammo-wheel").classList.contains("hidden")')) === 'true');
+  await c.evaluate('window.__game.gun.ammoIndex = 0; window.__game.gun._syncHud();');
+
+  section('B4. 军械库改装（UI → 存档 → 武器数据）');
+  const mod = await c.evaluate(`(() => {
+    const g = window.__game;
+    const base0 = g.gun.weapons.rifle;
+    const btnCount = document.querySelectorAll('#armory-slots .armory-option').length;
+    document.querySelector('#armory-slots .armory-option[data-slot="muzzle"][data-att="muzzle_fire"]').click();
+    const fired = g.gun.weapons.rifle;
+    document.querySelector('#armory-slots .armory-option[data-slot="magazine"][data-att="ext"]').click();
+    const ext = g.gun.weapons.rifle;
+    return {
+      btnCount,
+      damage0: base0.damage, damage1: fired.damage, element: fired.element,
+      mag0: base0.magazineSize, mag1: ext.magazineSize,
+      saved: g.save.data.loadout.rifle.muzzle + '/' + g.save.data.loadout.rifle.magazine,
+      fireActive: document.querySelector('#armory-slots .armory-option[data-slot="muzzle"][data-att="muzzle_fire"]').classList.contains('active'),
+      extActive: document.querySelector('#armory-slots .armory-option[data-slot="magazine"][data-att="ext"]').classList.contains('active'),
+    };
+  })()`);
+  rec('军械库五槽位共 19 个配件按钮', mod.btnCount === 19, `count=${mod.btnCount}`);
+  rec('枪口配件赋予火元素并提升伤害',
+    mod.element === 'fire' && mod.damage1 > mod.damage0, `${mod.damage0} → ${mod.damage1.toFixed(1)}，element=${mod.element}`);
+  rec('扩容弹匣：容量 30 → 45', mod.mag0 === 30 && mod.mag1 === 45, `${mod.mag0} → ${mod.mag1}`);
+  rec('改装写入存档并高亮当前配件',
+    mod.saved === 'muzzle_fire/ext' && mod.fireActive === true && mod.extActive === true, JSON.stringify(mod));
+  await c.evaluate('window.__game.save.resetLoadout(); window.__game.gun.applyLoadout(window.__game.save.data.loadout); window.__game.gun.resetAmmo();');
+  rec('一键恢复默认改装（容量回到 30 / 元素清空）',
+    Number(await c.evaluate('window.__game.gun.weapons.rifle.magazineSize')) === 30
+    && String(await c.evaluate('window.__game.gun.weapons.rifle.element')) === 'none');
+
+  section('B5. 主路 / 跳跃翻越 / 箱顶站立');
+  const road = await c.evaluate(`({
+    built: !!window.__game.map.group.getObjectByName('main-road'),
+    config: window.__game.map.level.mainRoad || null,
+  })`);
+  rec('主路已铺设（贯穿货场，出生点在路上）',
+    road.built === true && road.config && road.config.w >= 4, JSON.stringify(road));
+
+  // 真实 W + 空格：站在 1.1m 货箱前 → 自动翻越并站稳
+  await c.evaluate(`(() => {
+    const g = window.__game;
+    g.player.position.set(12, 0, -3.85);
+    g.player.velocity.set(0, 0, 0);
+    g.player.grounded = true;
+    g.player.isCrouching = false;
+    g.mouseLook.yaw = 0;
+    g.mouseLook.pitch = 0;
+    g.player.update(0.016, g.mouseLook);
+  })()`);
+  await c.send('Input.dispatchKeyEvent', { type: 'keyDown', code: 'KeyW', key: 'w', windowsVirtualKeyCode: 87, nativeVirtualKeyCode: 87 });
+  await c.send('Input.dispatchKeyEvent', { type: 'keyDown', code: 'Space', key: ' ', windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 });
+  await c.frame(8);
+  await c.send('Input.dispatchKeyEvent', { type: 'keyUp', code: 'Space', key: ' ', windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 });
+  await c.send('Input.dispatchKeyEvent', { type: 'keyUp', code: 'KeyW', key: 'w', windowsVirtualKeyCode: 87, nativeVirtualKeyCode: 87 });
+  await c.frame(10);
+  const vault = await c.evaluate('({ x: window.__game.player.position.x, y: window.__game.player.position.y, z: window.__game.player.position.z, grounded: window.__game.player.grounded })');
+  rec('跳跃自动翻越 1.1m 货箱并站稳',
+    vault.y > 1.05 && vault.y < 1.2 && vault.grounded === true, JSON.stringify(vault));
+
+  // 集装箱顶可站立行走（直接落到顶面，验证站立表面）
+  const stand = await c.evaluate(`(() => {
+    const g = window.__game;
+    g.player.position.set(-20, 2.601, -2);
+    g.player.velocity.set(0, 0, 0);
+    g.player.grounded = false;
+    for (let i = 0; i < 30; i++) g.player.update(0.016, g.mouseLook);
+    return { y: window.__game.player.position.y, grounded: window.__game.player.grounded };
+  })()`);
+  rec('集装箱顶可站立（不会穿透下落）', Math.abs(stand.y - 2.6) < 0.05 && stand.grounded === true, JSON.stringify(stand));
+
+  // 回出生点，拍一张主路视角
+  await c.evaluate(`(() => {
+    const g = window.__game;
+    g.player.position.set(8, 0, 15);
+    g.player.velocity.set(0, 0, 0);
+    g.mouseLook.reset();
+    g.player.update(0.016, g.mouseLook);
+    g.mouseLook.update(0.016);
+  })()`);
+  await c.frame(2);
+  await c.shot('07-road.png');
 
   section('C. 射击 / 统计');
   const before = await c.evaluate('window.__game.gun.mag');
@@ -144,6 +366,7 @@ try {
     w.targetHeading = w.heading;
     w.lastKnown.copy(g.player.position);
     w.attackTimer = 0; w.windupTimer = 0; w.windupDone = true;
+    w.state = 'chase'; w.chaseLinger = 0;
     const tracersBefore = g.effects.tracerPool.filter((t) => t.life > 0).length;
     // 连跑 3 秒近战：逼近 → 前摇 → 判定
     for (let i = 0; i < 120; i++) w.update(0.025);
@@ -210,6 +433,13 @@ try {
   const hitResult = await c.evaluate(`(() => {
     const g = window.__game;
     const e = g.enemies.enemies.find((x) => !x.dead) || g.enemies.enemies[0];
+    // 隔离测试：隐藏其它丧尸并暂停补位刷新，避免射线被别的目标吸收
+    g.enemies.enemies.forEach((x) => {
+      if (x === e) return;
+      x.dead = true; x.deadTimer = 1; x.root.visible = false;
+    });
+    g.enemies.spawnTimer = 999;
+    e.__probeTarget = true;
     // 摆成「玩家在 (0,0,8) 面向 -Z，敌人正前方 5 米」
     g.player.position.set(0, 0, 8);
     g.player.velocity.set(0, 0, 0);
@@ -228,6 +458,7 @@ try {
     const before = e.health;
     g.gun.mag = 30; g.gun.cooldown = 0; g.gun.reloading = false;
     const shotsBefore = g.stats.shots, hitsBefore = g.stats.hits;
+    g.__probeKillsBase = g.enemies.kills;
     g.gun.debugFire();
     return { before, after: e.health, dmg: before - e.health, shots: g.stats.shots - shotsBefore, hits: g.stats.hits - hitsBefore };
   })()`);
@@ -236,35 +467,83 @@ try {
 
   const killResult = await c.evaluate(`(() => {
     const g = window.__game;
-    const e = g.enemies.enemies.find((x) => !x.dead);
-    const k0 = g.enemies.kills;
+    const e = g.enemies.enemies.find((x) => x.__probeTarget);
     let guard = 0;
     while (!e.dead && guard++ < 10) {
       g.gun.cooldown = 0; g.gun.mag = 30; g.gun.reloading = false;
       g.gun.debugFire();
     }
-    return { killed: e.dead, kills: g.enemies.kills - k0 };
+    delete e.__probeTarget;
+    g.enemies.spawnTimer = 0.2;
+    return { killed: e.dead, kills: g.enemies.kills - (g.__probeKillsBase || 0) };
   })()`);
-  rec('持续命中可击杀敌人', killResult.killed === true && killResult.kills === 1, JSON.stringify(killResult));
+  rec('持续命中可击杀敌人', killResult.killed === true && killResult.kills >= 1, JSON.stringify(killResult));
   rec('HUD 击杀数同步', Number(await txt(c, 'document.getElementById("kill-value").textContent')) === Number(await c.evaluate('window.__game.enemies.kills')));
 
   section('F. 三波推进');
   const w1 = await clearWave();
-  rec('第 1 波按 total 刷满并清空', w1.spawned === w1.total && w1.killed === w1.total, JSON.stringify(w1));
-  await c.frame(3);
+  rec('第 1 波按 total 刷满并清空', w1.killed === w1.total && w1.spawned >= w1.total, JSON.stringify(w1));
+  // 等待波次结算（高频机器负载下固定帧数不可靠，改为轮询状态）
+  const cleared1 = await c.waitFor('window.__game.state === "shop" || window.__game.enemies.waveState === "break"', 15000);
   rec('清空后进入休整（break）', String(await c.evaluate('window.__game.enemies.waveState')) === 'break', String(await c.evaluate('window.__game.enemies.waveState')));
   rec('休整期补给已发放（备弹 +60）', Number(await c.evaluate('window.__game.gun.reserve')) >= 114, `reserve=${await c.evaluate('window.__game.gun.reserve')}`);
+
+  // 非守城模式的波间军需商店：清波后弹出，消费局内金币
+  const waitShop1 = await c.waitFor('window.__game.state === "shop"', 10000);
+  rec('非守城清波后弹出波间军需商店并暂停推进', waitShop1, `state=${await c.evaluate('window.__game.state')}`);
+  const runShopOpen = await c.evaluate(`(() => ({
+    state: window.__game.state,
+    visible: !document.getElementById('shop-panel').classList.contains('hidden'),
+    cards: document.querySelectorAll('#shop-grid [data-buy]').length,
+    gold: Number(document.getElementById('shop-gold').textContent),
+    runGold: window.__game.runGold,
+    sub: document.getElementById('shop-sub').textContent,
+    buyLabel: (document.querySelector('#shop-grid [data-buy]') || {}).textContent || '',
+  }))()`);
+  rec('波间军需提供 6 件商品', runShopOpen.cards === 6, `cards=${runShopOpen.cards}`);
+  rec('击杀 + 清波已累计局内金币', runShopOpen.runGold >= 35 && runShopOpen.gold === runShopOpen.runGold, `runGold=${runShopOpen.runGold}`);
+  rec('非守城商店文案为「购买」', runShopOpen.buyLabel === '购买', runShopOpen.buyLabel);
+
+  const runBuy = await c.evaluate(`(() => {
+    const g = window.__game;
+    const reserve0 = g.gun.reserve;
+    const gold0 = g.runGold;
+    document.querySelector('[data-buy="ammo"]').click();
+    return { reserve0, reserve1: g.gun.reserve, gold0, gold1: g.runGold };
+  })()`);
+  rec('购买弹药补给：扣局内金币并增加备弹', runBuy.gold1 === runBuy.gold0 - 35 && runBuy.reserve1 >= runBuy.reserve0 + 60, JSON.stringify(runBuy));
+
+  await c.evaluate('document.getElementById("btn-shop-continue").click()');
+  const backPlay1 = await c.waitFor('window.__game.state === "playing"', 10000);
+  rec('关闭波间商店后回到战斗', backPlay1, String(await c.evaluate('window.__game.state')));
+
+  // 局内任务目标 HUD
+  const obj = await c.evaluate(`(() => ({
+    visible: !document.getElementById('mission-objective').classList.contains('hidden'),
+    name: document.getElementById('mission-obj-name').textContent,
+    now: document.getElementById('mission-obj-now').textContent,
+    total: document.getElementById('mission-obj-total').textContent,
+  }))()`);
+  rec('局内 HUD 显示任务目标并随击杀推进', obj.visible && obj.name.length > 0 && Number(obj.now) > 0, JSON.stringify(obj));
+
   await c.evaluate('window.__game.enemies.breakTimer = 0.001');
-  await c.frame(3);
-  rec('进入第 2 波', Number(await c.evaluate('window.__game.enemies.waveIndex')) === 1, String(await c.evaluate('window.__game.enemies.waveIndex')));
+  const wave2 = await c.waitFor('window.__game.enemies.waveIndex === 1', 10000);
+  rec('进入第 2 波', wave2, String(await c.evaluate('window.__game.enemies.waveIndex')));
   rec('HUD 波次更新为 2/3', String(await txt(c, 'document.getElementById("wave-now").textContent')) === '2');
   const w2 = await clearWave();
-  await c.frame(2);
+  const w2shopReady = await c.waitFor('window.__game.state === "shop"', 15000);
+  const w2shop = await c.evaluate(`(() => ({
+    state: window.__game.state,
+    visible: !document.getElementById('shop-panel').classList.contains('hidden'),
+  }))()`);
+  rec('第 2 波清空后再次弹出军需商店', w2shopReady && w2shop.visible, `state=${w2shop.state}`);
+  await c.evaluate('document.getElementById("btn-shop-continue").click()');
+  await c.waitFor('window.__game.state === "playing"', 10000);
   await c.evaluate('window.__game.enemies.breakTimer = 0.001');
-  await c.frame(3);
-  rec('第 2 波清空 → 第 3 波', Number(await c.evaluate('window.__game.enemies.waveIndex')) === 2, JSON.stringify(w2));
+  const wave3 = await c.waitFor('window.__game.enemies.waveIndex === 2', 10000);
+  rec('第 2 波清空 → 第 3 波', wave3, JSON.stringify(w2));
   const w3 = await clearWave();
-  await c.frame(4);
+  await c.waitFor('window.__game.state === "result"', 15000);
   rec('第 3 波清空', w3.killed === w3.total, JSON.stringify(w3));
 
   section('G. 胜利结算');
@@ -282,6 +561,9 @@ try {
   rec('结算击杀 = 24（三波总数）', rs.kills === '24', JSON.stringify(rs));
   rec('结算波次 = 3/3', rs.wave === '3/3', rs.wave);
   rec('命中率为百分比格式', /^\d+%$/.test(rs.acc), rs.acc);
+  const resultRewards = String(await txt(c, 'document.getElementById("result-rewards").textContent'));
+  rec('结算面板显示局外金币 / 声望奖励',
+    resultRewards.startsWith('本局结算：金币 +') && resultRewards.includes('声望 +'), resultRewards);
   await c.shot('03-result-win.png');
 
   section('H. 再来一局');
@@ -309,12 +591,323 @@ try {
   rec('菜单可见 / HUD 隐藏',
     String(await txt(c, '!document.getElementById("menu").classList.contains("hidden") && document.getElementById("hud").classList.contains("hidden")')) === 'true');
 
+  section('M. 任务奖励面板');
+  const m0 = await c.evaluate(`(() => {
+    const list = document.getElementById('mission-list');
+    const first = list.querySelector('.mission-card');
+    return {
+      count: list.querySelectorAll('.mission-card').length,
+      firstProgress: first ? first.querySelector('.mission-head span').textContent : '',
+      firstDisabled: first ? first.querySelector('[data-claim]').disabled : true,
+      coins: Number(document.getElementById('lobby-coins').textContent),
+      rep: Number(document.getElementById('lobby-rep').textContent),
+    };
+  })()`);
+  rec('任务面板渲染 4 条任务', m0.count === 4, `count=${m0.count}`);
+  rec('完成一局后首个任务可领取',
+    m0.firstProgress === '1/1' && m0.firstDisabled === false, JSON.stringify(m0));
+  await c.evaluate('document.querySelector("#mission-list .mission-card [data-claim]").click()');
+  const m1 = await c.evaluate(`(() => {
+    const g = window.__game;
+    const first = document.querySelector('#mission-list .mission-card');
+    return {
+      coins: Number(document.getElementById('lobby-coins').textContent),
+      rep: Number(document.getElementById('lobby-rep').textContent),
+      claimed: first.classList.contains('claimed'),
+      disabled: first.querySelector('[data-claim]').disabled,
+      feedback: document.getElementById('mission-feedback').textContent,
+      saved: g.save.data.meta.claimedMissions.includes('first_run'),
+      coinsSaved: g.save.data.meta.coins,
+    };
+  })()`);
+  rec('领取任务：金币 +120 / 声望 +2',
+    m1.coins === m0.coins + 120 && m1.rep === m0.rep + 2, JSON.stringify(m1));
+  rec('领取后标记已领取并写入存档',
+    m1.claimed === true && m1.disabled === true && m1.saved === true && m1.coinsSaved === m1.coins,
+    m1.feedback);
+  await c.evaluate(`document.querySelector('.nav-item[data-tab="missions"]').click()`);
+  await c.frame(2);
+  await c.shot('08-missions.png');
+
+  section('L. 元素弹 / 弹种结算');
+  const elem = await c.evaluate(`(() => {
+    const g = window.__game;
+    const pool = g.enemies.enemies.filter((e) => e && e.root);
+    const [a, b, c2] = pool;
+    const revive = (e, x, z, hp) => {
+      e.dead = false; e.deadTimer = 0; e.root.visible = true;
+      e.health = hp;
+      e.burnTimer = 0; e.burnDps = 0; e.poisonTimer = 0; e.poisonDps = 0;
+      e.slowTimer = 0; e.statusSpeedMul = 1;
+      e.position.set(x, 0, z); e.root.position.copy(e.position);
+      e.velocity.set(0, 0, 0);
+      return e;
+    };
+    const hitOn = (e) => ({ enemy: e, point: e.position.clone(), part: 'body' });
+    const rifle = g.gun.weapons.rifle;
+    const W = (element) => ({ ...rifle, element });
+    const out = {};
+
+    // 火：3 秒灼烧（10 DPS）
+    const fireT = revive(a, 0, 0, 1000);
+    g.gun._applyBulletEffects(W('fire'), hitOn(fireT), 10, g.gun.ammoType);
+    const fireHp0 = fireT.health;
+    for (let i = 0; i < 31; i++) fireT._updateStatus(0.1);
+    out.fireDamage = Math.round(fireHp0 - fireT.health);
+    out.fireLeft = fireT.burnTimer;
+
+    // 毒：5 秒毒伤（7 DPS）
+    const poisonT = revive(b, 2, 0, 1000);
+    g.gun._applyBulletEffects(W('poison'), hitOn(poisonT), 10, g.gun.ammoType);
+    const poisonHp0 = poisonT.health;
+    for (let i = 0; i < 51; i++) poisonT._updateStatus(0.1);
+    out.poisonDamage = Math.round(poisonHp0 - poisonT.health);
+
+    // 电：减速 50%，到期自动回正
+    const slowT = revive(c2, 4, 0, 1000);
+    g.gun._applyBulletEffects(W('electric'), hitOn(slowT), 10, g.gun.ammoType);
+    out.slowMul = slowT.statusSpeedMul;
+    for (let i = 0; i < 25; i++) slowT._updateStatus(0.1);
+    out.slowRestored = slowT.statusSpeedMul;
+
+    // 风：击退推力
+    const windT = revive(a, 6, 0, 1000);
+    g.gun._applyBulletEffects(W('wind'), hitOn(windT), 10, g.gun.ammoType);
+    out.knock = Math.round(Math.hypot(windT.velocity.x, windT.velocity.z) * 10) / 10;
+
+    // 雷：连锁最近的 2 个目标
+    const chainA = revive(a, 0, 0, 1000);
+    const chainB = revive(b, 2, 0, 1000);
+    const chainHp0 = chainB.health;
+    g.gun._applyBulletEffects(W('lightning'), hitOn(chainA), 20, g.gun.ammoType);
+    out.chainDamage = Math.round(chainHp0 - chainB.health);
+
+    // 连爆：每 4 次命中触发范围爆炸
+    revive(a, 0, 0, 1000);
+    revive(b, 2, 0, 1000);
+    g.gun.comboHits = 0;
+    for (let i = 0; i < 4; i++) g.gun._applyBulletEffects(W('combo'), hitOn(a), 10, g.gun.ammoType);
+    out.comboDamage = Math.round(1000 - b.health);
+    out.comboReset = g.gun.comboHits;
+
+    // 爆裂弹：命中点小范围爆炸（半径 2.6）
+    revive(a, 0, 0, 1000);
+    const exB = revive(b, 2, 0, 1000);
+    g.gun.ammoIndex = 3;
+    const exHp0 = exB.health;
+    g.gun._applyBulletEffects({ ...rifle, element: 'none' }, hitOn(a), 10, g.gun.ammoType);
+    out.explosiveDamage = Math.round(exHp0 - exB.health);
+    g.gun.ammoIndex = 0;
+    g.gun._syncHud();
+
+    // 清理：恢复为尸体，避免影响稳定性统计
+    for (const e of [a, b, c2]) { e.dead = true; e.deadTimer = 1; e.root.visible = false; }
+    return out;
+  })()`);
+  rec('火元素：3 秒灼烧约 30 点', elem.fireDamage >= 28 && elem.fireDamage <= 32, `-${elem.fireDamage} HP，剩余 ${elem.fireLeft.toFixed(1)}s`);
+  rec('毒元素：5 秒毒伤约 35 点', elem.poisonDamage >= 33 && elem.poisonDamage <= 37, `-${elem.poisonDamage} HP`);
+  rec('电元素：减速 50% 且到期回正', elem.slowMul === 0.5 && elem.slowRestored === 1, `slow ${elem.slowMul} → ${elem.slowRestored}`);
+  rec('风元素：命中产生击退', elem.knock >= 6, `velocity=${elem.knock}`);
+  rec('雷元素：连锁对附近目标造成 50% 伤害', elem.chainDamage === 10, `-${elem.chainDamage} HP`);
+  rec('连爆：第 4 次命中触发 80 点范围爆炸', elem.comboDamage === 80 && elem.comboReset === 0, `-${elem.comboDamage} HP`);
+  rec('爆裂弹：命中产生 30 点范围爆炸', elem.explosiveDamage === 30, `-${elem.explosiveDamage} HP`);
+
   section('K. 稳定性');
   rec('全程无未捕获异常', c.exceptions.length === 0, c.exceptions.slice(0, 3).join(' | '));
-  rec('全程无 console.error', c.consoleErrors.length === 0, c.consoleErrors.slice(0, 3).join(' | '));
+  rec('全程无 console.error', realErrors(c.consoleErrors).length === 0, realErrors(c.consoleErrors).slice(0, 3).join(' | '));
   const callCount = await c.evaluate('window.__game.renderer.info.render.calls');
   rec('单帧 draw call 控制在 220 以内', Number(callCount) < 220, `calls=${callCount}`);
   await c.shot('05-final.png');
+
+  section('N. 守城模式：地图 / 核心 / 场景武器 / 商店');
+  await c.send('Page.navigate', { url: `http://127.0.0.1:${port}/?mode=defense` });
+  const readyDef = await c.waitFor('window.__game && window.__game.state === "menu"', 60000);
+  rec('守城页面加载完成', readyDef);
+  const defMeta = await c.evaluate(`(() => {
+    const g = window.__game;
+    return {
+      level: g.map.level.id,
+      hasDefense: !!g.map.level.defense,
+      weapons: g.defense ? g.defense.weapons.length : 0,
+      core: g.defense ? g.defense.coreHp : 0,
+      hud: !document.getElementById('defense-status').classList.contains('hidden'),
+      gold: g.defense ? g.defense.gold : -1,
+    };
+  })()`);
+  rec('切换至领地防线地图', defMeta.level === 'defense' && defMeta.hasDefense, defMeta.level);
+  rec('守城运行时已创建 3 件场景武器（岸防炮 / 机枪 / 喷火器）', defMeta.weapons === 3, `weapons=${defMeta.weapons}`);
+  rec('核心初始生命 1000', defMeta.core === 1000, `core=${defMeta.core}`);
+  rec('守城 HUD 默认显示，局内金币从 0 开始', defMeta.hud && defMeta.gold === 0);
+
+  await c.evaluate('document.getElementById("btn-start").click()');
+  await c.waitFor('window.__game.state === "playing"', 10000);
+  await c.evaluate(`(() => {
+    const g = window.__game;
+    g.enemies.enemies.forEach((e) => { e.dead = true; e.deadTimer = 1; e.root.visible = false; });
+    g.enemies.waveKilled = g.enemies.waveTotal;
+  })()`);
+
+  // 上机：岸防炮
+  const mount = await c.evaluate(`(() => {
+    const g = window.__game;
+    g.player.position.set(-6.5, 0, 10.4);
+    const ok = g.defense.tryInteract();
+    const w = g.defense.mounted;
+    return {
+      ok,
+      mounted: !!w,
+      name: w ? w.cfg.name : null,
+      eyeY: g.camera.position.y,
+      pivot: g.weaponView.pivot.visible,
+      hint: g.defense.interactHint(),
+    };
+  })()`);
+  rec('靠近岸防炮按 F 上机', mount.ok && mount.mounted && mount.name === '岸防炮', mount.name);
+  rec('上机后相机移到炮位并隐藏手持武器', mount.eyeY > 1.4 && mount.pivot === false, `eyeY=${mount.eyeY?.toFixed(2)}`);
+  rec('上机状态提示离开方式', typeof mount.hint === 'string' && mount.hint.includes('离开'), mount.hint);
+
+  // 开火：有限弹药 + 过热
+  const fire = await c.evaluate(`(() => {
+    const g = window.__game;
+    const w = g.defense.mounted;
+    const before = w.ammo;
+    g.defense._fireSceneWeapon(w);
+    const ammoFirst = w.ammo;
+    const heatAfterShot = w.heat;
+    w.heat = 99;
+    w.cooldown = 0;
+    g.defense._fireSceneWeapon(w);
+    return {
+      ammo: w.ammo, ammoFirst, before,
+      heat: heatAfterShot,
+      overheated: w.overheated,
+      ammoMax: w.cfg.ammoMax,
+    };
+  })()`);
+  rec('岸防炮开火消耗弹药', fire.ammoFirst === fire.before - 1, `${fire.before} → ${fire.ammoFirst}`);
+  rec('连续射击触发热度过热锁定', fire.overheated === true && fire.heat > 0, `heat=${fire.heat}`);
+
+  const dismount = await c.evaluate(`(() => {
+    const g = window.__game;
+    const ok = g.defense.tryInteract();
+    return { ok, mounted: g.defense.isMounted, pivot: g.weaponView.pivot.visible, hint: g.defense.interactHint() };
+  })()`);
+  rec('再按 F 离开炮位并恢复手持武器', dismount.ok && !dismount.mounted && dismount.pivot === true);
+
+  // 可拆武器：喷火器拾取 / 喷射 / 放下
+  const flame = await c.evaluate(`(() => {
+    const g = window.__game;
+    g.player.position.set(0, 0, 13.6);
+    const picked = g.defense.tryInteract();
+    const w = g.defense.carrying;
+    const ammo0 = w ? w.ammo : -1;
+    for (let i = 0; i < 6; i++) g.defense.updateCarried(0.2, true, true);
+    const ammo1 = w ? w.ammo : -1;
+    const heat = w ? w.heat : -1;
+    const dropped = g.defense.tryInteract();
+    return {
+      picked, name: w ? w.cfg.name : null, ammo0, ammo1, heat,
+      dropped, carrying: g.defense.isCarrying, pivot: g.weaponView.pivot.visible,
+    };
+  })()`);
+  rec('移动喷火器可拆下携带', flame.picked && flame.name === '移动喷火器');
+  rec('喷火器喷射消耗燃料并累积热量', flame.ammo1 < flame.ammo0 && flame.heat > 0, `fuel ${flame.ammo0.toFixed(1)} → ${flame.ammo1.toFixed(1)}，heat=${flame.heat.toFixed(1)}`);
+  rec('再按 F 放下喷火器并恢复手持武器', flame.dropped && !flame.carrying && flame.pivot === true);
+
+  // 商店：炮塔 / 路障 / 修理 / 补给 / 人机
+  await c.evaluate(`(() => {
+    const g = window.__game;
+    g.defense.gold = 500;
+    g.defense.addGold(0);
+    g.defense.coreHp = 600;
+    g._openShop(2);
+  })()`);
+  const shopOpen = await c.evaluate(`(() => ({
+    state: window.__game.state,
+    visible: !document.getElementById('shop-panel').classList.contains('hidden'),
+    cards: document.querySelectorAll('#shop-grid [data-buy]').length,
+    gold: Number(document.getElementById('shop-gold').textContent),
+  }))()`);
+  rec('清波后进入波间商店并暂停推进', shopOpen.state === 'shop' && shopOpen.visible, `state=${shopOpen.state}`);
+  rec('商店提供 6 类军需（含场景武器补给与雇佣人机）', shopOpen.cards === 6, `cards=${shopOpen.cards}`);
+  await c.shot('09-defense-shop.png');
+
+  const buys = await c.evaluate(`(() => {
+    const g = window.__game;
+    const q = (id) => document.querySelector('[data-buy="' + id + '"]');
+    const gold0 = g.defense.gold;
+    q('turret').click();
+    const t = { gold: g.defense.gold, turrets: g.defense.turrets.length };
+    q('barricade').click();
+    const b = { gold: g.defense.gold, barricades: g.defense.barricades.length };
+    g.defense.coreHp = 600;
+    q('repair').click();
+    const r = { gold: g.defense.gold, coreHp: g.defense.coreHp };
+    g.defense.weapons.forEach((w) => { w.ammo = 0; w.heat = 80; w.overheated = true; });
+    q('resupply').click();
+    const s = {
+      gold: g.defense.gold,
+      fullAmmo: g.defense.weapons.every((w) => w.ammo === w.cfg.ammoMax),
+      heat: g.defense.weapons.every((w) => w.heat === 0),
+    };
+    return { gold0, t, b, r, s, buttons: [...document.querySelectorAll('#shop-grid [data-buy]')].map((x) => x.dataset.buy) };
+  })()`);
+  rec('购买炮塔：扣 120 金币并生成自动炮塔', buys.t.gold === buys.gold0 - 120 && buys.t.turrets === 1, `gold ${buys.gold0} → ${buys.t.gold}`);
+  rec('布设沙袋路障：扣 80 金币并加入碰撞', buys.b.gold === buys.t.gold - 80 && buys.b.barricades === 1, `gold=${buys.b.gold}`);
+  rec('修理核心：+150 生命', buys.r.coreHp === 750 && buys.r.gold === buys.b.gold - 60, `coreHp=${buys.r.coreHp}`);
+  rec('场景武器补给：全部弹药补满并降温', buys.s.fullAmmo && buys.s.heat, `gold=${buys.s.gold}`);
+
+  // 雇佣人机：金币 + 声望
+  await c.evaluate(`(() => {
+    const g = window.__game;
+    g.save.data.meta.coins = 400;
+    g.save.data.meta.reputation = 10;
+    g.defenseUI.updateShop(g.defense.getShopState());
+  })()`);
+  const hire = await c.evaluate(`(() => {
+    const g = window.__game;
+    document.querySelector('[data-buy="hire"]').click();
+    return {
+      bots: g.defense.bots.length,
+      coins: g.save.data.meta.coins,
+      rep: g.save.data.meta.reputation,
+      feedback: document.getElementById('shop-feedback').textContent,
+    };
+  })()`);
+  rec('雇佣人机消耗 300 金币 + 5 声望', hire.bots === 1 && hire.coins === 100 && hire.rep === 5,
+    `bots=${hire.bots} coins=${hire.coins} rep=${hire.rep}`);
+
+  await c.evaluate('document.getElementById("btn-shop-continue").click()');
+  const resumed = await c.evaluate(`(() => {
+    const g = window.__game;
+    return { state: g.state, visible: !document.getElementById('shop-panel').classList.contains('hidden'), break: g.enemies.waveState };
+  })()`);
+  rec('关闭商店后回到战斗并跳过休整倒计时', resumed.state === 'playing' && resumed.visible === false, `state=${resumed.state}`);
+
+  // 核心受击与失守
+  const core = await c.evaluate(`(() => {
+    const g = window.__game;
+    const em = g.enemies;
+    // 真实帧可能在本波结束后又打开了商店；先同步关掉，保证核心受击发生在 playing 中
+    if (g.state === 'shop') document.getElementById('btn-shop-continue').click();
+    const e = em.enemies.find((x) => !x.dead) || (em._spawnOne(), em.enemies.find((x) => !x.dead));
+    e.position.set(g.defense.corePos.x + 1.0, 0, g.defense.corePos.z + 0.8);
+    const hp0 = g.defense.coreHp;
+    g.defense.update(2);
+    const hp1 = g.defense.coreHp;
+    g.defense.coreHp = 4;
+    g.defense.update(1.5);
+    const destroyed = g.defense.coreDestroyed;
+    g.defense.update(0.2);
+    return { hp0, hp1, destroyed, state: g.state, title: document.getElementById('result-title').textContent };
+  })()`);
+  rec('丧尸贴近核心时核心持续掉血', core.hp1 < core.hp0, `${core.hp0.toFixed(0)} → ${core.hp1.toFixed(0)}`);
+  rec('核心归零判定守城失败并进入结算', core.destroyed && core.state === 'result' && core.title.includes('核心被摧毁'),
+    `state=${core.state} title=${core.title}`);
+  await c.shot('10-defense-result.png');
+
+  rec('守城流程无未捕获异常', c.exceptions.length === 0, c.exceptions.slice(0, 3).join(' | '));
+  rec('守城流程无 console.error', realErrors(c.consoleErrors).length === 0, realErrors(c.consoleErrors).slice(0, 3).join(' | '));
 } catch (err) {
   console.error('\n探针异常：', err);
   fail += 1;

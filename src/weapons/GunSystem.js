@@ -5,6 +5,7 @@
  */
 import * as THREE from 'three';
 import { WEAPONS, WEAPON_ORDER, WEAPON_UNLOCKED } from '../config/weapon.js';
+import { AMMO_TYPES, ELEMENTS, deriveWeapon } from '../config/mods.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -23,10 +24,17 @@ export class GunSystem {
     this.onKill = deps.onKill || (() => {});
     this.onShot = deps.onShot || (() => {});
 
+    // 改装合成后的实际武器数据（默认全部"无改装"）
+    this.loadout = {};
+    this.weapons = {};
+    for (const id of WEAPON_UNLOCKED) {
+      this.weapons[id] = deriveWeapon(WEAPONS[id], {});
+    }
+
     // 每把武器的独立运行时状态
     this._states = {};
     for (const id of WEAPON_UNLOCKED) {
-      const w = WEAPONS[id];
+      const w = this.weapons[id];
       this._states[id] = {
         mag: w.magazineSize,
         reserve: w.reserveAmmo,
@@ -48,19 +56,56 @@ export class GunSystem {
     this.reloadDuration = this._current.reloadTime;
     this.switchCooldown = 0; // 切枪冷却，防止滚轮连切
 
+    // 局外成长 / 机甲形态的全局倍率（由 Game 与 MechSystem 写入）
+    this.damageMul = 1;
+    this.reloadMul = 1;
+    this.fireRateMul = 1;
+    // 波间商店临时增益（每波开始时重置为 1，不与成长/机甲叠加残留）
+    this.waveDamageMul = 1;
+    this.waveFireRateMul = 1;
+
+    // 开镜
+    this.baseFov = this.camera.fov;
+    this.aiming = false;
+    this.aimProgress = 0;
+
+    // 弹种轮盘
+    this.ammoIndex = 0;
+    this.ammoWheelOpen = false;
+    this._wheelAccum = 0;
+    this.comboHits = 0;
+
     this._tmpDir = new THREE.Vector3();
     this._tmpRight = new THREE.Vector3();
     this._tmpUp = new THREE.Vector3();
     this._muzzle = new THREE.Vector3();
+    this._upVec = new THREE.Vector3(0, 1, 0);
 
     // 通知视图当前武器
     this.view.setWeapon(this._current);
     this._syncHud();
   }
 
+  /** 应用大厅改装配置（每局开始时调用） */
+  applyLoadout(loadout = {}) {
+    this.loadout = loadout || {};
+    for (const id of WEAPON_UNLOCKED) {
+      this.weapons[id] = deriveWeapon(WEAPONS[id], this.loadout[id] || {});
+    }
+    const st = this._state;
+    const W = this._current;
+    st.mag = Math.min(st.mag, W.magazineSize);
+    this.spread = W.spreadBase;
+    this.view.setWeapon(W);
+    this._syncHud();
+  }
+
   /** 当前武器配置 */
-  get _current() { return WEAPONS[this.currentId]; }
+  get _current() { return this.weapons[this.currentId]; }
   get _state() { return this._states[this.currentId]; }
+
+  /** 当前弹种 */
+  get ammoType() { return AMMO_TYPES[this.ammoIndex]; }
 
   // 向后兼容：探针 / 旧代码直接读 gun.mag / gun.reserve
   get mag() { return this._state.mag; }
@@ -85,6 +130,19 @@ export class GunSystem {
     const W = this._current;
     const st = this._state;
 
+    // 开镜过渡：FOV、灵敏度、准星同步变化
+    const aimTarget = this.aiming ? 1 : 0;
+    this.aimProgress += (aimTarget - this.aimProgress) * Math.min(1, dt * 12);
+    const aimK = this.aimProgress;
+    const targetFov = this.baseFov + (W.adsFov - this.baseFov) * aimK;
+    if (Math.abs(this.camera.fov - targetFov) > 0.01) {
+      this.camera.fov = targetFov;
+      this.camera.updateProjectionMatrix();
+    }
+    if (this.mouseLook) this.mouseLook.aimScale = 1 - aimK * (1 - W.adsSensMul);
+    this.hud.setAiming(aimK > 0.5);
+    this.hud.setScope(this.currentId === 'sniper' && aimK > 0.55);
+
     // 连射热度自然衰减
     st.heat = Math.max(0, st.heat - dt * 5.5);
     if (!this.inputMouseDown && !this.inputFirePressed) {
@@ -104,6 +162,7 @@ export class GunSystem {
       if (this.player.isCrouching) targetSpread *= 0.72;
       if (this.player.isSprinting) targetSpread *= 1.35;
     }
+    targetSpread *= 1 - aimK * (1 - W.adsSpreadMul);
     this.spread += (Math.min(W.spreadMax, targetSpread) - this.spread) * Math.min(1, dt * 12);
 
     // 换弹计时
@@ -150,6 +209,7 @@ export class GunSystem {
         airborne: !!(this.player && !this.player.grounded),
         reloading: this.reloading,
         reloadProgress: this.reloadProgress,
+        aiming: aimK,
       },
       mouseDelta
     );
@@ -157,6 +217,39 @@ export class GunSystem {
 
   setMouseDown(down) { this.inputMouseDown = down; }
   setFirePressed(pressed) { this.inputFirePressed = !!pressed; }
+
+  /** 开镜状态（右键按住） */
+  setAiming(on) { this.aiming = !!on; }
+
+  // ---------------- 弹种轮盘 ----------------
+  openAmmoWheel() {
+    if (this.ammoWheelOpen) return;
+    this.ammoWheelOpen = true;
+    this._wheelAccum = 0;
+    this.hud.showAmmoWheel(AMMO_TYPES, this.ammoIndex);
+  }
+
+  /** 轮盘打开时由鼠标位移驱动选择（左右/上下均可） */
+  updateAmmoWheel(dx, dy) {
+    if (!this.ammoWheelOpen) return;
+    this._wheelAccum += Math.abs(dx) >= Math.abs(dy) ? dx : dy;
+    if (Math.abs(this._wheelAccum) >= 55) {
+      const step = this._wheelAccum > 0 ? 1 : -1;
+      this.ammoIndex = (this.ammoIndex + step + AMMO_TYPES.length) % AMMO_TYPES.length;
+      this._wheelAccum = 0;
+      this.hud.showAmmoWheel(AMMO_TYPES, this.ammoIndex);
+      this._syncHud();   // HUD 弹种名实时跟随轮盘选中项
+      this.audio.play('casing1', { volume: 0.15, rate: 1.5 });
+    }
+  }
+
+  closeAmmoWheel() {
+    if (!this.ammoWheelOpen) return;
+    this.ammoWheelOpen = false;
+    this.hud.hideAmmoWheel();
+    this._syncHud();
+    this.audio.play('casing1', { volume: 0.22, rate: 1.2 });
+  }
 
   debugFire() {
     if (this.reloading || this._state.mag <= 0 || this.cooldown > 0) return;
@@ -202,23 +295,26 @@ export class GunSystem {
   _fire() {
     const W = this._current;
     const st = this._state;
+    const ammo = this.ammoType;
+    const aimK = this.aimProgress;
+    const recoilScale = 1 - aimK * 0.4;
 
     st.mag -= 1;
-    this.cooldown = W.fireInterval;
+    this.cooldown = W.fireInterval / ((this.fireRateMul || 1) * (this.waveFireRateMul || 1));
     this.shotCount += 1;
     st.burstCount += 1;
     st.heat = Math.min(8, st.heat + 0.9);
 
-    // 后坐力
+    // 后坐力（开镜时更稳）
     const ramp = Math.min(W.recoilRampMax, 1 + st.burstCount * W.recoilRamp);
     if (st.burstCount === 1) {
       this.recoilYawDir = (Math.random() - 0.5) * 2;
     }
     this.mouseLook.addRecoil(
-      W.recoilPitch * ramp,
-      this.recoilYawDir * W.recoilYaw * ramp + (Math.random() - 0.5) * W.recoilYaw * 0.6
+      W.recoilPitch * ramp * recoilScale,
+      (this.recoilYawDir * W.recoilYaw * ramp + (Math.random() - 0.5) * W.recoilYaw * 0.6) * recoilScale
     );
-    const shakeAmp = Math.min(W.shakeMax, st.burstCount * W.shakePerShot);
+    const shakeAmp = Math.min(W.shakeMax, st.burstCount * W.shakePerShot) * recoilScale;
     this.mouseLook.addShake(
       (Math.random() - 0.5) * shakeAmp,
       (Math.random() - 0.5) * shakeAmp * 0.8
@@ -235,13 +331,14 @@ export class GunSystem {
 
     // 多弹丸（霰弹枪）或穿透（重狙）—— 每颗弹丸独立射线
     const pellets = W.pellets || 1;
-    const pierce = W.pierce || 0;
+    const pierce = (W.pierce || 0) + (ammo.pierceAdd || 0);
+    const tracerColor = W.element !== 'none' ? ELEMENTS[W.element].color : ammo.color;
     let anyHit = false;
     let anyKill = false;
     let anyHeadshot = false;
 
     for (let p = 0; p < pellets; p++) {
-      const spread = this.spread + (W.spread || 0);
+      const spread = (this.spread + (W.spread || 0)) * ammo.spreadMul;
       const r = spread * Math.sqrt(Math.random());
       const theta = Math.random() * Math.PI * 2;
       const dir = camDir.clone()
@@ -270,18 +367,13 @@ export class GunSystem {
         let mult = 1;
         if (enemyHit.part === 'head') mult = W.headshotMultiplier;
         else if (enemyHit.part === 'limb') mult = W.limbMultiplier;
-        const damage = W.damage * mult;
+        const damage = W.damage * mult * ammo.damageMul * (this.damageMul || 1) * (this.waveDamageMul || 1);
         const killed = enemyHit.enemy.takeDamage(damage, enemyHit.head);
         const headshot = enemyHit.part === 'head';
         this.effects.spawnEnemyHit(enemyHit.point);
+        this._applyBulletEffects(W, enemyHit, damage, ammo);
         if (killed) {
-          this.onKill(enemyHit.enemy);
-          this.hud.pushKill(headshot ? '爆头' : '击杀', '击倒');
-          this.hud.showKillPopup(headshot ? '爆头' : '击杀');
-          if (headshot) {
-            this.hud.addHeadshotKill();
-            this.audio.play('kill', { volume: 0.8, rate: 1.5 });
-          }
+          this._registerKill(enemyHit.enemy, headshot);
         }
         if (!furthestHit || enemyHit.distance > furthestHit.distance) {
           furthestHit = enemyHit;
@@ -298,7 +390,7 @@ export class GunSystem {
         hitPoint = origin.clone().addScaledVector(dir, W.range);
       }
 
-      this.effects.spawnTracer(muzzle, hitPoint, pellets > 1 ? 0.5 : 1.0);
+      this.effects.spawnTracer(muzzle, hitPoint, pellets > 1 ? 0.5 : 1.0, tracerColor);
 
       if (hitEnemy) anyHit = true;
       if (hitList.some(h => h.enemy.health <= 0)) anyKill = true;
@@ -331,6 +423,78 @@ export class GunSystem {
     this.onShot({ hit: anyHit, kill: anyKill, headshot: anyHeadshot });
   }
 
+  /** 击杀结算（普通命中 / 连锁 / 爆炸共用） */
+  _registerKill(enemy, headshot = false, label = null) {
+    this.onKill(enemy);
+    const text = label || (headshot ? '爆头' : '击杀');
+    this.hud.pushKill(text, '击倒');
+    this.hud.showKillPopup(text);
+    if (headshot) {
+      this.hud.addHeadshotKill();
+      this.audio.play('kill', { volume: 0.8, rate: 1.5 });
+    }
+  }
+
+  /** 子弹元素 / 弹种附带的额外效果 */
+  _applyBulletEffects(W, enemyHit, damage, ammo) {
+    const target = enemyHit.enemy;
+    const el = ELEMENTS[W.element];
+
+    if (W.element !== 'none' && el) {
+      if (el.knockback) {
+        const px = this.player ? this.player.position.x : target.position.x - 1;
+        const pz = this.player ? this.player.position.z : target.position.z;
+        target.addKnockback(target.position.x - px, target.position.z - pz, el.knockback);
+      }
+      if (el.burnDps) target.applyStatus('burn', el.burnTime, el.burnDps);
+      if (el.poisonDps) target.applyStatus('poison', el.poisonTime, el.poisonDps);
+      if (el.slowFactor) target.applyStatus('slow', el.slowTime, el.slowFactor);
+      if (el.chainCount) this._chainLightning(enemyHit, damage, el);
+      if (el.comboHits) {
+        this.comboHits += 1;
+        if (this.comboHits >= el.comboHits) {
+          this.comboHits = 0;
+          this._explodeAt(enemyHit.point, el.explodeRadius, el.explodeDamage, '连爆');
+        }
+      }
+    }
+
+    if (ammo.explodeRadius) {
+      this._explodeAt(enemyHit.point, ammo.explodeRadius, ammo.explodeDamage, '爆裂弹');
+    }
+  }
+
+  /** 雷元素：向命中点附近最近的敌人连锁 */
+  _chainLightning(hit, damage, el) {
+    if (!this.enemies || !this.enemies.enemies) return;
+    const point = hit.point;
+    const targets = this.enemies.enemies
+      .filter((e) => e && e !== hit.enemy && !e.dead && e.root && e.root.visible)
+      .map((e) => ({ e, d: e.position.distanceTo(point) }))
+      .filter((o) => o.d <= el.chainRange)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, el.chainCount);
+
+    for (const { e } of targets) {
+      const killed = e.takeDamage(damage * el.chainMul);
+      const p = e.position.clone();
+      p.y += 1.0;
+      this.effects.spawnEnemyHit(p);
+      if (killed) this._registerKill(e, false, '连锁击杀');
+    }
+  }
+
+  /** 范围爆炸（连爆 / 爆裂弹） */
+  _explodeAt(point, radius, damage, label) {
+    if (!this.enemies || !this.enemies.enemies) return;
+    for (const e of this.enemies.enemies) {
+      if (!e || e.dead || !e.root || !e.root.visible) continue;
+      if (e.position.distanceTo(point) > radius) continue;
+      if (e.takeDamage(damage)) this._registerKill(e, false, label);
+    }
+    this.effects.spawnImpact(point, this._upVec);
+  }
+
   startReload() {
     const W = this._current;
     const st = this._state;
@@ -342,7 +506,7 @@ export class GunSystem {
     this.reloadElapsed = 0;
     this.reloadInsertPlayed = false;
     const empty = st.mag === 0;
-    this.reloadDuration = W.reloadTime;
+    this.reloadDuration = W.reloadTime * (this.reloadMul || 1);
     this.audio.play(empty ? 'reloadEmpty' : 'reload', { volume: 0.8, rate: 1 });
     this.hud.showReloadBar(true);
     this.hud.showReloadTip(false, false);
@@ -372,7 +536,7 @@ export class GunSystem {
 
   resetAmmo() {
     for (const id of WEAPON_UNLOCKED) {
-      const w = WEAPONS[id];
+      const w = this.weapons[id];
       this._states[id].mag = w.magazineSize;
       this._states[id].reserve = w.reserveAmmo;
       this._states[id].heat = 0;
@@ -382,15 +546,20 @@ export class GunSystem {
     this.reloadElapsed = 0;
     this.cooldown = 0;
     this.reloadInsertPlayed = false;
+    this.aiming = false;
+    this.aimProgress = 0;
+    this.comboHits = 0;
     this.hud.showReloadBar(false);
     this._syncHud();
   }
 
-  /** 同步 HUD 弹药 + 武器名 */
+  /** 同步 HUD 弹药 + 武器名 + 弹种 */
   _syncHud() {
     const W = this._current;
     const st = this._state;
+    const ammo = this.ammoType;
     this.hud.setAmmo(st.mag, st.reserve);
     this.hud.setWeaponName(W.name, W.tag);
+    this.hud.setAmmoType(ammo.name, ammo.color);
   }
 }

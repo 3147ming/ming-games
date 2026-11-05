@@ -9,6 +9,8 @@
  */
 import * as THREE from 'three';
 import { WORLD, MATCH, WEAPON } from '../config/weapon.js';
+import { ENDLESS, DEFENSE, DEFENSE_WAVES, defenseWave, endlessWave, isDefenseMode, parseMode, RUN_SHOP } from '../config/modes.js';
+import { DEFENSE_LEVEL_INDEX } from '../world/levels.js';
 import { Input } from './Input.js';
 import { AssetManager } from './AssetManager.js';
 import { AudioManager } from './AudioManager.js';
@@ -16,7 +18,9 @@ import { CollisionWorld } from './CollisionWorld.js';
 import { SaveManager } from './SaveManager.js';
 import { computeAccuracy, computeScore, pickGrade } from './scoring.js';
 import { OutdoorMap } from '../world/OutdoorMap.js';
+import { LobbyStage } from '../world/LobbyStage.js';
 import { SupplyManager } from '../world/SupplyManager.js';
+import { DefenseManager } from '../world/DefenseManager.js';
 import { MouseLook } from '../player/MouseLook.js';
 import { PlayerController } from '../player/PlayerController.js';
 import { WeaponView } from '../weapons/WeaponView.js';
@@ -26,12 +30,21 @@ import { CasingSystem } from '../weapons/CasingSystem.js';
 import { EnemyManager } from '../enemies/EnemyManager.js';
 import { HUD } from '../ui/HUD.js';
 import { Menu } from '../ui/Menu.js';
+import { SettingsUI } from '../ui/SettingsUI.js';
+import { ArmoryUI } from '../ui/ArmoryUI.js';
+import { MissionsUI } from '../ui/MissionsUI.js';
+import { DefenseUI } from '../ui/DefenseUI.js';
+import { GrowthUI } from '../ui/GrowthUI.js';
+import { MechSystem } from '../player/MechSystem.js';
+import { growthTotals } from '../config/growth.js';
+import { MISSIONS, missionProgress } from '../config/economy.js';
 
 export class Game {
   constructor() {
     this.state = 'loading';
     this.clock = new THREE.Clock();
     this.accentColor = 0xffb020;
+    this._ammoWheelOpen = false;
     this.stats = this._emptyStats();
   }
 
@@ -46,6 +59,16 @@ export class Game {
       endedAt: 0,
       wavesCleared: 0,
     };
+  }
+
+  /** 重置局内临时状态：波间金币 / 波次增益 / 商店临时乘子 */
+  _resetRunState() {
+    this.runGold = 0;
+    this._waveBuff = null;
+    if (this.gun) {
+      this.gun.waveDamageMul = 1;
+      this.gun.waveFireRateMul = 1;
+    }
   }
 
   async init() {
@@ -74,7 +97,7 @@ export class Game {
 
     // ---- 加载资源 ----
     this.menu = new Menu({
-      onStart: () => this.startGame(),
+      onStart: () => this.startGame(this.menu.lobby.mode),
       onResume: () => this.resumeGame(),
       onRestart: () => this.restart(),
       onMenu: () => this.backToMenu(),
@@ -84,6 +107,13 @@ export class Game {
     this.save = new SaveManager();
     this._refreshLobby();
 
+    // ---- 模式与关卡（?mode=endless / ?level=N）----
+    this.queryParams = new URLSearchParams(location.search);
+    this.mode = parseMode(this.queryParams.get('mode'));
+    const levelParam = Number(this.queryParams.get('level'));
+    this.levelIndex = Number.isFinite(levelParam) && levelParam >= 1 ? Math.floor(levelParam) - 1 : 0;
+    this.menu.lobby.setMode(this.mode);
+
     this.assets = await new AssetManager().loadAll((p) => this.menu.setLoading(p));
 
     this.menu.setLoading(100, '正在初始化音频…');
@@ -92,15 +122,18 @@ export class Game {
 
     // ---- 世界与玩家 ----
     this.collision = new CollisionWorld();
-    // ?level=N（从 1 开始）用于开发期直接进入指定关卡，默认第 1 关
-    const levelParam = Number(new URLSearchParams(location.search).get('level'));
-    this.levelIndex = Number.isFinite(levelParam) && levelParam >= 1 ? Math.floor(levelParam) - 1 : 0;
-    this.map = new OutdoorMap(this.scene, this.collision, this.assets, this.levelIndex).build();
+    this.map = new OutdoorMap(this.scene, this.collision, this.assets, this._mapIndexForMode(this.mode)).build();
 
     this.input = new Input(this.renderer.domElement);
     this.input.onLockChange = (locked) => this._onLockChange(locked);
 
     this.mouseLook = new MouseLook(this.camera);
+    // 设置面板：灵敏度 / 音量 / 键位（存档持久化，改动立即生效）
+    this.settings = new SettingsUI({
+      save: this.save,
+      onChange: () => this._applySettings(),
+    });
+    this._applySettings();
     this.player = new PlayerController(this.camera, this.input, this.collision, this.audio, this.map.playerSpawn);
 
     this.hud = new HUD();
@@ -118,6 +151,14 @@ export class Game {
       hud: this.hud,
       spawnPoints: this.map.spawnPoints,
       patrolPoints: this.map.waypoints,
+      mode: this.mode,
+      infinite: this.mode === 'endless' || this.mode === 'defense_endless',
+      waveGen: this.mode === 'endless' ? endlessWave : (this.mode === 'defense_endless' ? defenseWave : null),
+      waves: this._wavesForMode(this.mode),
+      breakTime: isDefenseMode(this.mode) ? DEFENSE.breakSec : undefined,
+      spawnGap: isDefenseMode(this.mode) ? DEFENSE.spawnGap : undefined,
+      // 实例池按无尽同屏上限预建，保证大厅切模式后无需重建对象池
+      poolSize: Math.max(ENDLESS.maxAlive, DEFENSE.maxAlive),
       onKill: () => this._onKill(),
       onWaveStart: (i, total) => this._onWaveStart(i, total),
       onWaveClear: (i, isLast) => this._onWaveClear(i, isLast),
@@ -149,12 +190,84 @@ export class Game {
       hud: this.hud,
       audio: this.audio,
     });
+    this.supplies.setAutoPickup(this.save.data.settings.autoPickup);
+    this.supplies.setPoints(this.map.level.supplyPoints);
+    // 敌人死亡掉落：在 SupplyManager 构造好后回填给 EnemyManager
+    this.enemies.supply = this.supplies;
+
+    // 守城模式：HUD / 波间商店 / 核心与场景武器
+    this.defenseUI = new DefenseUI({
+      onBuy: (id) => this._buyDefenseItem(id),
+      onContinue: () => this._closeShop(),
+    });
+    this._setupDefense();
+
+    // 机甲：局内 TAB 面板召唤；形态增益由 MechSystem 统一管理
+    this.mech = new MechSystem({
+      scene: this.scene,
+      player: this.player,
+      gun: this.gun,
+      enemies: this.enemies,
+      effects: this.effects,
+      audio: this.audio,
+      hud: this.hud,
+      save: this.save,
+    });
+    // 局内成长面板：机甲 / 天赋 / 觉醒
+    this.growthUI = new GrowthUI({
+      onClose: () => this._closeGrowthPanel(),
+      onUnlockMech: (id) => {
+        const res = this.save.unlockMech(id);
+        this._refreshLobby();
+        if (!res.ok) this.hud.showSupplyToast('机甲解锁失败', res.message);
+        else this.hud.showSupplyToast('机甲已解锁', res.message);
+        return res;
+      },
+      onActivateMech: (id) => {
+        const res = this.mech.activate(id);
+        this.growthUI.setMechStates(this.mech.getStates());
+        this.growthUI.render();
+        this.hud.showSupplyToast(res.ok ? '机甲' : '机甲无法启动', res.message);
+        if (res.ok) this._closeGrowthPanel();
+        return res;
+      },
+      onUpgradeTalent: (branch) => {
+        const res = this.save.upgradeTalent(branch);
+        this._applyGrowth();
+        this._refreshLobby();
+        if (!res.ok) this.hud.showSupplyToast('天赋升级失败', res.message);
+        return res;
+      },
+      onAllocate: (stat) => {
+        this.save.allocateAttr(stat);
+        this._applyGrowth();
+        this._refreshLobby();
+      },
+    });
+    // 大厅成长页：机甲解锁 / 天赋升级 / 属性点分配
+    this.menu.lobby.bindGrowth({
+      save: this.save,
+      onUnlockMech: (id) => this.save.unlockMech(id),
+      onUpgradeTalent: (branch) => this.save.upgradeTalent(branch),
+      onAllocate: (stat) => this.save.allocateAttr(stat),
+    });
+
+    // 大厅改装：把存档里的配件合成为实际武器数据
+    this.gun.applyLoadout(this.save.data.loadout);
+    this.armory = new ArmoryUI({
+      save: this.save,
+      onChange: () => this.gun.applyLoadout(this.save.data.loadout),
+    });
+    this.missions = new MissionsUI({
+      save: this.save,
+      onChange: () => this._refreshLobby(),
+    });
 
     // 初始数值同步
     this.hud.reset();
     this.hud.setKills(0);
     this.hud.setEnemies(0);
-    this.hud.setWave(1, MATCH.waves.length, 0);
+    this.hud.setWave(1, this.enemies.infinite ? null : this.enemies.waves.length, 0);
 
     // 第三轮：开局操作提示（3 秒后自动淡出）+ FPS 面板
     this.tipsEl = document.getElementById('tips');
@@ -190,36 +303,169 @@ export class Game {
       this._debugTimer = 0;
     }
 
+    // 大厅 3D 待机展示：独立场景里的程序化简模角色，仅菜单态渲染
+    this.lobbyStage = new LobbyStage();
+
     this.menu.showStart();
     this.state = 'menu';
 
     // 启动循环
     this.clock.start();
     this.renderer.setAnimationLoop(() => this._loop());
+
+    // 浏览器锁定：失焦 / 切标签页时自动暂停，避免后台被丧尸围殴
+    window.addEventListener('blur', () => {
+      if (this.state === 'playing' && performance.now() > (this._ignoreBlurUntil || 0)) {
+        this.pauseGame();
+      }
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && this.state === 'playing') this.pauseGame();
+    });
+  }
+
+  /** 进入全屏（必须在用户手势回调中调用；失败时静默降级） */
+  _enterFullscreen() {
+    const el = document.documentElement;
+    if (document.fullscreenElement || !el.requestFullscreen) return;
+    try {
+      const p = el.requestFullscreen({ navigationUI: 'hide' });
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (e) { /* 浏览器拒绝时保持窗口模式 */ }
+  }
+
+  /** 退出全屏（回大厅时调用） */
+  _exitFullscreen() {
+    if (!document.fullscreenElement || !document.exitFullscreen) return;
+    try {
+      const p = document.exitFullscreen();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (e) { /* ignore */ }
   }
 
   // ---------------- 状态切换 ----------------
-  startGame() {
+  /** @param {'campaign'|'endless'} [mode] 大厅选择的作战模式 */
+  startGame(mode) {
+    if (mode && mode !== this.mode) this._applyMode(mode);
     this.audio.resume();
     this.state = 'playing';
     this.stats = this._emptyStats();
     this.stats.startedAt = performance.now();
     this.stats.wavesCleared = 0;
+    this._resetRunState();
 
     this.hud.setVisible(true);
-    this.hud.reset();
+    this.hud.reset(this.enemies.infinite ? null : this.enemies.waves.length);
     this.hud.setKills(0);
     this.menu.hideAll();
+    if (this.defenseUI) this.defenseUI.hideShop();
     this.input.enabled = true;
     this.mouseLook.reset();
     this.input.consumeMouseDelta();
+    this._enterFullscreen();
+    this._ignoreBlurUntil = performance.now() + 800;
     this.input.requestLock();
+    // 应用大厅最新改装后再补满弹药
+    this.gun.applyLoadout(this.save.data.loadout);
     this.gun.resetAmmo();
+    // 应用局外成长（属性点 / 天赋）后再复活，生命上限才是最新值
+    this._applyGrowth();
+    this.mech?.reset();
     this.player.respawn(this.map.playerSpawn);
+    this.player.health.reset();
     this.enemies.startMatch();
     this.supplies.reset();
+    if (this.defense) this.defense.resetRun();
     this._showTips();
+    this._updateMissionObjective();
   }
+
+  // ---------------- 模式 / 地图 ----------------
+  /** 当前模式对应的地图索引（守城固定用领地防线） */
+  _mapIndexForMode(mode) {
+    if (isDefenseMode(mode)) return DEFENSE_LEVEL_INDEX;
+    return mode === 'campaign' ? this.levelIndex : 0;
+  }
+
+  /** 当前模式的波次表 */
+  _wavesForMode(mode) {
+    if (isDefenseMode(mode)) return DEFENSE_WAVES.slice();
+    if (mode === 'endless') return [endlessWave(1)];
+    return MATCH.waves;
+  }
+
+  /**
+   * 切换地图：销毁旧场景 → 清碰撞 → 重建新图 → 迁移玩家与敌人导航。
+   * 守城地图额外创建核心 / 场景武器。
+   */
+  _loadMap(index) {
+    this.mech?.reset();
+    if (this.defense) {
+      this.defense.dispose();
+      this.defense = null;
+    }
+    if (this.map && this.map.builder) this.map.builder.dispose();
+    this.collision.clear();
+    this.map = new OutdoorMap(this.scene, this.collision, this.assets, index).build();
+
+    this.enemies.setNavigation(this.map.spawnPoints, this.map.waypoints);
+    this.supplies.setPoints(this.map.level.supplyPoints);
+    this.player.respawn(this.map.playerSpawn);
+    this.mouseLook.yaw = this.map.level.startYaw != null ? this.map.level.startYaw : 0;
+    this.mouseLook.pitch = 0;
+    this._setupDefense();
+  }
+
+  /** 按当前地图创建守城运行时（非守城图则保持为空） */
+  _setupDefense() {
+    const def = this.map && this.map.level ? this.map.level.defense : null;
+    this.defense = def ? new DefenseManager({
+      scene: this.scene,
+      collision: this.collision,
+      player: this.player,
+      camera: this.camera,
+      enemies: this.enemies,
+      gun: this.gun,
+      weaponView: this.weaponView,
+      effects: this.effects,
+      audio: this.audio,
+      hud: this.hud,
+      save: this.save,
+      map: this.map,
+      onCoreDestroyed: () => this._onCoreDestroyed(),
+    }) : null;
+    if (this.defense) this.defense.setUI(this.defenseUI);
+    if (this.defenseUI) this.defenseUI.setActive(!!this.defense);
+    if (this.defense) this.defense.resetRun();
+  }
+
+  /** 切换模式：地图、波次规则、守城运行时全部同步 */
+  _applyMode(mode) {
+    const mapChanged = this._mapIndexForMode(mode) !== this._mapIndexForMode(this.mode);
+    this.mode = mode;
+    if (mapChanged) this._loadMap(this._mapIndexForMode(mode));
+
+    const defense = isDefenseMode(mode);
+    this.enemies.applyMode({
+      mode,
+      infinite: mode === 'endless' || mode === 'defense_endless',
+      waveGen: mode === 'endless' ? endlessWave : (mode === 'defense_endless' ? defenseWave : null),
+      waves: this._wavesForMode(mode),
+      breakTime: defense ? DEFENSE.breakSec : MATCH.breakTime,
+      spawnGap: defense ? DEFENSE.spawnGap : MATCH.spawnGap,
+    });
+    if (!mapChanged) {
+      // 从守城切回普通模式时，把守城对象与 HUD 收起
+      if (this.defense && !defense) {
+        this.defense.dispose();
+        this.defense = null;
+      }
+      if (this.defenseUI) this.defenseUI.setActive(!!this.defense);
+    }
+    this.menu.lobby.setMode(mode);
+  }
+
+
 
   /** 第三轮：显示开局操作提示，3 秒后淡出 */
   _showTips() {
@@ -238,8 +484,14 @@ export class Game {
   pauseGame() {
     if (this.state !== 'playing') return;
     this.state = 'paused';
+    this._pauseGuard = 0.35;   // 防止 Esc 解锁指针时被同一帧立刻"继续"
+    if (this._ammoWheelOpen) {
+      this._ammoWheelOpen = false;
+      this.gun.closeAmmoWheel();
+    }
     this.input.enabled = false;
     this.gun.setMouseDown(false);
+    this.gun.setAiming(false);
     this.menu.showPause();
   }
 
@@ -249,38 +501,51 @@ export class Game {
     this.state = 'playing';
     this.input.enabled = true;
     this.menu.hideAll();
+    this._ignoreBlurUntil = performance.now() + 800;
     this.input.requestLock();
   }
 
   /** 暂停面板"重新开始" / 结算面板"再来一局" */
   restart() {
+    this._applyGrowth();
+    this.mech?.reset();
     this.player.respawn(this.map.playerSpawn);
     this.player.health.reset();
     this.mouseLook.reset();
     this.gun.resetAmmo();
     this.stats = this._emptyStats();
     this.stats.startedAt = performance.now();
+    this._resetRunState();
     this.enemies.startMatch();
     this.supplies.reset();
+    if (this.defense) this.defense.resetRun();
+    if (this.defenseUI) this.defenseUI.hideShop();
     this.hud.setKills(0);
-    this.hud.reset();
+    this.hud.reset(this.enemies.infinite ? null : this.enemies.waves.length);
     this.hud.setVisible(true);
     this.menu.hideAll();
     this.state = 'playing';
     this.input.enabled = true;
     this.audio.resume();
+    this._enterFullscreen();
+    this._ignoreBlurUntil = performance.now() + 800;
     this.input.requestLock();
     this._showTips();
+    this._updateMissionObjective();
   }
 
   /** 结算面板"返回主菜单" */
   backToMenu() {
     if (this.state === 'result') this.stats.endedAt = performance.now();
+    this._resetRunState();
     this.state = 'menu';
     this.input.enabled = false;
     this.input.releaseLock();
+    this._exitFullscreen();
     this.gun.setMouseDown(false);
     this.hud.setVisible(false);
+    if (this.growthUI) this.growthUI.hide();
+    this.mech?.reset();
     this._refreshLobby();
     this.menu.showStart();
   }
@@ -289,13 +554,72 @@ export class Game {
   _refreshLobby() {
     if (!this.save || !this.menu || !this.menu.lobby) return;
     const d = this.save.data;
-    this.menu.lobby.setResources(d.meta.cores, 0);
+    this.menu.lobby.setResources(d.meta.cores, d.meta.coins || 0, d.meta.reputation || 0);
+    this.missions?.refresh();
+    this.menu.lobby.renderGrowth();
     this.menu.lobby.setStats({
       runs: d.stats.runs,
       kills: d.stats.kills,
       level: d.stats.bestLevel,
       wave: d.stats.bestWave,
     });
+  }
+
+  /** 应用设置（改键 / 灵敏度 / 音量 / 自动拾取），改动后立即生效 */
+  _applySettings() {
+    const s = this.save.data.settings;
+    if (this.input) this.input.setBindings(s.binds);
+    if (this.audio) this.audio.setMasterVolume(s.vol);
+    if (this.mouseLook && Number.isFinite(s.sens)) this.mouseLook.sensitivity = s.sens;
+    if (this.supplies) this.supplies.setAutoPickup(s.autoPickup);
+  }
+
+  /** P 键：切换自动拾取 */
+  _toggleAutoPickup() {
+    const on = !this.save.data.settings.autoPickup;
+    this.save.setSetting('autoPickup', on);
+    if (this.supplies) this.supplies.setAutoPickup(on);
+    this.hud.showSupplyToast(on ? '自动拾取：开启' : '自动拾取：关闭',
+      on ? '靠近补给箱自动拾取' : '按 F 手动拾取');
+  }
+
+  /** 应用局外成长（属性点 + 天赋）到玩家与枪械 */
+  _applyGrowth() {
+    const t = growthTotals(this.save.data);
+    this.player.health.setBonus(t.maxHpBonus, t.maxArmorBonus);
+    this.player.speedMul = t.speedMul;
+    this.gun.damageMul = t.dmgMul;
+    this.gun.fireRateMul = t.fireRateMul;
+    this.gun.reloadMul = t.reloadMul;
+  }
+
+  // ---------------- 成长面板（TAB：机甲 / 天赋 / 觉醒） ----------------
+  _openGrowthPanel() {
+    if (!this.growthUI || this.state !== 'playing') return;
+    this.state = 'panel';
+    this.input.enabled = false;
+    this.input.releaseLock();
+    this.gun.setMouseDown(false);
+    this.gun.setAiming(false);
+    if (this._ammoWheelOpen) {
+      this._ammoWheelOpen = false;
+      this.gun.closeAmmoWheel();
+    }
+    this.growthUI.show(this.save, this.mech.getStates());
+  }
+
+  _closeGrowthPanel() {
+    if (this.state !== 'panel') return;
+    this.growthUI.hide();
+    this.state = 'playing';
+    this.input.enabled = true;
+    this._ignoreBlurUntil = performance.now() + 800;
+    this.input.requestLock();
+  }
+
+  /** 尚未开放的功能：给一个轻提示，避免按键"没反应" */
+  _featureSoon(label, hint) {
+    this.hud.showSupplyToast(label, hint);
   }
 
   /** 指针锁定状态变化 */
@@ -306,6 +630,7 @@ export class Game {
   _onResize() {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
+    if (this.lobbyStage) this.lobbyStage.resize();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   }
@@ -317,6 +642,13 @@ export class Game {
    */
   _onKill() {
     this.stats.kills += 1;
+    if (this.defense && this.state === 'playing') {
+      this.defense.addGold(DEFENSE.goldPerKill);
+    } else if (this.state === 'playing') {
+      // 非守城模式：击杀积累局内金币，波间商店消费
+      this.runGold = (this.runGold || 0) + RUN_SHOP.goldPerKill;
+    }
+    this._updateMissionObjective();
   }
 
   /** 每一发子弹都记一次，用于算命中率与爆头数 */
@@ -327,22 +659,155 @@ export class Game {
   }
 
   _onWaveStart(index, total) {
-    const cfg = MATCH.waves[index];
-    this.hud.setWave(index + 1, MATCH.waves.length, total);
+    const cfg = this.enemies.waves[index];
+    this.hud.setWave(index + 1, this.enemies.infinite ? null : this.enemies.waves.length, total);
     this.hud.setEnemies(total);
     this._showBanner(
-      `第 ${index + 1} 波尸潮`,
+      this.mode === 'defense' ? `守城第 ${index + 1} 波` : (this.enemies.infinite ? `无尽第 ${index + 1} 波` : `第 ${index + 1} 波尸潮`),
       `丧尸 ${total} 只 · 同时最多 ${cfg.alive} 只在场`
     );
+    this._updateMissionObjective();
   }
 
   _onWaveClear(index, isLast) {
     this.stats.wavesCleared = index + 1;
+    // 波次增益只持续一波：本波结束即失效，进入商店时状态干净
+    this.gun.waveDamageMul = 1;
+    this.gun.waveFireRateMul = 1;
+    this._updateMissionObjective();
     if (isLast) return;   // 最后一波直接走胜利流程
-    // 休整补给：备弹 + 护甲
+    if (this.defense) {
+      // 守城：局内金币奖励 + 打开波间商店（期间敌人暂停推进）
+      this.defense.addGold(DEFENSE.goldPerWave);
+      this.gun.addSupply(MATCH.waveClearAmmo);
+      this.player.health.addArmor(MATCH.waveClearArmor);
+      this._openShop(index + 1);
+      return;
+    }
+    // 闯关 / 无尽：波间军需商店（用局内金币买补给）
+    this.runGold = (this.runGold || 0) + RUN_SHOP.goldPerWave;
     this.gun.addSupply(MATCH.waveClearAmmo);
     this.player.health.addArmor(MATCH.waveClearArmor);
-    this._showBanner(`第 ${index + 1} 波肃清`, `补给已投放：+${MATCH.waveClearAmmo} 发 · +${MATCH.waveClearArmor} 护甲`);
+    this._openShop(index + 1);
+  }
+
+  // ---------------- 波间商店 ----------------
+  _openShop(clearedWave) {
+    if (!this.defenseUI) return;
+    this.state = 'shop';
+    this.input.enabled = false;
+    this.input.releaseLock();
+    this.gun.setMouseDown(false);
+    this.gun.setAiming(false);
+    if (this._ammoWheelOpen) {
+      this._ammoWheelOpen = false;
+      this.gun.closeAmmoWheel();
+    }
+    if (this.defense) {
+      this.defenseUI.showShop(this.defense.getShopState(), clearedWave);
+    } else {
+      this.defenseUI.showShop(this._getRunShopState(), clearedWave, '购买');
+      // 非守城模式副标题文案
+      this.defenseUI.shopSub.textContent = `第 ${clearedWave} 波已肃清 · 补充物资后继续推进`;
+    }
+  }
+
+  _getRunShopState() {
+    const gold = this.runGold || 0;
+    const items = RUN_SHOP.items.map((it) => ({
+      id: it.id,
+      name: it.name,
+      desc: it.desc,
+      costLabel: `局内金币 ${it.cost}`,
+      tip: it.tip,
+      disabled: false,
+      affordable: gold >= it.cost,
+    }));
+    return { gold, items };
+  }
+
+  _closeShop() {
+    if (this.state !== 'shop') return;
+    this.defenseUI.hideShop();
+    // 应用本波的临时增益（伤害 / 射速），下一波结束时清掉
+    if (this._waveBuff) this._applyWaveBuff();
+    this.state = 'playing';
+    this.input.enabled = true;
+    this._ignoreBlurUntil = performance.now() + 800;
+    this.input.requestLock();
+    this.enemies.skipBreak();
+  }
+
+  _applyWaveBuff() {
+    const b = this._waveBuff || {};
+    // 写入波次独立乘子（本波结束时清掉，不污染成长 / 机甲倍率）
+    this.gun.waveDamageMul = b.damage || 1;
+    this.gun.waveFireRateMul = b.fireRate || 1;
+    this._waveBuff = null;
+  }
+
+  _buyDefenseItem(id) {
+    if (this.defense) {
+      const res = this.defense.buy(id);
+      const state = this.defense.getShopState();
+      this.defenseUI.updateShop(state, res.message);
+      if (res.ok) this._refreshLobby();
+      if (!res.ok) this.hud.showSupplyToast('军需购买失败', res.message);
+      return;
+    }
+    // 非守城模式：波间军需商店
+    const item = RUN_SHOP.items.find((it) => it.id === id);
+    if (!item) return;
+    const gold = this.runGold || 0;
+    if (gold < item.cost) {
+      this.defenseUI.updateShop(this._getRunShopState(), '局内金币不足');
+      this.hud.showSupplyToast('军需购买失败', '局内金币不足');
+      return;
+    }
+    this.runGold = gold - item.cost;
+    item.apply(this);
+    this.defenseUI.updateShop(this._getRunShopState(), `${item.name} 已购买`);
+  }
+
+  // ---------------- 局内任务目标 ----------------
+  /**
+   * 选取进度最高的「进行中」任务，显示在局内 HUD 左侧。
+   * 进度 = 存档累计战绩 + 本局实时战绩（击杀 / 波次等）。
+   * 优先展示能在一局内推进的任务（击杀 / 波次），没有再退回其它任务。
+   */
+  _updateMissionObjective() {
+    if (!this.hud) return;
+    const claimed = this.save.data.meta.claimedMissions || [];
+    const base = this.save.data.stats;
+    // 合并本局实时数据，让任务目标随对局推进
+    const merged = {
+      runs: base.runs,
+      kills: base.kills + (this.stats.kills || 0),
+      bestWave: Math.max(base.bestWave, this.stats.wavesCleared || 0),
+      bestLevel: base.bestLevel,
+    };
+    const pending = MISSIONS
+      .filter((m) => !claimed.includes(m.id))
+      .map((m) => ({ m, progress: missionProgress(m, merged) }))
+      .filter(({ m, progress }) => progress < m.target);
+    if (!pending.length) {
+      this.hud.hideMissionObjective();
+      return;
+    }
+    const inRun = new Set(['kills', 'bestWave']);
+    const inRunList = pending.filter(({ m }) => inRun.has(m.metric));
+    const list = inRunList.length ? inRunList : pending;
+    let best = list[0];
+    for (const item of list) {
+      if (item.progress / item.m.target > best.progress / best.m.target) best = item;
+    }
+    this.hud.setMissionObjective(best.m.name, best.progress, best.m.target);
+  }
+
+  _onCoreDestroyed() {
+    if (this.state !== 'playing') return;
+    this.hud.showSupplyToast('领地核心被摧毁', '守城失败');
+    this._endMatch(false);
   }
 
   _onVictory() {
@@ -353,17 +818,22 @@ export class Game {
   /** 结束一局：true 胜利 / false 阵亡 */
   _endMatch(win) {
     this.stats.endedAt = performance.now();
+    this._resetRunState();
     this.state = 'result';
     this.input.enabled = false;
     this.input.releaseLock();
     this.gun.setMouseDown(false);
     this.hud.setVisible(false);
+    if (this.defenseUI) this.defenseUI.hideShop();
+    if (this.growthUI) this.growthUI.hide();
+    this.mech?.reset();
+    if (this.defense && this.defense.isMounted) this.defense.dismount();
     const result = this._buildResult(win);
-    // 局外存档：累计战绩（关卡编号在 P2 接入多关卡后再改）
-    this.save.recordRun({
+    // 局外存档：累计战绩 + 金币 / 声望 / 核心结算（闯关记关卡编号，无尽只记波次）
+    result.rewards = this.save.recordRun({
       kills: result.kills,
       seconds: result.seconds,
-      level: 1,
+      level: this.mode === 'campaign' ? this.levelIndex + 1 : null,
       wave: result.wavesCleared,
       win,
     });
@@ -377,8 +847,25 @@ export class Game {
     const seconds = Math.max(1, (s.endedAt - s.startedAt) / 1000);
     const accuracy = computeAccuracy(s.shots, s.hits);
     const score = computeScore(s, seconds);
+    const infinite = this.enemies.infinite;
+    const defense = isDefenseMode(this.mode);
+    let title = win ? '区域肃清' : '行动阵亡';
+    let kicker = win ? 'MISSION COMPLETE' : 'MISSION FAILED';
+    if (defense) {
+      title = win ? '领地守住' : '核心被摧毁';
+      kicker = win ? 'DEFENSE COMPLETE' : 'DEFENSE FAILED';
+    }
+    if (infinite) {
+      title = defense ? '守城终止' : '生存终止';
+      kicker = 'RUN ENDED';
+    }
     return {
       win,
+      infinite,
+      defense,
+      mode: this.mode,
+      title,
+      kicker,
       score,
       grade: pickGrade(score, MATCH.grades),
       kills: s.kills,
@@ -387,8 +874,8 @@ export class Game {
       seconds,
       damageTaken: Math.round(s.damageTaken),
       wavesCleared: s.wavesCleared,
-      waveTotal: MATCH.waves.length,
-      totalEnemies: MATCH.waves.reduce((n, w) => n + w.total, 0),
+      waveTotal: infinite ? null : this.enemies.waves.length,
+      totalEnemies: this.enemies.waves.reduce((n, w) => n + w.total, 0),
     };
   }
 
@@ -454,39 +941,106 @@ export class Game {
       this._fpsAcc = 0;
     }
     this._update(dt);
-    this.renderer.render(this.scene, this.camera);
+    // 菜单态展示大厅待机角色；其余状态渲染战斗场景
+    if (this.state === 'menu' && this.lobbyStage) {
+      this.lobbyStage.update(dt);
+      this.renderer.render(this.lobbyStage.scene, this.lobbyStage.camera);
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
   }
 
   _update(dt) {
-    // 第三轮：O 键随时切换 FPS 面板（暂停/死亡时也可用）
-    if (this.input.consume('KeyO')) this._toggleFps();
+    // 调试：F1 随时切换 FPS 面板（暂停/死亡时也可用）
+    if (this.input.consumeAction('debugFps')) this._toggleFps();
 
     // 输入（键盘边沿事件在暂停/死亡时仍然有效）
     if (this.state === 'playing') {
-      // 鼠标视角
-      const delta = this.input.consumeMouseDelta();
+      const input = this.input;
+      const defense = this.defense;
+      const mounted = !!(defense && defense.isMounted);
+      const carrying = !!(defense && defense.isCarrying);
+
+      // 鼠标视角（弹种轮盘打开时，鼠标位移用于选弹而不是转视角）
+      const aiming = !mounted && !carrying && input.actionDown('aim');
+      this.gun.setAiming(aiming);
+
+      let delta = input.consumeMouseDelta();
+      const wheelHeld = !mounted && !carrying && input.actionDown('ammoWheel');
+      if (wheelHeld) {
+        if (!this._ammoWheelOpen) {
+          this._ammoWheelOpen = true;
+          this.gun.openAmmoWheel();
+        }
+        this.gun.updateAmmoWheel(delta.x, delta.y);
+        delta = { x: 0, y: 0 };
+      } else if (this._ammoWheelOpen) {
+        this._ammoWheelOpen = false;
+        this.gun.closeAmmoWheel();
+      }
       this.mouseLook.onMouseMove(delta.x, delta.y);
 
-      // R：换弹
-      if (this.input.consume('KeyR')) this.gun.startReload();
+      // 换弹（Ctrl+R 打开轮盘时不触发换弹；操作场景武器时交给场景武器）
+      if (!wheelHeld && !mounted && !carrying && input.consumeAction('reload')) this.gun.startReload();
 
-      // 1/2/3/4：切枪；滚轮：循环切枪
-      if (this.input.consume('Digit1')) this.gun.switchWeapon('rifle');
-      if (this.input.consume('Digit2')) this.gun.switchWeapon('pistol');
-      if (this.input.consume('Digit3')) this.gun.switchWeapon('shotgun');
-      if (this.input.consume('Digit4')) this.gun.switchWeapon('sniper');
-      const wheel = this.input.consumeWheel();
-      if (Math.abs(wheel) > 30) this.gun.switchWeaponByDelta(wheel);
+      if (!mounted && !carrying) {
+        const slots = ['rifle', 'pistol', 'shotgun', 'sniper', null];
+        for (let i = 0; i < slots.length; i++) {
+          if (input.consumeAction('weapon' + (i + 1)) && slots[i]) {
+            this.gun.switchWeapon(slots[i]);
+          }
+        }
+        const wheel = input.consumeWheel();
+        if (Math.abs(wheel) > 30) this.gun.switchWeaponByDelta(wheel);
+      } else {
+        input.consumeWheel();
+      }
 
-      // 玩家 + 枪械
-      this.player.update(dt, this.mouseLook);
-      this.gun.setMouseDown(this.input.mouseDown);
-      this.gun.setFirePressed(this.input.consume('Mouse0'));
-      this.gun.update(dt, delta, true);
+      // 拾取：场景武器交互优先，其次才是补给箱
+      if (input.consumeAction('pickup')) {
+        const handled = defense ? defense.tryInteract() : false;
+        if (!handled) {
+          const got = this.supplies.pickupNearest();
+          if (!got) this.hud.showSupplyToast('附近没有补给', '靠近补给箱再按 F');
+        }
+      }
+      if (input.consumeAction('autoPickup')) this._toggleAutoPickup();
 
-      // 调试模式快捷键：F 开枪 / G 自伤（用于自动化测试，普通模式无效）
+      // 尚未接入的交互（背包 / 地图 / 面板 / 技能）
+      if (input.consumeAction('backpack')) this._featureSoon('背包', '物资系统开发中');
+      if (input.consumeAction('map')) this._featureSoon('地图', '战术地图开发中');
+      if (input.consumeAction('panel')) this._openGrowthPanel();
+      for (let i = 1; i <= 7; i++) {
+        if (input.consumeAction('skill' + i)) this._featureSoon(`技能 ${i}`, '技能系统开发中');
+      }
+
+      // Esc 暂停
+      if (input.consumeAction('pause')) this.pauseGame();
+
+      // 玩家 + 枪械 / 场景武器（轮盘打开时暂停射击）
+      const wheelOpen = this._ammoWheelOpen;
+      if (mounted) {
+        // 上机：锁定站位，由场景武器接管视角与开火
+        this.player.velocity.set(0, 0, 0);
+        this.mouseLook.update(dt);
+        defense.updateMounted(dt, input.actionDown('fire'), input.actionPressed('fire'));
+        this.gun.setMouseDown(false);
+        this.gun.setFirePressed(false);
+      } else {
+        this.player.update(dt, this.mouseLook);
+        if (carrying) {
+          defense.updateCarried(dt, !wheelOpen && input.actionDown('fire'), !wheelOpen && input.actionPressed('fire'));
+          this.gun.setMouseDown(false);
+          this.gun.setFirePressed(false);
+        } else {
+          this.gun.setMouseDown(!wheelOpen && input.actionDown('fire'));
+          this.gun.setFirePressed(!wheelOpen && input.actionPressed('fire'));
+          this.gun.update(dt, delta, true);
+        }
+      }
+
+      // 调试模式快捷键：G 自伤（用于自动化测试，普通模式无效）
       if (this.debugEl) {
-        if (this.input.consume('KeyF')) this.gun.debugFire();
         if (this.input.consume('KeyG')) {
           this.player.takeDamage(35);
           this.hud.showDamage();
@@ -495,6 +1049,15 @@ export class Game {
 
       // 敌人
       this.enemies.update(dt);
+
+      // 机甲形态燃料 / 护盾 / 哨戒炮塔
+      this.mech.update(dt);
+
+      // 守城运行时：核心受击、炮塔 / 人机索敌、武器降温
+      if (defense) {
+        defense.update(dt);
+        this.defenseUI.setInteract(defense.interactHint());
+      }
 
       // 补给点（靠近自动拾取 / 冷却刷新）
       this.supplies.update(dt);
@@ -509,15 +1072,34 @@ export class Game {
       this.hud.setEnemies(this.enemies.waveRemaining);
 
       // 死亡判定
-      if (this.player.dead) this._endMatch(false);
+      if (this.player.dead && this.state === 'playing') this._endMatch(false);
+    } else if (this.state === 'shop') {
+      // 波间商店：敌人与核心暂停推进，只保留场景演出
+      this.effects.update(dt);
+      this.casings.update(dt);
+      this.mouseLook.update(0);
+      if (this.input.consumeAction('pause')) this._closeShop();
+    } else if (this.state === 'panel') {
+      // 成长面板：战斗暂停，只保留场景演出；TAB / ESC 关闭
+      this.effects.update(dt);
+      this.casings.update(dt);
+      this.mouseLook.update(0);
+      if (this.input.consumeAction('pause') || this.input.consumeAction('panel')) {
+        this._closeGrowthPanel();
+      }
     } else if (this.state === 'result') {
       // 结算界面保留场景渲染（轻微演出），但不再推进战斗
       this.effects.update(dt);
       this.casings.update(dt);
       this.mouseLook.update(0);
+      // Esc 退出结算面板，回到大厅
+      if (this.input.consumeAction('pause')) this.backToMenu();
     } else if (this.state === 'paused') {
       this.input.consume('KeyR');
       this.mouseLook.update(0);
+      // Esc 再按一次继续（刚暂停的 0.35 秒内不响应，避免解锁瞬间误触）
+      if (this._pauseGuard > 0) this._pauseGuard -= dt;
+      else if (this.input.consumeAction('pause')) this.resumeGame();
     }
 
     // 确保每帧结束清理边沿输入
@@ -535,7 +1117,7 @@ export class Game {
           `weapon=${this.assets.weaponModel ? 'ok' : 'MISSING'} mag=${this.gun.mag}/${this.gun.reserve} reload=${this.gun.reloading}\n` +
           `player=${this.player.position.x.toFixed(1)},${this.player.position.y.toFixed(1)},${this.player.position.z.toFixed(1)} ` +
           `grounded=${this.player.grounded} hp=${Math.round(this.player.health.health)}\n` +
-          `wave=${this.enemies.waveIndex + 1}/${this.enemies.waveCount} state=${this.enemies.waveState} ` +
+          `wave=${this.enemies.waveIndex + 1}/${this.enemies.infinite ? '∞' : this.enemies.waves.length} state=${this.enemies.waveState} ` +
           `alive=${this.enemies.aliveCount} left=${this.enemies.waveRemaining} kills=${this.enemies.kills} anims=${anims}\n` +
           `spread=${this.gun.spread.toFixed(3)}` +
           (this.weaponView.modelSize

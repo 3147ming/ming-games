@@ -26,6 +26,8 @@ export const PLAYER = {
   crouchEyeHeight: 1.05,  // 蹲伏时相机高度
   crouchHeight: 1.15,     // 蹲伏时碰撞体高度
   jumpSpeed: 5.8,
+  vaultHeight: 2.65,      // 自动翻越的最大高度差（箱体 / 集装箱 / 矮墙）
+  vaultLift: 1.8,         // 翻越时的上抛速度
   gravity: -19.0,
   accel: 14.0,            // 地面加速度（越大越跟手）
   airAccel: 3.0,
@@ -66,8 +68,8 @@ export const WEAPONS = {
     recoilRecover: 9.0,
     recoilRamp: 0.06,
     recoilRampMax: 2.2,
-    shakePerShot: 0.0022,
-    shakeMax: 0.012,
+    shakePerShot: 0.0007,
+    shakeMax: 0.004,
     reloadInsertRatio: 0.55,
     auto: true,             // 全自动
     view: {
@@ -101,8 +103,8 @@ export const WEAPONS = {
     recoilRecover: 14.0,
     recoilRamp: 0.0,
     recoilRampMax: 1.0,
-    shakePerShot: 0.004,
-    shakeMax: 0.018,
+    shakePerShot: 0.0012,
+    shakeMax: 0.006,
     reloadInsertRatio: 0.6,
     auto: false,            // 半自动（必须松开再按）
     view: {
@@ -136,8 +138,8 @@ export const WEAPONS = {
     recoilRecover: 7.0,
     recoilRamp: 0.0,
     recoilRampMax: 1.0,
-    shakePerShot: 0.012,
-    shakeMax: 0.04,
+    shakePerShot: 0.0035,
+    shakeMax: 0.012,
     reloadInsertRatio: 0.5,
     auto: false,
     view: {
@@ -172,8 +174,8 @@ export const WEAPONS = {
     recoilRecover: 6.0,
     recoilRamp: 0.0,
     recoilRampMax: 1.0,
-    shakePerShot: 0.018,
-    shakeMax: 0.05,
+    shakePerShot: 0.005,
+    shakeMax: 0.015,
     reloadInsertRatio: 0.5,
     auto: false,
     view: {
@@ -198,12 +200,14 @@ export const WEAPON_UNLOCKED = ['rifle', 'pistol', 'shotgun', 'sniper'];
 // 铁律：普通丧尸（walker / brute）只有近战，**没有任何枪械参数**。
 //      远程威胁只来自「吐酸丧尸」的喷吐（非枪械），单独走 spit 通道。
 export const ENEMY = {
-  sightRange: 34,         // 视野距离
-  sightAngle: Math.cos(Math.PI / 3.2), // 约 ±56°
+  sightRange: 30,         // 视野距离
+  sightAngle: Math.cos(Math.PI / 4.3), // 约 ±42°（收窄视野，背后更难被偷袭）
+  sightLinger: 0.35,      // 发现玩家后的追击延迟（先愣一下再冲）
   alertTime: 5.0,         // 失去视野后的警戒搜索时间
   flinchTime: 0.22,       // 受击抖动时间
   deathBodyTime: 5.0,     // 尸体停留时间
-  turnSpeed: 5,
+  spawnFadeTime: 0.4,     // 重生淡出时长
+  turnSpeed: 4.5,         // 转头速度略降，避免瞬间锁头像瞬移
   radius: 0.4,
   height: 1.8,
   bodyHeight: 0.95,       // 身体命中球中心高度
@@ -218,8 +222,8 @@ export const ENEMY = {
       id: 'walker',
       name: '普通丧尸',
       maxHealth: 90,
-      patrolSpeed: 1.5,
-      chaseSpeed: 3.0,
+      patrolSpeed: 1.2,
+      chaseSpeed: 2.2,      // v0.5 下调：比玩家步行慢，给玩家走位/换弹窗口
       damage: 11,           // 爪击/撕咬
       attackRange: 2.15,    // 近战触及距离
       attackInterval: 1.25, // 两次攻击间隔
@@ -234,8 +238,8 @@ export const ENEMY = {
       id: 'spitter',
       name: '吐酸丧尸',
       maxHealth: 70,
-      patrolSpeed: 1.3,
-      chaseSpeed: 2.8,
+      patrolSpeed: 1.05,
+      chaseSpeed: 2.0,
       damage: 8,
       attackRange: 17,
       attackInterval: 2.1,
@@ -252,8 +256,8 @@ export const ENEMY = {
       id: 'brute',
       name: '重锤丧尸',
       maxHealth: 220,
-      patrolSpeed: 1.15,
-      chaseSpeed: 2.45,
+      patrolSpeed: 0.95,
+      chaseSpeed: 1.85,
       damage: 22,
       attackRange: 2.6,
       attackInterval: 1.75,
@@ -268,8 +272,8 @@ export const ENEMY = {
       id: 'swift',
       name: '迅捷丧尸',
       maxHealth: 48,
-      patrolSpeed: 2.4,
-      chaseSpeed: 5.2,
+      patrolSpeed: 1.9,
+      chaseSpeed: 3.8,
       damage: 8,
       attackRange: 1.9,
       attackInterval: 0.9,
@@ -284,8 +288,8 @@ export const ENEMY = {
       id: 'bomber',
       name: '自爆丧尸',
       maxHealth: 60,
-      patrolSpeed: 1.6,
-      chaseSpeed: 3.2,
+      patrolSpeed: 1.25,
+      chaseSpeed: 2.4,
       damage: 45,
       attackRange: 3.2,
       attackInterval: 3.5,
@@ -298,13 +302,29 @@ export const ENEMY = {
       scaleMul: 1.05,
       tint: 0xb85a3a,
     },
+    // 首领：高血量近战重击，体型明显更大（无尽每 10 波出场）
+    boss: {
+      id: 'boss',
+      name: '巨型丧尸',
+      maxHealth: 900,
+      patrolSpeed: 1.1,
+      chaseSpeed: 2.0,
+      damage: 34,
+      attackRange: 3.0,
+      attackInterval: 1.5,
+      windup: 0.55,
+      keepDistance: 2.0,
+      melee: true,
+      scaleMul: 1.55,
+      tint: 0x7a2f3a,
+    },
     // 嚎叫者：发现玩家后嘶吼，触发周围所有丧尸警觉
     howler: {
       id: 'howler',
       name: '嚎叫者',
       maxHealth: 75,
-      patrolSpeed: 1.8,
-      chaseSpeed: 3.2,
+      patrolSpeed: 1.4,
+      chaseSpeed: 2.4,
       damage: 8,
       attackRange: 2.1,
       attackInterval: 2.5,
@@ -378,6 +398,61 @@ export const SUPPLY = {
     { type: 'cache', x: -22, z: -18 },
     { type: 'cache', x: 22,  z: -18 },
   ],
+};
+
+// ---------------- 击杀掉落表 ----------------
+// 按变体配置不同掉落概率与必掉项；局内死亡时由 SupplyManager.spawnDrop 吐出来
+export const DROP = {
+  // 掉落物在地面存在的时间（秒）
+  lifetime: 30,
+  // 每只敌人死亡时的掉落表
+  byType: {
+    walker: {
+      drops: [
+        { type: 'ammo',  chance: 0.75 },
+        { type: 'med',   chance: 0.22 },
+      ],
+    },
+    swift: {
+      drops: [
+        { type: 'ammo',  chance: 0.8 },
+        { type: 'med',   chance: 0.18 },
+      ],
+    },
+    brute: {
+      drops: [
+        { type: 'ammo',  chance: 0.8 },
+        { type: 'armor', chance: 0.7 },
+        { type: 'med',   chance: 0.5 },
+      ],
+    },
+    spitter: {
+      drops: [
+        { type: 'ammo',  chance: 0.6 },
+        { type: 'med',   chance: 0.3 },
+      ],
+    },
+    bomber: {
+      drops: [
+        { type: 'ammo',  chance: 0.7 },
+      ],
+    },
+    howler: {
+      drops: [
+        { type: 'med',   chance: 0.7 },
+        { type: 'ammo',  chance: 0.55 },
+      ],
+    },
+    // 首领级：必掉综合物资箱 + 医疗 + 护甲
+    boss: {
+      drops: [
+        { type: 'cache', chance: 1.0 },
+        { type: 'med',   chance: 1.0 },
+        { type: 'armor', chance: 1.0 },
+        { type: 'ammo',  chance: 0.8 },
+      ],
+    },
+  },
 };
 
 // 地图参数（非封闭式露天货场）

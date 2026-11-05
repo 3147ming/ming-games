@@ -1,7 +1,7 @@
 /**
  * 丧尸管理器：波次调度、生成、更新、命中检测（v0.3 丧尸改造）。
  *
- *   一局 = MATCH.waves 三波尸潮 → 全部肃清即胜利。
+ *   一局 = 若干波尸潮；闯关闭环到最后一波，无尽模式无限续波。
  *   每波有 total（总数）、alive（同时存活上限）、mix（变体配额）：
  *   场上人数低于上限时从出生点补位刷新（按 mix 抽变体），直到本波刷完；
  *   本波全部击杀且场上无存活 → breakTime 休整（补弹补甲）→ 下一波。
@@ -26,6 +26,7 @@ export class EnemyManager {
     this.player = opts.player;
     this.effects = opts.effects;
     this.hud = opts.hud;
+    this.supply = opts.supply || null;      // 敌人死亡掉落：注入 SupplyManager
     this.onKill = opts.onKill || (() => {});
     this.onWaveStart = opts.onWaveStart || (() => {});
     this.onWaveClear = opts.onWaveClear || (() => {});
@@ -35,8 +36,17 @@ export class EnemyManager {
     this.spawnPoints = opts.spawnPoints || ENEMY.spawnPoints;
     this.patrolPoints = opts.patrolPoints || ENEMY.patrolPoints;
 
-    // 敌人实例池：数量取所有波次的并发上限
-    const poolSize = Math.max(...MATCH.waves.map((w) => w.alive));
+    // 模式：campaign 打完最后一波即胜利；endless 无限续波
+    this.mode = opts.mode || 'campaign';
+    this.infinite = !!opts.infinite;
+    this.waveGen = opts.waveGen || null;      // 无尽模式按波号生成配置
+    this.waves = (opts.waves || MATCH.waves).slice();
+    this.waveLimit = this.infinite ? null : this.waves.length;
+    this.breakTime = opts.breakTime || MATCH.breakTime;
+    this.spawnGap = opts.spawnGap || MATCH.spawnGap;
+
+    // 敌人实例池：数量取所有波次的并发上限（无尽用 ENDLESS.maxAlive）
+    const poolSize = opts.poolSize || Math.max(...this.waves.map((w) => w.alive));
     this.enemies = [];
     for (let i = 0; i < poolSize; i++) {
       const enemy = new EnemyAI({
@@ -53,6 +63,7 @@ export class EnemyManager {
         onMelee: (e) => this._handleMelee(e),
         onPlayerHit: (dmg) => this._handlePlayerHit(dmg),
         onExplode: (e) => this._handleExplode(e),
+        onRoar: (howler) => this._handleRoar(howler),
       });
       enemy.root.visible = false;
       enemy.dead = true;
@@ -73,12 +84,37 @@ export class EnemyManager {
   }
 
   // ---------------- 波次调度 ----------------
+  /** 切换作战模式（大厅选完模式后由 Game 调用） */
+  applyMode({ mode, infinite, waveGen, waves, breakTime, spawnGap }) {
+    this.mode = mode || 'campaign';
+    this.infinite = !!infinite;
+    this.waveGen = waveGen || null;
+    this.waves = (waves || MATCH.waves).slice();
+    this.waveLimit = this.infinite ? null : this.waves.length;
+    if (breakTime != null) this.breakTime = breakTime;
+    if (spawnGap != null) this.spawnGap = spawnGap;
+  }
+
+  /** 结束波间休整，立即进入下一波（守城商店关闭后调用） */
+  skipBreak() {
+    if (this.waveState === STATE.BREAK) this.breakTimer = 0.2;
+  }
+
+  /** 切换地图：更新出生点 / 巡逻点 */
+  setNavigation(spawnPoints, patrolPoints) {
+    this.spawnPoints = spawnPoints && spawnPoints.length ? spawnPoints : ENEMY.spawnPoints;
+    this.patrolPoints = patrolPoints && patrolPoints.length ? patrolPoints : ENEMY.patrolPoints;
+    for (const e of this.enemies) e.patrolPoints = this.patrolPoints;
+  }
+
   /** 开始新的一局（重置全部波次状态） */
   startMatch() {
     this.kills = 0;
     this.headshotKills = 0;
     this.waveIndex = -1;
     this.waveState = STATE.IDLE;
+    // 无尽模式每局重新从第 1 波生成，避免沿用上一局的高难度配置
+    if (this.infinite && this.waveGen) this.waves = [this.waveGen(1)];
     for (const e of this.enemies) {
       e.dead = true;
       e.root.visible = false;
@@ -89,15 +125,17 @@ export class EnemyManager {
   }
 
   _beginWave(index) {
+    // 无尽模式：下一波配置按需生成
+    if (index >= this.waves.length && this.waveGen) this.waves.push(this.waveGen(index + 1));
     this.waveIndex = index;
-    this.waveCfg = MATCH.waves[index];
+    this.waveCfg = this.waves[index];
     this.waveTotal = this.waveCfg.total;
     this.waveSpawned = 0;
     this.waveKilled = 0;
     this.waveState = STATE.ACTIVE;
     this.spawnTimer = 0.4;   // 开局稍作停顿，别一进场就贴脸
     this._buildVariantQueue();
-    this.onWaveStart(index, this.waveTotal, MATCH.waves.length);
+    this.onWaveStart(index, this.waveTotal, this.waveLimit);
   }
 
   /**
@@ -111,7 +149,8 @@ export class EnemyManager {
       for (let i = 0; i < (n || 0); i++) queue.push(id);
     }
     while (queue.length < this.waveTotal) queue.push('walker');
-    queue.length = this.waveTotal;
+    // 首领额外追加（mix 总和大于 total），本波总数以实际队列长度为准
+    this.waveTotal = queue.length;
     for (let i = queue.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [queue[i], queue[j]] = [queue[j], queue[i]];
@@ -125,7 +164,7 @@ export class EnemyManager {
   }
 
   _clearWave() {
-    const isLast = this.waveIndex >= MATCH.waves.length - 1;
+    const isLast = !this.infinite && this.waveIndex >= this.waves.length - 1;
     this.onWaveClear(this.waveIndex, isLast);
     if (isLast) {
       this.waveState = STATE.DONE;
@@ -133,7 +172,7 @@ export class EnemyManager {
       return;
     }
     this.waveState = STATE.BREAK;
-    this.breakTimer = MATCH.breakTime;
+    this.breakTimer = this.breakTime;
   }
 
   update(dt) {
@@ -146,7 +185,7 @@ export class EnemyManager {
           this.waveSpawned < this.waveTotal &&
           this.aliveCount < this.waveCfg.alive) {
         this._spawnOne();
-        this.spawnTimer = MATCH.spawnGap;
+        this.spawnTimer = this.spawnGap;
       }
       if (this._isWaveCleared()) this._clearWave();
     } else if (this.waveState === STATE.BREAK) {
@@ -219,6 +258,8 @@ export class EnemyManager {
     this.waveKilled += 1;
     this.hud.setKills(this.kills);
     if (this.audio) this.audio.play('kill', { volume: 0.7, rate: 1.0 });
+    // 敌人死亡掉落：按变体概率吐出血包/护甲/弹药箱
+    if (this.supply) this.supply.spawnDrop(enemy.position, enemy.variant);
     this.onKill(enemy);
   }
 
@@ -251,6 +292,30 @@ export class EnemyManager {
     }
   }
 
+  /** howler 嘶吼：把范围内的丧尸全部推入 alert，并跳过追击延迟 */
+  _handleRoar(howler) {
+    const RADIUS = 14;
+    for (const e of this.enemies) {
+      if (e === howler || e.dead) continue;
+      const dx = e.position.x - howler.position.x;
+      const dz = e.position.z - howler.position.z;
+      if (Math.hypot(dx, dz) > RADIUS) continue;
+      if (e.state === 'patrol') {
+        e.state = 'alert';
+        e.baseScanHeading = e.heading;
+        e.scanTime = 0;
+        e.alertTimer = ENEMY.alertTime;
+        // 嘶吼后秒接追击（跳过 sightLinger）
+        e.chaseLinger = 0;
+      }
+    }
+    // 嘶吼音效（用 fire2 变调，后面可以换成单独的 roar 资源）
+    if (this.audio) {
+      const dist = this.player ? this.player.position.distanceTo(howler.position) : 30;
+      this.audio.play('fire2', { volume: this.audio.distanceVolume(dist) * 1.4, rate: 1.8 });
+    }
+  }
+
   _handlePlayerHit(dmg) {
     if (this.audio) this.audio.play('hurt', { volume: 0.55, rate: 1.0 });
     if (this.hud) {
@@ -273,7 +338,7 @@ export class EnemyManager {
   }
 
   get waveCount() {
-    return MATCH.waves.length;
+    return this.infinite ? Infinity : this.waves.length;
   }
 
   get isDone() {

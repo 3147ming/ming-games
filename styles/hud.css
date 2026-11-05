@@ -442,6 +442,24 @@ html, body {
 
 /* =========================== 待机大厅 =========================== */
 .lobby-panel { width: min(1080px, 95vw); padding: 30px 34px 26px; }
+
+/* 宽屏：大厅面板靠左，右侧留给 3D 待机角色 */
+@media (min-width: 1100px) {
+  #menu.overlay {
+    justify-content: flex-start;
+    padding-left: clamp(16px, 3vw, 54px);
+    background:
+      linear-gradient(100deg,
+        rgba(3, 5, 8, 0.97) 0%,
+        rgba(4, 7, 10, 0.95) 44%,
+        rgba(4, 7, 10, 0.58) 60%,
+        rgba(4, 7, 10, 0.18) 74%,
+        rgba(4, 7, 10, 0.04) 100%),
+      repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 3px);
+    backdrop-filter: none;
+  }
+  #menu .lobby-panel { width: min(1040px, 58vw); }
+}
 .lobby-head {
   display: flex;
   align-items: flex-end;
@@ -458,6 +476,7 @@ html, body {
 .res-dot { width: 9px; height: 9px; display: inline-block; border-radius: 50%; }
 .res-dot.core { background: #7fd17f; box-shadow: 0 0 9px rgba(127, 209, 127, 0.7); }
 .res-dot.coin { background: var(--accent); box-shadow: 0 0 9px rgba(255, 176, 32, 0.7); }
+.res-dot.rep { background: #6fb6ff; box-shadow: 0 0 9px rgba(111, 182, 255, 0.7); }
 
 .lobby-body { display: grid; grid-template-columns: 148px 1fr; gap: 24px; margin-top: 22px; }
 .lobby-nav { display: flex; flex-direction: column; gap: 6px; }
@@ -486,14 +505,17 @@ html, body {
 .tab-page.active { display: block; animation: tabIn 0.18s ease-out; }
 @keyframes tabIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-.mode-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+.mode-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
 .mode-card {
   position: relative;
   padding: 18px 18px 16px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.12);
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+  transition: border-color 0.18s, background 0.18s;
 }
+.mode-card[data-mode] { cursor: pointer; }
+.mode-card[data-mode]:hover { border-color: rgba(255, 176, 32, 0.35); background: rgba(255, 176, 32, 0.05); }
 .mode-card.active { border-color: rgba(255, 176, 32, 0.5); background: rgba(255, 176, 32, 0.07); }
 .mode-card.locked { opacity: 0.55; }
 .mode-card h3 { font-size: 17px; letter-spacing: 3px; color: #fff; margin-bottom: 8px; }
@@ -582,6 +604,250 @@ html, body {
   background: rgba(255, 176, 32, 0.06);
 }
 .key-list span { color: #c8d2da; }
+
+/* =========================== 设置页 =========================== */
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.settings-block {
+  padding: 16px 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.settings-block h3 {
+  font-size: 12px;
+  letter-spacing: 3px;
+  color: var(--muted);
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 12px;
+}
+.settings-head { display: flex; align-items: center; justify-content: space-between; }
+.settings-head h3 { flex: 1; border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
+.setting-row {
+  display: grid;
+  grid-template-columns: 96px 1fr 58px;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0;
+  font-size: 12px;
+  color: #c8d2da;
+  cursor: pointer;
+}
+.setting-row input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.16);
+  outline: none;
+  cursor: pointer;
+}
+.setting-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(255, 176, 32, 0.6);
+}
+.setting-row input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.setting-row b {
+  font-family: "Consolas", monospace;
+  font-size: 12px;
+  color: var(--accent);
+  text-align: right;
+}
+.setting-hint { margin-top: 12px; font-size: 11px; line-height: 1.7; color: var(--muted); }
+.key-list.compact { gap: 7px; }
+.key-list.compact li { font-size: 12px; gap: 10px; }
+.key-list.compact b { min-width: 118px; font-size: 11px; }
+
+.bind-groups { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 26px; margin-top: 14px; }
+.bind-group h4 { font-size: 11px; letter-spacing: 3px; color: var(--accent); margin-bottom: 6px; }
+.bind-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.07);
+  font-size: 12px;
+  color: #c8d2da;
+}
+.bind-key {
+  pointer-events: auto;
+  min-width: 96px;
+  padding: 4px 10px;
+  font-family: "Consolas", monospace;
+  font-size: 11px;
+  text-align: center;
+  color: var(--accent);
+  background: rgba(255, 176, 32, 0.06);
+  border: 1px solid rgba(255, 176, 32, 0.3);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.bind-key:hover { background: rgba(255, 176, 32, 0.14); }
+.bind-key.listening {
+  color: #0b0f12;
+  background: var(--accent);
+  border-color: #fff;
+  animation: bindPulse 0.65s infinite alternate;
+}
+@keyframes bindPulse { from { opacity: 0.7; } to { opacity: 1; } }
+.btn.mini { width: auto; margin: 0; padding: 6px 14px; font-size: 11px; letter-spacing: 2px; }
+
+/* =========================== 军械库（改装） =========================== */
+/* ---------------- 任务奖励 ---------------- */
+.mission-head-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.mission-head-row h3 { margin: 0; border-bottom: none; padding-bottom: 0; }
+.mission-head-row .muted { font-size: 11px; }
+.mission-list { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.mission-card {
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 3px solid rgba(111, 182, 255, 0.55);
+}
+.mission-card.done { border-left-color: var(--accent); background: rgba(255, 176, 32, 0.06); }
+.mission-card.claimed { opacity: 0.55; border-left-color: rgba(255, 255, 255, 0.2); }
+.mission-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.mission-head h4 { font-size: 14px; letter-spacing: 2px; color: #fff; }
+.mission-head span { font-family: "Consolas", monospace; font-size: 12px; color: var(--accent); }
+.mission-card p { margin: 8px 0 10px; font-size: 12px; color: #c8d2da; line-height: 1.6; }
+.mission-bar { height: 5px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.mission-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), #ffe08a); transition: width 0.25s ease-out; }
+.mission-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.mission-reward { font-size: 11px; color: var(--muted); }
+.mission-feedback {
+  min-height: 18px; margin-top: 12px; font-size: 12px; color: var(--accent);
+  opacity: 0; transition: opacity 0.18s ease-out;
+}
+.mission-feedback.show { opacity: 1; }
+.result-rewards { margin: 10px 0 4px; font-size: 12px; color: #ffd27a; letter-spacing: 1px; }
+
+.armory-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.armory-weapons { display: flex; flex-wrap: wrap; gap: 8px; }
+.armory-weapon {
+  pointer-events: auto;
+  padding: 8px 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #c8d2da;
+  font-size: 12px;
+  letter-spacing: 2px;
+  cursor: pointer;
+}
+.armory-weapon:hover { border-color: rgba(255, 176, 32, 0.5); }
+.armory-weapon.active { color: #0b0f12; background: var(--accent); border-color: var(--accent); }
+.armory-body { display: grid; grid-template-columns: 240px 1fr; gap: 16px; }
+.armory-info {
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  align-self: start;
+}
+.armory-info h3 {
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.armory-stat { display: flex; justify-content: space-between; padding: 6px 0; font-size: 12px; color: #c8d2da; border-bottom: 1px dashed rgba(255, 255, 255, 0.07); }
+.armory-stat b { color: var(--accent); font-family: "Consolas", monospace; }
+.armory-slots { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.armory-slot { padding: 10px 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.09); }
+.armory-slot-head { display: flex; align-items: baseline; justify-content: space-between; font-size: 12px; }
+.armory-slot-head b { color: var(--accent); letter-spacing: 3px; }
+.armory-slot-head span { font-size: 11px; color: var(--muted); }
+.armory-options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+.armory-option {
+  pointer-events: auto;
+  text-align: left;
+  padding: 6px 11px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #c8d2da;
+  font-size: 11px;
+  cursor: pointer;
+}
+.armory-option b { display: block; letter-spacing: 1px; }
+.armory-option small { display: block; margin-top: 2px; font-size: 10px; color: var(--muted); }
+.armory-option:hover { border-color: rgba(255, 176, 32, 0.5); }
+.armory-option.active { color: var(--accent); border-color: var(--accent); background: rgba(255, 176, 32, 0.1); }
+
+/* =========================== 开镜 / 弹种 =========================== */
+.ammo-type {
+  margin-top: 3px;
+  font-family: "Consolas", monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-align: right;
+  color: #ffd27a;
+}
+#crosshair.aiming .ch-line { opacity: 0; }
+#crosshair.aiming .ch-dot { width: 3px; height: 3px; opacity: 0.95; }
+
+.scope-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at center, rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) 33vh, rgba(0, 0, 0, 0.94) 33.3vh),
+    radial-gradient(circle at center, rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) 98%, rgba(0, 0, 0, 1) 100%);
+}
+.scope-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent calc(50% - 0.5px), rgba(0, 0, 0, 0.55) 50%, transparent calc(50% + 0.5px));
+}
+.scope-overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, transparent calc(50% - 0.5px), rgba(0, 0, 0, 0.55) 50%, transparent calc(50% + 0.5px));
+}
+
+.ammo-wheel {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 440px;
+  max-width: 86vw;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 14px;
+  z-index: 8;
+  background: rgba(8, 12, 16, 0.82);
+  border: 1px solid rgba(255, 176, 32, 0.35);
+  backdrop-filter: blur(4px);
+}
+.ammo-wheel.hidden { display: none; }
+.ammo-wheel-item {
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.ammo-wheel-item b { display: block; font-size: 14px; letter-spacing: 2px; }
+.ammo-wheel-item span { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); }
+.ammo-wheel-item.active {
+  border-color: currentColor;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 14px rgba(255, 176, 32, 0.35);
+}
+
+
 .brief { font-size: 13px; line-height: 1.9; color: #c8d2da; }
 .brief b { color: var(--accent); }
 .tip { margin-top: 14px; font-size: 12px; line-height: 1.7; color: var(--muted); }
@@ -691,6 +957,39 @@ html, body {
 .wave-remain-line b { color: var(--accent); font-family: "Consolas", monospace; font-size: 13px; }
 .wave-hud.final { border-top-color: var(--accent-2); }
 .wave-hud.final .wave-line b { color: var(--accent-2); text-shadow: 0 0 16px rgba(255, 90, 45, 0.7); }
+
+/* 局内任务目标（左侧生命面板下方，避开开局操作提示） */
+.mission-objective {
+  position: absolute;
+  left: 28px;
+  top: 150px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px 6px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  background: linear-gradient(180deg, rgba(8, 12, 16, 0.7), rgba(8, 12, 16, 0.25));
+  border-left: 3px solid var(--accent);
+  border-top: 1px solid rgba(255, 176, 32, 0.2);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+}
+.mission-obj-label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--accent);
+}
+.mission-obj-name {
+  color: #fff;
+  font-weight: 600;
+}
+.mission-obj-progress b {
+  color: var(--accent);
+  font-family: "Consolas", monospace;
+  font-size: 13px;
+}
 
 /* 波次横幅 */
 .wave-banner {
@@ -844,6 +1143,181 @@ html, body {
   100% { opacity: 0; transform: translateX(-8px); }
 }
 
+/* ===================== 守城模式 HUD ===================== */
+.defense-status {
+  position: absolute;
+  left: 50%;
+  top: 92px;
+  transform: translateX(-50%);
+  width: 240px;
+  padding: 8px 12px 9px;
+  background: linear-gradient(180deg, rgba(8, 12, 16, 0.82), rgba(8, 12, 16, 0.34));
+  border-top: 1px solid rgba(95, 230, 204, 0.5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 100%, 0 100%);
+}
+.core-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+.core-row b {
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 15px;
+  color: #7fe8d0;
+}
+.defense-status .bar.core { border-color: rgba(95, 230, 204, 0.35); }
+.defense-status .bar.core i {
+  background: linear-gradient(90deg, #1f8f7d, #5fe6cc);
+  box-shadow: 0 0 10px rgba(95, 230, 204, 0.6);
+}
+.defense-status.danger .bar.core i {
+  background: linear-gradient(90deg, #a3271b, var(--accent-2));
+  box-shadow: 0 0 12px rgba(255, 90, 45, 0.8);
+}
+.defense-status.danger .core-row b { color: var(--accent-2); }
+.gold-row {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--muted);
+}
+.gold-row b {
+  font-family: "Consolas", monospace;
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.interact-tip {
+  position: absolute;
+  left: 50%;
+  bottom: 21%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 14px;
+  background: rgba(8, 12, 16, 0.78);
+  border: 1px solid rgba(255, 176, 32, 0.35);
+  pointer-events: none;
+}
+.interact-tip b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  font-size: 11px;
+  color: #0b0f12;
+  background: var(--accent);
+  border-radius: 2px;
+}
+.interact-tip span { font-size: 12px; letter-spacing: 2px; color: #f3e6c8; }
+
+.special-panel {
+  position: absolute;
+  left: 28px;
+  bottom: 24%;
+  width: 190px;
+  padding: 9px 12px 10px;
+  background: linear-gradient(180deg, rgba(8, 12, 16, 0.86), rgba(8, 12, 16, 0.4));
+  border-left: 3px solid var(--accent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.special-name { font-size: 12px; letter-spacing: 3px; color: var(--accent); }
+.special-ammo {
+  margin-top: 4px;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 20px;
+  color: #fff;
+}
+.special-heat {
+  height: 4px;
+  margin-top: 7px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.special-heat i {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #ffcf6a, var(--accent-2));
+  transition: width 0.1s linear;
+}
+.special-hint { margin-top: 6px; font-size: 10px; letter-spacing: 2px; color: var(--muted); }
+.special-panel.overheat { border-left-color: var(--accent-2); }
+.special-panel.overheat .special-hint { color: var(--accent-2); }
+
+/* 波间商店 */
+.shop-panel { width: min(760px, 92vw); text-align: left; }
+.shop-panel h2 {
+  font-size: 27px;
+  letter-spacing: 9px;
+  margin: 6px 0 8px;
+  color: #fff;
+}
+.shop-sub { font-size: 12px; letter-spacing: 2px; color: var(--muted); }
+.shop-gold {
+  margin: 12px 0 10px;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--muted);
+}
+.shop-gold b {
+  font-family: "Consolas", monospace;
+  font-size: 22px;
+  color: var(--accent);
+}
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.shop-card {
+  display: flex;
+  flex-direction: column;
+  padding: 11px 12px 10px;
+  background: rgba(18, 24, 30, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-top: 2px solid rgba(255, 176, 32, 0.45);
+}
+.shop-card.disabled { opacity: 0.45; border-top-color: rgba(255, 255, 255, 0.1); }
+.shop-card h3 { font-size: 14px; letter-spacing: 3px; color: #fff; }
+.shop-card p {
+  flex: 1;
+  margin: 6px 0 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.shop-card-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+.shop-cost { font-family: "Consolas", monospace; font-size: 12px; color: var(--accent); }
+.shop-tip { font-size: 10px; color: var(--muted); text-align: right; }
+.shop-buy { width: 100% !important; }
+.shop-feedback {
+  min-height: 20px;
+  margin: 12px 0 0;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--accent);
+}
+
 /* 小屏适配 */
 @media (max-width: 720px) {
   .vitals { width: 210px; top: 16px; left: 16px; padding: 10px 12px; }
@@ -864,13 +1338,107 @@ html, body {
   .lobby-cols,
   .mech-grid,
   .talent-branches { grid-template-columns: 1fr; }
+  .settings-grid,
+  .bind-groups { grid-template-columns: 1fr; }
+  .armory-body { grid-template-columns: 1fr; }
+  .mission-list { grid-template-columns: 1fr; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .panel { padding: 30px 24px; }
   .game-title { letter-spacing: 8px; }
   .wave-hud { top: 12px; min-width: 132px; padding: 6px 14px 7px; }
   .wave-line b { font-size: 20px; }
+  .mission-objective { top: 134px; left: 16px; font-size: 11px; padding: 4px 10px 5px; }
   .result-panel { padding: 28px 20px 24px; }
   .result-grade { width: 74px; height: 74px; font-size: 42px; margin: 14px 0 4px; }
   .result-grid { grid-template-columns: repeat(2, 1fr); }
   .result-cell b { font-size: 18px; }
 }
+
+/* =========================== 局外成长（局内 TAB 面板） =========================== */
+.growth-panel {
+  position: fixed; inset: 0; z-index: 30;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(4, 6, 9, 0.72);
+  backdrop-filter: blur(3px);
+}
+.growth-card {
+  width: min(880px, 92vw); max-height: 86vh; overflow: hidden;
+  display: flex; flex-direction: column;
+  background: var(--panel-bg); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  padding: 20px 22px 18px;
+}
+.growth-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.growth-kicker { font-size: 11px; letter-spacing: 0.28em; color: var(--muted); }
+.growth-title { font-size: 22px; letter-spacing: 0.08em; margin-top: 2px; }
+.growth-head-right { display: flex; align-items: center; gap: 12px; }
+.growth-lv { color: var(--accent); font-size: 13px; font-weight: 700; }
+.growth-tabs { display: flex; gap: 8px; margin: 16px 0 14px; }
+.growth-tab {
+  padding: 7px 18px; border-radius: 6px; cursor: pointer;
+  background: rgba(255, 255, 255, 0.04); color: var(--muted);
+  border: 1px solid rgba(255, 255, 255, 0.08); font-size: 13px;
+}
+.growth-tab.active { color: var(--accent); border-color: var(--border); background: rgba(255, 176, 32, 0.12); }
+.growth-body { flex: 1; overflow-y: auto; min-height: 260px; }
+.growth-hint { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.growth-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.growth-card-item {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.growth-card-item.locked { opacity: 0.78; border-style: dashed; }
+.growth-item-title { font-size: 14px; font-weight: 700; letter-spacing: 0.04em; }
+.growth-item-desc { font-size: 12px; color: var(--muted); line-height: 1.55; }
+.growth-action { margin-top: auto; font-size: 12px; padding: 7px 10px; }
+.growth-action:disabled { opacity: 0.45; cursor: default; }
+.talent-pips { display: flex; gap: 5px; }
+.talent-pip { width: 100%; height: 5px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); }
+.talent-pip.on { background: var(--accent); box-shadow: 0 0 8px rgba(255, 176, 32, 0.5); }
+
+/* ---------- 局内机甲状态 ---------- */
+.mech-status {
+  position: fixed; left: 50%; bottom: 88px; transform: translateX(-50%);
+  width: 240px; z-index: 12; pointer-events: none;
+  padding: 10px 12px; border-radius: 8px;
+  background: var(--hud-bg); border: 1px solid var(--border);
+  text-align: center;
+}
+.mech-name { font-size: 13px; letter-spacing: 0.12em; color: var(--accent); }
+.mech-bar { height: 5px; margin: 7px 0 6px; border-radius: 3px; overflow: hidden; background: rgba(255, 255, 255, 0.14); }
+.mech-bar i { display: block; height: 100%; background: var(--accent); transform-origin: left center; transition: transform 0.1s linear; }
+.mech-info { font-size: 11px; color: var(--muted); }
+.mech-status.danger { border-color: var(--accent-2); }
+.mech-status.danger .mech-name { color: var(--accent-2); }
+.mech-status.danger .mech-bar i { background: var(--accent-2); }
+
+/* =========================== 大厅成长页 =========================== */
+.mech-cost { font-size: 12px; color: var(--muted); }
+.mech-card.locked { border-style: dashed; }
+.talent-nodes i { background: rgba(255, 255, 255, 0.14); border-radius: 2px; height: 5px; flex: 1; }
+.talent-nodes i.on { background: var(--accent); box-shadow: 0 0 8px rgba(255, 176, 32, 0.5); }
+.talent-up { margin-top: 8px; font-size: 12px; padding: 6px 10px; }
+.talent-up:disabled { opacity: 0.45; cursor: default; }
+.growth-block {
+  margin-bottom: 18px; padding: 14px 16px; border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07);
+}
+.growth-lv-row { display: flex; align-items: center; gap: 18px; font-size: 13px; }
+.growth-lv-row b { color: var(--accent); }
+.growth-attr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 12px; }
+.growth-attr {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  padding: 9px 10px; border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.growth-attr-name { font-size: 12px; }
+.growth-attr-name b { color: var(--accent); }
+.growth-attr-desc { flex: 1 1 100%; font-size: 11px; color: var(--muted); }
+.growth-attr-add { margin-left: auto; font-size: 12px; padding: 4px 10px; }
+.growth-attr-add:disabled { opacity: 0.4; cursor: default; }
+.growth-tip {
+  font-size: 11px; color: var(--accent); opacity: 0; transition: opacity 0.2s ease;
+}
+.growth-tip.show { opacity: 1; }

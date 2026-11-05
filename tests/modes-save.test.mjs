@@ -4,8 +4,9 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { endlessWave, ENDLESS, BALANCE } from '../src/config/modes.js';
+import { endlessWave, ENDLESS, BALANCE, DEFENSE, DEFENSE_WAVES, defenseWave, isDefenseMode } from '../src/config/modes.js';
 import { SaveManager, SAVE_KEY, defaultSave, SAVE_VERSION } from '../src/core/SaveManager.js';
+import { DEFAULT_BINDS, normalizeBinds, formatBind } from '../src/config/keybinds.js';
 
 class MemStorage {
   constructor() { this.map = new Map(); }
@@ -48,6 +49,31 @@ test('无尽模式：每 10 波出现首领，其余波次没有', () => {
 test('平衡上限：伤害与移速加成有明确上限', () => {
   assert.ok(BALANCE.maxDamageBonus <= 0.6 + 1e-9);
   assert.ok(BALANCE.maxSpeedBonus <= 0.25 + 1e-9);
+});
+
+test('守城模式：十轮波次表长度与数量递增', () => {
+  assert.equal(DEFENSE_WAVES.length, DEFENSE.waves);
+  assert.equal(DEFENSE_WAVES[0].total, DEFENSE.baseTotal);
+  assert.ok(DEFENSE_WAVES[9].total > DEFENSE_WAVES[0].total);
+  assert.ok(DEFENSE_WAVES.every((w) => w.alive <= DEFENSE.maxAlive));
+});
+
+test('守城模式：每 5 波出现首领，配额总数等于 total', () => {
+  assert.equal(defenseWave(5).mix.boss, 1);
+  assert.equal(defenseWave(10).mix.boss, 1);
+  assert.equal(defenseWave(4).mix.boss, undefined);
+  for (const n of [1, 3, 5, 10]) {
+    const w = defenseWave(n);
+    const boss = w.mix.boss || 0;
+    assert.equal(sumMix(w.mix) - boss, w.total);
+  }
+});
+
+test('守城模式：识别两种守城模式', () => {
+  assert.equal(isDefenseMode('defense'), true);
+  assert.equal(isDefenseMode('defense_endless'), true);
+  assert.equal(isDefenseMode('endless'), false);
+  assert.equal(isDefenseMode('campaign'), false);
 });
 
 test('存档：首次读取返回默认值', () => {
@@ -94,4 +120,106 @@ test('存档：reset 恢复默认值', () => {
   s.recordRun({ kills: 5, seconds: 30, level: 2, win: true });
   s.reset();
   assert.deepEqual(s.data, defaultSave());
+});
+
+test('默认键位：与需求清单一致', () => {
+  assert.equal(DEFAULT_BINDS.crouch, 'KeyC');
+  assert.equal(DEFAULT_BINDS.sprint, 'ShiftLeft');
+  assert.equal(DEFAULT_BINDS.fire, 'Mouse0');
+  assert.equal(DEFAULT_BINDS.aim, 'Mouse2');
+  assert.equal(DEFAULT_BINDS.ammoWheel, 'ControlLeft+KeyR');
+  assert.equal(DEFAULT_BINDS.panel, 'Tab');
+  assert.equal(DEFAULT_BINDS.map, 'Backquote');
+  assert.equal(DEFAULT_BINDS.backpack, 'KeyB');
+  assert.equal(DEFAULT_BINDS.pickup, 'KeyF');
+  assert.equal(DEFAULT_BINDS.autoPickup, 'KeyP');
+  assert.equal(DEFAULT_BINDS.pause, 'Escape');
+  assert.deepEqual(
+    ['skill1', 'skill2', 'skill3', 'skill4', 'skill5', 'skill6', 'skill7']
+      .map((id) => DEFAULT_BINDS[id].slice(3)),
+    ['Q', 'E', 'T', 'Y', 'U', 'I', 'O']
+  );
+});
+
+test('键位：脏数据被过滤，缺失动作回落到默认值', () => {
+  const binds = normalizeBinds({ crouch: 'KeyX', fire: 123, unknown: 'KeyZ' });
+  assert.equal(binds.crouch, 'KeyX');
+  assert.equal(binds.fire, DEFAULT_BINDS.fire);
+  assert.equal(binds.unknown, undefined);
+  assert.equal(binds.forward, DEFAULT_BINDS.forward);
+});
+
+test('键位：组合键显示名', () => {
+  assert.equal(formatBind('KeyW'), 'W');
+  assert.equal(formatBind('Digit2'), '2');
+  assert.equal(formatBind('ControlLeft+KeyR'), 'Ctrl + R');
+  assert.equal(formatBind('Mouse2'), '鼠标右键');
+  assert.equal(formatBind(''), '未绑定');
+});
+
+test('存档：改键可持久化并支持恢复默认', () => {
+  const storage = new MemStorage();
+  const a = new SaveManager(storage);
+  a.setBind('crouch', 'KeyX');
+  assert.equal(a.data.settings.binds.crouch, 'KeyX');
+
+  const b = new SaveManager(storage);
+  assert.equal(b.data.settings.binds.crouch, 'KeyX');
+
+  b.resetBinds();
+  assert.equal(b.data.settings.binds.crouch, DEFAULT_BINDS.crouch);
+});
+
+test('经济：单局结算金币 / 声望 / 核心', () => {
+  const s = new SaveManager(new MemStorage());
+  const rw = s.recordRun({ kills: 12, seconds: 90, level: 1, wave: 3, win: true });
+  assert.equal(rw.coins, 166);       // 12*3 + 3*10 + 100
+  assert.equal(rw.reputation, 4);    // 0 + 1 + 3
+  assert.equal(rw.cores, 2);
+  assert.equal(s.data.meta.coins, 166);
+  assert.equal(s.data.meta.reputation, 4);
+  assert.equal(s.data.meta.cores, 2);
+});
+
+test('经济：失败结算仍给保底金币与声望', () => {
+  const s = new SaveManager(new MemStorage());
+  const rw = s.recordRun({ kills: 0, seconds: 20, level: 1, wave: 0, win: false });
+  assert.equal(rw.coins, 15);
+  assert.equal(rw.reputation, 1);
+  assert.equal(rw.cores, 0);
+});
+
+test('任务：完成后可领取一次，奖励写入存档', () => {
+  const storage = new MemStorage();
+  const s = new SaveManager(storage);
+  assert.equal(s.getMissionStates()[0].progress, 0);
+  assert.equal(s.claimMission('first_run'), null);   // 未完成不可领
+
+  s.recordRun({ kills: 5, seconds: 40, level: 1, win: true });
+  const granted = s.claimMission('first_run');
+  assert.equal(granted.coins, 120);
+  assert.equal(granted.reputation, 2);
+  assert.equal(s.data.meta.coins, 115 + 120);        // 5*3 + 100 + 120
+  assert.equal(s.claimMission('first_run'), null);   // 已领取
+
+  const b = new SaveManager(storage);
+  assert.equal(b.getMissionStates()[0].claimed, true);
+});
+
+test('任务：材料奖励写入对应材料池', () => {
+  const s = new SaveManager(new MemStorage());
+  s.recordRun({ kills: 0, seconds: 300, level: null, wave: 10, win: true });
+  const before = s.data.meta.materials.awaken;
+  const granted = s.claimMission('hold_10');
+  assert.equal(granted.materials.awaken, 1);
+  assert.equal(s.data.meta.materials.awaken, before + 1);
+});
+
+test('经济：消费余额不足时不扣款', () => {
+  const s = new SaveManager(new MemStorage());
+  assert.equal(s.spend({ coins: 300, reputation: 5 }), false);
+  s._grantReward({ coins: 300, reputation: 5 });
+  assert.equal(s.spend({ coins: 300, reputation: 5 }), true);
+  assert.equal(s.data.meta.coins, 0);
+  assert.equal(s.data.meta.reputation, 0);
 });

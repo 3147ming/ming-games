@@ -27,6 +27,7 @@ export class EnemyAI {
     this.onMelee = opts.onMelee || (() => {});     // 近战挥击视觉/音效
     this.onPlayerHit = opts.onPlayerHit || (() => {});
     this.onExplode = opts.onExplode || (() => {});  // 自爆丧尸爆炸回调
+    this.onRoar = opts.onRoar || (() => {});       // howler 嘶吼：触发范围内敌人警觉
     // 每关巡逻点（由 MapBuilder 注入）；未提供时退回全局默认
     this.patrolPoints = opts.patrolPoints || ENEMY.patrolPoints;
 
@@ -56,6 +57,10 @@ export class EnemyAI {
     this.lastPos = this.position.clone();
     this.fuseStarted = false;   // 自爆丧尸：是否已开始引爆倒计时
     this.fuseTimer = 0;
+    this.spawnFade = 0;         // 重生淡出剩余时间（>0 表示正在渐显）
+    this.chaseLinger = 0;       // 发现玩家后的追击延迟（>0 时仍停留在 alert）
+    this._animSwitchTimer = 0;  // 动画切换冷却，避免 run/attack 频繁抖动
+    this.roarCooldown = 0;      // howler 嘶吼冷却
 
     // 波次倍率（EnemyManager.configure 注入）
     this.healthMul = 1;
@@ -92,6 +97,12 @@ export class EnemyAI {
     this.damageMul = cfg.damageMul ?? 1;
     this.accuracyMul = cfg.accuracyMul ?? 1;
     this.speedMul = cfg.speedMul ?? 1;
+    this.statusSpeedMul = 1;
+    this.burnTimer = 0;
+    this.burnDps = 0;
+    this.poisonTimer = 0;
+    this.poisonDps = 0;
+    this.slowTimer = 0;
     if (cfg.variant) this.setVariant(cfg.variant);
     else {
       this.maxHealth = this.variant.maxHealth * this.healthMul;
@@ -169,6 +180,8 @@ export class EnemyAI {
   }
 
   _play(name, once = false) {
+    // 动画切换冷却：避免 run/attack 紧邻切换时 fadeIn/Out 叠加导致视觉抖动
+    if (this._animSwitchTimer > 0) return;
     const action = this.actions && this.actions[name];
     if (!action || this.currentAnim === name) return;
     if (this.currentAction) this.currentAction.fadeOut(0.18);
@@ -178,6 +191,7 @@ export class EnemyAI {
     action.fadeIn(0.18).play();
     this.currentAction = action;
     this.currentAnim = name;
+    this._animSwitchTimer = 0.08;
   }
 
   // ---------------- 血条 ----------------
@@ -241,6 +255,17 @@ export class EnemyAI {
   // ---------------- 主更新 ----------------
   update(dt) {
     if (this.mixer) this.mixer.update(dt);
+    this._animSwitchTimer = Math.max(0, this._animSwitchTimer - dt);
+
+    // 重生淡出：从透明渐显到完全可见，避免凭空闪现
+    if (this.spawnFade > 0) {
+      this.spawnFade -= dt;
+      const k = 1 - Math.max(0, this.spawnFade) / (ENEMY.spawnFadeTime || 0.4);
+      for (const m of this.materials) {
+        m.opacity = k;
+        if (k >= 1) { m.transparent = false; m.opacity = 1; }
+      }
+    }
 
     // 受击红闪
     if (this.flashTimer > 0) {
@@ -267,6 +292,8 @@ export class EnemyAI {
       return;
     }
 
+    this._updateStatus(dt);
+
     if (this.attackTimer > 0) this.attackTimer -= dt;
     if (this.flinchTimer > 0) this.flinchTimer -= dt;
 
@@ -275,12 +302,42 @@ export class EnemyAI {
       ? Math.hypot(this.player.position.x - this.position.x, this.player.position.z - this.position.z)
       : Infinity;
 
+    // 追击延迟：刚看到玩家先愣一下再冲，避免"影子瞬间扑脸"
+    if (this.chaseLinger > 0) this.chaseLinger -= dt;
+    if (this.roarCooldown > 0) this.roarCooldown -= dt;
+
+    // howler 嘶吼：发现玩家时触发一次范围内敌人警觉
+    if (this.variant.howler && sees && this.roarCooldown <= 0) {
+      this.onRoar(this);
+      this.roarCooldown = 8.0;
+    }
+
     // 状态切换
     if (sees) {
       this.lastKnown.copy(this.player.position);
       this.alertTimer = ENEMY.alertTime;
-      this.state = distToPlayer <= this.variant.attackRange ? 'attack' : 'chase';
       this.loseSightTimer = 0;
+      // 巡逻中第一次发现玩家 → 先愣一下再冲（追击延迟）
+      if (this.state === 'patrol') {
+        this.state = 'alert';
+        this.baseScanHeading = this.heading;
+        this.scanTime = 0;
+        this.chaseLinger = ENEMY.sightLinger || 0.3;
+      } else if (this.state === 'alert') {
+        // 还在 alert 扫视 → 等 chaseLinger 结束再切 chase/attack
+        if (this.chaseLinger > 0) {
+          if (this.state !== 'alert') {
+            this.state = 'alert';
+            this.baseScanHeading = this.heading;
+            this.scanTime = 0;
+          }
+        } else {
+          this.state = distToPlayer <= this.variant.attackRange ? 'attack' : 'chase';
+        }
+      } else {
+        // 已经在 chase/attack 中 → 维持当前状态（距离变化时 attack↔chase 自动切换）
+        this.state = distToPlayer <= this.variant.attackRange ? 'attack' : 'chase';
+      }
     } else if (this.state === 'attack' || this.state === 'chase' || this.state === 'alert') {
       if (this.state !== 'alert') {
         this.state = 'alert';
@@ -306,6 +363,12 @@ export class EnemyAI {
     // 平滑转头，受击时附加抖动
     const turnDelta = shortestAngle(this.targetHeading - this.heading);
     this.heading += turnDelta * Math.min(1, ENEMY.turnSpeed * dt);
+
+    // 近战前摇期间锁移动：避免一边抬手一边冲向玩家的突兀感
+    if (this.windupTimer > 0 && this.melee) {
+      this.velocity.x *= 0.05;
+      this.velocity.z *= 0.05;
+    }
 
     // 物理移动
     this.velocity.y += -16 * dt;
@@ -371,6 +434,23 @@ export class EnemyAI {
 
     // 近战丧尸：贴近玩家后挥击
     if (this.melee) {
+      this.targetHeading = Math.atan2(dx, dz);
+
+      // 前摇/攻击动画期间：锁移动，完全停留在原地挥爪
+      if (this.windupTimer > 0 || this.currentAnim === 'attack') {
+        // 只转向，不移动；攻击动画播完会自动回到 run
+        // 前摇 → 判定 两段式攻击
+        if (this.windupTimer > 0) {
+          this.windupTimer -= dt;
+          if (this.windupTimer <= 0 && !this.windupDone) {
+            this.windupDone = true;
+            this._meleeStrike(dist);
+          }
+        }
+        return;
+      }
+
+      // 非前摇期：贴近 / 绕侧移
       if (dist > v.attackRange * 0.6) {
         this._moveToward(dx, dz, v.chaseSpeed, dt);
       } else {
@@ -386,16 +466,9 @@ export class EnemyAI {
         const pz = dx * this.coverSign * 0.35;
         this._moveToward(px, pz, v.patrolSpeed * 0.6, dt);
       }
-      this.targetHeading = Math.atan2(dx, dz);
 
-      // 前摇 → 判定 两段式攻击
-      if (this.windupTimer > 0) {
-        this.windupTimer -= dt;
-        if (this.windupTimer <= 0 && !this.windupDone) {
-          this.windupDone = true;
-          this._meleeStrike(dist);
-        }
-      } else if (this.attackTimer <= 0 && dist <= v.attackRange) {
+      // 冷却到点且在触及范围内 → 开始前摇 + 播放 attack 动画
+      if (this.attackTimer <= 0 && dist <= v.attackRange) {
         this.windupTimer = v.windup;
         this.windupDone = false;
         this.attackTimer = v.attackInterval;
@@ -466,6 +539,10 @@ export class EnemyAI {
     if (dist > reach) return;   // 玩家已逃出挥击范围
     const dealt = this.player.takeDamage(this.variant.damage * this.damageMul);
     if (dealt > 0) this.onPlayerHit(dealt);
+    // boss 重击：额外把 hitSlow 拉到 0.9s（双倍僵直）
+    if (this.variant.boss && this.player.hitSlowTimer < 0.9) {
+      this.player.hitSlowTimer = 0.9;
+    }
   }
 
   /** 自爆：对范围内玩家造成伤害，自身死亡，触发爆炸特效 */
@@ -523,7 +600,7 @@ export class EnemyAI {
 
   /** 朝目标方向移动（含简单绕障） */
   _moveToward(dx, dz, speed, dt) {
-    speed *= this.speedMul;
+    speed *= this.speedMul * this.statusSpeedMul;
     const len = Math.hypot(dx, dz);
     if (len < 0.001) return;
     let dirX = dx / len;
@@ -566,6 +643,65 @@ export class EnemyAI {
       this.stuckTimer = 0;
     }
     this.lastPos.copy(this.position);
+  }
+
+  // ---------------- 元素状态 ----------------
+  /**
+   * 施加元素状态（由枪口配件 / 弹种触发）
+   * @param {'burn'|'poison'|'slow'} type
+   * @param {number} duration 持续秒数
+   * @param {number} value 灼烧/毒伤 DPS，或减速系数（slow）
+   */
+  applyStatus(type, duration, value) {
+    if (this.dead) return;
+    if (type === 'burn') {
+      this.burnTimer = Math.max(this.burnTimer, duration);
+      this.burnDps = Math.max(this.burnDps, value);
+    } else if (type === 'poison') {
+      this.poisonTimer = Math.max(this.poisonTimer, duration);
+      this.poisonDps = Math.max(this.poisonDps, value);
+    } else if (type === 'slow') {
+      this.slowTimer = Math.max(this.slowTimer, duration);
+      this.statusSpeedMul = Math.min(this.statusSpeedMul, value);
+    }
+  }
+
+  /** 风元素击退 */
+  addKnockback(dirX, dirZ, force) {
+    if (this.dead) return;
+    const len = Math.hypot(dirX, dirZ) || 1;
+    this.velocity.x += (dirX / len) * force;
+    this.velocity.z += (dirZ / len) * force;
+  }
+
+  /** 每帧结算持续伤害与减速回正 */
+  _updateStatus(dt) {
+    if (this.burnTimer > 0) {
+      this.burnTimer -= dt;
+      this._applyDot(this.burnDps * dt);
+      if (this.burnTimer <= 0) this.burnDps = 0;
+      if (this.dead) return;
+    }
+    if (this.poisonTimer > 0) {
+      this.poisonTimer -= dt;
+      this._applyDot(this.poisonDps * dt);
+      if (this.poisonTimer <= 0) this.poisonDps = 0;
+      if (this.dead) return;
+    }
+    if (this.slowTimer > 0) {
+      this.slowTimer -= dt;
+      if (this.slowTimer <= 0) this.statusSpeedMul = 1;
+    }
+  }
+
+  _applyDot(amount) {
+    if (this.dead || amount <= 0) return;
+    this.health -= amount;
+    this._updateBar();
+    if (this.health <= 0) {
+      this.health = 0;
+      this._die();
+    }
   }
 
   // ---------------- 伤害 ----------------
@@ -629,6 +765,12 @@ export class EnemyAI {
     this.stuckTimer = 0;
     this.loseSightTimer = 0;
     this.flinchTimer = 0;
+    this.burnTimer = 0;
+    this.burnDps = 0;
+    this.poisonTimer = 0;
+    this.poisonDps = 0;
+    this.slowTimer = 0;
+    this.statusSpeedMul = 1;
     this.coverTimer = 1.0;
     this.coverStrafe = 0;
     this.alertTimer = 0;
@@ -639,9 +781,15 @@ export class EnemyAI {
     this.targetHeading = this.heading;
     this.targetPoint = this._pickPatrolPoint();
     this.lastPos.copy(this.position);
+    this.chaseLinger = 0;
+    this._animSwitchTimer = 0;
+    this.roarCooldown = 0;
+    // 重生淡出：从透明渐显，避免凭空"闪现"在视野内
+    this.spawnFade = ENEMY.spawnFadeTime || 0.4;
     for (const m of this.materials) {
-      m.opacity = 1;
-      m.transparent = false;
+      m.opacity = 0;
+      m.transparent = true;
+      m.visible = true;
     }
     this.bar.visible = false;
     this._updateBar();

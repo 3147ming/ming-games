@@ -114,11 +114,11 @@ export class AssetManager {
       weaponModel: results.weaponModel,
       zombieModel: results.zombieModel,
       anims: {
-        idle: pickClip(results.animIdle),
-        walk: pickClip(results.animWalk),
-        run: pickClip(results.animRun),
-        attack: pickClip(results.animAttack),
-        death: pickClip(results.animDeath),
+        idle: stripRootMotion(pickClip(results.animIdle)),
+        walk: stripRootMotion(pickClip(results.animWalk)),
+        run: stripRootMotion(pickClip(results.animRun)),
+        attack: stripRootMotion(pickClip(results.animAttack)),
+        death: stripRootMotion(pickClip(results.animDeath)),
       },
       boxes: [results.box1, results.box2, results.box3, results.box4].filter(Boolean),
       textures: {
@@ -135,4 +135,37 @@ export class AssetManager {
 function pickClip(fbx) {
   if (!fbx || !fbx.animations || fbx.animations.length === 0) return null;
   return fbx.animations[0];
+}
+
+// 根骨骼 / 根对象名称：这些节点的位移会把整个模型拖走
+const ROOT_NODES = /^(Zombie|Base_HumanPelvis)$/i;
+
+/**
+ * 去除动画里烘焙的根位移（root motion）
+ *
+ * 丧尸 FBX 的 walk / run / death 在根骨骼上带了位移（run 一圈能漂出几米），
+ * 而游戏里的位移完全由 AI 逻辑驱动，两者叠加就会表现为：
+ *  - 追击时模型"影子一样"窜出去几米 → 切动画的瞬间又弹回原处（看起来像闪烁）
+ *  - 影子投影跟着模型一起乱飞
+ * 这里把根骨骼位置轨道里的 XZ 固定到首帧（保留 Y，死亡倒地的下沉仍然有效）。
+ */
+function stripRootMotion(clip) {
+  if (!clip) return null;
+  let changed = false;
+  const tracks = clip.tracks.map((track) => {
+    if (!track.name.endsWith('.position')) return track;
+    const node = track.name.slice(0, -'.position'.length);
+    if (!ROOT_NODES.test(node)) return track;
+    const values = new Float32Array(track.values);
+    const x0 = values[0];
+    const z0 = values[2];
+    for (let i = 0; i < values.length; i += 3) {
+      values[i] = x0;
+      values[i + 2] = z0;
+    }
+    track.values = values;
+    changed = true;
+    return track;
+  });
+  return changed ? new THREE.AnimationClip(clip.name, clip.duration, tracks) : clip;
 }

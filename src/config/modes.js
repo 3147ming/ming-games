@@ -31,14 +31,38 @@ export const MODES = {
     name: '闯关行动',
     description: '5 个区域逐关推进，最终在决斗场遭遇首领。',
     waves: CAMPAIGN_WAVES,
+    infinite: false,
   },
   endless: {
     id: 'endless',
     name: '无尽生存',
     description: '波次无限循环，难度持续攀升，每 10 波出现首领。',
     waves: null,          // 由 endlessWave() 动态生成
+    infinite: true,
+  },
+  defense: {
+    id: 'defense',
+    name: '领地守城',
+    description: '驻守领地核心，撑过 10 波丧尸大军。',
+    waves: null,          // DEFENSE_WAVES
+    infinite: false,
+  },
+  defense_endless: {
+    id: 'defense_endless',
+    name: '无尽守城',
+    description: '丧尸大军无穷无尽，守住核心争取更高波数。',
+    waves: null,
+    infinite: true,
   },
 };
+
+/** 默认模式（探针与 ?mode 缺省都走闯关，保证旧行为不变） */
+export const DEFAULT_MODE = 'campaign';
+
+/** 从 URL 查询串解析模式；非法值回落到默认模式 */
+export function parseMode(raw) {
+  return raw && MODES[raw] ? raw : DEFAULT_MODE;
+}
 
 /** 无尽模式曲线参数（平衡上限集中在这里，便于调参） */
 export const ENDLESS = {
@@ -51,6 +75,80 @@ export const ENDLESS = {
   healthCap: 2.2,         // 血量倍率上限
   bossEvery: 10,          // 每 N 波首领
 };
+
+/** 守城模式参数 */
+export const DEFENSE = {
+  waves: 10,              // 十轮守城的总波数
+  breakSec: 35,           // 波间商店休整时长（打开商店时暂停计时）
+  spawnGap: 0.95,         // 守城刷怪间隔（比闯关更密集）
+  baseTotal: 9,
+  totalStep: 3,
+  maxTotal: 30,
+  baseAlive: 5,
+  maxAlive: 12,
+  healthStep: 1.10,
+  healthCap: 2.8,
+  bossEvery: 5,           // 每 5 波一头首领
+  goldPerKill: 6,         // 局内金币：击杀掉落
+  goldPerWave: 40,        // 每波肃清奖励
+  coreHealth: 1000,       // 领地核心生命
+  coreDamageDps: 11,      // 每只贴近核心的丧尸每秒造成的伤害
+  coreRadius: 3.6,        // 丧尸攻击核心的判定半径
+  turretDamage: 16,
+  turretRange: 20,
+  turretCooldown: 0.38,
+  botDamage: 18,
+  botRange: 24,
+  botCooldown: 0.85,
+  maxBots: 3,
+  shop: {                 // 波间商店价格（局内金币）
+    turret: 120,
+    barricade: 80,
+    repair: 60,
+    resupply: 60,
+    refill: 40,
+  },
+};
+
+/** 是否属于守城模式 */
+export function isDefenseMode(mode) {
+  return mode === 'defense' || mode === 'defense_endless';
+}
+
+/** 守城第 n 波配置（n 从 1 开始） */
+export function defenseWave(n) {
+  const wave = Math.max(1, Math.floor(n));
+  const total = Math.min(DEFENSE.maxTotal, DEFENSE.baseTotal + DEFENSE.totalStep * (wave - 1));
+  const alive = Math.min(DEFENSE.maxAlive, DEFENSE.baseAlive + Math.floor((wave - 1) / 2));
+  const healthMul = Math.min(DEFENSE.healthCap, Math.pow(DEFENSE.healthStep, wave - 1));
+
+  const pool = ['swift'];
+  if (wave >= 2) pool.push('spitter');
+  if (wave >= 3) pool.push('bomber');
+  if (wave >= 4) pool.push('howler');
+  if (wave >= 6) pool.push('brute');
+
+  const extras = Math.min(total - 1, Math.floor(total * 0.6));
+  const mix = { walker: total - extras };
+  for (let i = 0; i < extras; i++) {
+    const v = pool[i % pool.length];
+    mix[v] = (mix[v] || 0) + 1;
+  }
+  if (wave % DEFENSE.bossEvery === 0) mix.boss = (mix.boss || 0) + 1;
+
+  return {
+    total,
+    alive,
+    mix,
+    healthMul,
+    damageMul: Math.min(1.7, 1 + 0.06 * (wave - 1)),
+    accuracyMul: Math.min(1.3, 1 + 0.025 * (wave - 1)),
+    speedMul: Math.min(1.18, 1 + 0.012 * (wave - 1)),
+  };
+}
+
+/** 十轮守城的固定波次表 */
+export const DEFENSE_WAVES = Array.from({ length: DEFENSE.waves }, (_, i) => defenseWave(i + 1));
 
 /** 整局通用的平衡硬上限（P3 觉醒 / P4 机甲都会受这里约束） */
 export const BALANCE = {
@@ -100,3 +198,60 @@ export function endlessWave(n) {
     speedMul: Math.min(1.2, 1 + 0.01 * (wave - 1)),
   };
 }
+
+/** 非守城模式（闯关 / 无尽）的波间军需商店 */
+export const RUN_SHOP = {
+  goldPerKill: 5,       // 击杀掉落局内金币
+  goldPerWave: 30,      // 每波肃清奖励
+  items: [
+    {
+      id: 'ammo',
+      name: '弹药补给',
+      desc: '备弹 +60',
+      cost: 35,
+      apply: (g) => { g.gun.addSupply(60); },
+      tip: '个人补给',
+    },
+    {
+      id: 'medkit',
+      name: '医疗包',
+      desc: '生命 +45',
+      cost: 45,
+      apply: (g) => { g.player.health.heal(45); },
+      tip: '回血',
+    },
+    {
+      id: 'armor',
+      name: '护甲片',
+      desc: '护甲 +30',
+      cost: 50,
+      apply: (g) => { g.player.health.addArmor(30); },
+      tip: '加护甲',
+    },
+    {
+      id: 'full',
+      name: '综合补给',
+      desc: '备弹 +40 · 生命 +25 · 护甲 +15',
+      cost: 70,
+      apply: (g) => { g.gun.addSupply(40); g.player.health.heal(25); g.player.health.addArmor(15); },
+      tip: '一键补给',
+    },
+    {
+      id: 'damage',
+      name: '突击加强',
+      desc: '下一波武器伤害 +25%（持续一波）',
+      cost: 90,
+      apply: (g) => { g._waveBuff = g._waveBuff || {}; g._waveBuff.damage = (g._waveBuff.damage || 1) * 1.25; },
+      tip: '本波有效',
+    },
+    {
+      id: 'rapid',
+      name: '急速弹夹',
+      desc: '下一波射速 +25%（持续一波）',
+      cost: 90,
+      apply: (g) => { g._waveBuff = g._waveBuff || {}; g._waveBuff.fireRate = (g._waveBuff.fireRate || 1) * 1.25; },
+      tip: '本波有效',
+    },
+  ],
+};
+
