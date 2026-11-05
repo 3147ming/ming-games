@@ -440,12 +440,79 @@ html, body {
   text-transform: uppercase;
 }
 
-.menu-cols {
-  display: grid;
-  grid-template-columns: 1fr 1.2fr;
-  gap: 34px;
-  margin: 32px 0 28px;
+/* =========================== 待机大厅 =========================== */
+.lobby-panel { width: min(1080px, 95vw); padding: 30px 34px 26px; }
+.lobby-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
+.lobby-head .game-title { font-size: clamp(26px, 3.4vw, 42px); letter-spacing: 9px; }
+.lobby-head .game-sub { margin-top: 4px; font-size: 11px; letter-spacing: 5px; }
+.lobby-res { display: flex; gap: 18px; flex-shrink: 0; }
+.res-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+.res-item b { color: #fff; font-size: 15px; letter-spacing: 1px; }
+.res-dot { width: 9px; height: 9px; display: inline-block; border-radius: 50%; }
+.res-dot.core { background: #7fd17f; box-shadow: 0 0 9px rgba(127, 209, 127, 0.7); }
+.res-dot.coin { background: var(--accent); box-shadow: 0 0 9px rgba(255, 176, 32, 0.7); }
+
+.lobby-body { display: grid; grid-template-columns: 148px 1fr; gap: 24px; margin-top: 22px; }
+.lobby-nav { display: flex; flex-direction: column; gap: 6px; }
+.nav-item {
+  pointer-events: auto;
+  padding: 13px 14px;
+  text-align: left;
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: #9fb0bd;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.nav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+.nav-item.active {
+  color: var(--accent);
+  background: rgba(255, 176, 32, 0.08);
+  border-left-color: var(--accent);
+  border-color: rgba(255, 176, 32, 0.18);
+}
+.lobby-main { min-width: 0; }
+.tab-page { display: none; }
+.tab-page.active { display: block; animation: tabIn 0.18s ease-out; }
+@keyframes tabIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.mode-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+.mode-card {
+  position: relative;
+  padding: 18px 18px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+}
+.mode-card.active { border-color: rgba(255, 176, 32, 0.5); background: rgba(255, 176, 32, 0.07); }
+.mode-card.locked { opacity: 0.55; }
+.mode-card h3 { font-size: 17px; letter-spacing: 3px; color: #fff; margin-bottom: 8px; }
+.mode-card p { font-size: 12px; line-height: 1.75; color: #b9c6d0; }
+.mode-card .mode-meta { margin-top: 10px; font-size: 11px; letter-spacing: 2px; color: var(--accent); }
+.mode-card.locked .mode-meta { color: var(--muted); }
+.mode-badge {
+  position: absolute;
+  top: 0; right: 0;
+  padding: 4px 12px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #0b0f12;
+  background: var(--accent);
+}
+.mode-badge.lock { background: #6d7c88; color: #e8eef2; }
+
+.lobby-cols { display: grid; grid-template-columns: 1fr 1.15fr; gap: 30px; margin-bottom: 22px; }
+.lobby-block h3,
 .menu-block h3 {
   font-size: 12px;
   letter-spacing: 4px;
@@ -454,6 +521,54 @@ html, body {
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   margin-bottom: 14px;
 }
+
+.mech-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.mech-card {
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.mech-card.locked { opacity: 0.6; }
+.mech-card h3 { font-size: 15px; letter-spacing: 2px; color: #fff; margin-bottom: 8px; }
+.mech-card p { font-size: 12px; line-height: 1.7; color: #b9c6d0; min-height: 58px; }
+.mech-card p b { color: var(--accent); }
+.mech-state {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 4px 10px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.talent-branches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.talent-branch {
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.talent-branch h3 { font-size: 15px; letter-spacing: 3px; color: var(--accent); margin-bottom: 14px; }
+.talent-nodes { display: flex; gap: 8px; margin-bottom: 12px; }
+.talent-nodes i {
+  width: 22px; height: 22px;
+  display: block;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.05);
+  transform: rotate(45deg);
+}
+.talent-desc { font-size: 12px; color: var(--muted); }
+
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.stat-cell {
+  padding: 18px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.stat-cell span { display: block; font-size: 11px; letter-spacing: 2px; color: var(--muted); margin-bottom: 8px; }
+.stat-cell b { font-size: 26px; color: #fff; }
+
 .key-list { list-style: none; display: grid; gap: 9px; }
 .key-list li { display: flex; align-items: center; gap: 14px; font-size: 13px; }
 .key-list b {
@@ -738,6 +853,18 @@ html, body {
   .ammo { right: 16px; bottom: 18px; min-width: 170px; padding: 10px 14px; }
   .ammo-line { font-size: 34px; }
   .menu-cols { grid-template-columns: 1fr; gap: 22px; }
+  /* 大厅：竖排导航 + 单列卡片 */
+  .lobby-panel { padding: 22px 16px; }
+  .lobby-head { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .lobby-body { grid-template-columns: 1fr; gap: 14px; }
+  .lobby-nav { flex-direction: row; flex-wrap: wrap; }
+  .nav-item { flex: 1 1 auto; text-align: center; border-left: 1px solid transparent; border-bottom: 3px solid transparent; padding: 10px; font-size: 12px; }
+  .nav-item.active { border-left-color: transparent; border-bottom-color: var(--accent); }
+  .mode-cards,
+  .lobby-cols,
+  .mech-grid,
+  .talent-branches { grid-template-columns: 1fr; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .panel { padding: 30px 24px; }
   .game-title { letter-spacing: 8px; }
   .wave-hud { top: 12px; min-width: 132px; padding: 6px 14px 7px; }

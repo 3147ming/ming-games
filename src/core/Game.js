@@ -13,6 +13,7 @@ import { Input } from './Input.js';
 import { AssetManager } from './AssetManager.js';
 import { AudioManager } from './AudioManager.js';
 import { CollisionWorld } from './CollisionWorld.js';
+import { SaveManager } from './SaveManager.js';
 import { computeAccuracy, computeScore, pickGrade } from './scoring.js';
 import { OutdoorMap } from '../world/OutdoorMap.js';
 import { SupplyManager } from '../world/SupplyManager.js';
@@ -78,6 +79,10 @@ export class Game {
       onRestart: () => this.restart(),
       onMenu: () => this.backToMenu(),
     });
+
+    // 局外存档：大厅资源与战绩从这里读
+    this.save = new SaveManager();
+    this._refreshLobby();
 
     this.assets = await new AssetManager().loadAll((p) => this.menu.setLoading(p));
 
@@ -271,7 +276,21 @@ export class Game {
     this.input.releaseLock();
     this.gun.setMouseDown(false);
     this.hud.setVisible(false);
+    this._refreshLobby();
     this.menu.showStart();
+  }
+
+  /** 把存档数据刷到大厅面板 */
+  _refreshLobby() {
+    if (!this.save || !this.menu || !this.menu.lobby) return;
+    const d = this.save.data;
+    this.menu.lobby.setResources(d.meta.cores, 0);
+    this.menu.lobby.setStats({
+      runs: d.stats.runs,
+      kills: d.stats.kills,
+      level: d.stats.bestLevel,
+      wave: d.stats.bestWave,
+    });
   }
 
   /** 指针锁定状态变化 */
@@ -334,7 +353,17 @@ export class Game {
     this.input.releaseLock();
     this.gun.setMouseDown(false);
     this.hud.setVisible(false);
-    this.menu.showResult(this._buildResult(win));
+    const result = this._buildResult(win);
+    // 局外存档：累计战绩（关卡编号在 P2 接入多关卡后再改）
+    this.save.recordRun({
+      kills: result.kills,
+      seconds: result.seconds,
+      level: 1,
+      wave: result.wavesCleared,
+      win,
+    });
+    this._refreshLobby();
+    this.menu.showResult(result);
   }
 
   /** 汇总本局数据：命中率 / 用时 / 得分 / 评级 */

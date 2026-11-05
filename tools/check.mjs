@@ -77,14 +77,14 @@ section('C. 源码模块存在性（src/）');
 
 const SRC_MODULES = [
   'main.js',
-  'config/weapon.js',
+  'config/weapon.js', 'config/modes.js',
   'core/Game.js', 'core/AssetManager.js', 'core/AudioManager.js',
-  'core/CollisionWorld.js', 'core/Input.js', 'core/scoring.js',
+  'core/CollisionWorld.js', 'core/Input.js', 'core/scoring.js', 'core/SaveManager.js',
   'player/MouseLook.js', 'player/PlayerController.js', 'player/PlayerHealth.js',
   'weapons/GunSystem.js', 'weapons/WeaponView.js', 'weapons/Effects.js', 'weapons/CasingSystem.js',
   'enemies/EnemyManager.js', 'enemies/EnemyAI.js',
   'world/OutdoorMap.js', 'world/SupplyManager.js',
-  'ui/HUD.js', 'ui/Menu.js',
+  'ui/HUD.js', 'ui/Menu.js', 'ui/LobbyUI.js',
 ];
 for (const m of SRC_MODULES) {
   const full = `src/${m}`;

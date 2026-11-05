@@ -114,32 +114,125 @@
     </div>
   </div>
 
-  <!-- ===================== 开始菜单 ===================== -->
+  <!-- ===================== 待机大厅 ===================== -->
   <div id="menu" class="overlay hidden">
-    <div class="panel menu-panel">
-      <h1 class="game-title">仓库行动</h1>
-      <p class="game-sub">WAREHOUSE STRIKE · 丧尸生存</p>
-      <div class="menu-cols">
-        <div class="menu-block">
-          <h3>操作说明</h3>
-          <ul class="key-list">
-            <li><b>W A S D</b><span>移动</span></li>
-            <li><b>Shift</b><span>静步</span></li>
-            <li><b>Ctrl</b><span>蹲伏（更稳、更慢）</span></li>
-            <li><b>空格</b><span>跳跃</span></li>
-            <li><b>鼠标左键</b><span>射击</span></li>
-            <li><b>R</b><span>换弹</span></li>
-            <li><b>Esc</b><span>暂停</span></li>
-          </ul>
+    <div class="panel lobby-panel">
+      <header class="lobby-head">
+        <div>
+          <h1 class="game-title">仓库行动</h1>
+          <p class="game-sub">WAREHOUSE STRIKE · 丧尸生存</p>
         </div>
-        <div class="menu-block">
-          <h3>任务简报</h3>
-          <p class="brief">货场内涌出三波丧尸，共 <b>24</b> 只。逐波肃清即可完成任务。地图上散布着<b>弹药箱 / 医疗包 / 护甲板 / 物资箱</b>补给点，靠近自动拾取。</p>
-          <p class="tip">提示：普通丧尸只会近战扑咬，<b>吐酸丧尸</b>会远程喷吐酸液，重锤丧尸皮糙肉厚。爆头 2 倍伤害，短点射更精准。生命归零即行动失败。</p>
+        <div class="lobby-res">
+          <span class="res-item"><i class="res-dot core"></i>丧尸核心 <b id="lobby-cores">0</b></span>
+          <span class="res-item"><i class="res-dot coin"></i>金币 <b id="lobby-coins">0</b></span>
         </div>
+      </header>
+
+      <div class="lobby-body">
+        <nav class="lobby-nav" id="lobby-nav">
+          <button class="nav-item active" data-tab="battle">作战模式</button>
+          <button class="nav-item" data-tab="mech">机甲库</button>
+          <button class="nav-item" data-tab="talent">身体觉醒</button>
+          <button class="nav-item" data-tab="stats">战绩统计</button>
+        </nav>
+
+        <section class="lobby-main">
+          <!-- 作战模式 -->
+          <div class="tab-page active" id="tab-battle">
+            <div class="mode-cards">
+              <div class="mode-card active">
+                <span class="mode-badge">主线</span>
+                <h3>闯关行动</h3>
+                <p>5 个区域逐关推进，最终在决斗场遭遇首领。每关有独立地图与刷怪配置。</p>
+                <p class="mode-meta">5 关 · 首领战 · 局间商店</p>
+              </div>
+              <div class="mode-card locked">
+                <span class="mode-badge lock">开发中</span>
+                <h3>无尽生存</h3>
+                <p>波次无限循环，难度持续攀升，每 10 波出现首领。只与闯关共享局外成长。</p>
+                <p class="mode-meta">无限波 · 难度递增 · 排行榜</p>
+              </div>
+            </div>
+
+            <div class="lobby-cols">
+              <div class="lobby-block">
+                <h3>操作说明</h3>
+                <ul class="key-list">
+                  <li><b>W A S D</b><span>移动</span></li>
+                  <li><b>Shift</b><span>疾跑（散布变大）</span></li>
+                  <li><b>Alt</b><span>静步（精度最高）</span></li>
+                  <li><b>Ctrl</b><span>蹲伏</span></li>
+                  <li><b>1 2 3 4</b><span>步枪 / 手枪 / 霰弹 / 重狙</span></li>
+                  <li><b>R</b><span>换弹 · <b>Esc</b> 暂停</span></li>
+                </ul>
+              </div>
+              <div class="lobby-block">
+                <h3>任务简报</h3>
+                <p class="brief">清空当前区域的所有尸潮即可推进。地图散布<b>弹药箱 / 医疗包 / 护甲板 / 物资箱</b>，靠近自动拾取。</p>
+                <p class="tip">普通丧尸只有近战；迅捷型速度极快，自爆型靠近后会闪烁红光引爆，嚎叫者会召来同伴。爆头 2 倍伤害，重狙可穿透。</p>
+              </div>
+            </div>
+
+            <button class="btn primary" id="btn-start">开始闯关</button>
+            <p class="menu-foot">点击开始后将锁定鼠标 · 建议使用 Chrome / Edge 全屏游玩</p>
+          </div>
+
+          <!-- 机甲库 -->
+          <div class="tab-page" id="tab-mech">
+            <div class="mech-grid">
+              <div class="mech-card locked">
+                <h3>重装兵装</h3>
+                <p>重机枪 + 火箭筒，按 <b>5</b> 切换。火力覆盖但机动下降。</p>
+                <span class="mech-state">未解锁</span>
+              </div>
+              <div class="mech-card locked">
+                <h3>哨戒炮塔</h3>
+                <p>花费金币部署，自动索敌，限一台，持续 20 秒。</p>
+                <span class="mech-state">未解锁</span>
+              </div>
+              <div class="mech-card locked">
+                <h3>装甲形态</h3>
+                <p>独立 250 生命，伤害 ×1.8，移速 ×0.55，燃料 90 秒。</p>
+                <span class="mech-state">未解锁</span>
+              </div>
+            </div>
+            <p class="menu-foot">机甲通过丧尸核心素材解锁，后续版本开放</p>
+          </div>
+
+          <!-- 身体觉醒 -->
+          <div class="tab-page" id="tab-talent">
+            <div class="talent-branches">
+              <div class="talent-branch">
+                <h3>攻击</h3>
+                <div class="talent-nodes"><i></i><i></i><i></i><i></i><i></i></div>
+                <p class="talent-desc">伤害与射速提升</p>
+              </div>
+              <div class="talent-branch">
+                <h3>防御</h3>
+                <div class="talent-nodes"><i></i><i></i><i></i><i></i><i></i></div>
+                <p class="talent-desc">生命与护甲上限</p>
+              </div>
+              <div class="talent-branch">
+                <h3>机动</h3>
+                <div class="talent-nodes"><i></i><i></i><i></i><i></i><i></i></div>
+                <p class="talent-desc">移速与换弹速度</p>
+              </div>
+            </div>
+            <p class="menu-foot">局外天赋跨模式共享，消耗丧尸核心解锁</p>
+          </div>
+
+          <!-- 战绩统计 -->
+          <div class="tab-page" id="tab-stats">
+            <div class="stat-grid">
+              <div class="stat-cell"><span>总场次</span><b id="st-runs">0</b></div>
+              <div class="stat-cell"><span>总击杀</span><b id="st-kills">0</b></div>
+              <div class="stat-cell"><span>最高关卡</span><b id="st-level">1</b></div>
+              <div class="stat-cell"><span>无尽最佳波次</span><b id="st-wave">0</b></div>
+            </div>
+            <p class="menu-foot">数据保存在本地浏览器，清除站点数据会重置进度</p>
+          </div>
+        </section>
       </div>
-      <button class="btn primary" id="btn-start">点击开始行动</button>
-      <p class="menu-foot">点击开始后将锁定鼠标 · 建议使用 Chrome / Edge 全屏游玩</p>
     </div>
   </div>
 

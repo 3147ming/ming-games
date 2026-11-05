@@ -10,6 +10,8 @@
  *    拾取后进入冷却轮换刷新。
  */
 
+import { CAMPAIGN_WAVES } from './modes.js';
+
 // 玩家参数
 export const PLAYER = {
   maxHealth: 100,
@@ -336,22 +338,9 @@ export const ENEMY = {
 };
 
 // 一局任务：三波尸潮，清空即区域肃清
+// 波次配置已迁移到 config/modes.js（P0 拆分），这里保留引用以兼容现有调用方
 export const MATCH = {
-  waves: [
-    // total：本波总数；alive：同时存活上限；mix：变体配额
-    {
-      total: 6, alive: 4, mix: { walker: 5, swift: 1 },
-      healthMul: 1.00, damageMul: 1.00, accuracyMul: 0.85, speedMul: 1.00,
-    },
-    {
-      total: 8, alive: 5, mix: { walker: 4, spitter: 2, swift: 1, bomber: 1 },
-      healthMul: 1.10, damageMul: 1.05, accuracyMul: 1.00, speedMul: 1.05,
-    },
-    {
-      total: 10, alive: 6, mix: { walker: 3, spitter: 2, brute: 1, swift: 2, bomber: 1, howler: 1 },
-      healthMul: 1.22, damageMul: 1.15, accuracyMul: 1.10, speedMul: 1.08,
-    },
-  ],
+  waves: CAMPAIGN_WAVES,
   breakTime: 5.0,        // 两波之间的休整时间（秒）
   spawnGap: 0.7,         // 同波内补位刷新的最小间隔
   minSpawnDist: 13,      // 出生点与玩家的最小距离

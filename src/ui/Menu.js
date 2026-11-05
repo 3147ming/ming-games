@@ -2,9 +2,12 @@
  * 菜单 / 加载 / 暂停 / 结算界面控制
  * 只做 DOM 显隐与数值填充，不含任何游戏逻辑。
  */
+import { LobbyUI } from './LobbyUI.js';
+
 export class Menu {
   constructor(callbacks) {
     this.callbacks = callbacks;
+    this.lobby = new LobbyUI();
     this.loading = document.getElementById('loading');
     this.loadingFill = document.getElementById('loading-fill');
     this.loadingText = document.getElementById('loading-text');
@@ -66,6 +69,8 @@ export class Menu {
     this.menu.classList.remove('hidden');
     this.pause.classList.add('hidden');
     if (this.result) this.result.classList.add('hidden');
+    // 每次回到大厅默认停在作战页
+    if (this.lobby) this.lobby.resetTab();
   }
 
   showPause() {
