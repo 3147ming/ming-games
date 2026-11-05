@@ -83,7 +83,7 @@ const SRC_MODULES = [
   'player/MouseLook.js', 'player/PlayerController.js', 'player/PlayerHealth.js',
   'weapons/GunSystem.js', 'weapons/WeaponView.js', 'weapons/Effects.js', 'weapons/CasingSystem.js',
   'enemies/EnemyManager.js', 'enemies/EnemyAI.js',
-  'world/OutdoorMap.js', 'world/SupplyManager.js',
+  'world/OutdoorMap.js', 'world/MapBuilder.js', 'world/levels.js', 'world/SupplyManager.js',
   'ui/HUD.js', 'ui/Menu.js', 'ui/LobbyUI.js',
 ];
 for (const m of SRC_MODULES) {
