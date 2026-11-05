@@ -73,6 +73,9 @@ export class WeaponView {
         new THREE.MeshStandardMaterial({ color: 0x33373d, roughness: 0.6 })
       );
       this.gunLength = 0.7;
+      this.model = gun;
+      this._naturalSize = new THREE.Vector3(0.06, 0.1, 0.7);
+      this._naturalCenter = new THREE.Vector3(0, 0, 0);
       this.pivot.add(gun);
       this.muzzleLocal = new THREE.Vector3(0, 0.01, -0.35);
       this.pivot.position.copy(this.basePos);
@@ -81,16 +84,8 @@ export class WeaponView {
     }
 
     const model = cloneSkeleton(src);
-    const box = new THREE.Box3().setFromObject(model);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-
-    // 整体缩放到约 0.95 个世界单位长（第一人称手臂 + 步枪）
-    const maxDim = Math.max(size.x, size.y, size.z, 0.001);
-    const scale = 0.95 / maxDim;
-    model.scale.setScalar(scale);
-    // 把模型中心对齐到原点
-    model.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
+    this.model = model;
+    this.viewConfig = { ...WEAPON.view };
 
     // 材质处理：手臂用 armColor，枪身用 ak74Color
     const gunTex = this.assets.textures.ak74;
@@ -126,23 +121,95 @@ export class WeaponView {
     });
 
     model.rotation.set(0, 0, 0);
+
+    // ⚠ 包围盒只能按「可见的枪身网格」算。
+    //   手臂网格（armmesh）比枪大几十倍，一旦算进去，缩放基准会被它带偏，
+    //   枪身既会缩得过小、中心也会偏移 —— 这是之前怎么调位置都别扭的根因。
+    model.updateMatrixWorld(true);
+    const rifleBox = new THREE.Box3();
+    const meshBox = new THREE.Box3();
+    let hasRifle = false;
+    model.traverse((o) => {
+      if (!o.isMesh || o.visible === false) return;
+      o.geometry.computeBoundingBox();
+      if (!o.geometry.boundingBox) return;
+      meshBox.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld);
+      rifleBox.union(meshBox);
+      hasRifle = true;
+    });
+    if (!hasRifle) rifleBox.set(new THREE.Vector3(-0.05, -0.05, -0.5), new THREE.Vector3(0.05, 0.05, 0.5));
+    this._naturalSize = rifleBox.getSize(new THREE.Vector3());
+    this._naturalCenter = rifleBox.getCenter(new THREE.Vector3());
+    this.rifleBox = rifleBox.clone();
+    this._applyViewTransform();
+
     this.pivot.add(model);
     this.model = model;
 
-    // 计算枪身长度（沿 Z 轴），并设置枪口位置
-    const box2 = new THREE.Box3().setFromObject(model);
-    const size2 = box2.getSize(new THREE.Vector3());
-    this.gunLength = size2.z;
-    this.modelSize = size2;
     this.meshNames = [];
     model.traverse((o) => {
       if (o.isMesh) this.meshNames.push(o.name);
     });
-    // 枪口位于模型 +Z 末端，绕 Y 旋转后对应本地 -Z 方向
-    this.muzzleLocal = new THREE.Vector3(0, size2.y * 0.06, -size2.z * 0.50);
 
+    this._refreshMuzzle();
     this.pivot.position.copy(this.basePos);
     this.pivot.rotation.copy(this.baseRot);
+  }
+
+  /**
+   * 按 viewConfig 重算模型缩放与偏移
+   * - 最长边归一到 view.scale
+   * - 模型中心对齐到 pivot 原点，再叠加 offset（让握把落在 pivot 附近）
+   */
+  _applyViewTransform() {
+    const v = this.viewConfig;
+    const size = this._naturalSize;
+    const center = this._naturalCenter;
+    const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+    const scale = (v.scale || 0.66) / maxDim;
+    const off = v.offset || { x: 0, y: 0, z: 0 };
+
+    this.model.scale.setScalar(scale);
+    this.model.position.set(
+      -center.x * scale + (off.x || 0),
+      -center.y * scale + (off.y || 0),
+      -center.z * scale + (off.z || 0)
+    );
+    this._refreshMuzzle();
+  }
+
+  /**
+   * 枪口锚点：模型朝向 -Z，枪口在变换后包围盒的最前端（min.z）。
+   * ⚠ 不能用 Box3.setFromObject 取——那是**世界坐标**，相机在场景里一移动就全错。
+   *   这里按「原始包围盒 × 缩放 + 偏移」解析计算，结果始终在 pivot 本地坐标系。
+   */
+  _refreshMuzzle() {
+    if (!this.model) return;
+    const s = this.model.scale.x;
+    const n = this._naturalSize;
+    const off = this.viewConfig.offset || { x: 0, y: 0, z: 0 };
+    const w = n.x * s;
+    const h = n.y * s;
+    const d = n.z * s;
+    this.modelSize = new THREE.Vector3(w, h, d);
+    this.gunLength = d;
+    this.muzzleLocal = new THREE.Vector3(
+      off.x || 0,
+      (off.y || 0) + h * 0.10,
+      (off.z || 0) - d / 2 + 0.01
+    );
+    if (this.flash) {
+      this.flash.position.copy(this.muzzleLocal);
+      this.flashLight.position.copy(this.muzzleLocal);
+    }
+  }
+
+  /** 运行时调整取景（供调试探针 / 设置项使用） */
+  setViewConfig(partial) {
+    this.viewConfig = { ...this.viewConfig, ...partial };
+    if (partial.position) this.basePos.set(partial.position.x, partial.position.y, partial.position.z);
+    if (partial.rotation) this.baseRot.set(partial.rotation.x, partial.rotation.y, partial.rotation.z);
+    if (this.model) this._applyViewTransform();
   }
 
   /** 枪口闪光 + 点光源 */

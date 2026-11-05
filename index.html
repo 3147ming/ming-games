@@ -24,6 +24,18 @@
 
   <!-- ===================== 游戏 HUD ===================== -->
   <div id="hud" class="hud hidden">
+    <!-- 顶部中央：波次进度（v0.2） -->
+    <div id="wave-hud" class="wave-hud">
+      <div class="wave-line">
+        <span class="wave-label">第</span>
+        <b id="wave-now">1</b>
+        <span class="wave-label">/</span>
+        <b id="wave-total">3</b>
+        <span class="wave-label">波</span>
+      </div>
+      <div class="wave-remain-line">本波剩余 <b id="wave-remain">4</b></div>
+    </div>
+
     <!-- 左上角：生命 / 护甲 -->
     <div class="vitals">
       <div class="vitals-title">生命状态</div>
@@ -83,6 +95,7 @@
       <div class="tips-title">操作提示</div>
       <div class="tips-row"><b>WASD</b> 移动　<b>Shift</b> 静步　<b>Ctrl</b> 蹲伏</div>
       <div class="tips-row"><b>空格</b> 跳跃　<b>左键</b> 射击　<b>R</b> 换弹　<b>Esc</b> 暂停</div>
+      <div class="tips-row dim">三波敌人 · 逐波肃清 · 每波结束补弹补甲</div>
       <div class="tips-row dim">按 <b>O</b> 显示 / 隐藏帧率</div>
     </div>
   </div>
@@ -115,14 +128,14 @@
             <li><b>Ctrl</b><span>蹲伏（更稳、更慢）</span></li>
             <li><b>空格</b><span>跳跃</span></li>
             <li><b>鼠标左键</b><span>射击</span></li>
-            <li><b>R</b><span>换弹 / 死亡后复活</span></li>
+            <li><b>R</b><span>换弹</span></li>
             <li><b>Esc</b><span>暂停</span></li>
           </ul>
         </div>
         <div class="menu-block">
           <h3>任务简报</h3>
-          <p class="brief">仓库内发现 4 名敌对武装人员。清理全部目标，注意利用纸箱与货架掩体。生命归零后按 <b>R</b> 重生。</p>
-          <p class="tip">提示：击中头部造成 2 倍伤害，命中四肢伤害更低；连续射击时后坐力会逐渐增大，短点射更精准。</p>
+          <p class="brief">仓库内盘踞三波敌对武装人员，共 <b>15</b> 名。逐波肃清即可完成任务，每波结束会投放弹药与护甲补给。</p>
+          <p class="tip">提示：击中头部造成 2 倍伤害，命中四肢伤害更低；连续射击时后坐力会逐渐增大，短点射更精准。生命归零即行动失败。</p>
         </div>
       </div>
       <button class="btn primary" id="btn-start">点击开始行动</button>
@@ -145,19 +158,36 @@
           <li><b>Ctrl</b><span>蹲伏</span></li>
           <li><b>空格</b><span>跳跃</span></li>
           <li><b>鼠标左键</b><span>射击</span></li>
-          <li><b>R</b><span>换弹 / 死亡后复活</span></li>
+          <li><b>R</b><span>换弹</span></li>
           <li><b>Esc</b><span>暂停</span></li>
         </ul>
       </div>
     </div>
   </div>
 
-  <!-- ===================== 死亡界面 ===================== -->
-  <div id="death" class="overlay hidden">
-    <div class="panel small-panel death-panel">
-      <h2>你已阵亡</h2>
-      <p class="muted">本次击杀：<b id="death-kills">0</b></p>
-      <button class="btn primary" id="btn-respawn">按 R 复活</button>
+  <!-- ===================== 波次横幅 ===================== -->
+  <div id="wave-banner" class="wave-banner">
+    <b data-role="title"></b>
+    <span data-role="sub"></span>
+  </div>
+
+  <!-- ===================== 结算界面 ===================== -->
+  <div id="result" class="overlay hidden">
+    <div class="panel result-panel">
+      <p class="result-kicker" id="result-kicker">MISSION COMPLETE</p>
+      <h1 class="result-title" id="result-title">区域肃清</h1>
+      <div class="result-grade" id="result-grade" data-grade="A">A</div>
+      <div class="result-score">得分 <b id="result-score">0</b></div>
+      <div class="result-grid">
+        <div class="result-cell"><span>击杀</span><b id="rs-kills">0</b></div>
+        <div class="result-cell"><span>爆头</span><b id="rs-heads">0</b></div>
+        <div class="result-cell"><span>命中率</span><b id="rs-acc">0%</b></div>
+        <div class="result-cell"><span>用时</span><b id="rs-time">0:00</b></div>
+        <div class="result-cell"><span>承受伤害</span><b id="rs-dmg">0</b></div>
+        <div class="result-cell"><span>肃清波次</span><b id="rs-wave">0/3</b></div>
+      </div>
+      <button class="btn primary" id="btn-again">再来一局</button>
+      <button class="btn ghost" id="btn-menu">返回主菜单</button>
     </div>
   </div>
 

@@ -51,11 +51,28 @@ export class EnemyAI {
     this.targetPoint = this._pickPatrolPoint();
     this.lastPos = this.position.clone();
 
+    // 波次倍率（由 EnemyManager.configure 注入；默认 1 = 基础数值）
+    this.healthMul = 1;
+    this.damageMul = 1;
+    this.accuracyMul = 1;
+    this.speedMul = 1;
+    this.maxHealth = ENEMY.maxHealth;
+
     this._tmpEye = new THREE.Vector3();
     this._tmpTarget = new THREE.Vector3();
 
     this._buildModel();
     this._buildHealthBar();
+  }
+
+  /** 波次开始前注入难度倍率（血量 / 伤害 / 精度 / 移动速度） */
+  configure(cfg = {}) {
+    this.healthMul = cfg.healthMul ?? 1;
+    this.damageMul = cfg.damageMul ?? 1;
+    this.accuracyMul = cfg.accuracyMul ?? 1;
+    this.speedMul = cfg.speedMul ?? 1;
+    this.maxHealth = ENEMY.maxHealth * this.healthMul;
+    this.health = this.maxHealth;
   }
 
   // ---------------- 模型 ----------------
@@ -106,7 +123,9 @@ export class EnemyAI {
         });
         o.material = mat;
         o.frustumCulled = false;
-        o.castShadow = false;
+        // 开启投影：僵尸脚下有影子才不会像贴在背景上的一张纸片
+        o.castShadow = true;
+        o.receiveShadow = false;
         this.materials.push(mat);
       }
     });
@@ -163,12 +182,12 @@ export class EnemyAI {
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
     ctx.lineWidth = 1;
     ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
-    const ratio = Math.max(0, this.health / ENEMY.maxHealth);
+    const ratio = Math.max(0, this.health / Math.max(1, this.maxHealth));
     const color = ratio > 0.5 ? '#e23b2e' : ratio > 0.22 ? '#ff8a2b' : '#ff2b2b';
     ctx.fillStyle = color;
     ctx.fillRect(2, 2, (w - 4) * ratio, h - 4);
     this.barTex.needsUpdate = true;
-    this.bar.visible = this.health < ENEMY.maxHealth && !this.dead;
+    this.bar.visible = this.health < this.maxHealth && !this.dead;
   }
 
   // ---------------- 感知 ----------------
@@ -400,6 +419,8 @@ export class EnemyAI {
 
   /** 朝目标方向移动（含简单绕障）；朝向交给 targetHeading 平滑处理 */
   _moveToward(dx, dz, speed, dt) {
+    // 波次速度倍率统一在这里生效，各状态只关心"该走多快"的相对值
+    speed *= this.speedMul;
     const len = Math.hypot(dx, dz);
     if (len < 0.001) return;
     let dirX = dx / len;
@@ -456,7 +477,9 @@ export class EnemyAI {
     // 命中率随距离衰减：近处接近基础命中率，远处降至最低
     const dist = origin.distanceTo(target);
     const t = Math.min(1, dist / ENEMY.accuracyRange);
-    const chance = Math.max(ENEMY.accuracyMin, ENEMY.accuracy * (1 - t));
+    // 波次精度倍率：第 3 波明显更准，但保留距离衰减
+    const chance = Math.min(0.95,
+      Math.max(ENEMY.accuracyMin, ENEMY.accuracy * (1 - t)) * this.accuracyMul);
 
     let hit = Math.random() < chance;
     const end = target.clone();
@@ -470,7 +493,7 @@ export class EnemyAI {
 
     this.onShoot(origin, end, this);
     if (hit) {
-      const dealt = this.player.takeDamage(ENEMY.damage);
+      const dealt = this.player.takeDamage(ENEMY.damage * this.damageMul);
       if (dealt > 0) this.onPlayerHit(dealt);
     }
   }
@@ -526,7 +549,7 @@ export class EnemyAI {
     this.spawn.copy(spawn);
     this.position.copy(spawn);
     this.velocity.set(0, 0, 0);
-    this.health = ENEMY.maxHealth;
+    this.health = this.maxHealth;
     this.dead = false;
     this.deadTimer = 0;
     this.state = 'patrol';

@@ -1,13 +1,19 @@
 /**
  * 游戏主控制器：渲染循环、状态机、模块装配
- * 状态：loading → menu → playing ⇄ paused / dead
+ * 状态：loading → menu → playing ⇄ paused → result
+ *
+ * v0.2 改动：
+ *  - 接入波次系统，敌人不再无限原地复活；清完三波即胜利结算
+ *  - 新增本局统计（击杀 / 爆头 / 命中率 / 用时 / 承受伤害）与 S~C 评级
+ *  - 死亡不再"按 R 复活"重开一局，而是进入结算面板，可再来一局或回主菜单
  */
 import * as THREE from 'three';
-import { WORLD } from '../config/weapon.js';
+import { WORLD, MATCH, WEAPON } from '../config/weapon.js';
 import { Input } from './Input.js';
 import { AssetManager } from './AssetManager.js';
 import { AudioManager } from './AudioManager.js';
 import { CollisionWorld } from './CollisionWorld.js';
+import { computeAccuracy, computeScore, pickGrade } from './scoring.js';
 import { WarehouseMap } from '../world/WarehouseMap.js';
 import { MouseLook } from '../player/MouseLook.js';
 import { PlayerController } from '../player/PlayerController.js';
@@ -24,6 +30,20 @@ export class Game {
     this.state = 'loading';
     this.clock = new THREE.Clock();
     this.accentColor = 0xffb020;
+    this.stats = this._emptyStats();
+  }
+
+  _emptyStats() {
+    return {
+      kills: 0,
+      headshots: 0,
+      shots: 0,
+      hits: 0,
+      damageTaken: 0,
+      startedAt: 0,
+      endedAt: 0,
+      wavesCleared: 0,
+    };
   }
 
   async init() {
@@ -37,7 +57,7 @@ export class Game {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.18;
+    this.renderer.toneMappingExposure = 1.06;
     // 第三轮：开启软阴影（箱子、墙体投射阴影）
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -54,8 +74,8 @@ export class Game {
     this.menu = new Menu({
       onStart: () => this.startGame(),
       onResume: () => this.resumeGame(),
-      onRespawn: () => this.respawn(),
       onRestart: () => this.restart(),
+      onMenu: () => this.backToMenu(),
     });
 
     this.assets = await new AssetManager().loadAll((p) => this.menu.setLoading(p));
@@ -87,9 +107,12 @@ export class Game {
       player: this.player,
       effects: this.effects,
       hud: this.hud,
-      onKill: () => {},
+      onKill: () => this._onKill(),
+      onWaveStart: (i, total) => this._onWaveStart(i, total),
+      onWaveClear: (i, isLast) => this._onWaveClear(i, isLast),
+      onVictory: () => this._onVictory(),
+      onPlayerHit: (dmg) => { this.stats.damageTaken += dmg; },
     });
-    this.enemies.spawnAll();
 
     this.gun = new GunSystem({
       camera: this.camera,
@@ -103,15 +126,18 @@ export class Game {
       enemies: this.enemies,
       hud: this.hud,
       onKill: () => {},
+      onShot: (info) => this._onShot(info),
     });
 
     // 初始数值同步
     this.hud.reset();
     this.hud.setKills(0);
-    this.hud.setEnemies(this.enemies.aliveCount);
+    this.hud.setEnemies(0);
+    this.hud.setWave(1, MATCH.waves.length, 0);
 
     // 第三轮：开局操作提示（3 秒后自动淡出）+ FPS 面板
     this.tipsEl = document.getElementById('tips');
+    this.waveBannerEl = document.getElementById('wave-banner');
     this.fpsPanel = document.getElementById('fps-panel');
     this.fpsValue = document.getElementById('fps-value');
     this._fpsFrames = 0;
@@ -155,6 +181,10 @@ export class Game {
   startGame() {
     this.audio.resume();
     this.state = 'playing';
+    this.stats = this._emptyStats();
+    this.stats.startedAt = performance.now();
+    this.stats.wavesCleared = 0;
+
     this.hud.setVisible(true);
     this.hud.reset();
     this.hud.setKills(0);
@@ -164,6 +194,8 @@ export class Game {
     this.input.consumeMouseDelta();
     this.input.requestLock();
     this.gun.resetAmmo();
+    this.player.respawn(this.map.playerSpawn);
+    this.enemies.startMatch();
     this._showTips();
   }
 
@@ -198,38 +230,15 @@ export class Game {
     this.input.requestLock();
   }
 
-  handleDeath() {
-    if (this.state !== 'playing') return;
-    this.state = 'dead';
-    this.input.enabled = false;
-    this.input.releaseLock();
-    this.gun.setMouseDown(false);
-    this.menu.showDeath(this.enemies.kills);
-    this.hud.setVisible(false);
-  }
-
-  respawn() {
-    if (this.state !== 'dead') return;
-    this.player.respawn(this.map.playerSpawn);
-    this.mouseLook.reset();
-    this.gun.resetAmmo();
-    this.hud.reset();
-    this.hud.setVisible(true);
-    this.menu.hideAll();
-    this.state = 'playing';
-    this.input.enabled = true;
-    this.audio.resume();
-    this.input.requestLock();
-  }
-
-  /** 暂停面板"重新开始"：重置敌人/玩家/弹药/击杀数并直接进入游戏 */
+  /** 暂停面板"重新开始" / 结算面板"再来一局" */
   restart() {
     this.player.respawn(this.map.playerSpawn);
     this.player.health.reset();
     this.mouseLook.reset();
     this.gun.resetAmmo();
-    if (this.enemies && this.enemies.resetAll) this.enemies.resetAll();
-    this.enemies.kills = 0;
+    this.stats = this._emptyStats();
+    this.stats.startedAt = performance.now();
+    this.enemies.startMatch();
     this.hud.setKills(0);
     this.hud.reset();
     this.hud.setVisible(true);
@@ -239,6 +248,17 @@ export class Game {
     this.audio.resume();
     this.input.requestLock();
     this._showTips();
+  }
+
+  /** 结算面板"返回主菜单" */
+  backToMenu() {
+    if (this.state === 'result') this.stats.endedAt = performance.now();
+    this.state = 'menu';
+    this.input.enabled = false;
+    this.input.releaseLock();
+    this.gun.setMouseDown(false);
+    this.hud.setVisible(false);
+    this.menu.showStart();
   }
 
   /** 指针锁定状态变化 */
@@ -251,6 +271,91 @@ export class Game {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  }
+
+  // ---------------- 波次 / 结算 ----------------
+  /**
+   * 击杀以「敌人死亡事件」为准，而不是以「最后一发子弹」为准。
+   * 这样以后加爆炸物 / 环境击杀，统计也不会漏。
+   */
+  _onKill() {
+    this.stats.kills += 1;
+  }
+
+  /** 每一发子弹都记一次，用于算命中率与爆头数 */
+  _onShot(info) {
+    this.stats.shots += 1;
+    if (info && info.hit) this.stats.hits += 1;
+    if (info && info.kill && info.headshot) this.stats.headshots += 1;
+  }
+
+  _onWaveStart(index, total) {
+    const cfg = MATCH.waves[index];
+    this.hud.setWave(index + 1, MATCH.waves.length, total);
+    this.hud.setEnemies(total);
+    this._showBanner(
+      `第 ${index + 1} 波`,
+      `敌人 ${total} 名 · 同时最多 ${cfg.alive} 名在场`
+    );
+  }
+
+  _onWaveClear(index, isLast) {
+    this.stats.wavesCleared = index + 1;
+    if (isLast) return;   // 最后一波直接走胜利流程
+    // 休整补给：备弹 + 护甲
+    this.gun.addSupply(MATCH.waveClearAmmo);
+    this.player.health.addArmor(MATCH.waveClearArmor);
+    this._showBanner(`第 ${index + 1} 波肃清`, `补给已投放：+${MATCH.waveClearAmmo} 发 · +${MATCH.waveClearArmor} 护甲`);
+  }
+
+  _onVictory() {
+    if (this.state !== 'playing') return;
+    this._endMatch(true);
+  }
+
+  /** 结束一局：true 胜利 / false 阵亡 */
+  _endMatch(win) {
+    this.stats.endedAt = performance.now();
+    this.state = 'result';
+    this.input.enabled = false;
+    this.input.releaseLock();
+    this.gun.setMouseDown(false);
+    this.hud.setVisible(false);
+    this.menu.showResult(this._buildResult(win));
+  }
+
+  /** 汇总本局数据：命中率 / 用时 / 得分 / 评级 */
+  _buildResult(win) {
+    const s = this.stats;
+    const seconds = Math.max(1, (s.endedAt - s.startedAt) / 1000);
+    const accuracy = computeAccuracy(s.shots, s.hits);
+    const score = computeScore(s, seconds);
+    return {
+      win,
+      score,
+      grade: pickGrade(score, MATCH.grades),
+      kills: s.kills,
+      headshots: s.headshots,
+      accuracy,
+      seconds,
+      damageTaken: Math.round(s.damageTaken),
+      wavesCleared: s.wavesCleared,
+      waveTotal: MATCH.waves.length,
+      totalEnemies: MATCH.waves.reduce((n, w) => n + w.total, 0),
+    };
+  }
+
+  /** 屏幕中央的波次横幅（自动淡出） */
+  _showBanner(title, sub) {
+    const el = this.waveBannerEl;
+    if (!el) return;
+    el.querySelector('[data-role="title"]').textContent = title;
+    el.querySelector('[data-role="sub"]').textContent = sub || '';
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+    clearTimeout(this._bannerTimer);
+    this._bannerTimer = setTimeout(() => el.classList.remove('show'), 2600);
   }
 
   // ---------------- 公网部署：环境检测 ----------------
@@ -343,20 +448,15 @@ export class Game {
       // HUD 数值
       this.hud.setHealth(this.player.health.health);
       this.hud.setArmor(this.player.health.armor);
-      this.hud.setEnemies(this.enemies.aliveCount);
+      this.hud.setEnemies(this.enemies.waveRemaining);
 
       // 死亡判定
-      if (this.player.dead) this.handleDeath();
-    } else if (this.state === 'dead') {
-      // 死亡后仍保留敌人与特效更新
-      this.enemies.update(dt);
+      if (this.player.dead) this._endMatch(false);
+    } else if (this.state === 'result') {
+      // 结算界面保留场景渲染（轻微演出），但不再推进战斗
       this.effects.update(dt);
       this.casings.update(dt);
-      this.player.update(dt, this.mouseLook);
-      this.mouseLook.update(dt);
-
-      // R 复活
-      if (this.input.consume('KeyR')) this.respawn();
+      this.mouseLook.update(0);
     } else if (this.state === 'paused') {
       this.input.consume('KeyR');
       this.mouseLook.update(0);
@@ -377,7 +477,8 @@ export class Game {
           `weapon=${this.assets.weaponModel ? 'ok' : 'MISSING'} mag=${this.gun.mag}/${this.gun.reserve} reload=${this.gun.reloading}\n` +
           `player=${this.player.position.x.toFixed(1)},${this.player.position.y.toFixed(1)},${this.player.position.z.toFixed(1)} ` +
           `grounded=${this.player.grounded} hp=${Math.round(this.player.health.health)}\n` +
-          `enemies=${this.enemies.aliveCount} kills=${this.enemies.kills} anims=${anims}\n` +
+          `wave=${this.enemies.waveIndex + 1}/${this.enemies.waveCount} state=${this.enemies.waveState} ` +
+          `alive=${this.enemies.aliveCount} left=${this.enemies.waveRemaining} kills=${this.enemies.kills} anims=${anims}\n` +
           `spread=${this.gun.spread.toFixed(3)}` +
           (this.weaponView.modelSize
             ? `\nviewSize=${this.weaponView.modelSize.x.toFixed(2)},${this.weaponView.modelSize.y.toFixed(2)},${this.weaponView.modelSize.z.toFixed(2)} meshes=${(this.weaponView.meshNames || []).join(',')}`

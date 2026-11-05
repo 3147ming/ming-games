@@ -21,6 +21,7 @@ export class GunSystem {
     this.enemies = deps.enemies;
     this.hud = deps.hud;
     this.onKill = deps.onKill || (() => {});
+    this.onShot = deps.onShot || (() => {});
 
     this.mag = WEAPON.magazineSize;
     this.reserve = WEAPON.reserveAmmo;
@@ -190,14 +191,19 @@ export class GunSystem {
       : null;
 
     let hitPoint;
+    let hitEnemy = false;
+    let killed = false;
+    let headshot = false;
     if (enemyHit && (!wallHit || enemyHit.distance < wallHit.distance)) {
       hitPoint = enemyHit.point;
+      hitEnemy = true;
       // 伤害分区：头 ×2 / 四肢 ×0.7 / 身体 ×1
       let mult = 1;
       if (enemyHit.part === 'head') mult = WEAPON.headshotMultiplier;
       else if (enemyHit.part === 'limb') mult = WEAPON.limbMultiplier;
       const damage = WEAPON.damage * mult;
-      const killed = enemyHit.enemy.takeDamage(damage, enemyHit.head);
+      killed = enemyHit.enemy.takeDamage(damage, enemyHit.head);
+      headshot = enemyHit.part === 'head';
       this.effects.spawnEnemyHit(hitPoint);
       this.hud.showHitmarker(killed, enemyHit.part === 'head');
       // 击中反馈音效
@@ -246,6 +252,8 @@ export class GunSystem {
     this.casings.spawn(casingPos, right);
 
     this.hud.setAmmo(this.mag, this.reserve);
+    // 本局统计：每一发都记一次，用于算命中率
+    this.onShot({ hit: hitEnemy, kill: killed, headshot });
   }
 
   /** 开始换弹 */
@@ -275,6 +283,12 @@ export class GunSystem {
     this.hud.showReloadBar(false);
     this.hud.setAmmo(this.mag, this.reserve);
     this.hud.showReloadTip(false, false);
+  }
+
+  /** 波次补给：增加备弹 */
+  addSupply(rounds) {
+    this.reserve += Math.max(0, rounds);
+    this.hud.setAmmo(this.mag, this.reserve);
   }
 
   /** 复活时重置弹药 */

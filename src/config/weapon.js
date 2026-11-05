@@ -67,16 +67,19 @@ export const WEAPON = {
   // 换弹两段节奏：前半段掏弹匣，后半段插入弹匣
   reloadInsertRatio: 0.55,
   // 模型显示位置微调（本地坐标，挂在相机下）
-  // 说明：arms@ak.fbx 的枪口朝模型 +Z，绕 Y 旋转 180° 后指向前方；
-  //       再叠加轻微俯仰/侧倾，让枪身在屏幕右下角呈自然的斜持姿态。
+  // ⚠ 关键：weapon_arms.fbx 的枪身长轴沿模型 -Z，**不需要**绕 Y 旋转 180°。
+  //    早期配置写死 Math.PI，实测枪口会横在屏幕右侧（枪身侧对镜头）。
+  //    模型按「最长边 = view.scale」归一化，再叠加轻微俯仰/偏航/侧倾。
   view: {
-    scale: 1.0,
-    position: { x: 0.20, y: -0.20, z: -0.60 },
-    rotation: { x: -0.18, y: Math.PI, z: 0.06 },
+    scale: 0.60,            // 归一化后的模型最长边（世界单位）
+    position: { x: 0.185, y: -0.125, z: -0.47 },
+    rotation: { x: 0.0, y: 0.05, z: 0.015 },
+    // 沿模型自身轴微调，让握把落在 pivot 附近（否则枪托会顶出屏幕下沿）
+    offset: { x: 0, y: 0, z: 0.13 },
   },
 };
 
-// 敌人参数
+// 敌人参数（基础值；波次会在此基础上叠加倍率）
 export const ENEMY = {
   maxHealth: 100,
   count: 4,
@@ -106,19 +109,44 @@ export const ENEMY = {
   accuracyRange: 40,         // 命中率为 0 的距离
   alertTime: 4.0,            // 失去视野后的警戒搜索时间
   flinchTime: 0.22,          // 受击抖动时间
-  respawnMin: 3.0,           // 死亡后随机刷新最短时间（CF 人机 3~6 秒）
-  respawnMax: 6.0,           // 死亡后随机刷新最长时间
   deathBodyTime: 5.0,        // 尸体停留时间
   spawnPoints: [
     { x: -16, z: -11 },
     { x: 16, z: -11 },
     { x: -14, z: 8 },
     { x: 14, z: 8 },
+    { x: -18, z: 4 },
+    { x: 18, z: -4 },
+    { x: 0, z: -13 },
+    { x: 6, z: 12 },
   ],
   patrolPoints: [
     { x: -16, z: -11 }, { x: -4, z: -13 }, { x: 10, z: -12 },
     { x: 16, z: -11 }, { x: 17, z: 2 }, { x: 12, z: 9 },
     { x: 0, z: 6 }, { x: -12, z: 9 }, { x: -17, z: 2 }, { x: 0, z: 0 },
+  ],
+};
+
+// 一局任务：三波敌人，清空即区域肃清
+export const MATCH = {
+  waves: [
+    // total：本波总敌人数；alive：同时存活上限
+    { total: 4, alive: 3, healthMul: 1.00, damageMul: 1.00, accuracyMul: 0.82, speedMul: 1.00 },
+    { total: 5, alive: 3, healthMul: 1.10, damageMul: 1.10, accuracyMul: 0.95, speedMul: 1.04 },
+    { total: 6, alive: 4, healthMul: 1.25, damageMul: 1.20, accuracyMul: 1.08, speedMul: 1.08 },
+  ],
+  breakTime: 5.0,        // 两波之间的休整时间（秒）
+  spawnGap: 0.7,         // 同波内补位刷新的最小间隔
+  minSpawnDist: 13,      // 出生点与玩家的最小距离
+  fallbackSpawnDist: 8,  // 所有出生点都太近时的兜底距离
+  waveClearAmmo: 60,     // 每波肃清补给：备弹
+  waveClearArmor: 20,    // 每波肃清补给：护甲
+  // 结算评级（分数阈值，从高到低匹配）
+  grades: [
+    { grade: 'S', min: 2000 },
+    { grade: 'A', min: 1600 },
+    { grade: 'B', min: 1200 },
+    { grade: 'C', min: 0 },
   ],
 };
 
@@ -128,7 +156,7 @@ export const WORLD = {
   halfZ: 16,
   wallHeight: 7.2,
   floorY: 0,
-  fogColor: 0x2b333c,
-  fogNear: 14,
-  fogFar: 90,
+  fogColor: 0x1c242c,
+  fogNear: 26,
+  fogFar: 115,
 };

@@ -207,7 +207,7 @@ export class WarehouseMap {
     // 天花板用暖灰色避免死黑
     const roofMat = new THREE.MeshStandardMaterial({
       color: 0x3a4048, roughness: 0.92, metalness: 0.05, side: THREE.DoubleSide,
-      emissive: 0x232830, emissiveIntensity: 1.25,   // 第三轮：自发光托底，杜绝纯黑天花板
+      emissive: 0x1b2026, emissiveIntensity: 0.55,   // 自发光只做托底，别把整个空间拉灰
     });
     const roof = new THREE.Mesh(roofGeo, roofMat);
     roof.rotation.x = Math.PI / 2;
@@ -488,39 +488,46 @@ export class WarehouseMap {
 
   // ---------------- 灯光 ----------------
   _buildLights() {
-    // 第三轮：提高环境光占比，营造柔和的仓库灰调，避免天花板/角落纯黑
-    const hemi = new THREE.HemisphereLight(0xa9c4e6, 0x3a332a, 1.25);
+    // v0.2 光照重调：
+    //   旧参数「环境光占比过高 + 方向光偏弱」把画面压成一片均匀灰，
+    //   箱子、墙体、僵尸之间几乎没有明暗层次，看着很"糊"。
+    //   现在降低环境光托底、加强主方向光，让阴影真正起作用。
+    const hemi = new THREE.HemisphereLight(0x93b4d8, 0x2a2318, 0.62);
     this.scene.add(hemi);
 
-    const dir = new THREE.DirectionalLight(0xffe6c0, 1.45);
-    dir.position.set(-14, 20, 10);
-    // 第三轮：主方向光投射柔和软阴影
+    const dir = new THREE.DirectionalLight(0xffeccd, 2.25);
+    dir.position.set(-16, 21, 11);
     dir.castShadow = true;
-    dir.shadow.mapSize.set(1024, 1024);
+    dir.shadow.mapSize.set(2048, 2048);
     dir.shadow.camera.left = -28;
     dir.shadow.camera.right = 28;
     dir.shadow.camera.top = 28;
     dir.shadow.camera.bottom = -28;
     dir.shadow.camera.near = 1;
-    dir.shadow.camera.far = 60;
-    dir.shadow.bias = -0.0009;
-    dir.shadow.normalBias = 0.02;
+    dir.shadow.camera.far = 62;
+    dir.shadow.bias = -0.0006;
+    dir.shadow.normalBias = 0.025;
     this.scene.add(dir);
 
-    const ambient = new THREE.AmbientLight(0x4a5460, 0.8);
+    // 补一盏冷色反方向光，勾出箱子背面轮廓，避免全黑
+    const fill = new THREE.DirectionalLight(0x6f9ac4, 0.42);
+    fill.position.set(14, 10, -16);
+    this.scene.add(fill);
+
+    const ambient = new THREE.AmbientLight(0x3b4650, 0.42);
     this.scene.add(ambient);
 
     // 仓库吊灯（点光源；不投射阴影，控制性能开销）
     for (const [x, z] of [[-12, -8], [12, -8], [-12, 8], [12, 8], [0, 0]]) {
-      const lamp = new THREE.PointLight(0xffd9a0, 1.35, 26, 1.8);
-      lamp.position.set(x, 5.6, z);
+      const lamp = new THREE.PointLight(0xffcf94, 2.6, 30, 1.7);
+      lamp.position.set(x, 5.4, z);
       this.scene.add(lamp);
 
       const bulb = new THREE.Mesh(
-        new THREE.SphereGeometry(0.16, 8, 6),
-        new THREE.MeshBasicMaterial({ color: 0xffe2b0 })
+        new THREE.SphereGeometry(0.14, 8, 6),
+        new THREE.MeshBasicMaterial({ color: 0xffeac6 })
       );
-      bulb.position.set(x, 5.6, z);
+      bulb.position.set(x, 5.4, z);
       this.scene.add(bulb);
     }
   }

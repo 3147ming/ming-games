@@ -37,6 +37,11 @@ export class PlayerHealth {
     return remain;
   }
 
+  /** 波次补给：回复护甲（不超过上限） */
+  addArmor(amount) {
+    this.armor = Math.min(this.maxArmor, this.armor + Math.max(0, amount));
+  }
+
   /** 复活 / 重开 */
   reset() {
     this.health = this.maxHealth;

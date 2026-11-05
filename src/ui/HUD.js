@@ -1,7 +1,7 @@
 /**
  * HUD 控制器：负责所有 DOM 数值与反馈更新
  */
-import { PLAYER } from '../config/weapon.js';
+import { PLAYER, WEAPON, MATCH } from '../config/weapon.js';
 
 export class HUD {
   constructor() {
@@ -16,6 +16,11 @@ export class HUD {
     this.headshotValue = $('headshot-value');   // 第三轮：爆头击杀计数
     this.killPopup = $('kill-popup');           // 第三轮：悬浮击杀文字
     this.headshotKills = 0;
+    // 波次 HUD（v0.2）
+    this.waveNow = $('wave-now');
+    this.waveTotal = $('wave-total');
+    this.waveRemain = $('wave-remain');
+    this.waveHud = $('wave-hud');
     this.magValue = $('mag-value');
     this.reserveValue = $('reserve-value');
     this.reloadTip = $('reload-tip');
@@ -81,6 +86,17 @@ export class HUD {
 
   setEnemies(n) {
     this.enemyValue.textContent = n;
+    if (this.waveRemain) this.waveRemain.textContent = n;
+  }
+
+  /** 波次指示：当前第几波 / 共几波 / 本波剩余 */
+  setWave(current, total, remaining) {
+    if (this.waveNow) this.waveNow.textContent = current;
+    if (this.waveTotal) this.waveTotal.textContent = total;
+    if (this.waveRemain) this.waveRemain.textContent = remaining;
+    if (this.waveHud) {
+      this.waveHud.classList.toggle('final', current >= total);
+    }
   }
 
   /** 准星散布（弧度 -> 像素） */
@@ -150,9 +166,11 @@ export class HUD {
 
   /** 复活时整体刷新 */
   reset() {
+    this._lastHealth = -1;
     this.setHealth(PLAYER.maxHealth);
     this.setArmor(PLAYER.maxArmor);
-    this.setAmmo(30, 120);
+    this.setAmmo(WEAPON.magazineSize, WEAPON.reserveAmmo);
+    this.setWave(1, MATCH.waves.length, 0);
     this.showReloadBar(false);
     this.showReloadTip(false, false);
     // 第三轮：重置爆头击杀计数
