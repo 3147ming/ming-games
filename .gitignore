@@ -1,6 +1,17 @@
-# 开发期构建产物（从 brain-gym 抽取的引擎核心 + UI 分片 + 本地探针）
-# 站点只需要 quiz/index.html 这一个成品 + manifest/sw/icons
-quiz/.build/
+# 开发期构建资产：源码 / 探针 / 构建脚本纳入版本管理（保留本地历史，便于异地备份）。
+# 站点发布仍只用 quiz/index.html 这一个成品 + manifest/sw/icons。
+# 截图、日志、临时备份与一次性编辑脚本不入库。
+quiz/.build/*
+quiz/.build/shots/
+quiz/.build/shots10/
+quiz/.build/*.bak*
+quiz/.build/*.log
+quiz/.build/_edit*.cjs
+quiz/.build/_online_verify.cjs
+!quiz/.build/*.js
+!quiz/.build/*.cjs
+!quiz/.build/*.mjs
+!quiz/.build/*.html
 
 # 音频文件体积大（flac/wav 单曲几十 MB），不进仓库
 # 想给 PWA 配乐：把 mp3 按 flower-dance/summer/luv-letter/canon 命名，

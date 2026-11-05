@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:transparent}
+  #icon{
+    position:relative;width:100vmin;height:100vmin;overflow:hidden;
+    background:
+      radial-gradient(70vmin 55vmin at 26% 14%, rgba(255,255,255,.34) 0%, rgba(255,255,255,0) 62%),
+      radial-gradient(60vmin 60vmin at 82% 92%, rgba(60,30,150,.42) 0%, rgba(60,30,150,0) 70%),
+      linear-gradient(148deg,#9a80ff 0%,#7c5cff 40%,#5b3fd6 78%,#4a2fc0 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif;
+    /* maskable 安全区：内容留在中央 76% 内 */
+    padding:12vmin;
+  }
+  /* 细网格：题册 / 答题卡的暗示，很淡 */
+  #icon::before{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background-image:
+      linear-gradient(rgba(255,255,255,.075) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(255,255,255,.075) 1px,transparent 1px);
+    background-size:11vmin 11vmin;
+    mask-image:radial-gradient(circle at 50% 46%, #000 0%, transparent 74%);
+    -webkit-mask-image:radial-gradient(circle at 50% 46%, #000 0%, transparent 74%);
+  }
+  /* 顶部高光弧线，做出玻璃感 */
+  #icon::after{
+    content:"";position:absolute;left:-10%;top:-42%;width:120%;height:78%;
+    border-radius:50%;background:radial-gradient(closest-side,rgba(255,255,255,.22),rgba(255,255,255,0));
+    pointer-events:none;
+  }
+  .bulb{
+    position:relative;z-index:2;font-size:28vmin;line-height:1;
+    filter:drop-shadow(0 2.2vmin 2.6vmin rgba(40,16,110,.42));
+    margin-bottom:2.4vmin;
+  }
+  .name{
+    position:relative;z-index:2;
+    font-size:12vmin;font-weight:900;letter-spacing:.9vmin;
+    color:#fff;text-indent:.9vmin;
+    text-shadow:0 .7vmin 1.6vmin rgba(40,16,110,.45);
+  }
+</style>
+</head>
+<body>
+  <div id="icon">
+    <div class="bulb">💡</div>
+    <div class="name">知识问答</div>
+  </div>
+</body>
+</html>
