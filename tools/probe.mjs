@@ -3,11 +3,13 @@
  * 不依赖任何测试桩，断言全部落在真实 DOM 与真实游戏对象上。
  *
  *   node tools/probe.mjs
+ *   PROBE_LEVEL=2 node tools/probe.mjs   # 指定关卡（2-5）
  */
 import { existsSync } from 'node:fs';
 import { openSession, startServer, sleep } from './cdp.mjs';
 
 const ROOT = process.cwd();
+const LEVEL = Math.floor(Number(process.env.PROBE_LEVEL)) || 0;
 if (!existsSync(`${ROOT}/index.html`)) {
   console.error('请在项目根目录运行：node tools/probe.mjs');
   process.exit(2);
@@ -23,7 +25,7 @@ const section = (t) => console.log(`\n=== ${t} ===`);
 const txt = (c, expr) => c.evaluate(expr);
 
 const { server, port } = await startServer(ROOT);
-const url = `http://127.0.0.1:${port}/`;
+const url = `http://127.0.0.1:${port}/${LEVEL ? `?level=${LEVEL}` : ''}`;
 const c = await openSession({ tag: 'probe', width: 1024, height: 576 });
 
 /** 清空当前波：刷一个杀一个，直到本波总人数打完 */

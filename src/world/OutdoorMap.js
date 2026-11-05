@@ -31,6 +31,7 @@ export class OutdoorMap {
     this.group = this.builder.group;
     this.playerSpawn = this.builder.playerSpawn;
     this.waypoints = this.builder.waypoints;
+    this.spawnPoints = this.builder.spawnPoints;
     return this;
   }
 }

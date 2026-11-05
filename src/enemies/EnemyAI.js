@@ -27,6 +27,8 @@ export class EnemyAI {
     this.onMelee = opts.onMelee || (() => {});     // 近战挥击视觉/音效
     this.onPlayerHit = opts.onPlayerHit || (() => {});
     this.onExplode = opts.onExplode || (() => {});  // 自爆丧尸爆炸回调
+    // 每关巡逻点（由 MapBuilder 注入）；未提供时退回全局默认
+    this.patrolPoints = opts.patrolPoints || ENEMY.patrolPoints;
 
     this.position = opts.spawn.clone();
     this.velocity = new THREE.Vector3();
@@ -228,7 +230,7 @@ export class EnemyAI {
   }
 
   _pickPatrolPoint() {
-    const pts = ENEMY.patrolPoints;
+    const pts = this.patrolPoints;
     let p;
     do {
       p = pts[Math.floor(Math.random() * pts.length)];

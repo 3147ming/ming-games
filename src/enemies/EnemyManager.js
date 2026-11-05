@@ -31,6 +31,9 @@ export class EnemyManager {
     this.onWaveClear = opts.onWaveClear || (() => {});
     this.onVictory = opts.onVictory || (() => {});
     this.onPlayerHit = opts.onPlayerHit || (() => {});
+    // 每关出生点 / 巡逻点（由地图注入）；未提供时退回全局默认
+    this.spawnPoints = opts.spawnPoints || ENEMY.spawnPoints;
+    this.patrolPoints = opts.patrolPoints || ENEMY.patrolPoints;
 
     // 敌人实例池：数量取所有波次的并发上限
     const poolSize = Math.max(...MATCH.waves.map((w) => w.alive));
@@ -44,6 +47,7 @@ export class EnemyManager {
         player: this.player,
         spawn: new THREE.Vector3(0, 0, 0),
         index: i,
+        patrolPoints: this.patrolPoints,
         onDeath: (e) => this._handleDeath(e),
         onSpit: (from, to, e) => this._handleSpit(from, to, e),
         onMelee: (e) => this._handleMelee(e),
@@ -175,8 +179,8 @@ export class EnemyManager {
    */
   _pickSpawnPoint() {
     const p = this.player;
-    if (!p) return this._toVec(ENEMY.spawnPoints[0]);
-    const candidates = ENEMY.spawnPoints.map((sp) => {
+    if (!p) return this._toVec(this.spawnPoints[0]);
+    const candidates = this.spawnPoints.map((sp) => {
       const d = Math.hypot(sp.x - p.position.x, sp.z - p.position.z);
       return { sp, d };
     });

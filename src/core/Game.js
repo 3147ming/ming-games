@@ -92,7 +92,10 @@ export class Game {
 
     // ---- 世界与玩家 ----
     this.collision = new CollisionWorld();
-    this.map = new OutdoorMap(this.scene, this.collision, this.assets).build();
+    // ?level=N（从 1 开始）用于开发期直接进入指定关卡，默认第 1 关
+    const levelParam = Number(new URLSearchParams(location.search).get('level'));
+    this.levelIndex = Number.isFinite(levelParam) && levelParam >= 1 ? Math.floor(levelParam) - 1 : 0;
+    this.map = new OutdoorMap(this.scene, this.collision, this.assets, this.levelIndex).build();
 
     this.input = new Input(this.renderer.domElement);
     this.input.onLockChange = (locked) => this._onLockChange(locked);
@@ -113,6 +116,8 @@ export class Game {
       player: this.player,
       effects: this.effects,
       hud: this.hud,
+      spawnPoints: this.map.spawnPoints,
+      patrolPoints: this.map.waypoints,
       onKill: () => this._onKill(),
       onWaveStart: (i, total) => this._onWaveStart(i, total),
       onWaveClear: (i, isLast) => this._onWaveClear(i, isLast),

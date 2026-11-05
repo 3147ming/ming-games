@@ -185,6 +185,8 @@ export class MapBuilder {
     this.playerSpawn = new THREE.Vector3(spawn.x, spawn.y || 0, spawn.z);
     const patrol = layout.patrolPoints || ENEMY.patrolPoints;
     this.waypoints = patrol.map((p) => new THREE.Vector3(p.x, 0, p.z));
+    const spawnPts = layout.spawnPoints || ENEMY.spawnPoints;
+    this.spawnPoints = spawnPts.map((p) => new THREE.Vector3(p.x, 0, p.z));
 
     this.matConcrete = new THREE.MeshStandardMaterial({
       map: concreteTexture(), roughness: 0.92, metalness: 0.04,
@@ -219,6 +221,7 @@ export class MapBuilder {
   build() {
     this._buildSky();
     this._buildFloor();
+    this._buildCeiling();
     this._buildPerimeter();
     this._buildCrates();
     this._buildShelves();
@@ -262,6 +265,23 @@ export class MapBuilder {
     this.collision.addBox(0, -0.5, 0, w, 1, d, 'floor');
   }
 
+  // ---------------- 天花板（地下车库等室内图） ----------------
+  _buildCeiling() {
+    const c = this.layout.ceiling;
+    if (!c) return;
+    const w = this.layout.halfX * 2;
+    const d = this.layout.halfZ * 2;
+    const y = c.y != null ? c.y : 4.6;
+    const mat = new THREE.MeshStandardMaterial({
+      color: c.color != null ? c.color : 0x30343a,
+      roughness: 0.95, metalness: 0.05, side: THREE.DoubleSide,
+    });
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
+    m.rotation.x = Math.PI / 2;
+    m.position.set(0, y, 0);
+    this.group.add(m);
+  }
+
   // ---------------- 边界：视觉围栏 + 隐形高墙 ----------------
   _buildPerimeter() {
     const L = this.layout;
@@ -278,35 +298,48 @@ export class MapBuilder {
     inv(x, wh / 2, 0, 1, wh, z * 2 + 2);
 
     // 视觉围栏：柱 + 两道横杆（低矮，抬头可见天空）
+    // P1：柱与横杆改用 InstancedMesh，把几十个 draw call 压成 2 个
     const postGeo = new THREE.BoxGeometry(0.12, fh, 0.12);
     const railGeo = new THREE.BoxGeometry(1, 0.06, 0.06);
-    const addPost = (px, pz) => {
-      const m = new THREE.Mesh(postGeo, this.matFence);
-      m.position.set(px, fh / 2, pz);
-      m.castShadow = true;
-      this.group.add(m);
-    };
-    const addRail = (x0, z0, x1, z1, y) => {
-      const len = Math.hypot(x1 - x0, z1 - z0);
-      const m = new THREE.Mesh(railGeo, this.matFence);
-      m.scale.x = len;
-      m.position.set((x0 + x1) / 2, y, (z0 + z1) / 2);
-      m.rotation.y = Math.atan2(z1 - z0, x1 - x0);
-      m.castShadow = true;
-      this.group.add(m);
-    };
-    for (let px = -x; px <= x; px += 4) {
-      addPost(px, -z); addPost(px, z);
-    }
-    for (let pz = -z; pz <= z; pz += 4) {
-      addPost(-x, pz); addPost(x, pz);
-    }
+    const dummy = new THREE.Object3D();
+
+    const posts = [];
+    for (let px = -x; px <= x; px += 4) posts.push([px, -z], [px, z]);
+    for (let pz = -z; pz <= z; pz += 4) posts.push([-x, pz], [x, pz]);
+    const postMesh = new THREE.InstancedMesh(postGeo, this.matFence, posts.length);
+    posts.forEach(([px, pz], i) => {
+      dummy.position.set(px, fh / 2, pz);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      postMesh.setMatrixAt(i, dummy.matrix);
+    });
+    postMesh.instanceMatrix.needsUpdate = true;
+    postMesh.castShadow = true;
+    postMesh.frustumCulled = false;   // 实例分布的包围盒靠几何体算不准，关掉剔除更稳
+    this.group.add(postMesh);
+
+    const rails = [];
+    const addRail = (x0, z0, x1, z1, y) => rails.push({ x0, z0, x1, z1, y });
     for (const y of [fh * 0.45, fh * 0.85]) {
       addRail(-x, -z, x, -z, y);
       addRail(-x, z, x, z, y);
       addRail(-x, -z, -x, z, y);
       addRail(x, -z, x, z, y);
     }
+    const railMesh = new THREE.InstancedMesh(railGeo, this.matFence, rails.length);
+    rails.forEach((r, i) => {
+      const len = Math.hypot(r.x1 - r.x0, r.z1 - r.z0);
+      dummy.position.set((r.x0 + r.x1) / 2, r.y, (r.z0 + r.z1) / 2);
+      dummy.rotation.set(0, Math.atan2(r.z1 - r.z0, r.x1 - r.x0), 0);
+      dummy.scale.set(len, 1, 1);
+      dummy.updateMatrix();
+      railMesh.setMatrixAt(i, dummy.matrix);
+    });
+    railMesh.instanceMatrix.needsUpdate = true;
+    railMesh.castShadow = true;
+    railMesh.frustumCulled = false;
+    this.group.add(railMesh);
 
     // 混凝土矮墙段（带缺口，做掩体也做视觉边界）
     const segs = L.perimeterSegs || [];
@@ -367,22 +400,44 @@ export class MapBuilder {
   // ---------------- 货架 ----------------
   _buildShelves() {
     const racks = this.layout.racks || [];
-    for (const r of racks) {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(r.w, r.h, r.d), this.matMetal);
-      mesh.position.set(r.x, r.h / 2, r.z);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      this.group.add(mesh);
-      this.collision.addBox(r.x, r.h / 2, r.z, r.w, r.h, r.d, 'rack');
+    if (racks.length === 0) return;
+    // P1：货架体与层板都改为 InstancedMesh（单位立方体 + 逐实例缩放）
+    const unit = new THREE.BoxGeometry(1, 1, 1);
+    const dummy = new THREE.Object3D();
 
-      const shelfGeo = new THREE.BoxGeometry(r.w + 0.06, 0.08, r.d);
+    const bodyMesh = new THREE.InstancedMesh(unit, this.matMetal, racks.length);
+    racks.forEach((r, i) => {
+      dummy.position.set(r.x, r.h / 2, r.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(r.w, r.h, r.d);
+      dummy.updateMatrix();
+      bodyMesh.setMatrixAt(i, dummy.matrix);
+      this.collision.addBox(r.x, r.h / 2, r.z, r.w, r.h, r.d, 'rack');
+    });
+    bodyMesh.instanceMatrix.needsUpdate = true;
+    bodyMesh.castShadow = true;
+    bodyMesh.receiveShadow = true;
+    bodyMesh.frustumCulled = false;
+    this.group.add(bodyMesh);
+
+    const shelves = [];
+    for (const r of racks) {
       for (let y = 0.8; y < r.h; y += 0.9) {
-        const shelf = new THREE.Mesh(shelfGeo, this.matBeam);
-        shelf.position.set(r.x, y, r.z);
-        shelf.castShadow = true;
-        this.group.add(shelf);
+        shelves.push({ x: r.x, y, z: r.z, w: r.w + 0.06, d: r.d });
       }
     }
+    const shelfMesh = new THREE.InstancedMesh(unit, this.matBeam, shelves.length);
+    shelves.forEach((s, i) => {
+      dummy.position.set(s.x, s.y, s.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(s.w, 0.08, s.d);
+      dummy.updateMatrix();
+      shelfMesh.setMatrixAt(i, dummy.matrix);
+    });
+    shelfMesh.instanceMatrix.needsUpdate = true;
+    shelfMesh.castShadow = true;
+    shelfMesh.frustumCulled = false;
+    this.group.add(shelfMesh);
   }
 
   // ---------------- 集装箱 ----------------
@@ -390,30 +445,41 @@ export class MapBuilder {
     const containers = this.layout.containers || [];
     if (containers.length === 0) return;
     const matDark = new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 0.75, metalness: 0.3 });
+    const ribGeo = new THREE.BoxGeometry(0.08, 2.4, 2.42);
+    const ribCount = containers.length * 11;
+    const ribMesh = new THREE.InstancedMesh(ribGeo, matDark, ribCount);
+    const dummy = new THREE.Object3D();
+    let ri = 0;
     for (const c of containers) {
       const mat = new THREE.MeshStandardMaterial({
         color: c.color != null ? c.color : 0x7a4a2a,
         roughness: 0.7, metalness: 0.35,
       });
-      const g = new THREE.Group();
       const box = new THREE.Mesh(new THREE.BoxGeometry(6, 2.6, 2.4), mat);
-      box.position.y = 1.3;
+      box.position.set(c.x, 1.3, c.z);
+      box.rotation.y = c.rot || 0;
       box.castShadow = true;
       box.receiveShadow = true;
-      g.add(box);
+      this.group.add(box);
+      // 加强筋：逐根计算世界坐标，最后合成一个 InstancedMesh
+      const rot = c.rot || 0;
+      const cos = Math.cos(rot);
+      const sin = Math.sin(rot);
       for (let i = -2.5; i <= 2.5; i += 0.5) {
-        const rib = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.4, 2.42), matDark);
-        rib.position.set(i, 1.3, 0);
-        rib.castShadow = true;
-        g.add(rib);
+        dummy.position.set(c.x + i * cos, 1.3, c.z - i * sin);
+        dummy.rotation.set(0, rot, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        ribMesh.setMatrixAt(ri++, dummy.matrix);
       }
-      g.position.set(c.x, 0, c.z);
-      g.rotation.y = c.rot || 0;
-      this.group.add(g);
-      const w = Math.abs(Math.cos(c.rot || 0)) * 6 + Math.abs(Math.sin(c.rot || 0)) * 2.4;
-      const d = Math.abs(Math.sin(c.rot || 0)) * 6 + Math.abs(Math.cos(c.rot || 0)) * 2.4;
+      const w = Math.abs(Math.cos(rot)) * 6 + Math.abs(Math.sin(rot)) * 2.4;
+      const d = Math.abs(Math.sin(rot)) * 6 + Math.abs(Math.cos(rot)) * 2.4;
       this.collision.addBox(c.x, 1.3, c.z, w, 2.6, d, 'crate');
     }
+    ribMesh.instanceMatrix.needsUpdate = true;
+    ribMesh.castShadow = true;
+    ribMesh.frustumCulled = false;
+    this.group.add(ribMesh);
   }
 
   // ---------------- 道具：油桶 / 沙袋 / 轮胎 / 标线 / 车头 ----------------
