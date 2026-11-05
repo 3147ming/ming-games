@@ -7,9 +7,14 @@
  */
 
 import { DEFAULT_BINDS } from '../config/keybinds.js';
-import { defaultLoadout, getAttachment } from '../config/mods.js';
+import { defaultLoadout, getAttachment, ATTACHMENTS } from '../config/mods.js';
 import { MISSIONS, calcRunRewards, missionProgress } from '../config/economy.js';
 import { ATTRIBUTES, LEVEL, MECHS, talentCost, runXp, xpToNext } from '../config/growth.js';
+import {
+  MATERIALS, MATERIAL_SHOP, AMMO_SHOP, EXCHANGE_OPS, EXCHANGE_UNLOCK,
+  RESEARCH, RESEARCH_ORDER, RESEARCH_UNLOCK, researchTotals,
+  MOD_UNLOCK, MECH_GATES, materialPrice,
+} from '../config/progression.js';
 
 export const SAVE_KEY = 'warehouse-strike.save.v1';
 export const SAVE_VERSION = 1;
@@ -22,8 +27,25 @@ export function defaultSave() {
       cores: 0,
       coins: 0,
       reputation: 0,
-      materials: { awaken: 0, mecha: 0, research: 0 },
+      materials: {
+        awaken: 0,
+        mecha: 0,
+        researchAmmo: 0,
+        researchCombat: 0,
+        researchLogistics: 0,
+        bossCore: 0,
+        mapYard: 0,
+        mapDock: 0,
+        mapGarage: 0,
+        mapLogistics: 0,
+        mapArena: 0,
+        mapDefense: 0,
+      },
       claimedMissions: [],
+      // 局外备弹库存（按武器口径；闯关/无尽开局带入）
+      ammoStock: { rifle: 0, pistol: 0, shotgun: 0, sniper: 0 },
+      // 材料采购累计次数（价格递增）
+      shopBuys: {},
     },
     talents: { atk: 0, def: 0, mob: 0 },
     permanent: { hp: 0, dmg: 0, armor: 0, speed: 0 },
@@ -32,6 +54,17 @@ export function defaultSave() {
       mechs: [],
       weapons: ['rifle', 'pistol', 'shotgun', 'sniper'],
       levels: 1,
+      modSlots: [],
+      attachments: [],
+    },
+    // 科研等级（6 条线，各 0~5）
+    research: {
+      ballistics: 0,
+      firepower: 0,
+      survival: 0,
+      logistics: 0,
+      weakpoint: 0,
+      income: 0,
     },
     stats: { runs: 0, kills: 0, bestLevel: 1, bestWave: 0, totalTime: 0 },
     loadout: defaultLoadout(),
@@ -90,7 +123,13 @@ export class SaveManager {
       if (!raw) return base;
       const parsed = JSON.parse(raw);
       if (!parsed || parsed.v !== SAVE_VERSION) return base;
-      return mergeDefaults(base, parsed);
+      const merged = mergeDefaults(base, parsed);
+      // 旧存档迁移：单一 research 材料 → 弹道研究数据
+      const legacyResearch = parsed?.meta?.materials?.research;
+      if (typeof legacyResearch === 'number' && legacyResearch > 0) {
+        merged.meta.materials.researchAmmo += legacyResearch;
+      }
+      return merged;
     } catch (e) {
       return base;
     }
