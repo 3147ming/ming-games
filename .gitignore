@@ -1,0 +1,12 @@
+# 依赖 / 系统文件
+node_modules/
+.DS_Store
+Thumbs.db
+
+# 探针产物
+.workbuddy/shots/
+.workbuddy/memory/
+
+# 本地临时
+*.log
+tmp/

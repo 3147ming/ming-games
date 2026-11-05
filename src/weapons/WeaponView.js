@@ -1,0 +1,258 @@
+/**
+ * 第一人称武器视图（挂在相机下）
+ * - 复用仓库 arms@ak.fbx（带手臂的 AK 模型，作为 M4 类步枪外观）
+ * - 独立处理：待机呼吸、移动摆动、开火后坐、换弹动画、枪口闪光
+ */
+import * as THREE from 'three';
+import { clone as cloneSkeleton } from '../../vendor/three/utils/SkeletonUtils.js';
+import { WEAPON } from '../config/weapon.js';
+
+/** 生成枪口闪光贴图 */
+function flashTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 62);
+  g.addColorStop(0, 'rgba(255,255,230,1)');
+  g.addColorStop(0.25, 'rgba(255,220,120,0.95)');
+  g.addColorStop(0.55, 'rgba(255,140,30,0.45)');
+  g.addColorStop(1, 'rgba(255,90,0,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(64, 64, 62, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 四角星芒
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = 'rgba(255,240,190,0.9)';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(4, 64); ctx.lineTo(124, 64); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(64, 8); ctx.lineTo(64, 120); ctx.stroke();
+
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+export class WeaponView {
+  constructor(camera, assets) {
+    this.camera = camera;
+    this.assets = assets;
+    this.pivot = new THREE.Group();
+    camera.add(this.pivot);
+    this.basePos = new THREE.Vector3(
+      WEAPON.view.position.x,
+      WEAPON.view.position.y,
+      WEAPON.view.position.z
+    );
+    this.baseRot = new THREE.Euler(
+      WEAPON.view.rotation.x,
+      WEAPON.view.rotation.y,
+      WEAPON.view.rotation.z
+    );
+
+    this.kick = 0;            // 后坐动画进度
+    this.swayX = 0;
+    this.swayY = 0;
+    this.idleTime = 0;
+    this.flashTime = 0;
+    this.magazine = null;
+    this.magBaseY = 0;
+
+    this._buildModel();
+    this._buildFlash();
+  }
+
+  /** 构建武器模型 */
+  _buildModel() {
+    const src = this.assets && this.assets.weaponModel;
+    if (!src) {
+      // 兜底：用简单几何体表示步枪
+      const gun = new THREE.Mesh(
+        new THREE.BoxGeometry(0.06, 0.1, 0.7),
+        new THREE.MeshStandardMaterial({ color: 0x33373d, roughness: 0.6 })
+      );
+      this.gunLength = 0.7;
+      this.pivot.add(gun);
+      this.muzzleLocal = new THREE.Vector3(0, 0.01, -0.35);
+      this.pivot.position.copy(this.basePos);
+      this.pivot.rotation.copy(this.baseRot);
+      return;
+    }
+
+    const model = cloneSkeleton(src);
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+
+    // 整体缩放到约 0.95 个世界单位长（第一人称手臂 + 步枪）
+    const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+    const scale = 0.95 / maxDim;
+    model.scale.setScalar(scale);
+    // 把模型中心对齐到原点
+    model.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
+
+    // 材质处理：手臂用 armColor，枪身用 ak74Color
+    const gunTex = this.assets.textures.ak74;
+    if (gunTex) gunTex.wrapS = gunTex.wrapT = THREE.ClampToEdgeWrapping;
+    const armTex = this.assets.textures.arm;
+
+    model.traverse((o) => {
+      if (!o.isMesh) return;
+      const name = (o.name + ' ' + (o.material && o.material.name) || '').toLowerCase();
+      const isArm = name.includes('arm');
+      const map = isArm ? armTex : gunTex;
+      const mat = new THREE.MeshStandardMaterial({
+        map: map || null,
+        color: map ? 0xffffff : 0x4a4f55,
+        roughness: 0.55,
+        metalness: 0.18,
+      });
+      o.material = mat;
+      o.castShadow = false;
+      o.receiveShadow = false;
+      o.frustumCulled = false;
+
+      // 手臂网格为静态绑定姿势，未播放动画时会与枪身错位并大面积遮挡视野，默认隐藏
+      if (isArm) {
+        o.visible = false;
+      }
+
+      // 记录弹匣节点，换弹时做位移动画
+      if (o.name.toLowerCase().includes('mag')) {
+        this.magazine = o;
+        this.magBaseY = o.position.y;
+      }
+    });
+
+    model.rotation.set(0, 0, 0);
+    this.pivot.add(model);
+    this.model = model;
+
+    // 计算枪身长度（沿 Z 轴），并设置枪口位置
+    const box2 = new THREE.Box3().setFromObject(model);
+    const size2 = box2.getSize(new THREE.Vector3());
+    this.gunLength = size2.z;
+    this.modelSize = size2;
+    this.meshNames = [];
+    model.traverse((o) => {
+      if (o.isMesh) this.meshNames.push(o.name);
+    });
+    // 枪口位于模型 +Z 末端，绕 Y 旋转后对应本地 -Z 方向
+    this.muzzleLocal = new THREE.Vector3(0, size2.y * 0.06, -size2.z * 0.50);
+
+    this.pivot.position.copy(this.basePos);
+    this.pivot.rotation.copy(this.baseRot);
+  }
+
+  /** 枪口闪光 + 点光源 */
+  _buildFlash() {
+    const tex = flashTexture();
+    const mat = new THREE.SpriteMaterial({
+      map: tex,
+      color: 0xffe0a0,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+    });
+    this.flash = new THREE.Sprite(mat);
+    this.flash.scale.setScalar(0.22);
+    this.flash.visible = false;
+    this.flash.position.copy(this.muzzleLocal);
+    this.pivot.add(this.flash);
+
+    this.flashLight = new THREE.PointLight(0xffc070, 0, 9, 2);
+    this.flashLight.position.copy(this.muzzleLocal);
+    this.pivot.add(this.flashLight);
+  }
+
+  /** 开火表现 */
+  triggerFire() {
+    this.kick = Math.min(1.6, this.kick + 1);
+    this.flashTime = 0.045;
+    this.flash.visible = true;
+    this.flash.material.rotation = Math.random() * Math.PI * 2;
+    this.flash.scale.setScalar(0.18 + Math.random() * 0.1);
+    this.flashLight.intensity = 2.2;
+  }
+
+  /**
+   * 每帧更新
+   * @param {number} dt
+   * @param {object} state { speed, moving, reloading, reloadProgress }
+   * @param {{x:number,y:number}} mouseDelta
+   */
+  update(dt, state, mouseDelta) {
+    this.idleTime += dt;
+
+    // 后坐力衰减
+    this.kick += (0 - this.kick) * Math.min(1, dt * 12);
+
+    // 鼠标摆动（反向跟随）
+    const swayTargetX = -mouseDelta.x * 0.0018;
+    const swayTargetY = mouseDelta.y * 0.0016;
+    this.swayX += (swayTargetX - this.swayX) * Math.min(1, dt * 9);
+    this.swayY += (swayTargetY - this.swayY) * Math.min(1, dt * 9);
+
+    // 移动/呼吸摆动
+    const bob = state.moving ? Math.sin(this.idleTime * 9) * 0.012 : 0;
+    const breathe = Math.sin(this.idleTime * 1.7) * 0.004;
+    // 空中：枪身微微下沉并左右轻摆
+    const airDrop = state.airborne ? 0.03 : 0;
+    const airSway = state.airborne ? Math.sin(this.idleTime * 3.2) * 0.008 : 0;
+
+    const p = this.pivot.position;
+    p.x = this.basePos.x + this.swayX + airSway;
+    p.y = this.basePos.y + this.swayY + bob + breathe - airDrop - this.kick * 0.008;
+    p.z = this.basePos.z + this.kick * 0.055;
+
+    const r = this.pivot.rotation;
+    r.x = this.baseRot.x + this.kick * 0.05;
+    r.y = this.baseRot.y + this.swayX * 1.4;
+    r.z = this.baseRot.z + this.swayX * 0.6;
+
+    // 换弹动画（第三轮：拆成两段节奏 —— 0~55% 掏弹匣下压，55%~100% 插入弹匣回位）
+    if (state.reloading) {
+      const rp = Math.min(1, state.reloadProgress);
+      let t;      // 枪身位移强度 0~1
+      let drop;   // 弹匣下坠量
+      if (rp < 0.55) {
+        // 第一段：缓缓下压、弹匣抽出
+        const k = rp / 0.55;
+        t = Math.sin(k * Math.PI * 0.5);
+        drop = Math.min(1, k * 1.6) * 0.06;
+      } else {
+        // 第二段：快速插入弹匣，枪身回位并保留短暂顿挫
+        const k = (rp - 0.55) / 0.45;
+        t = Math.pow(1 - Math.min(1, k / 0.7), 2);
+        drop = 0.06 * (1 - Math.min(1, k * 1.6));
+      }
+      p.y -= t * 0.16;
+      p.z += t * 0.06;
+      r.x += t * 0.75;
+      r.z -= t * 0.35;
+      if (this.magazine) {
+        this.magazine.position.y = this.magBaseY - drop;
+      }
+    } else if (this.magazine) {
+      this.magazine.position.y += (this.magBaseY - this.magazine.position.y) * Math.min(1, dt * 12);
+    }
+
+    // 枪口闪光计时
+    if (this.flashTime > 0) {
+      this.flashTime -= dt;
+      this.flash.scale.setScalar(0.16 + Math.random() * 0.12);
+      this.flashLight.intensity = Math.max(0, this.flashLight.intensity - dt * 45);
+      if (this.flashTime <= 0) {
+        this.flash.visible = false;
+        this.flashLight.intensity = 0;
+      }
+    }
+  }
+
+  /** 获取枪口世界坐标（用于弹道起点） */
+  getMuzzleWorldPosition() {
+    return this.flash.getWorldPosition(new THREE.Vector3());
+  }
+}

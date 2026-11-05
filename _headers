@@ -1,0 +1,24 @@
+# 缓存策略：适配 Netlify / Vercel / Cloudflare Pages
+# 静态资源长期缓存（带内容哈希的资源可设更长；本项目无构建哈希，用中等时长）
+
+# 模型 / 贴图 / 音频：极少变动，缓存 30 天
+/public/assets/*
+  Cache-Control: public, max-age=2592000, immutable
+
+# Three.js 本地依赖：缓存 30 天
+/vendor/*
+  Cache-Control: public, max-age=2592000, immutable
+
+# 样式 / 脚本：缓存 1 小时，留更新余量
+/styles/*.css
+  Cache-Control: public, max-age=3600
+/src/*.js
+  Cache-Control: public, max-age=3600
+
+# HTML：每次协商缓存，确保用户拿到最新入口
+/*.html
+  Cache-Control: no-cache
+
+# 兜底：其他资源缓存 1 天
+/*
+  Cache-Control: public, max-age=86400

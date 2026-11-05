@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>仓库行动 - 简易 CF 网页 FPS</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="./styles/hud.css" />
+  <!--
+    Three.js 已本地化到 vendor/three，避免依赖外网 CDN。
+    原生 ES Module + import map，无需 npm 构建。
+  -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- 画布容器 -->
+  <div id="app"></div>
+
+  <!-- ===================== 游戏 HUD ===================== -->
+  <div id="hud" class="hud hidden">
+    <!-- 左上角：生命 / 护甲 -->
+    <div class="vitals">
+      <div class="vitals-title">生命状态</div>
+      <div class="stat-row">
+        <span class="stat-name">生命</span>
+        <span class="stat-num" id="hp-value">100</span>
+      </div>
+      <div class="bar hp"><i id="hp-fill"></i></div>
+      <div class="stat-row small">
+        <span class="stat-name">护甲</span>
+        <span class="stat-num" id="armor-value">50</span>
+      </div>
+      <div class="bar armor"><i id="armor-fill"></i></div>
+    </div>
+
+    <!-- 右上角：击杀 / 爆头 / 剩余敌人 -->
+    <div class="score">
+      <div class="score-item"><span class="score-label">击杀</span><span class="score-value" id="kill-value">0</span></div>
+      <div class="score-item dim"><span class="score-label">爆头</span><span class="score-value" id="headshot-value">0</span></div>
+      <div class="score-item dim"><span class="score-label">敌人</span><span class="score-value" id="enemy-value">4</span></div>
+    </div>
+
+    <!-- 底部右侧：弹药 -->
+    <div class="ammo">
+      <div class="weapon-name">M4A1 <span class="weapon-tag">突击步枪</span></div>
+      <div class="ammo-line">
+        <span class="weapon-icon" aria-hidden="true"></span>
+        <span id="mag-value">30</span>
+        <span class="ammo-sep">/</span>
+        <span id="reserve-value">120</span>
+      </div>
+      <div class="reload-tip" id="reload-tip">按 R 换弹</div>
+    </div>
+
+    <!-- 准星 -->
+    <div id="crosshair">
+      <i class="ch-line ch-top"></i>
+      <i class="ch-line ch-bottom"></i>
+      <i class="ch-line ch-left"></i>
+      <i class="ch-line ch-right"></i>
+      <i class="ch-dot"></i>
+      <div id="hitmarker">
+        <i></i><i></i><i></i><i></i>
+      </div>
+    </div>
+
+    <!-- 受击红色暗角 -->
+    <div id="damage-vignette"></div>
+    <!-- 击杀悬浮提示（第三轮） -->
+    <div id="kill-popup"></div>
+    <!-- 击杀信息 -->
+    <div id="killfeed"></div>
+    <!-- 换弹进度条 -->
+    <div id="reload-bar" class="hidden"><i></i></div>
+    <!-- 开局操作提示（3 秒后自动淡出） -->
+    <div id="tips" class="tips">
+      <div class="tips-title">操作提示</div>
+      <div class="tips-row"><b>WASD</b> 移动　<b>Shift</b> 静步　<b>Ctrl</b> 蹲伏</div>
+      <div class="tips-row"><b>空格</b> 跳跃　<b>左键</b> 射击　<b>R</b> 换弹　<b>Esc</b> 暂停</div>
+      <div class="tips-row dim">按 <b>O</b> 显示 / 隐藏帧率</div>
+    </div>
+  </div>
+
+  <!-- 帧率调试面板（按 O 切换 / ?debug=1 默认显示） -->
+  <div id="fps-panel" class="fps-panel hidden">FPS <b id="fps-value">--</b></div>
+
+  <!-- ===================== 加载界面 ===================== -->
+  <div id="loading" class="overlay">
+    <div class="panel loading-panel">
+      <h1 class="game-title">仓库行动</h1>
+      <p class="game-sub">WAREHOUSE STRIKE</p>
+      <div class="loading-bar"><i id="loading-fill"></i></div>
+      <p class="loading-text" id="loading-text">正在加载资源 0%</p>
+      <p class="loading-hint">首次加载需要下载仓库素材，请稍候…</p>
+    </div>
+  </div>
+
+  <!-- ===================== 开始菜单 ===================== -->
+  <div id="menu" class="overlay hidden">
+    <div class="panel menu-panel">
+      <h1 class="game-title">仓库行动</h1>
+      <p class="game-sub">WAREHOUSE STRIKE · 简易 CF 网页版</p>
+      <div class="menu-cols">
+        <div class="menu-block">
+          <h3>操作说明</h3>
+          <ul class="key-list">
+            <li><b>W A S D</b><span>移动</span></li>
+            <li><b>Shift</b><span>静步</span></li>
+            <li><b>Ctrl</b><span>蹲伏（更稳、更慢）</span></li>
+            <li><b>空格</b><span>跳跃</span></li>
+            <li><b>鼠标左键</b><span>射击</span></li>
+            <li><b>R</b><span>换弹 / 死亡后复活</span></li>
+            <li><b>Esc</b><span>暂停</span></li>
+          </ul>
+        </div>
+        <div class="menu-block">
+          <h3>任务简报</h3>
+          <p class="brief">仓库内发现 4 名敌对武装人员。清理全部目标，注意利用纸箱与货架掩体。生命归零后按 <b>R</b> 重生。</p>
+          <p class="tip">提示：击中头部造成 2 倍伤害，命中四肢伤害更低；连续射击时后坐力会逐渐增大，短点射更精准。</p>
+        </div>
+      </div>
+      <button class="btn primary" id="btn-start">点击开始行动</button>
+      <p class="menu-foot">点击开始后将锁定鼠标 · 建议使用 Chrome / Edge 全屏游玩</p>
+    </div>
+  </div>
+
+  <!-- ===================== 暂停界面 ===================== -->
+  <div id="pause" class="overlay hidden">
+    <div class="panel small-panel">
+      <h2>行动暂停</h2>
+      <p class="muted">鼠标已解锁，点击下方按钮继续或重新开始。</p>
+      <button class="btn primary" id="btn-resume">继续行动</button>
+      <button class="btn" id="btn-restart" style="margin-top:12px;background:linear-gradient(90deg,#8aa0b4,#5a6c7c);color:#fff;">重新开始</button>
+      <div class="pause-keys">
+        <h3>操作提示</h3>
+        <ul class="key-list">
+          <li><b>W A S D</b><span>移动</span></li>
+          <li><b>Shift</b><span>静步（声音小）</span></li>
+          <li><b>Ctrl</b><span>蹲伏</span></li>
+          <li><b>空格</b><span>跳跃</span></li>
+          <li><b>鼠标左键</b><span>射击</span></li>
+          <li><b>R</b><span>换弹 / 死亡后复活</span></li>
+          <li><b>Esc</b><span>暂停</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== 死亡界面 ===================== -->
+  <div id="death" class="overlay hidden">
+    <div class="panel small-panel death-panel">
+      <h2>你已阵亡</h2>
+      <p class="muted">本次击杀：<b id="death-kills">0</b></p>
+      <button class="btn primary" id="btn-respawn">按 R 复活</button>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

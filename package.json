@@ -1,0 +1,16 @@
+{
+  "name": "warehouse-strike",
+  "version": "0.2.0",
+  "private": true,
+  "description": "仓库行动 WAREHOUSE STRIKE — 零依赖 Three.js 网页 FPS",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs 5180",
+    "start": "node server.mjs 5180",
+    "probe": "node tools/probe.mjs",
+    "check": "node tools/check.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
