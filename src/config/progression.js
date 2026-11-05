@@ -49,7 +49,7 @@ export const AMMO_SHOP = {
 /** 材料采购：价格 = basePrice + priceStep × 已购次数（不限购） */
 export const MATERIAL_SHOP = {
   awaken: {
-    material: 'awewaken', // 占位，下方修正
+    material: 'awaken',
     name: '觉醒材料',
     basePrice: 600,
     priceStep: 300,
@@ -86,8 +86,6 @@ export const MATERIAL_SHOP = {
     unlock: { reputation: 500, level: 20 },
   },
 };
-// 修正觉醒材料 id（避免手写错误扩散）
-MATERIAL_SHOP.awaken.material = 'awaken';
 
 /** 材料当前价格 */
 export function materialPrice(def, bought = 0) {
