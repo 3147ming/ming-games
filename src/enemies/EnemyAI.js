@@ -26,6 +26,7 @@ export class EnemyAI {
     this.onSpit = opts.onSpit || (() => {});       // 吐酸弹道视觉
     this.onMelee = opts.onMelee || (() => {});     // 近战挥击视觉/音效
     this.onPlayerHit = opts.onPlayerHit || (() => {});
+    this.onExplode = opts.onExplode || (() => {});  // 自爆丧尸爆炸回调
 
     this.position = opts.spawn.clone();
     this.velocity = new THREE.Vector3();
@@ -51,6 +52,8 @@ export class EnemyAI {
     this.stuckTimer = 0;
     this.targetPoint = this._pickPatrolPoint();
     this.lastPos = this.position.clone();
+    this.fuseStarted = false;   // 自爆丧尸：是否已开始引爆倒计时
+    this.fuseTimer = 0;
 
     // 波次倍率（EnemyManager.configure 注入）
     this.healthMul = 1;
@@ -308,7 +311,7 @@ export class EnemyAI {
 
     this.root.position.copy(this.position);
     const flinchK = this.flinchTimer > 0 ? this.flinchTimer / ENEMY.flinchTime : 0;
-    this.root.rotation.y = this.heading + Math.sin(this.flinchTimer * 70) * 0.22 * flinchK;
+    this.root.rotation.y = this.heading + Math.sin(this.flinchTimer * 18) * 0.12 * flinchK;
     this.bar.position.set(0, ENEMY.height + 0.3, 0);
     this._checkStuck(dt);
   }
@@ -366,11 +369,11 @@ export class EnemyAI {
 
     // 近战丧尸：贴近玩家后挥击
     if (this.melee) {
-      if (dist > v.attackRange * 0.85) {
+      if (dist > v.attackRange * 0.6) {
         this._moveToward(dx, dz, v.chaseSpeed, dt);
       } else {
-        this.velocity.x *= 0.75;
-        this.velocity.z *= 0.75;
+        this.velocity.x *= 0.7;
+        this.velocity.z *= 0.7;
         // 绕着玩家缓慢侧移，避免完全站桩
         this.coverTimer -= dt;
         if (this.coverTimer <= 0) {
@@ -403,6 +406,35 @@ export class EnemyAI {
       return;
     }
 
+    // 自爆丧尸：靠近后引爆，范围伤害
+    if (this.variant.bomber) {
+      // 贴近时停下，开始倒计时
+      if (dist > v.attackRange * 0.9) {
+        this._moveToward(dx, dz, v.chaseSpeed, dt);
+        this._play('run');
+      } else {
+        this.velocity.x *= 0.6;
+        this.velocity.z *= 0.6;
+        if (!this.fuseStarted) {
+          this.fuseStarted = true;
+          this.fuseTimer = v.fuseTime;
+          this.onMelee(this); // 复用"开始攻击"回调（触发音效等）
+        }
+        // 闪烁红光警告
+        if (this.flashMat) {
+          const blink = Math.sin(this.fuseTimer * 40) > 0 ? 1 : 0.3;
+          this.flashMat.emissive.setRGB(1 * blink, 0.2 * blink, 0);
+        }
+        this.fuseTimer -= dt;
+        if (this.fuseTimer <= 0) {
+          this._explode();
+          return;
+        }
+      }
+      this.targetHeading = Math.atan2(dx, dz);
+      return;
+    }
+
     // 吐酸丧尸：保持距离 + 定期喷吐
     if (dist < v.keepDistance * 0.8) {
       this._moveToward(-dx, -dz, v.chaseSpeed * 0.85, dt);
@@ -427,10 +459,33 @@ export class EnemyAI {
   /** 近战判定：前摇结束时玩家仍在触及范围（允许一点容错）则造成伤害 */
   _meleeStrike(dist) {
     if (!this.player || this.player.dead) return;
-    const reach = this.variant.attackRange * 1.25;
+    // 收紧判定范围，避免"隔空打飞"的观感
+    const reach = this.variant.attackRange * 1.08;
     if (dist > reach) return;   // 玩家已逃出挥击范围
     const dealt = this.player.takeDamage(this.variant.damage * this.damageMul);
     if (dealt > 0) this.onPlayerHit(dealt);
+  }
+
+  /** 自爆：对范围内玩家造成伤害，自身死亡，触发爆炸特效 */
+  _explode() {
+    const v = this.variant;
+    const radius = v.explodeRadius;
+    // 玩家受伤（距离越近伤害越高）
+    if (this.player && !this.player.dead) {
+      const dx = this.player.position.x - this.position.x;
+      const dz = this.player.position.z - this.position.z;
+      const d = Math.hypot(dx, dz);
+      if (d < radius) {
+        const falloff = 1 - (d / radius) * 0.5; // 中心 100%，边缘 50%
+        const dmg = v.damage * this.damageMul * falloff;
+        const dealt = this.player.takeDamage(dmg);
+        if (dealt > 0) this.onPlayerHit(dealt);
+      }
+    }
+    // 爆炸特效 + 音效（通过回调交给 Game 层处理）
+    if (this.onExplode) this.onExplode(this);
+    // 自身死亡（不触发 onKill 回调，因为是自爆不是被击杀）
+    this.dead = true;
   }
 
   /**
@@ -482,9 +537,17 @@ export class EnemyAI {
 
     const desiredX = dirX * speed;
     const desiredZ = dirZ * speed;
-    const k = Math.min(1, dt * 8);
+    const k = Math.min(1, dt * 6);
     this.velocity.x += (desiredX - this.velocity.x) * k;
     this.velocity.z += (desiredZ - this.velocity.z) * k;
+
+    // 速度上限钳制：防止击退叠加追击导致的"飞扑"瞬移观感
+    const maxSpeed = speed * 1.5;
+    const sp = Math.hypot(this.velocity.x, this.velocity.z);
+    if (sp > maxSpeed) {
+      this.velocity.x = (this.velocity.x / sp) * maxSpeed;
+      this.velocity.z = (this.velocity.z / sp) * maxSpeed;
+    }
     this.targetHeading = Math.atan2(this.velocity.x, this.velocity.z);
   }
 
@@ -568,6 +631,8 @@ export class EnemyAI {
     this.coverStrafe = 0;
     this.alertTimer = 0;
     this.scanTime = 0;
+    this.fuseStarted = false;
+    this.fuseTimer = 0;
     this.heading = Math.random() * Math.PI * 2;
     this.targetHeading = this.heading;
     this.targetPoint = this._pickPatrolPoint();

@@ -436,6 +436,14 @@ export class Game {
       // R：换弹
       if (this.input.consume('KeyR')) this.gun.startReload();
 
+      // 1/2/3/4：切枪；滚轮：循环切枪
+      if (this.input.consume('Digit1')) this.gun.switchWeapon('rifle');
+      if (this.input.consume('Digit2')) this.gun.switchWeapon('pistol');
+      if (this.input.consume('Digit3')) this.gun.switchWeapon('shotgun');
+      if (this.input.consume('Digit4')) this.gun.switchWeapon('sniper');
+      const wheel = this.input.consumeWheel();
+      if (Math.abs(wheel) > 30) this.gun.switchWeaponByDelta(wheel);
+
       // 玩家 + 枪械
       this.player.update(dt, this.mouseLook);
       this.gun.setMouseDown(this.input.mouseDown);

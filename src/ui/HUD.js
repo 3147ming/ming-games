@@ -30,6 +30,8 @@ export class HUD {
     this.killfeed = $('killfeed');
     this.reloadBar = $('reload-bar');
     this.reloadBarFill = this.reloadBar.querySelector('i');
+    this.weaponName = $('weapon-name');
+    this.weaponTag = $('weapon-tag');
 
     this._lastHealth = -1;
   }
@@ -56,8 +58,15 @@ export class HUD {
     this.magValue.textContent = mag;
     this.reserveValue.textContent = reserve;
     this.magValue.classList.toggle('low', mag <= 5 && mag > 0);
-    // 第三轮：空弹时数字变红闪烁
     this.magValue.classList.toggle('empty', mag <= 0);
+  }
+
+  setWeaponName(name, tag) {
+    if (this.weaponName) {
+      // 保留武器名文本，替换 tag
+      this.weaponName.childNodes[0].textContent = name + ' ';
+    }
+    if (this.weaponTag && tag) this.weaponTag.textContent = tag;
   }
 
   setKills(kills) {

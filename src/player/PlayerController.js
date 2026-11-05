@@ -25,9 +25,10 @@ export class PlayerController {
     this.landShake = 0;     // 落地震屏强度
     this._wasAirborne = false;
     this._peakFallSpeed = 0;
-    // 蹲伏 / 受击僵直
+    // 蹲伏 / 受击僵直 / 疾跑
     this.isCrouching = false;
     this.isSlow = false;
+    this.isSprinting = false;
     this.hitSlowTimer = 0;
     this.eyeHeight = PLAYER.eyeHeight;
     this.currentHeight = PLAYER.height;
@@ -58,8 +59,9 @@ export class PlayerController {
     const len = Math.hypot(dx, dz);
     if (len > 1) { dx /= len; dz /= len; }
 
-    // Shift 静步 / Ctrl 蹲伏（需求：静步更稳、蹲伏降低身位）
-    const slow = input.isDown('ShiftLeft') || input.isDown('ShiftRight');
+    // Shift 疾跑 / Alt 静步 / Ctrl 蹲伏
+    const sprint = input.isDown('ShiftLeft') || input.isDown('ShiftRight');
+    const slow = input.isDown('AltLeft') || input.isDown('AltRight');
     let wantCrouch = input.isDown('ControlLeft') || input.isDown('ControlRight');
     // 第三轮：起身前检测头顶空间，避免站起时卡进矮掩体
     if (!wantCrouch && this.isCrouching &&
@@ -68,9 +70,13 @@ export class PlayerController {
     }
     this.isCrouching = wantCrouch;
     this.isSlow = slow && !wantCrouch;
+    // 疾跑：必须按住方向键、非蹲伏、非静步
+    this.isSprinting = sprint && !wantCrouch && !slow && (ix !== 0 || iz !== 0);
 
     // 受击僵直：短时间内移动速度降低
-    let speed = wantCrouch ? PLAYER.crouchSpeed : (slow ? PLAYER.slowSpeed : PLAYER.walkSpeed);
+    let speed = wantCrouch ? PLAYER.crouchSpeed
+             : (this.isSprinting ? PLAYER.sprintSpeed
+             : (slow ? PLAYER.slowSpeed : PLAYER.walkSpeed));
     if (this.hitSlowTimer > 0) {
       this.hitSlowTimer -= dt;
       speed *= PLAYER.hitSlowFactor;
@@ -190,6 +196,7 @@ export class PlayerController {
     this.bobTime = 0;
     this.isCrouching = false;
     this.isSlow = false;
+    this.isSprinting = false;
     this.hitSlowTimer = 0;
     this.eyeHeight = PLAYER.eyeHeight;
     this.currentHeight = PLAYER.height;

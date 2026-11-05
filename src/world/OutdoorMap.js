@@ -368,6 +368,7 @@ export class OutdoorMap {
     const barrelMat = new THREE.MeshStandardMaterial({ color: 0x9a5a22, roughness: 0.5, metalness: 0.65 });
     const barrels = [
       [-24, -12], [-23.3, -11.1], [19, -9], [24, 9], [-13, 18], [12, -18], [-2, -19],
+      [-18, -8], [-17, -7], [21, 1], [22, 0], [-6, 17], [-4.5, 16],
     ];
     const barrelMesh = new THREE.InstancedMesh(barrelGeo, barrelMat, barrels.length);
     const dummy = new THREE.Object3D();
@@ -382,6 +383,59 @@ export class OutdoorMap {
     barrelMesh.castShadow = true;
     barrelMesh.receiveShadow = true;
     this.group.add(barrelMesh);
+
+    // 沙袋堆（低矮掩体，可蹲伏在后面）
+    const sandbagGeo = new THREE.BoxGeometry(1.0, 0.45, 0.55);
+    const sandbagMat = new THREE.MeshStandardMaterial({ color: 0x8a7a52, roughness: 0.95, metalness: 0.0 });
+    const sandbagGroups = [
+      { x: -14, z: -8, count: 3, ry: 0.3 },
+      { x: 14, z: -8, count: 3, ry: -0.25 },
+      { x: -8, z: 2, count: 2, ry: 0.8 },
+      { x: 8, z: 2, count: 2, ry: -0.7 },
+      { x: 0, z: -4, count: 3, ry: 0 },
+      { x: -19, z: 12, count: 2, ry: 0.5 },
+      { x: 19, z: 12, count: 2, ry: -0.4 },
+    ];
+    for (const sg of sandbagGroups) {
+      for (let i = 0; i < sg.count; i++) {
+        const ox = (i - (sg.count - 1) / 2) * 1.05;
+        const x = sg.x + ox * Math.cos(sg.ry);
+        const z = sg.z + ox * Math.sin(sg.ry);
+        const m = new THREE.Mesh(sandbagGeo, sandbagMat);
+        m.position.set(x, 0.225, z);
+        m.rotation.y = sg.ry;
+        m.castShadow = true;
+        m.receiveShadow = true;
+        this.group.add(m);
+        // 碰撞用 AABB 近似（忽略旋转）
+        this.collision.addBox(x, 0.225, z, 1.0, 0.45, 0.55, 'crate');
+      }
+    }
+
+    // 轮胎堆（中等高度掩体）
+    const tireGeo = new THREE.TorusGeometry(0.42, 0.16, 8, 16);
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x222426, roughness: 0.85, metalness: 0.1 });
+    const tireStacks = [
+      { x: -11, z: -12, n: 3 },
+      { x: 11, z: -12, n: 2 },
+      { x: -22, z: -5, n: 3 },
+      { x: 22, z: 5, n: 3 },
+      { x: -5, z: 14, n: 2 },
+      { x: 15, z: -3, n: 2 },
+    ];
+    for (const ts of tireStacks) {
+      for (let i = 0; i < ts.n; i++) {
+        const t = new THREE.Mesh(tireGeo, tireMat);
+        t.position.set(ts.x, 0.42 + i * 0.34, ts.z);
+        t.rotation.x = Math.PI / 2 + (i % 2) * 0.15;
+        t.rotation.z = i * 0.3;
+        t.castShadow = true;
+        t.receiveShadow = true;
+        this.group.add(t);
+      }
+      // 碰撞：近似为一个圆柱盒
+      this.collision.addBox(ts.x, ts.n * 0.17, ts.z, 0.8, ts.n * 0.34 + 0.2, 0.8, 'crate');
+    }
 
     // 地面黄色安全标线
     const lineMat = new THREE.MeshBasicMaterial({ color: 0xd0a72c, transparent: true, opacity: 0.38 });

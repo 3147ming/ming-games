@@ -18,7 +18,8 @@ export const PLAYER = {
   radius: 0.34,           // 水平碰撞半径
   height: 1.75,           // 碰撞体高度
   walkSpeed: 5.4,         // 正常移动
-  slowSpeed: 2.4,         // Shift 静步
+  slowSpeed: 2.4,         // Alt 静步（完全静音）
+  sprintSpeed: 8.6,       // Shift 疾跑（快但散布大）
   crouchSpeed: 2.6,       // Ctrl 蹲伏移动速度
   crouchEyeHeight: 1.05,  // 蹲伏时相机高度
   crouchHeight: 1.15,     // 蹲伏时碰撞体高度
@@ -37,40 +38,159 @@ export const PLAYER = {
 };
 
 // 玩家武器参数（对抗丧尸仍用枪械）
-export const WEAPON = {
-  name: 'M4A1',
-  magazineSize: 30,
-  reserveAmmo: 120,
-  fireInterval: 0.086,    // ≈ 700 RPM
-  reloadTime: 2.15,
-  damage: 24,
-  headshotMultiplier: 2.0,
-  limbMultiplier: 0.5,
-  armorReduction: 0.5,
-  armorCostPerDamage: 1.0,
-  reloadTimeTactical: 2.15,
-  reloadTimeEmpty: 2.55,
-  range: 90,
-  spreadBase: 0.008,
-  spreadMove: 0.022,
-  spreadPerShot: 0.0035,
-  spreadMax: 0.052,
-  spreadRecover: 0.85,
-  recoilPitch: 0.0125,
-  recoilYaw: 0.0045,
-  recoilRecover: 9.0,
-  recoilRamp: 0.06,
-  recoilRampMax: 2.2,
-  shakePerShot: 0.0022,
-  shakeMax: 0.012,
-  reloadInsertRatio: 0.55,
-  view: {
-    scale: 0.60,
-    position: { x: 0.185, y: -0.125, z: -0.47 },
-    rotation: { x: 0.0, y: 0.05, z: 0.015 },
-    offset: { x: 0, y: 0, z: 0.13 },
+// v0.4：多武器系统 —— rifle / pistol / shotgun，按 1/2/3 切换
+export const WEAPONS = {
+  rifle: {
+    id: 'rifle',
+    name: 'M4A1',
+    tag: '突击步枪',
+    magazineSize: 30,
+    reserveAmmo: 120,
+    fireInterval: 0.086,    // ≈ 700 RPM
+    reloadTime: 2.15,
+    damage: 24,
+    pellets: 1,             // 单发弹丸
+    spread: 0.012,          // 每发弹丸的额外散布（步枪很小）
+    headshotMultiplier: 2.0,
+    limbMultiplier: 0.5,
+    range: 90,
+    spreadBase: 0.008,
+    spreadMove: 0.022,
+    spreadPerShot: 0.0035,
+    spreadMax: 0.052,
+    spreadRecover: 0.85,
+    recoilPitch: 0.0125,
+    recoilYaw: 0.0045,
+    recoilRecover: 9.0,
+    recoilRamp: 0.06,
+    recoilRampMax: 2.2,
+    shakePerShot: 0.0022,
+    shakeMax: 0.012,
+    reloadInsertRatio: 0.55,
+    auto: true,             // 全自动
+    view: {
+      scale: 0.60,
+      position: { x: 0.14, y: -0.13, z: -0.32 },
+      rotation: { x: 0.02, y: -Math.PI / 2 + 0.04, z: 0.0 },
+      offset: { x: 0, y: 0, z: 0.13 },
+    },
+  },
+  pistol: {
+    id: 'pistol',
+    name: 'M1911',
+    tag: '手枪',
+    magazineSize: 12,
+    reserveAmmo: 72,
+    fireInterval: 0.18,     // 半自动
+    reloadTime: 1.55,
+    damage: 34,
+    pellets: 1,
+    spread: 0.006,
+    headshotMultiplier: 2.2,
+    limbMultiplier: 0.55,
+    range: 70,
+    spreadBase: 0.004,
+    spreadMove: 0.014,
+    spreadPerShot: 0.002,
+    spreadMax: 0.035,
+    spreadRecover: 0.9,
+    recoilPitch: 0.022,
+    recoilYaw: 0.008,
+    recoilRecover: 14.0,
+    recoilRamp: 0.0,
+    recoilRampMax: 1.0,
+    shakePerShot: 0.004,
+    shakeMax: 0.018,
+    reloadInsertRatio: 0.6,
+    auto: false,            // 半自动（必须松开再按）
+    view: {
+      scale: 0.42,
+      position: { x: 0.12, y: -0.12, z: -0.28 },
+      rotation: { x: 0.0, y: -Math.PI / 2 + 0.03, z: 0.0 },
+      offset: { x: 0, y: 0, z: 0.13 },
+    },
+  },
+  shotgun: {
+    id: 'shotgun',
+    name: 'M870',
+    tag: '霰弹枪',
+    magazineSize: 6,
+    reserveAmmo: 36,
+    fireInterval: 0.72,     // 泵动，慢
+    reloadTime: 2.8,
+    damage: 16,             // 每颗弹丸伤害
+    pellets: 8,             // 8 颗弹丸
+    spread: 0.045,          // 散布大
+    headshotMultiplier: 1.5,
+    limbMultiplier: 0.6,
+    range: 38,              // 射程短
+    spreadBase: 0.04,
+    spreadMove: 0.03,
+    spreadPerShot: 0.0,     // 泵动无热累积
+    spreadMax: 0.06,
+    spreadRecover: 1.0,
+    recoilPitch: 0.05,
+    recoilYaw: 0.018,
+    recoilRecover: 7.0,
+    recoilRamp: 0.0,
+    recoilRampMax: 1.0,
+    shakePerShot: 0.012,
+    shakeMax: 0.04,
+    reloadInsertRatio: 0.5,
+    auto: false,
+    view: {
+      scale: 0.66,
+      position: { x: 0.17, y: -0.14, z: -0.34 },
+      rotation: { x: 0.04, y: -Math.PI / 2 + 0.05, z: 0.0 },
+      offset: { x: 0, y: 0, z: 0.13 },
+    },
+  },
+  sniper: {
+    id: 'sniper',
+    name: 'AWM',
+    tag: '重狙击枪',
+    magazineSize: 5,
+    reserveAmmo: 25,
+    fireInterval: 1.35,     // 栓动
+    reloadTime: 3.2,
+    damage: 200,            // 一枪一个（除 brute 外都是秒）
+    pellets: 1,
+    pierce: 3,              // 穿透最多 3 个目标
+    spread: 0.0,            // 静止时完全无散布
+    headshotMultiplier: 2.5,
+    limbMultiplier: 0.8,
+    range: 180,
+    spreadBase: 0.0,
+    spreadMove: 0.028,
+    spreadPerShot: 0.0,
+    spreadMax: 0.025,
+    spreadRecover: 1.0,
+    recoilPitch: 0.065,
+    recoilYaw: 0.022,
+    recoilRecover: 6.0,
+    recoilRamp: 0.0,
+    recoilRampMax: 1.0,
+    shakePerShot: 0.018,
+    shakeMax: 0.05,
+    reloadInsertRatio: 0.5,
+    auto: false,
+    view: {
+      scale: 0.72,
+      position: { x: 0.16, y: -0.13, z: -0.36 },
+      rotation: { x: 0.0, y: -Math.PI / 2 + 0.02, z: 0.0 },
+      offset: { x: 0, y: 0, z: 0.13 },
+    },
   },
 };
+
+// 兼容旧代码：默认武器 = 步枪
+export const WEAPON = WEAPONS.rifle;
+
+// 武器切换顺序
+export const WEAPON_ORDER = ['rifle', 'pistol', 'shotgun', 'sniper'];
+
+// 初始携带的武器
+export const WEAPON_UNLOCKED = ['rifle', 'pistol', 'shotgun', 'sniper'];
 
 // ---------------- 丧尸（敌人） ----------------
 // 铁律：普通丧尸（walker / brute）只有近战，**没有任何枪械参数**。
@@ -81,7 +201,7 @@ export const ENEMY = {
   alertTime: 5.0,         // 失去视野后的警戒搜索时间
   flinchTime: 0.22,       // 受击抖动时间
   deathBodyTime: 5.0,     // 尸体停留时间
-  turnSpeed: 8,
+  turnSpeed: 5,
   radius: 0.4,
   height: 1.8,
   bodyHeight: 0.95,       // 身体命中球中心高度
@@ -97,11 +217,11 @@ export const ENEMY = {
       name: '普通丧尸',
       maxHealth: 90,
       patrolSpeed: 1.5,
-      chaseSpeed: 3.5,
+      chaseSpeed: 3.0,
       damage: 11,           // 爪击/撕咬
-      attackRange: 2.35,    // 近战触及距离
-      attackInterval: 1.15, // 两次攻击间隔
-      windup: 0.38,         // 抬手到判定的前摇
+      attackRange: 2.15,    // 近战触及距离
+      attackInterval: 1.25, // 两次攻击间隔
+      windup: 0.42,         // 抬手到判定的前摇
       keepDistance: 1.35,
       melee: true,
       scaleMul: 1.0,
@@ -141,6 +261,58 @@ export const ENEMY = {
       scaleMul: 1.18,
       tint: 0x8a6a52,
     },
+    // 迅捷丧尸：高速低血，快速突进近战
+    swift: {
+      id: 'swift',
+      name: '迅捷丧尸',
+      maxHealth: 48,
+      patrolSpeed: 2.4,
+      chaseSpeed: 5.2,
+      damage: 8,
+      attackRange: 1.9,
+      attackInterval: 0.9,
+      windup: 0.22,
+      keepDistance: 1.0,
+      melee: true,
+      scaleMul: 0.88,
+      tint: 0xc8b87a,
+    },
+    // 自爆丧尸：靠近玩家后倒计时自爆，范围伤害
+    bomber: {
+      id: 'bomber',
+      name: '自爆丧尸',
+      maxHealth: 60,
+      patrolSpeed: 1.6,
+      chaseSpeed: 3.2,
+      damage: 45,
+      attackRange: 3.2,
+      attackInterval: 3.5,
+      windup: 0.0,
+      keepDistance: 1.2,
+      melee: false,
+      bomber: true,
+      explodeRadius: 4.2,
+      fuseTime: 0.85,
+      scaleMul: 1.05,
+      tint: 0xb85a3a,
+    },
+    // 嚎叫者：发现玩家后嘶吼，触发周围所有丧尸警觉
+    howler: {
+      id: 'howler',
+      name: '嚎叫者',
+      maxHealth: 75,
+      patrolSpeed: 1.8,
+      chaseSpeed: 3.2,
+      damage: 8,
+      attackRange: 2.1,
+      attackInterval: 2.5,
+      windup: 0.5,
+      keepDistance: 2.0,
+      melee: true,
+      howler: true,
+      scaleMul: 1.02,
+      tint: 0x8877cc,
+    },
   },
 
   spawnPoints: [
@@ -168,15 +340,15 @@ export const MATCH = {
   waves: [
     // total：本波总数；alive：同时存活上限；mix：变体配额
     {
-      total: 6, alive: 4, mix: { walker: 6 },
+      total: 6, alive: 4, mix: { walker: 5, swift: 1 },
       healthMul: 1.00, damageMul: 1.00, accuracyMul: 0.85, speedMul: 1.00,
     },
     {
-      total: 8, alive: 5, mix: { walker: 6, spitter: 2 },
+      total: 8, alive: 5, mix: { walker: 4, spitter: 2, swift: 1, bomber: 1 },
       healthMul: 1.10, damageMul: 1.05, accuracyMul: 1.00, speedMul: 1.05,
     },
     {
-      total: 10, alive: 6, mix: { walker: 7, spitter: 2, brute: 1 },
+      total: 10, alive: 6, mix: { walker: 3, spitter: 2, brute: 1, swift: 2, bomber: 1, howler: 1 },
       healthMul: 1.22, damageMul: 1.15, accuracyMul: 1.10, speedMul: 1.08,
     },
   ],

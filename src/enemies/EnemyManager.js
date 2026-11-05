@@ -48,6 +48,7 @@ export class EnemyManager {
         onSpit: (from, to, e) => this._handleSpit(from, to, e),
         onMelee: (e) => this._handleMelee(e),
         onPlayerHit: (dmg) => this._handlePlayerHit(dmg),
+        onExplode: (e) => this._handleExplode(e),
       });
       enemy.root.visible = false;
       enemy.dead = true;
@@ -234,6 +235,18 @@ export class EnemyManager {
     }
   }
 
+  _handleExplode(enemy) {
+    // 爆炸视觉特效
+    if (this.effects) {
+      this.effects.spawnExplosion(enemy.position.clone(), enemy.variant.explodeRadius);
+    }
+    // 爆炸音效（用 fire2 低频代替爆炸声）
+    if (this.audio) {
+      const dist = this.player ? this.player.position.distanceTo(enemy.position) : 30;
+      this.audio.play('fire2', { volume: this.audio.distanceVolume(dist) * 1.2, rate: 0.28 });
+    }
+  }
+
   _handlePlayerHit(dmg) {
     if (this.audio) this.audio.play('hurt', { volume: 0.55, rate: 1.0 });
     if (this.hud) {
@@ -271,6 +284,17 @@ export class EnemyManager {
       if (hit && (!best || hit.distance < best.distance)) best = hit;
     }
     return best;
+  }
+
+  /** 穿透射击：返回沿射线方向所有被命中的敌人（按距离排序） */
+  raycastAll(origin, dir, maxDist) {
+    const hits = [];
+    for (const e of this.enemies) {
+      const hit = e.raycast(origin, dir, maxDist);
+      if (hit) hits.push(hit);
+    }
+    hits.sort((a, b) => a.distance - b.distance);
+    return hits;
   }
 
   /** 重开：清场并重新开始第一波 */

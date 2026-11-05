@@ -10,6 +10,7 @@ export class Input {
     this.mouseDown = false;         // 左键是否按住
     this.dx = 0;                    // 本帧鼠标水平位移
     this.dy = 0;                    // 本帧鼠标垂直位移
+    this.wheelDelta = 0;            // 本帧滚轮累计
     this.locked = false;
     this.enabled = true;            // 暂停/死亡时禁用视角移动
     this.onLockChange = null;
@@ -41,6 +42,12 @@ export class Input {
     });
     // 禁止右键菜单，保持沉浸感
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // 滚轮（切枪用）
+    this.canvas.addEventListener('wheel', (e) => {
+      if (!this.enabled) return;
+      this.wheelDelta += e.deltaY;
+    }, { passive: true });
 
     // 鼠标移动（指针锁定后使用 movementX/Y；未锁定时同样累计，作为降级方案）
     document.addEventListener('mousemove', (e) => {
@@ -104,6 +111,13 @@ export class Input {
   consumeMouseDelta() {
     const d = { x: this.dx, y: this.dy };
     this.dx = this.dy = 0;
+    return d;
+  }
+
+  /** 取出并清空滚轮累计（有正负） */
+  consumeWheel() {
+    const d = this.wheelDelta;
+    this.wheelDelta = 0;
     return d;
   }
 

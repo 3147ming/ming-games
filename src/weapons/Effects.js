@@ -156,13 +156,13 @@ export class Effects {
   }
 
   /** 子弹曳光（起点 -> 终点） */
-  spawnTracer(from, to) {
+  spawnTracer(from, to, opacity = 0.85) {
     const item = this._getTracer();
     const attr = item.line.geometry.attributes.position;
     attr.setXYZ(0, from.x, from.y, from.z);
     attr.setXYZ(1, to.x, to.y, to.z);
     attr.needsUpdate = true;
-    item.line.material.opacity = 0.85;
+    item.line.material.opacity = opacity;
     item.line.visible = true;
     item.life = item.maxLife;
   }
@@ -236,6 +236,43 @@ export class Effects {
     }
   }
 
+  /** 自爆丧尸爆炸：火球 + 火星向外扩散 */
+  spawnExplosion(center, radius) {
+    // 火球核心（多个 muzzle 粒子叠加）
+    for (let i = 0; i < 8; i++) {
+      const item = this._getMuzzle();
+      item.sprite.position.copy(center);
+      item.sprite.position.y += 0.5;
+      item.sprite.scale.setScalar(item.baseScale * (2.5 + Math.random() * 2));
+      item.sprite.material.opacity = 1;
+      item.sprite.visible = true;
+      item.life = item.maxLife * 1.5;
+      const ang = Math.random() * Math.PI * 2;
+      const sp = 1.5 + Math.random() * 2.5;
+      item.vx = Math.cos(ang) * sp;
+      item.vy = 0.5 + Math.random() * 1.5;
+      item.vz = Math.sin(ang) * sp;
+    }
+    // 火星飞溅
+    for (let i = 0; i < 12; i++) {
+      const item = this._getSpark();
+      item.sprite.position.copy(center);
+      item.sprite.position.y += 0.5;
+      item.sprite.scale.setScalar(item.baseScale * (1.5 + Math.random()));
+      item.sprite.material.opacity = 1;
+      item.sprite.visible = true;
+      item.life = item.maxLife * 2;
+      const ang = Math.random() * Math.PI * 2;
+      const sp = 3 + Math.random() * 5;
+      item.sprite.position.x += Math.cos(ang) * 0.3;
+      item.sprite.position.z += Math.sin(ang) * 0.3;
+      // 复用 spark 的 vx/vy/vz（在 update 里处理）
+      item.vx = Math.cos(ang) * sp;
+      item.vy = 1 + Math.random() * 2.5;
+      item.vz = Math.sin(ang) * sp;
+    }
+  }
+
   /** 每帧更新 */
   update(dt) {
     for (const t of this.tracerPool) {
@@ -251,7 +288,13 @@ export class Effects {
         const k = s.life / s.maxLife;
         s.sprite.material.opacity = k;
         s.sprite.scale.setScalar(s.baseScale * (1.6 - k * 0.6));
-        if (s.life <= 0) s.sprite.visible = false;
+        // 爆炸火星带速度时更新位置
+        if (s.vx || s.vy || s.vz) {
+          s.sprite.position.x += s.vx * dt;
+          s.sprite.position.y += (s.vy -= 3.0 * dt) * dt;
+          s.sprite.position.z += s.vz * dt;
+        }
+        if (s.life <= 0) { s.sprite.visible = false; s.vx = s.vy = s.vz = 0; }
       }
     }
     for (const b of this.bloodPool) {

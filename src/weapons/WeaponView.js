@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from '../../vendor/three/utils/SkeletonUtils.js';
-import { WEAPON } from '../config/weapon.js';
+import { WEAPON, WEAPONS } from '../config/weapon.js';
 
 /** 生成枪口闪光贴图 */
 function flashTexture() {
@@ -242,6 +242,27 @@ export class WeaponView {
     this.flash.material.rotation = Math.random() * Math.PI * 2;
     this.flash.scale.setScalar(0.18 + Math.random() * 0.1);
     this.flashLight.intensity = 2.2;
+  }
+
+  /** 切换武器：调整模型缩放 / 位置 / 旋转 */
+  setWeapon(weaponConfig) {
+    const v = weaponConfig.view;
+    this.basePos.set(v.position.x, v.position.y, v.position.z);
+    this.baseRot.set(v.rotation.x, v.rotation.y, v.rotation.z);
+    if (this.model) this.model.scale.setScalar(v.scale);
+    this.pivot.position.copy(this.basePos);
+    this.pivot.rotation.copy(this.baseRot);
+    if (this._naturalSize) {
+      const n = this._naturalSize;
+      const s = v.scale;
+      const d = n.z * s;
+      const off = v.offset || {};
+      this.muzzleLocal.set(
+        off.x || 0,
+        (off.y || 0) + n.y * s * 0.10,
+        (off.z || 0) - d / 2 + 0.01
+      );
+    }
   }
 
   /**
