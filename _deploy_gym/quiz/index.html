@@ -1252,10 +1252,11 @@ function addWeak(item){
     if(!ex.sol&&item.sol)ex.sol=item.sol;
     if(!ex.steps&&item.steps)ex.steps=item.steps;
     if(ex.diff==null&&item.diff!=null)ex.diff=item.diff;
+    if(!ex.tag&&item.tag)ex.tag=item.tag;
   }else{
     a.push({n:1,t:Date.now(),type:item.type,diff:item.diff,q:item.q,a:item.a,
       opts:item.opts?item.opts.slice():null,code:item.code,exp:item.exp,sol:item.sol,steps:item.steps,
-      fillin:item.fillin,pick:item.pick||null,src:item.src||null,srs:srsInit()});
+      fillin:item.fillin,pick:item.pick||null,src:item.src||null,tag:item.tag||'',srs:srsInit()});
   }
   saveWeak(a);
 }
@@ -1513,6 +1514,17 @@ function openIDB(){return new Promise(function(res,rej){try{var r=indexedDB.open
 function storeBlob(file,cb){openIDB().then(function(db){var tx=db.transaction("blobs","readwrite");var key="b"+Date.now()+Math.floor(Math.random()*1e6);tx.objectStore("blobs").put(file,key);tx.oncomplete=function(){cb(key);};tx.onerror=function(){cb(null);};}).catch(function(){cb(null);});}
 function loadBlob(key,cb){openIDB().then(function(db){var tx=db.transaction("blobs","readonly");var rq=tx.objectStore("blobs").get(key);rq.onsuccess=function(){cb(rq.result||null);};rq.onerror=function(){cb(null);};}).catch(function(){cb(null);});}
 /* ===== 知识问答 独立应用 UI 层（书架式 + 实力检测 + AI/免费建题库 + 背景音乐） ===== */
+/*
+C 代码规范（本项目统一）：
+1) 缩进一律 4 个空格，不用 Tab；
+2) 控制结构（if/else/for/while/do/switch）与函数的左花括号另起一行；
+3) 每条语句独立一行，行尾分号；
+4) 二元运算符两侧各一个空格（= + - * / % == && ||）；
+5) 单行 if (...) 语句 改为带花括号的多行块；
+6) 变量名要有意义（a/b/i 允许用于循环与示例，其余用 sum/count/max 等）；
+7) 参考代码（sol）必须完整可编译：带 #include <stdio.h>、int main(void)、return 0;
+   题面代码允许是片段（不必完整可编译），但风格必须符合 1~6。
+*/
 (function(){
 'use strict';
 // 共享全局状态与框架函数（S/shuffle/ri/h/clearNode/later/esc、score/total/ok/qidx/qlist/
@@ -1740,6 +1752,8 @@ function makeBook(icon,name,bk,cn,best,count,isCustom){
     delete custom[cn];saveCustom(custom);renderShelf();toast('🗑 已删除题库「'+cn+'」');};b.appendChild(del);}
   b.appendChild(ht('div','ic',icon));
   b.appendChild(ht('div','nm',name));
+  /* 块4：编程卡片副标题 —— only 显示所选语言，否则「全部语言」 */
+  if(bk==='code'){var _st2=codeLangState();b.appendChild(ht('div','muted',_st2.mode==='only'?_st2.langs.map(langName).join(' · '):'全部语言'));}
   var meta=h('div','meta');
   if(count&&String(count).length>8)meta.style.flexWrap='wrap';
   var _hasBest=(best!=null&&best!=='');   /* C6：0 / 负分也是成绩，只有 null 才是未挑战 */
@@ -1780,7 +1794,20 @@ function pickDiffPanel(bk,cb){
   if(defSel>0&&ds[defSel-1]&&isFinite(stdAvail(bk))&&stdAvail(bk)<=0)defSel=0;
   var ov=overlayPanel((T.icon||'')+' '+T.name+' · 选择难度','diff');
   ov.p.appendChild(ht('div','hint',(bk==='math'?'🎓 按学业阶段出题：':(bk==='code'?'💻 按学习进度出题（已按你掌握的语言过滤）：':'⚙️ 选择难度，题量与扣分随档位变化'))+'也可选「🤖 自动匹配」无限刷题、难度实时跟着你走'));
-  if(bk==='code'){var p=getCodeProfile();if(p&&p.done&&p.langs&&p.langs.length){ov.p.appendChild(ht('div','okmsg','已检测：'+p.langs.map(langName).join(' · ')+' · '+levelName(p.rank)));}}
+  /* 块4：语言状态三态可见 —— only 保留检测结果；unset 红字警示可点进问卷；all 灰字说明可改 */
+  if(bk==='code'){
+    var _st=codeLangState();
+    if(_st.mode==='only'){
+      var p=getCodeProfile();
+      ov.p.appendChild(ht('div','okmsg','已检测：'+_st.langs.map(langName).join(' · ')+' · '+levelName(p.rank)));
+    }else{
+      var _langTip=ht('div',_st.mode==='unset'?'warn':'muted',_st.mode==='unset'?'⚠️ 尚未设置语言：当前会出全部语言题（含 Java / Python / JS）。点这里只出 C / C++':'当前出全部语言题（你选择过「跳过」）· 点这里指定语言');
+      _langTip.style.cursor='pointer';
+      _langTip.style.textDecoration='underline';
+      _langTip.onclick=function(){closeOverlay(ov);codeQuestionnaire(function(){pickDiffPanel(bk,cb);});};
+      ov.p.appendChild(_langTip);
+    }
+  }
   var dr=h('div','diffrow');
   PANEL.forEach(function(df,i){
     var b=ht('button','diffbtn'+(i===defSel?' sel':''));
@@ -1859,7 +1886,8 @@ function sectionGen(bk,n,diff){
      CODE_TOPICS 的 mkCodeQ 每题自带同类干扰项，答案当场算出来。 */
   if(bk==='code'&&QA_TYPES.code.genSection)qs=QA_TYPES.code.genSection(n,diff,qaSection);
   if(!qs||!qs.length)qs=QA_TYPES[bk].gen(n,diff);
-  return applySection(qs);
+  var out=bk==='code'?langGuard(qs):qs;
+  return applySection(out);
 }
 /* C3 补：自动匹配（无限模式）原本直接调 engine_core 的 genNextAuto() → T.gen()，
    绕过了 sectionGen ⟹ 编程选择题又掉回旧 POOLS.code 的硬凑干扰项，
@@ -1870,6 +1898,7 @@ function genAutoOne(){
   var bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
   if(bk&&QA_TYPES[bk]){
     var qs=sectionGen(bk,1,autoQDiff());   /* C7：挑战中出 promoRank 的题 */
+    if(bk==='code')qs=langGuard(qs);
     if(qs&&qs.length&&qs[0]&&qs[0].q)return qs[0];
   }
   return genNextAuto();
@@ -1890,7 +1919,11 @@ function setHandMode(on){
   if(locked)return;
   if(typeKey!=='b:code'||qaSection!=='code'){toast('手写代码只在「⌨️ 程序编写」板块可用');return;}
   handMode=!!on;
-  if(handMode){qlist[qidx]=genHandTask(autoMode?autoQDiff():Math.max(0,curDiff));}
+  if(handMode){
+    var _ht=genHandTask(autoMode?autoQDiff():Math.max(0,curDiff));
+    if(_ht){qlist[qidx]=_ht;}
+    else{toast('当前语言暂无手写题，已切回普通题');handMode=false;qlist[qidx]=sectionGen('code',1,Math.max(0,curDiff))[0];}
+  }
   else{qlist[qidx]=sectionGen('code',1,Math.max(0,curDiff))[0];}
   showQuestion();
 }
@@ -2064,6 +2097,7 @@ function showQuestion(){
       var _rec=loadRecent(_rk),_tries=0,_nq=null,_nk='';
       do{
         _nq=(typeKey==='b:code'&&qaSection==='code'&&handMode)?genHandTask(autoQDiff()):genAutoOne();
+        if(!_nq){if(handMode){toast('当前语言暂无手写题，已切回普通题');handMode=false;}_nq=genAutoOne();}
         _nk=_nq.q+(_nq.code?('|'+_nq.code):'');
         _tries++;
       }while(_tries<8&&_rec.indexOf(_nk)>=0);
@@ -2075,7 +2109,11 @@ function showQuestion(){
     Q=qlist[qidx];
     /* 手写模式开关一旦打开，整局都出待手写题：以前只替换当前这一题，下一题又跳回读代码题，
        开关还显示「✍️ 手写代码：开」，非常误导。 */
-    if(typeKey==='b:code'&&qaSection==='code'&&handMode&&Q&&!Q.hand){Q=genHandTask(Math.max(0,curDiff));qlist[qidx]=Q;}
+    if(typeKey==='b:code'&&qaSection==='code'&&handMode&&Q&&!Q.hand){
+      var _ht=genHandTask(Math.max(0,curDiff));
+      if(_ht){Q=_ht;qlist[qidx]=Q;}
+      else{toast('当前语言暂无手写题，已切回普通题');handMode=false;}
+    }
   }
   if(!Q){endQuiz();return;}
   var bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
@@ -2428,7 +2466,7 @@ function markUnknown(){
   if(first){
     answeredCount++;   /* 4.0.1-2：点「不会」也算作答过（自动模式结算分母） */
     if(Q&&!reviewMode&&!Q.hand){
-      addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:'（不会）',src:Q.src,time:Date.now()});
+      addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:'（不会）',tag:Q.tag||'',src:Q.src,time:Date.now()});
       recorded=true;
     }
     /* C2：SRS 复习里点「不会」—— 该题间隔重置，due 改为明天，不再连续出现 */
@@ -2437,7 +2475,7 @@ function markUnknown(){
        4.0.1-3：手写题不进来 —— 与 answer() 的错题分支对齐（重练要再烧一次 AI 评判，
        而且代码题被塞进「只练这几题」会当填空渲染）。 */
     if(Q&&!reviewMode&&!Q.hand&&Q.q){
-      roundWrong.push({q:Q.q,a:Q.a,given:'（未作答）',opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,src:Q.src});
+      roundWrong.push({q:Q.q,a:Q.a,given:'（未作答）',opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,src:Q.src,tag:Q.tag||''});
     }
     if(autoMode){
       var _bk=(typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
@@ -2544,7 +2582,7 @@ function answer(correct,given,ans,btn,opt){
         /* P1-2：回顾里答错要计数 +1（此前只提示「保留」，次数不会涨） */
         var _wk=(Q&&Q.weak)||{};
         addWeak({type:_wk.type||typeKey,diff:_wk.diff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,
-          code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:given||null,src:Q.src});
+          code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:given||null,tag:Q.tag||'',src:Q.src});
         fbR.textContent='❌ 正确答案：'+ans+'（保留在薄弱题，错误次数 +1）';
       }
       appendSol(fbR,Q);appendSteps(fbR,Q);appendExp(fbR,Q);appendSrc(fbR,Q);if(canRewrite(Q))appendRewriteChip(fbR);appendNextChip(fbR);
@@ -2567,9 +2605,9 @@ function answer(correct,given,ans,btn,opt){
       if(_pen){score-=5;}
       /* 首次答错也沉淀进薄弱题（结算页文案一直说「错题会进薄弱题」，之前只有「😵 不会」会记）。
          重试答错不重复记 —— 同一题只留一条。 */
-      if(Q&&!Q.hand)addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:(given==null?null:String(given)),src:Q.src,time:Date.now()});
+      if(Q&&!Q.hand)addWeak({type:typeKey,diff:curDiff,q:Q.q,a:Q.a,opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,fillin:Q.fillin,pick:(given==null?null:String(given)),tag:Q.tag||'',src:Q.src,time:Date.now()});
       /* P2-A1：本局错题回顾（手写题不进来：重练要再烧一次 AI 评判） */
-      if(Q&&!Q.hand&&Q.q)roundWrong.push({q:Q.q,a:Q.a,given:(given==null?'（未作答）':String(given)),opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,src:Q.src});
+      if(Q&&!Q.hand&&Q.q)roundWrong.push({q:Q.q,a:Q.a,given:(given==null?'（未作答）':String(given)),opts:Q.opts?Q.opts.slice():null,code:Q.code,exp:Q.exp,sol:Q.sol,steps:Q.steps,src:Q.src,tag:Q.tag||''});
     }
     if(autoMode&&_bk&&QA_TYPES[_bk]&&QA_TYPES[_bk].diffs){
       if(promoState==='challenge'){
@@ -2642,10 +2680,12 @@ function retryRoundWrong(){
   reviewMode=true;reviewOne=false;autoMode=false;quizOver=false;
   typeKey='b:round';typeLabel='重练本局错题';qaSection='choice';handMode=false;
   navPush('quiz');
-  qlist=roundWrong.map(function(w){
+  var gl=langGuard(roundWrong.map(function(w){
     return {q:w.q,a:w.a,opts:(w.opts&&w.opts.length)?w.opts.slice():null,
-            code:w.code,exp:w.exp,sol:w.sol,steps:w.steps,src:w.src,weak:null};
-  });
+            code:w.code,exp:w.exp,sol:w.sol,steps:w.steps,src:w.src,tag:w.tag,weak:null};
+  }));
+  if(!gl.length){toast('✅ 本轮错题都练完了');return;}
+  qlist=gl;
   ok=0;qidx=0;score=0;answeredCount=0;total=qlist.length;showQuestion();
 }
 function finish(sc){
@@ -2738,7 +2778,7 @@ function finish(sc){
 /* ---------- 薄弱题回顾 ---------- */
 function weakToQ(x){
   return {q:x.q,a:x.a,opts:(x.opts&&x.opts.length)?x.opts.slice():null,code:x.code,
-          exp:x.exp,sol:x.sol,steps:x.steps,src:x.src,fillin:x.fillin,weak:x};
+          exp:x.exp,sol:x.sol,steps:x.steps,src:x.src,fillin:x.fillin,tag:x.tag,weak:x};
 }
 function weakCatName(t){
   var k=String(t||'');
@@ -2933,9 +2973,11 @@ function startReview(){
 /* 单题练：只做这一道，答对移除、答错计数 +1，结算页回题本 */
 function startReviewOne(x){
   if(!x)return;
+  qlist=langGuard([weakToQ(x)]);
+  if(!qlist.length){toast('这题不属于当前语言，已跳过');return;}
   reviewMode=true;reviewOne=true;autoMode=false;quizOver=false;typeKey='b:weak';typeLabel='回顾薄弱题';qaSection='choice';handMode=false;
   navPush('quiz');
-  qlist=[weakToQ(x)];ok=0;qidx=0;score=0;answeredCount=0;total=1;roundWrong=[];promoReset();showQuestion();
+  ok=0;qidx=0;score=0;answeredCount=0;total=1;roundWrong=[];promoReset();showQuestion();
 }
 
 /* ---------- 联网 ---------- */
@@ -3519,13 +3561,35 @@ function codeEstimateParts(){
   for(k in POOLS.code)if(POOLS.code.hasOwnProperty(k))manual+=POOLS.code[k].length;
   return {manual:manual,gen:Math.max(0,n-manual),total:n};
 }
+/* 语言档案三态：
+   'unset'  = 从没做过检测（或数据损坏）→ 出全部语言，但 UI 必须显式警示
+   'all'    = 用户明确「跳过 / 全部语言」→ 出全部语言，不警示
+   'only'   = 用户显式勾选了语言 → 严格只出这些 + all
+   旧数据兼容：done=true 且 langs=[] 且没有 all 字段 → 视为 'unset'（疑似「跳过」旧写法） */
+function codeLangState(){
+  var p=null;
+  try{p=JSON.parse(S.getItem(CODE_PROFILE_KEY)||'null');}catch(e){p=null;}
+  if(!p||!p.done)return {mode:'unset',langs:[]};
+  if(p.all)return {mode:'all',langs:[]};
+  if(p.langs&&p.langs.length)return {mode:'only',langs:p.langs.slice()};
+  return {mode:'unset',langs:[]};
+}
 /* 语言过滤：读过实力检测档案就只出勾选语言 + 通用题 */
 function codeAllowedLangs(){
-  try{
-    var p=JSON.parse(S.getItem('bt_qa_profile_code')||'null');
-    if(p&&p.done&&p.langs&&p.langs.length)return p.langs.concat(['all']);
-  }catch(e){}
-  return null;
+  var st=codeLangState();
+  if(st.mode==='only')return st.langs.concat(['all']);
+  return null;                     /* unset / all → 不过滤 */
+}
+/* 最终语言闸：档案为 only 时，凡 tag 不在允许列表且不是 all 的题一律丢弃。
+   放在所有取题出口的最后一步，防止任何补池/兜底/回顾路径把别的语言带进来。 */
+function langGuard(qs){
+  var allowed=codeAllowedLangs();
+  if(!allowed)return qs||[];
+  return (qs||[]).filter(function(q){
+    if(!q)return false;
+    var t=String(q.tag||'all');
+    return t==='all'||allowed.indexOf(t)>=0;
+  });
 }
 /* 出题：人工题限量（保证不把生成器饿死）+ 近期去重（跨局不撞题）+ 生成器补齐 */
 function codeLoadRecent(k){
@@ -3787,28 +3851,28 @@ var CODE_TOPICS=[
   {k:'if-else 判断',lang:'c',ranks:[1],kb:9,gen:function(){
     var x=riN(1,9),hit=x>3;
     return mkCodeQ('这段 C 代码输出什么？',
-      'int x = '+x+';\nif (x > 3) printf("A");\nelse printf("B");',
+      'int x = '+x+';\nif (x > 3)\n{\n    printf("A");\n}\nelse\n{\n    printf("B");\n}',
       hit?'A':'B',[hit?'B':'A','C','3'],
       'x='+x+'，条件 x>3 是'+(hit?'真':'假')+'，'+(hit?'走 if 输出 A':'走 else 输出 B'));
   }},
   {k:'if-else 链',lang:'c',ranks:[1],kb:9,gen:function(){
     var x=riN(1,9),r=x>=7?'大':(x>=4?'中':'小');
     return mkCodeQ('这段 C 代码输出什么？',
-      'int x = '+x+';\nif (x >= 7) printf("大");\nelse if (x >= 4) printf("中");\nelse printf("小");',
+      'int x = '+x+';\nif (x >= 7)\n{\n    printf("大");\n}\nelse if (x >= 4)\n{\n    printf("中");\n}\nelse\n{\n    printf("小");\n}',
       r,[r==='大'?'中':'大',r==='小'?'中':'小','零'],
       '从上往下找第一个成立的条件：x='+x+'，'+(r==='大'?'x>=7 成立':(r==='中'?'x>=7 不成立，x>=4 成立':'x>=7 与 x>=4 都不成立'))+'，输出「'+r+'」');
   }},
   {k:'逻辑与或非',lang:'c',ranks:[1],kb:12,gen:function(){
     var a=riN(2,4),b=riN(6,9),hit=(a>1&&b<5);
     return mkCodeQ('这段 C 代码输出什么？',
-      'int a = '+a+', b = '+b+';\nif (a > 1 && b < 5) printf("Y");\nelse printf("N");',
+      'int a = '+a+', b = '+b+';\nif (a > 1 && b < 5)\n{\n    printf("Y");\n}\nelse\n{\n    printf("N");\n}',
       hit?'Y':'N',[hit?'N':'Y','1','0'],
       'a>1 是'+(a>1?'真':'假')+'，b<5 是'+(b<5?'真':'假')+'，&& 要求两边都真：'+(hit?'输出 Y':'输出 N'));
   }},
   {k:'switch 分支',lang:'c',ranks:[1,2],kb:3,gen:function(){
     var x=riN(1,3);
     return mkCodeQ('这段 C 代码输出什么？',
-      'int x = '+x+';\nswitch (x) {\n  case 1: printf("A"); break;\n  case 2: printf("B"); break;\n  default: printf("C");\n}',
+      'int x = '+x+';\nswitch (x)\n{\ncase 1:\n    printf("A");\n    break;\ncase 2:\n    printf("B");\n    break;\ndefault:\n    printf("C");\n}',
       x===1?'A':(x===2?'B':'C'),[x===1?'B':(x===2?'C':'A'),'D','X'],
       'switch 按 x 的值匹配 case：x='+x+'，'+(x===1?'匹配 case 1 输出 A':(x===2?'匹配 case 2 输出 B':'没有匹配项走 default 输出 C')));
   }},
@@ -3823,7 +3887,7 @@ var CODE_TOPICS=[
   {k:'while 累加',lang:'c',ranks:[1],kb:7,gen:function(){
     var n=riN(3,9);
     return mkCodeQ('这段 C 代码输出什么？',
-      'int i = 1, s = 0;\nwhile (i <= '+n+') { s += i; i++; }\nprintf("%d", s);',
+      'int i = 1, s = 0;\nwhile (i <= '+n+')\n{\n    s += i;\n    i++;\n}\nprintf("%d", s);',
       String(n*(n+1)/2),[String(n*n),String(n*(n-1)/2),String(n+1)],
       '循环把 1 到 '+n+' 全加起来，等差数列求和 '+(n*(n+1))+'÷2 = '+(n*(n+1)/2));
   }},
@@ -3838,14 +3902,14 @@ var CODE_TOPICS=[
   {k:'break 中断',lang:'c',ranks:[2],kb:4,gen:function(){
     var k=riN(3,6);
     return mkCodeQ('这段 C 代码输出什么？',
-      'for (int i = 0; i < 10; i++) {\n  if (i == '+k+') break;\n}\nprintf("%d", i);',
+      'for (int i = 0; i < 10; i++)\n{\n    if (i == '+k+')\n    {\n        break;\n    }\n}\nprintf("%d", i);',
       String(k),[String(k+1),String(k-1),String(10)],
       'i 到 '+k+' 时命中 if 触发 break，立即跳出循环，此时 i = '+k);
   }},
   {k:'continue 跳过',lang:'c',ranks:[2],kb:5,gen:function(){
     var n=riN(4,8);
     return mkCodeQ('这段 C 代码输出什么？',
-      'int s = 0;\nfor (int i = 1; i <= '+n+'; i++) {\n  if (i % 2 == 0) continue;\n  s += i;\n}\nprintf("%d", s);',
+      'int s = 0;\nfor (int i = 1; i <= '+n+'; i++)\n{\n    if (i % 2 == 0)\n    {\n        continue;\n    }\n    s += i;\n}\nprintf("%d", s);',
       String(squareSumOdd(n)),[String(n*(n+1)/2),String(squareSumOdd(n)+1),String(n)],
       'continue 跳过偶数，只加奇数：1+3+… 到 '+n+' = '+squareSumOdd(n));
   }},
@@ -3859,7 +3923,7 @@ var CODE_TOPICS=[
   {k:'双重循环计数',lang:'c',ranks:[2,3],kb:4,gen:function(){
     var n=riN(3,6);
     return mkCodeQ('这段 C 代码输出什么？',
-      'int s = 0;\nfor (int i = 0; i < '+n+'; i++)\n  for (int j = 0; j < '+n+'; j++)\n    s++;\nprintf("%d", s);',
+      'int s = 0;\nfor (int i = 0; i < '+n+'; i++)\n{\n    for (int j = 0; j < '+n+'; j++)\n    {\n        s++;\n    }\n}\nprintf("%d", s);',
       String(n*n),[String(n*2),String(n),String(n*n-1)],
       '外层 '+n+' 次、内层每次 '+n+' 次，s 共加 '+n+'×'+n+' = '+(n*n)+' 次');
   }},
@@ -4068,7 +4132,7 @@ var CODE_TOPICS=[
   /* ---- 代码补全题（kind:'fill'）：读代码 + 填空，补全关键符号 / 关键字 / 表达式 ---- */
   {k:'C 补全·比较运算符',lang:'c',ranks:[0],kb:1,gen:function(){
     return mkCodeFill('补全下面 C 代码的空白处，使它表示“a 大于 b 时输出 a 大”。',
-      'int a = 7, b = 3;\nif (a ___ b) { printf("a 大"); } /* 判断 a 是否大于 b */',
+      'int a = 7, b = 3;\nif (a ___ b)\n{\n    printf("a 大");\n} /* 判断 a 是否大于 b */',
       '>','',
       '> 是大于比较运算符，a > b 为真时进入 if 分支。');
   }},
@@ -4086,13 +4150,13 @@ var CODE_TOPICS=[
   }},
   {k:'C 补全·累加赋值',lang:'c',ranks:[1],kb:1,gen:function(){
     return mkCodeFill('补全下面 C 代码的空白处，使 sum 成为 1 到 5 的累加和。',
-      'int sum = 0;\nfor (int i = 1; i <= 5; i++) { sum = sum ___ i; } /* 累加 1..5 */',
+      'int sum = 0;\nfor (int i = 1; i <= 5; i++)\n{\n    sum = sum ___ i;\n} /* 累加 1..5 */',
       '+=','',
       '+= 是复合赋值，sum += i 等价于 sum = sum + i。');
   }},
   {k:'C 补全·循环条件',lang:'c',ranks:[1],kb:1,gen:function(){
     return mkCodeFill('补全下面 C 代码的空白处，使循环打印 0 到 9。',
-      'for (int i = 0; i ___ 10; i++) { printf("%d ", i); } /* 打印 0..9 */',
+      'for (int i = 0; i ___ 10; i++)\n{\n    printf("%d ", i);\n} /* 打印 0..9 */',
       '<','',
       'i < 10 时循环继续，打印 0,1,...,9 共 10 个数。');
   }},
@@ -4104,7 +4168,7 @@ var CODE_TOPICS=[
   }},
   {k:'C 补全·数组下标',lang:'c',ranks:[2],kb:1,gen:function(){
     return mkCodeFill('补全下面 C 代码的空白处，使循环正序打印数组每个元素。',
-      'int arr[] = {3, 1, 4};\nfor (int i = 0; i < 3; i++) { printf("%d ", arr[___]); }',
+      'int arr[] = {3, 1, 4};\nfor (int i = 0; i < 3; i++)\n{\n    printf("%d ", arr[___]);\n}',
       'i','',
       '用下标 i 访问元素 arr[i]，i 从 0 到 2 正序遍历。');
   }},
@@ -4128,7 +4192,7 @@ var CODE_TOPICS=[
   }},
   {k:'C 补全·阶乘递归',lang:'c',ranks:[4],kb:1,gen:function(){
     return mkCodeFill('补全下面 C 代码的空白处，使 fact 正确计算 n 的阶乘。',
-      'int fact(int n) {\n  if (n <= 1) return 1;\n  return n ___ fact(n - 1);\n} /* 阶乘 */',
+      'int fact(int n)\n{\n    if (n <= 1)\n    {\n        return 1;\n    }\n    return n ___ fact(n - 1);\n} /* 阶乘 */',
       '*','',
       'n! = n × (n-1)!，所以返回 n * fact(n-1)。');
   }}
@@ -4194,9 +4258,6 @@ QA_TYPES.code.genSection=function(n,diff,sec){
     }
   }
   fill(poolWith(true),1500);
-  /* 只勾了 Python / Java 的用户在低档可能一题都抽不到：先放宽语言补齐，
-     同档同类的题远好过旧 POOLS.code 拿别的题答案硬凑干扰项（P0） */
-  if(out.length<n&&_sec==='choice'&&allowed)fill(poolWith(false),1500);
   /* 旧随机池兜底只留给非选择题板块：POOLS.code 的硬凑干扰项不再进选择题 */
   if(out.length<n&&_sec!=='choice'){
     var more=QA_TYPES.code.gen(n-out.length,dd);
@@ -4209,118 +4270,185 @@ QA_TYPES.code.genSection=function(n,diff,sec){
 };
 /* ===== 手写代码题（AI 评判用，题面与样例都在本地生成） ===== */
 var CODE_TASKS=[
-  {r:0,t:'写一个函数 sum(a, b)，返回两个数之和。',ex:'sum(2, 3) → 5',tip:'直接返回 a + b',
+  {r:0,lang:'js',t:'用 JavaScript 写一个函数 sum(a, b)，返回两个数之和。',ex:'sum(2, 3) → 5',tip:'直接返回 a + b',
    sol:'function sum(a, b) { return a + b; }',
    steps:['函数需要把两个参数加起来','直接 return a + b 即可']},
-  {r:0,t:'写一个函数 maxOf(a, b)，返回较大的那个数。',ex:'maxOf(4, 9) → 9',tip:'比较两个数',
+  {r:0,lang:'js',t:'用 JavaScript 写一个函数 maxOf(a, b)，返回较大的那个数。',ex:'maxOf(4, 9) → 9',tip:'比较两个数',
    sol:'function maxOf(a, b) { return a > b ? a : b; }',
    steps:['比较 a 和 b 的大小','哪个大返回哪个：a > b 则返回 a，否则返回 b']},
-  {r:0,t:'写一个函数 minOf(a, b)，返回较小的那个数。',ex:'minOf(4, 9) → 4',tip:'比较两个数、保留较小的那个',
+  {r:0,lang:'js',t:'用 JavaScript 写一个函数 minOf(a, b)，返回较小的那个数。',ex:'minOf(4, 9) → 4',tip:'比较两个数、保留较小的那个',
    sol:'function minOf(a, b) { return a < b ? a : b; }',
    steps:['比较 a 和 b 的大小','哪个小返回哪个：a < b 则返回 a，否则返回 b']},
-  {r:0,t:'写一个函数 absVal(n)，返回 n 的绝对值。',ex:'absVal(-7) → 7',tip:'负数取相反数、非负原样返回',
+  {r:0,lang:'js',t:'用 JavaScript 写一个函数 absVal(n)，返回 n 的绝对值。',ex:'absVal(-7) → 7',tip:'负数取相反数、非负原样返回',
    sol:'function absVal(n) { return n < 0 ? -n : n; }',
    steps:['绝对值：负数取相反数，非负数不变','判断 n < 0 时返回 -n，否则返回 n']},
-  {r:0,t:'写一个函数 isPositive(n)，n 为正数返回 true，否则返回 false。',ex:'isPositive(-3) → false',tip:'与 0 比较',
+  {r:0,lang:'js',t:'用 JavaScript 写一个函数 isPositive(n)，n 为正数返回 true，否则返回 false。',ex:'isPositive(-3) → false',tip:'与 0 比较',
    sol:'function isPositive(n) { return n > 0; }',
    steps:['正数就是大于 0','直接返回 n > 0 的结果']},
-  {r:1,t:'写一个函数 isEven(n)，n 是偶数返回 true，否则返回 false。',ex:'isEven(7) → false',tip:'用取余判断',
+  {r:1,lang:'js',t:'用 JavaScript 写一个函数 isEven(n)，n 是偶数返回 true，否则返回 false。',ex:'isEven(7) → false',tip:'用取余判断',
    sol:'function isEven(n) { return n % 2 === 0; }',
    steps:['偶数能被 2 整除','n % 2 === 0 就是偶数，直接返回']},
-  {r:1,t:'写一个函数 reverseStr(s)，返回反转后的字符串。',ex:'reverseStr("abc") → "cba"',tip:'循环或内置反转',
+  {r:1,lang:'js',t:'用 JavaScript 写一个函数 reverseStr(s)，返回反转后的字符串。',ex:'reverseStr("abc") → "cba"',tip:'循环或内置反转',
    sol:'function reverseStr(s) { return s.split("").reverse().join(""); }',
    steps:['字符串不能直接反转','先 split("") 拆成字符数组','reverse() 反转','join("") 拼回字符串']},
-  {r:1,t:'写一个函数 repeatStr(s, n)，返回把 s 重复 n 次的字符串。',ex:'repeatStr("ab", 3) → "ababab"',tip:'循环拼接或字符串乘法',
+  {r:1,lang:'js',t:'用 JavaScript 写一个函数 repeatStr(s, n)，返回把 s 重复 n 次的字符串。',ex:'repeatStr("ab", 3) → "ababab"',tip:'循环拼接或字符串乘法',
    sol:'function repeatStr(s, n) { var r = ""; for (var i = 0; i < n; i++) r += s; return r; }',
    steps:['准备一个空字符串','循环 n 次，每次都把 s 拼进去','返回拼接结果']},
-  {r:1,t:'写一个函数 countVowels(s)，统计元音字母 a/e/i/o/u 的个数。',ex:'countVowels("hello") → 2',tip:'遍历每个字符逐个判断',
+  {r:1,lang:'js',t:'用 JavaScript 写一个函数 countVowels(s)，统计元音字母 a/e/i/o/u 的个数。',ex:'countVowels("hello") → 2',tip:'遍历每个字符逐个判断',
    sol:'function countVowels(s) { var n = 0; for (var i = 0; i < s.length; i++) { if ("aeiou".indexOf(s[i].toLowerCase()) >= 0) n++; } return n; }',
    steps:['准备计数器 n=0','遍历每个字符（先转小写）','是 a/e/i/o/u 之一就 n++','返回 n']},
-  {r:1,t:'写一个函数 factorial(n)，返回 n 的阶乘（0 的阶乘是 1）。',ex:'factorial(5) → 120',tip:'递推 n × (n−1)!，边界 0! = 1',
+  {r:1,lang:'js',t:'用 JavaScript 写一个函数 factorial(n)，返回 n 的阶乘（0 的阶乘是 1）。',ex:'factorial(5) → 120',tip:'递推 n × (n−1)!，边界 0! = 1',
    sol:'function factorial(n) { if (n <= 1) return 1; return n * factorial(n - 1); }',
    steps:['阶乘：n! = n × (n-1)!','边界：0! = 1，1! = 1','n <= 1 返回 1','否则递归 n * factorial(n-1)']},
-  {r:2,t:'写一个函数 countChar(s, c)，统计字符 c 在 s 中出现的次数。',ex:'countChar("banana", "a") → 3',tip:'遍历计数',
+  {r:2,lang:'js',t:'用 JavaScript 写一个函数 countChar(s, c)，统计字符 c 在 s 中出现的次数。',ex:'countChar("banana", "a") → 3',tip:'遍历计数',
    sol:'function countChar(s, c) { var n = 0; for (var i = 0; i < s.length; i++) { if (s[i] === c) n++; } return n; }',
    steps:['准备计数器 n=0','遍历 s 的每个字符','与 c 相等就 n++','返回 n']},
-  {r:2,t:'写一个函数 fib(n)，返回斐波那契数列第 n 项（1, 1, 2, 3, 5 …）。',ex:'fib(6) → 8',tip:'递推或递归',
+  {r:2,lang:'js',t:'用 JavaScript 写一个函数 fib(n)，返回斐波那契数列第 n 项（1, 1, 2, 3, 5 …）。',ex:'fib(6) → 8',tip:'递推或递归',
    sol:'function fib(n) { var a = 1, b = 1; for (var i = 3; i <= n; i++) { var t = a + b; a = b; b = t; } return b; }',
    steps:['斐波那契：每一项 = 前两项之和','第 1、2 项都是 1','从第 3 项起循环递推 a+b','循环到第 n 项返回']},
-  {r:2,t:'写一个函数 isPrime(n)，n 是素数返回 true，否则返回 false。',ex:'isPrime(7) → true',tip:'从 2 试除到 √n，小于 2 直接 false',
+  {r:2,lang:'js',t:'用 JavaScript 写一个函数 isPrime(n)，n 是素数返回 true，否则返回 false。',ex:'isPrime(7) → true',tip:'从 2 试除到 √n，小于 2 直接 false',
    sol:'function isPrime(n) { if (n < 2) return false; for (var i = 2; i * i <= n; i++) { if (n % i === 0) return false; } return true; }',
    steps:['小于 2 不是素数','从 2 试除到 √n（i*i <= n）','能整除就不是素数','都除不尽就是素数']},
-  {r:2,t:'写一个函数 reverseArr(a)，返回反转后的数组。',ex:'reverseArr([1,2,3]) → [3,2,1]',tip:'首尾交换或倒序复制',
+  {r:2,lang:'js',t:'用 JavaScript 写一个函数 reverseArr(a)，返回反转后的数组。',ex:'reverseArr([1,2,3]) → [3,2,1]',tip:'首尾交换或倒序复制',
    sol:'function reverseArr(a) { return a.slice().reverse(); }',
    steps:['注意别改原数组','先 slice() 复制一份','reverse() 反转后返回']},
-  {r:2,t:'写一个函数 gcd(a, b)，返回 a 与 b 的最大公约数。',ex:'gcd(12, 18) → 6',tip:'辗转相除法：gcd(a,b)=gcd(b,a%b)',
+  {r:2,lang:'js',t:'用 JavaScript 写一个函数 gcd(a, b)，返回 a 与 b 的最大公约数。',ex:'gcd(12, 18) → 6',tip:'辗转相除法：gcd(a,b)=gcd(b,a%b)',
    sol:'function gcd(a, b) { while (b) { var t = a % b; a = b; b = t; } return a; }',
    steps:['辗转相除法：gcd(a,b)=gcd(b, a%b)','循环到 b 为 0','每轮：t=a%b，a=b，b=t','b 为 0 时 a 就是答案']},
-  {r:3,t:'写一个函数 twoSum(nums, target)，返回和为 target 的两个元素下标（数组返回）。',ex:'twoSum([2, 7, 11, 15], 9) → [0, 1]',tip:'哈希表可做到 O(n)',
+  {r:3,lang:'js',t:'用 JavaScript 写一个函数 twoSum(nums, target)，返回和为 target 的两个元素下标（数组返回）。',ex:'twoSum([2, 7, 11, 15], 9) → [0, 1]',tip:'哈希表可做到 O(n)',
    sol:'function twoSum(nums, target) { var m = {}; for (var i = 0; i < nums.length; i++) { var d = target - nums[i]; if (m[d] != null) return [m[d], i]; m[nums[i]] = i; } return []; }',
    steps:['遍历时记录每个数的下标','对当前数求补数 d = target - nums[i]','补数在记录里就返回两个下标','不在就把当前数记进去']},
-  {r:3,t:'写一个函数 isPalindrome(s)，忽略大小写与非字母数字字符，判断是否回文。',ex:'isPalindrome("A man, a plan") → false',tip:'双指针或反转后比较',
+  {r:3,lang:'js',t:'用 JavaScript 写一个函数 isPalindrome(s)，忽略大小写与非字母数字字符，判断是否回文。',ex:'isPalindrome("A man, a plan") → false',tip:'双指针或反转后比较',
    sol:'function isPalindrome(s) { s = s.toLowerCase().replace(/[^a-z0-9]/g, ""); for (var i = 0, j = s.length - 1; i < j; i++, j--) { if (s[i] !== s[j]) return false; } return true; }',
    steps:['先清洗：转小写、去掉非字母数字','用双指针 i 从前往后、j 从后往前','对应字符不等就不是回文','走完都是相等的就是回文']},
-  {r:3,t:'写一个函数 firstUnique(s)，返回第一个只出现一次的字符，没有则返回 null。',ex:'firstUnique("aabcc") → "b"',tip:'先计数，再按原顺序找第一个计数为 1 的',
+  {r:3,lang:'js',t:'用 JavaScript 写一个函数 firstUnique(s)，返回第一个只出现一次的字符，没有则返回 null。',ex:'firstUnique("aabcc") → "b"',tip:'先计数，再按原顺序找第一个计数为 1 的',
    sol:'function firstUnique(s) { var c = {}; for (var i = 0; i < s.length; i++) c[s[i]] = (c[s[i]] || 0) + 1; for (var i = 0; i < s.length; i++) { if (c[s[i]] === 1) return s[i]; } return null; }',
    steps:['第一遍遍历统计每个字符出现次数','第二遍按原顺序找','第一个计数为 1 的字符就是答案','没有就返回 null']},
-  {r:3,t:'写一个函数 mySqrt(n)，返回 n 的整数平方根（向下取整）。',ex:'mySqrt(8) → 2',tip:'二分或从 0 递增到 i*i>n',
+  {r:3,lang:'js',t:'用 JavaScript 写一个函数 mySqrt(n)，返回 n 的整数平方根（向下取整）。',ex:'mySqrt(8) → 2',tip:'二分或从 0 递增到 i*i>n',
    sol:'function mySqrt(n) { var x = 0; while ((x + 1) * (x + 1) <= n) x++; return x; }',
    steps:['从 0 开始递增','下一个数的平方还 <= n 就继续','第一个平方超过 n 的数减 1','或直接用二分更高效']},
-  {r:3,t:'写一个函数 longestWord(s)，返回句子中最长的单词（长度相同取靠前的）。',ex:'longestWord("I love coding") → "coding"',tip:'按空格拆分后逐个比长度',
+  {r:3,lang:'js',t:'用 JavaScript 写一个函数 longestWord(s)，返回句子中最长的单词（长度相同取靠前的）。',ex:'longestWord("I love coding") → "coding"',tip:'按空格拆分后逐个比长度',
    sol:'function longestWord(s) { var w = ""; s.split(" ").forEach(function(t) { if (t.length > w.length) w = t; }); return w; }',
    steps:['按空格拆分成单词数组','逐个比较长度','只更新比当前更长的（长度相同不动）','返回最长单词']},
-  {r:4,t:'写一个函数 flatten(arr)，把任意层嵌套数组展平成一维数组。',ex:'flatten([1, [2, [3]]]) → [1, 2, 3]',tip:'递归处理嵌套',
+  {r:4,lang:'js',t:'用 JavaScript 写一个函数 flatten(arr)，把任意层嵌套数组展平成一维数组。',ex:'flatten([1, [2, [3]]]) → [1, 2, 3]',tip:'递归处理嵌套',
    sol:'function flatten(arr) { var out = []; arr.forEach(function(x) { if (Array.isArray(x)) out = out.concat(flatten(x)); else out.push(x); }); return out; }',
    steps:['遍历每个元素','是数组就递归展平后拼接','不是数组直接放进结果','递归出口：元素不是数组']},
-  {r:4,t:'写一个函数 maxSubArray(nums)，返回连续子数组的最大和。',ex:'maxSubArray([-2, 1, -3, 4, -1, 2, 1]) → 6',tip:'Kadane 算法：当前和转负就重新起头',
+  {r:4,lang:'js',t:'用 JavaScript 写一个函数 maxSubArray(nums)，返回连续子数组的最大和。',ex:'maxSubArray([-2, 1, -3, 4, -1, 2, 1]) → 6',tip:'Kadane 算法：当前和转负就重新起头',
    sol:'function maxSubArray(nums) { var best = nums[0], cur = 0; for (var i = 0; i < nums.length; i++) { cur = Math.max(nums[i], cur + nums[i]); best = Math.max(best, cur); } return best; }',
    steps:['Kadane 算法：边遍历边累加','当前和加这个数反而变小就重新从它开始','每步更新历史最大和','遍历完的最大和就是答案']},
-  {r:4,t:'写一个函数 mergeSorted(a, b)，合并两个已升序排列的数组，结果仍升序。',ex:'mergeSorted([1,3,5],[2,4]) → [1,2,3,4,5]',tip:'双指针归并，比到一方走完再补齐',
+  {r:4,lang:'js',t:'用 JavaScript 写一个函数 mergeSorted(a, b)，合并两个已升序排列的数组，结果仍升序。',ex:'mergeSorted([1,3,5],[2,4]) → [1,2,3,4,5]',tip:'双指针归并，比到一方走完再补齐',
    sol:'function mergeSorted(a, b) { var out = [], i = 0, j = 0; while (i < a.length && j < b.length) { if (a[i] < b[j]) out.push(a[i++]); else out.push(b[j++]); } while (i < a.length) out.push(a[i++]); while (j < b.length) out.push(b[j++]); return out; }',
    steps:['双指针 i、j 分别指向两个数组','谁小谁先放进结果并前进','一方走完后把另一方剩余全部拼上','结果自然有序']},
-  {r:4,t:'写一个函数 evalRPN(tokens)，计算逆波兰表达式（数组里是数字字符串与 + - * / 运算符）。',ex:'evalRPN(["2","1","+","3","*"]) → 9',tip:'栈：遇数入栈、遇运算符弹出两个数',
+  {r:4,lang:'js',t:'用 JavaScript 写一个函数 evalRPN(tokens)，计算逆波兰表达式（数组里是数字字符串与 + - * / 运算符）。',ex:'evalRPN(["2","1","+","3","*"]) → 9',tip:'栈：遇数入栈、遇运算符弹出两个数',
    sol:'function evalRPN(tokens) { var st = []; tokens.forEach(function(t) { if (t === "+" || t === "-" || t === "*" || t === "/") { var b = +st.pop(), a = +st.pop(); st.push(t === "+" ? a + b : t === "-" ? a - b : t === "*" ? a * b : Math.trunc(a / b)); } else { st.push(t); } }); return st[0]; }',
    steps:['准备一个栈','遇到数字就入栈','遇到运算符弹出栈顶两个数（注意顺序：a 是先入的）','算出结果再入栈，最后栈顶就是答案']},
-  {r:4,t:'写一个函数 hasDupe(a)，数组里有重复元素返回 true，否则返回 false。',ex:'hasDupe([1,2,1]) → true',tip:'哈希集合或双重循环',
+  {r:4,lang:'js',t:'用 JavaScript 写一个函数 hasDupe(a)，数组里有重复元素返回 true，否则返回 false。',ex:'hasDupe([1,2,1]) → true',tip:'哈希集合或双重循环',
    sol:'function hasDupe(a) { var s = {}; for (var i = 0; i < a.length; i++) { if (s[a[i]]) return true; s[a[i]] = 1; } return false; }',
    steps:['用哈希记录见过的元素','遍历时先查是否已存在','存在就是重复，返回 true','没有重复返回 false']},
-  {r:0,t:'写一行 C 代码，用 printf 输出数字 5。',ex:'输出：5',c:1,tip:'printf + %d',
-   sol:'printf("%d", 5);',
-   steps:['printf 的 %d 占位符对应一个整数','把 5 填进去：printf("%d", 5);']},
-  {r:0,t:'写一行 C 代码，声明 int 变量 x 并赋值为 3。',ex:'x 的值是 3',c:1,tip:'类型 变量名 = 值;',
-   sol:'int x = 3;',
-   steps:['先写类型 int','再写变量名 x，用 = 赋初值 3，结尾分号']},
-  {r:0,t:'写一行 C 代码，让 int 变量 a 自增 1。',ex:'a 的值 +1',c:1,tip:'a++ 或 a+=1',
-   sol:'a++;',
-   steps:['自增就是 a = a + 1','简写 a++ 或 a += 1 都行']},
-  {r:0,t:'写一段 C 代码：x 大于 0 时输出 "正数"。',ex:'x=1 时输出 正数',c:1,tip:'if (x > 0)',
-   sol:'if (x > 0) { printf("正数"); }',
-   steps:['if 条件判断 x > 0','成立就执行花括号里的 printf']},
-  {r:0,t:'写一段 C 代码：x 是偶数时输出 "偶"，否则输出 "奇"。',ex:'x=4 输出 偶，x=3 输出 奇',c:1,tip:'x % 2 == 0 判断奇偶',
-   sol:'if (x % 2 == 0) printf("偶"); else printf("奇");',
-   steps:['x % 2 == 0 是偶数、== 1 是奇数','if 处理偶数，else 处理奇数']},
-  {r:1,t:'写一段 C 代码：用 for 循环打印 1 到 5。',ex:'输出 12345',c:1,tip:'for (int i=1; i<=5; i++)',
-   sol:'for (int i = 1; i <= 5; i++) printf("%d", i);',
-   steps:['for 三部分：初值 i=1、条件 i<=5、步进 i++','循环体 printf 打印 i']},
-  {r:1,t:'写一段 C 代码：用 while 循环把 1 加到 n（n 已声明），结果存 sum。',ex:'n=3 时 sum=6',c:1,tip:'while (i <= n)',
-   sol:'int i = 1; int sum = 0; while (i <= n) { sum += i; i++; }',
-   steps:['计数器 i 从 1 开始','sum 累加 i 后 i 自增','i > n 时循环结束']},
-  {r:1,t:'写一段 C 代码：x 在 60 到 100 之间（含）输出 "及格"。',ex:'x=70 输出 及格',c:1,tip:'x >= 60 && x <= 100',
-   sol:'if (x >= 60 && x <= 100) printf("及格");',
-   steps:['两个条件都要满足，用 && 连接','x >= 60 且 x <= 100']}
+/* ---- rank 0 · 顺序结构 / 输入输出 ---- */
+{r:0,lang:'c',c:1,t:'用 C 语言写一行代码，用 printf 输出数字 5。',ex:'输出：5',tip:'printf + %d',
+ sol:'#include <stdio.h>\n\nint main(void)\n{\n    printf("%d", 5);\n    return 0;\n}',
+ steps:['printf 的 %d 占位符对应一个整数','把 5 填进去：printf("%d", 5);','写完语句别忘了结尾分号']},
+{r:0,lang:'c',c:1,t:'用 C 语言声明 int 变量 x 并赋值为 3，然后输出它。',ex:'x 的值是 3',tip:'类型 变量名 = 值;',
+ sol:'#include <stdio.h>\n\nint main(void)\n{\n    int x = 3;\n    printf("%d", x);\n    return 0;\n}',
+ steps:['先写类型 int','再写变量名 x，用 = 赋初值 3，结尾分号','printf("%d", x) 输出这个变量']},
+{r:0,lang:'c',c:1,t:'用 C 语言让 int 变量 a（初值 1）自增 1，并输出结果。',ex:'a 的值 +1 → 输出 2',tip:'a++ 或 a += 1',
+ sol:'#include <stdio.h>\n\nint main(void)\n{\n    int a = 1;\n    a++;\n    printf("%d", a);\n    return 0;\n}',
+ steps:['自增就是 a = a + 1','简写 a++ 或 a += 1 都行','自增后再 printf 才是新值']},
+{r:0,lang:'c',c:1,t:'用 C 语言写一段代码：x 大于 0 时输出「正数」。',ex:'x=1 时输出 正数',tip:'if (x > 0)',
+ sol:'#include <stdio.h>\n\nint main(void)\n{\n    int x = 1;\n    if (x > 0)\n    {\n        printf("正数");\n    }\n    return 0;\n}',
+ steps:['if 条件判断 x > 0','成立就执行花括号里的 printf','按 C 规范左花括号另起一行']},
+{r:0,lang:'c',c:1,t:'用 C 语言写一段代码：x 是偶数输出「偶」，否则输出「奇」。',ex:'x=4 输出 偶，x=3 输出 奇',tip:'x % 2 == 0 判断奇偶',
+ sol:'#include <stdio.h>\n\nint main(void)\n{\n    int x = 4;\n    if (x % 2 == 0)\n    {\n        printf("偶");\n    }\n    else\n    {\n        printf("奇");\n    }\n    return 0;\n}',
+ steps:['x % 2 == 0 是偶数，否则是奇数','if 处理偶数，else 处理奇数','两个分支都要有花括号']},
+
+/* ---- rank 1 · 循环结构 / 多分支 ---- */
+{r:1,lang:'c',c:1,t:'用 C 语言写一段代码：用 for 循环打印 1 到 5（数字连在一起）。',ex:'输出 12345',tip:'for (i = 1; i <= 5; i++)',
+ sol:'#include <stdio.h>\n\nint main(void)\n{\n    int i;\n    for (i = 1; i <= 5; i++)\n    {\n        printf("%d", i);\n    }\n    return 0;\n}',
+ steps:['for 三部分：初值 i=1、条件 i<=5、步进 i++','循环体 printf 打印 i','C89 风格把 int i 声明在 for 外面']},
+{r:1,lang:'c',c:1,t:'用 C 语言写一段代码：用 while 循环把 1 加到 n，结果存 sum（n 已声明）。',ex:'n=3 时 sum=6',tip:'while (i <= n)',
+ sol:'#include <stdio.h>\n\nint main(void)\n{\n    int n = 3;\n    int i = 1;\n    int sum = 0;\n    while (i <= n)\n    {\n        sum += i;\n        i++;\n    }\n    printf("%d", sum);\n    return 0;\n}',
+ steps:['计数器 i 从 1 开始，sum 从 0 开始','sum 累加 i 后 i 自增','i > n 时循环结束']},
+{r:1,lang:'c',c:1,t:'用 C 语言写一段代码：x 在 60 到 100 之间（含）输出「及格」。',ex:'x=70 输出 及格',tip:'x >= 60 && x <= 100',
+ sol:'#include <stdio.h>\n\nint main(void)\n{\n    int x = 70;\n    if (x >= 60 && x <= 100)\n    {\n        printf("及格");\n    }\n    return 0;\n}',
+ steps:['两个条件都要满足，用 && 连接','写成 x >= 60 && x <= 100','&& 两侧各留一个空格']},
+{r:1,lang:'c',c:1,t:'用 C 语言写一段代码：用 do-while 循环打印 1 到 3。',ex:'输出 123',tip:'do { … } while (i <= 3);',
+ sol:'#include <stdio.h>\n\nint main(void)\n{\n    int i = 1;\n    do\n    {\n        printf("%d", i);\n        i++;\n    } while (i <= 3);\n    return 0;\n}',
+ steps:['do-while 先执行一次再判断条件','循环体后要写 while (条件); 结尾带分号','i 每次自增，到 4 时退出']},
+{r:1,lang:'c',c:1,t:'用 C 语言写一段代码：level 为 1/2/3 时分别输出「一等奖」「二等奖」「三等奖」，其它输出「未获奖」。',ex:'level=2 输出 二等奖',tip:'switch + case + break',
+ sol:'#include <stdio.h>\n\nint main(void)\n{\n    int level = 2;\n    switch (level)\n    {\n    case 1:\n        printf("一等奖");\n        break;\n    case 2:\n        printf("二等奖");\n        break;\n    case 3:\n        printf("三等奖");\n        break;\n    default:\n        printf("未获奖");\n    }\n    return 0;\n}',
+ steps:['switch 按 level 的值跳到对应 case','每个 case 结束要 break，否则会继续往下执行','其它情况用 default']},
+
+/* ---- rank 2 · 数组与字符串 ---- */
+{r:2,lang:'c',c:1,t:'用 C 语言写一段代码：求 int 数组 a[5] 所有元素之和。',ex:'a={1,2,3,4,5} → 15',tip:'for 遍历 + 累加',
+ sol:'#include <stdio.h>\n\nint main(void)\n{\n    int a[5] = {1, 2, 3, 4, 5};\n    int i;\n    int sum = 0;\n    for (i = 0; i < 5; i++)\n    {\n        sum += a[i];\n    }\n    printf("%d", sum);\n    return 0;\n}',
+ steps:['sum 初值 0','下标从 0 到 4 遍历，累加 a[i]','循环结束后输出 sum']},
+{r:2,lang:'c',c:1,t:'用 C 语言写一段代码：统计 int 数组 a[5] 中大于 0 的元素个数。',ex:'a={-1,3,0,7,-2} → 2',tip:'if (a[i] > 0) count++',
+ sol:'#include <stdio.h>\n\nint main(void)\n{\n    int a[5] = {-1, 3, 0, 7, -2};\n    int i;\n    int count = 0;\n    for (i = 0; i < 5; i++)\n    {\n        if (a[i] > 0)\n        {\n            count++;\n        }\n    }\n    printf("%d", count);\n    return 0;\n}',
+ steps:['count 初值 0','遍历数组，大于 0 才 count++','注意 0 不算正数']},
+{r:2,lang:'c',c:1,t:'用 C 语言写一段代码：求 int 数组 a[5] 的最大值（不调用库函数）。',ex:'a={3,9,2,7,5} → 9',tip:'max 先取 a[0]，再逐个比较',
+ sol:'#include <stdio.h>\n\nint main(void)\n{\n    int a[5] = {3, 9, 2, 7, 5};\n    int i;\n    int max = a[0];\n    for (i = 1; i < 5; i++)\n    {\n        if (a[i] > max)\n        {\n            max = a[i];\n        }\n    }\n    printf("%d", max);\n    return 0;\n}',
+ steps:['max 先设为第一个元素','从第二个元素开始比较','更大就更新 max']},
+{r:2,lang:'c',c:1,t:'用 C 语言写一段代码：把字符串 s 逆序输出（不修改原串）。',ex:'s="abc" → cba',tip:'strlen + 从末尾倒着打印',
+ sol:'#include <stdio.h>\n#include <string.h>\n\nint main(void)\n{\n    char s[] = "abc";\n    int i;\n    for (i = (int)strlen(s) - 1; i >= 0; i--)\n    {\n        printf("%c", s[i]);\n    }\n    return 0;\n}',
+ steps:['strlen(s) 得到长度','下标从 len-1 递减到 0','%c 打印单个字符']},
+{r:2,lang:'c',c:1,t:'用 C 语言写一段代码：判断字符串 s 是否为回文（如 level）。',ex:'s="level" → 是回文',tip:'双下标向中间夹',
+ sol:'#include <stdio.h>\n#include <string.h>\n\nint main(void)\n{\n    char s[] = "level";\n    int i = 0;\n    int j = (int)strlen(s) - 1;\n    int ok = 1;\n    while (i < j)\n    {\n        if (s[i] != s[j])\n        {\n            ok = 0;\n            break;\n        }\n        i++;\n        j--;\n    }\n    printf("%s", ok ? "是回文" : "不是回文");\n    return 0;\n}',
+ steps:['左下标 i 从 0、右下标 j 从末尾','对应字符不等就标记失败并 break','全部相等才是回文']},
+
+/* ---- rank 3 · 函数与指针 ---- */
+{r:3,lang:'c',c:1,t:'用 C 语言写函数 int maxOf(int a, int b)，返回较大的数。',ex:'maxOf(4, 9) → 9',tip:'if 比较后 return',
+ sol:'#include <stdio.h>\n\nint maxOf(int a, int b)\n{\n    if (a > b)\n    {\n        return a;\n    }\n    return b;\n}\n\nint main(void)\n{\n    printf("%d", maxOf(4, 9));\n    return 0;\n}',
+ steps:['函数名、参数类型、返回类型要写全','a > b 就返回 a','否则返回 b']},
+{r:3,lang:'c',c:1,t:'用 C 语言写函数 void swap(int *a, int *b)，交换两个变量的值。',ex:'x=3,y=7 → 交换后 x=7,y=3',tip:'用临时变量 + 指针解引用',
+ sol:'#include <stdio.h>\n\nvoid swap(int *a, int *b)\n{\n    int t = *a;\n    *a = *b;\n    *b = t;\n}\n\nint main(void)\n{\n    int x = 3;\n    int y = 7;\n    swap(&x, &y);\n    printf("%d %d", x, y);\n    return 0;\n}',
+ steps:['先用临时变量保存 *a','把 *b 赋给 *a，再把临时值赋给 *b','调用时传地址：swap(&x, &y)']},
+{r:3,lang:'c',c:1,t:'用 C 语言写函数 int sumArray(const int *a, int n)，返回数组前 n 个元素之和。',ex:'a={1,2,3,4}, n=4 → 10',tip:'指针当数组用 a[i]',
+ sol:'#include <stdio.h>\n\nint sumArray(const int *a, int n)\n{\n    int i;\n    int sum = 0;\n    for (i = 0; i < n; i++)\n    {\n        sum += a[i];\n    }\n    return sum;\n}\n\nint main(void)\n{\n    int a[4] = {1, 2, 3, 4};\n    printf("%d", sumArray(a, 4));\n    return 0;\n}',
+ steps:['const 表示函数内不改数组内容','用 a[i] 访问第 i 个元素','累加后 return']},
+{r:3,lang:'c',c:1,t:'用 C 语言写函数 int countChar(const char *s, char c)，统计字符 c 在 s 中出现的次数。',ex:'countChar("banana", \'a\') → 3',tip:'遍历到 \'\\0\' 结束',
+ sol:'#include <stdio.h>\n\nint countChar(const char *s, char c)\n{\n    int i;\n    int count = 0;\n    for (i = 0; s[i] != \'\\0\'; i++)\n    {\n        if (s[i] == c)\n        {\n            count++;\n        }\n    }\n    return count;\n}\n\nint main(void)\n{\n    printf("%d", countChar("banana", \'a\'));\n    return 0;\n}',
+ steps:['字符串以 \'\\0\' 结尾，循环条件写 s[i] != \'\\0\'','相等就 count++','返回 count']},
+{r:3,lang:'c',c:1,t:'用 C 语言写函数 int isPrime(int n)，n 是素数返回 1，否则返回 0。',ex:'isPrime(13) → 1',tip:'试除到 sqrt(n)',
+ sol:'#include <stdio.h>\n\nint isPrime(int n)\n{\n    int i;\n    if (n < 2)\n    {\n        return 0;\n    }\n    for (i = 2; i * i <= n; i++)\n    {\n        if (n % i == 0)\n        {\n            return 0;\n        }\n    }\n    return 1;\n}\n\nint main(void)\n{\n    printf("%d", isPrime(13));\n    return 0;\n}',
+ steps:['小于 2 的数都不是素数','i 从 2 试到 i*i <= n','能被整除就返回 0，循环走完返回 1']},
+
+/* ---- rank 4 · 递归 / 结构体 / 指针综合 ---- */
+{r:4,lang:'c',c:1,t:'用 C 语言写递归函数 int fact(int n)，返回 n 的阶乘（0! = 1）。',ex:'fact(5) → 120',tip:'n<=1 返回 1，否则 n * fact(n-1)',
+ sol:'#include <stdio.h>\n\nint fact(int n)\n{\n    if (n <= 1)\n    {\n        return 1;\n    }\n    return n * fact(n - 1);\n}\n\nint main(void)\n{\n    printf("%d", fact(5));\n    return 0;\n}',
+ steps:['递归必须有终止条件：n <= 1 返回 1','否则 n * fact(n-1)','n 会一路减到 1 收口']},
+{r:4,lang:'c',c:1,t:'用 C 语言写递归函数 int fib(int n)，返回斐波那契数列第 n 项（1,1,2,3,5…）。',ex:'fib(7) → 13',tip:'n<=2 返回 1',
+ sol:'#include <stdio.h>\n\nint fib(int n)\n{\n    if (n <= 2)\n    {\n        return 1;\n    }\n    return fib(n - 1) + fib(n - 2);\n}\n\nint main(void)\n{\n    printf("%d", fib(7));\n    return 0;\n}',
+ steps:['前两项都是 1，作为终止条件','后面每一项 = 前两项之和','递归写法简单但重复计算多']},
+{r:4,lang:'c',c:1,t:'用 C 语言写函数 int gcd(int a, int b)，求最大公约数。',ex:'gcd(12, 18) → 6',tip:'辗转相除或递归',
+ sol:'#include <stdio.h>\n\nint gcd(int a, int b)\n{\n    if (b == 0)\n    {\n        return a;\n    }\n    return gcd(b, a % b);\n}\n\nint main(void)\n{\n    printf("%d", gcd(12, 18));\n    return 0;\n}',
+ steps:['辗转相除：gcd(a,b) = gcd(b, a%b)','b 为 0 时 a 就是最大公约数','递归收口在 b==0']},
+{r:4,lang:'c',c:1,t:'用 C 语言定义结构体 struct Student（姓名 char name[20]、成绩 int score），输出成绩最高的学生姓名。',ex:'张三85 李四92 王五78 → 李四',tip:'结构体数组 + 记录最大下标',
+ sol:'#include <stdio.h>\n\nstruct Student\n{\n    char name[20];\n    int score;\n};\n\nint main(void)\n{\n    struct Student list[3] = {\n        {"张三", 85},\n        {"李四", 92},\n        {"王五", 78}\n    };\n    int i;\n    int best = 0;\n    for (i = 1; i < 3; i++)\n    {\n        if (list[i].score > list[best].score)\n        {\n            best = i;\n        }\n    }\n    printf("%s", list[best].name);\n    return 0;\n}',
+ steps:['struct 定义写在 main 之前','结构体数组初始化用嵌套花括号','best 记下标，最后输出 list[best].name']},
+{r:4,lang:'c',c:1,t:'用 C 语言写函数 void reverseArray(int *a, int n)，原地反转数组（不新建数组）。',ex:'a={1,2,3,4,5} → 5 4 3 2 1',tip:'首尾对调，走一半就停',
+ sol:'#include <stdio.h>\n\nvoid reverseArray(int *a, int n)\n{\n    int i;\n    int t;\n    for (i = 0; i < n / 2; i++)\n    {\n        t = a[i];\n        a[i] = a[n - 1 - i];\n        a[n - 1 - i] = t;\n    }\n}\n\nint main(void)\n{\n    int a[5] = {1, 2, 3, 4, 5};\n    int i;\n    reverseArray(a, 5);\n    for (i = 0; i < 5; i++)\n    {\n        printf("%d", a[i]);\n    }\n    return 0;\n}',
+ steps:['交换 a[i] 与 a[n-1-i]','只需走前一半：i < n/2','原地交换，不需要额外数组']}
 ];
 function genHandTask(rank){
   var r=(typeof rank==='number'&&rank>=0)?rank:0;
+  var allowed=codeAllowedLangs();
+  var pool=CODE_TASKS.filter(function(x){
+    if(!allowed)return true;
+    var L=x.lang||'all';
+    return L==='all'||allowed.indexOf(L)>=0;
+  });
+  if(!pool.length)return null;                /* 当前语言没有手写题，由调用侧降级 */
   /* P0-2：手写题一局内不重复。先只在同档里挑没出过的；同档用完了向相邻档扩
      （rad 0→5），全库都出过才清空重来 —— 这样一局 10 题手写模式能拿到 10 道不同的题，
      而不是 5 道转两圈。 */
   var pick=null,rad;
   for(rad=0;rad<=5&&!pick;rad++){
-    var band=CODE_TASKS.filter(function(x){return Math.abs(x.r-r)<=rad;});
+    var band=pool.filter(function(x){return Math.abs(x.r-r)<=rad;});
     var freshIn=band.filter(function(x){return _handUsed.indexOf(x.t)<0;});
     if(freshIn.length)pick=freshIn[ri(freshIn.length)];
   }
-  if(!pick){_handUsed.length=0;pick=CODE_TASKS[ri(CODE_TASKS.length)];}
+  if(!pick){_handUsed.length=0;pick=pool[ri(pool.length)];}
   var t=pick;
   _handUsed.push(t.t);
   /* 解析 = 该题的「要点 + 样例」，本地拼、不调 AI：判错时至少能知道该往哪儿想。
@@ -4335,9 +4463,18 @@ function codeQuestionnaire(cb){
   ov.p.appendChild(ht('div','hint','告诉我们你学过哪些语言、大概什么水平，后面只出你勾选语言相关的题（语言无关的通用题一直都在）。可跳过。'));
   ov.p.appendChild(ht('div','section-title','① 你学过哪些语言（可多选）'));
   var sel=h('div','tagsel');var chosen={};
+  var prevLangs=codeLangState().langs;
+  prevLangs.forEach(function(k){chosen[k]=1;});
+  var langHint=ht('div','hint','');
+  function updLangHint(){
+    var ks=Object.keys(chosen);
+    langHint.textContent=ks.length?('已选：'+ks.map(langName).join(' / ')+'（改选后立即生效）'):('（未选 → 将出全部题，含 Java/Python/JS）');
+  }
   CODE_LANGS.filter(function(l){return l.k!=='all';}).forEach(function(l){
-    var b=ht('button','tagbtn',l.n);b.onclick=function(){if(chosen[l.k]){delete chosen[l.k];b.classList.remove('sel');}else{chosen[l.k]=1;b.classList.add('sel');}};sel.appendChild(b);});
+    var pre=!!chosen[l.k];
+    var b=ht('button','tagbtn'+(pre?' sel':''),l.n);b.onclick=function(){if(chosen[l.k]){delete chosen[l.k];b.classList.remove('sel');}else{chosen[l.k]=1;b.classList.add('sel');}updLangHint();};sel.appendChild(b);});
   ov.p.appendChild(sel);
+  ov.p.appendChild(langHint);updLangHint();
   ov.p.appendChild(ht('div','section-title','② 你的水平（单选）'));
   var lvRow=h('div','tagsel');var level=0;
   ['🐣 入门','🚀 基础','🔧 进阶','🧠 熟练','👑 精通'].forEach(function(n,i){
@@ -4348,7 +4485,7 @@ function codeQuestionnaire(cb){
   ov.p.appendChild(lvRow);
   var em=ht('div','hint','');ov.p.appendChild(em);
   var skip=h('button','btn ghost','⏭ 跳过（出全部题）');skip.style.cssText='width:100%;margin-top:6px';
-  skip.onclick=function(){closeOverlay(ov);try{safeSet(CODE_PROFILE_KEY,JSON.stringify({done:true,skipped:true,langs:[],level:0,rank:0}));}catch(e){}cb();};
+  skip.onclick=function(){closeOverlay(ov);try{safeSet(CODE_PROFILE_KEY,JSON.stringify({done:true,all:true,langs:[],level:0,rank:0}));}catch(e){}cb();};
   var go=h('button','btn gold','下一步：试水测试');go.style.cssText='width:100%;margin-top:8px';
   go.onclick=function(){
     var langs=Object.keys(chosen);
@@ -5241,7 +5378,8 @@ function submitHand(Q,code,btn,msgEl){
   var t=(Q&&Q.task)||{t:Q.q,ex:'',tip:''};
   var cfg=loadAICfg();
   btn.disabled=true;msgEl.textContent='🤖 AI 正在评判…（最多 30 秒，超时本题不计分）';
-  var prompt='你在批改一道编程练习题。\n题目：'+t.t+'\n样例：'+(t.ex||'')+'\n要点：'+(t.tip||'')+'\n\n学生的代码：\n```\n'+code+'\n```\n\n请判断这段代码在逻辑上是否正确完成了题目（语言不限，忽略大小写/格式/变量命名差异；明显语法错误判为不正确）。\n严格只返回一个 JSON 对象，不要任何解释文字：\n{"ok":true,"why":"一句中文原因"}';
+  var langLabel=(t.lang==='c')?'C语言':(t.lang==='js'?'JavaScript':'该语言');
+  var prompt='你在批改一道编程练习题。'+(langLabel?'（语言：'+langLabel+'）':'')+'\n题目：'+t.t+'\n样例：'+(t.ex||'')+'\n要点：'+(t.tip||'')+'\n\n学生的代码：\n```\n'+code+'\n```\n\n请判断这段代码在逻辑上是否正确完成了题目（请按该语言书写规范评判：缩进、花括号、命名、是否存在编译级错误；忽略大小写/格式/变量命名差异；明显语法错误或编译级错误判为不正确）。\n严格只返回一个 JSON 对象，不要任何解释文字：\n{"ok":true,"why":"一句中文原因"}';
   callAIRaw(cfg,prompt,function(txt,err){
     btn.disabled=false;
     if(!txt){
