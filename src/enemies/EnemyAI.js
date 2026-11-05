@@ -1,7 +1,11 @@
 /**
- * 敌人 AI（对应仓库 EnemyAiTutorial.cs）
- * 状态机：巡逻 → 发现玩家 → 追击 → 射击 → 死亡 → 重新投放
- * 同时负责：骨骼动画、受击红闪、血条、命中检测。
+ * 丧尸 AI（v0.3 改造：武装人员 → 丧尸）
+ *
+ * 状态机：巡逻 → 发现玩家 → 追击 → 攻击 → 死亡
+ *   普通丧尸 / 重锤丧尸：近战扑咬（前摇 windup → 范围判定 → 伤害），**没有任何枪械**。
+ *   吐酸丧尸：中距离喷吐酸液（非枪械弹道，只做视觉抛物线 + 命中判定）。
+ *
+ * 同时负责：骨骼动画、受击红闪、血条、命中检测（供玩家射击）。
  */
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from '../../vendor/three/utils/SkeletonUtils.js';
@@ -19,44 +23,43 @@ export class EnemyAI {
     this.spawn = opts.spawn.clone();
     this.index = opts.index;
     this.onDeath = opts.onDeath || (() => {});
-    this.onShoot = opts.onShoot || (() => {});
+    this.onSpit = opts.onSpit || (() => {});       // 吐酸弹道视觉
+    this.onMelee = opts.onMelee || (() => {});     // 近战挥击视觉/音效
     this.onPlayerHit = opts.onPlayerHit || (() => {});
 
     this.position = opts.spawn.clone();
     this.velocity = new THREE.Vector3();
     this.heading = Math.random() * Math.PI * 2;
-    this.targetHeading = this.heading;   // 第三轮：平滑转头目标角
-    this.state = 'patrol';               // 巡逻 / 警戒 / 追击 / 交火
-    this.health = ENEMY.maxHealth;
+    this.targetHeading = this.heading;
+    this.state = 'patrol';               // patrol / alert / chase / attack
     this.dead = false;
     this.deadTimer = 0;
     this.flashTimer = 0;
-    this.flinchTimer = 0;                // 第三轮：受击抖动
-    this.fireTimer = 0;
-    this.burstLeft = 0;                  // 第三轮：当前连射/点射剩余发数
-    this.burstNear = true;               // 当前射击模式是否为近距离连射
-    this.coverTimer = 1.0;               // 第三轮：卡位侧移计时
-    this.coverStrafe = 0;                // 侧移剩余时间
+    this.flinchTimer = 0;
+    this.attackTimer = 0;                // 攻击冷却
+    this.windupTimer = 0;                // 近战前摇剩余（>0 表示正在抬手）
+    this.windupDone = false;
+    this.coverTimer = 1.0;
+    this.coverStrafe = 0;
     this.coverSign = 1;
-    this.alertTimer = 0;                 // 第三轮：警戒搜索剩余时间
-    this.baseScanHeading = this.heading; // 警戒原地扫视基准角
+    this.alertTimer = 0;
+    this.baseScanHeading = this.heading;
     this.scanTime = 0;
-    this.lastKnown = new THREE.Vector3();// 玩家最后已知位置
+    this.lastKnown = new THREE.Vector3();
     this.avoidTimer = 0;
     this.avoidSign = 1;
     this.stuckTimer = 0;
-    this.ammo = ENEMY.magazineSize;   // 敌人弹匣
-    this.reloading = false;
-    this.reloadTimer = 0;
     this.targetPoint = this._pickPatrolPoint();
     this.lastPos = this.position.clone();
 
-    // 波次倍率（由 EnemyManager.configure 注入；默认 1 = 基础数值）
+    // 波次倍率（EnemyManager.configure 注入）
     this.healthMul = 1;
     this.damageMul = 1;
     this.accuracyMul = 1;
     this.speedMul = 1;
-    this.maxHealth = ENEMY.maxHealth;
+
+    // 丧尸变体（默认普通丧尸；configure 会按波次 mix 指定）
+    this.setVariant('walker');
 
     this._tmpEye = new THREE.Vector3();
     this._tmpTarget = new THREE.Vector3();
@@ -65,14 +68,30 @@ export class EnemyAI {
     this._buildHealthBar();
   }
 
-  /** 波次开始前注入难度倍率（血量 / 伤害 / 精度 / 移动速度） */
+  /** 设定丧尸变体（walker / spitter / brute），重建数值基准 */
+  setVariant(id) {
+    const v = ENEMY.types[id] || ENEMY.types.walker;
+    this.variant = v;
+    this.variantId = v.id;
+    this.melee = v.melee !== false;      // 只有 spitter 是远程喷吐
+    this.maxHealth = v.maxHealth * this.healthMul;
+    this.health = this.maxHealth;
+    if (this.materials) {
+      for (const m of this.materials) m.color.setHex(v.tint || 0xffffff);
+    }
+  }
+
+  /** 波次开始前注入难度倍率（血量 / 伤害 / 精度 / 移速） */
   configure(cfg = {}) {
     this.healthMul = cfg.healthMul ?? 1;
     this.damageMul = cfg.damageMul ?? 1;
     this.accuracyMul = cfg.accuracyMul ?? 1;
     this.speedMul = cfg.speedMul ?? 1;
-    this.maxHealth = ENEMY.maxHealth * this.healthMul;
-    this.health = this.maxHealth;
+    if (cfg.variant) this.setVariant(cfg.variant);
+    else {
+      this.maxHealth = this.variant.maxHealth * this.healthMul;
+      this.health = this.maxHealth;
+    }
   }
 
   // ---------------- 模型 ----------------
@@ -83,7 +102,6 @@ export class EnemyAI {
 
     const src = this.assets && this.assets.zombieModel;
     if (!src) {
-      // 兜底：胶囊体
       const mesh = new THREE.Mesh(
         new THREE.CapsuleGeometry(0.35, 1.1, 4, 8),
         new THREE.MeshStandardMaterial({ color: 0x8a2b2b })
@@ -98,7 +116,7 @@ export class EnemyAI {
     const model = cloneSkeleton(src);
     const box = new THREE.Box3().setFromObject(model);
     const size = box.getSize(new THREE.Vector3());
-    const scale = ENEMY.height / Math.max(size.y, 0.001);
+    const scale = (ENEMY.height / Math.max(size.y, 0.001)) * (this.variant.scaleMul || 1);
     model.scale.setScalar(scale);
     const box2 = new THREE.Box3().setFromObject(model);
     const center = box2.getCenter(new THREE.Vector3());
@@ -106,24 +124,24 @@ export class EnemyAI {
     this.root.add(model);
     this.model = model;
 
-    // 统一使用仓库僵尸贴图；每个敌人独立材质，便于受击红闪
+    // 丧尸贴图 + 变体染色；每个敌人独立材质，便于受击红闪
     const tex = this.assets.textures && this.assets.textures.zombie;
     if (tex) {
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.needsUpdate = true;
     }
     this.materials = [];
+    const tint = this.variant.tint || 0xffffff;
     model.traverse((o) => {
       if (o.isMesh) {
         const mat = new THREE.MeshStandardMaterial({
           map: tex || null,
-          color: tex ? 0xffffff : 0x7c3a3a,
-          roughness: 0.9,
+          color: tex ? tint : 0x7c3a3a,
+          roughness: 0.92,
           metalness: 0.02,
         });
         o.material = mat;
         o.frustumCulled = false;
-        // 开启投影：僵尸脚下有影子才不会像贴在背景上的一张纸片
         o.castShadow = true;
         o.receiveShadow = false;
         this.materials.push(mat);
@@ -233,7 +251,6 @@ export class EnemyAI {
 
     if (this.dead) {
       this.deadTimer -= dt;
-      // 尸体停留后淡出
       if (this.deadTimer <= 1) {
         const k = Math.max(0, this.deadTimer);
         for (const m of this.materials) {
@@ -245,36 +262,21 @@ export class EnemyAI {
       return;
     }
 
-    this.fireTimer -= dt;
-    // 第三轮：受击抖动计时衰减
+    if (this.attackTimer > 0) this.attackTimer -= dt;
     if (this.flinchTimer > 0) this.flinchTimer -= dt;
-
-    // 换弹处理
-    if (this.reloading) {
-      this.reloadTimer -= dt;
-      if (this.reloadTimer <= 0) {
-        this.reloading = false;
-        this.ammo = ENEMY.magazineSize;
-      }
-    } else if (this.ammo <= 0 && this.state === 'attack') {
-      // 弹匣打空且仍在交战：进入换弹
-      this.reloading = true;
-      this.reloadTimer = ENEMY.reloadTime;
-    }
 
     const sees = this._canSeePlayer();
     const distToPlayer = this.player
       ? Math.hypot(this.player.position.x - this.position.x, this.player.position.z - this.position.z)
       : Infinity;
 
-    // 状态切换：巡逻 patrol / 警戒 alert / 追击 chase / 交火 attack
+    // 状态切换
     if (sees) {
       this.lastKnown.copy(this.player.position);
       this.alertTimer = ENEMY.alertTime;
-      this.state = distToPlayer <= ENEMY.attackRange ? 'attack' : 'chase';
+      this.state = distToPlayer <= this.variant.attackRange ? 'attack' : 'chase';
       this.loseSightTimer = 0;
     } else if (this.state === 'attack' || this.state === 'chase' || this.state === 'alert') {
-      // 丢失视野：先进入警戒（前往最后已知位置搜索），超时后回巡逻
       if (this.state !== 'alert') {
         this.state = 'alert';
         this.alertTimer = ENEMY.alertTime;
@@ -285,7 +287,6 @@ export class EnemyAI {
       if (this.alertTimer <= 0) {
         this.state = 'patrol';
         this.targetPoint = this._pickPatrolPoint();
-        this.burstLeft = 0;
       }
     } else {
       this.state = 'patrol';
@@ -297,7 +298,7 @@ export class EnemyAI {
     else if (this.state === 'chase') this._updateChase(dt, distToPlayer);
     else if (this.state === 'attack') this._updateAttack(dt, distToPlayer);
 
-    // 第三轮：平滑转头（不再瞬移转头），受击时附加抖动
+    // 平滑转头，受击时附加抖动
     const turnDelta = shortestAngle(this.targetHeading - this.heading);
     this.heading += turnDelta * Math.min(1, ENEMY.turnSpeed * dt);
 
@@ -306,11 +307,9 @@ export class EnemyAI {
     this.collision.moveCharacter(this.position, this.velocity, dt, ENEMY.radius, ENEMY.height);
 
     this.root.position.copy(this.position);
-    // 受击抖动：叠加到朝向角上，随时间衰减
     const flinchK = this.flinchTimer > 0 ? this.flinchTimer / ENEMY.flinchTime : 0;
     this.root.rotation.y = this.heading + Math.sin(this.flinchTimer * 70) * 0.22 * flinchK;
     this.bar.position.set(0, ENEMY.height + 0.3, 0);
-    this._updateAnimation();
     this._checkStuck(dt);
   }
 
@@ -323,24 +322,19 @@ export class EnemyAI {
       this.targetPoint = this._pickPatrolPoint();
       return;
     }
-    this._moveToward(dx, dz, ENEMY.patrolSpeed, dt);
+    this._moveToward(dx, dz, this.variant.patrolSpeed, dt);
     this._play('walk');
   }
 
-  /**
-   * 第三轮：警戒状态——前往玩家最后已知位置并原地扫视，超时回巡逻
-   */
   _updateAlert(dt) {
     const dx = this.lastKnown.x - this.position.x;
     const dz = this.lastKnown.z - this.position.z;
     const dist = Math.hypot(dx, dz);
     this.scanTime += dt;
     if (dist > 1.6) {
-      // 前往最后已知位置
-      this._moveToward(dx, dz, ENEMY.chaseSpeed * 0.7, dt);
+      this._moveToward(dx, dz, this.variant.chaseSpeed * 0.7, dt);
       this._play('walk');
     } else {
-      // 已到位置：原地左右扫视搜索
       this.velocity.x *= 0.85;
       this.velocity.z *= 0.85;
       this.targetHeading = this.baseScanHeading + Math.sin(this.scanTime * 2.2) * 0.9;
@@ -352,10 +346,11 @@ export class EnemyAI {
     if (!this.player) return;
     const dx = this.player.position.x - this.position.x;
     const dz = this.player.position.z - this.position.z;
-    if (dist > ENEMY.keepDistance) {
-      this._moveToward(dx, dz, ENEMY.chaseSpeed, dt);
+    // 丧尸永远朝玩家逼近（近战）；吐酸丧尸逼近到舒适距离即停
+    const keep = this.melee ? this.variant.keepDistance : this.variant.keepDistance;
+    if (dist > keep) {
+      this._moveToward(dx, dz, this.variant.chaseSpeed, dt);
     } else {
-      // 距离过近，侧向绕行
       this.velocity.x *= 0.8;
       this.velocity.z *= 0.8;
       this.targetHeading = Math.atan2(dx, dz);
@@ -367,66 +362,116 @@ export class EnemyAI {
     if (!this.player) return;
     const dx = this.player.position.x - this.position.x;
     const dz = this.player.position.z - this.position.z;
+    const v = this.variant;
 
-    // 第三轮：卡位侧移——定期横向绕行，避免站桩被集火
-    this.coverTimer -= dt;
-    if (this.coverStrafe > 0) {
-      this.coverStrafe -= dt;
-      const px = -dz * this.coverSign;
-      const pz = dx * this.coverSign;
-      this._moveToward(px, pz, ENEMY.patrolSpeed * 1.1, dt);
-    } else if (this.coverTimer <= 0) {
-      // 每 1.6~3.2 秒换一次卡位方向
-      this.coverTimer = 1.6 + Math.random() * 1.6;
-      this.coverStrafe = 0.5 + Math.random() * 0.7;
-      this.coverSign = Math.random() < 0.5 ? -1 : 1;
-    } else if (dist < ENEMY.keepDistance * 0.6) {
-      // 太近后退
-      this._moveToward(-dx, -dz, ENEMY.patrolSpeed, dt);
-    } else if (dist > ENEMY.attackRange * 0.85) {
-      // 太远前进
-      this._moveToward(dx, dz, ENEMY.chaseSpeed, dt);
+    // 近战丧尸：贴近玩家后挥击
+    if (this.melee) {
+      if (dist > v.attackRange * 0.85) {
+        this._moveToward(dx, dz, v.chaseSpeed, dt);
+      } else {
+        this.velocity.x *= 0.75;
+        this.velocity.z *= 0.75;
+        // 绕着玩家缓慢侧移，避免完全站桩
+        this.coverTimer -= dt;
+        if (this.coverTimer <= 0) {
+          this.coverTimer = 1.8 + Math.random() * 1.4;
+          this.coverSign = Math.random() < 0.5 ? -1 : 1;
+        }
+        const px = -dz * this.coverSign * 0.35;
+        const pz = dx * this.coverSign * 0.35;
+        this._moveToward(px, pz, v.patrolSpeed * 0.6, dt);
+      }
+      this.targetHeading = Math.atan2(dx, dz);
+
+      // 前摇 → 判定 两段式攻击
+      if (this.windupTimer > 0) {
+        this.windupTimer -= dt;
+        if (this.windupTimer <= 0 && !this.windupDone) {
+          this.windupDone = true;
+          this._meleeStrike(dist);
+        }
+      } else if (this.attackTimer <= 0 && dist <= v.attackRange) {
+        this.windupTimer = v.windup;
+        this.windupDone = false;
+        this.attackTimer = v.attackInterval;
+        this.onMelee(this);
+        this.currentAnim = null;          // 允许 attack 动画重新播放
+        this._play('attack', true);
+      } else {
+        this._play('run');
+      }
+      return;
+    }
+
+    // 吐酸丧尸：保持距离 + 定期喷吐
+    if (dist < v.keepDistance * 0.8) {
+      this._moveToward(-dx, -dz, v.chaseSpeed * 0.85, dt);
+    } else if (dist > v.attackRange * 0.9) {
+      this._moveToward(dx, dz, v.chaseSpeed, dt);
     } else {
       this.velocity.x *= 0.85;
       this.velocity.z *= 0.85;
     }
-
-    // 交火时始终面向玩家（覆盖 _moveToward 设置的移动朝向）
     this.targetHeading = Math.atan2(dx, dz);
 
-    // 第三轮：按距离切换射击节奏（近连发 / 远点射）
-    if (this.fireTimer <= 0 && !this.reloading && this.ammo > 0) {
-      if (this.burstLeft <= 0) {
-        const near = dist < ENEMY.attackRange * 0.5;
-        this.burstNear = near;
-        this.burstLeft = near ? ENEMY.burstNear : ENEMY.burstFar;
-      }
-      this._shoot();
-      this.burstLeft -= 1;
-      if (this.burstLeft <= 0) {
-        // 一轮连射/点射结束，进入较长间隔
-        this.fireTimer = this.burstNear
-          ? ENEMY.fireIntervalNear + Math.random() * 0.5
-          : ENEMY.fireIntervalFar + Math.random() * 0.6;
-      } else {
-        this.fireTimer = this.burstNear
-          ? ENEMY.fireIntervalNear
-          : ENEMY.fireIntervalFar * 0.6;
-      }
+    if (this.attackTimer <= 0 && dist <= v.attackRange) {
+      this.attackTimer = v.attackInterval * (0.85 + Math.random() * 0.4);
+      this._spit(dist);
+      this.currentAnim = null;
+      this._play('attack', true);
+    } else {
+      this._play('run');
     }
-    this._play('attack');
   }
 
-  /** 朝目标方向移动（含简单绕障）；朝向交给 targetHeading 平滑处理 */
+  /** 近战判定：前摇结束时玩家仍在触及范围（允许一点容错）则造成伤害 */
+  _meleeStrike(dist) {
+    if (!this.player || this.player.dead) return;
+    const reach = this.variant.attackRange * 1.25;
+    if (dist > reach) return;   // 玩家已逃出挥击范围
+    const dealt = this.player.takeDamage(this.variant.damage * this.damageMul);
+    if (dealt > 0) this.onPlayerHit(dealt);
+  }
+
+  /**
+   * 吐酸（非枪械）：酸液抛物线视觉 + 命中率随距离衰减。
+   * 与枪械完全分离：不消耗弹药、不产生弹壳、不走 GunSystem 通道。
+   */
+  _spit(dist) {
+    if (!this.player || this.player.dead) return;
+    const origin = this.position.clone();
+    origin.y += 1.5;
+    const target = this.player.camera.position.clone();
+
+    const v = this.variant;
+    const t = Math.min(1, dist / (v.accuracyRange || 30));
+    const chance = Math.min(0.9,
+      Math.max(v.accuracyMin, v.accuracy * (1 - t)) * this.accuracyMul);
+
+    const hit = Math.random() < chance;
+    const end = target.clone();
+    if (!hit) {
+      const missScale = 0.8 + t * 1.8;
+      end.x += (Math.random() - 0.5) * missScale;
+      end.y += (Math.random() - 0.5) * missScale * 0.7;
+      end.z += (Math.random() - 0.5) * missScale;
+    }
+
+    this.onSpit(origin, end, this);
+    if (hit) {
+      const dealt = this.player.takeDamage(v.damage * this.damageMul);
+      if (dealt > 0) this.onPlayerHit(dealt);
+    }
+  }
+
+  /** 朝目标方向移动（含简单绕障） */
   _moveToward(dx, dz, speed, dt) {
-    // 波次速度倍率统一在这里生效，各状态只关心"该走多快"的相对值
     speed *= this.speedMul;
     const len = Math.hypot(dx, dz);
     if (len < 0.001) return;
     let dirX = dx / len;
     let dirZ = dz / len;
 
-    // 被墙挡住时沿墙侧移
     if (this.avoidTimer > 0) {
       this.avoidTimer -= dt;
       const px = -dirZ * this.avoidSign;
@@ -458,52 +503,11 @@ export class EnemyAI {
     this.lastPos.copy(this.position);
   }
 
-  _updateAnimation() {
-    if (this.state === 'attack') {
-      if (this.currentAnim !== 'attack') this._play('attack');
-    }
-  }
-
-  // ---------------- 射击 ----------------
-  _shoot() {
-    if (!this.player || this.player.dead) return;
-    if (this.ammo <= 0) return;
-    this.ammo -= 1;
-
-    const origin = this.position.clone();
-    origin.y += 1.5;
-    const target = this.player.camera.position.clone();
-
-    // 命中率随距离衰减：近处接近基础命中率，远处降至最低
-    const dist = origin.distanceTo(target);
-    const t = Math.min(1, dist / ENEMY.accuracyRange);
-    // 波次精度倍率：第 3 波明显更准，但保留距离衰减
-    const chance = Math.min(0.95,
-      Math.max(ENEMY.accuracyMin, ENEMY.accuracy * (1 - t)) * this.accuracyMul);
-
-    let hit = Math.random() < chance;
-    const end = target.clone();
-    if (!hit) {
-      // 打偏：在玩家附近随机偏移，距离越远偏移越大
-      const missScale = 0.8 + t * 1.8;
-      end.x += (Math.random() - 0.5) * missScale;
-      end.y += (Math.random() - 0.5) * missScale * 0.7;
-      end.z += (Math.random() - 0.5) * missScale;
-    }
-
-    this.onShoot(origin, end, this);
-    if (hit) {
-      const dealt = this.player.takeDamage(ENEMY.damage * this.damageMul);
-      if (dealt > 0) this.onPlayerHit(dealt);
-    }
-  }
-
   // ---------------- 伤害 ----------------
   takeDamage(amount) {
     if (this.dead) return false;
     this.health -= amount;
     this.flashTimer = 0.15;
-    // 第三轮：受击身体抖动 + 小幅后撤躲避（不瞬移）
     this.flinchTimer = ENEMY.flinchTime;
     if (this.player && !this.player.dead) {
       const dx = this.position.x - this.player.position.x;
@@ -517,7 +521,6 @@ export class EnemyAI {
     }
     this._updateBar();
 
-    // 被击中会立刻警觉
     if (this.state === 'patrol' || this.state === 'alert') {
       if (this.player && !this.player.dead) {
         this.state = 'chase';
@@ -540,6 +543,7 @@ export class EnemyAI {
     this.deadTimer = ENEMY.deathBodyTime;
     this.velocity.set(0, 0, 0);
     this.bar.visible = false;
+    this.windupTimer = 0;
     this._play('death', true);
     this.onDeath(this);
   }
@@ -554,20 +558,18 @@ export class EnemyAI {
     this.deadTimer = 0;
     this.state = 'patrol';
     this.root.visible = true;
-    this.fireTimer = 0;
+    this.attackTimer = 0;
+    this.windupTimer = 0;
+    this.windupDone = false;
     this.stuckTimer = 0;
     this.loseSightTimer = 0;
     this.flinchTimer = 0;
-    this.burstLeft = 0;
     this.coverTimer = 1.0;
     this.coverStrafe = 0;
     this.alertTimer = 0;
     this.scanTime = 0;
     this.heading = Math.random() * Math.PI * 2;
     this.targetHeading = this.heading;
-    this.ammo = ENEMY.magazineSize;
-    this.reloading = false;
-    this.reloadTimer = 0;
     this.targetPoint = this._pickPatrolPoint();
     this.lastPos.copy(this.position);
     for (const m of this.materials) {
@@ -580,7 +582,7 @@ export class EnemyAI {
     this._play('idle');
   }
 
-  /** 射线与敌人命中球求交（用于玩家射击）；返回 part: head / body / limb */
+  /** 射线与丧尸命中球求交（用于玩家射击）；返回 part: head / body / limb */
   raycast(origin, dir, maxDist) {
     if (this.dead || !this.root.visible) return null;
 
@@ -588,7 +590,6 @@ export class EnemyAI {
     bodyCenter.y += ENEMY.bodyHeight;
     const headCenter = this.position.clone();
     headCenter.y += ENEMY.headHeight;
-    // 第三轮：腿部命中球（四肢伤害降低）
     const limbCenter = this.position.clone();
     limbCenter.y += 0.30;
 
@@ -611,7 +612,7 @@ export class EnemyAI {
   }
 }
 
-/** 第三轮：角度差归一化到 [-π, π]，用于平滑转头 */
+/** 角度差归一化到 [-π, π] */
 function shortestAngle(a) {
   while (a > Math.PI) a -= Math.PI * 2;
   while (a < -Math.PI) a += Math.PI * 2;

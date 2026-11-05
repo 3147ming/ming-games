@@ -14,7 +14,8 @@ import { AssetManager } from './AssetManager.js';
 import { AudioManager } from './AudioManager.js';
 import { CollisionWorld } from './CollisionWorld.js';
 import { computeAccuracy, computeScore, pickGrade } from './scoring.js';
-import { WarehouseMap } from '../world/WarehouseMap.js';
+import { OutdoorMap } from '../world/OutdoorMap.js';
+import { SupplyManager } from '../world/SupplyManager.js';
 import { MouseLook } from '../player/MouseLook.js';
 import { PlayerController } from '../player/PlayerController.js';
 import { WeaponView } from '../weapons/WeaponView.js';
@@ -86,7 +87,7 @@ export class Game {
 
     // ---- 世界与玩家 ----
     this.collision = new CollisionWorld();
-    this.map = new WarehouseMap(this.scene, this.collision, this.assets).build();
+    this.map = new OutdoorMap(this.scene, this.collision, this.assets).build();
 
     this.input = new Input(this.renderer.domElement);
     this.input.onLockChange = (locked) => this._onLockChange(locked);
@@ -127,6 +128,16 @@ export class Game {
       hud: this.hud,
       onKill: () => {},
       onShot: (info) => this._onShot(info),
+    });
+
+    // 补给点系统（弹药 / 医疗 / 护甲 / 综合物资）
+    this.supplies = new SupplyManager({
+      scene: this.scene,
+      player: this.player,
+      gun: this.gun,
+      playerHealth: this.player.health,
+      hud: this.hud,
+      audio: this.audio,
     });
 
     // 初始数值同步
@@ -196,6 +207,7 @@ export class Game {
     this.gun.resetAmmo();
     this.player.respawn(this.map.playerSpawn);
     this.enemies.startMatch();
+    this.supplies.reset();
     this._showTips();
   }
 
@@ -239,6 +251,7 @@ export class Game {
     this.stats = this._emptyStats();
     this.stats.startedAt = performance.now();
     this.enemies.startMatch();
+    this.supplies.reset();
     this.hud.setKills(0);
     this.hud.reset();
     this.hud.setVisible(true);
@@ -294,8 +307,8 @@ export class Game {
     this.hud.setWave(index + 1, MATCH.waves.length, total);
     this.hud.setEnemies(total);
     this._showBanner(
-      `第 ${index + 1} 波`,
-      `敌人 ${total} 名 · 同时最多 ${cfg.alive} 名在场`
+      `第 ${index + 1} 波尸潮`,
+      `丧尸 ${total} 只 · 同时最多 ${cfg.alive} 只在场`
     );
   }
 
@@ -440,6 +453,9 @@ export class Game {
 
       // 敌人
       this.enemies.update(dt);
+
+      // 补给点（靠近自动拾取 / 冷却刷新）
+      this.supplies.update(dt);
 
       // 特效与弹壳
       this.effects.update(dt);

@@ -37,6 +37,14 @@ export class PlayerHealth {
     return remain;
   }
 
+  /** 补给治疗：回复生命（不超过上限），返回实际回复量 */
+  heal(amount) {
+    if (this.dead) return 0;
+    const before = this.health;
+    this.health = Math.min(this.maxHealth, this.health + Math.max(0, amount));
+    return this.health - before;
+  }
+
   /** 波次补给：回复护甲（不超过上限） */
   addArmor(amount) {
     this.armor = Math.min(this.maxArmor, this.armor + Math.max(0, amount));

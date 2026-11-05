@@ -71,8 +71,8 @@ try {
   rec('波次指示 1/3', String(await txt(c, 'document.getElementById("wave-now").textContent + "/" + document.getElementById("wave-total").textContent')) === '1/3');
   await c.waitFor('window.__game.enemies.waveSpawned > 0', 8000);
   const w0 = await c.evaluate('({ total: window.__game.enemies.waveTotal, alive: window.__game.enemies.aliveCount, spawned: window.__game.enemies.waveSpawned })');
-  rec('第 1 波共 4 名敌人', w0.total === 4, JSON.stringify(w0));
-  rec('场上存活不超过并发上限（3）', w0.alive <= 3, `alive=${w0.alive}`);
+  rec('第 1 波共 6 只丧尸', w0.total === 6, JSON.stringify(w0));
+  rec('场上存活不超过并发上限（4）', w0.alive <= 4, `alive=${w0.alive}`);
   const box = await c.evaluate(`(() => {
     const el = document.querySelector('#app canvas');
     if (!el) return { ok: false, why: 'canvas 不存在' };
@@ -102,6 +102,92 @@ try {
     return { before, after };
   })()`);
   rec('开火立即生成曳光弹', Number(tracer.after) > Number(tracer.before), JSON.stringify(tracer));
+
+  section('C2. 丧尸无枪械（普通丧尸只能近战）');
+  const meleeCheck = await c.evaluate(`(() => {
+    const em = window.__game.enemies;
+    const out = { variants: [], meleeOk: true, spitOk: true, noGunProps: true };
+    // 全部实例的变体配置都不允许出现枪械字段
+    for (const e of em.enemies) {
+      const v = e.variant;
+      if (!out.variants.includes(v.id)) out.variants.push(v.id);
+      if (v.id !== 'spitter' && v.melee !== true) out.meleeOk = false;
+      if (v.melee) {
+        // 近战变体不得有 accuracy / 弹匣等枪械属性
+        if ('accuracy' in v || 'magazineSize' in v || 'reloadTime' in v) out.noGunProps = false;
+        if (v.attackRange > 4) out.meleeOk = false;   // 近战触及距离必须是短手
+      }
+    }
+    // 普通丧尸（walker）在攻击范围内走 windup 近战判定，不产生曳光弹
+    const w = em.enemies.find((e) => e.variantId === 'walker') || em.enemies[0];
+    w.setVariant ? w.setVariant('walker') : null;
+    return out;
+  })()`);
+  rec('普通丧尸变体只有近战（melee=true）', meleeCheck.meleeOk, JSON.stringify(meleeCheck));
+  rec('近战变体无任何枪械属性（弹匣/精度）', meleeCheck.noGunProps, JSON.stringify(meleeCheck));
+  const noTracer = await c.evaluate(`(() => {
+    const g = window.__game;
+    const w = g.enemies.enemies.find((e) => e.variantId === 'walker' && !e.dead) || g.enemies.enemies[0];
+    w.dead = false; w.deadTimer = 0; w.root.visible = true;
+    w.setVariant('walker'); w.health = w.maxHealth;
+    w.position.set(0, 0, 3.6); w.root.position.copy(w.position);
+    w.velocity.set(0, 0, 0);
+    g.player.position.set(0, 0, 8); g.player.velocity.set(0, 0, 0);
+    g.mouseLook.reset();
+    // 相机位置由 player._syncCamera 写入，_canSeePlayer 读的就是 camera；
+    // 不跑一帧玩家更新，丧尸永远"看不见人"，近战前摇根本不会启动
+    g.player.update(0.016, g.mouseLook);
+    g.player.health.health = 100; g.player.health.armor = 50; g.player.health.dead = false;
+    w.heading = Math.atan2(g.player.position.x - w.position.x, g.player.position.z - w.position.z);
+    w.targetHeading = w.heading;
+    w.lastKnown.copy(g.player.position);
+    w.attackTimer = 0; w.windupTimer = 0; w.windupDone = true;
+    const tracersBefore = g.effects.tracerPool.filter((t) => t.life > 0).length;
+    // 连跑 3 秒近战：逼近 → 前摇 → 判定
+    for (let i = 0; i < 120; i++) w.update(0.025);
+    const tracersAfter = g.effects.tracerPool.filter((t) => t.life > 0).length;
+    return { tracersBefore, tracersAfter, hp: g.player.health.health, armor: g.player.health.armor };
+  })()`);
+  rec('普通丧尸近战不产生任何弹道曳光', noTracer.tracersAfter <= noTracer.tracersBefore, JSON.stringify(noTracer));
+  rec('普通丧尸近战可对玩家造成伤害（含护甲吸收）', noTracer.hp < 100, `hp=${noTracer.hp} armor=${noTracer.armor}`);
+
+  section('C3. 补给点（资源 / 弹药 / 物资）');
+  const supplyCheck = await c.evaluate(`(() => {
+    const g = window.__game;
+    const s = g.supplies;
+    const types = [...new Set(s.points.map((p) => p.type))];
+    // 弹药拾取
+    const ammoP = s.points.find((p) => p.type === 'ammo' && p.cooldown <= 0);
+    g.gun.reserve = 10;
+    g.player.position.set(ammoP.root.position.x, 0, ammoP.root.position.z);
+    s.update(0.016);
+    const reserveAfterAmmo = g.gun.reserve;
+    const ammoCooling = ammoP.cooldown > 0;
+    // 医疗拾取（先扣血）
+    const medP = s.points.find((p) => p.type === 'med' && p.cooldown <= 0);
+    g.player.health.health = 30;
+    g.player.position.set(medP.root.position.x, 0, medP.root.position.z);
+    s.update(0.016);
+    const hpAfterMed = g.player.health.health;
+    // 护甲拾取
+    const armorP = s.points.find((p) => p.type === 'armor' && p.cooldown <= 0);
+    g.player.health.armor = 5;
+    g.player.position.set(armorP.root.position.x, 0, armorP.root.position.z);
+    s.update(0.016);
+    const armorAfter = g.player.health.armor;
+    return {
+      count: s.points.length,
+      types,
+      reserveAfterAmmo, ammoCooling, hpAfterMed, armorAfter,
+    };
+  })()`);
+  rec('补给点已布置（≥8 个）', supplyCheck.count >= 8, `count=${supplyCheck.count}`);
+  rec('补给类型齐全（弹药/医疗/护甲/物资）',
+    ['ammo', 'med', 'armor', 'cache'].every((t) => supplyCheck.types.includes(t)), JSON.stringify(supplyCheck.types));
+  rec('靠近弹药箱自动补弹（10 → 100）', supplyCheck.reserveAfterAmmo === 100, `reserve=${supplyCheck.reserveAfterAmmo}`);
+  rec('拾取后补给点进入冷却', supplyCheck.ammoCooling === true);
+  rec('靠近医疗包回复生命（30 → 75）', supplyCheck.hpAfterMed === 75, `hp=${supplyCheck.hpAfterMed}`);
+  rec('靠近护甲板回复护甲（5 → 40）', supplyCheck.armorAfter === 40, `armor=${supplyCheck.armorAfter}`);
 
   section('D. 换弹');
   const magBeforeReload = Number(await c.evaluate('window.__game.gun.mag'));
@@ -191,7 +277,7 @@ try {
     wave: document.getElementById('rs-wave').textContent,
     time: document.getElementById('rs-time').textContent,
   })`);
-  rec('结算击杀 = 15（三波总数）', rs.kills === '15', JSON.stringify(rs));
+  rec('结算击杀 = 24（三波总数）', rs.kills === '24', JSON.stringify(rs));
   rec('结算波次 = 3/3', rs.wave === '3/3', rs.wave);
   rec('命中率为百分比格式', /^\d+%$/.test(rs.acc), rs.acc);
   await c.shot('03-result-win.png');

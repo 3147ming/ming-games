@@ -1,14 +1,10 @@
 /**
- * 敌人管理器：波次调度、生成、更新、命中检测。
+ * 丧尸管理器：波次调度、生成、更新、命中检测（v0.3 丧尸改造）。
  *
- * 玩法闭环（v0.2 重写）：
- *   一局 = MATCH.waves 三波敌人 → 全部肃清即胜利。
- *   每波有 total（总人数）与 alive（同时存活上限）：
- *   场上人数低于上限时从出生点补位刷新，直到本波总人数刷完；
- *   本波全部击杀且场上无存活 → 进入 breakTime 休整（补弹补甲）→ 下一波。
- *
- *   旧版本是「死了 3~6 秒原地复活、无限循环」，任务简报写着"清理全部目标"
- *   却永远清不完，HUD 的敌人数也始终是 4 —— 这是个玩法闭环缺陷，已修。
+ *   一局 = MATCH.waves 三波尸潮 → 全部肃清即胜利。
+ *   每波有 total（总数）、alive（同时存活上限）、mix（变体配额）：
+ *   场上人数低于上限时从出生点补位刷新（按 mix 抽变体），直到本波刷完；
+ *   本波全部击杀且场上无存活 → breakTime 休整（补弹补甲）→ 下一波。
  */
 import * as THREE from 'three';
 import { ENEMY, MATCH } from '../config/weapon.js';
@@ -49,7 +45,8 @@ export class EnemyManager {
         spawn: new THREE.Vector3(0, 0, 0),
         index: i,
         onDeath: (e) => this._handleDeath(e),
-        onShoot: (from, to, e) => this._handleEnemyShoot(from, to, e),
+        onSpit: (from, to, e) => this._handleSpit(from, to, e),
+        onMelee: (e) => this._handleMelee(e),
         onPlayerHit: (dmg) => this._handlePlayerHit(dmg),
       });
       enemy.root.visible = false;
@@ -81,7 +78,7 @@ export class EnemyManager {
       e.dead = true;
       e.root.visible = false;
       e.state = 'idle';
-      e.health = ENEMY.maxHealth;
+      e.health = e.maxHealth;
     }
     this._beginWave(0);
   }
@@ -94,7 +91,27 @@ export class EnemyManager {
     this.waveKilled = 0;
     this.waveState = STATE.ACTIVE;
     this.spawnTimer = 0.4;   // 开局稍作停顿，别一进场就贴脸
+    this._buildVariantQueue();
     this.onWaveStart(index, this.waveTotal, MATCH.waves.length);
+  }
+
+  /**
+   * 本波变体抽取队列：按 mix 配额铺开后打乱，
+   * 补位刷新时依次 pop，保证变体构成稳定（不会全是同一种）。
+   */
+  _buildVariantQueue() {
+    const mix = (this.waveCfg && this.waveCfg.mix) || { walker: this.waveCfg ? this.waveCfg.total : 1 };
+    const queue = [];
+    for (const [id, n] of Object.entries(mix)) {
+      for (let i = 0; i < (n || 0); i++) queue.push(id);
+    }
+    while (queue.length < this.waveTotal) queue.push('walker');
+    queue.length = this.waveTotal;
+    for (let i = queue.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [queue[i], queue[j]] = [queue[j], queue[i]];
+    }
+    this.variantQueue = queue;
   }
 
   /** 本波是否已经打完（总人数刷完且全部死亡） */
@@ -138,7 +155,9 @@ export class EnemyManager {
     const enemy = this.enemies.find((e) => e.dead);
     if (!enemy) return;
     const point = this._pickSpawnPoint();
+    const variant = (this.variantQueue && this.variantQueue.pop()) || 'walker';
     enemy.configure({
+      variant,
       healthMul: this.waveCfg.healthMul,
       damageMul: this.waveCfg.damageMul,
       accuracyMul: this.waveCfg.accuracyMul,
@@ -198,12 +217,20 @@ export class EnemyManager {
     this.onKill(enemy);
   }
 
-  _handleEnemyShoot(from, to, enemy) {
-    if (!this.effects) return;
-    this.effects.spawnTracer(from, to);
+  /** 吐酸丧尸喷吐：酸液弹道视觉（非枪械，复用曳光弹通道但换低沉音色） */
+  _handleSpit(from, to, enemy) {
+    if (this.effects) this.effects.spawnTracer(from, to);
     if (this.audio) {
       const dist = this.player ? this.player.position.distanceTo(enemy.position) : 30;
-      this.audio.play('fire2', { volume: this.audio.distanceVolume(dist), rate: 0.85 });
+      this.audio.play('fire2', { volume: this.audio.distanceVolume(dist) * 0.8, rate: 0.55 });
+    }
+  }
+
+  /** 普通丧尸近战挥击：只出音效提示，伤害在前摇结束后由 EnemyAI 判定 */
+  _handleMelee(enemy) {
+    if (this.audio) {
+      const dist = this.player ? this.player.position.distanceTo(enemy.position) : 30;
+      this.audio.play('fire2', { volume: this.audio.distanceVolume(dist) * 0.7, rate: 0.38 });
     }
   }
 

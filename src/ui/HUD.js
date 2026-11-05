@@ -149,6 +149,22 @@ export class HUD {
     while (this.killfeed.children.length > 4) this.killfeed.firstChild.remove();
   }
 
+  /** 补给拾取提示（屏幕右侧浮出） */
+  showSupplyToast(label, hint) {
+    let el = document.getElementById('supply-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'supply-toast';
+      this.root.appendChild(el);
+    }
+    el.innerHTML = `<b>${label}</b><span>${hint || ''}</span>`;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+    clearTimeout(this._supplyToastTimer);
+    this._supplyToastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+  }
+
   /** 换弹提示 */
   showReloadTip(show, blink = false) {
     this.reloadTip.classList.toggle('show', !!show);

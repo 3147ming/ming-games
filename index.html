@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>仓库行动 - 简易 CF 网页 FPS</title>
+  <title>仓库行动 - 丧尸生存 FPS</title>
   <link rel="icon" href="data:," />
   <link rel="stylesheet" href="./styles/hud.css" />
   <!--
@@ -95,7 +95,7 @@
       <div class="tips-title">操作提示</div>
       <div class="tips-row"><b>WASD</b> 移动　<b>Shift</b> 静步　<b>Ctrl</b> 蹲伏</div>
       <div class="tips-row"><b>空格</b> 跳跃　<b>左键</b> 射击　<b>R</b> 换弹　<b>Esc</b> 暂停</div>
-      <div class="tips-row dim">三波敌人 · 逐波肃清 · 每波结束补弹补甲</div>
+      <div class="tips-row dim">三波尸潮 · 逐波肃清 · 靠近补给点自动拾取</div>
       <div class="tips-row dim">按 <b>O</b> 显示 / 隐藏帧率</div>
     </div>
   </div>
@@ -107,10 +107,10 @@
   <div id="loading" class="overlay">
     <div class="panel loading-panel">
       <h1 class="game-title">仓库行动</h1>
-      <p class="game-sub">WAREHOUSE STRIKE</p>
+      <p class="game-sub">WAREHOUSE STRIKE · 丧尸生存</p>
       <div class="loading-bar"><i id="loading-fill"></i></div>
       <p class="loading-text" id="loading-text">正在加载资源 0%</p>
-      <p class="loading-hint">首次加载需要下载仓库素材，请稍候…</p>
+      <p class="loading-hint">首次加载需要下载货场素材，请稍候…</p>
     </div>
   </div>
 
@@ -118,7 +118,7 @@
   <div id="menu" class="overlay hidden">
     <div class="panel menu-panel">
       <h1 class="game-title">仓库行动</h1>
-      <p class="game-sub">WAREHOUSE STRIKE · 简易 CF 网页版</p>
+      <p class="game-sub">WAREHOUSE STRIKE · 丧尸生存</p>
       <div class="menu-cols">
         <div class="menu-block">
           <h3>操作说明</h3>
@@ -134,8 +134,8 @@
         </div>
         <div class="menu-block">
           <h3>任务简报</h3>
-          <p class="brief">仓库内盘踞三波敌对武装人员，共 <b>15</b> 名。逐波肃清即可完成任务，每波结束会投放弹药与护甲补给。</p>
-          <p class="tip">提示：击中头部造成 2 倍伤害，命中四肢伤害更低；连续射击时后坐力会逐渐增大，短点射更精准。生命归零即行动失败。</p>
+          <p class="brief">货场内涌出三波丧尸，共 <b>24</b> 只。逐波肃清即可完成任务。地图上散布着<b>弹药箱 / 医疗包 / 护甲板 / 物资箱</b>补给点，靠近自动拾取。</p>
+          <p class="tip">提示：普通丧尸只会近战扑咬，<b>吐酸丧尸</b>会远程喷吐酸液，重锤丧尸皮糙肉厚。爆头 2 倍伤害，短点射更精准。生命归零即行动失败。</p>
         </div>
       </div>
       <button class="btn primary" id="btn-start">点击开始行动</button>
