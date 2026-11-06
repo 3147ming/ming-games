@@ -87,7 +87,41 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: 0.04em; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.hud-right { display: flex; gap: 6px; flex: none; }
+.hud-right { display: flex; align-items: center; gap: 6px; flex: none; }
+
+/* ---------------- 主音量（HUD，和静音键并排） ----------------
+   静音时保留滑杆位置与音量值，只做视觉降权（变暗 + 百分比写「静音」）：
+   这样一眼能看出"总闸关了"，而不是误以为滑杆坏了；解除静音后原值立刻回来。 */
+.vol {
+  display: flex;
+  align-items: center;
+  gap: var(--mg-sp-1);
+  min-height: var(--mg-tap);
+  padding: 0 var(--mg-sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--mg-r-sm);
+  background: var(--ink-2);
+  transition: opacity var(--mg-t-base) var(--mg-ease-out), border-color var(--mg-t-base) var(--mg-ease-out);
+}
+.vol-range {
+  width: 64px;
+  height: var(--mg-tap);
+  margin: 0;
+  accent-color: var(--lamp);
+  background: transparent;
+  cursor: pointer;
+}
+.vol-pct {
+  min-width: 34px;
+  font-family: var(--font-ui);
+  font-size: var(--mg-fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--paper-dim);
+  text-align: right;
+}
+.vol.is-muted { opacity: 0.55; border-color: rgba(181, 86, 60, 0.55); }
+.vol.is-muted .vol-range { filter: grayscale(1); }
+.vol.is-muted .vol-pct { color: var(--rust); }
 
 .icon-btn {
   min-width: var(--mg-tap);
@@ -107,6 +141,12 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: 0.04em; }
   background: var(--lamp);
   border-color: var(--lamp);
   box-shadow: 0 0 12px rgba(232, 176, 100, 0.35);
+}
+/* 静音是"已生效的状态"，不能只靠按钮文字（静/♪）区分：用锈红描边再强调一次。 */
+.icon-btn.muted {
+  color: #e7a08c;
+  border-color: rgba(181, 86, 60, 0.65);
+  background: rgba(181, 86, 60, 0.12);
 }
 
 .meter {
@@ -482,6 +522,13 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: 0.04em; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes breathe { 0%, 100% { opacity: 0.4; transform: scale(0.86); } 50% { opacity: 1; transform: scale(1); } }
+
+/* 窄屏：先压缩滑杆与内边距，别把房间名挤没（44px 触控热区保持不变）。 */
+@media (max-width: 380px) {
+  .vol { padding: 0 var(--mg-sp-1); }
+  .vol-range { width: 50px; }
+  .vol-pct { min-width: 30px; }
+}
 
 /* ---------------- 桌面端 ---------------- */
 @media (min-width: 760px) {

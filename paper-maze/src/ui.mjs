@@ -52,6 +52,8 @@ import {
   defaultSave,
 } from './save.mjs';
 import { createSfx } from './sfx.mjs';
+// 音量是设备偏好，走独立键；静音仍在存档里。两者只在渲染时合并显示。
+import { loadVolume, saveVolume, toPercent, fromPercent } from './audio-volume.mjs';
 
 const $ = (id) => document.getElementById(id);
 
@@ -74,6 +76,9 @@ export function boot(root = document) {
     toast: $('toast'),
     btnHint: $('btnHint'),
     btnMute: $('btnMute'),
+    volCtl: $('volCtl'),
+    volRange: $('volRange'),
+    volPct: $('volPct'),
     meterFill: $('meterFill'),
     bootOverlay: $('bootOverlay'),
     bootStart: $('bootStart'),
@@ -86,7 +91,7 @@ export function boot(root = document) {
   let save = loaded.save;
   let state = stateFromSave(save);
 
-  const sfx = createSfx({ muted: save.settings.muted });
+  const sfx = createSfx({ muted: save.settings.muted, volume: loadVolume(storage) });
 
   function persist(now = Date.now()) {
     save = saveFromState(state, save, now);
@@ -104,6 +109,45 @@ export function boot(root = document) {
     toastTimer = setTimeout(() => {
       el.toast.className = 'toast';
     }, 3200);
+  }
+
+  /* ---------------------------------------------------------- 音频 UI */
+  /**
+   * 把"音量 + 静音"画到 HUD。
+   * 唯一数据源是 sfx 内部的 volume/muted：HUD 滑杆、HUD 静音键、设置面板静音键
+   * 三个入口最后都只调这里重画，不会出现"面板显示开 / 实际已静音"的分裂。
+   */
+  function renderAudioUI() {
+    const pct = toPercent(sfx.getVolume());
+    const muted = sfx.muted;
+    if (el.volRange) {
+      // 正在拖时不要回写 value：range 的 value 被脚本改写会打断拖动。
+      if (document.activeElement !== el.volRange) el.volRange.value = String(pct);
+      el.volRange.setAttribute('aria-valuetext', muted ? `已静音（音量 ${pct}%）` : `${pct}%`);
+    }
+    if (el.volPct) el.volPct.textContent = muted ? '静音' : `${pct}%`;
+    if (el.volCtl) el.volCtl.classList.toggle('is-muted', muted);
+    if (el.btnMute) {
+      el.btnMute.textContent = muted ? '静' : '♪';
+      el.btnMute.setAttribute('aria-pressed', String(muted));
+      el.btnMute.classList.toggle('muted', muted);
+    }
+  }
+
+  /**
+   * 静音的唯一入口：存档、播放层、HUD/设置面板一起更新。
+   * 静音只改 muted，不改 volume —— 解除静音时玩家调好的音量原样回来。
+   * （增益层面的合并由 sfx 的 channelGain 负责：静音直接 0。）
+   */
+  function setAudioMuted(next) {
+    save.settings.muted = !!next;
+    sfx.setMuted(save.settings.muted);
+    if (!save.settings.muted) {
+      sfx.unlock();
+      sfx.play('page');
+    }
+    writeSave(save, storage);
+    renderAudioUI();
   }
 
   /* ---------------------------------------------------------- 主视图 */
@@ -376,14 +420,8 @@ export function boot(root = document) {
     const row1 = document.createElement('div');
     row1.className = 'row gap wrap';
     const bMute = mkBtn(save.settings.muted ? '音效：关' : '音效：开', () => {
-      save.settings.muted = !save.settings.muted;
-      sfx.setMuted(save.settings.muted);
-      if (!save.settings.muted) {
-        sfx.unlock();
-        sfx.play('page');
-      }
-      writeSave(save, storage);
-      el.btnMute.textContent = save.settings.muted ? '静' : '♪';
+      // 走同一个入口：HUD 与设置面板的静音状态不会各说各话。
+      setAudioMuted(!save.settings.muted);
       renderSheet('settings');
     });
     const bRestart = mkBtn('重开本局', () => {
@@ -725,16 +763,15 @@ export function boot(root = document) {
     renderAll();
   });
 
-  el.btnMute.addEventListener('click', () => {
-    save.settings.muted = !save.settings.muted;
-    sfx.setMuted(save.settings.muted);
-    if (!save.settings.muted) {
-      sfx.unlock();
-      sfx.play('page');
-    }
-    el.btnMute.textContent = save.settings.muted ? '静' : '♪';
-    el.btnMute.setAttribute('aria-pressed', String(save.settings.muted));
-    writeSave(save, storage);
+  el.btnMute.addEventListener('click', () => setAudioMuted(!save.settings.muted));
+
+  // 拖动中实时生效：每次 input 都直接改 master.gain，不等松手。
+  // 同时写独立音量键（音量与静音分开存），静音时也允许调，调的是"解除静音后的音量"。
+  el.volRange.addEventListener('input', () => {
+    const v = fromPercent(el.volRange.value);
+    sfx.setVolume(v);
+    saveVolume(v, storage);
+    renderAudioUI();
   });
 
   document.addEventListener('keydown', (ev) => {
@@ -789,8 +826,8 @@ export function boot(root = document) {
   el.bootStart.textContent = save.runs ? '继续' : '点亮纸灯';
   el.meterFill.parentElement.setAttribute('aria-label', '收集度');
 
-  el.btnMute.textContent = save.settings.muted ? '静' : '♪';
-  el.btnMute.setAttribute('aria-pressed', String(save.settings.muted));
+  // 首帧就把存档（静音）与独立键（音量）贴上 UI，避免打开时闪一下 100%。
+  renderAudioUI();
 
   renderRoom();
   updateHintButton();

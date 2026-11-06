@@ -29,6 +29,8 @@ button{font-family:inherit}
 #hdTitle{flex:1 1 auto;min-width:0;font-weight:800;font-size:17px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.18);letter-spacing:.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hbtn{border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.18);color:#fff;border-radius:var(--mg-r-pill);padding:7px 15px;font-size:14px;cursor:pointer;transition:.15s}
 .hbtn:hover{background:rgba(255,255,255,.34)}
+/* 静音中：顶栏按钮加深底色，和「音效开关」区分开，远看也能认出当前是全局静音 */
+#btnMute.on{background:rgba(255,255,255,.46);box-shadow:inset 0 0 0 2px rgba(255,255,255,.9)}
 #menu{max-width:780px;margin:0 auto;padding:18px 16px}
 .mnote{background:linear-gradient(120deg,#fff8e1,#fff3cd);border:1px solid #f3e2ad;border-radius:var(--mg-r-lg);padding:13px 18px;font-size:13px;color:#8a6d1a;margin-bottom:4px;line-height:1.8;box-shadow:0 2px 8px rgba(230,200,80,.2)}
 .cat{margin:26px 0 12px}
@@ -265,6 +267,9 @@ button{font-family:inherit}
 .set-row{display:flex;align-items:center;gap:10px;margin:12px 0;font-size:14px;color:#6b6250}
 .set-slider{flex:1;min-width:110px;accent-color:#7c5cff;height:32px;touch-action:manipulation}
 .set-val{min-width:var(--mg-tap);text-align:right;font-weight:700;color:#5b4bc4}
+/* 音频设置：静音用「文案 + 底色」双重标识 —— 只换一个图标时，浅色面板上很难看出到底静没静音 */
+.set-mute{min-width:calc(var(--mg-tap)*3);transition:var(--mg-t-base) var(--mg-ease-out)}
+.set-mute.on{background:#fff1f0;border-color:#e57373;color:#c62828;box-shadow:inset 0 0 0 1px rgba(198,40,40,.35)}
 .bt-box{min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
 .bt-stim{display:flex;align-items:center;justify-content:center}
 .bt-grid{display:grid;grid-template-columns:repeat(3,34px);grid-template-rows:repeat(3,34px);gap:4px}
@@ -788,8 +793,8 @@ body.ingame .combo-pop{top:calc(var(--hdh,64px) + 30px)}
 .ach-desc{font-size:12px;color:#888}
 
 
-#hd.nowrap #btnAch,#hd.nowrap #btnSound,#hd.nowrap #btnBgm,#hd.nowrap #streakBadge,#hd.nowrap #rankBadge{display:none}
-.hd.more #btnAch,.hd.more #btnSound,.hd.more #btnBgm,.hd.more #streakBadge,.hd.more #rankBadge{display:inline-block}
+#hd.nowrap #btnAch,#hd.nowrap #btnSound,#hd.nowrap #btnMute,#hd.nowrap #btnBgm,#hd.nowrap #streakBadge,#hd.nowrap #rankBadge{display:none}
+.hd.more #btnAch,.hd.more #btnSound,.hd.more #btnMute,.hd.more #btnBgm,.hd.more #streakBadge,.hd.more #rankBadge{display:inline-block}
 #streakBadge{background:#fff3e0;color:#e65100}
 #rankBadge{background:#ede7f6;color:#5e35b1}
 
@@ -814,6 +819,7 @@ body.ingame .combo-pop{top:calc(var(--hdh,64px) + 30px)}
   <span id="rankBadge" class="coin-badge" title="段位">🥉 新手</span>
   <button id="btnAch" class="hbtn" title="成就">🏅</button>
   <button id="btnSound" class="hbtn" title="音效开关">🔊</button>
+  <button id="btnMute" class="hbtn" title="静音">🔊</button>
   <button id="btnBgm" class="hbtn" title="背景音乐">🎵</button>
   <button id="btnMore" class="hbtn" title="更多">⋯</button>
 </div>
@@ -1085,13 +1091,13 @@ function startTrain(plan){TRAIN={plan:plan,i:0,log:[],t0:Date.now()};openGame(GA
 
 /* --- 音频基座（提到顶层：原先误放在 gTiles 内部，导致全站音效从未发声） --- */
 var AC=null;function audio(){try{if(!AC){var C=window.AudioContext||window.webkitAudioContext;if(!C)return null;AC=new C();}if(AC.state==='suspended'&&AC.resume)AC.resume();return AC;}catch(e){return null;}}
-function piano(freq){var c=audio();if(!c)return;try{var t0=c.currentTime,d=0.5,bus=c.createGain();bus.connect(c.destination);bus.gain.setValueAtTime(0.0001,t0);bus.gain.exponentialRampToValueAtTime(0.5*volGet(),t0+0.006);bus.gain.exponentialRampToValueAtTime(0.0006,t0+d);var lp=c.createBiquadFilter();lp.type='lowpass';lp.frequency.value=4200;lp.connect(bus);var parts=[[1,1],[2,0.45],[3,0.22],[4,0.1],[5,0.05]];for(var i=0;i<parts.length;i++){var o=c.createOscillator();o.type='triangle';o.frequency.value=freq*parts[i][0];var g=c.createGain();g.gain.value=parts[i][1];o.connect(g);g.connect(lp);o.start(t0);o.stop(t0+d+0.06);}}catch(e){}}
-function buzz(){var c=audio();if(!c)return;try{var t0=c.currentTime,o=c.createOscillator(),g=c.createGain();o.type='sawtooth';o.frequency.setValueAtTime(220,t0);o.frequency.exponentialRampToValueAtTime(70,t0+0.5);g.gain.setValueAtTime(0.0001,t0);g.gain.exponentialRampToValueAtTime(0.28*volGet(),t0+0.01);g.gain.exponentialRampToValueAtTime(0.0006,t0+0.55);o.connect(g);g.connect(c.destination);o.start(t0);o.stop(t0+0.6);}catch(e){}}
+function piano(freq){var c=audio();if(!c)return;var G=audioGain(1);if(!(G>0))return;try{var t0=c.currentTime,d=0.5,bus=c.createGain();bus.connect(c.destination);bus.gain.setValueAtTime(0.0001,t0);bus.gain.exponentialRampToValueAtTime(0.5*G,t0+0.006);bus.gain.exponentialRampToValueAtTime(0.0006,t0+d);var lp=c.createBiquadFilter();lp.type='lowpass';lp.frequency.value=4200;lp.connect(bus);var parts=[[1,1],[2,0.45],[3,0.22],[4,0.1],[5,0.05]];for(var i=0;i<parts.length;i++){var o=c.createOscillator();o.type='triangle';o.frequency.value=freq*parts[i][0];var g=c.createGain();g.gain.value=parts[i][1];o.connect(g);g.connect(lp);o.start(t0);o.stop(t0+d+0.06);}}catch(e){}}
+function buzz(){var c=audio();if(!c)return;var G=audioGain(1);if(!(G>0))return;try{var t0=c.currentTime,o=c.createOscillator(),g=c.createGain();o.type='sawtooth';o.frequency.setValueAtTime(220,t0);o.frequency.exponentialRampToValueAtTime(70,t0+0.5);g.gain.setValueAtTime(0.0001,t0);g.gain.exponentialRampToValueAtTime(0.28*G,t0+0.01);g.gain.exponentialRampToValueAtTime(0.0006,t0+0.55);o.connect(g);g.connect(c.destination);o.start(t0);o.stop(t0+0.6);}catch(e){}}
 /* --- P1-10 音效（复用 AudioContext） --- */
 function sfx(kind){
   if(+(S.getItem('bd_sound')||1)===0)return;
   var c=(typeof audio==='function')?audio():null;if(!c)return;
-  var t0=c.currentTime,v=volGet();
+  var t0=c.currentTime,v=audioGain(1);if(!(v>0))return;
   function tone(f0,f1,dur,type){try{var o=c.createOscillator(),g=c.createGain();o.type=type||'sine';
     o.frequency.setValueAtTime(f0,t0);if(f1&&f1!==f0)o.frequency.exponentialRampToValueAtTime(f1,t0+dur);
     g.gain.setValueAtTime(0.0001,t0);g.gain.exponentialRampToValueAtTime(0.09*v,t0+0.008);g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
@@ -4139,11 +4145,53 @@ every(function(){$('sxT')&&($('sxT').textContent=Math.round((nowClock()-t0)/1000
 buildLevel()}
 
 
+/* ===== 音频设置：主音量 + 静音（全站唯一音量事实源）=====
+   为什么把读取与增益计算集中到这里：
+   旧版设置面板只把滑杆值写进 bd_vol，背景音乐面板又另存 bd_bgmvol、各算各的，
+   于是会出现「主音量已经拉到底，背景音乐还在响」——玩家会直接判定静音/音量坏了。
+   现在任何发声点（音效、方位音、合成 BGM、文件 BGM）都只通过 audioGain() 取最终增益，
+   静音时这个唯一计算点直接返回 0，杜绝某一路漏乘。
+   存档：bd_vol（0~1，沿用旧键，老玩家的音量不会丢）+ bd_muted（'1'/'0'，新增独立键）。
+   BGM 面板的 bd_bgmvol 继续保留为「背景音乐相对音量」，但最终仍要乘主音量并受静音约束。 */
+var AUDIO_VOL_KEY='bd_vol', AUDIO_MUTE_KEY='bd_muted';
+/* @AUDIO-PURE-BEGIN */
+var AUDIO_VOL_DEFAULT=0.8;
+/* 把任意存档值夹到 0~1：滑杆 value 是字符串、旧档可能是 0~100 的整数，
+   这里统一救回来，避免一次脏数据让音量变成 NaN 后整站无声。 */
+function audioClamp01(v,fb){
+  var f=(typeof fb==='number'&&isFinite(fb))?Math.max(0,Math.min(1,fb)):AUDIO_VOL_DEFAULT;
+  if(v===null||v===undefined||typeof v==='boolean')return f;
+  if(typeof v==='string'&&v.trim()==='')return f;
+  var n=(typeof v==='number')?v:Number(v);
+  if(!isFinite(n))return f;
+  return Math.max(0,Math.min(1,n));
+}
+/* ★ 全站唯一的音量计算点：实际增益 = 静音 ? 0 : 主音量 × 该路基准增益。
+   静音刻意独立于滑杆：若靠把音量写成 0 来实现静音，用户恢复时原来的音量就丢了。
+   音效 / 方位音 / BGM 都必须从这里取增益，且每路只乘这一次（否则会变成 volume²）。 */
+function audioPureGain(volume,muted,base){
+  var b=(typeof base==='number'&&isFinite(base))?Math.max(0,base):1;
+  if(muted===true||muted===1||muted==='1'||muted==='true')return 0;
+  return audioClamp01(volume,AUDIO_VOL_DEFAULT)*b;
+}
+/* @AUDIO-PURE-END */
+function audioVolume(){try{return audioClamp01(S.getItem(AUDIO_VOL_KEY),AUDIO_VOL_DEFAULT)}catch(e){return AUDIO_VOL_DEFAULT}}
+function audioMuted(){try{var v=S.getItem(AUDIO_MUTE_KEY);return v==='1'||v==='true'||v===1||v===true}catch(e){return false}}
+/* 所有发声通道统一入口：base 只表达该通道的固定配比，绝不再额外乘一次主音量。 */
+function audioGain(base){return audioPureGain(audioVolume(),audioMuted(),base)}
+/* 设置变更后同步「正在播放」的 BGM：只重算增益、不重启曲目，
+   否则拖动滑杆时音乐会卡顿甚至从头播放，体验上像 bug。 */
+function audioApply(){
+  try{if(typeof BGM!=='undefined'&&BGM&&BGM.applyMaster)BGM.applyMaster()}catch(e){}
+  try{if(typeof updateTopBar==='function')updateTopBar()}catch(e){}
+}
+
+
 var MUSICK=(function(){
   var ctx=null,master=null,nodes=[],vol=0.55;
   var api={cur:null,play:play,stop:stop,setVol:setVol,openApp:openApp};
   function AC(){return window.AudioContext||window.webkitAudioContext}
-  function ensure(){if(!ctx){var C=AC();if(!C)return null;ctx=new C();master=ctx.createGain();master.gain.value=vol;master.connect(ctx.destination)}if(ctx.state==='suspended'){try{ctx.resume()}catch(e){}}return ctx}
+  function ensure(){if(!ctx){var C=AC();if(!C)return null;ctx=new C();master=ctx.createGain();master.gain.value=audioGain(vol);master.connect(ctx.destination)}if(ctx.state==='suspended'){try{ctx.resume()}catch(e){}}return ctx}
   function noise(type){var len=Math.floor(ctx.sampleRate*2);var buf=ctx.createBuffer(1,len,ctx.sampleRate);var d=buf.getChannelData(0);
     if(type==='brown'){var last=0;for(var i=0;i<len;i++){var w=Math.random()*2-1;last=(last+0.02*w)/1.02;d[i]=last*3.5}}
     else if(type==='pink'){var b0=0,b1=0,b2=0;for(var i=0;i<len;i++){var w=Math.random()*2-1;b0=0.99765*b0+w/4.5;b1=0.96300*b1+w/3.2;b2=0.57000*b2+w/1.2;d[i]=(b0+b1+b2+w/1.6)/3}}
@@ -4157,7 +4205,8 @@ var MUSICK=(function(){
     var c=map[id];var s=srcNode(c[0]);var fl=ctx.createBiquadFilter();fl.type=c[2];fl.frequency.value=c[1];fl.Q.value=0.7;s.connect(fl).connect(g);g.gain.value=c[3];
     if(id==='ocean'){var lfo=ctx.createOscillator();lfo.frequency.value=0.09;var lg=ctx.createGain();lg.gain.value=c[3]*0.7;lfo.connect(lg).connect(g.gain);lfo.start();nodes.push(lfo)}
     s.start();nodes.push(s);api.cur=id}
-  function setVol(v){vol=v;if(master)master.gain.value=v}
+  /* v 是「背景音乐相对音量」，最终增益仍走 audioGain（含主音量与静音），只乘这一次 */
+  function setVol(v){vol=Math.max(0,Math.min(1,+v||0));if(master)master.gain.value=audioGain(vol)}
   function openApp(key){var S={netease:'orpheus://',qq:'qqmusic://',kugou:'kugou://',kuwo:'kuwo://',ximalaya:'ximalaya://',qishui:'qishui://',apple:'musics://',spotify:'spotify://',ytmusic:'youtubemusic://'};
     var W={netease:'https://music.163.com',qq:'https://y.qq.com',kugou:'https://www.kugou.com',kuwo:'https://www.kuwo.cn',ximalaya:'https://www.ximalaya.com',qishui:'https://www.douyin.com',apple:'https://music.apple.com',spotify:'https://open.spotify.com',ytmusic:'https://music.youtube.com'};
     var s=S[key],w=W[key];
@@ -4186,7 +4235,10 @@ var BGM=(function(){
   var el=null,cur='',vol=0.5,loop=true,err='',msg='',playing=false,extIdx={},btns=[];
   function trk(id){for(var i=0;i<LIST.length;i++)if(LIST[i].id===id)return LIST[i];return null}
   function getVol(){var v=+(S.getItem(VKEY)||0.5);if(!isFinite(v))v=0.5;return Math.max(0,Math.min(1,v))}
-  function setVol(v){vol=Math.max(0,Math.min(1,+v||0));try{S.setItem(VKEY,String(vol))}catch(e){}if(el){try{el.volume=vol}catch(e){}}try{MUSICK.setVol(vol)}catch(e){}paint()}
+  function setVol(v){vol=Math.max(0,Math.min(1,+v||0));try{S.setItem(VKEY,String(vol))}catch(e){}if(el){try{el.volume=audioGain(vol)}catch(e){}}try{MUSICK.setVol(vol)}catch(e){}paint()}
+  /* 主音量滑杆 / 静音开关变化时由 audioApply() 调用。
+     这里只把当前曲目的增益重新算一遍，不调用 play()，避免正在听的音乐被重启。 */
+  function applyMaster(){vol=getVol();if(el){try{el.volume=audioGain(vol)}catch(e){}}try{MUSICK.setVol(vol)}catch(e){}paint()}
   function ensureEl(){if(el)return el;try{el=new Audio();el.preload='none';el.loop=true;
     try{document.body.appendChild(el)}catch(e){}
     el.addEventListener('playing',function(){playing=true;err='';msg='';paint()});
@@ -4206,7 +4258,7 @@ var BGM=(function(){
     playing=false; /* 文件型：先落回 false，由 'playing' 事件点亮，避免沿用上一首的状态 */
     var e2=ensureEl();if(!e2){err='⚠️ 当前浏览器不支持音频播放';paint();return}
     msg='⏳ 正在加载 '+t.n+'（'+t.sz+'，首次较慢）…';paint();
-    try{e2.src=srcOf(t);e2.loop=loop;e2.volume=vol;e2.load();
+    try{e2.src=srcOf(t);e2.loop=loop;e2.volume=audioGain(vol);e2.load();
       var pr=e2.play();
       if(pr&&pr.catch)pr.catch(function(er){if(!er)return;var nm=er.name||'';
         if(nm==='AbortError'||nm==='NotSupportedError')return;
@@ -4241,7 +4293,7 @@ var BGM=(function(){
     try{_setTimeout(function(){if(btn.__armed){btn.__armed=false;btn.textContent=btn.__txt}},3500)}catch(e){}}
   function openPanel(){var pp=overlayPanel('🎵 背景音乐');var p=pp.p,ov=pp.ov;btns=[];
     p.appendChild(h('div','hint','全站背景音乐：切页切游戏不中断，选择与音量自动记住'));
-    var row=h('div','tm-row');row.innerHTML='<span>🔊 背景音量</span><input id="bgmVol" type="range" min="0" max="100" value="'+Math.round(getVol()*100)+'">';p.appendChild(row);
+    var row=h('div','tm-row');row.innerHTML='<span>🎵 背景音量<small style="opacity:.7">（受主音量控制）</small></span><input id="bgmVol" type="range" min="0" max="100" value="'+Math.round(getVol()*100)+'">';p.appendChild(row);
     p.appendChild(h('div','tm-label','内置白噪音 / 轻音乐（实时合成，无需联网）'));
     var g1=h('div','ambgrid');p.appendChild(g1);
     p.appendChild(h('div','tm-label','轻音乐曲（需把音频文件放进 audio/ 目录）'));
@@ -4265,7 +4317,7 @@ var BGM=(function(){
     ov.appendChild(p);document.body.appendChild(ov);
     var vv=$('bgmVol');if(vv)vv.oninput=function(){setVol((+vv.value||0)/100)};
     paint()}
-  return {play:play,stop:stop,toggle:toggle,setVol:setVol,getVol:getVol,isPlaying:isPlaying,openPanel:openPanel,paint:paint,list:LIST,media:function(){return el}};
+  return {play:play,stop:stop,toggle:toggle,setVol:setVol,getVol:getVol,applyMaster:applyMaster,isPlaying:isPlaying,openPanel:openPanel,paint:paint,list:LIST,media:function(){return el}};
 })();
 try{BGM.restore()}catch(e){}
 // ================= 33. 番茄钟 =================
@@ -4310,14 +4362,16 @@ if(state==='idle')hint&&(hint.textContent='点 ▶ 开始专注，或选预设�
 
 // ================= 34. 消音闪念 =================
 /* P0-4 消音闪念改听声辨位：8 方位短音 + 无提示罗盘 */
-function volGet(){var v=+(S.getItem('bd_vol')||0.8);if(!isFinite(v))v=0.8;return Math.max(0,Math.min(1,v))}
+/* 兼容旧调用：volGet() 现在返回的是「实际增益」（已含主音量与静音），不再是原始音量。
+   新代码请直接用 audioGain(base)，这样每路的基准配比才是显式的。 */
+function volGet(){return audioGain(1)}
 /* 方位音：azimuth 0=正前，顺时针 45° 一档。
    优先 PannerNode(HRTF)；不支持时退化为 StereoPanner（只剩左右两档）；
    再退化则用双声道音量差。返回是否成功发声。 */
 function cueSound(azDeg){
   var c=(typeof audio==='function')?audio():null;if(!c)return false;
   try{
-    var V=volGet();
+    var V=audioGain(1);if(!(V>0))return false;
     var t0=c.currentTime,o=c.createOscillator(),g=c.createGain();
     o.type='triangle';o.frequency.setValueAtTime(880,t0);
     g.gain.setValueAtTime(0.0001,t0);
@@ -6968,11 +7022,14 @@ function updateTopBar(){try{
   var sb=$('streakBadge');if(sb){var st=0;try{st=JSON.parse(S.getItem('bt_streak')||'{}').n||0}catch(e){}sb.style.display=st>0?'inline-block':'none';sb.textContent='🔥 '+st;}
   var rb=$('rankBadge');if(rb){var r=rankBadge();rb.textContent=r.name+(r.next?(' '+r.pct+'%'):'');}
   var snd=$('btnSound');if(snd){snd.textContent=(+(S.getItem('bd_sound')||1)===0)?'🔇':'🔊';}
+  var mu=$('btnMute');if(mu){var mm=audioMuted();mu.textContent=mm?'🔇':'🔊';mu.title=mm?'已静音（点击恢复）':'静音';if(mm)mu.classList.add('on');else mu.classList.remove('on');}
   try{if(typeof BGM!=='undefined'&&BGM&&BGM.paint)BGM.paint()}catch(e){}
 }catch(e){}}
 $('btnStats').onclick=showStats;
 $('btnAch').onclick=openAch;
 $('btnSound').onclick=function(){var on=+(S.getItem('bd_sound')||1)===0;S.setItem('bd_sound',on?1:0);updateTopBar()};
+/* 顶栏静音开关：和设置面板共用 bd_muted 与 audioGain()，两处永不各说各话 */
+$('btnMute').onclick=function(){try{S.setItem(AUDIO_MUTE_KEY,audioMuted()?'0':'1')}catch(e){}audioApply()};
 $('btnBgm').onclick=function(){BGM.openPanel()};
 $('btnBg').onclick=openBgPicker;
 $('btnShop').onclick=openShop;
@@ -7298,14 +7355,23 @@ function openBgPicker(){var pp=overlayPanel('🎨 外观与设置');var p=pp.p,o
  BGS.forEach(function(b){var o=h('div','bg-opt'+((cur===b)?' sel':''));o.className+=' bg-'+b;o.appendChild(h('span',null,BGNAMES[b]));
   o.onclick=function(){S.setItem('bd_bg',b);applyBg();var all=grid.querySelectorAll('.bg-opt');for(var i=0;i<all.length;i++)all[i].classList.remove('sel');o.classList.add('sel')};
   grid.appendChild(o)});p.appendChild(grid);
- /* P1-7.3 全局音量 + 音效开关 */
- var srow=h('div','set-row');srow.appendChild(h('span',null,'🔊 音量'));
- var sl=document.createElement('input');sl.type='range';sl.min='0';sl.max='100';sl.step='5';sl.className='set-slider';
- sl.value=String(Math.round(volGet()*100));
+ /* P1-7.3 主音量 + 静音 + 音效开关（三者语义不同，不能混：
+    「主音量」是全局响度；「静音」是总开关；「音效」只决定是否播放提示音） */
+ var srow=h('div','set-row');srow.appendChild(h('span',null,'🔊 主音量'));
+ var sl=document.createElement('input');sl.id='setMasterVol';sl.type='range';sl.min='0';sl.max='100';sl.step='1';sl.className='set-slider';
+ sl.value=String(Math.round(audioVolume()*100));
  var vv=h('span','set-val',sl.value+'%');
- sl.addEventListener('input',function(){vv.textContent=sl.value+'%';try{S.setItem('bd_vol',String((+sl.value)/100))}catch(e){}});
- sl.addEventListener('change',function(){try{S.setItem('bd_vol',String((+sl.value)/100))}catch(e){}});
+ function onVolInput(){var pc=Math.max(0,Math.min(100,+sl.value||0));vv.textContent=pc+'%';try{S.setItem(AUDIO_VOL_KEY,String(pc/100))}catch(e){}audioApply()}
+ sl.addEventListener('input',onVolInput);
+ sl.addEventListener('change',onVolInput);
  srow.appendChild(sl);srow.appendChild(vv);p.appendChild(srow);
+ /* 静音独立存档而不是把滑杆改成 0：恢复时能回到用户原来的音量，
+    且 UI 的 on 状态同时改文案和底色，保证「静音中」一眼可辨。 */
+ var muteRow=h('div','set-row');muteRow.appendChild(h('span',null,'🔇 静音'));
+ var mbtn=h('button','btn sm set-mute','');
+ function paintMuteBtn(){var m=audioMuted();mbtn.textContent=m?'🔇 已静音（点击恢复）':'🔊 声音开启';if(m)mbtn.classList.add('on');else mbtn.classList.remove('on');mbtn.setAttribute('aria-pressed',m?'true':'false')}
+ mbtn.onclick=function(){try{S.setItem(AUDIO_MUTE_KEY,audioMuted()?'0':'1')}catch(e){}paintMuteBtn();audioApply()};
+ paintMuteBtn();muteRow.appendChild(mbtn);p.appendChild(muteRow);
  var mrow=h('div','set-row');mrow.appendChild(h('span',null,'🔈 音效'));
  var mb=h('button','btn sm',(+(S.getItem('bd_sound')||1)===0)?'🔇 已关闭':'🔊 已开启');
  mb.onclick=function(){var on=+(S.getItem('bd_sound')||1)===0;try{S.setItem('bd_sound',on?1:0)}catch(e){}mb.textContent=on?'🔊 已开启':'🔇 已关闭';updateTopBar()};
@@ -7348,6 +7414,9 @@ if(document.addEventListener)document.addEventListener('visibilitychange',functi
 });
 buildMenu();
 applyBg();applySkin(selSkin());updateCoinBadge();
+/* 启动时同步一次音频状态：静音是持久化的，刷新后顶栏必须立刻显示 🔇，
+   同时把 BGM 的增益按当前存档重算一遍，避免首屏短暂按旧音量播放。 */
+try{audioApply()}catch(e){}
 /* P1-8 首次进入做一次 20 秒定级 */
 /* 街机直达：?game=<id> 合法则直接启动对应街机（跳过首页与首次定级，难度取默认/上次记忆） */
 var wantGame=(function(){try{return new URLSearchParams(location.search).get('game')}catch(e){return null}})();

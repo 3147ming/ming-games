@@ -49,6 +49,20 @@
 
   <div class="reticle" aria-hidden="true"></div>
 
+  <!-- 音频设置（主音量 + 静音）。★ 为什么做成常驻小控件而不是塞进暂停面板：
+       本作没有标题页/设置页，暂停面板在桌面端只能靠切后台触发（没有可见入口），
+       把音量藏进去等于桌面上无法调节。这颗胶囊放在右下角、避开操作提示条，
+       滑杆监听 input（拖动中实时生效），M 键仍然一键静音，两边通过 AudioManager
+       的 subscribe 同步 —— 不存在"键盘静音了、按钮还显示声音开"的分叉。 -->
+  <div id="audio-ui" class="audio-ui" role="group" aria-label="音频设置">
+    <button id="audio-mute" class="au-mute" type="button" aria-pressed="false" title="静音（M）">
+      <span class="au-ico" aria-hidden="true">♪</span><span class="au-txt">声音</span>
+    </button>
+    <input id="audio-vol" class="au-range" type="range" min="0" max="100" step="1" value="100"
+           aria-label="主音量" aria-valuetext="100%" />
+    <span id="audio-vol-val" class="au-val">100%</span>
+  </div>
+
   <!-- 模块 12：允许第三方加载器（如 vendor/three/jsm 下的 GLTFLoader）用裸 'three' 解析到同一份 three.module.js。
        相对路径导入不受影响；浏览器按解析后的 URL 去重，仍是单一 THREE 实例，零风险。 -->
   <script type="importmap">

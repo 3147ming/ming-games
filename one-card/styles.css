@@ -893,11 +893,25 @@ button.big:hover { background: #2a2419; }
   100% { transform: scale(1); }
 }
 
-/* ---------- P1-5 音效开关（标题页右上角，热区 44px） ---------- */
+/* ---------- P1-5 音频控制（标题页右上角：静音键 + 主音量滑杆） ----------
+   口径：静音与音量是两个概念、两个控件 —— ♪ 只翻静音（不改音量），滑杆只改音量
+   （不改静音）。视觉上共用一排，是为了让玩家一眼看出"这俩都是声音的事"。
+   热区纪律：滑杆视觉上只有一根 6px 细线，但 input 本身占满 var(--mg-tap) 高度 ——
+   手机上必须精确戳中细线才拖得动，是"调不了音量"最常见的根因。 */
+.sfx-ctl {
+  /* ★ 刻意不用 position: absolute：标题块在屏内垂直居中，短屏（如 iPhone SE 的 568px）
+     上绝对定位会和标题叠在一起（实测 504×578 时 ✕ 直接盖住「牌」字）。
+     作为屏幕顶部的一行参与 flex 布局，行高固定 44px，任何高度都压不到标题。 */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--mg-sp-1);
+  flex: 0 0 auto;
+  margin-bottom: var(--mg-sp-2);
+}
+
 .sfx-toggle {
-  position: absolute;
-  top: 6px;
-  right: 6px;
+  flex: none;
   width: 44px; height: 44px; min-height: var(--mg-tap);
   padding: 0;
   display: flex; align-items: center; justify-content: center;
@@ -906,6 +920,89 @@ button.big:hover { background: #2a2419; }
   color: var(--gold);
   background: var(--ink2);
   border: 1px solid var(--line);
-  z-index: 3;
 }
-.sfx-toggle.off { color: var(--paper-dim); opacity: .6; }
+/* 静音：颜色 + 图标（♪→✕）+ 整排降饱和 三重编码，不靠单一颜色
+   —— 只靠颜色区分状态，色弱玩家会看不出"现在到底有没有声"。 */
+.sfx-toggle.off {
+  color: var(--blade);
+  border-color: var(--blade);
+  background: rgba(209, 84, 74, .12);
+}
+.sfx-toggle:focus-visible,
+.sfx-range:focus-visible {
+  outline: 2px solid var(--flux);
+  outline-offset: 2px;
+}
+
+.sfx-vol-label {
+  flex: none;
+  font-size: var(--mg-fs-xs);
+  color: var(--paper-dim);
+  letter-spacing: .06em;
+  white-space: nowrap;
+}
+
+/* range 原生控件：先抹掉默认外观，轨道与滑块自己画（Blink/WebKit 与 Gecko 两套都要写）。 */
+.sfx-range {
+  flex: 0 1 84px;
+  width: 84px;
+  min-width: 56px;
+  height: var(--mg-tap);
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  /* 纵向滚动仍交给页面，只有横向拖动才归滑杆 —— 否则手机上想把页面往上推会误改音量 */
+  touch-action: pan-y;
+}
+/* Blink / WebKit 轨道：已选区间用 --fill 染色（伪元素读不到 JS 值，拖动时由 JS 实时写这个变量） */
+.sfx-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: var(--mg-r-pill);
+  background: linear-gradient(90deg, var(--gold) 0 var(--fill, 100%),
+    rgba(255, 255, 255, .12) var(--fill, 100%) 100%);
+}
+.sfx-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;   /* (18 − 6) / -2：滑块垂直居中于 6px 轨道 */
+  border-radius: 50%;
+  background: var(--paper);
+  border: 2px solid var(--gold);
+}
+.sfx-range::-moz-range-track {
+  height: 6px;
+  border-radius: var(--mg-r-pill);
+  background: rgba(255, 255, 255, .12);
+}
+.sfx-range::-moz-range-progress {
+  height: 6px;
+  border-radius: var(--mg-r-pill);
+  background: var(--gold);
+}
+.sfx-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--paper);
+  border: 2px solid var(--gold);
+}
+
+.sfx-vol-val {
+  flex: none;
+  /* 固定宽度，不用 min-width：百分比从 "0%" 变成 "100%" 时文字宽度会变，
+     而这一排是右对齐的，宽度一变整排（连同滑杆）就左右抖 —— 拖动时滑块会从手指下溜走。 */
+  width: 40px;
+  text-align: right;
+  font-size: var(--mg-fs-xs);
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;   /* 数字等宽：拖动时百分比不会左右抖 */
+}
+/* 静音时滑杆仍可调（调的是"取消静音后多响"），但整排降饱和，一眼看出现在没声。 */
+.sfx-ctl.muted .sfx-range,
+.sfx-ctl.muted .sfx-vol-label,
+.sfx-ctl.muted .sfx-vol-val { opacity: .45; }

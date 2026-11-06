@@ -990,7 +990,10 @@ export const AUDIO = {
   AMBIENT_VOL: [0.2, 0.3], // ★SPEC 环境音量 0.2~0.3
   MAX_CONCURRENT: 16, // ★SPEC 音效并发上限 16（对象池复用）
   MUTE_KEY: 'KeyM', // M 键一键静音/恢复
-  STORE_KEY: 'musou-audio-muted', // 静音状态记忆（localStorage）
+  STORE_KEY: 'musou-audio-muted', // 静音状态记忆（localStorage，'1'/'0'）
+  // 主音量单独一个键：静音偏好不动它，音量偏好也不动静音键。
+  // 老玩家升级到这一版时，静音状态原样保留，音量从默认 100% 开始。
+  VOLUME_KEY: 'musou-audio-volume', // 主音量记忆（JSON {"v":1,"volume":0..1}）
   // 各音效时长（秒，供对象池回收估算）
   DURATIONS: {
     swing: 0.13, hitLight: 0.08, hitHeavy: 0.2, musou: 1.1, art1: 0.6, art2: 0.3,

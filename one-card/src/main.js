@@ -14,6 +14,7 @@ import { BY_TIER } from '../config/enemies.js';
 import { CONST } from '../config/constants.js';
 import { resolveLogEnv, dumpJsonl } from './logger.js';
 import { load, clear } from './storage.js';
+import { toPercent, fromPercent } from './sfx.js';
 
 const params = new URLSearchParams(location.search);
 const meta = loadMeta();
@@ -79,24 +80,57 @@ function newSeed() {
   return g.int(1e9).toString(36).toUpperCase();
 }
 
-/** 第四批 P1-5：标题页的静音钮。状态只反映"静音开关"本身 ——
- *  系统开了 reduced-motion 时不发声，但按钮不该显示成"你把它关了"。 */
-function bindSfxToggle() {
+/** 第四批 P1-5：标题页的静音钮；夜间补：同一排的主音量滑杆。
+ *
+ *  两个控件读同一份状态（ui.sfx），但各管各的，互不覆盖：
+ *    · ♪ 只翻静音，不改音量 —— 取消静音后还是你上次调好的音量；
+ *    · 滑杆只改音量，不动静音 —— 静音状态下拖动，改的是"恢复后多响"，不会偷偷取消静音。
+ *  这就是为什么音量与静音要拆成两个存储键、增益只在 computeGain 一处算（见 sfx.js）：
+ *  任何一方写另一个字段，都会造出"静音了但音量被清零"这类回不去的状态。
+ *
+ *  滑杆监听 input（不是 change）：拖动过程中就要实时生效。
+ *  只等松手才生效，玩家听到的是"拖了半天没反应"，会直接判定滑杆坏了。 */
+function bindSfxControls() {
   const btn = document.getElementById('btn-sfx');
-  if (!btn) return;
+  const vol = document.getElementById('sfx-vol');
+  const val = document.getElementById('sfx-vol-val');
+  const ctl = document.getElementById('sfx-ctl');
+
   const sync = () => {
-    btn.textContent = ui.sfx.muted ? '✕' : '♪';
-    btn.classList.toggle('off', ui.sfx.muted);
-    btn.setAttribute('aria-pressed', ui.sfx.muted ? 'false' : 'true');
-    btn.title = ui.sfx.reduced ? '系统已开启"减弱动态效果"，本作不播放音效' : ui.sfx.muted ? '音效已关闭' : '音效已开启';
+    const pct = toPercent(ui.sfx.getVolume());
+    if (vol) {
+      // 只在用户没在拖它时回写 value：拖动中回写会跟手指抢，个别浏览器还会把拖动起点重置。
+      if (document.activeElement !== vol) vol.value = String(pct);
+      // 已填充的轨道靠 CSS 变量画（伪元素读不到 JS 值），拖动时同步更新。
+      vol.style.setProperty('--fill', `${pct}%`);
+      vol.setAttribute('aria-valuetext', `${pct}%`);
+    }
+    if (val) val.textContent = `${pct}%`;
+    if (btn) {
+      btn.textContent = ui.sfx.muted ? '✕' : '♪';
+      btn.classList.toggle('off', ui.sfx.muted);
+      btn.setAttribute('aria-pressed', ui.sfx.muted ? 'false' : 'true');
+      btn.title = ui.sfx.reduced ? '系统已开启"减弱动态效果"，本作不播放音效' : ui.sfx.muted ? '音效已关闭' : '音效已开启';
+    }
+    if (ctl) ctl.classList.toggle('muted', ui.sfx.muted);
   };
-  btn.onclick = () => {
-    ui.sfx.toggle();
-    sync();
-  };
+
+  if (btn) {
+    btn.addEventListener('click', () => {
+      ui.sfx.toggle();
+      sync();
+    });
+  }
+  if (vol) {
+    // input 而非 change：拖动中每一帧都生效（change 只在松手/失焦时触发）。
+    vol.addEventListener('input', () => {
+      ui.sfx.setVolume(fromPercent(vol.value));
+      sync();
+    });
+  }
   sync();
 }
-bindSfxToggle();
+bindSfxControls();
 
 function onStartRun(archetypeId, opts = {}) {
   // 机制批 P0-6：开新局先清掉任何遗留的「继续这一世」快照，

@@ -67,6 +67,7 @@ import { resolveOutlineStyle } from './render/heroMap.js';
 import { TimeControl } from './core/timeControl.js';
 import { InkFx } from './combat/inkFx.js';
 import { AudioManager } from './audio/sfx.js';
+import { AudioUi } from './ui/audioUi.js';
 
 const hud = new DebugHud();
 // P0-7：调试面板默认**收起**。它固定左上、min-width 356px，375 宽竖屏上会盖掉大半个画面
@@ -200,6 +201,10 @@ if (decalPool?.ok && world.layout?.roads?.length) {
 }
 const timeControl = new TimeControl();
 const audio = new AudioManager();
+// 音频设置 UI：把 #audio-ui 接到同一个 AudioManager 上。
+// 单向数据流（UI 只发意图、AudioManager 只发快照），所以这里的顺序无关紧要；
+// 放在这里是为了让 M 键（下面的 input.onKey）与滑杆天然共用同一份状态。
+const audioUi = new AudioUi(audio);
 
 // ── 第 4 批 P1-1：无障碍「减弱动态效果」。命中则关震屏与全屏纸闪；
 //    ⚠ 顿帧与无双慢动作**保留**（顿帧是打击感核心、慢动作不产生空间位移，都不会引起晕动）。
@@ -353,10 +358,11 @@ input.onKey = (code, down, e) => {
     e?.preventDefault();
     enemyRenderer.setStateRings(!enemyRenderer.rings.visible);
   } else if (code === AUDIO.MUTE_KEY) {
-    // 模块 11：M 键静音切换，状态记忆（localStorage）
+    // 模块 11：M 键静音切换，状态记忆（localStorage）；音量偏好不受影响。
+    // 静音后 UI 通过 subscribe 自动刷新，这里不需要再碰 DOM。
     e?.preventDefault();
     audio.toggleMute();
-    console.log(`[audio] 静音状态：${audio.isMuted ? '已静音' : '开启'}`);
+    console.log(`[audio] 静音状态：${audio.isMuted ? '已静音' : '开启'}（音量 ${Math.round(audio.getVolume() * 100)}%）`);
   }
 };
 
@@ -823,7 +829,7 @@ window.MUSOU = {
   input,
   placeholderMeshIsTemporary: true, // 武将网格仍为代码生成（非外部美术资源）
   config: { BATTLEFIELD, PLAYER, COMBAT, MUSOU, ARTS, ENEMY, ENEMY_AI, MORALE, POINTS, HUD, STAGE, BOSS, DEBUG, RENDER, POSTFX, INKFX, ENVIRONMENT, GRASS, DECAL, TIME, HERO, INK_UI, AUDIO, RATING },
-  postfx, env, grass: grassField, decals: decalPool, timeControl, audio, inkFx, combatFx: inkFx,
+  postfx, env, grass: grassField, decals: decalPool, timeControl, audio, audioUi, inkFx, combatFx: inkFx,
   stats: world.stats,
   warnings: world.warnings,
   frame: 0,

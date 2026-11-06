@@ -5,6 +5,11 @@
  *   全部用振荡器 + 噪声 + 包络合成，零素材。M 键一键静音/恢复，状态记忆（localStorage）。
  *   浏览器自动播放策略：首次用户手势后才 resume AudioContext（play() 内部惰性初始化）。
  *
+ * ★ 主音量（本版新增）：base 0.8 是固定基准，玩家滑杆只乘一次。
+ *   实际增益 = computeGain(volume, muted) = muted ? 0 : volume × 0.8。
+ *   这里**不再**任何地方手写 `muted ? 0 : AUDIO.MASTER` —— 全部走 _applyGain/getGain，
+ *   否则"UI 显示 50% 但实际 80%"这种分叉迟早出现（旧版每个 setter 各写一遍就是这个隐患）。
+ *
  * 合成清单（对应 spec 各条）：
  *   挥空 笔锋刮纸 / 轻击 墨点落纸「嗒」/ 重击 大笔横扫「唰」/ 无双 泼墨「哗——」/
  *   武艺1 火焰「呼」/ 武艺2 雷电噼啪 / 敌人受击闷响 / 死亡墨烟噗+纸碎 /
@@ -12,17 +17,32 @@
  *   Boss 出场战鼓+号角 / 狂暴鼓点加速升调 / 通关胜利鼓点。
  */
 import { AUDIO } from '../core/config.js';
+import {
+  computeGain,
+  clampVolume,
+  defaultStore,
+  loadMuted,
+  loadVolume,
+  saveMuted,
+  saveVolume,
+} from './volume.js';
 
 export class AudioManager {
-  constructor() {
+  /**
+   * @param {{store?: object}} [opts] 可注入存储，单测用它验证"音量写独立键、静音写旧键"。
+   *   不传时走 globalThis.localStorage（Node 里没有 → 所有读写安全地变成 no-op）。
+   */
+  constructor(opts = {}) {
     this.ctx = null;
     this.master = null;
     this.noiseBuf = null;
     this.active = 0;
-    this.muted = false;
-    try {
-      this.muted = localStorage.getItem(AUDIO.STORE_KEY) === '1';
-    } catch (_) { /* ignore */ }
+    this.store = opts.store !== undefined ? opts.store : defaultStore();
+    // 静音与音量是**两个独立偏好**：分别读各自的键，互不推断。
+    this.muted = loadMuted(this.store);
+    this.volume = loadVolume(this.store);
+    // UI 订阅：M 键静音后，滑杆旁的按钮/百分比要立刻跟着变，不能各说各话。
+    this._listeners = new Set();
   }
 
   _ensure() {
@@ -35,7 +55,8 @@ export class AudioManager {
       if (!AC) return false;
       this.ctx = new AC();
       this.master = this.ctx.createGain();
-      this.master.gain.value = this.muted ? 0 : AUDIO.MASTER;
+      // 唯一的增益赋值点：创建时就按"音量 × 静音"算，不写死 AUDIO.MASTER。
+      this.master.gain.value = this.getGain();
       this.master.connect(this.ctx.destination);
       // 预生成 1s 白噪声
       const len = this.ctx.sampleRate;
@@ -50,10 +71,71 @@ export class AudioManager {
     }
   }
 
+  /**
+   * 把当前设置写到 master.gain。
+   * 直接赋 value 而不是做 ramp：滑杆 input 事件本身是连续的，ramp 反而会和下一次
+   * 赋值打架（旧 ramp 没走完就被覆盖，听感是"拖了没反应"）。没初始化时静默跳过，
+   * 下次 _ensure 会用同一公式补上。
+   */
+  _applyGain() {
+    const gain = this.getGain();
+    if (this.master) this.master.gain.value = gain;
+    return gain;
+  }
+
+  /** 当前实际增益（0..AUDIO.MASTER）。探针/单测直接读它，避免去猜 master 内部状态。 */
+  getGain() {
+    return computeGain(this.volume, this.muted);
+  }
+
+  /** 当前主音量（0..1，不含静音）。 */
+  getVolume() {
+    return this.volume;
+  }
+
+  /**
+   * 设主音量。非法值保持当前音量（而不是跳回默认）——
+   * 滑杆拖到一半时任何一次脏事件都不该让音量"跳"一下。
+   */
+  setVolume(v) {
+    const next = clampVolume(v, this.volume);
+    if (next === this.volume) {
+      this._applyGain();
+      return this.volume;
+    }
+    this.volume = next;
+    saveVolume(this.volume, this.store);
+    this._applyGain();
+    this._emit();
+    return this.volume;
+  }
+
   setMuted(m) {
-    this.muted = !!m;
-    try { localStorage.setItem(AUDIO.STORE_KEY, this.muted ? '1' : '0'); } catch (_) {}
-    if (this.master) this.master.gain.value = this.muted ? 0 : AUDIO.MASTER;
+    const next = !!m;
+    if (next === this.muted) {
+      this._applyGain();
+      return this.muted;
+    }
+    this.muted = next;
+    saveMuted(this.muted, this.store);
+    this._applyGain();
+    this._emit();
+    return this.muted;
+  }
+
+  /** 订阅设置变化（返回退订函数）。UI 只靠它刷新，不反向写状态。 */
+  subscribe(fn) {
+    if (typeof fn !== 'function') return () => {};
+    this._listeners.add(fn);
+    return () => this._listeners.delete(fn);
+  }
+
+  _emit() {
+    const snapshot = { volume: this.volume, muted: this.muted, gain: this.getGain() };
+    for (const fn of this._listeners) {
+      // 单个订阅者出错不该影响其它订阅者，更不该让滑杆卡住。
+      try { fn(snapshot); } catch (_) { /* ignore */ }
+    }
   }
 
   /** 首次用户手势后调用，解锁/恢复 AudioContext（浏览器自动播放策略） */
@@ -110,7 +192,9 @@ export class AudioManager {
   }
 
   play(name, opt = {}) {
-    if (this.muted) return;
+    // 静音/音量 0 时直接不合成：增益乘 0 已经是无声了，再分配振荡器与噪声源只是白烧 CPU
+    // （160 人混战时每秒几十次命中，静音状态下这笔开销本来完全没必要付）。
+    if (this.muted || this.volume <= 0) return;
     switch (name) {
       case 'swing': // 笔锋刮纸
         this._noise(0.13, { type: 'bandpass', freq: 2600, q: 0.8, gain: 0.18 });

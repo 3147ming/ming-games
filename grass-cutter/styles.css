@@ -292,3 +292,117 @@ body.locked #stage { cursor: none; }
   }
   .bh-rating-score { font-size: var(--mg-fs-sm); }
 }
+
+/* ───────────── 音频设置（主音量 + 静音）
+   位置：右下角，抬到操作提示条上方（bottom 56px），桌面上不压 hint、不压左下据点面板；
+   触屏设备再抬到虚拟按键区上方（见文件末尾 body.touch 覆盖）。
+   尺度全部走 shared/tokens.css 的 --mg-*；颜色沿用页面自己的 --accent / --danger /
+   --panel / --edge，不引入第四套颜色。 */
+.audio-ui {
+  position: fixed;
+  right: max(var(--mg-sp-4), env(safe-area-inset-right));
+  bottom: calc(56px + env(safe-area-inset-bottom));
+  z-index: 22;
+  display: flex;
+  align-items: center;
+  gap: var(--mg-sp-2);
+  padding: var(--mg-sp-1) var(--mg-sp-3) var(--mg-sp-1) var(--mg-sp-1);
+  border: 1px solid var(--edge);
+  border-radius: var(--mg-r-pill);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--mg-shadow-sm);
+  pointer-events: auto;
+  touch-action: manipulation;
+  transition: border-color var(--mg-t-base) var(--mg-ease-out);
+}
+
+.au-mute {
+  display: flex;
+  align-items: center;
+  gap: var(--mg-sp-1);
+  min-height: 30px;
+  padding: 0 var(--mg-sp-2);
+  border: 0;
+  border-radius: var(--mg-r-pill);
+  background: rgba(255, 255, 255, .08);
+  color: inherit;
+  font: inherit;
+  font-size: var(--mg-fs-xs);
+  font-weight: var(--mg-fw-bold);
+  line-height: var(--mg-lh-tight);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background var(--mg-t-fast) var(--mg-ease-out),
+              color var(--mg-t-fast) var(--mg-ease-out);
+}
+.au-mute:hover { background: rgba(255, 255, 255, .16); }
+.au-mute:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.au-ico { font-size: var(--mg-fs-md); line-height: 1; }
+
+/* 滑杆本体：用 --vol（JS 写入的百分比）画"已填充 / 未填充"两段，
+   这样不依赖浏览器默认 range 皮肤，Edge/Chrome/Firefox 看起来一致。 */
+.au-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: clamp(76px, 11vw, 132px);
+  height: 4px;
+  margin: 0;
+  border-radius: var(--mg-r-pill);
+  background: linear-gradient(
+    90deg,
+    var(--accent) 0%,
+    var(--accent) var(--vol, 100%),
+    rgba(255, 255, 255, .18) var(--vol, 100%),
+    rgba(255, 255, 255, .18) 100%
+  );
+  outline: none;
+  cursor: pointer;
+}
+.au-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: var(--mg-shadow-sm);
+}
+.au-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: var(--ink);
+}
+.au-range:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+
+.au-val {
+  min-width: 3.4em;
+  color: var(--ink-dim);
+  font-size: var(--mg-fs-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* 静音：三条同时生效，保证不靠颜色也能分辨 —— 红边、划掉音符、滑杆变暗。 */
+.audio-ui.muted { border-color: var(--danger); }
+.audio-ui.muted .au-mute { background: rgba(224, 82, 74, .18); color: var(--danger); }
+.audio-ui.muted .au-ico { text-decoration: line-through; }
+.audio-ui.muted .au-range { opacity: .45; }
+.audio-ui.muted .au-val { color: var(--danger); }
+
+/* 触屏：虚拟按键区高 288px（4×62 + 3×8 + 余量），音量胶囊必须整体让开；
+   放在最末尾以确保覆盖上面的桌面定位。 */
+body.touch .audio-ui {
+  bottom: calc(300px + env(safe-area-inset-bottom));
+}
+
+@media (max-width: 520px) {
+  /* 窄屏只留音符 + 滑杆 + 百分比，隐藏"声音/已静音"文字（状态仍由红色与划线表达） */
+  .audio-ui { gap: var(--mg-sp-1); padding-right: var(--mg-sp-2); }
+  .au-txt { display: none; }
+  .au-range { width: 84px; }
+  .au-val { min-width: 3em; }
+}
