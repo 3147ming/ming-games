@@ -9,6 +9,7 @@
      刻意在浏览器里声明"没有图标"，而不是设计一个图标 —— 图标属产品决策，留给白天。
      价值：console error 保持零容忍，将来真实的资源加载失败不会被这条噪音淹没。 -->
 <link rel="icon" href="data:,">
+<link rel="stylesheet" href="./shared/tokens.css">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -33,6 +34,8 @@
 
     <main id="stage">
       <section id="screen-title" class="screen">
+        <!-- 第四批 P1-5：音效开关。全部音效由 src/sfx.js 用 Web Audio 现合成，不加载任何音频文件。 -->
+        <button id="btn-sfx" class="sfx-toggle" type="button" aria-label="音效开关" aria-pressed="true">♪</button>
         <div class="title-wrap">
           <h1 class="game-title">一世一牌</h1>
           <p class="game-sub">ONE&nbsp;CARD&nbsp;PER&nbsp;LIFE</p>
@@ -57,6 +60,7 @@
         <div id="action-zone" class="action-zone">
           <div id="pile-draw" class="pile">抽牌<span class="pile-n">0</span></div>
           <div id="energy" class="energy"><span id="energy-now">3</span><i>/</i><span id="energy-max">3</span></div>
+          <div id="block" class="block-badge"><span id="block-now">0</span><i>防</i></div>
           <button id="btn-end-turn" class="end-turn">结束回合</button>
           <div id="pile-discard" class="pile">弃牌<span class="pile-n">0</span></div>
         </div>
@@ -99,7 +103,7 @@
         <div class="over-wrap">
           <h2 id="over-title">这一世，到此为止</h2>
           <p id="over-sub" class="over-sub"></p>
-          <button id="btn-over-next" class="big">带回一张牌</button>
+          <button id="btn-over-next" class="big">再来一世</button>
           <button id="btn-over-home">回到开头</button>
         </div>
       </section>
