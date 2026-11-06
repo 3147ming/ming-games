@@ -3,11 +3,14 @@
  */
 
 import { ITEMS, START_CURRENCY, PLAYER, AMMO_STACK, BAILOUT, REP } from './config.js';
+import { defaultUpgrades, normalizeUpgrades } from './upgrades.js';
 import {
   createInventory, createItem, autoPlace, countById, serializeInventory, deserializeInventory,
 } from './inventory.js';
 
 const KEY = 'soudache.save.v1';
+// 存档顶层版本保持 1：改装树只是**新增字段**，旧档由 normalizeUpgrades 补成全未解锁即可读取，
+// 不需要破坏性迁移。改装结构自身的版本记录在 save.upgrades.version，后续可独立演进。
 const VERSION = 1;
 
 /**
@@ -78,6 +81,8 @@ export function defaultSave() {
     daily: { date: '', bestScore: 0, extracted: false }, // 每日突袭：当日种子与成绩
     codex: { seen: {}, brought: {} }, // 图鉴：seen=拾取过，brought=真正带出过
     rep: { xp: 0 }, // 军械商声望经验（等级由 xp 现算，见 repLevel）
+    // 局外改装树：三支等级（0 = 全未解锁）。迁移策略是"缺字段即全零"，而不是报错或重置整个存档。
+    upgrades: defaultUpgrades(),
   };
 }
 
@@ -122,6 +127,9 @@ export function loadSave() {
       stats: { ...base.stats, ...(data.stats || {}) },
       settings: { ...base.settings, ...(data.settings || {}) },
       layout: { touch: { ...(data.layout && data.layout.touch) } },
+      // 老存档没有 upgrades 字段：normalizeUpgrades 会返回全零进度。
+      // 必须显式归一化而不能直接展开 data.upgrades —— 手改坏值（负数/字符串/超上限）也会让购买逻辑出错。
+      upgrades: normalizeUpgrades(data.upgrades),
     };
     save.version = VERSION;
     return save;

@@ -195,6 +195,9 @@ import { drawGlyph } from './glyphs.js';
 import { EnemyState } from './enemy.js';
 import { sortTasksByPriority } from './contracts.js';
 import { dailySeed, repLevel } from './storage.js';
+import {
+  BRANCHES, getBranchLevel, checkBuy, weightLimitBonus, MAX_LEVEL,
+} from './upgrades.js';
 
 /** 等宽 / 无衬线字体（与旧 2D 渲染器保持一致） */
 const MONO = '"Consolas", "SFMono-Regular", "JetBrains Mono", "Courier New", monospace';
@@ -260,6 +263,7 @@ export function createUI(root, handlers, opts) {
           <button class="btn" data-action="daily-raid">每日突袭</button>
           <button class="btn" data-action="goto-stash">仓库</button>
           <button class="btn" data-action="goto-shop">商店</button>
+          <button class="btn" data-action="goto-upgrades">改装</button>
           <button class="btn" data-action="goto-codex">图鉴</button>
           <button class="btn" data-action="goto-howto">玩法说明</button>
         </div>
@@ -296,6 +300,11 @@ export function createUI(root, handlers, opts) {
                 <h3>装备保险</h3>
                 <button class="btn toggle" data-action="toggle-insurance" data-role="insurance-toggle">装备保险：关</button>
                 <div class="hint" data-role="insurance-hint">投保后阵亡只赔带入的武器与护甲，随身物资照旧丢失。</div>
+              </div>
+              <div class="side-block">
+                <h3>局外改装</h3>
+                <div class="hint" data-role="loadout-upgrades-progress"></div>
+                <button class="btn" data-action="goto-upgrades">打开改装树</button>
               </div>
               <div class="side-block warn-block" data-role="loadout-warn"></div>
               <button class="btn primary big" data-action="deploy">部署进入战局</button>
@@ -355,6 +364,25 @@ export function createUI(root, handlers, opts) {
             <h3>出售（仓库）</h3>
             <div class="shop-list" data-role="shop-sell"></div>
           </section>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen" data-screen="upgrades">
+      <div class="panel wide">
+        <header class="panel-head">
+          <h2>改装 WORKSHOP</h2>
+          <div class="head-right">
+            <span class="coin" data-role="upgrades-currency"></span>
+            <button class="btn ghost" data-action="goto-menu">返回</button>
+          </div>
+        </header>
+        <div class="panel-body upgrades-body">
+          <p class="hint upgrades-intro">
+            用成功撤离赚来的资金解锁永久强化。每支必须按顺序点满三级，价格逐级递增。
+          </p>
+          <div class="upgrade-summary" data-role="upgrade-summary"></div>
+          <div class="upgrade-grid" data-role="upgrade-branches"></div>
         </div>
       </div>
     </div>
@@ -605,6 +633,11 @@ export function createUI(root, handlers, opts) {
 
   function renderLoadout(save) {
     q('loadout-currency').textContent = money(save.currency);
+    const upProg = q('loadout-upgrades-progress');
+    if (upProg) {
+      const done = BRANCHES.reduce((sum, b) => sum + getBranchLevel(save, b.id), 0);
+      upProg.textContent = `已解锁 ${done}/${BRANCHES.length * MAX_LEVEL} 级永久强化。`;
+    }
     const host = q('loadout-options');
     host.innerHTML = '';
     const lo = save.loadout;
@@ -694,7 +727,7 @@ export function createUI(root, handlers, opts) {
     // 负重估算
     const weightHost = q('loadout-weight');
     weightHost.innerHTML = '';
-    const est = estimateWeight(lo);
+    const est = estimateWeight(lo, save);
     const rows = [
       ['装备合计', `${est.base.toFixed(1)} kg`],
       ['携带物资', `${est.items.toFixed(1)} kg`],
@@ -714,11 +747,13 @@ export function createUI(root, handlers, opts) {
     bar.appendChild(fill);
     weightHost.appendChild(bar);
     const armorName = ARMORS[lo.armor] ? ARMORS[lo.armor].name : '无护甲';
+    const bonus = weightLimitBonus(save);
+    const bonusText = bonus > 0 ? ` + 改装 ${bonus}kg` : '';
     weightHost.appendChild(el(
       'p', est.over ? 'hint warn-text' : 'hint',
       est.over
-        ? `已超重：移速下降但仍可奔跑（上限 ${est.limit} kg = 基础 20 + ${armorName}加成）。带得越少跑得越快。`
-        : `负重上限 ${est.limit} kg（基础 20 + ${armorName}加成）。超过即减速，但仍可奔跑。`,
+        ? `已超重：移速下降但仍可奔跑（上限 ${est.limit} kg = 基础 ${PLAYER.weightBaseLimit} + ${armorName}加成${bonusText}）。带得越少跑得越快。`
+        : `负重上限 ${est.limit} kg（基础 ${PLAYER.weightBaseLimit} + ${armorName}加成${bonusText}）。超过即减速，但仍可奔跑。`,
     ));
 
     // 校验提示
@@ -741,11 +776,12 @@ export function createUI(root, handlers, opts) {
 
   /**
    * 估算装备配置的总重量与负重上限。
-   * 上限随所选护甲变化（无甲 20 / 二级 23 / 三级 26 kg），所以这一屏不能写死 26。
+   * 上限随所选护甲与局外改装变化，所以这一屏不能写死。
    * @param {object} lo 装备配置
+   * @param {object} [save] 存档（用于读取改装提供的额外负重）
    * @returns {{base: number, items: number, total: number, limit: number, over: boolean}} 重量明细
    */
-  function estimateWeight(lo) {
+  function estimateWeight(lo, save) {
     let base = 0;
     if (lo.primary && WEAPONS[lo.primary]) base += WEAPONS[lo.primary].weight;
     if (lo.secondary && WEAPONS[lo.secondary]) base += WEAPONS[lo.secondary].weight;
@@ -756,7 +792,7 @@ export function createUI(root, handlers, opts) {
     items += (lo.medkits || 0) * ITEMS.medkit.weight;
     items += (lo.bandages || 0) * ITEMS.bandage.weight;
     const total = Math.round((base + items) * 10) / 10;
-    const limit = weightLimitFor(lo.armor || 'none');
+    const limit = weightLimitFor(lo.armor || 'none') + (save ? weightLimitBonus(save) : 0);
     return { base, items, total, limit, over: total > limit };
   }
 
@@ -783,6 +819,88 @@ export function createUI(root, handlers, opts) {
     const cells = (lo.ammo556Boxes || 0) + (lo.ammo9mmBoxes || 0) + (lo.medkits || 0) + (lo.bandages || 0);
     if (cells > PLAYER.backpack.cols * PLAYER.backpack.rows) problems.push('携带物资超过背包容量');
     return problems;
+  }
+
+  /* ---------------- 局外改装 ---------------- */
+
+  /**
+   * 渲染改装树（三支 × 三级）。
+   *
+   * 这里**不重复计算**价格与前置条件：能不能买一律问 upgrades.js 的 checkBuy，
+   * UI 只负责把 ok/reason 翻译成按钮状态与一行提示。两套判定必然会漂移。
+   * @param {object} save 存档
+   * @returns {void}
+   */
+  function renderUpgrades(save) {
+    const coin = q('upgrades-currency');
+    if (coin) coin.textContent = money(save.currency);
+    const host = q('upgrade-branches');
+    if (!host) return;
+    host.innerHTML = '';
+
+    const total = BRANCHES.length * MAX_LEVEL;
+    const done = BRANCHES.reduce((sum, b) => sum + getBranchLevel(save, b.id), 0);
+    const summaryHost = q('upgrade-summary');
+    if (summaryHost) {
+      summaryHost.innerHTML = '';
+      summaryHost.appendChild(el('span', 'k', `总进度 ${done}/${total}`));
+      summaryHost.appendChild(el('span', 'v', done >= total ? '已全部解锁' : '继续撤离以赚取改装资金'));
+    }
+
+    for (const branch of BRANCHES) {
+      const level = getBranchLevel(save, branch.id);
+      const section = el('section', 'upgrade-branch');
+      // 分支色来自数据层（config 之外的一处真值），用 CSS 自定义属性传给样式表，
+      // 避免在 styles.css 里再抄一份三支的色值。
+      section.style.setProperty('--branch-color', branch.color);
+
+      const head = el('header', 'upgrade-branch-head');
+      const titleWrap = el('div', 'upgrade-branch-title');
+      const title = el('h3');
+      title.appendChild(el('span', null, `${branch.name}支`));
+      title.appendChild(el('span', 'upgrade-branch-en', branch.short));
+      titleWrap.appendChild(title);
+      titleWrap.appendChild(el('p', 'hint', branch.desc));
+      head.appendChild(titleWrap);
+      head.appendChild(el('div', `upgrade-level${level >= MAX_LEVEL ? ' max' : ''}`,
+        `Lv.${level} / ${MAX_LEVEL}`));
+      section.appendChild(head);
+
+      // 三级进度点：比纯文字更直观地显示“下一级还差几格”
+      const dots = el('div', 'upgrade-dots');
+      for (let i = 0; i < MAX_LEVEL; i += 1) {
+        dots.appendChild(el('span', i < level ? 'upgrade-dot on' : 'upgrade-dot'));
+      }
+      section.appendChild(dots);
+
+      const nodes = el('div', 'upgrade-nodes');
+      branch.nodes.forEach((node, index) => {
+        const owned = level >= node.tier;
+        const check = checkBuy(save, node.id);
+        const card = el('div', `upgrade-node${owned ? ' owned' : ''}${!owned && !check.ok ? ' locked' : ''}`);
+        const top = el('div', 'upgrade-node-top');
+        top.appendChild(el('span', 'upgrade-tier', `第 ${node.tier} 级`));
+        if (owned) top.appendChild(el('span', 'upgrade-owned', '✓ 已解锁'));
+        else if (index > 0 && level < node.tier - 1) top.appendChild(el('span', 'upgrade-lock-tag', '前置未解锁'));
+        card.appendChild(top);
+        card.appendChild(el('div', 'upgrade-name', node.name));
+        card.appendChild(el('div', 'upgrade-effect', node.effectText));
+
+        const foot = el('div', 'upgrade-node-foot');
+        foot.appendChild(el('span', 'upgrade-price', money(node.price)));
+        const btn = el('button', 'btn small', owned ? '已解锁' : '解锁');
+        btn.dataset.action = 'buy-upgrade';
+        btn.dataset.id = node.id;
+        if (!check.ok) btn.disabled = true;
+        foot.appendChild(btn);
+        card.appendChild(foot);
+
+        if (!owned && !check.ok) card.appendChild(el('div', 'upgrade-reason', check.reason));
+        nodes.appendChild(card);
+      });
+      section.appendChild(nodes);
+      host.appendChild(section);
+    }
   }
 
   /* ---------------- 仓库 ---------------- */
@@ -1977,6 +2095,7 @@ export function createUI(root, handlers, opts) {
     },
     renderMenu,
     renderLoadout,
+    renderUpgrades,
     renderStash,
     renderShop,
     renderResult,

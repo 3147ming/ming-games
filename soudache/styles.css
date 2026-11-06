@@ -1769,6 +1769,218 @@ body.touch-mode .codex-grid {
   grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
 }
 
+/* ============================ 局外改装 ============================ */
+
+.upgrades-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-4);
+}
+
+.upgrades-intro {
+  margin: 0;
+}
+
+.upgrade-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mg-sp-3);
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--mg-r-sm);
+  background: rgba(8, 11, 16, 0.6);
+}
+
+.upgrade-summary .k {
+  color: var(--amber);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.upgrade-summary .v {
+  color: var(--dim);
+  font-size: 12px;
+}
+
+.upgrade-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--mg-sp-4);
+}
+
+.upgrade-branch {
+  /* --branch-color 由 ui.js 从升级数据里写入，样式表不再抄一份三支色值 */
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--branch-color, var(--amber));
+  border-radius: var(--mg-r-md);
+  padding: var(--mg-sp-3);
+  background: linear-gradient(180deg, rgba(16, 22, 31, 0.72), rgba(8, 11, 16, 0.72));
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-3);
+  min-width: 0;
+}
+
+.upgrade-branch-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--mg-sp-2);
+}
+
+.upgrade-branch-title {
+  min-width: 0;
+}
+
+.upgrade-branch-title h3 {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 15px;
+  letter-spacing: 1px;
+  color: var(--text);
+}
+
+.upgrade-branch-en {
+  color: var(--branch-color, var(--amber));
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+}
+
+.upgrade-branch-title .hint {
+  margin-top: 4px;
+}
+
+.upgrade-level {
+  flex: none;
+  padding: 4px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--mg-r-pill);
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.upgrade-level.max {
+  color: var(--ok);
+  border-color: rgba(93, 220, 122, 0.45);
+}
+
+.upgrade-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.upgrade-dot {
+  height: 5px;
+  flex: 1;
+  border-radius: var(--mg-r-pill);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.upgrade-dot.on {
+  background: var(--branch-color, var(--amber));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--branch-color, var(--amber)) 45%, transparent);
+}
+
+.upgrade-nodes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-2);
+}
+
+.upgrade-node {
+  border: 1px solid var(--line);
+  border-radius: var(--mg-r-sm);
+  padding: 10px;
+  background: rgba(10, 14, 20, 0.65);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.upgrade-node.owned {
+  border-color: rgba(93, 220, 122, 0.35);
+  background: rgba(24, 46, 30, 0.28);
+}
+
+.upgrade-node.locked {
+  opacity: 0.66;
+}
+
+.upgrade-node-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mg-sp-2);
+  min-height: 16px;
+}
+
+.upgrade-tier {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.upgrade-owned {
+  color: var(--ok);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.upgrade-lock-tag {
+  color: var(--dim);
+  font-size: 10px;
+}
+
+.upgrade-name {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.upgrade-effect {
+  color: var(--amber);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.upgrade-node-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mg-sp-2);
+  margin-top: 4px;
+}
+
+.upgrade-price {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.upgrade-reason {
+  color: var(--dim);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+@media (max-width: 900px) {
+  .upgrade-grid {
+    grid-template-columns: 1fr;
+  }
+  .upgrade-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+}
+
 /* ============================================================================
    无障碍 · 减少动态效果（P1-7）
    系统开启「减少动态效果」时，把所有 CSS 动画/过渡压到接近瞬时的兜底。

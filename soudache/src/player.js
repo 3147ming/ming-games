@@ -21,6 +21,12 @@ export class Player {
    * @param {object} opts 配置项 { x, y, armorDef, weaponDefs, items }
    */
   constructor(opts = {}) {
+    // 局外改装后的玩家配置。默认直接用全局 PLAYER，保证既有无改装路径与旧测试零变化。
+    // 不要在构造函数里改 PLAYER 本身：那是全局单例，会把本局强化泄漏到下一局。
+    const cfg = opts.playerCfg || PLAYER;
+    this.playerCfg = cfg;
+    // 医疗物资定义也允许注入改装后的版本（恢复量 +25% 等）。
+    this.itemCfg = opts.itemCfg || ITEMS;
     this.isPlayer = true;
     this.faction = 'player';
     this.id = 'player';
@@ -32,13 +38,13 @@ export class Player {
     this.ads = false; // 是否正在瞄准（由输入层设置）
     this.radius = PLAYER.radius;
 
-    this.maxHp = PLAYER.maxHp;
-    this.hp = PLAYER.maxHp;
+    this.maxHp = typeof cfg.maxHp === 'number' ? cfg.maxHp : PLAYER.maxHp;
+    this.hp = this.maxHp;
     this.armorDef = opts.armorDef || ARMORS.none;
     this.armor = this.armorDef.armor;
     this.maxArmor = this.armorDef.armor;
-    this.stamina = PLAYER.maxStamina;
-    this.maxStamina = PLAYER.maxStamina;
+    this.maxStamina = typeof cfg.maxStamina === 'number' ? cfg.maxStamina : PLAYER.maxStamina;
+    this.stamina = this.maxStamina;
     this.staminaCooldown = 0;
     this.exhausted = false; // 体力耗尽后的疲惫状态（锁冲刺 + 移速下降）
 
@@ -101,9 +107,12 @@ export class Player {
     return Math.round(w * 10) / 10;
   }
 
-  /** 当前负重上限（kg）= 基础 20 + 护甲加成 */
+  /** 当前负重上限（kg）= 基础 28 + 护甲加成 + 局外改装加成 */
   get weightLimit() {
-    return weightLimitFor(this.armorDef.id);
+    const cfg = this.playerCfg || PLAYER;
+    const base = typeof cfg.weightBaseLimit === 'number' ? cfg.weightBaseLimit : PLAYER.weightBaseLimit;
+    // weightLimitFor 内部读的是基础配置；这里只补上改装带来的额外基础值，护甲加成仍走同一函数。
+    return weightLimitFor(this.armorDef.id) + Math.max(0, base - PLAYER.weightBaseLimit);
   }
 
   /** 是否硬性超重（超重即禁跑，见 update） */
@@ -449,7 +458,9 @@ export class Player {
         const regenMul = weightStaminaMultiplier(
           this.weight, this.weightLimit, PLAYER.weightOverStaminaFloor,
         );
-        this.stamina = Math.min(this.maxStamina, this.stamina + PLAYER.staminaRegen * regenMul * dt);
+        const cfg = this.playerCfg || PLAYER;
+        const regen = typeof cfg.staminaRegen === 'number' ? cfg.staminaRegen : PLAYER.staminaRegen;
+        this.stamina = Math.min(this.maxStamina, this.stamina + regen * regenMul * dt);
       }
     }
     // 疲惫解除：体力回升到阈值以上才恢复（迟滞，避免在临界点反复抖动）
@@ -461,7 +472,9 @@ export class Player {
     const weightMul = weightSpeedMultiplier(
       this.weight, this.weightLimit, PLAYER.weightOverSpeedFloor,
     );
-    let speed = PLAYER.speed * weightMul;
+    const cfg = this.playerCfg || PLAYER;
+    const baseSpeed = typeof cfg.speed === 'number' ? cfg.speed : PLAYER.speed;
+    let speed = baseSpeed * weightMul;
     if (this.crouching) speed *= PLAYER.crouchMul;
     else if (this.sprinting) speed *= PLAYER.sprintMul;
     if (this.exhausted) speed *= PLAYER.staminaExhaustSpeedMul;
@@ -474,7 +487,7 @@ export class Player {
       );
       this.x = next.x;
       this.y = next.y;
-      this.walkPhase += dt * (speed / PLAYER.speed) * 9;
+      this.walkPhase += dt * (speed / baseSpeed) * 9;
     }
     // 高程：站在架高平台上时抬高视点（供相机高度与「越过掩体」的视线判定使用）。
     // 用指数插值平滑过渡，走上 / 走下平台时不会瞬移。
@@ -629,7 +642,9 @@ export class Player {
       return needA - needB;
     });
     const item = items[0];
-    this.heal = { uid: item.uid, progress: 0, total: item.useTime || 1.5, def: ITEMS[item.id] || item };
+    // 改装后的医疗定义：heal / useTime 都从注入的 itemCfg 取，避免只买改装却仍按基础值回血。
+    const def = (this.itemCfg && this.itemCfg[item.id]) || ITEMS[item.id] || item;
+    this.heal = { uid: item.uid, progress: 0, total: def.useTime || 1.5, def };
     if (world.audio) world.audio.ui(0.4);
     return true;
   }
@@ -854,15 +869,18 @@ export class Player {
 /**
  * 根据装备配置构建带入战局的物品列表。
  * @param {object} loadout 装备配置
+ * @param {object} [itemDefs] 物品定义表（默认 ITEMS；传入改装后的表即可让医疗恢复量生效）
  * @returns {Array<object>} 物品实例数组
  */
-export function buildLoadoutItems(loadout) {
+export function buildLoadoutItems(loadout, itemDefs = ITEMS) {
+  const defs = itemDefs || ITEMS;
+  const defOf = (id) => defs[id] || ITEMS[id];
   const items = [];
   const ammoBoxes = Math.max(0, loadout.ammo556Boxes || 0);
-  for (let i = 0; i < ammoBoxes; i += 1) items.push(createItem(ITEMS.ammo556, ITEMS.ammo556.stack));
+  for (let i = 0; i < ammoBoxes; i += 1) items.push(createItem(defOf('ammo556'), defOf('ammo556').stack));
   const smgBoxes = Math.max(0, loadout.ammo9mmBoxes || 0);
-  for (let i = 0; i < smgBoxes; i += 1) items.push(createItem(ITEMS.ammo9mm, ITEMS.ammo9mm.stack));
-  for (let i = 0; i < Math.max(0, loadout.medkits || 0); i += 1) items.push(createItem(ITEMS.medkit, 1));
-  for (let i = 0; i < Math.max(0, loadout.bandages || 0); i += 1) items.push(createItem(ITEMS.bandage, 1));
+  for (let i = 0; i < smgBoxes; i += 1) items.push(createItem(defOf('ammo9mm'), defOf('ammo9mm').stack));
+  for (let i = 0; i < Math.max(0, loadout.medkits || 0); i += 1) items.push(createItem(defOf('medkit'), 1));
+  for (let i = 0; i < Math.max(0, loadout.bandages || 0); i += 1) items.push(createItem(defOf('bandage'), 1));
   return items;
 }

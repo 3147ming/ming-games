@@ -24,6 +24,7 @@ import { createTouchControls } from './touch-controls.js';
 import { createAudio } from './audio.js';
 import { createUI, hudLayout } from './ui.js';
 import * as Storage from './storage.js';
+import { applyMods, buy as purchaseUpgrade, checkBuy, getNode as getUpgradeNode } from './upgrades.js';
 
 const canvas = document.getElementById('game-canvas');
 const uiRoot = document.getElementById('ui-root');
@@ -705,6 +706,34 @@ function buy(id) {
   ui.toast(`已购买 ${def.name}`);
 }
 
+/**
+ * 购买一个局外改装节点。
+ *
+ * UI 只负责把 canBuy/checkBuy 的结果画成锁，真正扣钱与升级必须在纯逻辑层完成；
+ * 失败时 toast 出具体原因（前置未点 / 资金不足），而不是只把按钮变灰让玩家猜。
+ * @param {string} nodeId 改装节点 id
+ * @returns {void}
+ */
+function buyUpgrade(nodeId) {
+  const node = getUpgradeNode(nodeId);
+  if (!node) return;
+  const check = checkBuy(save, nodeId);
+  if (!check.ok) {
+    ui.toast(check.reason);
+    audio.error();
+    return;
+  }
+  if (!purchaseUpgrade(save, nodeId)) {
+    ui.toast('解锁失败，请重试');
+    audio.error();
+    return;
+  }
+  Storage.saveGame(save);
+  ui.renderUpgrades(save);
+  audio.cash();
+  ui.toast(`已解锁「${node.name}」· ${node.effectText}`);
+}
+
 function sell(uid) {
   const item = save.stash.items.find((it) => it.uid === uid);
   if (!item) return;
@@ -748,21 +777,28 @@ function startRaid(seedInput, opts) {
     container.loot = Loot.rollContainer(container.type, rng);
   }
 
+  // 局外改装在这里一次性结算成**本局专用**配置（applyMods 返回新对象，绝不改 config.js 常量）。
+  // 武器 / 护甲 / 医疗 / 玩家数值都从这份 cfg 取，保证四处强化的口径一致。
+  const cfg = applyMods({ PLAYER, WEAPONS, ARMORS, ITEMS }, save);
   const lo = save.loadout;
   const defs = [lo.primary, lo.secondary]
-    .filter((id) => id && WEAPONS[id])
-    .map((id) => WEAPONS[id]);
-  const armorDef = ARMORS[lo.armor] || ARMORS.none;
+    .filter((id) => id && cfg.WEAPONS[id])
+    .map((id) => cfg.WEAPONS[id]);
+  const armorDef = cfg.ARMORS[lo.armor] || cfg.ARMORS.none;
   const player = new Player({
     x: map.playerSpawn.x,
     y: map.playerSpawn.y,
     armorDef,
-    weaponDefs: defs.length ? defs : [WEAPONS.pistol],
-    items: buildLoadoutItems(lo),
+    weaponDefs: defs.length ? defs : [cfg.WEAPONS.pistol],
+    items: buildLoadoutItems(lo, cfg.ITEMS),
+    playerCfg: cfg.PLAYER,
+    itemCfg: cfg.ITEMS,
   });
   const enemies = spawnEnemies(map, rng);
 
   world = createWorld(map, seed, rng, player, enemies);
+  // 战局内“点击医疗物资直接使用”也要走改装后的定义，否则该路径会绕过医疗效率强化。
+  world.itemCfg = cfg.ITEMS;
   // 保险状态只能从本次部署显式传入：若从 save 现读，控制台调 SOUDACHE.startRaid(1) 会白嫖保险。
   world.insured = Boolean(opts && opts.insured);
   openContainer = null;
@@ -1232,6 +1268,11 @@ const ui = createUI(uiRoot, {
     ui.renderShop(save);
     go('shop');
   },
+  'goto-upgrades': () => {
+    ui.renderUpgrades(save);
+    go('upgrades');
+  },
+  'buy-upgrade': (data) => buyUpgrade(data.id),
   'goto-howto': () => go('howto'),
   'goto-codex': () => {
     ui.renderCodex(save);
@@ -1308,8 +1349,10 @@ const ui = createUI(uiRoot, {
       ui.toast('正在读条，无法使用');
       return;
     }
+    // 医疗效率是局外改装：优先取本局注入的定义（恢复量已强化），回退到基础定义。
+    const def = (world.itemCfg && world.itemCfg[item.id]) || ITEMS[item.id] || item;
     world.player.heal = {
-      uid: item.uid, progress: 0, total: item.useTime || 1.5, def: ITEMS[item.id] || item,
+      uid: item.uid, progress: 0, total: def.useTime || 1.5, def,
     };
     if (world.audio) world.audio.ui(0.4);
     ui.toast(`开始使用 ${item.name}`);
