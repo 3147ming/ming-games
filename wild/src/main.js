@@ -20,7 +20,9 @@ import { loadCodex, mergeCodex } from './codex.js';
 import { SKINS } from './skins.js';
 import { loadAccount, setName, submitRun as submitAccount, titleOf } from './account.js';
 import { settleRun, dailyBoard, achievementBoard, loadDaily, DAILY_COUNT, streakOf } from './daily.js';
-import { Sfx } from './sfx.js';
+import { Sfx, Haptic } from './sfx.js';
+import { createBgm, moodFromRunState } from './bgm.js';
+import { BGM_MANIFEST } from './bgm-manifest.js';
 
 const params = new URLSearchParams(location.search);
 const stage = document.getElementById('stage');
@@ -67,6 +69,100 @@ const initSpeed = (() => {
 const jumpSec = Math.max(0, Number(params.get('t') || 0));
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/* ============================================================
+ *  B 包 · 音频升级：程序化 BGM 引擎（src/bgm.js）
+ * ------------------------------------------------------------
+ *  打底 = 现场合成（0 文件体积、无缝循环、可无限加时长）；关键场景可选挂 mp3
+ *  （见 src/bgm-manifest.js，空对象 = 全合成；有文件才按需加载，不阻塞首屏）。
+ *
+ *  情绪映射全部收在 bgm.js 的 moodFromRunState（纯函数、可单测）：
+ *    标题 = menu / 局内 = explore / 高波次或最后 3 分钟 = tension / Boss 在场 = boss / 结算 = settle
+ * ========================================================== */
+
+/** BGM 音量：比音效轻一档，永远别盖住射击/受击反馈。 */
+const BGM_VOLUME = 0.55;
+
+const bgm = createBgm({
+  getVolume: () => BGM_VOLUME,
+  isMuted: () => Sfx.isMuted(),
+  manifest: BGM_MANIFEST,
+  // 后端拿的是**取值函数**：AudioContext 要等用户手势才建，构造时它还不存在。
+  bus: { ctxRef: () => Sfx.audioCtx(), busRef: () => Sfx.bgmBus() },
+});
+
+// 静音开关联动引擎：静音时真的把振荡器全停掉（不是把音量拧到 0），取消静音时原样恢复。
+Sfx.onMuteChange = (m) => { if (m) bgm.suspend(); else bgm.resume(); };
+
+// 诊断出口：`window.WILD_BGM.stats()` 在任何界面都能敲。为什么需要它：
+// window.WILD 只在局内存在（标题页 / 结算页是 null），而那两个界面恰恰是最需要
+// 排查"怎么没声"的地方 —— 与 night-shift 的 `__NS.sfx.stats()` 同一约定。
+if (typeof window !== 'undefined') window.WILD_BGM = bgm;
+
+/**
+ * 当前该放什么情绪 —— 界面上唯一的状态采集点（判定规则本身在 bgm.js 里，纯函数）。
+ *
+ * ★ 必须读 `arena.core`：`arena` 是 Arena **包装层**（负责渲染/输入/音效转发），
+ *   `wave() / bossRef / inClimax() / done` 全都在 core 上。这里的笔误曾经让
+ *   `syncBgm` 每 250ms 抛一次 TypeError，BGM 永远停在 explore —— 而且**只有真浏览器
+ *   跑一遍才看得见**（node 单测只测纯函数，静态检查也查不出属性挂在哪个对象上）。
+ */
+function bgmScene() {
+  const active = (id) => {
+    const el = document.getElementById(id);
+    return !!(el && el.classList.contains('active'));
+  };
+  if (active('screen-title')) return { screen: 'title' };
+  if (active('screen-result')) return { screen: 'result' };
+  const c = arena && arena.core;
+  return {
+    screen: 'arena',
+    bossAlive: !!(c && c.bossRef && !c.bossRef.dead),
+    waveTier: c ? Math.max(0, ARENA.WAVES.indexOf(c.wave())) : 0,
+    climax: !!(c && !c.done && c.inClimax()),
+  };
+}
+
+/** 上一次真正下发的情绪（避免每 250ms 都调一次 setMood）。 */
+let bgmLastMood = '';
+
+/** 把"现在该是什么情绪"喂给引擎。整段包 try：定时器里的异常会每 4 秒刷一次控制台。 */
+function syncBgm() {
+  try {
+    if (!bgm.started) return;
+    const mood = moodFromRunState(bgmScene());
+    if (mood === bgmLastMood) return;
+    bgmLastMood = mood;
+    bgm.setMood(mood, { fade: 0.5 });
+  } catch (e) {
+    if (bgmPoll !== null) stopBgmPoll();          // 出错就停轮询，别刷屏
+    if (typeof console !== 'undefined') console.warn('[bgm] syncBgm 失败，已停止情绪轮询：', e);
+  }
+}
+
+/** 局内轮询：Boss 出场 / 波次档位 / 高潮窗口的变化都靠它发现（250ms 一次足够）。 */
+let bgmPoll = null;
+function startBgmPoll() { stopBgmPoll(); bgmPoll = setInterval(syncBgm, 250); }
+function stopBgmPoll() { if (bgmPoll !== null) { clearInterval(bgmPoll); bgmPoll = null; } }
+
+/** 直接指定情绪（换界面时用，免得依赖 DOM class 的更新时机）。 */
+function setBgmMood(mood) { bgmLastMood = mood; if (bgm.started) bgm.setMood(mood, { fade: 0.5 }); }
+
+/**
+ * 浏览器要求 AudioContext 必须在**用户手势**里才能出声。
+ * 「进入荒野」按钮本身就是手势，但**标题页的 menu BGM 需要更早的一次手势** ——
+ * 所以再挂一个一次性监听：第一次点击/按键就把音频解锁并起播 menu。
+ * 已解锁过的（例如从结算页回标题）不会重复触发。
+ */
+function unlockAudio() {
+  Sfx.resume();
+  if (!bgm.started) bgm.start('menu');
+  else bgm.resume();
+  document.removeEventListener('pointerdown', unlockAudio);
+  document.removeEventListener('keydown', unlockAudio);
+}
+document.addEventListener('pointerdown', unlockAudio);
+document.addEventListener('keydown', unlockAudio);
+
 let arena = null;
 // 阶段10·P1-10：每日挑战。challengeMode 是"下一次 startRun 用挑战种子"的一次性开关；
 // challengeRun 是本局是否挑战局（进局后固化，结算时用来决定"纪录另账"）。
@@ -101,6 +197,12 @@ function startRun() {
   show('arena');
   // 阶段 3 音效：点「进入荒野」是首个用户手势，借此解锁 AudioContext
   Sfx.resume();
+  // B 包：BGM 起播（同一个手势）；起播后由 bgmPoll 按波次/Boss/高潮自动换情绪
+  if (!bgm.started) bgm.start('explore');
+  else bgm.resume();
+  bgmLastMood = '';
+  syncBgm();
+  startBgmPoll();
   // 阶段 3 元进度：把"已解锁且已启用"的解锁套进开局（默认空 → 行为不变）。
   // 阶段 5：把标题页选中的英雄 + 长期成长（属性等级 / 转生次数）经 meta 传进开局。
   const m0 = loadMeta();
@@ -124,11 +226,16 @@ function startRun() {
   // 暴露给探针 / 录制脚本的**唯一**入口（tools/probe-wild.mjs、tools/record-demo.mjs 都从这里拿）。
   // pilot 也放进来，是因为录制时需要在"前半段真人键盘操作"和"后半段自动驾驶员快进"之间切换，
   // 而切换点只能从页面外触发。
-  window.WILD = { arena, ARENA, pilot: pilotDriver, seed };
+  window.WILD = { arena, ARENA, pilot: pilotDriver, seed, bgm };   // bgm：B 包引擎，探针可查 stats()
 }
 
 function showResult(res) {
   arena = null;
+  // B 包：局结束了 —— 停止情绪轮询，切到结算情绪（settle）。
+  // 这里**显式指定**而不是靠 syncBgm 读 DOM：show('screen-result') 在本函数后半段才调用，
+  // 此刻页面上还是 arena，交给轮询会晚一拍、甚至在停止轮询后永远不生效。
+  stopBgmPoll();
+  setBgmMood('settle');
   const survived = res && res.survived;
   resTitle.textContent = survived ? '你活到了天亮' : '荒野把你留下了';
   resSub.textContent = survived ? '整整十分钟。' : '再来一次，这次走位再稳一点。';
@@ -354,6 +461,9 @@ function renderMetaPanel() {
  */
 function goTitle() {
   arena = null;
+  // B 包：回标题 —— 停轮询，切回 menu 情绪
+  stopBgmPoll();
+  setBgmMood('menu');
   if (titleMeta) titleMeta.textContent = '点「进入荒野」开始 · 拖动屏幕移动，拾取绿色碎片升级';
   show('screen-title');
   renderMetaPanel(); renderBestPanel(); renderHeroSelect(); renderSkinSelect();
@@ -607,6 +717,8 @@ for (const btn of document.querySelectorAll('.pick-h')) {
 }
 
 Sfx.loadMuted();   // 阶段 3 音效：启动期读一次持久化的静音偏好
+Haptic.load();      // 阶段11·P1-6：触觉偏好（默认开；reducedMotion 偏好由下式注入）
+Haptic.setReduced(reducedMotion);
 renderMetaPanel();
 renderBestPanel(); // 阶段 4-3：标题页三条纪录
 renderHeroSelect();

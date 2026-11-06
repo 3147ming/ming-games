@@ -15,15 +15,16 @@
  *            └── sfxBus  （操作反馈音效，必须听得清）
  * 音量取自 settings.mjs，并订阅其变化 —— 拖动滑杆立即生效，无需重启。
  *
- * BGM 是**程序化步进音序器**（不是一段循环音频）：
- *   · 4 小节和弦进行（Am–F–C–G），16 分音符步进，lookahead 调度保证不抖
- *   · 白天   → 轻快街机电子（原速、亮音区、标准音量）
- *   · 深夜   → 自动压低音量 + 叠一层低频嗡鸣（电力感 / 冷清感）
- *   · 停电   → 压得更低，只剩嗡鸣与零星音头
- *   · 高峰   → 节奏加快（bpm ×1.4）+ 加花踩镲
- * 状态由 main 每帧喂进来（本模块不读 state，保持解耦与可测）。
+ * BGM 自 2026-11-06（B 包）起由 **通用引擎 src/bgm.mjs** 负责（不再是这里的步进音序器）：
+ *   · 五个情绪预设（menu / explore / tension / boss / settle）住在 bgm.mjs 的数据表里；
+ *   · 本文件只做两件事：把**昼夜/停电/高峰/打烊**翻译成情绪（storeAudioScene），
+ *     以及把引擎挂到自己的 bgmBus 上（音量/静音仍然走这里的 settings）。
+ *   · 情绪切换是双合成层交叉淡入（≤0.6s）且**共享同一条走时基准** ⟹ 换情绪不断拍子。
+ *   · 可选 mp3 插槽见 src/bgm-manifest.mjs（空对象 = 全走合成）。
  */
 import { settings, onSettingsChange } from './settings.mjs';
+import { createBgm, storeAudioScene } from './bgm.mjs';
+import { BGM_MANIFEST } from './bgm-manifest.mjs';
 
 /* ---------- 基础 ---------- */
 
@@ -47,7 +48,10 @@ function ac() {
       master.gain.value = 0.9;
       master.connect(ctx.destination);
       bgmBus = ctx.createGain();
-      bgmBus.gain.value = settings.bgm;
+      // ★ 2026-11-06（B 包）：bgmBus 改成**纯直通**（增益恒 1）。
+      //   音量不再在这里写，而是由 bgm 引擎自己的主总线承载（getVolume → settings.bgm）。
+      //   两边都乘会变成平方衰减 —— 拖动滑杆"怎么调都很小声"，是最难查的那类故障。
+      bgmBus.gain.value = 1;
       bgmBus.connect(master);
       sfxBus = ctx.createGain();
       sfxBus.gain.value = settings.sfx;
@@ -154,129 +158,41 @@ function noise(dur, { gain = 0.12, at = 0, lp = 1400, hp = 0, bus = 'sfx' } = {}
 }
 
 /* ============================================================
- *  BGM：程序化步进音序器
+ *  BGM：通用引擎（src/bgm.mjs）+ 本游戏的昼夜/高峰映射
+ * ------------------------------------------------------------
+ *  这里**只保留接线**，曲风数据与调度器全部搬去 bgm.mjs。
+ *  接线做三件事：
+ *    ① 把引擎挂到自己的 bgmBus 上（音量/静音复用本文件的 settings/muted）；
+ *    ② 用 storeAudioScene 把 { night, blackout, rush, soft, closing } 翻成情绪；
+ *    ③ 把 start/stop/update 三个旧接口原样转发 —— main.mjs 一行都不用改。
+ *
+ *  为什么保留 updateBgm(dt, mood) 这个"每帧喂进来"的旧签名：
+ *  main.mjs 每帧都在调它，而引擎自己带了 60ms 走时心跳，两者职责不重叠 ——
+ *  帧循环只负责"现在该是什么情绪"，节奏由引擎按 ctx.currentTime 推进（不受帧率影响）。
  * ========================================================== */
 
-/** 和弦进行（4 小节循环）。bass 为低音 MIDI，tones 为琶音音级（MIDI）。 */
-const PROGRESSION = [
-  { bass: 45, tones: [57, 60, 64, 69] }, // Am
-  { bass: 41, tones: [53, 57, 60, 65] }, // F
-  { bass: 48, tones: [55, 60, 64, 67] }, // C
-  { bass: 43, tones: [55, 59, 62, 67] }, // G
-];
+/** 通用引擎实例。构造时不碰音频设备：后端拿的是 ctx/bgmBus 的**取值函数**，懒取。 */
+const bgm = createBgm({
+  getVolume: () => settings.bgm,
+  isMuted: () => muted,
+  manifest: BGM_MANIFEST,
+  bus: { ctxRef: () => ctx, busRef: () => bgmBus },
+});
 
-const BGM = {
-  on: false,
-  /** 下一颗 16 分音符的绝对时间（ctx.currentTime 坐标系） */
-  nextAt: 0,
-  /** 全局步进计数（用于和弦小节与加花） */
-  step: 0,
-  /** 目标/当前情绪参数（平滑过渡，避免切场景时"一顿"） */
-  cur: { gain: 1, bpm: 112, bright: 1, hum: 0, hats: 1 },
-  target: { gain: 1, bpm: 112, bright: 1, hum: 0, hats: 1 },
-  /** 低频嗡鸣（深夜/停电的电力感） */
-  hum: null,
-};
-
-/** 载入时把情绪参数**立即**贴到 target（避免开局第一帧从默认值滑过来） */
-function bgmMood(mood = {}) {
-  const night = mood.night === true;
-  const blackout = mood.blackout === true;
-  const rush = mood.rush === true;
-  const t = {
-    // 白天标准、深夜压低、停电更低；高峰略带提升
-    gain: blackout ? 0.34 : night ? 0.52 : 0.95,
-    bpm: rush ? 152 : night ? 96 : 112,
-    // 亮音区：白天用原八度，深夜整体降八度更"闷"
-    bright: night ? 0 : 1,
-    hum: blackout ? 0.16 : night ? 0.085 : 0,
-    hats: rush ? 1.7 : night ? 0.6 : 1,
-  };
-  if (rush) t.gain *= 1.15;
-  // soft：暂停 / 小游戏进行中 —— 把 BGM 压一半，别盖住操作音效
-  if (mood.soft) t.gain *= 0.5;
-  BGM.target = t;
-}
-
-function ensureHum(c) {
-  if (BGM.hum) return;
-  const g = c.createGain();
-  g.gain.value = 0.0001;
-  g.connect(bgmBus);
-  // 两个低八度叠加：55Hz 基频 + 110Hz 泛音，听感是"变压器/日光灯"的电流声
-  for (const [f, amp] of [[55, 0.6], [110, 0.28]]) {
-    const o = c.createOscillator();
-    o.type = 'sine';
-    o.frequency.value = f;
-    const og = c.createGain();
-    og.gain.value = amp;
-    o.connect(og);
-    og.connect(g);
-    o.start();
-  }
-  BGM.hum = g;
-}
-
-/** 排一颗 16 分音符上该响的东西 */
-function scheduleStep(c, bar, step, at, m) {
-  const stepInBar = step % 16;
-  const chord = PROGRESSION[bar % PROGRESSION.length];
-  const oct = m.bright >= 0.5 ? 0 : -12;
-
-  // 低音：切分的根音（0/3/6/8/11/14）
-  if ([0, 3, 6, 8, 11, 14].includes(stepInBar)) {
-    tone(hz(chord.bass + oct), 0.16, { type: 'square', gain: 0.055, at: at - c.currentTime, bus: 'bgm', cutoff: 900 });
-  }
-  // 琶音：偶数步走和弦音，step 6/14 留白（给"呼吸"）
-  if (stepInBar % 2 === 0 && stepInBar !== 6 && stepInBar !== 14) {
-    const n = chord.tones[(stepInBar / 2) % chord.tones.length] + oct;
-    tone(hz(n), 0.11, { type: 'triangle', gain: 0.042, at: at - c.currentTime, bus: 'bgm', cutoff: 3200 });
-  }
-  // 踩镲（高峰加倍）
-  if (m.hats > 0.9 ? stepInBar % 2 === 1 : stepInBar % 4 === 2) {
-    noise(0.028, { gain: 0.016 * m.hats, at: at - c.currentTime, hp: 5200, bus: 'bgm' });
-  }
-  // 底鼓：每小节 0 与 8
-  if (stepInBar === 0 || stepInBar === 8) {
-    tone(120, 0.13, { type: 'sine', gain: 0.075, at: at - c.currentTime, slide: 48, bus: 'bgm' });
-  }
-}
+/** 记录上一次真正下达的情绪，避免每帧重复下发（引擎内部也会挡，但这里挡掉更省）。 */
+let lastScene = { mood: '', gain: 1 };
 
 /**
  * 每帧推进 BGM。
- * @param dt 墙钟秒（未使用，仅为接口一致性；节奏以 ctx.currentTime 为准）
- * @param mood { night, blackout, rush }
- *
- * 为什么用 currentTime 而不是累加 dt：dt 受帧率抖动影响，
- * 用它推算音符时刻会让节奏随帧率漂移（低帧率下明显"赶拍"）。
+ * @param dt 墙钟秒（引擎不依赖它，节奏一律以 ctx.currentTime 为准）
+ * @param mood { night, blackout, rush, soft, closing }
  */
 function updateBgm(dt, mood) {
-  const c = ac();
-  if (!c || !BGM.on) return;
-  bgmMood(mood);
-  ensureHum(c);
-
-  // 情绪参数在 ~0.6s 内平滑逼近，避免昼夜切换/停电那一瞬"啪"地变速
-  const k = Math.min(1, (dt || 0.016) / 0.6);
-  const cur = BGM.cur;
-  const tg = BGM.target;
-  cur.gain += (tg.gain - cur.gain) * k;
-  cur.bpm += (tg.bpm - cur.bpm) * k;
-  cur.bright += (tg.bright - cur.bright) * k;
-  cur.hum += (tg.hum - cur.hum) * k;
-  cur.hats += (tg.hats - cur.hats) * k;
-  rampTo(bgmBus.gain, settings.bgm * cur.gain, c.currentTime, 0.25);
-  rampTo(BGM.hum.gain, cur.hum, c.currentTime, 0.35);
-
-  const spb = 60 / Math.max(40, cur.bpm) / 4;  // 16 分音符时长
-  const LOOKAHEAD = 0.22;
-  if (BGM.nextAt < c.currentTime) BGM.nextAt = c.currentTime + 0.05;
-  let guard = 0;
-  while (BGM.nextAt < c.currentTime + LOOKAHEAD && guard++ < 32) {
-    scheduleStep(c, Math.floor(BGM.step / 16), BGM.step, BGM.nextAt, cur);
-    BGM.step += 1;
-    BGM.nextAt += spb;
-  }
+  if (!ctx || !bgm.started) return;
+  const scene = storeAudioScene(mood || {});
+  if (scene.mood === lastScene.mood && Math.abs(scene.gain - lastScene.gain) < 0.01) return;
+  lastScene = scene;
+  bgm.setMood(scene.mood, { fade: 0.5, gain: scene.gain });
 }
 
 /* ============================================================
@@ -440,37 +356,44 @@ export const sfx = {
   },
 
   /* ---------- BGM 控制 ---------- */
-  /** 开始播放背景音乐（首次用户手势后调用才有声） */
-  startBgm() {
+  /**
+   * 开始播放背景音乐（首次用户手势后调用才有声）。
+   * 起点是 **menu 情绪**（标题/开始面板），进入营业后由 updateBgm 切到 explore。
+   */
+  startBgm(mood = 'menu') {
     const c = ac();
     if (!c) return;
-    BGM.on = true;
-    BGM.nextAt = c.currentTime + 0.1;
+    lastScene = { mood: '', gain: 1 };   // 强制下一帧重新下发情绪
+    bgm.start(mood);
   },
   /** 停止 */
   stopBgm() {
-    BGM.on = false;
-    if (BGM.hum && ctx) rampTo(BGM.hum.gain, 0.0001, ctx.currentTime, 0.3);
+    lastScene = { mood: '', gain: 1 };
+    bgm.stop();
   },
-  /** 每帧推进；mood: { night, blackout, rush } */
+  /** 每帧推进；mood: { night, blackout, rush, soft, closing } */
   updateBgm,
-  get bgmPlaying() { return BGM.on; },
+  get bgmPlaying() { return bgm.playing; },
 
   /* ---------- 诊断 / 设置 ---------- */
   setMuted(v) {
     muted = v === true;
     if (muted && ctx) {
+      // ★ 静音 = 真的把 BGM 停下来（引擎 panic 掉所有振荡器），不是把音量拧到 0。
+      bgm.suspend();
       try { ctx.suspend(); } catch { /* 忽略 */ }
     } else if (ctx) {
       try { ctx.resume(); } catch { /* 忽略 */ }
+      bgm.resume();
     }
   },
   get muted() { return muted; },
   /** 手动把设置里的音量贴到总线上（settings 变化时已自动处理，这里只是兜底出口） */
   applyVolumes() {
     if (!ctx) return;
-    rampTo(bgmBus.gain, settings.bgm, ctx.currentTime, 0.05);
+    // bgmBus 恒为 1（直通）；BGM 音量由引擎主总线承载
     rampTo(sfxBus.gain, settings.sfx, ctx.currentTime, 0.05);
+    bgm.refreshVolume();
   },
 
   /**
@@ -480,6 +403,7 @@ export const sfx = {
    * 这三种故障在耳朵里听起来完全一样，必须能一眼区分。
    */
   stats() {
+    const b = bgm.stats();
     return {
       ctx: !!ctx,
       state: ctx ? ctx.state : null,
@@ -487,13 +411,13 @@ export const sfx = {
       master: master ? master.gain.value : null,
       bgmBus: bgmBus ? bgmBus.gain.value : null,
       sfxBus: sfxBus ? sfxBus.gain.value : null,
-      bgmOn: BGM.on,
-      step: BGM.step,
-      hum: !!BGM.hum,
+      bgmOn: b.started,
+      step: b.step,
+      hum: false,   // 旧字段（低频嗡鸣）—— 现在由引擎的 tension/boss 预设自带 hum 声部
       rampErrors,
       lastRampError,
-      target: { ...BGM.target },
-      cur: { ...BGM.cur },
+      // ★ B 包：引擎的完整诊断（情绪 / 双合成层 / mp3 槽位状态）一并透出
+      bgm: b,
     };
   },
 };
@@ -501,7 +425,8 @@ export const sfx = {
 // 设置在设置页被拖动时立即生效：不需要重启，也不需要 main 转发
 onSettingsChange((s, changed) => {
   if (!ctx) return;
-  if (changed.includes('bgm')) rampTo(bgmBus.gain, s.bgm, ctx.currentTime, 0.08);
+  // BGM 音量由引擎主总线承载 ⟹ 通知引擎重新取一次 settings.bgm（bgmBus 恒为直通 1）
+  if (changed.includes('bgm')) bgm.refreshVolume();
   if (changed.includes('sfx')) rampTo(sfxBus.gain, s.sfx, ctx.currentTime, 0.08);
 });
 

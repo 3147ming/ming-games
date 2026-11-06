@@ -18,6 +18,7 @@
   --danger: #b3402f;
 
   --radius: 10px;
+  --shadow: 0 6px 18px rgba(0,0,0,.28);   /* 阶段11·P1-8：浮层/卡片统一阴影 token */
   --pad: 12px;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
 }
@@ -69,7 +70,11 @@ html, body {
 }
 
 .screen { display: none; flex: 1 1 auto; min-height: 0; }
-.screen.active { display: flex; flex-direction: column; }
+/* 阶段11·P0-2：切屏淡入（标题↔局内↔结算）。display 无法过渡，故用入场动画替代淡出——
+   退场靠"新屏盖旧屏"。只用 opacity/transform，不进 rAF，手机不掉帧。 */
+.screen.active { display: flex; flex-direction: column; animation: screen-in .18s ease-out; }
+@keyframes screen-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .screen.active { animation: none; } }
 /* 实时关这一屏本身不需要高度 —— 真正可见的是 arena.js 塞进来的绝对定位覆盖层 */
 #arena.active { display: block; flex: 0 0 auto; }
 
@@ -131,8 +136,10 @@ html, body {
   border-radius: var(--radius); border: 1px solid var(--gold);
   color: var(--gold); background: #241d12; text-decoration: none;
   transition: background .15s ease-out, border-color .15s ease-out;
+  touch-action: manipulation;   /* 阶段11·P1-7：去点击延迟 */
 }
 .hub-btn:hover { background: #2f2617; border-color: var(--gold); }
+.hub-btn:active { transform: translateY(1px); }   /* 阶段11·P1-7：按下下沉反馈 */
 .title-meta {
   margin: 18px 0 0;
   font-size: 11px;
@@ -149,10 +156,13 @@ html, body {
   color: var(--paper-dim); text-align: left;
   border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--ink2);
+  touch-action: manipulation;   /* 阶段11·P1-7：去 300ms 点击延迟 */
 }
 .pick-h i { font-style: normal; opacity: .7; transition: transform .15s ease-out; }
 .pick-h.open i { transform: rotate(180deg); }
 .pick-h:hover { color: var(--paper); border-color: var(--paper-dim); }
+/* 阶段11·P1-7：按下有"沉下去"的反馈，手机点折叠摘要/入口不再像没点中 */
+.pick-h:active { transform: translateY(1px); border-color: var(--paper); }
 
 button {
   font-family: inherit;
@@ -168,14 +178,22 @@ button {
 button:hover { background: var(--ink2); border-color: var(--paper-dim); }
 button.big {
   min-width: 200px;
+  min-height: 44px;
   padding: 14px 26px;
   font-size: 15px;
   letter-spacing: .10em;
   border-color: var(--flux);
   color: var(--flux);
   background: #1b1726;
+  touch-action: manipulation;   /* 阶段11·P1-7：去点击延迟 */
 }
 button.big:hover { background: #251f33; }
+button.big:active { transform: translateY(1px); }   /* 阶段11·P1-7：按下下沉反馈 */
+/* 阶段11·P1-7：面板内小按钮同样给"按下"反馈。只加视觉位移、不扩热区——
+   相邻 .lo-pick 药丸间距只有 8px，用 ::before 扩热区会互相抢点击。 */
+.g-buy:active, .g-rebirth:active, .skin-pick:active, .lo-pick:active,
+.hero-pick:active, .hero-buy:active, .meta-buy:active, .meta-toggle:active,
+.shop-skip:active, .alu-choice:active, .shop-choice:active { transform: translateY(1px); }
 /* 阶段10 · P0-1：结算页的次要按钮（回标题）—— 比主按钮弱一档，但热区同样够大 */
 button.big.ghost { border-color: var(--line); color: var(--paper-dim); background: var(--ink2); }
 button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim); }
@@ -343,6 +361,7 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
   justify-content: center;
   gap: 16px;
   background: rgba(13,12,11,.9);
+  box-shadow: var(--shadow);   /* 阶段11·P1-8：浮层统一阴影 */
   z-index: 60;
 }
 .arena-pausemenu[hidden] { display: none; }
@@ -420,6 +439,7 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
   background: rgba(13,12,11,.9);
   /* 刻意不用 backdrop-filter: blur()：全屏模糊要每帧对底下的画布做一次降采样+卷积，
      实测弹窗开启时会掉帧（弱 GPU/软渲染更差）。把底色加深到 .9 就足够挡住背景。 */
+  box-shadow: var(--shadow);   /* 阶段11·P1-8：浮层统一阴影 */
   z-index: 60;
 }
 .arena-levelup[hidden] { display: none; }
@@ -433,6 +453,7 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
   text-align: left;
   border-color: var(--flux);
   background: #1b1726;
+  box-shadow: var(--shadow);   /* 阶段11·P1-8：浮层卡片统一阴影 */
 }
 .alu-choice:hover { background: #251f33; }
 
@@ -446,6 +467,7 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
   justify-content: center;
   gap: 14px;
   background: rgba(13,12,11,.9);
+  box-shadow: var(--shadow);   /* 阶段11·P1-8：浮层统一阴影 */
   z-index: 60;
 }
 .arena-shop[hidden] { display: none; }
@@ -460,6 +482,7 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
   text-align: left;
   border-color: var(--gold);
   background: #1b1726;
+  box-shadow: var(--shadow);   /* 阶段11·P1-8：浮层卡片统一阴影 */
 }
 .shop-choice:hover { background: #251f33; }
 .shop-choice.cant { opacity: .45; }
@@ -503,6 +526,8 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
   flex-direction: column;
   gap: 8px;
   text-align: left;
+  /* 阶段11·P1-5：与 .prog-panel 同一套弹入动画 */
+  animation: panel-pop .16s ease-out;
 }
 .meta-head {
   font-size: 13px;
@@ -578,12 +603,12 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
 .g-buy:disabled { border-color: var(--line); color: #5a554e; cursor: default; opacity: .7; }
 .g-rebirth {
   margin-top: 8px; width: 100%; font-family: var(--font); font-size: 13px; padding: 10px;
-  border-radius: 10px; border: 1px solid var(--flux); background: rgba(168,154,230,.12);
+  border-radius: var(--radius); border: 1px solid var(--flux); background: rgba(168,154,230,.12);
   color: var(--flux); cursor: pointer; letter-spacing: .04em;
 }
 .g-rebirth-lock {
   margin-top: 8px; font-size: 11px; line-height: 1.5; color: var(--paper-dim);
-  border: 1px dashed var(--line); border-radius: 10px; padding: 8px 10px; text-align: center;
+  border: 1px dashed var(--line); border-radius: var(--radius); padding: 8px 10px; text-align: center;
 }
 /* 阶段10 · P0-6：转生到底保留什么、重置什么，一行写死 —— 别让玩家不敢按 */
 .g-rebirth-note {
@@ -647,9 +672,12 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
   max-width: 460px;
   background: rgba(20,18,15,.5);
   border: 1px solid rgba(214,171,88,.16);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 10px 12px;
   box-sizing: border-box;
+  box-shadow: var(--shadow);   /* 阶段11·P1-8：卡片统一阴影 */
+  /* 阶段11·P1-5：面板统一弹入（复用 rec-pop 的 scale+opacity，0.16s）。hidden→可见时自动重放。 */
+  animation: panel-pop .16s ease-out;
 }
 .prog-head {
   font-size: 12px; letter-spacing: .14em; color: var(--gold);
@@ -703,6 +731,9 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
 }
 .res-record[hidden] { display: none; }
 @keyframes rec-pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes panel-pop { from { transform: scale(.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+/* 阶段11·P1-5：减弱动效时关闭面板弹入（与屏切换、rec-pop 同口径） */
+@media (prefers-reduced-motion: reduce) { .prog-panel, .meta-panel, .skin-select, .loadout-select { animation: none; } }
 .over-next { margin: 4px 0 0; font-size: 12px; color: var(--paper-dim); letter-spacing: .04em; }
 
 /* 标题页元进度：下一个待解锁 + 已解锁列表 */
@@ -745,7 +776,7 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
   flex: 1 1 30%; min-width: 92px; max-width: 130px;
   background: rgba(255,255,255,.03);
   border: 1px solid var(--line);
-  border-radius: 12px; padding: 12px 10px;
+  border-radius: var(--radius); padding: 12px 10px;
   display: flex; flex-direction: column; gap: 6px; align-items: center;
   text-align: center; transition: border-color .15s, transform .15s;
 }
@@ -759,12 +790,13 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
 .skin-select {
   margin-top: 14px; width: 100%;
   display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;
+  animation: panel-pop .16s ease-out;   /* 阶段11·P1-5：折叠面板统一弹入 */
 }
 .skin-card {
   flex: 1 1 22%; min-width: 72px; max-width: 104px;
   background: rgba(255,255,255,.03);
   border: 1px solid var(--line);
-  border-radius: 10px; padding: 10px 8px;
+  border-radius: var(--radius); padding: 10px 8px;
   display: flex; flex-direction: column; gap: 5px; align-items: center;
   text-align: center; transition: border-color .15s, transform .15s;
 }
@@ -792,6 +824,7 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
 .loadout-select {
   margin-top: 14px; width: 100%;
   display: flex; flex-direction: column; gap: 8px; align-items: center;
+  animation: panel-pop .16s ease-out;   /* 阶段11·P1-5：折叠面板统一弹入 */
 }
 .lo-row {
   display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap;
@@ -833,7 +866,8 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
 .res-account {
   margin: 12px auto 0; width: 100%; max-width: 320px;
   background: rgba(255,255,255,.03);
-  border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px;
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px;
+  box-shadow: var(--shadow);   /* 阶段11·P1-8：卡片统一阴影 */
   display: flex; flex-direction: column; gap: 6px;
 }
 .ra-head { font-size: 13px; color: var(--paper); letter-spacing: .04em; }

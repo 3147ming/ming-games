@@ -17,12 +17,19 @@ const THROTTLE = { shoot: 0.07, hit: 0.06, hurt: 0.18, death: 0.12 };
 export const Sfx = {
   _ctx: null,
   _master: null,
+  _bgmBus: null,    // B 包：BGM 引擎的输出总线（挂在 master 下，增益恒 1 直通）
   _muted: false,
   _last: {},        // 各高频声的最后播放时刻（性能时钟，秒）
   _ready: false,
+  /** B 包：静音状态变化的通知钩子（由 main.js 挂上，用来 suspend/resume BGM 引擎）。 */
+  onMuteChange: null,
 
   /** 读静音偏好（同步，模块加载即可用）。 */
   isMuted() { return this._muted; },
+
+  /** B 包：给 BGM 引擎取上下文与输出总线（都可能是 null —— 还没在用户手势里解锁）。 */
+  audioCtx() { return this._ctx; },
+  bgmBus() { return this._bgmBus; },
 
   /** 懒建 AudioContext + 主增益。必须在用户手势里调用（浏览器自动播放策略）。 */
   _ensure() {
@@ -34,6 +41,11 @@ export const Sfx = {
       this._master = this._ctx.createGain();
       this._master.gain.value = this._muted ? 0 : 0.5;
       this._master.connect(this._ctx.destination);
+      // B 包：BGM 专线。增益恒 1 —— 音量由 bgm 引擎自己的主总线承载，
+      // 两边都乘会变成平方衰减（滑杆"怎么调都很小声"，最难查的那类故障）。
+      this._bgmBus = this._ctx.createGain();
+      this._bgmBus.gain.value = 1;
+      this._bgmBus.connect(this._master);
       this._ready = true;
     } catch { this._ctx = null; }
     return this._ready;
@@ -50,6 +62,8 @@ export const Sfx = {
     this._muted = !!m;
     try { localStorage.setItem(MUTE_KEY, this._muted ? '1' : '0'); } catch { /* 忽略 */ }
     if (this._master) this._master.gain.value = this._muted ? 0 : 0.5;
+    // ★ B 包：静音 = 真的把 BGM 停下来（引擎会 panic 掉所有振荡器），不是把音量拧到 0
+    try { if (typeof this.onMuteChange === 'function') this.onMuteChange(this._muted); } catch { /* 忽略 */ }
     return this._muted;
   },
 
@@ -114,4 +128,50 @@ export const Sfx = {
   over() { // 倒下：下行长音
     this._blip({ type: 'sawtooth', f0: 300, f1: 70, dur: 0.6, gain: 0.34 });
   },
+};
+
+// ── 阶段11·P1-6：移动端触觉反馈（navigator.vibrate 封装）──
+// 与音效同一哲学：即插即用、不污染逻辑层、不在 ArenaCore（core 保持无头可测）。
+//   · 命中 15ms / 拾取宝石 10ms / 升级 [20,40,20]；平台不支持或被用户关闭时静默跳过。
+//   · 两个独立开关：reducedMotion（系统减弱动效偏好）与 wild.haptics（用户触觉总开关，默认开）。
+//     reducedMotion 或 关闭时一律不震动。
+//   · 只在用户手势之后的局内触发（Sfx 的震动也只在 gameplay 里调用），iOS 无手势时不报错、静默无震。
+const HAPTIC_KEY = 'wild.haptics';
+
+export const Haptic = {
+  _on: true,
+  _reduced: false,
+  _patterns: { hit: 15, pick: 10, level: [20, 40, 20] },
+
+  /** 启动期读一次持久化的触觉偏好。 */
+  load() {
+    try {
+      const v = localStorage.getItem(HAPTIC_KEY);
+      this._on = v !== '0';
+    } catch { /* 忽略 */ }
+    return this._on;
+  },
+
+  /** 切换触觉总开关；写回 localStorage。返回切换后状态。 */
+  setOn(v) {
+    this._on = !!v;
+    try { localStorage.setItem(HAPTIC_KEY, this._on ? '1' : '0'); } catch { /* 忽略 */ }
+    return this._on;
+  },
+
+  /** 由 main.js 注入系统「减弱动效」偏好（prefers-reduced-motion）。 */
+  setReduced(v) { this._reduced = !!v; },
+
+  _fire(p) {
+    if (!this._on || this._reduced) return;
+    const nav = navigator.vibrate;
+    if (typeof nav === 'function') { try { nav.call(navigator, p); } catch { /* 忽略 */ } }
+  },
+
+  /** 命中敌人（15ms 短震）。 */
+  onHit() { this._fire(this._patterns.hit); },
+  /** 拾取宝石（10ms 极短震，强调"到手了"）。 */
+  onPick() { this._fire(this._patterns.pick); },
+  /** 升级（[20,40,20] 三连震，明确"成长了"）。 */
+  onLevel() { this._fire(this._patterns.level); },
 };

@@ -3031,13 +3031,15 @@ function step(now) {
     player.setFatigue(0.2, 0); // 彻底脱手：灵敏度压到极低，不注入飘（人已经睡着了）
   }
 
-  /* --- 音频：BGM 随昼夜/停电/高峰自动切换（需求 1） ---
-   * 只在真正营业时推进；暂停 / 小游戏中压到半音量（soft），免得盖住游戏音效。 */
+  /* --- 音频：BGM 随昼夜/停电/高峰/打烊自动切换（需求 1） ---
+   * 只在真正营业时推进；暂停 / 小游戏中压到半音量（soft），免得盖住游戏音效。
+   * B 包：情绪由 bgm.mjs 的 storeAudioScene 翻译（打烊走 settle，其余见该函数的映射注释）。 */
   sfx.updateBgm(dt, {
     night: (dn.nightAmount ?? 0) >= 0.5,
     blackout: isBlackout(),
     rush: state.rushActive === true || incidents.status()?.surge === true,
     soft: state.paused || isMinigameOpen(),
+    closing: state.phase === 'settle' || state.phase === 'weekEnd',
   });
 
   /* --- 顾客情绪的听觉反馈（需求 2：满意"叮咚"/不满"嘟"） ---

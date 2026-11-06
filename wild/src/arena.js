@@ -19,7 +19,7 @@
 // 帧率打下来的开销，而剪影形状是静态的，没有任何理由每帧重算一遍。
 
 import { silhouette, silhouetteBox, SILHOUETTE_ANCHOR } from './glyph.js';
-import { Sfx } from './sfx.js';
+import { Sfx, Haptic } from './sfx.js';
 // 内容池（武器/技能/被动的**表**）住在 content.js；本文件是执行层。
 // ⚠ 二者循环引用，所以两边都**只在函数体内**访问对方 ——
 //   顶层的 import 不会读值，只有真正调用时才解引用，两种加载顺序都安全。
@@ -716,7 +716,7 @@ export const ARENA = {
   GEM_POP_T: 0.18,          // 弹出时长 s（≤ ANIM_MAX；已进 ANIM_KEYS 受红线管）
                             // ★ 它是**纯视觉**的：宝石的 x/y（吸附/拾取判据）不受它影响，
                             //   所以这个数怎么调都不会碰平衡（见 killEnemy 的注释）。
-  HIT_FLASH: 0.09,          // 命中闪白时长 s（spec 一-5「闪白更明显一档」）。
+  HIT_FLASH: 0.12,          // 命中闪白时长 s（阶段11·P1-4：0.09→0.12，连击高频下更可见、打击更实）。
   HURT_FLASH: 0.32,         // 阶段 4-10：玩家受击红屏脉冲时长 s
   // ★ 阶段 4-11：敌人可读性标识（纯视觉，不碰判定）。
   RANGED_RING: '#e08a2e',   // 远程精英（蚀影射手）脉冲光环色，与 ENEMY_TYPES.ranged.color 一致
@@ -1148,6 +1148,9 @@ export class ArenaCore {
     this.projectiles = [];
     this.gems = [];
     this.particles = [];
+    // 阶段11·P0-3：低端模式标记。burst() 在 core 里（粒子是纯视觉、但存放在 core 的数组），
+    // 所以标记必须让 core 也看得到；默认 false ⟹ 无头 sim 行为逐位不变。
+    this._lowEnd = false;
     this.floaters = [];
     // 死亡动画是**纯视觉**的，必须与逻辑数组分开存 —— 若把"正在爆裂的怪"留在 this.enemies 里，
     // 它还会被自动攻击锁定、还会扣血、还会算进 MAX_ENEMIES 与波次密度，于是"加个动画"就
@@ -3027,9 +3030,14 @@ export class ArenaCore {
   }
 
   /** 阶段 4-3：命中闪白（spec 一-5「打中敌人的闪白更明显一档」）。
-   *  只写一个**纯视觉**的倒计时字段，不改 hp / 不改判定 —— 打死的那一下走死亡动画，不需要它。 */
+   *  只写一个**纯视觉**的倒计时字段，不改 hp / 不改判定 —— 打死的那一下走死亡动画，不需要它。
+   *  阶段11·P1-4：同目标 40ms 内不重复触发（防高频连击整屏爆白、刺眼）。仍是纯视觉计时，不碰玩法。 */
   flashHit(e) {
-    if (e) e.hitT = ARENA.HIT_FLASH;
+    if (!e) return;
+    // 同目标 40ms 内不重复触发：hitT 刚被重置时必然 > HIT_FLASH−0.04；
+    // 用剩余量判断而不是另存时钟——本方法在 core 里，没有渲染层的时钟可用。
+    if (e.hitT > ARENA.HIT_FLASH - 0.04) return;
+    e.hitT = ARENA.HIT_FLASH;
   }
 
   /** 扣玩家血。
@@ -3774,7 +3782,9 @@ export class ArenaCore {
   burst(x, y, color, n = 8, dir = null, legacyN = n) {
     const base = dir ? Math.atan2(dir.y, dir.x) : 0;
     for (let i = 0; i < n; i++) {
-      if (this.particles.length >= ARENA.MAX_PARTICLES) this.particles.shift();
+      // 阶段11·P0-3：低端模式下粒子上限减半（240→120），高波次满屏怪时保流畅。
+      const cap = this._lowEnd ? 120 : ARENA.MAX_PARTICLES;
+      if (this.particles.length >= cap) this.particles.shift();
       const useRng = i < legacyN;
       const r1 = useRng ? this.rng.next() : this._frand();
       const r2 = useRng ? this.rng.next() : this._frand();
@@ -3943,6 +3953,11 @@ export class Arena {
     this.cam = { x: 0, y: 0 };
     this._camReady = false;
     this._dpr = 1;          // _resize 里更新；_render 每帧用它重置基准变换
+    // 阶段11·P0-1/P0-3：性能自适应降级开关（只动渲染/粒子，不动判定/数值）。
+    // 与 reducedMotion（用户减弱动效偏好）是两个独立开关，互不干扰。
+    this._lowEnd = false;
+    // 阶段11·P0-3：滑动帧率采样状态（每 ~1s 评估一次，连续 3 次低于/高于阈值再切换，避免抖动）
+    this._fpsAccum = 0; this._fpsFrames = 0; this._lowStreak = 0; this._highStreak = 0;
     // ── 阶段 4-3：屏震（相机偏移）与中央横幅 ──
     // ★ 两者都是**纯渲染层**状态：core 一无所知，也不会被它们反写。
     this._shakeT = 0;       // 剩余屏震时长 s
@@ -3952,7 +3967,7 @@ export class Arena {
     // 中央横幅（里程碑 / 后一阶段的 Boss 警告）：渲染层自己计时淡出，core 只负责 push。
     this._banners = [];
     // 阶段 3 音效：每帧比对 core 状态增量来触发声音，这里存"上一帧的快照"
-    this._sfx = { level: 0, hits: 0, kills: 0, chests: 0, hp: ARENA.PLAYER_HP, over: false, shots: 0 };
+    this._sfx = { level: 0, hits: 0, kills: 0, chests: 0, gems: 0, hp: ARENA.PLAYER_HP, over: false, shots: 0 };
     this._muteBtn = null;
     // 阶段10·P1-8：局内暂停（来电话/下车/带错装备都能先停，再决定继续或结算，不白打）。
     this.paused = false;
@@ -4250,16 +4265,37 @@ export class Arena {
   }
 
   _resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    this._dpr = dpr;
+    // 阶段11·P0-1：真实 DPR 上限 2（2x/3x 手机不再被当 1x 渲染再拉伸，剪影/文字/粒子都更清晰）。
+    // 阶段11·P0-3：低端模式下降回 1，配合粒子降档保流畅（只降渲染分辨率，不动逻辑坐标）。
+    const d = Math.min(2, window.devicePixelRatio || 1);
+    this._dpr = this._lowEnd ? 1 : d;
     const w = this.stage.clientWidth || 360;
     const h = this.stage.clientHeight || 640;
-    this.canvas.width = Math.round(w * dpr);
-    this.canvas.height = Math.round(h * dpr);
+    this.canvas.width = Math.round(w * this._dpr);
+    this.canvas.height = Math.round(h * this._dpr);
     this.canvas.style.width = w + 'px';
     this.canvas.style.height = h + 'px';
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.ctx.setTransform(this._dpr, 0, 0, this._dpr, 0, 0);
     if (this.core) this.core.setBounds(w, h);
+  }
+
+  /** 阶段11·P0-3：切换低端模式。状态变化不打断当前局——
+   *  只改后续渲染（dpr/粒子/闪白/屏震强度），不重置世界、不动判定与数值。
+   *  重新定一次画布分辨率让 dpr 生效（每帧都重绘，无可见闪烁）。 */
+  _setLowEnd(v) {
+    if (this._lowEnd === v) return;
+    this._lowEnd = v;
+    // core 的 burst() 用这个标记算粒子上限（见 ArenaCore 构造器的注释）。
+    if (this.core) {
+      this.core._lowEnd = v;
+      // burst() 的上限只防"继续增长"，不会把已经堆着的粒子裁掉；
+      // 进入低端模式时主动丢掉最老的，立刻兑现"粒子变少"（保最新，与 shift 同策略）。
+      if (v && this.core.particles.length > 120) {
+        this.core.particles.splice(0, this.core.particles.length - 120);
+      }
+    }
+    this._lowStreak = 0; this._highStreak = 0;
+    this._resize();
   }
 
   /** 阶段 9：局内倍速循环（0.5 → 1 → 2 → 3 → 0.5）。端游 V 键与触屏倍速按钮共用。 */
@@ -4303,6 +4339,19 @@ export class Arena {
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     if (dt > 0) this._fps = Math.round(1 / dt);
+    // 阶段11·P0-3：滑动帧率采样。每约 1s 用「帧数 / 累计时间」算一次平均帧率，
+    // 连续 3 次 < 45fps → 进入低端模式；连续 3 次 > 55fps → 退出；中间档清零计数（避免抖动）。
+    // 切换只影响渲染与粒子数量（见 _setLowEnd / burst / _render / _shakeBy），不动玩法。
+    this._fpsAccum += dt; this._fpsFrames += 1;
+    if (this._fpsAccum >= 1) {
+      const avg = this._fpsFrames / this._fpsAccum;
+      this._fpsAccum = 0; this._fpsFrames = 0;
+      if (avg < 45) { this._lowStreak += 1; this._highStreak = 0; }
+      else if (avg > 55) { this._highStreak += 1; this._lowStreak = 0; }
+      else { this._lowStreak = 0; this._highStreak = 0; }
+      if (!this._lowEnd && this._lowStreak >= 3) this._setLowEnd(true);
+      else if (this._lowEnd && this._highStreak >= 3) this._setLowEnd(false);
+    }
     this._pmark();
 
     // 合成输入：**键盘优先于摇杆，而不是两者相加**。
@@ -4395,12 +4444,16 @@ export class Arena {
    */
   _syncSfx(c) {
     const s = this._sfx;
-    if (c.level > s.level) { Sfx.levelUp(); s.level = c.level; }
+    // 阶段11·P1-6：升级三连震（与音效同步，只在此处触发——仍在用户手势后的局内）。
+    if (c.level > s.level) { Sfx.levelUp(); Haptic.onLevel(); s.level = c.level; }
     // 阶段10·P1-12：玩家开火。玩家自己射的弹没有计数（只有远程怪的 bulletsFired 有），
     //   所以单开 playerShots 这一路增量。节流在 Sfx 内部（THROTTLE），这里不重复节流。
     if (c.playerShots > s.shots) { Sfx.shoot(); s.shots = c.playerShots; }
-    if (c.hits > s.hits) { Sfx.hit(); s.hits = c.hits; }
+    // 阶段11·P1-6：命中短震（与 hit 音同步；Haptic 内部按 reducedMotion/开关静默）。
+    if (c.hits > s.hits) { Sfx.hit(); Haptic.onHit(); s.hits = c.hits; }
     if (c.kills > s.kills) { Sfx.death(); s.kills = c.kills; }
+    // 阶段11·P1-6：拾取宝石极短震（强调"到手了"）。
+    if (c.gemsCollected > s.gems) { Haptic.onPick(); s.gems = c.gemsCollected; }
     if (c.chestsOpened > s.chests) { Sfx.chest(); s.chests = c.chestsOpened; this._shakeBy(ARENA.SHAKE_AMP); }
     // 阶段 8-2：原「放技能 → Sfx.skill() + 屏震」这条反馈已随主动技能删除
     //   （c.skillCasts 不存在了）。⟹ **注意**：这也拿走了「技能 ⟹ 屏震」这条
@@ -4556,7 +4609,8 @@ export class Arena {
    * ⚠ 触发点在 _syncSfx（放技能 / 开箱）与本函数末尾（同屏 > 30）。
    */
   _shakeBy(amp) {
-    const a = Math.min(ARENA.SHAKE_AMP, amp);
+    let a = Math.min(ARENA.SHAKE_AMP, amp);
+    if (this._lowEnd) a *= 0.5;   // 阶段11·P0-3：低端模式屏震幅度减半（减少每帧绘制抖动成本）
     if (a > this._shakeAmp) this._shakeAmp = a;   // 取较大值而不是叠加：不许把幅度堆过上限
     this._shakeT = ARENA.SHAKE_T;
   }
@@ -4837,13 +4891,18 @@ export class Arena {
       // ★ 满屏两百只时"打中了"这件事唯一贴着敌人的读数就是这一下，所以它必须够亮。
       if (e.hitT > 0) {
         const k = clamp(e.hitT / ARENA.HIT_FLASH, 0, 1);
+        // 阶段11·P1-4：白闪峰值只到 30%（透明度脉冲，而非纯白整格覆盖），连击不刺眼；
+        //   低端模式再减半，进一步压低每帧绘制成本。
+        const peak = 0.3 * (this._lowEnd ? 0.5 : 1);
         if (sz && this._whiteMask[e.kind]) {
           ctx.save();
-          ctx.globalAlpha = k * 0.8;
+          ctx.globalAlpha = k * peak;
           ctx.drawImage(this._whiteMask[e.kind], e.x - sz.dw / 2, e.y - sz.dh / 2, sz.dw, sz.dh);
           ctx.restore();
         } else {
-          this._drawSil(ctx, e.kind, e.x, e.y, e.r, 1, Math.round(k * (ARENA.DEATH_LEVELS - 1)), e.elite);
+          // 剪影兜底：用色阶把闪白强度同样压到 30% 峰值，与精灵口径一致。
+          const lvl = Math.round(k * (ARENA.DEATH_LEVELS - 1) * peak);
+          this._drawSil(ctx, e.kind, e.x, e.y, e.r, 1, lvl, e.elite);
         }
       }
       if (wrap) ctx.restore();
@@ -5482,6 +5541,7 @@ export class Arena {
       `joy (${this.joy.x.toFixed(2)}, ${this.joy.y.toFixed(2)}) ${this.joy.active ? 'ON' : '--'}`,
       `pos (${Math.round(c.player.x)}, ${Math.round(c.player.y)})  ${c.w}x${c.h}`,
       `en ${c.enemies.length} gem ${c.gems.length} lv ${c.level} fps ${this._fps}`,
+      `dpr ${this._dpr} 模式 ${this._lowEnd ? '低端(粒120)' : '标准'}`,
       // 速度 / 死亡动画 / 蓄力态：「人物滑冰停不下来」「怪死了不消失」这类观感问题
       // 全靠这三个读数区分"是动画没走完"还是"状态没被清掉"。
       // 阶段 8-2：读数里的 `chg`（冲击波蓄力中）已删除 —— 没有蓄力这一拍了。
