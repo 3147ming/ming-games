@@ -1310,24 +1310,30 @@ var weakFilter='';
 /* P1-2：薄弱题本 —— 先看列表（错误次数 / 分类 / 最后时间），再决定练哪一题 */
 function openWeakBook(cat){
   var all=weakSort(loadWeak());
-  if(!all.length){toast('📚 暂无薄弱题：做题时点「😵 不会」或答错就会沉淀到这里');return;}
   if(cat!=null)weakFilter=cat;
+  /* 空题本也打开面板：换设备后第一件事就是「导入」，不能因为本地是空的就把入口关掉。
+     以前这里直接 toast 后 return，导致「在新手机上想恢复错题」根本进不去面板。 */
   var ov=overlayPanel('📚 薄弱题本');
-  var top=h('div','row');top.style.gap='8px';top.style.marginBottom='8px';
-  var allB=h('button','btn gold','▶ 全部回顾（'+all.length+'）');allB.style.flex='1';
-  allB.onclick=function(){closeOverlay(ov);startReview();};
-  var sel=document.createElement('select');sel.style.flex='1';
-  var cats={},order=[];
-  all.forEach(function(x){var c=String(x.type||'other');if(!cats[c]){cats[c]=0;order.push(c);}cats[c]++;});
-  (function(){
-    var o0=document.createElement('option');o0.value='';o0.textContent='全部分类（'+all.length+'）';sel.appendChild(o0);
-    order.forEach(function(c){
-      var o=document.createElement('option');o.value=c;o.textContent=weakCatName(c)+'（'+cats[c]+'）';
-      if(c===weakFilter)o.selected=true;sel.appendChild(o);
-    });
-  })();
-  sel.onchange=function(){weakFilter=sel.value;renderRows();};
-  top.appendChild(sel);top.appendChild(allB);ov.p.appendChild(top);
+  var allB=null;
+  if(all.length){
+    var top=h('div','row');top.style.gap='8px';top.style.marginBottom='8px';
+    allB=h('button','btn gold','▶ 全部回顾（'+all.length+'）');allB.style.flex='1';
+    allB.onclick=function(){closeOverlay(ov);startReview();};
+    var sel=document.createElement('select');sel.style.flex='1';
+    var cats={},order=[];
+    all.forEach(function(x){var c=String(x.type||'other');if(!cats[c]){cats[c]=0;order.push(c);}cats[c]++;});
+    (function(){
+      var o0=document.createElement('option');o0.value='';o0.textContent='全部分类（'+all.length+'）';sel.appendChild(o0);
+      order.forEach(function(c){
+        var o=document.createElement('option');o.value=c;o.textContent=weakCatName(c)+'（'+cats[c]+'）';
+        if(c===weakFilter)o.selected=true;sel.appendChild(o);
+      });
+    })();
+    sel.onchange=function(){weakFilter=sel.value;renderRows();};
+    top.appendChild(sel);top.appendChild(allB);ov.p.appendChild(top);
+  }else{
+    ov.p.appendChild(ht('div','hint','📚 本地还没有错题：做题时点「😵 不会」或答错就会自动收进来。换设备时可以直接把导出的 JSON 粘贴到下面导入。'));
+  }
   var listBox=h('div');ov.p.appendChild(listBox);
   /* 4.0.1-5：文案对齐 SRS 掌握口径 —— 旧文案「答对即移除」与 C2 的统一冲突 */
   var hint=ht('div','hint','掌握标准：答对会推进复习间隔（1/2/4/7/15/30 天），30 天档答对才算掌握；也可手动移除。');
@@ -1389,6 +1395,60 @@ function openWeakBook(cat){
     });
   }
   renderRows();
+
+  /* ---------- 错题本导出 / 导入 ----------
+     只做「备份迁移」，不改写既有题本逻辑：数据仍是 bt_qa_weak 数组，
+     同一题（分类 + 题干）合并时取错次更多的；文件不合法就提示原因、不动现有数据。 */
+  var WB=window.WrongBook;
+  var ioTitle=ht('div','section-title','💾 导出 / 导入错题本');
+  ioTitle.style.marginTop='20px';ov.p.appendChild(ioTitle);
+  var ta=document.createElement('textarea');
+  ta.className='wbio';
+  ta.placeholder='点「导出到文本框」生成 JSON；或把别的设备导出的 JSON 粘贴到这里，再点「导入并合并」';
+  ta.setAttribute('autocorrect','off');ta.setAttribute('autocapitalize','off');ta.setAttribute('spellcheck','false');
+  ov.p.appendChild(ta);
+  var ioRow=h('div','row');
+  var exB=h('button','btn ghost','📤 导出到文本框');exB.style.flex='1';
+  exB.onclick=function(){
+    if(!WB){toast('⚠️ 错题本模块未加载，请刷新页面后重试');return;}
+    var list=loadWeak();
+    ta.value=WB.exportWeak(list);
+    /* 导出端会跳过缺 type/q 的坏记录，提示必须用文件里的真实条数，不能直接报 loadWeak().length */
+    var n=list.length;
+    try{n=JSON.parse(ta.value).count;}catch(e){}
+    try{ta.focus();ta.select();}catch(e){}
+    var copied=false;
+    try{
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        copied=true;
+        navigator.clipboard.writeText(ta.value).then(function(){toast('📤 已导出 '+n+' 道错题，并复制到剪贴板');},function(){toast('📤 已导出 '+n+' 道错题到文本框，请手动复制');});
+      }
+    }catch(e){copied=false;}
+    if(!copied)toast('📤 已导出 '+n+' 道错题到文本框，请手动复制');
+  };
+  var imB=h('button','btn gold','📥 导入并合并');imB.style.flex='1';
+  imB.onclick=function(){
+    if(!WB){toast('⚠️ 错题本模块未加载，请刷新页面后重试');return;}
+    var res=WB.importWeak(ta.value,loadWeak());
+    if(!res.ok){toast('❌ '+res.error);return;}
+    var st=res.stats||{file:0,added:0,updated:0,kept:0,total:0};
+    if(!st.added&&!st.updated){
+      toast('ℹ️ 没有需要写入的错题（文件 '+st.file+' 道 · 现有 '+st.total+' 道，本地已是最新）');
+      return;
+    }
+    saveWeak(res.data);
+    /* 用保存后的真实条数：saveWeak 在超过 150 条时会按「错次多优先」裁剪，
+       直接显示 stats.total 会报一个比实际更大的数字。 */
+    toast('✅ 已合并：新增 '+st.added+' 道 · 更新 '+st.updated+' 道 · 现有 '+loadWeak().length+' 道');
+    /* 重开面板让列表/分类下拉/导出文本都按合并后的数据重建；closeOverlay 内部会 history.back，
+       等它把导航帧弹完（300ms）再开，避免连续 push 让返回键要点好几次。 */
+    closeOverlay(ov);
+    renderShelf();
+    weakFilter='';
+    later(function(){openWeakBook();},340);
+  };
+  ioRow.appendChild(exB);ioRow.appendChild(imB);ov.p.appendChild(ioRow);
+  ov.p.appendChild(ht('div','muted','导出的是可读 JSON（含版本号与导出时间）。导入采用「合并」而不是覆盖：同一题（分类 + 题干）只留一条，错的次数多的优先；次数相同则保留更早到期的复习计划。非法 JSON、缺字段、版本不符都会给出提示，且不会改动现有数据。'));
 }
 /* B 批：知识卡先学后练（每个分类核心知识点，开局前展示） */
 var KNOW_CARDS={

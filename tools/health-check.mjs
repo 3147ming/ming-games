@@ -92,7 +92,12 @@ async function checkPage(cdp, page) {
 
   const url = BASE + page.url;
   await cdp.send('Page.navigate', { url });
-  await sleep(page.id === 'brain-gym' || page.id === 'quiz' ? 3500 : 2200);
+  /* 不同页面的首屏耗时差别很大：
+     brain-gym / quiz 是几百 KB 的内联单文件，circuit-lab 要现搭一块实验台，
+     2.2s 对它们不够 —— 那会把"还在加载"误判成"页面坏了"。
+     宁可多等，也不要让体检报一个假故障（假阳性会让人逐渐不信任这套工具）。 */
+  const slowPages = new Set(['brain-gym', 'quiz', 'circuit-lab', 'grass-cutter']);
+  await sleep(slowPages.has(page.id) ? 4500 : 2200);
 
   const info = await cdp.send('Runtime.evaluate', {
     expression: `(() => {

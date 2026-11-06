@@ -297,6 +297,11 @@ select:focus{outline:none;border-color:#c3b0ff;box-shadow:0 0 0 3px rgba(124,92,
 .rw-exp{margin-top:5px;color:#555;background:#faf8ff;border-radius:8px;padding:7px 9px}
 .rw-exp.rw-src{margin-top:3px;padding:0;background:none;font-size:11.5px;color:#8d86a6}
 .rw-d .fsol-code{margin-top:6px;max-height:150px}
+/* ---------- 错题本导出 / 导入 ---------- */
+/* 等宽字体：导出的是 JSON，用户会手动检查/复制，比例字体会让括号层级难对齐 */
+.wbio{min-height:148px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;
+  font-size:12px;line-height:1.55;resize:vertical;background:var(--card)}
+.wbio::placeholder{color:#b3aac9}
 /* P2-A3：最近 30 天趋势条 */
 .trend{display:flex;align-items:flex-end;gap:3px;height:64px;background:#faf8ff;
   border:1px solid var(--line);border-radius:12px;padding:8px 10px;box-sizing:border-box}

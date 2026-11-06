@@ -10,7 +10,7 @@
  * ⚠ 这是"正式战场 UI"。模块 3 的临时 CombatUi（也是左下）在 main 里被默认隐藏，
  *   避免两个面板叠在一起——那句「模块 7 会用正式 UI 替换掉它」就是为这一刻准备的。
  */
-import { HUD, INK_UI } from '../core/config.js';
+import { HUD, INK_UI, RATING } from '../core/config.js';
 
 const PAPER = INK_UI.PAPER;
 const INK = INK_UI.INK;
@@ -189,6 +189,14 @@ export class BattleHud {
       </div></div>
       <div class="bh-win" data-win><div class="card">
         <h1>关卡通关</h1>
+        <div class="bh-rating" data-rating hidden>
+          <div class="bh-rating-head">
+            <span class="bh-grade" data-grade>—</span>
+            <span class="bh-rating-score" data-rating-score></span>
+          </div>
+          <div class="bh-rating-list" data-rating-list></div>
+          <div class="bh-rating-tip" data-rating-tip></div>
+        </div>
         <div class="line" data-win-kills></div>
         <div class="line" data-win-hp></div>
         <div class="line" data-win-morale></div>
@@ -207,11 +215,22 @@ export class BattleHud {
       kills: q('kills'), phase: q('phase'),
       points: q('points'), morale: q('morale'),
       pop: q('pop'), win: q('win'), winKills: q('win-kills'), winHp: q('win-hp'), winMorale: q('win-morale'),
+      rating: q('rating'), grade: q('grade'), ratingScore: q('rating-score'),
+      ratingList: q('rating-list'), ratingTip: q('rating-tip'),
       boss: q('boss'), bossFill: q('boss-fill'), bossName: q('boss-name'),
       aim: q('aim'), hurt: q('hurt'),
       pauseBtn: q('pause-btn'), pause: q('pause'), resume: q('resume'),
       again: q('again'),
     };
+    // 阈值文案从 RATING 派生，避免以后调门槛时结算卡还挂着旧数字
+    if (this.el.ratingTip) {
+      const t = RATING.THRESHOLDS;
+      const tag = (g) => `${g.grade}≥${g.min}`;
+      // 0 分档是兜底，不写进"≥"列表（C≥0 对玩家没有信息量）
+      const shown = t.filter((g) => g.min > 0).map(tag).join(' / ');
+      const bottom = t[t.length - 1]?.grade ?? 'C';
+      this.el.ratingTip.textContent = `综合 = 各维度加权得分之和 · ${shown} · 其余为 ${bottom}`;
+    }
     this._lastKills = 0;
     this._lastAim = '';
     this._popTimer = null;
@@ -336,7 +355,54 @@ export class BattleHud {
     cd.style.transform = `scaleX(${(1 - (a.cdRatio ?? 0)).toFixed(3)})`;
   }
 
-  showVictory({ kills, hp, hpMax, morale }) {
+  /** 明细里"原始值"的读法：时间用分:秒，其余走各自单位 */
+  _ratingRaw(item) {
+    if (item.id === 'elapsed') {
+      const sec = Math.max(0, Math.floor(item.raw));
+      return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+    }
+    const n = Math.round(item.raw);
+    if (item.id === 'kills') return `${n} 杀`;
+    if (item.id === 'damageTaken') return `${n} 承伤`;
+    if (item.id === 'maxCombo') return `${n} 连`;
+    if (item.id === 'musouUses') return `${n} 次`;
+    return `${n}${item.unit ? ` ${item.unit}` : ''}`;
+  }
+
+  /**
+   * 把评级画进现有结算卡（不另起一套弹层）。
+   * 大字只给结论，下面一行行是"为什么"：归一化表现用进度条，右侧给原始值 + 实际贡献分。
+   * score 是已乘权重的贡献分，所以玩家把右侧的 +x.x 全加起来，正好等于上方的综合分。
+   */
+  _renderRating(rating) {
+    const box = this.el.rating;
+    if (!box) return;
+    if (!rating || !Array.isArray(rating.breakdown)) {
+      box.hidden = true;
+      return;
+    }
+    box.hidden = false;
+    // 用 class 而不是再写一个 data-grade：span 上已经有 data-grade 了，
+    // 容器再挂同名属性会让 querySelector('[data-grade]') 命中错误节点。
+    box.classList.remove('grade-S', 'grade-A', 'grade-B', 'grade-C');
+    box.classList.add(`grade-${rating.grade}`);
+    this.el.grade.textContent = rating.grade;
+    this.el.ratingScore.textContent = `综合 ${rating.score.toFixed(1)} / 100`;
+    this.el.ratingList.innerHTML = rating.breakdown.map((item) => {
+      const pct = Math.max(0, Math.min(100, item.normalized));
+      // 战败局的用时维度没有贡献分，写"+0.0"会让人误以为算错了；
+      // 直接用 note 说明"未通关不计"，玩家才知道这不是 bug。
+      const tail = item.note ? item.note : `+${item.score.toFixed(1)}`;
+      return `<div class="bh-rating-row">
+        <span class="bh-rating-lab">${item.label}</span>
+        <span class="bh-rating-bar"><i class="bh-rating-fill" style="width:${pct.toFixed(1)}%"></i></span>
+        <span class="bh-rating-num">${this._ratingRaw(item)} · ${tail}</span>
+      </div>`;
+    }).join('');
+  }
+
+  showVictory({ kills, hp, hpMax, morale, rating = null }) {
+    this._renderRating(rating);
     this.el.winKills.textContent = `总击杀：${kills}`;
     this.el.winHp.textContent = `剩余血量：${Math.max(0, Math.round(hp))} / ${hpMax}`;
     this.el.winMorale.textContent = `士气：${Math.round(morale)} / 100`;
@@ -369,7 +435,8 @@ export class BattleHud {
    * 战败结算（P0-3）：复用通关那张纸卡，只换文案。
    * 「再来一把」是同一颗按钮，逻辑不用改（P0-4）。
    */
-  showDefeat({ kills, elapsed }) {
+  showDefeat({ kills, elapsed, rating = null }) {
+    this._renderRating(rating);
     const sec = Math.max(0, Math.floor(elapsed));
     this.el.win.querySelector('h1').textContent = '力竭';
     this.el.winKills.textContent = `总击杀：${kills}`;

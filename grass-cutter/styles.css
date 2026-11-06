@@ -200,3 +200,95 @@ body.locked #stage { cursor: none; }
   .hint { display: none; }      /* 键盘说明对触屏玩家没有意义 */
   .reticle { display: none; }   /* 触屏没有鼠标准星，中间那个点是误导 */
 }
+
+/* ───────────── 局末评级（S/A/B/C）
+   复用 .bh-win 那张结算纸卡，这里只负责"大字 + 明细行"的排版。
+   ★ 尺度全部走 shared/tokens.css 的 --mg-*；颜色沿用页面自己的
+     --danger / --accent 与水墨三色（S 朱砂、A 墨金、B 淡青、C 墨灰），
+     不引入新的颜色体系。 */
+.bh-rating {
+  --grade-color: #5a554a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--mg-sp-2);
+  margin: var(--mg-sp-2) 0 var(--mg-sp-3);
+}
+.bh-rating[hidden] { display: none; }
+.bh-rating.grade-S { --grade-color: var(--danger); }
+.bh-rating.grade-A { --grade-color: var(--accent); }
+.bh-rating.grade-B { --grade-color: #3a6f8a; }
+.bh-rating.grade-C { --grade-color: #5a554a; }
+
+.bh-rating-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--mg-sp-3);
+}
+.bh-grade {
+  color: var(--grade-color);
+  font-size: clamp(44px, 7vw, 76px);
+  font-weight: var(--mg-fw-black);
+  line-height: var(--mg-lh-tight);
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .35);
+}
+.bh-rating-score {
+  color: #5a554a;
+  font-size: var(--mg-fs-md);
+  font-weight: var(--mg-fw-bold);
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+.bh-rating-list {
+  width: min(82vw, 420px);
+  display: grid;
+  gap: var(--mg-sp-1);
+}
+.bh-rating-row {
+  display: grid;
+  grid-template-columns: 4.6em minmax(72px, 1fr) 8.2em;
+  align-items: center;
+  gap: var(--mg-sp-2);
+  color: #3a3a3e;
+  font-size: var(--mg-fs-sm);
+  line-height: var(--mg-lh-tight);
+}
+.bh-rating-lab { text-align: left; font-weight: var(--mg-fw-bold); }
+.bh-rating-bar {
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--mg-r-pill);
+  background: rgba(28, 28, 30, .16);
+}
+.bh-rating-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--grade-color);
+  transition: width var(--mg-t-slow) var(--mg-ease-out);
+}
+.bh-rating-num {
+  color: #5a554a;
+  font-size: var(--mg-fs-xs);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.bh-rating-tip {
+  color: #6a6458;
+  font-size: var(--mg-fs-xs);
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+@media (max-width: 520px) {
+  .bh-rating-row {
+    grid-template-columns: 4em minmax(56px, 1fr) 7.2em;
+    gap: var(--mg-sp-1);
+    font-size: var(--mg-fs-xs);
+  }
+  .bh-rating-score { font-size: var(--mg-fs-sm); }
+}

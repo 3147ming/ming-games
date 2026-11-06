@@ -2,11 +2,15 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const DIR = 'D:/Projects/_github_pages/ming-games/quiz/.build';
+const SRC = 'D:/Projects/_github_pages/ming-games/quiz/src';
 const OUT = 'D:/Projects/_github_pages/ming-games/quiz/index.html';
 const DEPLOY_OUT = 'D:/Projects/_github_pages/ming-games/_deploy_gym/quiz/index.html';
 
 const head = fs.readFileSync(DIR + '/head.html', 'utf8');           // 末尾含 <script>
 const core = fs.readFileSync(DIR + '/engine_core.js', 'utf8');
+/* 错题本导出/导入的纯函数（UMD：浏览器挂 window.WrongBook，Node 里可 require 做单测）。
+   内联进产物的原因：index.html 是单文件离线 PWA，多一个外部脚本就多一个缓存失败点。 */
+const wb   = fs.readFileSync(SRC + '/wrongbook.js', 'utf8');
 const ui   = fs.readFileSync(DIR + '/quiz-ui.js', 'utf8');
 
 // 全局框架：引擎核心(全局作用域)依赖这些符号，必须在引擎之前定义
@@ -40,7 +44,7 @@ const IDB = [
 /* 写产物之前先跑语言标签断言：不合规直接阻断，绝不产出会让语言闸漏题的 index.html */
 require('./_guard_tags.cjs');
 
-const html = head + '\n' + FRAMEWORK + '\n' + core + '\n' + IDB + '\n' + ui + '\n</script>\n</body>\n</html>\n';
+const html = head + '\n' + FRAMEWORK + '\n' + core + '\n' + IDB + '\n;\n' + wb + '\n;\n' + ui + '\n</script>\n</body>\n</html>\n';
 
 fs.writeFileSync(OUT, html, 'utf8');
 /* 部署包同源同值：构建时一次写齐，避免发布前漏 cp 导致线上与源码不一致 */

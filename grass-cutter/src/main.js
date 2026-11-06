@@ -27,7 +27,7 @@ import {
   WebGLRenderer,
 } from '../vendor/three/three.module.js';
 
-import { ARTS, BATTLEFIELD, BOSS, COMBAT, DEBUG, DEFENSE, ENEMY, ENEMY_AI, HUD, MORALE, MUSOU, PLAYER, POINTS, RENDER, STAGE, POSTFX, INKFX, ENVIRONMENT, GRASS, DECAL, TIME, HERO, INK_UI, AUDIO } from './core/config.js';
+import { ARTS, BATTLEFIELD, BOSS, COMBAT, DEBUG, DEFENSE, ENEMY, ENEMY_AI, HUD, MORALE, MUSOU, PLAYER, POINTS, RENDER, STAGE, POSTFX, INKFX, ENVIRONMENT, GRASS, DECAL, TIME, HERO, INK_UI, AUDIO, RATING } from './core/config.js';
 import { CameraRig, createCamera } from './core/cameraRig.js';
 import { forwardVector, rightVector } from './core/cameraMath.js';
 import { blockerShapes } from './core/battlefieldLayout.js';
@@ -52,6 +52,7 @@ import { BattleHud } from './ui/battleHud.js';
 import { DefenseSystem } from './combat/defense.js';
 // ── 第 3 批 P0-5：局内成长（纯逻辑 + 卡池 + 三选一弹层）
 import { RunProgress } from './game/progression.js';
+import { computeRating } from './game/rating.js';
 import { CARDS, drawThree } from './game/cards.js';
 import { LevelUpPanel } from './ui/levelUp.js';
 // ── 模块 10/11：水墨后处理 / 环境氛围 / 风草 / 贴花 / 武将模型 / 时间通道 / 水墨战斗特效 / 战斗音效 ──
@@ -319,6 +320,9 @@ let boss = null; // BossController 实例（阶段触发时创建）
 let bossMesh = null; // 独立网格
 let victoryShown = false;
 let defeatShown = false;      // 战败只结算一次（P0-3）
+let damageTaken = 0;          // 本局累计实际扣血（防御减伤后；被无敌吃掉的 0 不计）
+let musouUses = 0;            // 本局无双乱舞释放次数（只读事件计数，不改战斗逻辑）
+let lastRating = null;        // 最近一次评级（探针/UI 自查用）
 let lastHurt = null;          // { x, z, t }：最近一次受击的来源与时刻（P1-3 的箭头要用）
 let hurtUiAt = -Infinity;     // P1-3 限频用（10Hz）
 // 招式表 / 教学提示：按 N1、N2、C3、C4、C5 显示，**不出现 C1/C2**
@@ -444,12 +448,36 @@ function applyDegrade(step) {
 // 一旦哪天有人不小心把 others 写成新数组，就是每帧 160 元素的分配 —— 直接原地复用堵掉这条路。
 const ectx = { x: 0, z: 0, invincible: false, shapes, others: dummyPool.alive };
 
+/**
+ * 把一局里现成的数据收成评级输入。
+ * ⚠ 刻意不复用 stage 的 victory 事件 stats：那条路径只带外部传进来的字段，
+ *   而承伤/无双次数是在 main 里实时累计的。统一从这里取，胜负两条结算路径才是同一笔账。
+ * 只在结算时调用一次，不进每帧。
+ */
+function buildRatingStats(victory) {
+  return {
+    victory, // 战败局的时间维度不计分（"越快越好"只对通关成立）
+    elapsed: stage.elapsed,
+    kills: enemyPool.kills,
+    damageTaken,
+    maxCombo: combat.snapshot().maxCombo,
+    musouUses,
+  };
+}
+
+/** 结算唯一入口：算评级并记下来，UI 只负责显示 */
+function settleRating(victory) {
+  lastRating = computeRating(buildRatingStats(victory));
+  return lastRating;
+}
+
 // ── 玩家唯一扣血入口（P0-3）：敌人路径与 Boss 路径都走这里，
 //    这样"受击无敌 / 掉血浮字 / 战败判定"只需要写一遍。
 //    ⚠ defeatShown / lastHurt / hurtUiAt 已在上面 victoryShown 旁声明，这里直接用。
 function hurtPlayer(amount, fromX, fromZ) {
   const dealt = player.damage(amount);
   if (dealt <= 0) return 0;                      // 被无敌吃掉（闪避/无双/卸势），什么都不做
+  damageTaken += dealt;                          // 评级用：只记真正掉的血，不吃"挡下来"的伤害
   player.grantInvincible(PLAYER.HURT_IFRAME);     // 0.22s 短无敌（已有 API，取 max 不覆盖）
   lastHurt = { x: fromX, z: fromZ, t: simTime };
   // 掉血浮字：与卸势火花走同一条 inkFx damage 链路（带 hitPoint 就会浮数字）
@@ -462,7 +490,7 @@ function hurtPlayer(amount, fromX, fromZ) {
     defeatShown = true;
     combat.chain.reset();       // 0 血后不该再累积连段（chain.js reset）
     battleHud.hideBoss();
-    battleHud.showDefeat({ kills: enemyPool.kills, elapsed: stage.elapsed });
+    battleHud.showDefeat({ kills: enemyPool.kills, elapsed: stage.elapsed, rating: settleRating(false) });
   }
   return dealt;
 }
@@ -515,7 +543,10 @@ function tick() {
   for (const ev of combat.events) {
     if (ev.type === 'damage' && ev.result?.killed) run.addKill(1); // P0-5：击杀得经验
     else if (ev.type === 'art') cinnabarTimer = Math.max(cinnabarTimer, HERO.OUTLINE_ART_FLASH);
-    else if (ev.type === 'musou-release') cinnabarTimer = Math.max(cinnabarTimer, ev.duration || HERO.OUTLINE_ART_FLASH);
+    else if (ev.type === 'musou-release') {
+      musouUses++; // 评级维度：资源用出来才算数（满槽憋着不放不该拿这一项）
+      cinnabarTimer = Math.max(cinnabarTimer, ev.duration || HERO.OUTLINE_ART_FLASH);
+    }
   }
 
   // 升级 → 三选一（P0-5）。⚠ 一次升级可能 pending > 1（连杀跨两级），选完继续弹下一张。
@@ -613,7 +644,13 @@ function tick() {
     } else if (ev.type === 'victory' && !victoryShown) {
       victoryShown = true;
       battleHud.hideBoss();
-      battleHud.showVictory({ kills: enemyPool.kills, hp: player.hp, hpMax: player.maxHp, morale: capture.morale });
+      battleHud.showVictory({
+        kills: enemyPool.kills,
+        hp: player.hp,
+        hpMax: player.maxHp,
+        morale: capture.morale,
+        rating: settleRating(true),
+      });
     }
   }
 
@@ -785,7 +822,7 @@ window.MUSOU = {
   heroAssetLoaded: false, // 模块 12：外部角色资产是否成功加载（探针用它确认加载管线真的跑通）
   input,
   placeholderMeshIsTemporary: true, // 武将网格仍为代码生成（非外部美术资源）
-  config: { BATTLEFIELD, PLAYER, COMBAT, MUSOU, ARTS, ENEMY, ENEMY_AI, MORALE, POINTS, HUD, STAGE, BOSS, DEBUG, RENDER, POSTFX, INKFX, ENVIRONMENT, GRASS, DECAL, TIME, HERO, INK_UI, AUDIO },
+  config: { BATTLEFIELD, PLAYER, COMBAT, MUSOU, ARTS, ENEMY, ENEMY_AI, MORALE, POINTS, HUD, STAGE, BOSS, DEBUG, RENDER, POSTFX, INKFX, ENVIRONMENT, GRASS, DECAL, TIME, HERO, INK_UI, AUDIO, RATING },
   postfx, env, grass: grassField, decals: decalPool, timeControl, audio, inkFx, combatFx: inkFx,
   stats: world.stats,
   warnings: world.warnings,
@@ -952,6 +989,8 @@ window.MUSOU = {
   run,
   runPanel,
   runSnapshot: () => run.snapshot(),
+  // 局末评级：结算后可用它自查（未结算时为 null）
+  lastRating: () => lastRating,
   /** 探针用：把待选卡次数直接设成 n（不开弹层也能验 HUD 与暂停语义） */
   setPending: (n) => { run.pending = Math.max(0, n | 0); return run.pending; },
   // ── 第 3 批 P1-4：画质降级（探针用 MUSOU.degrade() 读像素比/阴影真实档位）
