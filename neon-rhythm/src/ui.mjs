@@ -771,6 +771,9 @@ $('btn-res-menu').addEventListener('click', () => { show('menu'); renderMenu(); 
 
 function boot() {
   // 首帧后移除加载指示
+  /* 主菜单阶段也先把画布尺寸理顺：canvas 默认是 300×150，
+     不初始化的话菜单阶段是个未定义尺寸的画布，且从菜单进游戏时会有一次布局跳变。 */
+  resize();
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       const b = $('boot');
