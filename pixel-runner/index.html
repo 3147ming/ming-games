@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0a0f1e">
+<title>像素跑酷 · PIXEL RUNNER</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0f1e'/%3E%3Crect x='7' y='12' width='8' height='12' fill='%2340e0d0'/%3E%3Crect x='17' y='8' width='8' height='8' fill='%23ff6b9d'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="boot"><div class="bar"><i></i></div><div class="txt">载入中…</div></div>
+
+<canvas id="canvas"></canvas>
+
+<!-- ============ 主菜单 ============ -->
+<section id="screen-menu" class="screen active">
+  <div class="logo">
+    <div class="logo-p">PIXEL</div>
+    <div class="logo-r">RUNNER</div>
+    <div class="logo-cn">像素跑酷</div>
+  </div>
+
+  <div class="best-box">
+    <div class="bb-label">最好成绩</div>
+    <div class="bb-score" id="menu-best">0</div>
+    <div class="bb-sub"><span id="menu-best-dist">0 米</span> · <span id="menu-best-coins">0 币</span></div>
+  </div>
+
+  <div class="stats-row" id="menu-stats"></div>
+
+  <button class="big-btn" id="btn-start">▶ 开始奔跑</button>
+
+  <div class="menu-links">
+    <button class="link-btn" id="btn-achv">🏆 成就 <b id="achv-count">0/12</b></button>
+    <button class="link-btn" id="btn-settings">⚙ 设置</button>
+    <button class="link-btn" id="btn-help">? 玩法</button>
+  </div>
+</section>
+
+<!-- ============ 局内 HUD ============ -->
+<div id="screen-game" class="hud-layer">
+  <div class="hud-top">
+    <div class="hud-cell">
+      <div class="hud-k">距离</div>
+      <div class="hud-v" id="hud-dist">0</div>
+      <div class="hud-u">米</div>
+    </div>
+    <div class="hud-cell center">
+      <div class="hud-score" id="hud-score">0</div>
+      <div class="hud-combo" id="hud-combo"></div>
+    </div>
+    <div class="hud-cell right">
+      <div class="hud-k">硬币</div>
+      <div class="hud-v gold" id="hud-coins">0</div>
+    </div>
+  </div>
+
+  <div class="powerbar" id="powerbar"></div>
+
+  <div class="hud-btns">
+    <button class="ico-btn" id="btn-pause">⏸</button>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<!-- ============ 暂停 ============ -->
+<div class="overlay" id="overlay-pause" hidden>
+  <div class="panel">
+    <h2>暂停</h2>
+    <div class="pause-stats" id="pause-stats"></div>
+    <button class="big-btn" id="btn-resume">继续</button>
+    <button class="mbtn" id="btn-restart">重来</button>
+    <button class="mbtn ghost" id="btn-quit">回主菜单</button>
+  </div>
+</div>
+
+<!-- ============ 结算 ============ -->
+<div class="overlay" id="overlay-result" hidden>
+  <div class="panel result">
+    <div class="res-title" id="res-title">撞上了</div>
+    <div class="res-score" id="res-score">0</div>
+    <div class="res-best" id="res-best" hidden>★ 新纪录 ★</div>
+    <div class="res-grid">
+      <div class="res-cell"><span>距离</span><b id="res-dist">0</b></div>
+      <div class="res-cell"><span>硬币</span><b id="res-coins">0</b></div>
+      <div class="res-cell"><span>近失</span><b id="res-near">0</b></div>
+      <div class="res-cell"><span>存活</span><b id="res-time">0s</b></div>
+    </div>
+    <div class="res-unlock" id="res-unlock" hidden></div>
+    <button class="big-btn" id="btn-again">再来一次</button>
+    <button class="mbtn ghost" id="btn-home">回主菜单</button>
+  </div>
+</div>
+
+<!-- ============ 成就 ============ -->
+<div class="overlay" id="overlay-achv" hidden>
+  <div class="panel wide">
+    <h2>成就 <b id="achv-head">0/12</b></h2>
+    <div class="achv-list" id="achv-list"></div>
+    <button class="mbtn" id="btn-close-achv">关闭</button>
+  </div>
+</div>
+
+<!-- ============ 设置 ============ -->
+<div class="overlay" id="overlay-settings" hidden>
+  <div class="panel wide">
+    <h2>设置</h2>
+
+    <label class="srow">
+      <span>音量</span>
+      <input type="range" id="set-vol" min="0" max="100" step="5" value="70">
+      <b id="set-vol-v">70%</b>
+    </label>
+
+    <label class="srow">
+      <span>音乐</span>
+      <button class="toggle" id="set-music" data-on="1">开</button>
+    </label>
+
+    <label class="srow">
+      <span>音效</span>
+      <button class="toggle" id="set-sfx" data-on="1">开</button>
+    </label>
+
+    <label class="srow">
+      <span>粒子特效</span>
+      <button class="toggle" id="set-fx" data-on="1">开</button>
+    </label>
+
+    <label class="srow">
+      <span>震动</span>
+      <button class="toggle" id="set-vib" data-on="1">开</button>
+    </label>
+
+    <label class="srow">
+      <span>操作</span>
+      <div class="seg" id="set-control">
+        <button data-c="tap">点击</button>
+        <button data-c="slide">上滑</button>
+        <button data-c="both">都行</button>
+      </div>
+    </label>
+
+    <button class="mbtn danger" id="btn-clear">清除全部数据</button>
+    <button class="mbtn" id="btn-close-settings">完成</button>
+  </div>
+</div>
+
+<!-- ============ 玩法 ============ -->
+<div class="overlay" id="overlay-help" hidden>
+  <div class="panel wide">
+    <h2>玩法</h2>
+    <ul class="help">
+      <li><b>跳</b>：点击屏幕 / <kbd>空格</kbd> / <kbd>↑</kbd>。空中可再按一次<b>二段跳</b></li>
+      <li><b>滑铲</b>：向下滑 / <kbd>↓</kbd>。钻过高横杆，在空中按下则<b>快速落地</b></li>
+      <li><b>三色障碍</b>：地面刺（跳）· 高横杆（滑铲）· 飞行物（跳或蹲）</li>
+      <li><b>道具</b>：🛡 护盾（免一次撞击）· 🧲 磁铁（吸硬币）· ⏳ 慢放（世界减速 5 秒）</li>
+      <li><b>近失</b>：贴着障碍 10px 内掠过，+5 分</li>
+      <li><b>得分</b>：距离（米） + 硬币 × 10 + 近失 × 5</li>
+    </ul>
+    <button class="mbtn" id="btn-close-help">知道了</button>
+  </div>
+</div>
+
+<script type="module" src="./src/ui.mjs"></script>
+</body>
+</html>
