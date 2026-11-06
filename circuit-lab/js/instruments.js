@@ -14,13 +14,37 @@
  * 探针是**观测层**：挂点只写 instruments 的 netId 列表，不碰 model。
  */
 
-import { dmmRead, scopeMeasure, decodeUart, decodeI2c, FGEN_WAVES } from './instruments-core.js';
+import {
+  dmmRead, scopeMeasure, decodeUart, decodeI2c, FGEN_WAVES,
+  findTrigger, fgenOutputImpedance, fgenLoadResistance, FGEN_Z_OPTIONS,
+  extractStateMachine,
+} from './instruments-core.js';
 
 const TABS = [
   { id: 'dmm', label: '万用表' },
   { id: 'scope', label: '示波器' },
   { id: 'la', label: '逻辑分析' },
   { id: 'fgen', label: '函数发生' },
+];
+
+/**
+ * 阶段 2 R7：万用表 8 档位。
+ * probes 约定面板要显示哪些落点控件，也决定「探针未接触」的判定：
+ *   A       只需红表笔（对地测量）
+ *   AB      红黑两点（电阻 / 二极管 / 通断 / 电容）
+ *   comp    只需串入支路的元件（直流电流）
+ *   A+comp  红表笔给交流波形 + 元件给折算电阻（交流电流）
+ * 内核 dmmRead() 的分支与之一一对应，别在 UI 里另算一遍读数。
+ */
+export const DMM_MODES = [
+  { value: 'volt', label: '直流电压 DCV (V)', probes: 'A', hint: '红表笔接测点（相对地），黑表笔为参考端' },
+  { value: 'acv', label: '交流电压 ACV (V~)', probes: 'A', hint: '读暂态波形的交流分量 RMS（已扣直流偏置）' },
+  { value: 'amp', label: '直流电流 DCA (A)', probes: 'comp', hint: '串入支路：把红表笔拖到元件/导线上，或用下拉选元件' },
+  { value: 'aca', label: '交流电流 ACA (A~)', probes: 'A+comp', hint: '交流电流 = 测点波形 RMS ÷ 元件电阻；红表笔挂测点、下拉选元件' },
+  { value: 'ohm', label: '电阻档 (Ω)', probes: 'AB', hint: '红黑表笔分别接被测两端，电路按断电处理（独立源归零）' },
+  { value: 'diode', label: '二极管档 (→|)', probes: 'AB', hint: '红表笔接阳极、黑表笔接阴极，10mA 测试电流测正向压降' },
+  { value: 'cont', label: '通断档 · 蜂鸣', probes: 'AB', hint: '红黑表笔短接判通（|V|<0.3V 或 R<30Ω）' },
+  { value: 'cap', label: '电容档 (F)', probes: 'AB', hint: '读测点所在网上电容的标称值（教学简化，断电读数）' },
 ];
 
 /**
@@ -42,8 +66,17 @@ export function createInstruments(host, api = {}) {
 
   const state = {
     tab: 'dmm',
-    dmm: { mode: 'volt', netId: null, netB: null, componentId: null, real: false },
-    scope: { ch1: null, ch2: null, timebase: 0.001, vdiv: 1, coupling: 'dc', cursor1: 0, cursor2: 0 },
+    // real 为包 10 起的存档字段（必须保留）；realInput 是 dmmRead 的入参名，两者在下方同步
+    dmm: {
+      mode: 'volt', netId: null, netB: null, componentId: null, real: false, realInput: false,
+    },
+    scope: {
+      ch1: null, ch2: null, timebase: 0.001, vdiv: 1, coupling: 'dc', cursor1: 0, cursor2: 0,
+      // 阶段 2 R4a：触发只新增字段，既有 ch1/ch2/... 一律不动
+      trigger: { edge: 'rising', level: 2.5, mode: 'auto', armed: true },
+      frozenT0: null,
+      frozenDrawn: false,
+    },
     la: { nets: [], baud: 9600, bytes: [], error: '' },
     // 画布探针标记位置：slotId → { gx, gy }（网格坐标，随存档保存）
     markers: {},
@@ -267,35 +300,67 @@ export function createInstruments(host, api = {}) {
 
   /* ---------------------------------------------------------------- 万用表 */
 
+  function dmmConfig() {
+    return DMM_MODES.find((m) => m.value === state.dmm.mode) || DMM_MODES[0];
+  }
+
+  /** UI 状态 → dmmRead 入参：顺手把 real 映射成 realInput、把暂态波形接进来 */
+  function dmmOpts() {
+    const res = transient();
+    const opts = {
+      ...state.dmm,
+      realInput: Boolean(state.dmm.realInput || state.dmm.real),
+      waveforms: res && Array.isArray(res.waveforms) ? res.waveforms : [],
+    };
+    if (state.dmm.mode === 'aca') {
+      const r = componentResistance(state.dmm.componentId);
+      if (Number.isFinite(r)) opts.loadResistance = r;
+    }
+    return opts;
+  }
+
+  /** 交流电流档按「测点电压 RMS ÷ 元件电阻」折算，电阻取元件的标称值 */
+  function componentResistance(id) {
+    if (!id) return NaN;
+    const m = api.model ? api.model() : null;
+    if (!m || !m.getState) return NaN;
+    const comp = (m.getState().components || []).find((c) => c.id === id);
+    const r = Number(comp && comp.params && comp.params.resistance);
+    return Number.isFinite(r) && r > 0 ? r : NaN;
+  }
+
   function renderDmm() {
     const box = document.createElement('div');
     box.className = 'inst-dmm';
+    const cfg = dmmConfig();
 
-    const modeSel = select([
-      { value: 'volt', label: '电压档 (V)' },
-      { value: 'amp', label: '电流档 (A)' },
-      { value: 'ohm', label: '电阻档 (Ω)' },
-      { value: 'diode', label: '二极管档' },
-    ], state.dmm.mode, (value) => { state.dmm.mode = value; renderBody(); });
+    const modeSel = select(
+      DMM_MODES.map((m) => ({ value: m.value, label: m.label })),
+      state.dmm.mode,
+      (value) => { state.dmm.mode = value; renderBody(); },
+    );
+    modeSel.setAttribute('aria-label', '万用表档位');
     box.append(row('档位', modeSel));
 
-    if (state.dmm.mode === 'volt') {
-      box.append(row('测点', select(netOptions(), state.dmm.netId, (value) => {
+    const needsA = cfg.probes !== 'comp';
+    const needsB = cfg.probes === 'AB';
+    const needsComp = cfg.probes === 'comp' || cfg.probes === 'A+comp';
+
+    if (needsA) {
+      box.append(row(needsB ? '红表笔' : '测点', select(netOptions(), state.dmm.netId, (value) => {
         state.dmm.netId = value || null;
         refreshDmm();
       })));
-    } else if (state.dmm.mode === 'amp') {
-      box.append(row('元件', select(compOptions(), state.dmm.componentId, (value) => {
-        state.dmm.componentId = value || null;
-        refreshDmm();
-      })));
-    } else {
-      box.append(row('测点 A', select(netOptions(), state.dmm.netId, (value) => {
-        state.dmm.netId = value || null;
-        refreshDmm();
-      })));
-      box.append(row('测点 B', select(netOptions(), state.dmm.netB, (value) => {
+    }
+    if (needsB) {
+      box.append(row('黑表笔', select(netOptions(), state.dmm.netB, (value) => {
         state.dmm.netB = value || null;
+        refreshDmm();
+      })));
+    }
+    if (needsComp) {
+      box.append(row('支路元件', select(compOptions(), state.dmm.componentId, (value) => {
+        state.dmm.componentId = value || null;
         refreshDmm();
       })));
     }
@@ -305,13 +370,32 @@ export function createInstruments(host, api = {}) {
       realWrap.className = 'inst-check';
       const real = document.createElement('input');
       real.type = 'checkbox';
-      real.checked = state.dmm.real;
-      real.addEventListener('change', () => { state.dmm.real = real.checked; refreshDmm(); });
-      const text = document.createElement('span');
-      text.textContent = '真实内阻模式（电压档 10MΩ / 电流档 1Ω）';
-      realWrap.append(real, text);
+      real.checked = Boolean(state.dmm.realInput || state.dmm.real);
+      // 修包 10 遗留 bug：面板写 state.dmm.real，内核读 opts.realInput，复选框一直无效
+      real.addEventListener('change', () => {
+        state.dmm.real = real.checked;
+        state.dmm.realInput = real.checked;
+        refreshDmm();
+      });
+      realWrap.append(real, document.createTextNode('真实内阻模式（电压档 10MΩ / 电流档 1Ω）'));
       box.append(realWrap);
     }
+
+    // 表笔状态：与画布上的红/黑标记共用 state.dmm.netId / netB，随读数一并刷新
+    const status = document.createElement('div');
+    status.className = 'inst-probe-status';
+    const red = document.createElement('span');
+    red.className = 'inst-probe-pill';
+    red.dataset.probe = 'red';
+    const black = document.createElement('span');
+    black.className = 'inst-probe-pill';
+    black.dataset.probe = 'black';
+    status.append(red, black);
+    box.append(status);
+
+    const hint = document.createElement('p');
+    hint.className = 'inst-hint inst-mode-hint';
+    box.append(hint);
 
     const screen = document.createElement('div');
     screen.className = 'inst-screen';
@@ -326,16 +410,48 @@ export function createInstruments(host, api = {}) {
     body.append(box);
     state.dmmValueEl = value;
     state.dmmNoteEl = note;
+    state.dmmRedEl = red;
+    state.dmmBlackEl = black;
+    state.dmmHintEl = hint;
     refreshDmm();
+  }
+
+  /** 表笔落点缺失时给明确提示，避免学生对着「—」不知道要拖探针 */
+  function renderProbeStatus(read) {
+    const cfg = dmmConfig();
+    const pill = (el, label, netId) => {
+      if (!el) return;
+      el.textContent = `${label} · ${netId || '未接触'}`;
+      el.classList.toggle('is-live', Boolean(netId));
+      el.classList.remove('is-missing');
+    };
+    pill(state.dmmRedEl, '红表笔', state.dmm.netId);
+    pill(state.dmmBlackEl, '黑表笔', state.dmm.netB);
+
+    const missingA = cfg.probes !== 'comp' && !state.dmm.netId;
+    const missingB = cfg.probes === 'AB' && !state.dmm.netB;
+    const missingComp = (cfg.probes === 'comp' || cfg.probes === 'A+comp') && !state.dmm.componentId;
+    if (state.dmmRedEl && missingA) state.dmmRedEl.classList.add('is-missing');
+    if (state.dmmBlackEl && missingB) state.dmmBlackEl.classList.add('is-missing');
+
+    if (!state.dmmHintEl) return;
+    let text = cfg.hint;
+    if (missingA || missingB || missingComp) {
+      text = '探针未接触任何节点：把画布上的红/黑表笔拖到端子、孔位或导线上'
+        + (missingComp ? '；电流档拖到元件/导线会自动串入支路' : '');
+    }
+    if (!read.ok && read.error) text = `${read.error} · ${text}`;
+    state.dmmHintEl.textContent = text;
   }
 
   function refreshDmm() {
     if (!state.dmmValueEl) return;
-    const read = dmmRead(api.model ? api.model() : null, state.dmm);
+    const read = dmmRead(api.model ? api.model() : null, dmmOpts());
     state.lastRead = read;
     state.dmmValueEl.textContent = read.ok ? read.text : '—';
     state.dmmValueEl.classList.toggle('is-error', !read.ok);
     state.dmmNoteEl.textContent = read.ok ? (read.note || '') : (read.error || '');
+    renderProbeStatus(read);
   }
 
   /* ---------------------------------------------------------------- 示波器 */
@@ -400,8 +516,35 @@ export function createInstruments(host, api = {}) {
       { value: 'ac', label: 'AC' },
     ], state.scope.coupling, (v) => {
       state.scope.coupling = v;
+      clearSingleFreeze();
       drawScope();
     })));
+
+    /* ---- 阶段 2 R4a：触发控件（规格：放在现有控件下方、波形 Canvas 上方） ---- */
+    const trig = state.scope.trigger;
+    box.append(row('触发边沿', select([
+      { value: 'rising', label: '上升沿' },
+      { value: 'falling', label: '下降沿' },
+    ], trig.edge, (v) => { trig.edge = v; clearSingleFreeze(); drawScope(); })));
+    box.append(row('触发电平 (V)', numberInput(trig.level, -10, 10, 0.1, (v) => {
+      trig.level = Number.isFinite(v) ? Math.min(10, Math.max(-10, v)) : 2.5;
+      clearSingleFreeze();
+      drawScope();
+    })));
+    box.append(row('触发模式', select([
+      { value: 'auto', label: '自动（无触发显示整段）' },
+      { value: 'normal', label: '正常' },
+      { value: 'single', label: '单次（触发后冻结）' },
+    ], trig.mode, (v) => { trig.mode = v; clearSingleFreeze(); renderBody(); })));
+    if (trig.mode === 'single') {
+      box.append(button('单次触发', () => {
+        clearSingleFreeze();
+        if (api.runTransient) {
+          api.runTransient({ duration: state.scope.timebase * 20, dt: state.scope.timebase / 100 });
+        }
+        drawScope();
+      }, 'btn-primary'));
+    }
 
     const canvas = document.createElement('canvas');
     canvas.className = 'inst-scope-canvas';
@@ -441,9 +584,47 @@ export function createInstruments(host, api = {}) {
     return res.waveforms.find((w) => w.netId === netId) || null;
   }
 
+  /** 改触发控件 / 按「单次触发」时清掉冻结画面，重新进入待触发状态 */
+  function clearSingleFreeze() {
+    state.scope.frozenT0 = null;
+    state.scope.frozenDrawn = false;
+    state.scope.trigger.armed = true;
+  }
+
+  /**
+   * 阶段 2 R4a：触发后的显示窗口。
+   * auto / normal 找不到触发点 → 左边界 = 0（显示整段）；
+   * single 找到后 armed=false 并记住 t0，后续帧不再重绘（冻结静态窗口）。
+   */
+  function triggerWindow(netId) {
+    const trig = state.scope.trigger;
+    const span = state.scope.timebase * 10;
+    const wave = netId ? waveOf(netId) : null;
+    const base = wave && wave.samples.length ? wave.samples[0].t : 0;
+    const whole = { t0: base, span, hit: null, frozen: false };
+    if (!wave || wave.samples.length < 2) return whole;
+    if (trig.mode === 'single' && !trig.armed && Number.isFinite(state.scope.frozenT0)) {
+      return { t0: state.scope.frozenT0, span, hit: null, frozen: true };
+    }
+    const hit = findTrigger(wave.samples, { edge: trig.edge, level: trig.level });
+    if (!hit) return whole;
+    const pre = Math.min(span * 0.1, state.scope.timebase * 2);
+    const t0 = Math.max(base, hit.t - pre);
+    if (trig.mode === 'single') {
+      trig.armed = false;
+      state.scope.frozenT0 = t0;
+    }
+    return { t0, span, hit, frozen: false };
+  }
+
   function drawScope() {
     const canvas = state.scopeCanvas;
     if (!canvas) return;
+    const trig = state.scope.trigger
+      || (state.scope.trigger = { edge: 'rising', level: 2.5, mode: 'auto', armed: true });
+    // single 已冻结：保留上一帧静态窗口，不重绘（余辉也一并停掉）
+    if (trig.mode === 'single' && !trig.armed && state.scope.frozenDrawn) return;
+    const win = triggerWindow(state.scope.ch1 || state.scope.ch2);
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const cssW = canvas.clientWidth || 320;
     const cssH = canvas.clientHeight || 160;
@@ -515,8 +696,8 @@ export function createInstruments(host, api = {}) {
     const drawChannel = (netId, color) => {
       const wave = netId ? waveOf(netId) : null;
       if (!wave) return;
-      const span = state.scope.timebase * 10;
-      const t0 = wave.samples.length > 0 ? wave.samples[0].t : 0;
+      const span = win.span;
+      const t0 = win.t0;
       const vdiv = state.scope.vdiv;
       const zero = cssH / 2;
       const sampleMean = wave.samples.reduce((a, b) => a + b.v, 0) / wave.samples.length;
@@ -528,7 +709,7 @@ export function createInstruments(host, api = {}) {
       ctx.beginPath();
       let started = false;
       wave.samples.forEach((s) => {
-        if (s.t - t0 > span) return;
+        if (s.t < t0 || s.t - t0 > span) return;
         const x = ((s.t - t0) / span) * cssW;
         const v = state.scope.coupling === 'ac' ? s.v - sampleMean : s.v;
         const y = zero - (v / (vdiv * 8)) * cssH;
@@ -540,46 +721,45 @@ export function createInstruments(host, api = {}) {
     drawChannel(state.scope.ch1, colors.ch1);
     drawChannel(state.scope.ch2, colors.ch2);
 
-    // 触发光标：在 CH1（没接就看 CH2）上找第一个上升沿，画一条虚线 + T 标记
+    // 阶段 2 R4a：触发电平线 + 触发点竖虚线（位置来自 triggerWindow，
+    // 不再硬编码 2.5V 上升沿）。冻结帧保留原画面，不重画。
     {
-      const triggerNet = state.scope.ch1 || state.scope.ch2;
-      const wave = triggerNet ? waveOf(triggerNet) : null;
-      if (wave && wave.samples.length > 2) {
-        const span = state.scope.timebase * 10;
-        const t0 = wave.samples[0].t;
-        let at = null;
-        for (let i = 1; i < wave.samples.length; i += 1) {
-          const prev = wave.samples[i - 1].v;
-          const cur = wave.samples[i].v;
-          if (prev <= 2.5 && cur > 2.5) { at = wave.samples[i].t; break; }
-        }
-        if (at !== null && at - t0 <= span) {
-          const x = ((at - t0) / span) * cssW;
-          ctx.strokeStyle = 'rgba(242, 193, 78, 0.85)';
-          ctx.lineWidth = 1.2;
-          ctx.setLineDash([4, 4]);
-          ctx.beginPath();
-          ctx.moveTo(x, 0);
-          ctx.lineTo(x, cssH);
-          ctx.stroke();
-          ctx.setLineDash([]);
-          // 触发电平箭头（左侧边缘）
-          const yLevel = cssH / 2 - (2.5 / (state.scope.vdiv * 8)) * cssH;
-          ctx.fillStyle = 'rgba(242, 193, 78, 0.95)';
-          ctx.beginPath();
-          ctx.moveTo(0, yLevel);
-          ctx.lineTo(7, yLevel - 4);
-          ctx.lineTo(7, yLevel + 4);
-          ctx.closePath();
-          ctx.fill();
-          ctx.font = '10px "Cascadia Mono", Consolas, monospace';
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'top';
-          ctx.fillStyle = 'rgba(242, 193, 78, 0.9)';
-          ctx.fillText('T', Math.min(cssW - 12, x + 3), 3);
-        }
+      const level = Number.isFinite(trig.level) ? trig.level : 2.5;
+      const yLevel = cssH / 2 - (level / (state.scope.vdiv * 8)) * cssH;
+      ctx.strokeStyle = 'rgba(242, 193, 78, 0.3)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 5]);
+      ctx.beginPath();
+      ctx.moveTo(0, yLevel);
+      ctx.lineTo(cssW, yLevel);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // 电平箭头（左侧边缘）
+      ctx.fillStyle = 'rgba(242, 193, 78, 0.95)';
+      ctx.beginPath();
+      ctx.moveTo(0, yLevel);
+      ctx.lineTo(7, yLevel - 4);
+      ctx.lineTo(7, yLevel + 4);
+      ctx.closePath();
+      ctx.fill();
+      if (win.hit && win.hit.t >= win.t0 && win.hit.t - win.t0 <= win.span) {
+        const x = ((win.hit.t - win.t0) / win.span) * cssW;
+        ctx.strokeStyle = 'rgba(242, 193, 78, 0.85)';
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, cssH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.font = '10px "Cascadia Mono", Consolas, monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = 'rgba(242, 193, 78, 0.9)';
+        ctx.fillText('T', Math.min(cssW - 12, x + 3), 3);
       }
     }
+    if (trig.mode === 'single' && !trig.armed) state.scope.frozenDrawn = true;
 
     // 自动测量
     const box = body.querySelector('.inst-measure');
@@ -592,8 +772,10 @@ export function createInstruments(host, api = {}) {
       const m = scopeMeasure(wave.samples, { coupling: state.scope.coupling });
       const line = document.createElement('p');
       line.className = 'inst-measure-line';
-      line.textContent = `CH${index + 1} ${netId}：Vpp ${fmt(m.vpp, 'V')} · Vmax ${fmt(m.vmax, 'V')} · Vmin ${fmt(m.vmin, 'V')} · Vavg ${fmt(m.vavg, 'V')}`
-        + (m.freq ? ` · f ${fmt(m.freq, 'Hz')} · T ${fmt(m.period, 's')}` : '');
+      line.textContent = `CH${index + 1} ${netId}：Vpp ${fmt(m.vpp, 'V')} · Vrms ${fmt(m.vrms, 'V')} · Vmax ${fmt(m.vmax, 'V')} · Vmin ${fmt(m.vmin, 'V')} · Vavg ${fmt(m.vavg, 'V')}`
+        + (m.freq ? ` · f ${fmt(m.freq, 'Hz')} · T ${fmt(m.period, 's')}` : '')
+        + (m.duty !== null && m.duty !== undefined ? ` · 占空比 ${m.duty.toFixed(1)}%` : '')
+        + (m.riseTime ? ` · tr ${fmt(m.riseTime, 's')}` : '');
       box.append(line);
     });
     if (box.childElementCount === 0) {
@@ -613,6 +795,188 @@ export function createInstruments(host, api = {}) {
   }
 
   /* ---------------------------------------------------------------- 逻辑分析仪 */
+
+  /* ---- 阶段 2 R6：时序图 / 状态机（纯 Canvas，数据源 = transientRun.last） ---- */
+  const LA_COLORS = ['#f2c14e', '#5fd39a', '#5aa9e6', '#e2685f', '#c58af0', '#7fd6c2', '#f0a35e', '#9fb4c8'];
+
+  function laNets() {
+    return (state.la.nets && state.la.nets.length)
+      ? state.la.nets.slice(0, 8)
+      : digitalChannels().map((c) => c.netId).slice(0, 8);
+  }
+
+  function drawLaTiming() {
+    const canvas = state.laTimingCanvas;
+    if (!canvas) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = canvas.clientWidth || 300;
+    const rowH = 22;
+    const nets = laNets();
+    const H = Math.max(72, 18 + Math.max(1, nets.length) * rowH);
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#0f1419';
+    ctx.fillRect(0, 0, W, H);
+
+    const left = 56;
+    const plotW = Math.max(20, W - left - 6);
+    const span = state.scope.timebase * 10;
+    // 时间网格：每 timebase 一格
+    ctx.strokeStyle = 'rgba(120, 200, 180, 0.16)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 10; i += 1) {
+      const x = left + (i / 10) * plotW;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+    let tMin = Infinity;
+    let tMax = -Infinity;
+    nets.forEach((netId) => {
+      const w = waveOf(netId);
+      if (w && w.samples.length) {
+        tMin = Math.min(tMin, w.samples[0].t);
+        tMax = Math.max(tMax, w.samples[w.samples.length - 1].t);
+      }
+    });
+    if (!Number.isFinite(tMin)) tMin = 0;
+    if (!Number.isFinite(tMax) || tMax <= tMin) tMax = tMin + span;
+    const win = Math.min(span, tMax - tMin);
+
+    if (nets.length === 0) {
+      ctx.fillStyle = '#8ea3b8';
+      ctx.font = '11px "Cascadia Mono", Consolas, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('运行暂态后这里会显示数字通道时序', 8, H / 2);
+      return;
+    }
+    nets.forEach((netId, idx) => {
+      const y0 = 12 + idx * rowH;
+      ctx.fillStyle = LA_COLORS[idx % LA_COLORS.length];
+      ctx.font = '10px "Cascadia Mono", Consolas, monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(netId).slice(0, 8), 4, y0 + rowH / 2);
+      const w = waveOf(netId);
+      if (!w) return;
+      ctx.strokeStyle = LA_COLORS[idx % LA_COLORS.length];
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      let prevY = null;
+      w.samples.forEach((s) => {
+        if (s.t < tMin || s.t > tMin + win) return;
+        const x = left + ((s.t - tMin) / win) * plotW;
+        const y = y0 + (s.v >= 2.5 ? 4 : rowH - 6);
+        if (prevY === null) ctx.moveTo(x, y);
+        else { ctx.lineTo(x, prevY); ctx.lineTo(x, y); }
+        prevY = y;
+      });
+      ctx.stroke();
+    });
+    // 两个游标 + Δt 读数
+    const c1 = left + plotW * 0.33;
+    const c2 = left + plotW * 0.66;
+    ctx.strokeStyle = 'rgba(242, 193, 78, 0.8)';
+    ctx.setLineDash([3, 3]);
+    [c1, c2].forEach((x) => {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    });
+    ctx.setLineDash([]);
+    const dt = (c2 - c1) / plotW * win;
+    ctx.fillStyle = '#f2c14e';
+    ctx.font = '10px "Cascadia Mono", Consolas, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`Δt ${dt >= 1 ? `${dt.toFixed(3)}s` : `${(dt * 1000).toFixed(2)}ms`} · 1/f ${dt > 0 ? `${(1 / dt).toFixed(0)}Hz` : '—'}`, W - 6, 9);
+  }
+
+  function drawStateMachine(canvas, sm) {
+    if (!canvas) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = canvas.clientWidth || 300;
+    const H = canvas.clientHeight || 180;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#0f1419';
+    ctx.fillRect(0, 0, W, H);
+    if (!sm || !sm.ok || sm.states.length === 0) {
+      ctx.fillStyle = '#8ea3b8';
+      ctx.font = '11px "Cascadia Mono", Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(sm && sm.error ? sm.error : '点「提取状态机」查看状态转移图', W / 2, H / 2);
+      return;
+    }
+    const cx = W / 2;
+    const cy = H / 2;
+    const R = Math.max(24, Math.min(W, H) / 2 - 30);
+    const pos = new Map();
+    sm.states.forEach((s, i) => {
+      const a = -Math.PI / 2 + (2 * Math.PI * i) / sm.states.length;
+      pos.set(s.id, { x: cx + R * Math.cos(a), y: cy + R * Math.sin(a) });
+    });
+    const arrow = (a, b, label) => {
+      if (!a || !b) return;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len;
+      const uy = dy / len;
+      const x1 = a.x + ux * 15;
+      const y1 = a.y + uy * 15;
+      const x2 = b.x - ux * 17;
+      const y2 = b.y - uy * 17;
+      ctx.strokeStyle = 'rgba(122, 180, 220, 0.75)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.fillStyle = 'rgba(122, 180, 220, 0.9)';
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - ux * 7 - uy * 4, y2 - uy * 7 + ux * 4);
+      ctx.lineTo(x2 - ux * 7 + uy * 4, y2 - uy * 7 - ux * 4);
+      ctx.closePath(); ctx.fill();
+      if (label) {
+        ctx.fillStyle = '#9fb4c8';
+        ctx.font = '9px "Cascadia Mono", Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(label, (x1 + x2) / 2, (y1 + y2) / 2 - 4);
+      }
+    };
+    sm.transitions.forEach((t) => arrow(pos.get(t.from), pos.get(t.to), t.count > 1 ? `×${t.count}` : ''));
+    sm.states.forEach((s, i) => {
+      const p = pos.get(s.id);
+      ctx.fillStyle = 'rgba(95, 211, 154, 0.18)';
+      ctx.strokeStyle = LA_COLORS[i % LA_COLORS.length];
+      ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#dfe8f2';
+      ctx.font = '10px "Cascadia Mono", Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(s.label, p.x, p.y);
+    });
+  }
+
+  function runLaStateMachine(resultEl) {
+    const res = transient();
+    const waves = res && res.waveforms ? res.waveforms : [];
+    const nets = digitalChannels().map((c) => c.netId);
+    const clockNetId = nets.find((n) => /clk|clock|cp/i.test(n)) || null;
+    const sm = extractStateMachine(waves, {
+      clockNetId,
+      channelNetIds: nets.filter((n) => n !== clockNetId).slice(0, 8),
+    });
+    state.laStateMachine = sm;
+    if (resultEl) {
+      resultEl.textContent = sm.ok
+        ? `${sm.states.length} 个状态 · ${sm.transitions.length} 条转移 · ${sm.sequence.slice(0, 10).map((x) => x.id).join('→')}`
+        : (sm.error || '无法提取状态');
+    }
+    drawStateMachine(state.laSmCanvas, sm);
+    return sm;
+  }
 
   function renderLa() {
     const box = document.createElement('div');
@@ -636,6 +1000,7 @@ export function createInstruments(host, api = {}) {
         cb.checked = state.la.nets.includes(ch.netId);
         cb.addEventListener('change', () => {
           state.la.nets = [...list.querySelectorAll('input:checked')].map((i) => i.dataset.net);
+          drawLaTiming();
         });
         const text = document.createElement('span');
         text.textContent = `CH${index + 1} ${ch.netId}（${ch.driver}）`;
@@ -649,6 +1014,17 @@ export function createInstruments(host, api = {}) {
       { value: '9600', label: 'UART 9600' },
       { value: '115200', label: 'UART 115200' },
     ], String(state.la.baud), (v) => { state.la.baud = Number(v); })));
+
+    // R6 时序图：勾选通道后即时重画，时间轴每 timebase 一格 + 两个游标
+    const timingLabel = document.createElement('p');
+    timingLabel.className = 'inst-hint';
+    timingLabel.textContent = '时序图（每格 = 示波器时基，游标可读 Δt / 1/f）';
+    box.append(timingLabel);
+    const timing = document.createElement('canvas');
+    timing.className = 'inst-la-timing';
+    timing.setAttribute('aria-label', '逻辑分析仪时序图');
+    box.append(timing);
+    state.laTimingCanvas = timing;
 
     const result = document.createElement('div');
     result.className = 'inst-la-result';
@@ -680,7 +1056,30 @@ export function createInstruments(host, api = {}) {
       }),
     );
     box.append(actions);
+
+    // R6 状态机：从时钟上升沿采样各数字通道，画状态转移图
+    const smLabel = document.createElement('p');
+    smLabel.className = 'inst-hint';
+    smLabel.textContent = '状态机（按时钟沿提取输出位组合）';
+    box.append(smLabel);
+    const smResult = document.createElement('div');
+    smResult.className = 'inst-la-result';
+    box.append(smResult);
+    const smCanvas = document.createElement('canvas');
+    smCanvas.className = 'inst-la-sm-canvas';
+    smCanvas.setAttribute('aria-label', '状态转移图');
+    box.append(smCanvas);
+    state.laSmCanvas = smCanvas;
+    const smActions = document.createElement('div');
+    smActions.className = 'inst-actions';
+    smActions.append(button('提取状态机', () => runLaStateMachine(smResult)));
+    box.append(smActions);
+
     body.append(box);
+    requestAnimationFrame(() => {
+      drawLaTiming();
+      drawStateMachine(smCanvas, state.laStateMachine || null);
+    });
   }
 
   /* ---------------------------------------------------------------- 函数发生器 */
@@ -721,6 +1120,33 @@ export function createInstruments(host, api = {}) {
       (v) => api.updateFgen && api.updateFgen(comp.id, { offset: v }))));
     box.append(row('占空比 (%)', numberInput(params.duty, 10, 90, 5,
       (v) => api.updateFgen && api.updateFgen(comp.id, { duty: v }))));
+
+    /* ---- 阶段 2 R4b：输出阻抗 + 负载端分压说明 ---- */
+    const zNow = fgenOutputImpedance(params) > 0 ? '50' : 'hi';
+    box.append(row('输出阻抗', select(FGEN_Z_OPTIONS, zNow, (v) => {
+      if (api.updateFgen) api.updateFgen(comp.id, { outputImpedance: v === 'hi' ? 'hi' : 50 });
+      renderBody();
+    })));
+    let loadR = Infinity;
+    try {
+      const m = api.model ? api.model() : null;
+      if (m) {
+        const nl = m.getNetlist();
+        loadR = fgenLoadResistance(
+          m.getState().components, nl.netOf, comp,
+          nl.netOf.get(`c:${comp.id}:OUT`), nl.netOf.get(`c:${comp.id}:GND`),
+        );
+      }
+    } catch (_) { loadR = Infinity; }
+    const rin = fgenOutputImpedance(params);
+    const ratio = rin > 0 && Number.isFinite(loadR) ? loadR / (loadR + rin) : 1;
+    const zNote = document.createElement('p');
+    zNote.className = 'inst-hint';
+    zNote.textContent = `测量点 = 负载端 · ${rin > 0 ? `内阻 ${rin}Ω` : '高阻输出'} · `
+      + `${Number.isFinite(loadR) ? `负载 ${loadR.toFixed(0)}Ω` : '高阻负载（示波器 1MΩ）'} · `
+      + `输出 = ${(ratio * 100).toFixed(0)}% V_src`
+      + (rin > 0 && Number.isFinite(loadR) ? '（接 50Ω 负载时幅值减半）' : '');
+    box.append(zNote);
 
     const note = document.createElement('p');
     note.className = 'inst-hint';
@@ -764,7 +1190,7 @@ export function createInstruments(host, api = {}) {
       return {
         tab: state.tab,
         dmm: { ...state.dmm },
-        scope: { ...state.scope },
+        scope: { ...state.scope, trigger: { ...state.scope.trigger } },
         la: { nets: [...state.la.nets], baud: state.la.baud },
         markers: Object.fromEntries(Object.entries(state.markers).map(([k, v]) => [k, { ...v }])),
       };
@@ -774,8 +1200,17 @@ export function createInstruments(host, api = {}) {
       if (data.tab && TABS.some((t) => t.id === data.tab)) {
         selectTab(data.tab);
       }
-      if (data.dmm) Object.assign(state.dmm, data.dmm);
-      if (data.scope) Object.assign(state.scope, data.scope);
+      if (data.dmm) {
+        Object.assign(state.dmm, data.dmm);
+        // 老存档只有 real：补出同义的 realInput，保证内阻模式恢复后依然生效
+        if (data.dmm.realInput === undefined) state.dmm.realInput = Boolean(data.dmm.real);
+      }
+      if (data.scope) {
+        // 旧存档没有 trigger 字段：只合并其余字段，别把触发配置冲成 undefined
+        const { trigger, ...rest } = data.scope;
+        Object.assign(state.scope, rest);
+        if (trigger && typeof trigger === 'object') Object.assign(state.scope.trigger, trigger);
+      }
       if (data.la) Object.assign(state.la, data.la);
       state.markers = data.markers ? { ...data.markers } : {};
       renderBody();
@@ -783,7 +1218,7 @@ export function createInstruments(host, api = {}) {
     /** 探针读数（探针/自动化用，不经过 DOM） */
     read() {
       return {
-        dmm: dmmRead(api.model ? api.model() : null, state.dmm),
+        dmm: dmmRead(api.model ? api.model() : null, dmmOpts()),
         scope: {
           ch1: state.scope.ch1,
           ch2: state.scope.ch2,
@@ -792,7 +1227,16 @@ export function createInstruments(host, api = {}) {
             return { netId, ...(wave ? scopeMeasure(wave.samples, { coupling: state.scope.coupling }) : {}) };
           }),
         },
-        la: { nets: [...state.la.nets], baud: state.la.baud, bytes: state.la.bytes },
+        la: {
+          nets: [...state.la.nets], baud: state.la.baud, bytes: state.la.bytes,
+          stateMachine: state.laStateMachine ? {
+            ok: state.laStateMachine.ok,
+            states: state.laStateMachine.states.length,
+            transitions: state.laStateMachine.transitions.length,
+            sequence: state.laStateMachine.sequence.slice(0, 12).map((x) => x.id),
+            error: state.laStateMachine.error,
+          } : null,
+        },
         markers: { ...state.markers },
       };
     },
@@ -822,14 +1266,22 @@ export function createInstruments(host, api = {}) {
         netId: state[slot.scope][slot.key] || null,
       }));
     },
-    setProbe(slotId, netId) {
+    setProbe(slotId, netId, extra = {}) {
       const slot = PROBE_SLOTS.find((item) => item.id === slotId);
       if (!slot) return false;
       state[slot.scope][slot.key] = netId || null;
+      // R7 电流档：表笔拖到元件 / 导线上时自动「串入支路」，
+      // componentId 由 probe-markers 的落点解析给出，不必再回头点下拉
+      if (slot.scope === 'dmm' && (state.dmm.mode === 'amp' || state.dmm.mode === 'aca')
+        && extra && extra.componentId) {
+        state.dmm.componentId = extra.componentId;
+      }
       if (state.tab === slot.scope) renderBody();
       else notifyProbeChange();
       return true;
     },
+    /** 供画布探针层读当前档位（只给必要字段，不暴露整个 state） */
+    dmmMode() { return state.dmm.mode; },
     markerPositions() {
       return Object.fromEntries(Object.entries(state.markers).map(([k, v]) => [k, { ...v }]));
     },

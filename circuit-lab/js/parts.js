@@ -1407,7 +1407,9 @@ export const PARTS = {
       { name: 'OUT', dx: 0, dy: 0, direction: 'out', role: 'signal' },
       { name: 'GND', dx: 1, dy: 0, direction: 'out', role: 'GND' },
     ],
-    defaultParams: { wave: 'sine', frequency: 1000, amplitude: 2, offset: 0, duty: 50 },
+    // 阶段 2 R4b：新放置的发生器默认 50Ω 内阻；旧存档没有该字段时在
+    // fgenOutputImpedance() 里回落高阻，保证老电路波形不会凭空变矮。
+    defaultParams: { wave: 'sine', frequency: 1000, amplitude: 2, offset: 0, duty: 50, outputImpedance: 50 },
     paramFields: [
       {
         key: 'wave',
@@ -1459,6 +1461,15 @@ export const PARTS = {
         step: 5,
         min: 10,
         max: 90,
+      },
+      {
+        key: 'outputImpedance',
+        label: '输出阻抗',
+        type: 'select',
+        options: [
+          { value: '50', label: '50Ω（接 50Ω 负载幅值减半）' },
+          { value: 'hi', label: '高阻（不受负载影响）' },
+        ],
       },
     ],
     draw: drawFgen,

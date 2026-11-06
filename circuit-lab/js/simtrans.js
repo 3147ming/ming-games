@@ -70,7 +70,7 @@ import {
   TPD_GATE,
   TPD_FF,
 } from './digmodels.js';
-import { fgenVoltageAt } from './instruments-core.js';
+import { fgenVoltageAt, fgenLoadResistance } from './instruments-core.js';
 import {
   collectMix,
   evalMixUnit,
@@ -424,13 +424,16 @@ export function solveTransient(modelApi, opts = {}) {
     const outNet = netOfPin(netOf, comp.id, 'OUT');
     const refNet = netOfPin(netOf, comp.id, 'GND');
     if (!outNet) return;
+    // 阶段 2 R4b：负载端分压。只统计直接跨接 OUT–GND 的电阻，
+    // 串联 RC / 示波器高阻探头不算负载，既有实验波形不受影响。
+    const loadR = fgenLoadResistance(state.components, netOf, comp, outNet, refNet);
     sourceDrives.push({
       kind: 'fgen',
       compId: comp.id,
       comp,
       refNet: refNet || null,
       outNet,
-      voltageAt: (t) => fgenVoltageAt(t, comp.params),
+      voltageAt: (t) => fgenVoltageAt(t, comp.params, { loadResistance: loadR }),
     });
   });
 

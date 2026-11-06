@@ -96,6 +96,9 @@
           </div>
           <span class="ws-platform" id="ws-platform">实验箱</span>
           <button class="btn btn-ghost btn-switch" id="btn-switch-platform" type="button">切换平台</button>
+          <!-- 阶段 2 R5：与右栏「真值表」tab 同一个入口，窄屏隐藏避免工具栏溢出 -->
+          <button class="btn btn-ghost btn-truth" id="btn-truth" type="button"
+                  title="打开真值表 / 卡诺图">真值表</button>
           <p class="ws-meta" id="workspace-meta"></p>
         </div>
       </div>
@@ -186,6 +189,8 @@
                     data-tab="steps" aria-selected="false" aria-controls="panel-steps" tabindex="-1">步骤</button>
             <button class="tab" id="tab-data" type="button" role="tab"
                     data-tab="data" aria-selected="false" aria-controls="panel-data" tabindex="-1">数据</button>
+            <button class="tab" id="tab-truth" type="button" role="tab"
+                    data-tab="truth" aria-selected="false" aria-controls="panel-truth" tabindex="-1">真值表</button>
           </div>
           <div class="panel-body panel-fill">
             <div class="tab-panel is-active" id="panel-info" role="tabpanel" aria-labelledby="tab-info" data-panel="info">
@@ -215,6 +220,12 @@
             <div class="tab-panel" id="panel-data" role="tabpanel" aria-labelledby="tab-data" data-panel="data">
               <div class="tab-body" id="data-body">
                 <p class="tab-empty">测量数据会在这里汇总；也可以生成实验报告导出全部记录。</p>
+              </div>
+            </div>
+            <!-- 阶段 2 R5：真值表 / 卡诺图工具，由 app.js 的 renderTruthTab 填充 -->
+            <div class="tab-panel" id="panel-truth" role="tabpanel" aria-labelledby="tab-truth" data-panel="truth">
+              <div class="tab-body" id="truth-body">
+                <p class="tab-empty">搭好组合逻辑电路后，这里会自动枚举输入并给出最简式与卡诺图。</p>
               </div>
             </div>
           </div>

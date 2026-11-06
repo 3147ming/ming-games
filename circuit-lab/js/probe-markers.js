@@ -48,19 +48,25 @@ export function createProbeMarkers(options = {}) {
     try { pick = board.pick(x, y); } catch (_) { pick = null; }
     const netlist = board.model.getNetlist();
     let netId = null;
+    let componentId = null;
     let anchor = { x, y };
 
     if (pick) {
       if (pick.type === 'terminal') {
         netId = netlist.netOf.get(`c:${pick.componentId}:${pick.terminal}`) || null;
+        componentId = pick.componentId || null;
         if (pick.x !== undefined) anchor = { x: pick.x, y: pick.y };
       } else if (pick.type === 'node') {
         netId = netlist.netOf.get(`n:${pick.nodeId}`) || null;
         if (pick.x !== undefined) anchor = { x: pick.x, y: pick.y };
       } else if (pick.type === 'wire') {
         const wire = board.model.findWire(pick.wireId);
-        if (wire) netId = board.model.getNetOf(wire.a) || board.model.getNetOf(wire.b) || null;
+        if (wire) {
+          netId = board.model.getNetOf(wire.a) || board.model.getNetOf(wire.b) || null;
+          componentId = wire.a.componentId || wire.b.componentId || null;
+        }
       } else if (pick.type === 'component') {
+        componentId = pick.componentId || null;
         const comp = board.model.findComponent(pick.componentId);
         const terminal = comp && comp.terminals && comp.terminals[0];
         if (terminal) {
@@ -74,7 +80,7 @@ export function createProbeMarkers(options = {}) {
     // 孤立端子 / 空白落点没有网 id，不能作为测点
     if (!netId) return null;
     const g = unproject(view, anchor.x, anchor.y);
-    return { netId, gx: g.gx, gy: g.gy };
+    return { netId, componentId, gx: g.gx, gy: g.gy };
   }
 
   /** 下拉选了测点但标记还没位置：自动落到该网第一个元件端子上 */
@@ -158,10 +164,15 @@ export function createProbeMarkers(options = {}) {
     const all = instruments.markerPositions();
     all[slotId] = { gx: hit.gx, gy: hit.gy };
     instruments.setMarkerPositions(all);
-    instruments.setProbe(slotId, hit.netId);
+    instruments.setProbe(slotId, hit.netId, { componentId: hit.componentId });
     autoFailed.delete(hit.netId);
     sync();
-    return { ok: true, netId: hit.netId, gx: hit.gx, gy: hit.gy };
+    // R7 电流档：拖到元件/导线 = 串入支路，明确告诉学生测的是哪条支路
+    const mode = typeof instruments.dmmMode === 'function' ? instruments.dmmMode() : null;
+    if (slotId === 'dmm' && hit.componentId && (mode === 'amp' || mode === 'aca')) {
+      onToast(`已串入支路：${hit.componentId}（${mode === 'amp' ? '直流' : '交流'}电流档）`);
+    }
+    return { ok: true, netId: hit.netId, componentId: hit.componentId, gx: hit.gx, gy: hit.gy };
   }
 
   function remove(slotId) {

@@ -40,6 +40,7 @@ import {
 } from './experiment-config.js';
 import { setInstrumentProvider, setInstrumentRestorer } from './model.js';
 import { getPart } from './parts.js';
+import { renderTruthTab, truthPanelState } from './truth-panel.js';
 
 /** 允许切换的视图 id 白名单 */
 const VIEW_IDS = ['view-list', 'view-workspace', 'view-report'];
@@ -95,6 +96,8 @@ const dom = {
   btnReportPrint: document.getElementById('btn-report-print'),
   tabButtons: document.querySelectorAll('.tab'),
   tabPanels: document.querySelectorAll('.tab-panel'),
+  truthBody: document.getElementById('truth-body'),
+  btnTruth: document.getElementById('btn-truth'),
   expInfoBlock: document.getElementById('exp-info-block'),
   propsPanel: document.getElementById('props-panel'),
   wsPlatform: document.getElementById('ws-platform'),
@@ -1359,9 +1362,16 @@ function activateTab(name) {
   dom.tabPanels.forEach((panel) => {
     panel.classList.toggle('is-active', panel.dataset.panel === name);
   });
-  // 指令包 18：步骤 / 数据 tab 是真实内容，切过去时按当前实验与实时读数重建
+  // 指令包 18：步骤 / 数据 tab 是真实内容；阶段 2 R5：真值表 tab 同理
   if (name === 'steps') renderStepsTab(currentExample);
   else if (name === 'data') renderDataTab();
+  else if (name === 'truth') {
+    renderTruthTab(dom.truthBody, {
+      model: () => (isBoardActive() && window.__labBoard ? window.__labBoard.model : null),
+      afterScan: () => simulateNow('truth-table'),
+    });
+    if (window.__labBoard) window.__labBoard.truth = { state: truthPanelState };
+  }
 }
 
 /* ==========================================================================
@@ -1806,6 +1816,7 @@ function bindEvents() {
   dom.btnImport.addEventListener('click', handleImportClick);
   dom.btnExport.addEventListener('click', handleExport);
   if (dom.btnShare) dom.btnShare.addEventListener('click', shareCurrentCircuit);
+  if (dom.btnTruth) dom.btnTruth.addEventListener('click', () => activateTab('truth'));
   dom.fileInput.addEventListener('change', handleFileChange);
 
   dom.btnBack.addEventListener('click', leaveWorkspace);

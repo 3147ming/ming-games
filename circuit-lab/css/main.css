@@ -2489,6 +2489,39 @@ button {
   color: var(--muted, #9aa6bd);
 }
 
+/* 阶段 2 R7：表笔落点状态胶囊（面板内，不是画布覆盖层） */
+.inst-probe-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 6px 0 2px;
+}
+
+.inst-probe-pill {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.4;
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 140, 175, 0.28);
+  color: var(--muted, #9aa6bd);
+  background: rgba(10, 14, 20, 0.35);
+}
+
+.inst-probe-pill.is-live {
+  color: #7fd6c2;
+  border-color: rgba(127, 214, 194, 0.45);
+}
+
+.inst-probe-pill.is-missing {
+  color: #e2685f;
+  border-color: rgba(226, 104, 95, 0.42);
+}
+
+.inst-mode-hint {
+  margin: 2px 0 6px;
+}
+
 /* ==========================================================================
    HEP-DCTS-01 实物外观（用户 5 张实拍照片复刻）
    —— 工具栏开关 / 6 模块行为卡片 / SIGLENT SDS 1102CNL / UTG9005A 前面板
@@ -3515,5 +3548,121 @@ body[data-theme="light"] .keys-tip {
     display: none;
   }
 }
+
+/* ==========================================================================
+   阶段 2 R5：真值表 / 卡诺图 tab
+   ========================================================================== */
+.truth-head { margin-bottom: 10px; }
+.truth-title {
+  margin: 0 0 4px;
+  font: 600 14px var(--font-display, inherit);
+  color: var(--text);
+}
+.truth-hint {
+  margin: 6px 0;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+.truth-empty {
+  padding: 14px 10px;
+  border: 1px dashed var(--line-soft);
+  border-radius: 8px;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.truth-section-label {
+  display: block;
+  margin: 12px 0 6px;
+  color: var(--text-faint);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.truth-vars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+.truth-var {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+.truth-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0;
+}
+.truth-row { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.truth-select {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-size: 12px;
+}
+.truth-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 12px "Cascadia Mono", Consolas, monospace;
+}
+.truth-table th,
+.truth-table td {
+  padding: 3px 6px;
+  border: 1px solid var(--line-soft);
+  text-align: center;
+  color: var(--text);
+}
+.truth-table th { background: var(--panel-soft); color: var(--text-faint); font-weight: 600; }
+.truth-one { color: #7ee0ac; font-weight: 700; }
+.truth-expr {
+  margin: 12px 0 4px;
+  padding: 9px 11px;
+  border: 1px solid rgba(95, 211, 154, 0.35);
+  border-radius: 8px;
+  background: rgba(95, 211, 154, 0.08);
+  color: #9ce8bf;
+  font: 600 14px "Cascadia Mono", Consolas, monospace;
+  word-break: break-all;
+}
+.truth-kmap {
+  display: block;
+  width: 100%;
+  height: 200px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(15, 20, 25, 0.25);
+}
+
+/* 第 4 个 tab 加进来后收紧窄屏内边距；工具栏同名按钮在窄屏隐藏，避免溢出 */
+@media (max-width: 767px) {
+  .tabs { padding: 0 4px; }
+  .tab { padding: 10px 6px; font-size: 12px; }
+  #btn-truth { display: none; }
+}
+
+/* ==========================================================================
+   阶段 2 R6：逻辑分析仪时序图 / 状态机
+   ========================================================================== */
+.inst-la-timing,
+.inst-la-sm-canvas {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #0f1419;
+}
+.inst-la-timing { height: 160px; }
+.inst-la-sm-canvas { height: 180px; margin-bottom: 4px; }
 
 
