@@ -21,7 +21,13 @@ export class RunProgress {
     this.xp = 0;
     this.pending = 0;   // 待选卡次数（>0 时游戏暂停等玩家选）
     this.taken = [];    // 已选卡 id（顺序保留，抽卡按它算 cap）
-    this.mods = { damage: 1, kiRegen: 1, musouGain: 1, lifesteal: 0, maxHpBonus: 0 };
+    /* 内容批：新增三个键 —— attackSpeed（出招间隔倍率，1 = 原速，越大越快）、
+       reach（攻击距离倍率）、kiMaxBonus（斗气上限绝对值）。
+       ★ 这里与 cards.js 的 mods 键必须逐字一致，漏一个就是"选了没效果"。 */
+    this.mods = {
+      damage: 1, kiRegen: 1, musouGain: 1, lifesteal: 0, maxHpBonus: 0,
+      attackSpeed: 1, reach: 1, kiMaxBonus: 0,
+    };
   }
 
   /** 升到下一级还差多少经验 */

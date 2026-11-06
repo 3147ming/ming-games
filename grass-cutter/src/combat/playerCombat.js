@@ -256,7 +256,8 @@ export class PlayerCombat {
       const dx = t.x - p.x;
       const dz = t.z - p.z;
       const d = Math.hypot(dx, dz);
-      if (d > a.range || d >= bestD) continue;
+      // 内容批：攻击距离（reach）放大"能自动朝向多远的目标"
+      if (d > a.range * (this.mods.reach || 1) || d >= bestD) continue;
       const want = Math.atan2(-dx, -dz); // yaw=0 面向 -Z，与全项目一致
       let diff = want - cameraYaw;
       while (diff > Math.PI) diff -= Math.PI * 2;
@@ -435,7 +436,12 @@ export class PlayerCombat {
     const M = this.musouCfg;
     const R = M.RANBU;
     // 斗气自动恢复（★SPEC 每秒 1.2；P0-5 的「吐纳」只是给它一个乘子）
-    if (this.kiRegen > 0) this.ki = Math.min(M.KI_MAX, this.ki + this.kiRegen * this.mods.kiRegen * step);
+    /* 内容批：斗气上限 = 基础 + kiMaxBonus（凝神卡）。
+       ★ 上限一变，这里的 clamp 必须跟着用同一个"有效上限"，
+         否则加了上限却回不上去（玩家看到的是"卡在旧值"）。 */
+    const kiMax = M.KI_MAX + (this.mods.kiMaxBonus || 0);
+    if (this.ki > kiMax) this.ki = kiMax;
+    if (this.kiRegen > 0) this.ki = Math.min(kiMax, this.ki + this.kiRegen * this.mods.kiRegen * step);
 
     // 武艺冷却递减
     for (const id of ['art1', 'art2']) {
@@ -484,7 +490,10 @@ export class PlayerCombat {
     if (a.cd > 0) return; // 冷却中
     if (this.ki < cfg.KI_COST) return; // 斗气不足
     this.ki -= cfg.KI_COST;
-    a.cd = cfg.COOLDOWN;
+    /* 内容批：出招速度（attackSpeed）越大冷却越短。
+       ★ 用除法而不是减法：倍率是无上限累加（1 → 1.23 → 1.53 …），
+         写成减法在高倍率下会变成负冷却，武艺就能连按 —— 那是最典型的"加了就崩"。 */
+    a.cd = cfg.COOLDOWN / Math.max(0.2, this.mods.attackSpeed || 1);
     // 扇形技能朝镜头方向，环形技能无需朝向
     const facing = cfg.shape === 'cone' ? cameraYaw : 0;
     const hit = this._aoe(this._playerPos(), facing, cfg.shape, cfg);
@@ -508,7 +517,10 @@ export class PlayerCombat {
       const dx = t.x - origin.x;
       const dz = t.z - origin.z;
       const d = Math.hypot(dx, dz);
-      if (d > cfg.radius + (t.radius ?? 0.5)) continue;
+      /* 内容批：攻击距离（reach）放大所有 AOE / 普攻扇形的作用半径。
+         ★ 乘在 cfg.radius 上、而不是加到 t.radius 上：后者会随敌人大小漂移，
+           让"长兵"在打大体型 Boss 时显得没用。 */
+      if (d > (cfg.radius * (this.mods.reach || 1)) + (t.radius ?? 0.5)) continue;
       // 扇形还要判张角（环形跳过）
       if (arcDeg < 360 - 1e-6 && d > 1e-6) {
         const f = facingDir(facing);
