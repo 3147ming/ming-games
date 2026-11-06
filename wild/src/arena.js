@@ -671,6 +671,17 @@ export const ARENA = {
   MIST_CD: 1.4,            // 每隔多久在脚下留一片
   MIST_MAX: 8,             // 同屏最多几片（超过丢最旧）
   MIST_MIN_CD: 0.5,        // wm_cd 强化的下限（防止强化后每帧喷一片）
+
+  // ── 内容批三：守望之瞳（第 6 把武器）──
+  // 与毒雾的对比：毒雾是「玩家脚下走出来的地面」，炮台是「留在原地的实体」——
+  //   一个随玩家走，一个钉在原地；一个按秒掉血，一个硬直输出。
+    SENTRY_DMG: 7,           // 单发伤害（走 applyHit ⟹ 自动吃 gDmgMul / 暴击）
+  SENTRY_RANGE: 220,       // 索敌半径 px
+    SENTRY_INTERVAL: 0.85,   // 射击间隔 s
+  SENTRY_MIN_INT: 0.22,    // 射速强化下限
+  SENTRY_LIFE: 8,          // 单座寿命 s（到点消失，逼玩家重新决策放哪）
+  SENTRY_MAX_TURRETS: 4,   // 同屏上限
+  SENTRY_PLACE_CD: 2.2,    // 每隔多久放一座新的
   // 阶段 8-2：这两个值原本分别是写死的 1.2s 复活无敌与 0.25s 白闪。
   //   原先白闪的归一时基借用 SHOCKWAVE_FLASH（冲击波白闪），技能删除后必须自带常量，
   //   否则渲染那边会读到 undefined。★ REVIVE_INVULN **不进 ANIM_KEYS** ——
@@ -906,12 +917,12 @@ export const ARENA = {
   // ★ 满级阈值为什么是这几个数：一局约 32 次升级，还要留出拿新武器/新技能/被动的余量。
   //   定太高（比如 10）⟹ 三条线一条都走不完，"进化"等于不存在；
   //   定太低 ⟹ 中期就进化完，后半局没有追求。6/5/5 是"第 6~8 分钟才可能成型"的量级。
-  W_LEVEL_MAX: { projectile: 6, orbit: 5, laser: 5, sword: 6, mist: 6 },
+  W_LEVEL_MAX: { projectile: 6, orbit: 5, laser: 5, sword: 6, mist: 6, sentry: 5 },
   // ★ 阶段 5：每把武器能进化到**第几阶**。除剑以外的三把只有 1 阶（⟹ 行为与阶段 4-5 逐字节一致）；
   //   剑有两段链（C1→C2→C3），所以 maxStage = 2。
   //   没有这张表，wlvlUp / _checkEvolution 就无法区分两种完全不同的状态：
   //   "已进化到底、强化项该从池子消失" 与 "才刚到 C2、还得爬到 C3 才能再进化"。
-  W_STAGE_MAX: { projectile: 1, orbit: 1, laser: 1, sword: 2, mist: 1 },
+  W_STAGE_MAX: { projectile: 1, orbit: 1, laser: 1, sword: 2, mist: 1, sentry: 1 },
   EVO_BANNER_LIFE: 2.4,     // 「★武器进化★」大字的停留时长 s
                             //   ⚠ 它不是过渡动画（那张表管的是"看得见的缓动"），
                             //     所以不进 ANIM_KEYS —— 与里程碑横幅同一口径。
@@ -1220,10 +1231,10 @@ export class ArenaCore {
     // ★ 阶段 8-2：'shockwave' 与 'dash' 两个桶已删除 —— 它们的击杀来源（冲击波/闪现撞伤）不存在了。
     //   现在只剩四把武器 + thorn（荆棘反伤） + bossRain（预留槽，恒 0）+ other（必须恒 0）。
     // ★ 阶段10·P1-6：加 mist —— 不加的话毒雾击杀会落进 other，而"other 恒 0"是既有护栏。
-    this.killSrc = { projectile: 0, orbit: 0, laser: 0, sword: 0, mist: 0, thorn: 0, bossRain: 0, other: 0 };
+    this.killSrc = { projectile: 0, orbit: 0, laser: 0, sword: 0, mist: 0, sentry: 0, thorn: 0, bossRain: 0, other: 0 };
     // ★ 阶段 5.1 诊断用：每件武器的**净输出伤害**累计（含 gDmgMul，按"实际扣掉的 hp"计，
     //   不把溢出伤害算进去）。只用于 arena-sim 的逐分钟 DPS 复核，不参与任何判定、不改任何玩法。
-    this.dmgDealt = { projectile: 0, orbit: 0, laser: 0, sword: 0, thorn: 0, other: 0 };
+    this.dmgDealt = { projectile: 0, orbit: 0, laser: 0, sword: 0, mist: 0, sentry: 0, thorn: 0, other: 0 };
 
     // ── 阶段 2：持有的武器 / 技能（"获得即持有"，可叠加强化）──
     // ★ 阶段 4-5：英雄签名武器/技能替换默认组合；投射物**不是人人都有** ——
@@ -1795,6 +1806,8 @@ export class ArenaCore {
     if (this.weapons.sword) this.stepSword(dt);
     // 阶段10·P1-6：毒雾（第 5 把）—— 地面持续伤害，独立计时器。
     if (this.weapons.mist) this.stepMist(dt);
+    // 内容批三：守望之瞳 —— 与毒雾同属「世界状态」，但它是实体（有位置/寿命/射击）
+    if (this.weapons.sentry) this.stepSentry(dt);
 
     // ── 自动攻击（投射物：不是人人都有，重壳守卫以环绕刃开局）──
     if (this.weapons.projectile) {
@@ -3459,6 +3472,11 @@ export class ArenaCore {
     else if (id === 'sword') this.sword = { dmg: ARENA.SWORD_DMG, count: ARENA.SWORD_COUNT, interval: ARENA.SWORD_INTERVAL, cd: 0, speed: ARENA.SWORD_SPEED };
     // 阶段10·P1-6：毒雾。zones 是**地面**状态（每片独立寿命），不是实体，不进 enemies。
     else if (id === 'mist') this.mist = { dmg: ARENA.MIST_DMG, r: ARENA.MIST_R, interval: ARENA.MIST_CD, cd: 0, zones: [] };
+    // 内容批三：守望之瞳。turrets 是**世界**状态（每座独立位置/寿命/冷却）。
+    else if (id === 'sentry') this.sentry = {
+      dmg: ARENA.SENTRY_DMG, range: ARENA.SENTRY_RANGE,
+      interval: ARENA.SENTRY_INTERVAL, maxTurrets: 1, placeCd: 0, turrets: [],
+    };
   }
 
   /** 阶段10·P1-6：毒雾 —— 按 interval 在玩家脚下留一片腐蚀地面，圈内敌人按 ORBIT_TICK 节流掉血。
@@ -3505,6 +3523,73 @@ export class ArenaCore {
     this.enemies = this.enemies.filter((e) => !e.dead);
   }
   /** 环绕刃：剑尖绕玩家转，碰到敌人扣血。命中节流见 ARENA.ORBIT_TICK 的注释。 */
+  /** 内容批三：守望之瞳 —— 按 placeCd 在脚下放一座炮台，每座按 interval 朝射程内最近的敌人开火。
+   *  ★ 三处刻意的设计：
+   *    1) 炮台**钉在原地不跟随**（这是它与毒雾的根本区别，也是「放哪」成为决策的原因）；
+   *    2) 有寿命（SENTRY_LIFE）—— 否则满屏炮台会让后期变成挂机；
+   *    3) 索敌用平方距离预筛，几百个敌人时不会每帧开根号。
+   *  ★ 纯确定性：不消耗 rng（放置时机由 placeCd 决定，位置就是玩家坐标）。 */
+  stepSentry(dt) {
+    const s = this.sentry;
+    s.placeCd -= dt;
+    if (s.placeCd <= 0) {
+      s.placeCd = ARENA.SENTRY_PLACE_CD;
+      s.turrets.push({ x: this.player.x, y: this.player.y, life: ARENA.SENTRY_LIFE, cd: 0, ang: 0, firing: 0 });
+      if (s.turrets.length > s.maxTurrets) s.turrets.shift();  // 超过上限丢最旧
+    }
+    const r2 = s.range * s.range;
+    for (const t of s.turrets) {
+      t.life -= dt;
+      t.cd -= dt;
+      if (t.firing > 0) t.firing -= dt;
+      if (t.cd > 0) continue;
+      // 索敌：射程内最近的敌人（平方距离预筛，只在候选中开根号算朝向）
+      let best = null, bestD2 = r2;
+      for (const e of this.enemies) {
+        if (e.dead) continue;
+        const dx = e.x - t.x, dy = e.y - t.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) { bestD2 = d2; best = e; }
+      }
+      if (!best) continue;
+      t.cd = s.interval;
+      t.firing = 0.12;
+      t.ang = Math.atan2(best.y - t.y, best.x - t.x);
+      // 进化形态（stage 1）：一次打三发扇形；未进化打一发
+      const evolved = (this.evolved.sentry || 0) >= 1;
+      if (evolved) {
+        for (const off of [-0.22, 0, 0.22]) {
+          this._sentryShot(t, s.dmg, t.ang + off);
+        }
+      } else {
+        this._sentryShot(t, s.dmg, t.ang);
+      }
+    }
+    s.turrets = s.turrets.filter((t) => t.life > 0);
+    this.enemies = this.enemies.filter((e) => !e.dead);
+  }
+
+  /** 炮台单发：沿 ang 方向直线命中第一个敌人（不穿透 —— 穿透是剑的专属）。
+   *  ★ 用射线-圆近似判定：把敌人当圆，取沿射线的最近交点。 */
+  _sentryShot(t, dmg, ang) {
+    const CA = Math.cos(ang), SA = Math.sin(ang);
+    const maxD = this.sentry.range;
+    let best = null, bestT = maxD;
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      const dx = e.x - t.x, dy = e.y - t.y;
+      const proj = dx * CA + dy * SA;          // 沿射线的投影长度
+      if (proj <= 0 || proj > bestT) continue;
+      const perp2 = dx * dx + dy * dy - proj * proj;  // 垂距平方
+      const rr = e.r + 6;
+      if (perp2 > rr * rr) continue;
+      bestT = proj; best = e;
+    }
+    if (!best) return;
+    this.applyHit(best, dmg, null, true, 'sentry');
+    this.pushFx({ kind: 'sentryBeam', t: 0, life: 0.09, x: t.x, y: t.y - 14, ang, len: bestT });
+  }
+
   stepOrbit(dt) {
     const o = this.orbit;
     o.ang = (o.ang + o.spin * dt) % TAU;
@@ -4698,6 +4783,37 @@ export class Arena {
     ctx.restore();
   }
 
+  /** 内容批三：守望之瞳的渲染 —— 底座 + 转向的炮口 + 开火闪光 + 寿命环。 */
+  _renderSentry(ctx, c) {
+    const s = this.sentry;
+    for (const t of s.turrets) {
+      const p = this._toScreen(t.x, t.y);
+      const alpha = Math.min(1, t.life / 1.2);   // 最后 1.2s 淡出，给玩家「要消失了」的预告
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      // 底座
+      ctx.fillStyle = '#2b3a5c';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y - 10, 9, 0, Math.PI * 2);
+      ctx.fill();
+      // 炮口（朝最近敌人转）
+      ctx.translate(p.x, p.y - 10);
+      ctx.rotate(t.ang || 0);
+      ctx.fillStyle = t.firing > 0 ? '#ffe9a8' : '#7fa8d8';
+      ctx.fillRect(0, -3, 15, 6);
+      ctx.restore();
+      // 剩余寿命环
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.7;
+      ctx.strokeStyle = '#7fa8d8';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y - 10, 13, -Math.PI / 2, -Math.PI / 2 + (t.life / ARENA.SENTRY_LIFE) * Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   /** 阶段 8：Boss 弹幕雨。世界层、**画在地面之上实体之下** —— 它是"地面预警标记"。 */
   _renderRain(ctx, c) {
     if (!c.rain || !c.rain.length) return;
@@ -4801,6 +4917,7 @@ export class Arena {
     ctx.translate(w / 2 - this.cam.x + this._shakeX, h / 2 - this.cam.y + this._shakeY);
     this._renderGround(ctx, w, h);
     this._renderMist(ctx, c);   // 阶段10·P1-6：毒雾地面（在实体之下、地面之上）
+    if (c.weapons && c.weapons.sentry) this._renderSentry(ctx, c);   // 内容批三：守望之瞳
     this._pdone('ground');
     this._renderRain(ctx, c);
     this._pdone('rain');
@@ -5265,6 +5382,20 @@ export class Arena {
         ctx.strokeStyle = `rgba(214,171,88,${fade})`;
         ctx.lineWidth = 3;
         ctx.beginPath(); ctx.arc(f.x, f.y, f.r + 44 * eo, 0, TAU); ctx.stroke();
+      } else if (f.kind === 'sentryBeam') {
+        // 内容批三：守望之瞳的射击光束 —— 冷蓝、比直斩细、1 帧消失。
+        //   刻意读起来像「点射」而不是「扫射」（扫射是直斩的语汇）。
+        ctx.save();
+        ctx.translate(f.x, f.y);
+        ctx.rotate(f.ang);
+        const sf = 1 - clamp(f.t / f.life, 0, 1);
+        ctx.strokeStyle = 'rgba(127,168,216,' + (0.85 * sf) + ')';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(f.len, 0); ctx.stroke();
+        ctx.strokeStyle = 'rgba(200,225,255,' + (0.9 * sf) + ')';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(f.len, 0); ctx.stroke();
+        ctx.restore();
       }
     }
 

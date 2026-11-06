@@ -48,6 +48,11 @@ export const WEAPONS = [
   // 阶段10·P1-6：第 5 把武器。机制与现有四把**不重叠**：不是弹道、不是环绕、不是直线穿透，
   //   而是"在脚下留一片持续伤害地面"—— 走位本身就是输出手段。
   { id: 'mist', label: '毒雾', desc: '脚下留下一片腐蚀地面，踩上去持续掉血', start: false },
+  // 内容批三：第 6 把武器「守望之瞳」。机制再切一刀，和现有五把都不重叠：
+  //   投射物=锁定弹道 / 环绕=贴身旋转 / 直斩=瞬时穿透 / 剑=飞行穿透 / 毒雾=地面滞留，
+  //   而守望之瞳是 **放一个不动的哨戒炮台在身后** —— 玩家负责走位，炮台负责补刀，
+  //   两者位置分离 ⟹ 「把它放在哪」本身成为一道决策（路口？箱子后？Boss 脚下？）。
+  { id: 'sentry', label: '守望之瞳', desc: '在原地留下一座自动炮台，持续朝最近敌人射击', start: false },
 ];
 
 // ───────── 技能池 · 已于阶段 8-2 整体移除 ─────────
@@ -169,6 +174,8 @@ const weaponOffers = [
   unlockOffer('weapon', 'sword', '新武器 · 剑', '每 1.2 秒斩出一道飞行的穿透剑气'),
   // 阶段10·P1-6：第 5 把武器「毒雾」—— 地面持续伤害（不是弹道/环绕/直线）
   unlockOffer('weapon', 'mist', '新武器 · 毒雾', '脚下留下一片腐蚀地面，踩上去持续掉血'),
+  // 内容批三：第 6 把武器「守望之瞳」
+  unlockOffer('weapon', 'sentry', '新武器 · 守望之瞳', '在原地留下一座自动炮台，持续朝最近敌人射击'),
 
   // 下面每一条都只是**壳**：id / 文案 / 分组。数值与门槛统一在下面的 UP_DEFS 里补，
   // 这样"改了某个上限"只需要动一张表，不会漏掉池子那一侧的判据。
@@ -188,6 +195,11 @@ const weaponOffers = [
   upOffer('weapon', 'wm_dmg', '全局 · 伤害 +8%', '所有武器伤害提高 8%'),
   upOffer('weapon', 'wm_size', '毒雾 · 范围 +8', '腐蚀地面的半径扩大'),
   upOffer('weapon', 'wm_cd', '毒雾 · 铺设 -0.2s', '更快在脚下留下腐蚀地面（下限 0.5s）'),
+
+  // ── 内容批三：守望之瞳 ──
+  upOffer('weapon', 'ws2_dmg', '守望之瞳 · 伤害 +20%', '炮台单发伤害提高 20%'),
+  upOffer('weapon', 'ws2_rate', '守望之瞳 · 射速 +15%', '炮台射击间隔缩短 15%'),
+  upOffer('weapon', 'ws2_count', '守望之瞳 · 炮台 +1', '同屏可多放一座炮台'),
 ];
 
 // 阶段 8-2：skillOffers（解锁 dash/frost + 9 条 ks_/kd_/kf_ 技能强化）已随主动技能整体删除。
@@ -227,6 +239,16 @@ const UP_DEFS = {
   //   纪律在这里是**刻意破例**：宁可多一层夹到下限，也**不许**为了凑整数改动 spec 给的 -0.15。
   ws_cd: { w: 'sword', max: 5, more: (c) => c.weapons.sword && c.wlvlUp('sword') && c.sword.interval > ARENA.SWORD_MIN_CD + 1e-9,
     apply: (c) => { c.sword.interval = Math.max(ARENA.SWORD_MIN_CD, c.sword.interval - 0.15); } },
+
+  // ── 内容批三：守望之瞳 ──
+  // ★ 三条强化都不碰全局量以外的状态：伤害走 gUpMul（自动吃全局乘区），
+  //   射速走 interval 乘算（有下限），数量走 maxTurrets。
+  ws2_dmg: { w: 'sentry', max: 5, more: (c) => c.weapons.sentry && c.wlvlUp('sentry'),
+    apply: (c) => { c.gUpMul *= 1.20; } },
+  ws2_rate: { w: 'sentry', max: 4, more: (c) => c.weapons.sentry && c.wlvlUp('sentry') && c.sentry.interval > ARENA.SENTRY_MIN_INT + 1e-9,
+    apply: (c) => { c.sentry.interval = Math.max(ARENA.SENTRY_MIN_INT, c.sentry.interval * 0.85); } },
+  ws2_count: { w: 'sentry', max: 3, more: (c) => c.weapons.sentry && c.wlvlUp('sentry') && c.sentry.maxTurrets < ARENA.SENTRY_MAX_TURRETS,
+    apply: (c) => { c.sentry.maxTurrets = Math.min(ARENA.SENTRY_MAX_TURRETS, c.sentry.maxTurrets + 1); } },
 
   // ── 阶段10·P1-6：毒雾 ──
   wm_dmg: { w: 'mist', max: 8, more: (c) => c.weapons.mist && c.wlvlUp('mist'),
@@ -454,6 +476,10 @@ export const EVOLUTIONS = [
   //   正好分流，不去挤 multi/dmg/atk 三条独木桥。
   { id: 'ev_mist', weapon: 'mist', passive: 'xp', need: 2,
     label: '腐潮', desc: '毒雾连成一片，会缓慢跟着你移动' },
+  // 内容批三：守望之瞳的进化线。passive 用 'pspd'（弹速）—— 与 atk/multi/dmg/xp 四条线都不撞，
+  //   拿到它就是「质变」而不是「又一档数值」。
+  { id: 'ev_sentry', weapon: 'sentry', passive: 'pspd', need: 2,
+    label: '三重守望', desc: '炮台改为三发扇形齐射，覆盖一整片扇区' },
 ];
 
 /** 按 id 查进化线。 */
