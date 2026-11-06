@@ -28,11 +28,44 @@ import { ENEMY_STATE, EnemyDirector, statesSumTo } from './enemyAI.js';
 
 export { ENEMY, ENEMY_STATE, statesSumTo };
 
-/** 敌人外观的三种"兵种剪影"（纯外观，不影响任何数值 —— 数值只有 ENEMY 一份） */
+/**
+ * 三种兵种 —— **内容批起不再是纯外观**，各自带一套数值倍率。
+ * ---------------------------------------------------------------------------
+ * 设计意图（让"割草"有层次，而不是同一坨怪换三张脸）：
+ *
+ *   · 刀兵 sword —— 基准。它定义了伤害/血量的 1.0，其它两个围着它偏。
+ *       HP 36 = N1→N2→N3 三下死，这是"割草手感"的原点，**不许动**。
+ *
+ *   · 枪兵 spear —— 「远而脆」。攻击距离 ×1.35，但血只有九折、伤害也低。
+ *       玩法意义：玩家不能无脑贴脸站桩，远处会先挨一下；
+ *       但它血薄，一个 N3 突刺能连同身后的刀兵一起带走。
+ *
+ *   · 斧兵 axe —— 「重而慢」。血量 ×1.6、伤害 ×1.6，但速度只有七五折。
+ *       玩法意义：它是"需要绕后处理"的目标；硬吃两斧必死，
+ *       但它慢到能被风筝。给玩家一个"先跑开再回头"的决策点。
+ *
+ * ⚠ 倍率是**乘在 ENEMY_AI 的公共常量上**，不是另抄一套数值 ——
+ *   否则以后调 ATTACK_DAMAGE 时两个兵种会悄悄脱节。
+ * ⚠ 一项都不许写成 0：倍率 0 会让"这一项失效"，例如 dmgMul 0 = 枪兵打人不掉血。
+ * ⚠ `sizeMul` 是**纯视觉**（只影响渲染缩放），不进任何碰撞/伤害计算 ——
+ *   让"斧兵更壮实"能被玩家一眼读出来，但不会让它的受击半径变大。
+ */
 export const ENEMY_VARIANTS = [
-  { id: 'sword', label: '刀兵' },
-  { id: 'spear', label: '枪兵' },
-  { id: 'axe', label: '斧兵' },
+  {
+    id: 'sword', label: '刀兵',
+    hpMul: 1.00, speedMul: 1.00, reachMul: 1.00, dmgMul: 1.00, sizeMul: 1.00,
+    desc: '标准杂兵：三下一套刚好打死',
+  },
+  {
+    id: 'spear', label: '枪兵',
+    hpMul: 0.85, speedMul: 1.10, reachMul: 1.35, dmgMul: 0.85, sizeMul: 0.96,
+    desc: '远而脆：攻击距离长，血薄伤害低',
+  },
+  {
+    id: 'axe', label: '斧兵',
+    hpMul: 1.60, speedMul: 0.75, reachMul: 1.00, dmgMul: 1.60, sizeMul: 1.14,
+    desc: '重而慢：血厚伤害高，但走得慢',
+  },
 ];
 
 export class EnemyPool extends TargetPool {
@@ -62,7 +95,14 @@ export class EnemyPool extends TargetPool {
 
   /** 覆盖：把布点补全成"有身份的敌人"（外观变体 / 朝向 / AI 字段） */
   add(spec) {
-    const t = super.add({ id: spec.id, x: spec.x, z: spec.z, hp: spec.hp ?? this.enemy.HP });
+    /* 内容批：先定兵种，再按兵种算血量 —— 顺序不能反（血量要吃 hpMul）。
+       ★ 如果还是老顺序（先 add 再赋 variant），枪兵会顶着满血出生，
+         而斧兵的 maxHp 又停在基础值上，血条一出现就是错的。 */
+    const variantIdx = spec.variant ?? this.spawnCount % ENEMY_VARIANTS.length;
+    const vcfg = ENEMY_VARIANTS[variantIdx] || ENEMY_VARIANTS[0];
+    const baseHp = spec.hp ?? this.enemy.HP;
+    const hp = Math.max(1, Math.round(baseHp * (vcfg.hpMul ?? 1)));
+    const t = super.add({ id: spec.id, x: spec.x, z: spec.z, hp, maxHp: hp });
     t.bound = this.enemy.PUSH_BOUND;
     // ⚠ `spawn` 与 `home` 是两件事，必须分开存：
     //   · `spawn` = **开局布点**，从生到死不变，是 reset() 的唯一依据；
@@ -76,8 +116,18 @@ export class EnemyPool extends TargetPool {
     t.yaw = spec.yaw ?? 0;
     t.index = this.items.length - 1;
     // 外观变体：几何只烘一次，差异全靠"每实例的缩放 + 色调"表达（见 enemyMesh.js）
-    t.variant = spec.variant ?? this.spawnCount % ENEMY_VARIANTS.length;
-    t.scale = spec.scale ?? 1;
+    // 内容批：variantIdx 在上面算血量时已经定了，这里只做落地。
+    t.variant = variantIdx;
+    /* 兵种倍率挂到实例上，由 enemyAI 在**出手/移动**时读取。
+       以 1 为默认值兜底：Boss 与草人不是从 ENEMY_VARIANTS 里来的，
+       它们没有这三个字段，|| 1 保证行为与内容批之前完全一致。 */
+    t.speedMul = vcfg.speedMul ?? 1;
+    t.reachMul = vcfg.reachMul ?? 1;
+    t.dmgMul = vcfg.dmgMul ?? 1;
+    /* 内容批：体型随兵种微调（斧兵更壮、枪兵略瘦）。
+       ★ 乘在这里而不是覆盖：spec.scale 是布点里刻意给的大小差异（如据点守卫更大），
+         覆盖掉会让那些手工调过的体型全部失效。 */
+    t.scale = (spec.scale ?? 1) * (vcfg.sizeMul ?? 1);
     t.tone = spec.tone ?? 1;
     t.toneSeed = spec.toneSeed ?? 0;
     t.seed = spec.seed ?? (0x9e3779b9 * (this.spawnCount + 1)) >>> 0;

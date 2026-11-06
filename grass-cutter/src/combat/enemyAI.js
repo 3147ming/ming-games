@@ -401,11 +401,15 @@ export class EnemyDirector {
         return;
       }
       if (d > cfg.ATTACK_RANGE) {
-        e.vx = toX * cfg.ATTACK_SPEED;
-        e.vz = toZ * cfg.ATTACK_SPEED;
+        /* 内容批：兵种速度倍率（斧兵 0.75 / 枪兵 1.10）。
+           ★ 只乘在这里（真正推进位移的地方），不要去乘 e.speed ——
+             那是**结果**不是**驱动**，改它下一帧就被 hypot 覆盖了。 */
+        const spd = cfg.ATTACK_SPEED * (e.speedMul ?? 1);
+        e.vx = toX * spd;
+        e.vz = toZ * spd;
         e.mvx = e.vx;
         e.mvz = e.vz;
-        e.speed = cfg.ATTACK_SPEED;
+        e.speed = spd;
         return;
       }
       // 到位了：等间隔，到点起手
@@ -427,10 +431,10 @@ export class EnemyDirector {
         e.vz = toZ * cfg.THREATEN_SPEED;
       } else if (d < ring - 0.7 && d > 1e-6) {
         e.vx = -toX * cfg.THREATEN_SPEED * 0.8;
-        e.vz = -toZ * cfg.THREATEN_SPEED * 0.8;
+        e.vz = -toZ * cfg.THREATEN_SPEED * (e.speedMul ?? 1) * 0.8;
       } else {
         // 环上绕行：切向 = 前向转 90°
-        const t = cfg.THREATEN_SPEED * 0.35 * e.driftSign;
+        const t = cfg.THREATEN_SPEED * (e.speedMul ?? 1) * 0.35 * e.driftSign;
         e.vx = -toZ * t;
         e.vz = toX * t;
       }
@@ -486,7 +490,10 @@ export class EnemyDirector {
     const dz = pz - e.z;
     const d = Math.hypot(dx, dz);
     e.lastStrikeDist = d;
-    const reach = cfg.ATTACK_REACH + (this.playerCfg.RADIUS ?? 0);
+    /* 内容批：兵种攻击距离倍率（枪兵 ×1.35）。
+       ★ 乘在 ATTACK_REACH 上、**不**乘玩家半径 —— 玩家半径是"体积"不是"兵器长度"，
+         乘它会让枪兵在贴脸时也能打到身后，判定圈变成一坨。 */
+    const reach = cfg.ATTACK_REACH * (e.reachMul ?? 1) + (this.playerCfg.RADIUS ?? 0);
 
     if (d > reach) {
       this.stats.missedOutOfRange++;
@@ -513,7 +520,7 @@ export class EnemyDirector {
     this.stats.hitsOnPlayer++;
     // ★模块 6：士气越高敌人攻击力越低。ctx.damageScale 由 main 按当前士气算好传进来
     //   （基准士气 50 → 1.0；100 → 1 - ATTACK_REDUCE）。不在这里算，是因为士气状态归 points/morale 系统管。
-    const dmg = cfg.ATTACK_DAMAGE * (Number.isFinite(ctx.damageScale) ? ctx.damageScale : 1);
+    const dmg = cfg.ATTACK_DAMAGE * (e.dmgMul ?? 1) * (Number.isFinite(ctx.damageScale) ? ctx.damageScale : 1);
     events.push({ type: 'enemy-hit', enemy: e, damage: dmg, dist: d });
   }
 
