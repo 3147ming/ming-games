@@ -520,7 +520,13 @@ export class EnemyDirector {
     this.stats.hitsOnPlayer++;
     // ★模块 6：士气越高敌人攻击力越低。ctx.damageScale 由 main 按当前士气算好传进来
     //   （基准士气 50 → 1.0；100 → 1 - ATTACK_REDUCE）。不在这里算，是因为士气状态归 points/morale 系统管。
-    const dmg = cfg.ATTACK_DAMAGE * (e.dmgMul ?? 1) * (Number.isFinite(ctx.damageScale) ? ctx.damageScale : 1);
+    /* 内容批：三档倍率连乘 —— 兵种 × 精英队长 × 光环号令。
+       ★ auraDmgMul 由 EnemyPool._updateAura() 每帧写；这里只读。
+         它是 1 或 1.35，缺省 1 保证没有光环的敌人行为与改动前一致。 */
+    const dmg = cfg.ATTACK_DAMAGE
+      * (e.dmgMul ?? 1)
+      * (e.auraDmgMul ?? 1)
+      * (Number.isFinite(ctx.damageScale) ? ctx.damageScale : 1);
     events.push({ type: 'enemy-hit', enemy: e, damage: dmg, dist: d });
   }
 

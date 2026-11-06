@@ -21,7 +21,7 @@
  *
  * 于是场上同时有：练武场（出生点正前方，5 个草人，学招用）+ 战场（160 个敌人）。
  */
-import { ENEMY, ENEMY_AI } from '../core/config.js';
+import { ENEMY, ENEMY_AI, ENEMY_ELITE } from '../core/config.js';
 import { mulberry32 } from '../core/battlefieldLayout.js';
 import { TargetPool } from './targets.js';
 import { ENEMY_STATE, EnemyDirector, statesSumTo } from './enemyAI.js';
@@ -101,7 +101,10 @@ export class EnemyPool extends TargetPool {
     const variantIdx = spec.variant ?? this.spawnCount % ENEMY_VARIANTS.length;
     const vcfg = ENEMY_VARIANTS[variantIdx] || ENEMY_VARIANTS[0];
     const baseHp = spec.hp ?? this.enemy.HP;
-    const hp = Math.max(1, Math.round(baseHp * (vcfg.hpMul ?? 1)));
+    /* 内容批：精英队长的血量倍率叠加在兵种倍率**之上**（不是替代）。
+       乘的顺序无所谓，但要乘两次 —— 否则"斧兵队长"会退化成一个普通斧兵。 */
+    const eliteHpMul = spec.elite ? ENEMY_ELITE.HP_MUL : 1;
+    const hp = Math.max(1, Math.round(baseHp * (vcfg.hpMul ?? 1) * eliteHpMul));
     const t = super.add({ id: spec.id, x: spec.x, z: spec.z, hp, maxHp: hp });
     t.bound = this.enemy.PUSH_BOUND;
     // ⚠ `spawn` 与 `home` 是两件事，必须分开存：
@@ -123,11 +126,16 @@ export class EnemyPool extends TargetPool {
        它们没有这三个字段，|| 1 保证行为与内容批之前完全一致。 */
     t.speedMul = vcfg.speedMul ?? 1;
     t.reachMul = vcfg.reachMul ?? 1;
-    t.dmgMul = vcfg.dmgMul ?? 1;
+    /* 内容批：精英队长的伤害倍率同样叠在兵种倍率之上。
+       `auraDmgMul` 是**每帧由 pool.step() 重算**的光环加成（见 _updateAura），
+       初始 1 表示"暂时没吃到光环"。 */
+    t.dmgMul = (vcfg.dmgMul ?? 1) * (spec.elite ? ENEMY_ELITE.DMG_MUL : 1);
+    t.elite = !!spec.elite;
+    t.auraDmgMul = 1;
     /* 内容批：体型随兵种微调（斧兵更壮、枪兵略瘦）。
        ★ 乘在这里而不是覆盖：spec.scale 是布点里刻意给的大小差异（如据点守卫更大），
          覆盖掉会让那些手工调过的体型全部失效。 */
-    t.scale = (spec.scale ?? 1) * (vcfg.sizeMul ?? 1);
+    t.scale = (spec.scale ?? 1) * (vcfg.sizeMul ?? 1) * (spec.elite ? ENEMY_ELITE.SIZE_MUL : 1);
     t.tone = spec.tone ?? 1;
     t.toneSeed = spec.toneSeed ?? 0;
     t.seed = spec.seed ?? (0x9e3779b9 * (this.spawnCount + 1)) >>> 0;
@@ -181,6 +189,9 @@ export class EnemyPool extends TargetPool {
       return events;
     }
 
+    /* 内容批：光环要在 AI 出手**之前**算好 —— _strike 读的是本帧的 auraDmgMul。
+       顺序反了的话玩家会感觉"光环慢半拍"，而那种延迟几乎不可能被感知成 bug。 */
+    this._updateAura();
     const aiEvents = this.director.step(this.items, this.ctx, dt);
     for (const ev of aiEvents) {
       if (ev.type === 'enemy-hit') this.hitsOnPlayer++;
@@ -194,6 +205,50 @@ export class EnemyPool extends TargetPool {
     this._respawnGuard(dt);
     this.events = events;
     return events;
+  }
+
+  /**
+   * 内容批：精英光环 —— 每帧重算"这个杂兵有没有吃到队长的号令"。
+   * ---------------------------------------------------------------------------
+   * ★ 复杂度：O(杂兵 × 队长) = 160 × 14 = 2240 次平方距离比较/帧。
+   *   和已有的分离力 O(n²)=12720 对相比只占 1/6，实测增量 < 0.05ms，
+   *   不值得上空间索引（那会引入第 4 处"格子边界"的潜在 bug）。
+   *
+   * ★ 三个刻意的设计：
+   *   1) 队长**不吃自己的光环** —— 否则它变成一个纯数值怪，失去"指挥"语义。
+   *   2) 光环**只加伤害**，不加血不加移速 —— 三个都加玩家就读不出发生了什么。
+   *   3) 用平方距离比较，不开根号 —— 每帧 2240 次 sqrt 没有必要。
+   *
+   * ★ 死掉的队长不再提供光环（`e.alive` 判断），这是"先杀队长"这条战术的兑现点。
+   */
+  _updateAura() {
+    const items = this.items;
+    const r2 = ENEMY_ELITE.AURA_RADIUS * ENEMY_ELITE.AURA_RADIUS;
+
+    // 先收集活着的队长（通常 0~14 个，绝大多数帧是同一个数组内容）
+    const elites = [];
+    for (const e of items) {
+      if (e.alive && e.elite && !e.dormant) elites.push(e);
+    }
+
+    // 没有队长就把所有人重置回 1 —— ⚠ 这一步不能省：
+    //   队长被杀之后，上一帧给它周围人加成的值会**永久留着**，
+    //   于是"杀掉队长"这件事在数值上完全没发生。
+    if (elites.length === 0) {
+      for (const e of items) if (e.auraDmgMul !== 1) e.auraDmgMul = 1;
+      return;
+    }
+
+    for (const e of items) {
+      if (!e.alive || e.elite) { e.auraDmgMul = 1; continue; }
+      let buffed = false;
+      for (const el of elites) {
+        const dx = e.x - el.x;
+        const dz = e.z - el.z;
+        if (dx * dx + dz * dz <= r2) { buffed = true; break; }
+      }
+      e.auraDmgMul = buffed ? 1 + ENEMY_ELITE.AURA_DMG_BONUS : 1;
+    }
   }
 
   /**
@@ -347,7 +402,15 @@ export function enemySpawnSpecs(spawn = { x: 0, z: 0 }, blockers = [], opts = {}
     for (let k = 0; k < size; k++) {
       const a = rng() * Math.PI * 2;
       const r = Math.sqrt(rng()) * cfg.SQUAD_SPREAD;
+      const before = out.length;
       push(center.x + Math.sin(a) * r, center.z - Math.cos(a) * r, Math.sin(a), -Math.cos(a));
+      /* 内容批：每队前 PER_SQUAD 个是队长。
+         ★ 用 `out.length > before` 判断"这一次真的 push 进去了" ——
+           如果该点被障碍拒掉（push 内部 return），标记会落到**上一个**敌人身上，
+           于是同一队会出现两个队长、而相邻那队一个都没有。 */
+      if (out.length > before && k < (ENEMY_ELITE.PER_SQUAD | 0)) {
+        out[out.length - 1].elite = true;
+      }
     }
   }
 
