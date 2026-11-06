@@ -72,20 +72,37 @@ export function describeCard(card) {
   return opsText(card.ops);
 }
 
+/** 条件的短码（第三批 P1-9）：与 condText 同源，但只留能一眼扫过的词 */
+function condShort(cond) {
+  if (!cond) return '条件';
+  if (cond.type === 'enemyHpBelowHalf') return '敌半血';
+  if (cond.type === 'enemyHasStatus') return `敌${STATUS_TEXT[cond.status] || cond.status}`;
+  if (cond.type === 'handEmpty') return '空手';
+  return '条件';
+}
+
+/** 单个 op 的短码：抽出来是为了 if 的 then 也能复用同一套单位，不再只剩裸数字 */
+function shortOp(o) {
+  if (o.op === 'damage') return o.times ? `${o.value}×${o.times}伤` : `${o.value}伤`;
+  if (o.op === 'block') return `${o.value}防`;
+  if (o.op === 'draw') return `抽${o.value}`;
+  if (o.op === 'energy') return `+${o.value}能`;
+  if (o.op === 'heal') return `回${o.value}`;
+  if (o.op === 'loseHp') return `失${o.value}`;
+  if (o.op === 'status') {
+    const name = STATUS_TEXT[o.status] || o.status;
+    // who 是绝对口径（self=玩家 / enemy=敌人），缺省即敌人。上一版把它丢了，
+    // 「2虚弱」既可能是我套给敌人、也可能是敌人套给我，读牌全靠猜。
+    return o.who === 'self' ? `自${o.value}${name}` : `敌${o.value}${name}`;
+  }
+  if (o.op === 'if') return `${condShort(o.cond)}→${(o.then || []).map(shortOp).join('/')}`;
+  return '';
+}
+
 /** 窄卡（竖屏手牌）用的短描述：只留数字与关键词，丢连接词（机制批 P0-8） */
 export function shortCardText(card) {
   return (card.ops || [])
-    .map((o) => {
-      if (o.op === 'damage') return o.times ? `${o.value}×${o.times}伤` : `${o.value}伤`;
-      if (o.op === 'block') return `${o.value}防`;
-      if (o.op === 'draw') return `抽${o.value}`;
-      if (o.op === 'energy') return `+${o.value}能`;
-      if (o.op === 'heal') return `回${o.value}`;
-      if (o.op === 'loseHp') return `失${o.value}`;
-      if (o.op === 'status') return `${o.value}${STATUS_TEXT[o.status] || o.status}`;
-      if (o.op === 'if') return `若${o.cond.type === 'enemyHpBelowHalf' ? '半血' : '条件'}→${(o.then || []).map((t) => t.value || '').join('/')}`;
-      return '';
-    })
+    .map(shortOp)
     .filter(Boolean)
     .join('·');
 }

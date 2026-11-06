@@ -1,15 +1,15 @@
 {
   "meta": {
     "purpose": "数值口径真源。所有常数标注来源与状态；阶段 2 起重由 tools/balance.mjs 与 tools/audit.mjs 实测校准后回填。",
-    "version": "0.5",
-    "date": "2026-10-28",
-    "prevVersion": "0.4",
-    "versionNote": "v0.5 = 内容批 1（12 条：P0×3 / P1×8 + 碑文）。内容量：卡池 64→72（四流派各 18，R1 19→27）、遗物 24→32（封印 12→18）、敌人 13→20（普通 12 / 精英 5 / Boss 3）、事件 12→20（全部 3 选项）、出身 4→8、荒野敌人 1→3、荒野升级 3→4、碑文 0→20。机制：Boss 二阶段（pattern2）、难度阶梯 ascension 0~5、每日种子、世记（≤30 条）、局内快照续局、死因行、牌组视图、奖励重抽。★口径：本仓（发布子仓）不含 tools/ 与 tests/，因此 clear_rate / lethality / combo_ring 等模拟类字段**未重跑**，一律标注 stale_after_v0_5；卡池概率类字段由本批的**精确解析**（加权不放回 DP，非 MC）重算并标注 calc。回归方式为 node --check + 精确解析脚本 + ?seed= 手测。",
-    "staleAfter": "v0.5",
+    "version": "0.6",
+    "date": "2026-10-30",
+    "prevVersion": "0.5",
+    "versionNote": "v0.6 = 第三批（收口批 12 条）。★核心：先修 P0-1（入口二选一吞掉主路线，荒野不可达、奖励节点 9→7），再全量重标 —— 因此 v0.6 与 v0.5 的差值**不可直接归因**给任何单项改动：这一版的地图终于是设计上的 12 节点（6 战斗 + 1 荒野 + 2 精英 + 1 遗迹 + 1 灯下 + 1 Boss），四派模拟局数也从「7 奖励节点、无荒野」变成真实骨架。本批数值改动：关键牌整局保底 1 次（P0-6）；霜 wk 削（f.ward 8→6、f.bulwark 14→12、f.icewall 22→18、f.rime 5→4、f.froststrike 格挡 4→3、f.stasis 灵巧 2→1、f.frostartor 10→8）；蚀流中毒补强（多张 R1/R2 中毒值上调，因为 POISON_DECAY=2 后低层数几乎无效）；敌人 C 组重标（普通均伤 ≤35、精英均值 [10,12]、三 Boss 拉平 9~10）；难度阶梯封顶 5→8、精英/Boss 攻击 +2a（P1-12）。★口径修正：tools/ 与 tests/ **在主仓库里都有且都能跑**，v0.5 那句「不含 tools」是给 deploy/ 发布子仓写的，误搬回主仓，v0.6 已删除。",
+    "staleAfter": "v0.6",
     "calibratedBy": {
       "tools/audit.mjs": "概率 / 生成不变量 / 反刷压力测试 / 解锁节奏 四项口径审计（本阶段样本 60000）。★阶段 3 增强：流派命中率新增「精确解析」列（加权不放回三重有序和），与实测同表并列",
-      "tools/balance.mjs": "难度模拟（本阶段每流派 6000 局，合计 24000 局）",
-      "node --test tests/*.test.mjs": "回归（阶段 4 收尾 184 条全绿；阶段 3 收尾 152；v0.2 时为 149）",
+      "tools/balance.mjs": "难度模拟（v0.6 每流派 6000 局，合计 24000 局；两种荒野口径各跑一遍：--decline-wild 与默认）",
+      "node --test tests/*.test.mjs": "回归（v0.6 收尾实测 184/184 全绿、0 skipped；v0.5 声称 184 全绿但实为 165 通过 / 19 失败，那次门是红的）",
       "tools/probe-onecard.mjs": "真实浏览器端到端探针（阶段 4 复跑：exit=0，未捕获异常 0 条）",
       "tools/probe-log.mjs": "阶段 4 新增：埋点层专用浏览器探针（?log=1 面板渲染 / 真实点击 amend 不新增行 / 默认关闭零感知 / 同种子开+关终局指纹一致），收尾复跑 exit=0、断言 0 失败",
       "docs/06-真人试玩手册.md": "阶段 4 新增：3 人 × 4 流派 × 5 局协议、拉丁方排程、埋点开关、自报字段口径、JSONL 回收，以及阶段 5 的判定准则（**判据先定死，不许事后挑**）",
@@ -35,24 +35,37 @@
     "floors": { "value": 3, "status": "derived" },
     "nodes_per_floor": { "value": 4, "status": "derived" },
     "card_reward_nodes": { "value": 9, "status": "calibrated", "note": "7 战斗 + 2 精英；遗迹不产出取牌三选一" },
-    "deck_size_start": { "value": 10, "status": "calibrated", "formula": "4 打击 + 4 防御 + 2 张流派入门牌" },
+    "deck_size_start": {
+      "value": 11, "status": "calibrated",
+      "formula": "4 打击 + 4 防御 + 2 张流派入门牌 = 10；带 carried 时 11",
+      "note": "首世（无 carried）10 张；有上一世带回的牌时 11 张。v0.5 写 10 是把「一世一牌」生效后的常态漏掉了",
+      "superseded_v0_5": { "value": 10, "reason": "只记了首世口径" }
+    },
     "deck_size_end_all_runs": {
-      "value": 17, "range": [16.0, 18.1], "status": "calibrated",
-      "total": "全量平均（含死亡局）", "note": "衡量「一个普通玩家死的时候手上有多厚的牌组」"
+      "value": 16.7, "range": [16.3, 17.1], "status": "calibrated",
+      "total": "全量平均（含死亡局）", "note": "衡量「一个普通玩家死的时候手上有多厚的牌组」",
+      "method": "node tools/balance.mjs 6000 --decline-wild（卡牌战基准口径）",
+      "superseded_v0_5": { "value": 17, "range": [16.0, 18.1] }
     },
     "deck_size_end_clear_run": {
-      "value": 20.0, "range": [19.9, 20.0], "status": "calibrated",
-      "total": "通关局终局值", "note": "★与阶段 0 的推导目标（10 张起始 → 20 张终局）严格一致，是一次正向验证"
+      "value": 20.1, "range": [20.0, 20.1], "status": "calibrated",
+      "total": "通关局终局值", "note": "★与阶段 0 的推导目标（10 张起始 → 20 张终局）仍一致；修完 P0-1 后奖励节点回到设计值 9，牌组规模第一次是在真实骨架上量出来的",
+      "method": "node tools/balance.mjs 6000 --decline-wild，取「牌组通关」列四派均值",
+      "superseded_v0_5": { "value": 20.0, "range": [19.9, 20.0], "reason": "该值是在 7 奖励节点的坏骨架上量的" }
     },
     "hand_size": { "value": 5, "status": "design_target" },
     "relics_gained_per_run_all_runs": {
-      "value": 2.33, "range": [2.04, 2.73], "status": "calibrated",
-      "total": "全量平均（含死亡局）"
+      "value": 2.12, "range": [1.98, 2.25], "status": "calibrated",
+      "total": "全量平均（含死亡局）",
+      "method": "node tools/balance.mjs 6000 --decline-wild，取「遗物全量」列四派均值",
+      "superseded_v0_5": { "value": 2.33, "range": [2.04, 2.73] }
     },
     "relics_gained_per_run_clear_run": {
-      "value": 3.22, "range": [3.20, 3.24], "status": "calibrated",
+      "value": 3.11, "range": [3.08, 3.13], "status": "calibrated",
       "total": "通关局终局值",
-      "note": "修正自阶段 0 的估算 4~5。开局 1 + 精英 2 + 遗迹（6 事件里 4 个可给遗物）"
+      "note": "修正自阶段 0 的估算 4~5。开局 1 + 精英 2 + 遗迹（事件池里可给遗物的选项）",
+      "method": "node tools/balance.mjs 6000 --decline-wild，取「遗物通关」列四派均值",
+      "superseded_v0_5": { "value": 3.22, "range": [3.20, 3.24] }
     }
   },
 
@@ -80,7 +93,7 @@
     },
     "rarity_probability": {
       "status": "calc",
-      "method": "精确解析：加权、不放回抽 3 张的 DP（按「稀有度 × 是否本流派」分桶）。非 MC，无抽样噪声；tools/audit.mjs 在本仓不可用，本批由 _prob 脚本一次性重算后回填",
+      "method": "精确解析：加权、不放回抽 3 张的 DP（按「稀有度 × 是否本流派」分桶）。非 MC，无抽样噪声；tools/audit.mjs 已实测复跑并与之互相印证（见 archetype_hit_rate.measured）",
       "pool_initial_49": {
         "cards": 49, "total_weight": 2280, "total": "初始解锁池（内容批 1）",
         "single_draw": { "R1": 0.7105, "R2": 0.2895, "R3": 0.0 },
@@ -119,6 +132,13 @@
         "status": "superseded"
       }
     },
+    "visible_share_per_run": {
+      "value": 0.375,
+      "status": "calc",
+      "formula": "9 奖励节点 × 3 候选 / 72 = 27/72",
+      "note": "v0.4 为 30/60 = 0.50。池子扩到 72 后覆盖率降到 0.375 是**有意的取舍**：单局看不全，下一局才有新鲜感。但必须 ≥1/3，且关键牌另有整局 1 次保底（见 combo_ring_achievability）。",
+      "superseded_v0_4": { "value": 0.50 }
+    },
     "archetype_hit_rate": {
       "status": "calc",
       "metric": "三选一里至少出现 1 张该流派卡（加权不放回抽 3 张）",
@@ -127,11 +147,17 @@
       "initial_pool_superseded_v0_4": { "blade": 0.6186, "frost": 0.5912, "rot": 0.5259, "flux": 0.6242, "reason": "初始池 41→49（四流派各 +2 R1），分母变大但分子同增，蚀流是最小受益者" },
       "initial_pool_superseded_v0_2": { "blade": 0.6264, "frost": 0.5992, "rot": 0.5322, "flux": 0.6018, "reason": "分母效应：初始池 36→37，各派占比被摊薄" },
       "analytic": {
-        "note": "★本批由精确解析重算（加权、不放回抽 3 张，对非该流派权重做三重有序和）。v0.4 的 measured 列（0.6186/0.5912/0.5259/0.6242）已作废：本仓无 tools/audit.mjs，未做新抽样，故只保留解析值。",
+        "note": "由精确解析重算（加权、不放回抽 3 张，对非该流派权重做三重有序和）。v0.6 已用 tools/audit.mjs 100000 复跑实测，实测与解析最大偏差 0.0019，两条路径互相印证。",
         "initial_pool": { "blade": 0.6097, "frost": 0.5879, "rot": 0.5418, "flux": 0.6099 },
         "full_pool": { "blade": 0.6051, "frost": 0.5992, "rot": 0.5492, "flux": 0.5870 }
       },
-      "measured": { "status": "tbd", "note": "【待复跑】tools/audit.mjs 不在本仓；解析值与实测的历史最大偏差 <= 0.0030，可暂以解析值代替" },
+      "measured": {
+        "status": "calibrated",
+        "method": "node tools/audit.mjs 100000（主仓库有该工具且能跑；v0.5 那句「不含 tools」的表述已删除）",
+        "initial_pool": { "blade": 0.6106, "frost": 0.5867, "rot": 0.5399, "flux": 0.6102 },
+        "full_pool": { "blade": 0.6034, "frost": 0.5989, "rot": 0.5499, "flux": 0.5892 },
+        "note": "实测与解析最大偏差 0.0019（解析 0.6097/0.5879/0.5418/0.6099 vs 实测 0.6106/0.5867/0.5399/0.6102），解析列可直接引用"
+      },
       "dmin_check": {
         "worst_archetype": "rot @ 0.5418 (analytic, 初始池 49)",
         "formula": "analytic ceil(3 / 0.5418 x 2) = ceil(11.07) = 12",
@@ -139,21 +165,28 @@
       }
     },
     "combo_ring_achievability": {
-      "status": "stale_after_v0_5",
-      "stale_note": "内容批后卡池 60→72、初始池 41→49，本块数值未重跑（需 tools/audit.mjs，本仓不含）。结构与结论（combo 环是上限形态）不受影响，但具体概率不可引用。",
+      "status": "calibrated",
       "metric": "一局 9 次三选一里见到的本流派 keyCards 数量",
+      "method": "node tools/audit.mjs 100000。★口径修正：旧版只传 (rng, set, n)，绕过了关键牌保底，测出来的其实是修复前的分布；现在传齐 guaranteeArch / keyCards / seenKey / rewardIndex 四个参数，走真实的一局序列。",
       "full_pool": {
-        "all_three": { "blade": 0.0204, "frost": 0.0309, "rot": 0.0114, "flux": 0.0118 },
-        "exactly_two": { "blade": 0.2139, "frost": 0.2107, "rot": 0.1404, "flux": 0.1395 },
-        "zero": { "blade": 0.2686, "frost": 0.3064, "rot": 0.4008, "flux": 0.4010 }
+        "zero": { "blade": 0.0, "frost": 0.0, "rot": 0.0, "flux": 0.0 },
+        "exactly_one": { "blade": 0.3897, "frost": 0.3253, "rot": 0.4285, "flux": 0.4525 },
+        "exactly_two": { "blade": 0.5124, "frost": 0.5021, "rot": 0.4815, "flux": 0.4611 },
+        "all_three": { "blade": 0.0979, "frost": 0.1726, "rot": 0.0899, "flux": 0.0864 }
       },
       "initial_pool": {
+        "zero": { "blade": 0.0, "frost": 0.0, "rot": 0.0, "flux": 0.0 },
+        "exactly_one": { "blade": 0.4337, "frost": 0.5082, "rot": 0.4837, "flux": 0.5202 },
+        "exactly_two": { "blade": 0.5663, "frost": 0.4918, "rot": 0.5163, "flux": 0.4798 },
         "all_three": { "blade": 0.0, "frost": 0.0, "rot": 0.0, "flux": 0.0 },
-        "exactly_two": { "blade": 0.2516, "frost": 0.1516, "rot": 0.1514, "flux": 0.1536 },
-        "zero": { "blade": 0.2179, "frost": 0.3654, "rot": 0.3637, "flux": 0.3616 },
-        "note": "★G1 效果：熵流 zero 由 59.36% → 36.16%，落回其余流派区间 [21.79%, 36.54%]"
+        "note": "初始池里每派只有 2 张关键牌可选（第 3 张初始封印），所以 all_three 恒为 0"
       },
-      "conclusion": "combo 环是上限形态（全解锁池 1.14%~3.09%）；单局常规目标是「1 增幅 + 1 载体」的双卡配合（exactly_two 13.95%~21.39%）。见 docs/05 §T2"
+      "superseded_v0_5": {
+        "status": "stale_after_v0_5",
+        "reason": "该块从未重跑，且历史上测的是「无保底」分布（零张 26.86%~40.10%）；同时 audit 调用缺 4 个 opts，等于永远测不到保底效果",
+        "full_pool_zero": { "blade": 0.2686, "frost": 0.3064, "rot": 0.4008, "flux": 0.4010 }
+      },
+      "conclusion": "整局 1 次的关键牌保底把「一张都没见到」从 26.9%~40.1% 压到 **0%**；三张全齐 8.6%~17.3%，仍是上限形态而不是常态 —— 保底保证「凑得起来」，不保证「一定凑齐」。单局常规目标仍是「1 增幅 + 1 载体」的双卡配合（exactly_two 46.1%~51.2%）。见 docs/05 §T2"
     }
   },
 
@@ -161,15 +194,28 @@
     "n_turn_common": { "value": 4, "status": "design_target", "formula": "n_turn = ceil(HP_enemy / DPT_player)" },
     "n_turn_elite": { "value": 7, "status": "design_target" },
     "n_turn_boss": { "value": 12, "status": "design_target" },
+    "avg_dmg_excludes": "pattern2 / str buff（tools/balance.mjs 的 avgDmgPerTurn 只累加 pattern 里的 attack，不含二阶段 pattern2，也不含 buff 带来的后续增幅）",
     "T_turn_sec": { "value": 10, "status": "tbd", "breakdown": { "draw_anim": 1, "decision": 6, "resolve": 3 }, "note": "设计目标值，非实测。真人校准协议见 docs/05 §T4.4（3 人 x 每流派 5 局）。数据未到前保持 tbd" },
     "clear_rate": {
       "total": "全量平均（含死亡局）· 贪心 AI 口径",
-      "global": 0.221, "status": "calibrated",
-      "by_archetype": { "blade": 0.143, "frost": 0.385, "rot": 0.118, "flux": 0.238 },
-      "win_hp_ratio_avg": 0.223,
-      "win_hp_ratio_by_archetype_clear_run": { "blade": 0.193, "frost": 0.259, "rot": 0.202, "flux": 0.238, "total": "通关局终局值" },
-      "avg_nodes_cleared": 9.045,
+      "global": 0.013, "status": "calibrated",
+      "by_archetype": { "blade": 0.005, "frost": 0.022, "rot": 0.012, "flux": 0.013 },
+      "win_hp_ratio_avg": 0.319,
+      "win_hp_ratio_by_archetype_clear_run": { "blade": 0.307, "frost": 0.329, "rot": 0.376, "flux": 0.263, "total": "通关局终局值" },
+      "avg_nodes_cleared": 5.505,
       "reproduce": "node tools/balance.mjs 6000",
+      "method": "默认口径：荒野节点一律进入（真实实时关，tools/balance.mjs 的默认行为）。",
+      "method_caveat": "★这一列测的不是「流派强度」，而是「无脑进荒野的代价」：荒野关把四派压成同一档（0.5%~2.2%），流派差异被噪声淹没。做流派对比、判定 P0-6「霜/蚀 ≤1.6 倍」请引用 card_only_decline_wild。★真问题：wild 关的致死率超模（进入即死约 63%，其中普通怪「铁颚」单怪致死 24.5%），而它在真实游戏里是**可选**节点（main.js showWildChoice）—— 这是下一批需要裁决的事，本批没有擅自改 ARENA 数值。",
+      "card_only_decline_wild": {
+        "global": 0.169,
+        "by_archetype": { "blade": 0.107, "frost": 0.239, "rot": 0.157, "flux": 0.171 },
+        "win_hp_ratio_avg": 0.283,
+        "win_hp_ratio_by_archetype_clear_run": { "blade": 0.229, "frost": 0.317, "rot": 0.313, "flux": 0.271 },
+        "avg_nodes_cleared": 8.79,
+        "reproduce": "node tools/balance.mjs 6000 --decline-wild",
+        "note": "荒野退化为普通卡牌战（与 src/main.js startWildAsBattle 同口径）。四派强度对比与 P0-6 判定用这一列：霜 0.239 / 蚀 0.157 = **1.52 倍**（改前 2.4 倍），已达 ≤1.6 的目标。全局 16.9% 低于 v0.5 的 22.1%，原因是骨架修好后一局真的变成 9 个奖励节点 / 9 场战斗（旧值是在 7 奖励节点的坏骨架上量的），不是变难了。"
+      },
+      "superseded_v0_5": { "global": 0.221, "by_archetype": { "blade": 0.143, "frost": 0.385, "rot": 0.118, "flux": 0.238 }, "win_hp_ratio_avg": 0.223, "avg_nodes_cleared": 9.045, "reason": "★该值是在 P0-1 未修的坏骨架上量的：advance() 无条件应用 alt，荒野节点永远进不去，一局只有 7 个奖励节点。v0.6 起地图终于与设计一致（12 节点 / 9 奖励），两版差值不可归因给任何单项数值改动" },
       "superseded_v0_3": { "global": 0.233, "by_archetype": { "blade": 0.148, "frost": 0.406, "rot": 0.121, "flux": 0.256 }, "win_hp_ratio_avg": 0.227, "win_hp_ratio_by_archetype_clear_run": { "blade": 0.204, "frost": 0.263, "rot": 0.196, "flux": 0.244 }, "avg_nodes_cleared": 9.155, "reason": "★阶段 4 / T3 遗迹事件 6→12。警告：rng.shuffled(EVENTS) 池子变大改变了随机流长度，后续地图内容整体位移（200 seed 实测：100% 终态变更、39.5% 胜负翻转）⟹ 这是一次全新抽样，两阶段差值**不可直接归因**给某个事件" },
       "superseded_v0_2": { "global": 0.237, "by_archetype": { "blade": 0.149, "frost": 0.410, "rot": 0.131, "flux": 0.256 }, "win_hp_ratio_avg": 0.229, "reason": "G1 改变共享奖励池后的重测" },
       "caveat": "贪心 AI 口径，只统计直接伤害，系统性低估中毒（蚀）/ 格挡（霜）/ 循环（熵）。★流派间差异含 AI 偏见，不可作为强度结论；个别流派值（蚀/熵）尤其不可用。逐字段去偏裁决见 docs/05 §T4.2"
@@ -187,6 +233,16 @@
       "superseded_v0_2": { "by_tier": { "normal": [0.026, 0.048], "elite": [0.209, 0.261], "boss": 0.479 }, "by_floor": { "1": 0.0, "2": 0.485, "3": 0.540 } },
       "note": "层间落差 1.13x（48.4% → 54.8%），有意为之：难度阶梯由「敌人类别」实现（6.7~13.9x）。★第 1 层致死率由 v0.2 的 0/24000 变为 1/24000 —— 见 findings_stage3 G8，措辞已降级为「≈0」"
     }
+  },
+
+  "ascension": {
+    "range": [0, 8],
+    "hp_mult": "+12%/阶",
+    "atk_add": "普通 +1/阶，精英/Boss +2/阶",
+    "wild_exempt": true,
+    "status": "derived",
+    "note": "v0.6 起封顶 5→8（P1-12）。精英/Boss 拿 2 倍攻击加成 —— 最终战必须比杂兵更陡，否则后期只是「血多一点的杂兵」。荒野关不吃阶梯（ARENA 的 HP/伤害是独立常量）。每日局恒为 0。",
+    "superseded_v0_5": { "range": [0, 5], "atk_add": "全档 +1/阶" }
   },
 
   "timing": {
@@ -217,6 +273,13 @@
     "player_dpt": { "value": 10.8, "status": "derived", "formula": "3 能量 x 6 伤/能量 x 0.6 进攻占比", "note": "无 AI 偏见：纯配置解析值" },
     "block_per_turn": { "value": 6, "status": "derived", "formula": "3 x 5 x (1 - 0.6)" },
     "formula_order": "(基础 + 力量) x 虚弱 x 易伤，向下取整。先加后乘，顺序不可换",
+    "poison_decay": {
+      "value": 2,
+      "status": "derived",
+      "source": "config/constants.js CONST.POISON_DECAY",
+      "formula": "总伤 = n + (n-2) + (n-4) + … ≈ n(n+2)/4；14 层 = 14+12+10+8+6+4+2 = 56",
+      "superseded_v0_4": { "value": 1, "formula": "总伤 = n(n+1)/2；14 层 = 105" }
+    },
     "synergy_check": {
       "status": "derived",
       "case": "b.dualblade(3伤x3) 同时吃 +2 力量 与 易伤",
@@ -242,7 +305,7 @@
     "static_gap_ratio": { "value": 1.57, "status": "derived", "formula": "160 / 102" },
     "spend_after_growth": { "normal": 26.25, "elite": 43.75, "boss": 30.0, "total": 100.0 },
     "closure_check": "成长后支出 100 <= 收入 102 -> 闭合（理论余量 2.9%，实测余量 22.7%，由 v0.2 的 22.9% 改来）",
-    "measured_surplus_clear_run": { "value": 0.223, "status": "calibrated", "total": "通关局终局值", "ideal_band": [0.10, 0.35], "superseded_v0_3": { "value": 0.227, "reason": "阶段 4 / T3 全新抽样后的重测；仍落在理想区间 [10%,35%] 内" } },
+    "measured_surplus_clear_run": { "value": 0.283, "status": "calibrated", "method": "node tools/balance.mjs 6000 --decline-wild，取「通关剩余HP」四派均值", "superseded_v0_5": { "value": 0.223, "reason": "7 奖励节点骨架下的旧值" }, "total": "通关局终局值", "ideal_band": [0.10, 0.35], "superseded_v0_3": { "value": 0.227, "reason": "阶段 4 / T3 全新抽样后的重测；仍落在理想区间 [10%,35%] 内" } },
     "price_list_hp": {
       "one_common_card": 6, "one_rare_card": 5, "one_relic": 8,
       "one_rest_heal": 31.5, "one_card_removal": "31.5（机会成本，与回血互斥）"
@@ -504,7 +567,7 @@
     { "id": "D6", "item": "音频需求级别", "unblocks": ["audio 实现路径"], "status": "tbd" },
     { "id": "D7", "item": "是否需要发布到公网", "unblocks": ["部署与压测范围"], "status": "tbd" },
     { "id": "D8", "item": "G1 裁决：是否把 x.overload 改为初始解锁", "unblocks": ["熵流前期体验", "meta_unlock.runs_to_full_unlock"], "status": "resolved", "resolution": "你已裁决 = 采纳方案 A；阶段 3 / T1 已落账" },
-    { "id": "D9", "item": "难度阶梯 ascension 0~5 的胜率曲线", "unblocks": ["ascension 每阶 +12% 血 / +1 攻是否过陡", "封顶 5 是否合适"], "status": "tbd", "note": "内容批 P1-6 已实现（Run.combatEnemy 缩放 + meta.ascension 封顶 5），但没有模拟数据。需要 tools/balance.mjs 以 asc=0..5 各跑一批，报「通关率 / 平均过节点」两列；本仓无该工具 ⟹ 待补" },
-    { "id": "D10", "item": "荒野三怪重标定（KILLS/GEMS/CASTS/HP_RATIO_TYPICAL）", "unblocks": ["pickWildCardId 四柱映射是否退化"], "status": "tbd", "note": "内容批 P1-10 加了 charger（血 x1.4 / 速 x1.7）与 husk（血 x2.2 / 速 x0.55），平均怪更厚 ⟹ 击杀数会下降、拾宝数会下降。四个 TYPICAL 仍是阶段 8 标定值（173/129/18/0.77），**必须重跑 tools/wild-calibrate.mjs**（本仓不含）。未重标前，荒野牌映射会偏向『击杀/拾宝低于常态』的局，即更多壁垒/寂灭" }
+    { "id": "D9", "item": "难度阶梯 ascension 1~8 的胜率曲线", "unblocks": ["ascension 每阶 +12% 血 / 普通 +1 攻 / 精英与 Boss +2 攻是否过陡", "封顶 8 是否合适"], "status": "tbd", "note": "v0.6：封顶 5→8、精英/Boss 额外 +2a 已实现（Run.combatEnemy + meta.ascension）。仍无模拟数据 —— 需要 tools/balance.mjs 以 asc=1..8 各跑一批，报「通关率 / 平均过节点」两列。当前 balance.json 里所有 battle.* 仍是 asc=0 口径。" },
+    { "id": "D10", "item": "荒野三怪重标定（KILLS/GEMS/CASTS/HP_RATIO_TYPICAL）", "unblocks": ["pickWildCardId 四柱映射是否退化"], "status": "tbd", "note": "内容批 P1-10 加了 charger（血 x1.4 / 速 x1.7）与 husk（血 x2.2 / 速 x0.55），平均怪更厚 ⟹ 击杀数会下降、拾宝数会下降。四个 TYPICAL 仍是阶段 8 标定值（173/129/18/0.77），**必须重跑 tools/wild-calibrate.mjs**（主仓库有该工具，可直接重跑）。未重标前，荒野牌映射会偏向『击杀/拾宝低于常态』的局，即更多壁垒/寂灭" }
   ]
 }

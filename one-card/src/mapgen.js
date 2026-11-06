@@ -54,9 +54,11 @@ export function generateMap(rng, floor = CONST.FLOORS, opts = {}) {
       } else if (type === 'elite') {
         node.enemyId = elites[ei++ % elites.length].id;
       } else if (type === 'boss') {
-        // 内容批 P1-5：Boss 按「通关次数」轮换 —— 玩家每赢一次，下一世就换一个最终对手。
+        // 内容批 P1-5 / 第三批 P1-12：Boss 按「通关次数」轮换（0→1→2→0…）。
+        //      旧实现用 Math.min(wins, len-1) 夹取 —— 通关 2 次之后永远打同一个，
+        //      而且恰好是最弱的「第九个自己」，阶梯因此反向变简单。
         const bossPool = BY_TIER.boss;
-        node.enemyId = bossPool[Math.min(opts.wins || 0, bossPool.length - 1) % bossPool.length].id;
+        node.enemyId = bossPool[(opts.wins || 0) % bossPool.length].id;
       } else if (type === 'event') {
         node.eventId = events[eventIdx % events.length].id;
         eventIdx++;

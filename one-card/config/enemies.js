@@ -36,21 +36,23 @@ export const ENEMIES = [
     pattern: [{ t: 'attack', value: 8 }, { t: 'attack', value: 8 }, { t: 'debuff', status: 'weak', value: 2 }] },
   { id: 'e.husk', n: '空壳', tier: 'normal', hp: 46, shape: 15, sub: 'HOLLOW HUSK',
     pattern: [{ t: 'block', value: 7 }, { t: 'attack', value: 13 }] },
-  { id: 'e.tally', n: '记数者', tier: 'normal', hp: 52, shape: 16, sub: 'THE TALLY',
+  // 第三批 P0-4/C 组：hp 52 → 51。hpForTurns(4)=43，±20% 上限 51.6，52 越界 0.4 点。
+  { id: 'e.tally', n: '记数者', tier: 'normal', hp: 51, shape: 16, sub: 'THE TALLY',
     pattern: [{ t: 'buff', status: 'str', value: 2 }, { t: 'attack', value: 9 }, { t: 'attack', value: 12 }] },
 
   // ---- 精英（5）均值目标 11/回合 ----
   { id: 'e.chain', n: '铁链重犯', tier: 'elite', hp: 75, shape: 11, sub: 'ELITE · CHAINED',
     pattern: [{ t: 'attack', value: 13 }, { t: 'attack', value: 12 }, { t: 'attack', value: 17 }] },
+  // 第三批 P0-4/C 组：精英 tier 均值掉到 9.88（设计目标 11，且需 ≥ 普通×1.4），按缺口回补。
   { id: 'e.rotmother', n: '蚀母', tier: 'elite', hp: 70, shape: 12, sub: 'ELITE · ROT MOTHER',
-    pattern: [{ t: 'attack', value: 12 }, { t: 'debuff', status: 'poison', value: 4 }, { t: 'attack', value: 14 }, { t: 'attack', value: 11 }] },
+    pattern: [{ t: 'attack', value: 12 }, { t: 'debuff', status: 'poison', value: 4 }, { t: 'attack', value: 17 }, { t: 'attack', value: 11 }] },
   { id: 'e.frostbone', n: '霜骸', tier: 'elite', hp: 80, shape: 13, sub: 'ELITE · FROSTBONE',
-    pattern: [{ t: 'block', value: 12 }, { t: 'attack', value: 15 }, { t: 'attack', value: 14 }] },
+    pattern: [{ t: 'block', value: 12 }, { t: 'attack', value: 16 }, { t: 'attack', value: 15 }] },
   // 内容批 P1-4：精英敌人 3 → 5（精英池从 3 扩到 5 后，mapgen 用 ei++ 独立递进，与普通同构）
   { id: 'e.warden', n: '锁匠', tier: 'elite', hp: 78, shape: 21, sub: 'ELITE · LOCKSMITH',
-    pattern: [{ t: 'attack', value: 12 }, { t: 'block', value: 14 }, { t: 'attack', value: 16 }, { t: 'attack', value: 10 }] },
+    pattern: [{ t: 'attack', value: 12 }, { t: 'block', value: 14 }, { t: 'attack', value: 17 }, { t: 'attack', value: 13 }] },
   { id: 'e.cantor', n: '唱经者', tier: 'elite', hp: 72, shape: 22, sub: 'ELITE · CANTOR',
-    pattern: [{ t: 'debuff', status: 'vuln', value: 3 }, { t: 'attack', value: 14 }, { t: 'attack', value: 14 }, { t: 'buff', status: 'str', value: 2 }] },
+    pattern: [{ t: 'debuff', status: 'vuln', value: 3 }, { t: 'attack', value: 18 }, { t: 'attack', value: 18 }, { t: 'buff', status: 'str', value: 2 }] },
 
   // ---- Boss（3，按 meta.wins 轮换；内容批 P1-5）----
   // 二阶段：血量降到 phase2At 比例以下，切换到 pattern2（从「稳定小碎打」变「大招 + 空窗」）。
@@ -61,7 +63,7 @@ export const ENEMIES = [
       { t: 'attack', value: 11 },
       { t: 'buff', status: 'str', value: 2 },
       { t: 'attack', value: 14 },
-      { t: 'attack', value: 13 },
+      { t: 'attack', value: 15 },
     ],
     pattern2: [
       { t: 'attack', value: 20 },
@@ -72,11 +74,14 @@ export const ENEMIES = [
     ] },
   { id: 'e.bellringer', n: '摇钟人', tier: 'boss', hp: 140, shape: 101, sub: 'BOSS · THE BELL RINGER',
     phase2At: 0.55,
-    pattern: [{ t: 'attack', value: 10 }, { t: 'attack', value: 10 }, { t: 'debuff', status: 'weak', value: 2 }, { t: 'attack', value: 15 }],
+    pattern: [{ t: 'attack', value: 10 }, { t: 'attack', value: 10 }, { t: 'debuff', status: 'weak', value: 2 }, { t: 'attack', value: 19 }],
     pattern2: [{ t: 'attack', value: 18 }, { t: 'attack', value: 18 }, { t: 'block', value: 12 }, { t: 'buff', status: 'str', value: 2 }] },
-  { id: 'e.ninthshadow', n: '第九个自己', tier: 'boss', hp: 120, shape: 102, sub: 'BOSS · YOUR NINTH SELF',
+  // 第三批 P1-12：hp 120 → 130（对齐 hpForTurns(12)=130，它曾是三个 Boss 里血最少的，
+  // 而轮换修好后它会真的轮到玩家头上）。三段 attack 9 → 13：原标称 6.75/回合是三只里最低，
+  // 修好轮换后「最弱 Boss 被永久锁定」没了，但它的输出仍必须拉平到 9~10。
+  { id: 'e.ninthshadow', n: '第九个自己', tier: 'boss', hp: 130, shape: 102, sub: 'BOSS · YOUR NINTH SELF',
     phase2At: 0.5,
-    pattern: [{ t: 'attack', value: 9 }, { t: 'attack', value: 9 }, { t: 'attack', value: 9 }, { t: 'buff', status: 'str', value: 1 }],
+    pattern: [{ t: 'attack', value: 13 }, { t: 'attack', value: 13 }, { t: 'attack', value: 13 }, { t: 'buff', status: 'str', value: 1 }],
     pattern2: [{ t: 'attack', value: 13 }, { t: 'attack', value: 13 }, { t: 'attack', value: 13 }, { t: 'buff', status: 'str', value: 2 }] },
 ];
 

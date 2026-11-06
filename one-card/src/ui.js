@@ -14,6 +14,7 @@ import { EPITAPHS } from '../config/epitaphs.js';
 import { PHASE, dailyInfo } from './run.js';
 import { NODE_META } from './mapgen.js';
 import { Fx } from './fx.js';
+import { Sfx } from './sfx.js';
 import { resolveLogEnv, lastLog, amendLastLog } from './logger.js';
 import { load } from './storage.js';
 
@@ -33,6 +34,8 @@ export class Ui {
       energy: $('energy'),
       energyNow: $('energy-now'),
       energyMax: $('energy-max'),
+      block: $('block'),
+      blockNow: $('block-now'),
       stage: $('stage'),
       enemyZone: $('enemy-zone'),
       logZone: $('log-zone'),
@@ -56,6 +59,12 @@ export class Ui {
       fx: $('fx'),
     };
     this.fx = new Fx(this.el.fx);
+    // 第四批 P1-5：音效实例跟着 UI 走 —— 表现层的东西不该漏进 run/combat。
+    this.sfx = new Sfx();
+    this._bindSfxUnlock();
+    // 第四批 P1-2：数值弹跳要记住"上一次的值"。只活在 UI 实例上，不进 run 快照。
+    this._prevEnergy = -1;
+    this._prevBlock = -1;
     this.screen = 'title';
     this.logCursor = 0;
     this.handScroll = 0;
@@ -89,8 +98,63 @@ export class Ui {
   skipAnimations() {
     this.fx.clear();
     const ec = document.getElementById('enemy-card');
-    if (ec) ec.classList.remove('hit');
+    if (ec) ec.classList.remove('hit', 'is-strike');
+    // 第四批 P1-1：震屏与飞行副本也属于"一次性动画"，点屏幕就该立刻收掉。
+    if (this.el.stage) this.el.stage.classList.remove('shake');
+    for (const g of document.querySelectorAll('.card-ghost')) g.remove();
     if (this.el.playerFigure) this.el.playerFigure.classList.remove('is-strike', 'is-block', 'is-hurt');
+  }
+
+  /** 第四批 P1-5：iOS 只在用户手势里允许创建/恢复 AudioContext —— 挂一次就够。 */
+  _bindSfxUnlock() {
+    const un = () => this.sfx.unlock();
+    document.addEventListener('pointerdown', un, { once: true, capture: true });
+    document.addEventListener('keydown', un, { once: true, capture: true });
+  }
+
+  /** 第四批 P1-2：数值变化时让徽标"弹一下"（≤200ms）。reduce 下直接不动。 */
+  _bump(el) {
+    if (!el || this.fx.reduced) return;
+    el.classList.remove('bump');
+    void el.offsetWidth; // 强制重排：连续两次变化也能重启动画（否则第二次加类无效）
+    el.classList.add('bump');
+    clearTimeout(el._bumpTimer);
+    el._bumpTimer = setTimeout(() => el.classList.remove('bump'), 220);
+  }
+
+  /** 第四批 P1-1：出牌飞行副本。
+   *  为什么做成"克隆一个固定在视口原位的副本"而不是"延后 renderCombat"：
+   *  延后重绘会让 act.playCard 的 UI 更新滞后（探针连打时会读到旧手牌），
+   *  而克隆副本既能保住"牌飞出去"的观感，又让 combat 结算与重绘保持同步。
+   *  用法：重绘**前** const fly = ui.cardGhost(uid)；重绘**后** fly?.()。 */
+  cardGhost(uid) {
+    if (this.fx.reduced) return null;
+    const cardEl = document.querySelector('#hand-track .card[data-uid="' + uid + '"]');
+    if (!cardEl) return null;
+    const r = cardEl.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    const ghost = cardEl.cloneNode(true);
+    ghost.removeAttribute('data-uid');
+    ghost.classList.add('card-ghost');
+    ghost.style.position = 'fixed';
+    ghost.style.left = r.left + 'px';
+    ghost.style.top = r.top + 'px';
+    ghost.style.width = r.width + 'px';
+    ghost.style.height = r.height + 'px';
+    ghost.style.margin = '0';
+    ghost.style.zIndex = '80';
+    ghost.style.pointerEvents = 'none';
+    document.body.appendChild(ghost);
+    return () => {
+      const p = this.enemyPos();
+      const s = this.el.stage.getBoundingClientRect();
+      const tx = Math.round(s.left + p.x - (r.left + r.width / 2));
+      const ty = Math.round(s.top + p.y - (r.top + r.height / 2));
+      ghost.style.setProperty('--gx', tx + 'px');
+      ghost.style.setProperty('--gy', ty + 'px');
+      requestAnimationFrame(() => ghost.classList.add('go'));
+      setTimeout(() => ghost.remove(), 320);
+    };
   }
 
   /** 阶段 5 / T3：按环节切背景（只在 #stage 上加 mood-* class，只改 background-color，transition 0.6s）。 */
@@ -246,25 +310,38 @@ export class Ui {
     const done = POOL_CARDS.length - meta.unlockedCards.length;
     // 内容批 P1-6：难度阶梯显示（封顶 5）。0 阶不显示 —— 第一世的标题页不该有数字。
     const asc = meta.ascension || 0;
+    const carriedCard = meta.carried && CARD_MAP[meta.carried] ? CARD_MAP[meta.carried] : null;
     $('title-stats').innerHTML =
       `已归来 ${meta.runs} 世 · 抵达第九层 ${meta.wins} 次<br>` +
       `牌谱 ${meta.unlockedCards.length} / ${POOL_CARDS.length} · 遗物 ${meta.unlockedRelics.length} / ${RELICS.length}` +
       (done > 0 ? `<br>还有 <b>${done}</b> 张牌没被你带回来` : '<br>你把所有的牌都带回来了。') +
-      (asc > 0 ? `<br>第九层之下 <b>${'ⅠⅡⅢⅣⅤ'[Math.min(asc, 5) - 1]}</b> · 敌人血量 +${asc * 12}%` : '') +
+      // 第三批 P0-3：本世带着哪张牌 —— 它是这个游戏的全部卖点，标题页必须看得见、点得开
+      (carriedCard
+        ? `<br>本世带着 <b id="title-carried" style="color:var(--gold);cursor:pointer">${carriedCard.n}</b>` +
+          `（${typeText(carriedCard.t)} · ${(ARCHETYPE_MAP[carriedCard.a] || {}).name || ''}）`
+        : '') +
+      (asc > 0 ? `<br>第九层之下 <b>${'ⅠⅡⅢⅣⅤⅥⅦⅧ'[Math.min(asc, 8) - 1]}</b> · 敌人血量 +${asc * 12}%` : '') +
       // 内容批 P1-8：世记 —— 最近 6 世，最新的在最上面（纯 DOM，不新开屏）
       this.historyHtml(meta);
     this.renderHud(null);
+    const tc = $('title-carried');
+    if (tc) tc.onclick = () => this.toast(describeCard(carriedCard).replace(/<\/?b>/g, ''), 2600);
   }
 
-  /** 内容批 P1-8：世记（最近 6 世）。流派名必须走 ARCHETYPE_MAP，不在模板里写死中文映射。 */
+  /**
+   * 内容批 P1-8：世记（最近 6 世）。流派名必须走 ARCHETYPE_MAP，不在模板里写死中文映射。
+   * 第三批 P0-3：行尾补「带走了什么」—— e.carried 早就被写进历史里了，只是没显示。
+   * 第三批 P1-11：每日局也会进世记（run === null），显示为「今日」而不是「第 N 世」。
+   */
   historyHtml(meta) {
     const h = (meta.history || []).slice(-6).reverse();
     if (!h.length) return '';
     return `<div class="hist">${h
       .map(
         (e) =>
-          `第 ${e.run} 世 · ${(ARCHETYPE_MAP[e.arch] || {}).name || e.arch} · ` +
-          `${e.cleared ? '通关' : `死在第 ${e.floor} 层`} · 牌组 ${e.deck} 张`
+          `${e.daily ? '今日' : `第 ${e.run} 世`} · ${(ARCHETYPE_MAP[e.arch] || {}).name || e.arch} · ` +
+          `${e.cleared ? '通关' : `死在第 ${e.floor} 层`} · 牌组 ${e.deck} 张` +
+          (e.carried && CARD_MAP[e.carried] ? ` · 带着 ${CARD_MAP[e.carried].n}` : '')
       )
       .join('<br>')}</div>`;
   }
@@ -273,8 +350,14 @@ export class Ui {
   showArchetypePicker() {
     this.show('title');
     const actions = document.querySelector('#screen-title .title-actions');
+    const carriedNow = this.h.getMeta().carried && CARD_MAP[this.h.getMeta().carried]
+      ? CARD_MAP[this.h.getMeta().carried] : null;
     actions.innerHTML =
       `<div style="font-size:12px;color:var(--paper-dim);margin-bottom:2px">选择你这一世的身体</div>` +
+      // 第三批 P0-3：选流派时必须知道「这一世会带上什么」—— 否则没法做「带回来的毒核心 → 继续选蚀」这个决策
+      (carriedNow
+        ? `<div style="font-size:11px;color:var(--gold);margin-bottom:6px">本世会带上「${carriedNow.n}」—— 选同一流派更容易凑出 combo</div>`
+        : '') +
       ARCHETYPES.map(
         (a) => `<button class="big" data-arch="${a.id}" style="text-align:left;letter-spacing:0">
           <span style="color:var(--${a.color})">${a.name}</span> · ${a.tag}
@@ -357,11 +440,45 @@ export class Ui {
       wrap.innerHTML = `也可以走：<button data-alt="1">${altLabel}</button>`;
       wrap.querySelector('[data-alt]').onclick = (ev) => {
         ev.stopPropagation();
-        this.h.onAdvance(upcoming.uid);
+        // 第三批 P0-1：第二参 true = 明确走备选。旧实现与主路线共用同一条路径，
+        // 于是「点遗迹」和「点屏幕」结果完全一样，这个决策根本不存在。
+        this.h.onAdvance(upcoming.uid, true);
       };
       this.el.mapBody.appendChild(wrap);
     }
-    $('screen-map').onclick = () => this.h.onAdvance();
+    // 第三批 P1-10：整屏点击 = 前进，但地图是可滚动的 —— 滑一下浏览路线就误进节点。
+    // 口径：同一次触摸里位移超过 8px 就算滑动，松手补发的那个 click 一律不前进。
+    let sx = 0;
+    let sy = 0;
+    let moved = false;
+    this.el.mapBody.ontouchstart = (e) => {
+      moved = false;
+      sx = e.touches[0].clientX;
+      sy = e.touches[0].clientY;
+    };
+    this.el.mapBody.ontouchmove = (e) => {
+      if (Math.abs(e.touches[0].clientX - sx) > 8 || Math.abs(e.touches[0].clientY - sy) > 8) moved = true;
+    };
+    $('screen-map').onclick = () => {
+      if (moved) {
+        moved = false;
+        return;
+      }
+      this.h.onAdvance();
+    };
+    // 显式「继续」按钮：滑动被屏蔽之后，需要一个不靠「点空白」的明确出口。
+    // 每次重渲染先删再建，避免叠加。
+    const oldGo = document.getElementById('btn-map-go');
+    if (oldGo) oldGo.remove();
+    const go = document.createElement('button');
+    go.id = 'btn-map-go';
+    go.className = 'big';
+    go.textContent = '继续 · 下一站';
+    go.onclick = (ev) => {
+      ev.stopPropagation();
+      this.h.onAdvance();
+    };
+    this.el.mapBody.parentElement.appendChild(go);
   }
 
   // ---------- 战斗 ----------
@@ -400,6 +517,9 @@ export class Ui {
         </div>
         <div class="intent ${iv.kind}">
           <span>意图</span><span class="iv">${iv.value}</span><span>${iv.text}</span>
+          ${iv.kind === 'atk' && s.player.block > 0 && Number.isFinite(Number(iv.value))
+            ? `<span class="iv-net">你还吃 ${Math.max(0, Number(iv.value) - s.player.block)}</span>`
+            : ''}
         </div>
       </div>`;
 
@@ -409,18 +529,29 @@ export class Ui {
     if (firstLife && !this._tutDismissed) {
       this.el.logZone.insertAdjacentHTML('beforebegin', `
         <div id="tut" class="tut">
-          <b>点手牌出牌</b>（左上角数字是费用，灰掉的牌是费不够）· 每回合 3 点能量<br>
-          敌人卡下方是<b>意图</b>，提前看到伤害才能决定挡还是打 · 打完点<b>结束回合</b>
+          <b>点手牌出牌</b>：左上数字是费用，灰牌是费不够 · 每回合 3 能量<br>
+          <b>意图</b>是它下回合要做什么 · 打完点<b>结束回合</b>
         </div>`);
     }
     this.renderHand(combat);
     this.renderPiles(combat);
     // 机制批 P0-2：能量可见。数据源就是 s.player，不新增字段。
     if (this.el.energy) {
+      // 第四批 P1-2：数字硬跳会让"消耗/获得"没有量感 —— 变化时让徽标弹一下（≤200ms）。
+      if (this._prevEnergy >= 0 && this._prevEnergy !== s.player.energy) this._bump(this.el.energy);
+      this._prevEnergy = s.player.energy;
       this.el.energyNow.textContent = s.player.energy;
       this.el.energyMax.textContent = s.player.maxEnergy;
       this.el.energy.classList.toggle('empty', s.player.energy <= 0);
       this.el.energy.classList.toggle('gain', s.player.energy > s.player.maxEnergy); // 熵流过载时 >3
+    }
+    // 第三批 P0-7：玩家的格挡必须可见 —— 否则「这一下挡还是打」全靠心算。
+    // 能量至少有「打出牌后数字变化」的间接反馈，格挡连间接反馈都没有（只在获取瞬间闪一下盾）。
+    if (this.el.block) {
+      if (this._prevBlock >= 0 && this._prevBlock !== s.player.block) this._bump(this.el.block);
+      this._prevBlock = s.player.block;
+      this.el.blockNow.textContent = s.player.block;
+      this.el.block.classList.toggle('on', s.player.block > 0);
     }
 
     const any = s.hand.some((i) => combat.canPlay(i));
@@ -535,6 +666,17 @@ export class Ui {
     this.el.pileDiscard.textContent = s.discard.length;
   }
 
+  /** 第四批 P1-1：整屏轻震（≤260ms）。reduce 下由 CSS 兜底归零，这里再挡一次避免无谓的类操作。 */
+  shakeStage() {
+    const st = this.el.stage;
+    if (!st || this.fx.reduced) return;
+    st.classList.remove('shake');
+    void st.offsetWidth;
+    st.classList.add('shake');
+    clearTimeout(this._shakeTimer);
+    this._shakeTimer = setTimeout(() => st.classList.remove('shake'), 280);
+  }
+
   /** 把战斗日志的新增部分翻译成画面特效（阶段 5 / T1+T2：四类动作 + 飘字分级） */
   playFxC(combat, from) {
     const entries = combat.state.log.slice(from);
@@ -557,6 +699,9 @@ export class Ui {
             setTimeout(() => card.classList.remove('hit'), 320);
           }
           this.playerPose('strike', 220); // 玩家前扑
+          this.sfx.play('hit');
+          // 第四批 P1-1：大伤害给整屏一下"重量"（单次 ≥12 或单批合计 ≥12）
+          if (big) this.shakeStage();
         } else {
           const p = this.playerAnchor;
           this.fx.float(p.x, p.y, '-' + l.value, '#e24b4a', 24);
@@ -564,8 +709,18 @@ export class Ui {
             this.fx.ring(p.x, p.y + 10, '#5b93d6');
             // T2：格挡吸收单独飘字「挡 N」，蓝，与伤害飘字错开位置。
             this.fx.float(p.x + 28, p.y - 16, '挡 ' + l.absorbed, '#5b93d6', 18);
+            this.sfx.play('block');
           } else {
             this.playerPose('hurt', 200); // 实际掉血才轻微后仰；被格挡挡下时玩家不晃
+            this.sfx.play('hurt');
+          }
+          // 第四批 P1-1：敌人出手时本体前扑一下 —— 否则玩家只是"莫名掉血"。
+          const mine = $('enemy-card');
+          if (mine) {
+            mine.classList.remove('is-strike');
+            void mine.offsetWidth;
+            mine.classList.add('is-strike');
+            setTimeout(() => mine.classList.remove('is-strike'), 260);
           }
         }
       } else if (l.t === 'block') {
@@ -573,6 +728,7 @@ export class Ui {
         if (l.who === 'self') {
           this.fx.ring(p.x, p.y + 20, '#5b93d6');
           this.playerPose('block', 380); // 出盾姿势
+          this.sfx.play('block');
         }
       } else if (l.t === 'energy') {
         // T1：补上缺失的获能分支 —— 紫/金充能闪光 + 飘字「+N 能量」。
@@ -586,6 +742,7 @@ export class Ui {
       } else if (l.t === 'heal' && l.value > 0) {
         const p = this.playerAnchor;
         this.fx.float(p.x, p.y, '+' + l.value, '#7ba64a', 22);
+        this.sfx.play('heal');
       } else if (l.t === 'poison') {
         const p = l.who === 'self' ? this.playerAnchor : enemyPos();
         this.fx.float(p.x, p.y, '毒 ' + l.value, '#7ba64a', 20);
@@ -705,10 +862,17 @@ export class Ui {
       `<div style="margin-bottom:20px"><div style="font-size:13px;color:var(--gold);margin-bottom:8px">遗物 · ${meta.unlockedRelics.length}/${RELICS.length}</div>
         <div style="display:flex;flex-wrap:wrap;gap:8px">${RELICS.map((r) =>
           meta.unlockedRelics.includes(r.id)
-            ? `<span class="flag buff" style="padding:5px 9px;font-size:11px">${r.n}</span>`
+            // 第三批 P0-3：牌谱里的遗物必须能点开看效果 —— describeRelic 已在 HUD 用了，这里只是补上
+            ? `<span class="flag buff" data-relic="${r.id}" style="padding:5px 9px;font-size:11px;cursor:pointer">${r.n}</span>`
             : `<span class="flag" style="padding:5px 9px;font-size:11px;opacity:.4">已封印</span>`
         ).join('')}</div></div>
         <div style="display:flex;justify-content:center"><button id="btn-codex-back">返回</button></div>`;
+    for (const el of this.el.metaBody.querySelectorAll('[data-relic]')) {
+      el.onclick = () => {
+        const r = RELICS.find((x) => x.id === el.dataset.relic);
+        if (r) this.toast(`${r.n}：${describeRelic(r).replace(/<br>/g, '；').replace(/<\/?b>/g, '')}`, 3200);
+      };
+    }
     $('btn-codex-back').onclick = () => this.h.onBack();
   }
 
@@ -791,14 +955,28 @@ export class Ui {
     }
   }
 
+  /**
+   * 「带回一张牌」。两种模式（第三批 P0-2）：
+   *  ① 还有封印牌 → 从封印池三选一解锁（旧行为，一字未改）
+   *  ② 卡池已全解锁 → 从**本世牌组**里挑 3 张带走。
+   *     口径：第 24 世起 sealedCards 为空，旧实现会直接落到 OVER —— 仪式断供，
+   *     「一世一牌」在第 24 世消失。所以这里必须给一条兜底路径。
+   */
   renderUnlock(run) {
     this.show('meta');
     this.renderHud(run);
-    const u = run.pendingUnlock;
-    this.el.metaTitle.textContent = '带回来的那一张';
+    const u = run.pendingUnlock || { cards: [], relics: [] };
+    const carry = run.pendingCarry;
+    const isCarry = !!(carry && carry.length);
+    const cards = isCarry ? carry : u.cards;
+    this.el.metaTitle.textContent = isCarry ? '带走这一世的一张牌' : '带回来的那一张';
     this.el.metaBody.innerHTML =
-      `<div class="reward-note" style="margin:0 0 16px">每一世，你只带回一张牌。<br>它会躺进你下一世的起手牌组。</div>
-       <div class="card-row reward">${u.cards
+      `<div class="reward-note" style="margin:0 0 16px">${
+        isCarry
+          ? '牌谱已经满了。<br>这一次，你可以从这一世打过的牌里带走一张。'
+          : '每一世，你只带回一张牌。<br>它会躺进你下一世的起手牌组。'
+      }</div>
+       <div class="card-row reward">${cards
          .map((c) => this.cardHtml(c))
          .join('')}</div>
        ${u.relics.length ? `<div class="reward-note">同时解封遗物：<span style="color:var(--gold)">${u.relics[0].n}</span></div>` : ''}`;

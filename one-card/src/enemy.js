@@ -60,10 +60,12 @@ export function intentView(state, enemy) {
       return { kind: 'atk', text: '攻击', value: previewAttack(state, it.value) };
     case 'block':
       return { kind: 'def', text: '格挡', value: it.value };
+    // 第三批 P1-9：增益与减益以前共用一个 kind，玩家看不出「这条对我是坏消息」。
+    //      文案同时点明施法对象 —— 短码里丢掉的敌我信息在这里补回来。
     case 'buff':
-      return { kind: 'buf', text: '增益', value: `${STATUS_TEXT[it.status] || it.status} +${it.value}` };
+      return { kind: 'buf', text: '强化自身', value: `${STATUS_TEXT[it.status] || it.status} +${it.value}` };
     case 'debuff':
-      return { kind: 'buf', text: '施加', value: `${STATUS_TEXT[it.status] || it.status} +${it.value}` };
+      return { kind: 'deb', text: '施加于你', value: `${STATUS_TEXT[it.status] || it.status} +${it.value}` };
     default:
       return { kind: 'def', text: '——', value: '' };
   }

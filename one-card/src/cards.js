@@ -72,16 +72,38 @@ export function removeCard(state, uid) {
   return false;
 }
 
-/** 奖励卡池：稀有度加权（口径 60/30/10），不放回抽 n 张
- *  机制批 P0-4：opts.guaranteeArch 先给本流派留一个位置，其余按原权重补齐；
- *              保持旧调用签名可用（荒野关 rollWildReward 不传这个参数就还是旧行为）。 */
+/**
+ * 奖励卡池：稀有度加权（口径 60/30/10），不放回抽 n 张。
+ *
+ * 三层保底，依次生效（越靠前越优先占位）：
+ *  ① opts.keyCards + opts.seenKey + opts.rewardIndex —— 本局前 4 次奖励、且还没见过关键牌时，
+ *     先给一张没见过的关键牌（第三批 P0-6）。
+ *     口径：只保底 **1 次**，保证「凑得起来」，不保证「一定凑齐」。
+ *     起因：实测全解锁池下一局 9 次三选一，蚀/熵有 49% 一张关键牌都见不到，
+ *          「凑出 combo 的瞬间」这个写在 project.json 里的核心幻想根本不发生。
+ *  ② opts.guaranteeArch —— 先给本流派留一个位置（机制批 P0-4）。
+ *  ③ 其余按稀有度权重补齐。
+ *
+ * 保持旧调用签名可用：荒野关 rollWildReward 不传 opts，就仍是 ②③ 的旧行为
+ * （荒野奖励里不该出现关键牌保底 —— 那是节点奖励的设计，不是实时关的）。
+ */
 export function rollRewardCards(rng, unlockedCids, n = CONST.REWARD_CHOICES, opts = {}) {
   const pool = POOL_CARDS.filter((c) => unlockedCids.has(c.id));
   const picked = [];
   const used = new Set();
-  // 口径：先给本流派一个位置，再按稀有度权重补齐 —— 否则 28.9%~42.3% 的局一张关键牌都摸不到。
   const own = opts.guaranteeArch ? pool.filter((c) => c.a === opts.guaranteeArch) : [];
-  if (own.length && n > 1) {
+  const keyIds = opts.keyCards || [];
+  const seenKey = opts.seenKey || new Set();
+  const unseenKey = pool.filter((c) => keyIds.includes(c.id) && !seenKey.has(c.id));
+  // 第三批 P0-6：**整局只保底 1 次**。
+  //   判据必须是「本局一张关键牌都还没见过」，不是「还有没见过的关键牌」——
+  //   后者会在前 4 次奖励里连发，三张全齐率实测 100%，把「凑 combo」直接变成白送。
+  const seenAnyKey = keyIds.some((id) => seenKey.has(id));
+  if (!seenAnyKey && unseenKey.length && opts.rewardIndex < CONST.KEYCARD_GUARANTEE_WINDOW) {
+    const c = rng.weighted(unseenKey, (x) => CONST.RARITY_WEIGHT[x.r] || 0);
+    used.add(c.id);
+    picked.push(c);
+  } else if (own.length && n > 1) {
     const c = rng.weighted(own, (x) => CONST.RARITY_WEIGHT[x.r] || 0);
     used.add(c.id);
     picked.push(c);

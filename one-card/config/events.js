@@ -190,7 +190,9 @@ export const EVENTS = [
     n: '矮坛',
     text: '坛口只到膝盖。里面堆着别人没带走的、下一世的本钱。',
     choices: [
-      { label: '抓一把', note: '获得 1 张随机卡牌与 1 件遗物，失去 8 点生命', apply: { loseHp: 8, gainCard: 'random', count: 1, gainRelic: 1 } },
+      // 第三批 P0-4/D 组补价：按 docs/04 §3.2 价目表，遗物一口价 8 HP、随机牌 4~6 HP，
+      // 两者合计须 12~14 HP。原写 8 HP 等于白送一张牌。
+      { label: '抓一把', note: '获得 1 张随机卡牌与 1 件遗物，失去 12 点生命', apply: { loseHp: 12, gainCard: 'random', count: 1, gainRelic: 1 } },
       { label: '跪下', note: '生命上限 +10', apply: { maxHp: 10 } },
       { label: '踢翻它', note: '随机移除 1 张牌，获得 1 张稀有卡牌', apply: { removeCard: 1, gainCard: 'rare', count: 1 } },
     ],
@@ -214,7 +216,9 @@ export const EVENTS = [
     choices: [
       { label: '拆线', note: '失去 8 点生命，获得 1 件遗物', apply: { loseHp: 8, gainRelic: 1 } },
       { label: '坐着织', note: '回复 10 点生命', apply: { heal: 10 } },
-      { label: '抽一缕', note: '失去 5 点生命，获得 2 张随机卡牌', apply: { loseHp: 5, gainCard: 'random', count: 2 } },
+      // 第三批 P0-4/D 组补价：价目表是「每张随机牌 4~6 HP」，2 张须 8~12 HP。
+      // 原写 5 HP = 每张 2.5，等于半价卖牌 —— 护栏修好后才暴露出来。
+      { label: '抽一缕', note: '失去 10 点生命，获得 2 张随机卡牌', apply: { loseHp: 10, gainCard: 'random', count: 2 } },
     ],
   },
   {

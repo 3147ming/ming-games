@@ -1,5 +1,5 @@
-// 遗物配置表（24 件）
-// 口径：遗物承担「局间变化性」。单局获得 4~5 件，C(24,5) = 42504 种组合，
+// 遗物配置表（32 件：常见 14 / 稀有 11 / 秘藏 7，其中初始封印 18）
+// 口径：遗物承担「局间变化性」。单局获得 4~5 件，C(32,5) = 201376 种组合，
 //      因此不需要靠扩大卡池来制造变化（见 docs/01 §8.2 的卡池取舍）。
 // 钩子口径：combatStart / turnStart / cardPlayed（带条件）/ combatEnd
 // 效果复用卡牌的 ops DSL，不新增一套语法。
@@ -19,7 +19,7 @@ export const RELICS = [
   { id: 'o.gear', n: '齿轮', r: 1, hooks: { cardPlayed: [{ cond: { cardType: 'skill' }, ops: [{ op: 'block', value: 3 }] }] } },
   { id: 'o.scourge', n: '苦修带', r: 1, hooks: { combatStart: [{ op: 'loseHp', value: 3 }, { op: 'status', status: 'str', value: 3, who: 'self' }] } },
 
-  // ---- 稀有（12，初始封印，每局结束解锁 1 件）----
+  // ---- 稀有（11 + 秘藏 7 = 18 件初始封印，每局结束解锁 1 件）----
   { id: 'u.mothscale', n: '灯蛾鳞', r: 2, sealed: true, hooks: { turnStart: [{ op: 'draw', value: 1 }] } },
   { id: 'u.amnesty', n: '赦符', r: 2, sealed: true, hooks: { combatEnd: [{ op: 'heal', value: 4 }] } },
   { id: 'u.bloodline', n: '血脉', r: 2, sealed: true, hooks: { combatStart: [{ op: 'status', status: 'str', value: 1, who: 'self' }, { op: 'status', status: 'dex', value: 1, who: 'self' }] } },

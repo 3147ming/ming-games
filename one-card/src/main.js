@@ -8,6 +8,8 @@ import { Ui } from './ui.js';
 import { loadMeta } from './meta.js';
 import { Rng } from './rng.js';
 import { Arena, rollWildReward, isWildPending, markWildHandled } from './arena.js';
+import { RELICS } from '../config/relics.js';
+import { describeRelic } from './describe.js';
 import { BY_TIER } from '../config/enemies.js';
 import { CONST } from '../config/constants.js';
 import { resolveLogEnv, dumpJsonl } from './logger.js';
@@ -24,9 +26,9 @@ let arena = null; // 阶段 6：荒野关实例（运行时独占，退出后清
 const ui = new Ui({
   getMeta: () => meta,
   onStartRun,
-  onAdvance: (uid) => {
+  onAdvance: (uid, alt) => {
     if (!run || run.phase !== PHASE.MAP) return;
-    run.advance(uid);
+    run.advance(uid, alt === true);
     renderPhase();
   },
   onPlayCard,
@@ -61,7 +63,9 @@ const ui = new Ui({
     if (run) ui.renderDeckView(run);
   },
   onResume: () => renderPhase(),
-  onAgain: (arch) => onStartRun(arch),
+  // 机制批 P0-5 收口：沿用出身。旧实现只传 arch，用出身开的局死后点「再来一世」会
+  // 静默退回默认入门牌 —— 玩家的选择被吃掉，而且没有任何提示。
+  onAgain: (arch) => onStartRun(arch, { originId: run ? run.originId : null }),
   onResumeRun: () => resumeRun(),
   onDaily: () => onStartDaily(),
   onReroll: () => {
@@ -74,6 +78,25 @@ function newSeed() {
   const g = new Rng(String(Date.now()) + Math.random());
   return g.int(1e9).toString(36).toUpperCase();
 }
+
+/** 第四批 P1-5：标题页的静音钮。状态只反映"静音开关"本身 ——
+ *  系统开了 reduced-motion 时不发声，但按钮不该显示成"你把它关了"。 */
+function bindSfxToggle() {
+  const btn = document.getElementById('btn-sfx');
+  if (!btn) return;
+  const sync = () => {
+    btn.textContent = ui.sfx.muted ? '✕' : '♪';
+    btn.classList.toggle('off', ui.sfx.muted);
+    btn.setAttribute('aria-pressed', ui.sfx.muted ? 'false' : 'true');
+    btn.title = ui.sfx.reduced ? '系统已开启"减弱动态效果"，本作不播放音效' : ui.sfx.muted ? '音效已关闭' : '音效已开启';
+  };
+  btn.onclick = () => {
+    ui.sfx.toggle();
+    sync();
+  };
+  sync();
+}
+bindSfxToggle();
 
 function onStartRun(archetypeId, opts = {}) {
   // 机制批 P0-6：开新局先清掉任何遗留的「继续这一世」快照，
@@ -102,7 +125,13 @@ function onStartDaily() {
 function resumeRun() {
   const snap = load(CONST.RUN_KEY, null);
   if (!snap || snap.v !== 1) return false;
-  run = Run.restore(snap, meta);
+  const restored = Run.restore(snap, meta);
+  // 第三批 P1-8：坏档（缺 deck/map）清掉并回标题页，不再白屏。
+  if (!restored) {
+    clear(CONST.RUN_KEY);
+    return false;
+  }
+  run = restored;
   combat = null;
   combatNodeUid = null;
   arena = null;
@@ -116,6 +145,8 @@ function ensureCombat() {
   combat = new Combat({ run, enemyDef: run.combatEnemy(), rng: run.rng });
   combatNodeUid = run.cursor;
   combat.start();
+  // 第三批 P1-8：税单必须在进战斗时说出来，否则玩家只会觉得「刷新后血变少了」。
+  if (run.lastToll > 0) ui.toast(`你在同一场战斗里倒下过：-${run.lastToll} 生命`, 2400);
 }
 
 function onPlayCard(uid) {
@@ -126,7 +157,12 @@ function onPlayCard(uid) {
     ui.toast(res.reason === 'energy' ? '能量不够' : '现在不能出这张牌');
     return;
   }
+  // 第四批 P1-1：重绘会把这张牌的 DOM 整个换掉（"瞬移消失"）。
+  // 先在视口原位克隆一张，重绘后让它飞向敌人再淡出 —— 结算与重绘仍然同步。
+  const fly = ui.cardGhost(uid);
+  ui.sfx.play('card');
   ui.renderCombat(run, combat);
+  if (fly) fly();
   ui.playFxC(combat, before);
   settleIfOver();
 }
@@ -148,7 +184,17 @@ function settleIfOver() {
   setTimeout(() => {
     ui.busy = false;
     const result = combat.finish();
+    // 第四批 P1-5：胜负各有提示音（与结算屏的淡入同一拍）
+    ui.sfx.play(result.won ? 'win' : 'lose');
+    // 第三批 P0-3：精英战后主动报一声拿到什么遗物（第一批 P0-7 第 3 步漏了这一环）。
+    // 必须在 resolveCombat 之前取 —— 它内部 grantRelic() 才会往 history 里写这条。
+    const relicBefore = run.history.filter((h) => h.kind === 'relic').length;
     run.resolveCombat(result);
+    const relics = run.history.filter((h) => h.kind === 'relic');
+    if (relics.length > relicBefore) {
+      const r = RELICS.find((x) => x.id === relics[relics.length - 1].id);
+      if (r) ui.toast(`获得遗物 ${r.n}：${describeRelic(r).replace(/<\/?b>/g, '')}`, 2800);
+    }
     combat = null;
     combatNodeUid = null;
     renderPhase();
@@ -206,6 +252,7 @@ function startArena() {
     reducedMotion: ui.fx.reduced,
     onDone: (won, core) => {
       arena = null;
+      ui.sfx.play(won ? 'win' : 'lose');
       if (won) {
         // 固定 1 张荒野牌（按割草数据映射）+ 2 张常规池牌；主 rng 仅消耗 rollRewardCards(...,2) 那 2 抽。
         run.rewardCards = rollWildReward(run, core);

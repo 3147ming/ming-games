@@ -8,6 +8,9 @@ export class Fx {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.items = [];
+    // 第四批 P1-6：硬上限。多段伤害一次 burst(14)×N 会让数组无界增长 ——
+    // 低端机在连打时会瞬时堆积几千个粒子。满则淘汰最旧，口径对齐 arena.js 的 MAX_PARTICLES。
+    this.MAX = 240;
     this.raf = 0;
     this.last = 0;
     this.dpr = 1;
@@ -25,6 +28,13 @@ export class Fx {
 
   get reduced() { return this._reduced; }
 
+  /** 第四批 P1-6：所有粒子/飘字的唯一入口 —— 满 MAX 就先淘汰最旧的一条。
+   *  上限只影响 push，不影响「静止时停 RAF」（items 仍会自然清空到 0）。 */
+  _push(item) {
+    if (this.items.length >= this.MAX) this.items.shift();
+    this.items.push(item);
+  }
+
   resize() {
     const c = this.canvas;
     if (!c) return;
@@ -41,7 +51,7 @@ export class Fx {
 
   /** 伤害飘字（big=大伤害：字号 1.4x + 轻微震动，reduced-motion 下不震） */
   float(x, y, text, color = '#e8e3da', size = 22, big = false) {
-    this.items.push({ k: 'text', x, y, baseX: x, text, color, size, big, t: 0, life: big ? 1.05 : 0.95, vy: -46 });
+    this._push({ k: 'text', x, y, baseX: x, text, color, size, big, t: 0, life: big ? 1.05 : 0.95, vy: -46 });
     this.start();
   }
 
@@ -51,7 +61,7 @@ export class Fx {
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = 40 + Math.random() * 130;
-      this.items.push({
+      this._push({
         k: 'p',
         x,
         y,
@@ -69,14 +79,14 @@ export class Fx {
   /** 斩击弧线 */
   slash(x, y, color = '#d1544a') {
     if (this._reduced) return;
-    this.items.push({ k: 'slash', x, y, color, t: 0, life: 0.28, rot: -0.5 + Math.random() });
+    this._push({ k: 'slash', x, y, color, t: 0, life: 0.28, rot: -0.5 + Math.random() });
     this.start();
   }
 
   /** 格挡护盾环 */
   ring(x, y, color = '#5b93d6') {
     if (this._reduced) return;
-    this.items.push({ k: 'ring', x, y, color, t: 0, life: 0.42 });
+    this._push({ k: 'ring', x, y, color, t: 0, life: 0.42 });
     this.start();
   }
 
@@ -85,7 +95,7 @@ export class Fx {
     if (this._reduced) return;
     const n = 3;
     for (let i = 0; i < n; i++) {
-      this.items.push({
+      this._push({
         k: 'mist',
         x: x + (Math.random() - 0.5) * 22,
         y: y + (Math.random() - 0.5) * 12,

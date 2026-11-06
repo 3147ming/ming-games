@@ -1,4 +1,4 @@
-// 卡牌配置表（60 张 = 4 流派 × 15）
+// 卡牌配置表（74 张 = 2 基础 + 4 流派 × 18；其中进奖励池的 72 张）
 // 字段：id / a=流派 / n=牌名 / t=类型 / cost=能量 / r=稀有度(1-3) / ops=效果 / ex=消耗 / starter=入门牌 / sealed=初始封印
 // 关键口径：卡面描述由 ops 自动生成（见 src/describe.js），因此配置与文案永远不可能漂移。
 // 加一张卡 = 加一条数据，0 行战斗循环代码改动 —— 这是「选对类型」的硬指标。
@@ -29,32 +29,32 @@ export const CARDS = [
   { id: 'b.finalcut', a: 'blade', n: '绝命', t: 'attack', cost: 3, r: 3, sealed: true, ops: [{ op: 'damage', value: 30 }] },
 
   // ============ 霜 frost（格挡 / 虚弱 / 灵巧）============
-  { id: 'f.ward', a: 'frost', n: '冰盾', t: 'skill', cost: 1, r: 1, starter: true, ops: [{ op: 'block', value: 8 }] },
-  { id: 'f.froststrike', a: 'frost', n: '霜击', t: 'attack', cost: 1, r: 1, starter: true, ops: [{ op: 'damage', value: 5 }, { op: 'block', value: 4 }] },
+  { id: 'f.ward', a: 'frost', n: '冰盾', t: 'skill', cost: 1, r: 1, starter: true, ops: [{ op: 'block', value: 6 }] },
+  { id: 'f.froststrike', a: 'frost', n: '霜击', t: 'attack', cost: 1, r: 1, starter: true, ops: [{ op: 'damage', value: 5 }, { op: 'block', value: 3 }] },
   { id: 'f.freeze', a: 'frost', n: '凝冰', t: 'skill', cost: 1, r: 1, ops: [{ op: 'status', status: 'weak', value: 2, who: 'enemy' }] },
-  { id: 'f.bulwark', a: 'frost', n: '壁垒', t: 'skill', cost: 2, r: 1, ops: [{ op: 'block', value: 14 }] },
+  { id: 'f.bulwark', a: 'frost', n: '壁垒', t: 'skill', cost: 2, r: 1, ops: [{ op: 'block', value: 12 }] },
   { id: 'f.coldwave', a: 'frost', n: '寒潮', t: 'skill', cost: 2, r: 2, sealed: true, ops: [{ op: 'block', value: 8 }, { op: 'status', status: 'weak', value: 1, who: 'enemy' }, { op: 'status', status: 'vuln', value: 1, who: 'enemy' }] },
   { id: 'f.icicle', a: 'frost', n: '冰锥', t: 'attack', cost: 1, r: 1, ops: [{ op: 'damage', value: 4 }, { op: 'block', value: 3 }] },
   { id: 'f.reflect', a: 'frost', n: '反射', t: 'attack', cost: 1, r: 2, ops: [{ op: 'block', value: 6 }, { op: 'if', cond: { type: 'enemyHasStatus', status: 'vuln' }, then: [{ op: 'damage', value: 8 }] }] },
   { id: 'f.guardbreak', a: 'frost', n: '护霜', t: 'skill', cost: 0, r: 2, ops: [{ op: 'block', value: 4 }] },
   { id: 'f.permafrost', a: 'frost', n: '冻土', t: 'power', cost: 2, r: 2, ops: [{ op: 'block', value: 12 }, { op: 'status', status: 'dex', value: 1, who: 'self' }] },
   { id: 'f.shatter', a: 'frost', n: '碎冰', t: 'attack', cost: 1, r: 2, ops: [{ op: 'damage', value: 7 }, { op: 'if', cond: { type: 'enemyHasStatus', status: 'vuln' }, then: [{ op: 'damage', value: 7 }] }] },
-  { id: 'f.icewall', a: 'frost', n: '冰壁', t: 'skill', cost: 3, r: 3, sealed: true, ops: [{ op: 'block', value: 22 }] },
-  { id: 'f.stasis', a: 'frost', n: '静滞', t: 'skill', cost: 1, r: 2, sealed: true, ops: [{ op: 'block', value: 5 }, { op: 'status', status: 'dex', value: 2, who: 'self' }] },
+  { id: 'f.icewall', a: 'frost', n: '冰壁', t: 'skill', cost: 3, r: 3, sealed: true, ops: [{ op: 'block', value: 18 }] },
+  { id: 'f.stasis', a: 'frost', n: '静滞', t: 'skill', cost: 1, r: 2, sealed: true, ops: [{ op: 'block', value: 5 }, { op: 'status', status: 'dex', value: 1, who: 'self' }] },
   { id: 'f.spire', a: 'frost', n: '霜刺', t: 'attack', cost: 1, r: 2, sealed: true, ops: [{ op: 'damage', value: 6 }, { op: 'status', status: 'vuln', value: 2, who: 'enemy' }] },
-  { id: 'f.frostartor', a: 'frost', n: '寒霜甲', t: 'power', cost: 2, r: 2, sealed: true, ops: [{ op: 'block', value: 10 }, { op: 'status', status: 'dex', value: 1, who: 'self' }] },
+  { id: 'f.frostartor', a: 'frost', n: '寒霜甲', t: 'power', cost: 2, r: 2, sealed: true, ops: [{ op: 'block', value: 8 }, { op: 'status', status: 'dex', value: 1, who: 'self' }] },
   { id: 'f.absolutezero', a: 'frost', n: '绝对零度', t: 'skill', cost: 3, r: 3, sealed: true, ops: [{ op: 'block', value: 20 }, { op: 'status', status: 'weak', value: 3, who: 'enemy' }] },
 
   // ============ 蚀 rot（中毒 / 持续伤害 / 自我消耗）============
-  { id: 'r.poisonblade', a: 'rot', n: '毒刃', t: 'attack', cost: 1, r: 1, starter: true, ops: [{ op: 'damage', value: 4 }, { op: 'status', status: 'poison', value: 3, who: 'enemy' }] },
-  { id: 'r.miasma', a: 'rot', n: '蚀息', t: 'skill', cost: 1, r: 1, starter: true, ops: [{ op: 'status', status: 'poison', value: 4, who: 'enemy' }] },
-  { id: 'r.corrode', a: 'rot', n: '腐蚀', t: 'skill', cost: 1, r: 1, ops: [{ op: 'status', status: 'poison', value: 5, who: 'enemy' }] },
-  { id: 'r.plague', a: 'rot', n: '瘟疫', t: 'skill', cost: 2, r: 2, ops: [{ op: 'status', status: 'poison', value: 8, who: 'enemy' }] },
+  { id: 'r.poisonblade', a: 'rot', n: '毒刃', t: 'attack', cost: 1, r: 1, starter: true, ops: [{ op: 'damage', value: 4 }, { op: 'status', status: 'poison', value: 5, who: 'enemy' }] },
+  { id: 'r.miasma', a: 'rot', n: '蚀息', t: 'skill', cost: 1, r: 1, starter: true, ops: [{ op: 'status', status: 'poison', value: 8, who: 'enemy' }] },
+  { id: 'r.corrode', a: 'rot', n: '腐蚀', t: 'skill', cost: 1, r: 1, ops: [{ op: 'status', status: 'poison', value: 10, who: 'enemy' }] },
+  { id: 'r.plague', a: 'rot', n: '瘟疫', t: 'skill', cost: 2, r: 2, ops: [{ op: 'status', status: 'poison', value: 14, who: 'enemy' }] },
   { id: 'r.boneeater', a: 'rot', n: '蚀骨', t: 'attack', cost: 1, r: 2, ops: [{ op: 'damage', value: 6 }, { op: 'if', cond: { type: 'enemyHasStatus', status: 'poison' }, then: [{ op: 'damage', value: 4 }] }] },
-  { id: 'r.corrupt', a: 'rot', n: '腐化', t: 'skill', cost: 1, r: 2, ops: [{ op: 'status', status: 'poison', value: 3, who: 'enemy' }, { op: 'status', status: 'vuln', value: 2, who: 'enemy' }] },
-  { id: 'r.fester', a: 'rot', n: '溃烂', t: 'skill', cost: 1, r: 2, ops: [{ op: 'status', status: 'poison', value: 4, who: 'enemy' }, { op: 'block', value: 3 }] },
-  { id: 'r.sacrifice', a: 'rot', n: '献祭', t: 'skill', cost: 0, r: 2, ops: [{ op: 'loseHp', value: 4 }, { op: 'status', status: 'poison', value: 6, who: 'enemy' }] },
-  { id: 'r.toxicfog', a: 'rot', n: '毒雾', t: 'skill', cost: 1, r: 2, ops: [{ op: 'status', status: 'poison', value: 3, who: 'enemy' }, { op: 'status', status: 'weak', value: 1, who: 'enemy' }] },
+  { id: 'r.corrupt', a: 'rot', n: '腐化', t: 'skill', cost: 1, r: 2, ops: [{ op: 'status', status: 'poison', value: 5, who: 'enemy' }, { op: 'status', status: 'vuln', value: 2, who: 'enemy' }] },
+  { id: 'r.fester', a: 'rot', n: '溃烂', t: 'skill', cost: 1, r: 2, ops: [{ op: 'status', status: 'poison', value: 7, who: 'enemy' }, { op: 'block', value: 3 }] },
+  { id: 'r.sacrifice', a: 'rot', n: '献祭', t: 'skill', cost: 0, r: 2, ops: [{ op: 'loseHp', value: 4 }, { op: 'status', status: 'poison', value: 8, who: 'enemy' }] },
+  { id: 'r.toxicfog', a: 'rot', n: '毒雾', t: 'skill', cost: 1, r: 2, ops: [{ op: 'status', status: 'poison', value: 6, who: 'enemy' }, { op: 'status', status: 'weak', value: 1, who: 'enemy' }] },
   { id: 'r.erode', a: 'rot', n: '侵蚀', t: 'attack', cost: 2, r: 2, sealed: true, ops: [{ op: 'damage', value: 8 }, { op: 'status', status: 'poison', value: 4, who: 'enemy' }] },
   { id: 'r.moonrot', a: 'rot', n: '蚀月', t: 'skill', cost: 2, r: 2, sealed: true, ops: [{ op: 'status', status: 'poison', value: 6, who: 'enemy' }, { op: 'draw', value: 1 }] },
   { id: 'r.badblood', a: 'rot', n: '腐血', t: 'skill', cost: 1, r: 2, sealed: true, ops: [{ op: 'loseHp', value: 3 }, { op: 'status', status: 'poison', value: 5, who: 'enemy' }, { op: 'block', value: 5 }] },
@@ -87,10 +87,10 @@ export const CARDS = [
   // 数值口径严格对齐 CONST.DMG_PER_ENERGY=6 / BLOCK_PER_ENERGY=5，R1 略低于曲线但不高于同费 R2。
   { id: 'b.gash', a: 'blade', n: '割', t: 'attack', cost: 1, r: 1, ops: [{ op: 'damage', value: 7 }, { op: 'if', cond: { type: 'enemyHpBelowHalf' }, then: [{ op: 'damage', value: 3 }] }] },
   { id: 'b.brace', a: 'blade', n: '硬撑', t: 'skill', cost: 1, r: 1, ops: [{ op: 'block', value: 6 }, { op: 'damage', value: 2 }] },
-  { id: 'f.rime', a: 'frost', n: '白霜', t: 'skill', cost: 1, r: 1, ops: [{ op: 'block', value: 5 }, { op: 'status', status: 'dex', value: 1, who: 'self' }] },
+  { id: 'f.rime', a: 'frost', n: '白霜', t: 'skill', cost: 1, r: 1, ops: [{ op: 'block', value: 4 }, { op: 'status', status: 'dex', value: 1, who: 'self' }] },
   { id: 'f.chill', a: 'frost', n: '寒意', t: 'attack', cost: 1, r: 1, ops: [{ op: 'damage', value: 3 }, { op: 'status', status: 'weak', value: 2, who: 'enemy' }] },
-  { id: 'r.bile', a: 'rot', n: '胆汁', t: 'skill', cost: 1, r: 1, ops: [{ op: 'status', status: 'poison', value: 3, who: 'enemy' }, { op: 'block', value: 4 }] },
-  { id: 'r.gnaw', a: 'rot', n: '啃噬', t: 'attack', cost: 1, r: 1, ops: [{ op: 'damage', value: 5 }, { op: 'if', cond: { type: 'enemyHasStatus', status: 'poison' }, then: [{ op: 'damage', value: 3 }] }] },
+  { id: 'r.bile', a: 'rot', n: '胆汁', t: 'skill', cost: 1, r: 1, ops: [{ op: 'status', status: 'poison', value: 6, who: 'enemy' }, { op: 'block', value: 4 }] },
+  { id: 'r.gnaw', a: 'rot', n: '啃噬', t: 'attack', cost: 1, r: 1, ops: [{ op: 'damage', value: 5 }, { op: 'if', cond: { type: 'enemyHasStatus', status: 'poison' }, then: [{ op: 'damage', value: 4 }] }] },
   { id: 'x.pulse', a: 'flux', n: '脉动', t: 'attack', cost: 1, r: 1, ops: [{ op: 'damage', value: 3 }, { op: 'draw', value: 2 }] },
   { id: 'x.dampen', a: 'flux', n: '阻尼', t: 'skill', cost: 1, r: 1, ops: [{ op: 'block', value: 5 }, { op: 'draw', value: 1 }] },
 
