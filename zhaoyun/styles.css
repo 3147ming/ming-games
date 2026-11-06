@@ -1,3 +1,9 @@
+/* ★ 本文件已接入 ming-games 共用设计 token（shared/tokens.css）。
+     圆角 / 阴影 / 间距 / 字阶 / 动效 / 层级 用 var(--mg-*)；
+     主色（--paper / --ink / --gold / --purple / --red / --green）保持
+     「赵云与阿斗」自己的宣纸墨色 + 朱砂金气质，**不统一**。
+     ★ 注意：棋盘配色（V7.1）与白色路径（V7.2）是用户拍板过的，一律不碰。 */
+
 /* =============================================================================
  * 赵云与阿斗 · 样式 (styles.css)
  * 水墨国风 · 米色纸底 / 墨色文字 / 朱红点缀 / 金字塔块 / 紫字武将
@@ -96,7 +102,7 @@ body {
   position: absolute; top: -6px; right: 6%;
   width: 40px; height: 40px; line-height: 40px;
   background: var(--red); color: #fff;
-  font-size: 22px; text-align: center; border-radius: 6px;
+  font-size: 22px; text-align: center; border-radius: var(--mg-r-sm);
   transform: rotate(-6deg); opacity: .88;
   box-shadow: 0 2px 6px rgba(120,30,26,.3);
 }
@@ -104,7 +110,7 @@ body {
 .modes { display: flex; flex-direction: column; gap: 8px; margin-top: 0; justify-content: center; }
 .mode-btn {
   display: flex; align-items: center; gap: 12px;
-  padding: 10px 13px; border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 13px; border: 1px solid var(--line); border-radius: var(--mg-r-md);
   background: linear-gradient(180deg, rgba(255,255,255,.7), rgba(255,255,255,.25));
   color: var(--ink); text-align: left; cursor: pointer;
   transition: transform .12s, border-color .12s, box-shadow .12s;
@@ -114,7 +120,7 @@ body {
 .m-icon {
   flex: 0 0 auto; width: 34px; height: 34px; line-height: 32px; text-align: center;
   font-size: 19px; font-weight: 700; color: var(--red);
-  border: 1.5px solid rgba(179,53,47,.55); border-radius: 8px;
+  border: 1.5px solid rgba(179,53,47,.55); border-radius: var(--mg-r-sm);
   background: rgba(179,53,47,.07);
 }
 .m-txt { display: flex; flex-direction: column; gap: 3px; }
@@ -125,13 +131,13 @@ body {
 .d-lab { font-size: 12px; letter-spacing: .12em; color: var(--ink-3); margin-right: 2px; }
 .diff-btn {
   flex: 1; padding: 9px 0; font-size: 13px; font-family: inherit;
-  border: 1px solid var(--line); border-radius: 9px; background: transparent;
+  border: 1px solid var(--line); border-radius: var(--mg-r-sm); background: transparent;
   color: var(--ink-2); cursor: pointer;
 }
 .diff-btn.active { background: var(--red); border-color: var(--red); color: #fff; }
 
 .save {
-  margin-top: 0; padding: 10px 12px; border-radius: 12px;
+  margin-top: 0; padding: 10px 12px; border-radius: var(--mg-r-md);
   background: rgba(255,255,255,.45); border: 1px dashed var(--line);
   font-size: 12.5px; line-height: 1.9; color: var(--ink-2);
 }
@@ -190,7 +196,7 @@ body {
 .icon-btn {
   /* 第三批 P0-6：30px 在横屏手机上只有指腹一半大，改成按舞台高度缩放（下限 34 / 上限 44） */
   width: clamp(34px, 5.6cqh, 44px); height: clamp(34px, 5.6cqh, 44px);
-  border-radius: 8px; border: 1px solid var(--line);
+  border-radius: var(--mg-r-sm); border: 1px solid var(--line);
   background: rgba(255,255,255,.5); font-size: clamp(13px, 4.2cqh, 17px); cursor: pointer;
   display: flex; align-items: center; justify-content: center; color: var(--ink-2);
   font-family: inherit; padding: 0;
@@ -210,7 +216,7 @@ body {
   width: min(100cqw, calc(100cqh * 2 / 3));
   height: auto;
   aspect-ratio: 8 / 12;
-  border: 2px solid var(--ink); border-radius: 6px;
+  border: 2px solid var(--ink); border-radius: var(--mg-r-sm);
   background: #f5f1e8;
   box-shadow: 0 3px 14px rgba(60,45,25,.18) inset, 0 2px 8px rgba(60,45,25,.12);
   container: bs / size;
@@ -274,7 +280,7 @@ body {
 }
 .cell.deploy::before {   /* 虚线框：可建塔标记 */
   content: ""; position: absolute; inset: 13%;
-  border: 1.5px dashed rgba(255,226,170,.75); border-radius: 4px;
+  border: 1.5px dashed rgba(255,226,170,.75); border-radius: var(--mg-r-xs);
 }
 /* 蛇形主路：整条路一个 SVG 几何体（V7.3）
    白底与轮廓都由 #road 里那条唯一的 <path> 绘制 → 横向 / 竖向 / 拐角 / S 弯
@@ -289,7 +295,7 @@ body {
 .cell.enter::before {
   content: "入口"; position: absolute; left: 0; right: 0; top: 1px;
   text-align: center; font-size: 2.4cqw; font-weight: 700; line-height: 1.35;
-  color: #fff; background: rgba(179,53,47,.88); border-radius: 3px;
+  color: #fff; background: rgba(179,53,47,.88); border-radius: var(--mg-r-xs);
   letter-spacing: .02em; z-index: 1;
 }
 /* 突破口：该波从入口集中出怪 */
@@ -352,7 +358,7 @@ body {
   font-size: max(15px, 5.4cqw); font-style: normal; font-weight: 800;
   text-decoration: none;
   background: var(--red); color: #fff;
-  border: 1.5px solid #fff; border-radius: 5px;
+  border: 1.5px solid #fff; border-radius: var(--mg-r-sm);
   padding: 0 3px; line-height: 1.12;
   text-shadow: 0 1px 0 rgba(0,0,0,.35);
   box-shadow: 0 1px 3px rgba(0,0,0,.35);
@@ -364,7 +370,7 @@ body {
 .unit.hero .lv { background: var(--purple); color: #fff; }                                       /* 武将塔：紫底白字 */
 .unit .hb {
   position: absolute; left: 14%; right: 14%; bottom: 5%;
-  height: 3px; border-radius: 2px;
+  height: 3px; border-radius: var(--mg-r-xs);
   background: rgba(0,0,0,.28); overflow: hidden;
 }
 .unit .hb u { display: block; height: 100%; background: #6fbf5f; transition: width .18s; text-decoration: none; }
@@ -373,7 +379,7 @@ body {
   position: absolute; left: 1px; bottom: 1px;
   font-size: 8px; font-size: 2.4cqw; font-style: normal; font-weight: 700;
   background: rgba(0,0,0,.45); color: #ffe9a8;
-  border-radius: 4px; padding: 0 2px; min-width: 2.2em; text-align: center;
+  border-radius: var(--mg-r-xs); padding: 0 2px; min-width: 2.2em; text-align: center;
 }
 .unit .sk.ready { background: #ffd469; color: #4a3208; }
 
@@ -458,7 +464,7 @@ body {
 .arrow {
   position: absolute; height: 1.8%; min-height: 3px; transform-origin: 0 50%;
   background: linear-gradient(90deg, rgba(200,163,74,.05), rgba(200,163,74,.95));
-  border-radius: 3px; pointer-events: none; z-index: 6;
+  border-radius: var(--mg-r-xs); pointer-events: none; z-index: 6;
   animation: arrow .3s ease-out forwards;
 }
 .arrow::after {
@@ -542,20 +548,20 @@ body {
   grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: 5px;
   height: clamp(84px, 28cqh, 168px); padding: 5px; touch-action: none;
-  border: 2px solid #6d5a3c; border-radius: 12px;
+  border: 2px solid #6d5a3c; border-radius: var(--mg-r-md);
   background: rgba(255,255,255,.34);
   box-shadow: 0 2px 8px rgba(60,45,25,.16), 0 1px 0 rgba(255,255,255,.5) inset;
 }
-.hand .slot { flex: none; max-width: none; width: auto; height: 100%; border-radius: 8px; }
+.hand .slot { flex: none; max-width: none; width: auto; height: 100%; border-radius: var(--mg-r-sm); }
 .slot {
   flex: 1 1 0; max-width: 58px; height: 62px;
-  border: 1px dashed var(--line); border-radius: 10px;
+  border: 1px dashed var(--line); border-radius: var(--mg-r-md);
   display: flex; align-items: center; justify-content: center;
   background: rgba(255,255,255,.28);
 }
 .slot.empty { opacity: .45; }
 .card {
-  width: 100%; height: 100%; border-radius: 9px;
+  width: 100%; height: 100%; border-radius: var(--mg-r-sm);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 1px; cursor: grab; position: relative;
   box-shadow: 0 2px 5px rgba(60,45,25,.18);
@@ -589,21 +595,21 @@ body {
   flex: 0 0 auto;
   display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px;
   height: clamp(40px, 12cqh, 84px); padding: 5px; touch-action: none;
-  border: 2px solid #6d5a3c; border-radius: 11px;
+  border: 2px solid #6d5a3c; border-radius: var(--mg-r-md);
   background: rgba(255,255,255,.34);
   box-shadow: 0 2px 8px rgba(60,45,25,.16), 0 1px 0 rgba(255,255,255,.5) inset;
 }
-.barracks .slot { flex: none; max-width: none; width: auto; height: 100%; border-radius: 8px; }
+.barracks .slot { flex: none; max-width: none; width: auto; height: 100%; border-radius: var(--mg-r-sm); }
 .card.mini b { font-size: 17px; }
 .card.mini span { display: none; }
-.card.mini { border-radius: 7px; }
+.card.mini { border-radius: var(--mg-r-sm); }
 
 /* 征兵按钮 + 道具栏：竖排（按钮整行，道具横排同一行） */
 .dock-row { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
 .dock-row .recruit { flex: 1 1 auto; }
 .items { flex: 0 0 auto; display: flex; gap: 6px; }
 .item-slot {
-  flex: 1 1 0; width: auto; height: clamp(40px, 11cqh, 76px); border-radius: 10px;   /* 第四批 P1-4：下限 38 → 40，拖拽起点更稳 */
+  flex: 1 1 0; width: auto; height: clamp(40px, 11cqh, 76px); border-radius: var(--mg-r-md);   /* 第四批 P1-4：下限 38 → 40，拖拽起点更稳 */
   border: 1px solid var(--line); background: rgba(255,255,255,.5);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   font-size: 15px; font-weight: 700; color: #7a6a52; cursor: grab;
@@ -615,7 +621,7 @@ body {
 .item-slot:active { transform: scale(.97); }
 
 .recruit {
-  height: clamp(40px, 12cqh, 82px); border: none; border-radius: 12px; cursor: pointer;
+  height: clamp(40px, 12cqh, 82px); border: none; border-radius: var(--mg-r-md); cursor: pointer;
   background: linear-gradient(180deg, #c4403a, var(--red));
   color: #fff; font-family: inherit;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
@@ -654,7 +660,7 @@ body {
   position: absolute; left: 50%; top: 5%;
   transform: translateX(-50%) scale(.6);
   z-index: 60; pointer-events: none; opacity: 0;
-  padding: 6px 18px; border-radius: 999px; white-space: nowrap;
+  padding: 6px 18px; border-radius: var(--mg-r-pill); white-space: nowrap;
   font-size: 18px; font-weight: 800; letter-spacing: .06em;
   color: #fff;
   background: linear-gradient(180deg, #e23b2f 0%, #b3261c 100%);
@@ -686,9 +692,9 @@ body {
   0%   { transform: translate(-50%,-50%) scale(1); opacity: 1; }
   100% { transform: translate(calc(-50% + var(--dx,0px)), calc(-50% + var(--dy,0px))) scale(.3); opacity: 0; }
 }
-.fx-particle.p-sweep { background: linear-gradient(180deg,#eafffb,#7ef0e6); box-shadow: 0 0 8px #7ef0e6; border-radius: 2px; }
-.fx-particle.p-cleave{ background: linear-gradient(180deg,#dffbff,#7ec8f0); box-shadow: 0 0 8px #7ec8f0; border-radius: 2px; }
-.fx-particle.p-snipe { background: linear-gradient(180deg,#fff2c0,#ffcf4d); box-shadow: 0 0 8px #ffcf4d; border-radius: 2px; }
+.fx-particle.p-sweep { background: linear-gradient(180deg,#eafffb,#7ef0e6); box-shadow: 0 0 8px #7ef0e6; border-radius: var(--mg-r-xs); }
+.fx-particle.p-cleave{ background: linear-gradient(180deg,#dffbff,#7ec8f0); box-shadow: 0 0 8px #7ec8f0; border-radius: var(--mg-r-xs); }
+.fx-particle.p-snipe { background: linear-gradient(180deg,#fff2c0,#ffcf4d); box-shadow: 0 0 8px #ffcf4d; border-radius: var(--mg-r-xs); }
 .fx-particle.p-heal  { background: radial-gradient(circle,#d6ffce,#5fd36a); box-shadow: 0 0 8px #5fd36a; }
 .fx-particle.p-burn  { background: radial-gradient(circle,#ffd27a,#ff5a3c); box-shadow: 0 0 8px #ff5a3c; }
 .fx-particle.p-roar  { background: transparent; border: 2px solid rgba(255,170,80,.9); box-shadow: 0 0 10px rgba(255,150,40,.6); animation-name: particleRing; }
@@ -704,7 +710,7 @@ body {
   position: absolute; left: 50%; bottom: 10px; width: max-content;
   max-width: min(46ch, 52vw);
   background: rgba(36,33,28,.92); color: #f3eee3;
-  font-size: 12px; line-height: 1.6; padding: 9px 12px; border-radius: 10px;
+  font-size: 12px; line-height: 1.6; padding: 9px 12px; border-radius: var(--mg-r-md);
   opacity: 0; transform: translate(-50%, 10px); transition: opacity .18s, transform .18s;
   pointer-events: none; z-index: 45;
 }
@@ -721,7 +727,7 @@ body {
 }
 @keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
 .panel {
-  width: 100%; background: var(--paper); border-radius: 16px;
+  width: 100%; background: var(--paper); border-radius: var(--mg-r-lg);
   padding: 22px 18px 18px; text-align: center;
   border: 1px solid var(--line);
   box-shadow: 0 10px 30px rgba(0,0,0,.4);
@@ -751,7 +757,7 @@ body {
 .p-sub { color: var(--ink-3); font-size: 12px; letter-spacing: .1em; }
 .btns { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
 .btn {
-  padding: 11px 0; border-radius: 10px; border: 1px solid var(--line);
+  padding: 11px 0; border-radius: var(--mg-r-md); border: 1px solid var(--line);
   background: rgba(255,255,255,.6); color: var(--ink);
   font-size: 14px; font-family: inherit; cursor: pointer; letter-spacing: .08em;
   min-height: 34px;   /* 第三批 P0-6：手机上单手点得到 */
@@ -1106,7 +1112,7 @@ body.lowfx .card.pair { animation: none; box-shadow: 0 0 0 2px var(--gold) !impo
   position: absolute; left: 6px; bottom: 6px; z-index: 12;
   font-size: 11px; font-weight: 700; letter-spacing: .04em;
   color: #f6f2e8; background: rgba(36,33,28,.82);
-  border-radius: 8px; padding: 3px 8px;
+  border-radius: var(--mg-r-sm); padding: 3px 8px;
   pointer-events: none; min-width: 30px; text-align: center;
   box-shadow: 0 1px 4px rgba(0,0,0,.3);
 }
@@ -1132,7 +1138,7 @@ body.lowfx .card.pair { animation: none; box-shadow: 0 0 0 2px var(--gold) !impo
   position: absolute; right: 1px; bottom: 1px;
   font-size: 8px; font-size: 2.2cqw; font-weight: 700; text-decoration: none;
   background: rgba(0,0,0,.5); color: #ffe9a8;
-  border-radius: 4px; padding: 0 2px; line-height: 1.3;
+  border-radius: var(--mg-r-xs); padding: 0 2px; line-height: 1.3;
 }
 
 /* 关卡胜利结算：恭喜晋升 / 1-5 星 / 金币 +20 */
@@ -1147,40 +1153,40 @@ body.lowfx .card.pair { animation: none; box-shadow: 0 0 0 2px var(--gold) !impo
   font-size: 13.5px; margin: 8px 0 2px;
 }
 .coin-row b { color: var(--gold-deep); font-size: 16px; }
-.btn.small { padding: 6px 12px; font-size: 12px; border-radius: 8px; min-height: 34px; }   /* 第三批 P0-6 */
+.btn.small { padding: 6px 12px; font-size: 12px; border-radius: var(--mg-r-sm); min-height: 34px; }   /* 第三批 P0-6 */
 .btn.gold { background: linear-gradient(180deg, #e8c86a, var(--gold)); color: #3a2c10; border-color: var(--gold-deep); }
 
 /* 武器背包弹层（兵器按钮） */
 .weapon-panel {
   position: absolute; left: 6%; right: 6%; top: 10%; z-index: 55;
   max-height: 78%; overflow-y: auto;
-  background: var(--paper); border: 1px solid var(--line); border-radius: 14px;
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--mg-r-md);
   padding: 16px 16px 14px;
   box-shadow: 0 10px 30px rgba(0,0,0,.4);
 }
 .weapon-panel h3 { margin: 0 0 10px; font-size: 16px; letter-spacing: .14em; text-align: center; }
 .w-row {
   display: flex; align-items: center; gap: 10px;
-  padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--mg-r-md);
   background: rgba(255,255,255,.5); margin-bottom: 8px; font-size: 13px;
 }
 .w-row b {
   flex: 0 0 auto; width: 30px; height: 30px; line-height: 28px; text-align: center;
   background: linear-gradient(160deg, #e8c86a, var(--gold)); color: #3a2c10;
-  border-radius: 8px; font-size: 16px;
+  border-radius: var(--mg-r-sm); font-size: 16px;
 }
 .w-row span { flex: 1; }
 .w-row i { font-style: normal; color: var(--gold-deep); font-weight: 700; }
 .w-heroes { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 12px; }
 .w-hero {
   display: flex; align-items: center; gap: 8px;
-  padding: 8px 10px; border: 1px dashed var(--line); border-radius: 10px;
+  padding: 8px 10px; border: 1px dashed var(--line); border-radius: var(--mg-r-md);
   font-size: 12.5px;
 }
 .w-hero b {
   flex: 0 0 auto; width: 28px; height: 28px; line-height: 26px; text-align: center;
   background: linear-gradient(160deg, #8f6dc4, var(--purple)); color: #fff;
-  border-radius: 8px; font-size: 15px;
+  border-radius: var(--mg-r-sm); font-size: 15px;
 }
 .w-hero span { flex: 1; color: var(--ink-2); }
 .w-heroes p.dim { font-size: 12px; color: var(--ink-3); line-height: 1.7; margin: 4px 0; }
@@ -1211,18 +1217,18 @@ body.lowfx .card.pair { animation: none; box-shadow: 0 0 0 2px var(--gold) !impo
 }
 .unit::before {                                   /* 顶部类型色楔 */
   content: ""; position: absolute; left: 22%; right: 22%; top: 5%;
-  height: 3px; border-radius: 3px; background: var(--accent); opacity: .92; z-index: 1;
+  height: 3px; border-radius: var(--mg-r-xs); background: var(--accent); opacity: .92; z-index: 1;
 }
 .unit.e   { box-shadow: 0 3px 8px rgba(20,15,8,.32), 0 0 0 2px var(--accent, transparent); }
 .unit.gold{ border-radius: 22%; }
 .unit.hero{ border-radius: 26%; }
 .unit.elite { box-shadow: 0 0 0 2px #ffcf6a, 0 4px 10px rgba(0,0,0,.34); }
 .unit.span2 { border-radius: 18%; }
-.unit .lv  { border-radius: 6px; }
+.unit .lv  { border-radius: var(--mg-r-sm); }
 
 /* 卡面：圆润 + 类型顶栏 + 文字随类型着色 + 轻抬起 */
 .card {
-  border-radius: 12px;
+  border-radius: var(--mg-r-md);
   box-shadow: 0 3px 8px rgba(60,45,25,.22), 0 0 0 1.5px rgba(255,255,255,.30) inset;
   transition: transform .12s ease, box-shadow .12s ease;
 }
@@ -1240,7 +1246,7 @@ body.lowfx .card.pair { animation: none; box-shadow: 0 0 0 2px var(--gold) !impo
 
 /* —— 棋盘地形质感增强 —— */
 .board {
-  border: 3px solid #6d5a3c; border-radius: 12px;
+  border: 3px solid #6d5a3c; border-radius: var(--mg-r-md);
   background:
     radial-gradient(120% 60% at 50% 0%, #fbf7ee 0%, #f1ece1 60%, #e7e0d2 100%);
   box-shadow:
@@ -1292,11 +1298,11 @@ body.lowfx .card.pair { animation: none; box-shadow: 0 0 0 2px var(--gold) !impo
 }
 .brand::after {                                  /* 标题下的朱红分隔印 */
   content: ""; display: block; width: 46px; height: 4px; margin: 10px auto 0;
-  background: var(--red); border-radius: 3px; opacity: .85;
+  background: var(--red); border-radius: var(--mg-r-xs); opacity: .85;
   box-shadow: 0 1px 3px rgba(120,30,26,.4);
 }
 .mode-btn {
-  border-radius: 14px;
+  border-radius: var(--mg-r-md);
   box-shadow: 0 3px 0 rgba(120,105,80,.35), 0 4px 10px rgba(60,45,25,.14);
   transition: transform .12s, border-color .12s, box-shadow .12s;
 }
@@ -1304,7 +1310,7 @@ body.lowfx .card.pair { animation: none; box-shadow: 0 0 0 2px var(--gold) !impo
 .m-icon { box-shadow: 0 2px 5px rgba(179,53,47,.2); }
 
 /* —— 弹层与星级更"亮" —— */
-.panel { border-radius: 18px; box-shadow: 0 14px 40px rgba(0,0,0,.45); }
+.panel { border-radius: var(--mg-r-lg); box-shadow: 0 14px 40px rgba(0,0,0,.45); }
 .stars i.on { text-shadow: 0 0 14px rgba(232,200,106,.9); animation: starPop .4s ease-out backwards; }
 .stars i.on:nth-child(2) { animation-delay: .08s; }
 .stars i.on:nth-child(3) { animation-delay: .16s; }
@@ -1314,7 +1320,7 @@ body.lowfx .card.pair { animation: none; box-shadow: 0 0 0 2px var(--gold) !impo
 
 /* —— 窄屏微调同步圆润 —— */
 @media (max-height: 640px) {
-  .card { border-radius: 10px; }
+  .card { border-radius: var(--mg-r-md); }
   .unit { border-radius: 20%; }
 }
 
@@ -1330,7 +1336,7 @@ body.lowfx .card.pair { animation: none; box-shadow: 0 0 0 2px var(--gold) !impo
   z-index: 3;
   writing-mode: vertical-rl;
   padding: 2px 1px;
-  border-radius: 5px;
+  border-radius: var(--mg-r-sm);
   background: rgba(26, 16, 38, .88);
   color: #fff;
   font-size: max(8px, 2.9cqw);
