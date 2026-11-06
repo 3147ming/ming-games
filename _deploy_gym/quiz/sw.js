@@ -15,7 +15,7 @@
      不要手工改；产物一变缓存名就变，旧缓存会在 activate 里被清掉。
    ============================================================= */
 
-var VERSION = 'quiz-cedbf768e5';
+var VERSION = 'quiz-d4b64b3325';
 var CACHE = VERSION;
 var BASE = self.registration ? self.registration.scope : self.location.href.replace(/sw\.js.*$/, '');
 
