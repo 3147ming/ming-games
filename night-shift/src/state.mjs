@@ -164,6 +164,10 @@ function baseState() {
     /* 需求J：店员花名册 + 仓库 + 设备库存 */
     /** 雇佣的店员数组（见 staff.mjs）：{ id, type, stamina, resting, working, status, ... } */
     staff: [],
+    /** 员工培训（见 training.mjs）：{ [staffId]: [nodeId, ...] }。
+     *  空对象 = 全员未培训；老存档没有这个字段时读档会显式补成 {}（见 save.mjs）。
+     *  放在 state 而不是某个子系统里，是因为它是"人的永久能力"，跨夜/读档都必须还在。 */
+    training: {},
     /** 仓库：{ level: 扩容等级, goods: { snack, toy, bait, parts } }。snack 映射到 backroom 总件数 */
     warehouse: { level: 0, goods: { snack: 0, toy: 0, bait: 0, parts: 0 } },
     /** 设备当前库存（上货员补、游玩消耗）：售货机 / 娃娃机 */
@@ -472,6 +476,9 @@ export function resetGame(opts = {}) {
     inventory: { ...state.inventory },
     boons: { ...state.boons },
     staff: JSON.parse(JSON.stringify(state.staff ?? [])),
+    /* 培训跟人走：staff 被继承时 training 也必须一起继承，否则二周目会出现
+     * "人还是那个 id、技能却清零"的割裂状态（training 的键就是 staffId）。 */
+    training: JSON.parse(JSON.stringify(state.training ?? {})),
     warehouse: JSON.parse(JSON.stringify(state.warehouse ?? { level: 0, goods: {} })),
     secondHand: { listings: [], owned: JSON.parse(JSON.stringify(state.secondHand?.owned ?? [])) },
   } : null;
@@ -504,6 +511,7 @@ export function resetGame(opts = {}) {
       if (state.warehouse.goods) state.warehouse.goods.snack = 0;
     }
     if (Array.isArray(growth.staff)) state.staff = growth.staff;
+    if (growth.training && typeof growth.training === 'object') state.training = growth.training;
     if (growth.secondHand && Array.isArray(growth.secondHand.owned)) {
       state.secondHand = { listings: [], owned: growth.secondHand.owned };
     }

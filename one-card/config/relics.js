@@ -3,21 +3,24 @@
 //      因此不需要靠扩大卡池来制造变化（见 docs/01 §8.2 的卡池取舍）。
 // 钩子口径：combatStart / turnStart / cardPlayed（带条件）/ combatEnd
 // 效果复用卡牌的 ops DSL，不新增一套语法。
+// 套装口径：set 字段指向 src/sets.js 的 SET_DEFS。只给 4 套 × 3 件的「套件」打标，
+//      其余遗物刻意保持散件 —— 套装是「凑齐三件」的额外目标，不是把所有遗物强行二分。
+//      字段缺失 = 散件，不影响任何旧存档（旧存档只存 id，套装按 RELIC_MAP 现查）。
 
 export const RELICS = [
   // ---- 常见（12，初始解锁）----
-  { id: 'o.blade', n: '断刃', r: 1, hooks: { combatStart: [{ op: 'status', status: 'str', value: 1, who: 'self' }] } },
+  { id: 'o.blade', n: '断刃', r: 1, set: 'bing', hooks: { combatStart: [{ op: 'status', status: 'str', value: 1, who: 'self' }] } },
   { id: 'o.ember', n: '余烬', r: 1, hooks: { combatStart: [{ op: 'block', value: 5 }] } },
-  { id: 'o.bone', n: '骨钉', r: 1, hooks: { combatStart: [{ op: 'status', status: 'poison', value: 3, who: 'enemy' }] } },
-  { id: 'o.stone', n: '石心', r: 1, hooks: { combatStart: [{ op: 'block', value: 8 }] } },
-  { id: 'o.ring', n: '铁环', r: 1, hooks: { turnStart: [{ op: 'block', value: 3 }] } },
+  { id: 'o.bone', n: '骨钉', r: 1, set: 'fang', hooks: { combatStart: [{ op: 'status', status: 'poison', value: 3, who: 'enemy' }] } },
+  { id: 'o.stone', n: '石心', r: 1, set: 'jiang', hooks: { combatStart: [{ op: 'block', value: 8 }] } },
+  { id: 'o.ring', n: '铁环', r: 1, set: 'jiang', hooks: { turnStart: [{ op: 'block', value: 3 }] } },
   { id: 'o.frostnail', n: '寒钉', r: 1, hooks: { combatStart: [{ op: 'status', status: 'weak', value: 2, who: 'enemy' }] } },
-  { id: 'o.twin', n: '双生', r: 1, hooks: { combatStart: [{ op: 'draw', value: 2 }] } },
+  { id: 'o.twin', n: '双生', r: 1, set: 'shang', hooks: { combatStart: [{ op: 'draw', value: 2 }] } },
   { id: 'o.hush', n: '沉默钟', r: 1, hooks: { combatStart: [{ op: 'status', status: 'vuln', value: 2, who: 'enemy' }] } },
   { id: 'o.frostcore', n: '冻核', r: 1, hooks: { turnStart: [{ op: 'status', status: 'dex', value: 1, who: 'self' }] } },
-  { id: 'o.venom', n: '蚀纹', r: 1, hooks: { cardPlayed: [{ cond: { cardType: 'attack' }, ops: [{ op: 'status', status: 'poison', value: 1, who: 'enemy' }] }] } },
-  { id: 'o.gear', n: '齿轮', r: 1, hooks: { cardPlayed: [{ cond: { cardType: 'skill' }, ops: [{ op: 'block', value: 3 }] }] } },
-  { id: 'o.scourge', n: '苦修带', r: 1, hooks: { combatStart: [{ op: 'loseHp', value: 3 }, { op: 'status', status: 'str', value: 3, who: 'self' }] } },
+  { id: 'o.venom', n: '蚀纹', r: 1, set: 'fang', hooks: { cardPlayed: [{ cond: { cardType: 'attack' }, ops: [{ op: 'status', status: 'poison', value: 1, who: 'enemy' }] }] } },
+  { id: 'o.gear', n: '齿轮', r: 1, set: 'jiang', hooks: { cardPlayed: [{ cond: { cardType: 'skill' }, ops: [{ op: 'block', value: 3 }] }] } },
+  { id: 'o.scourge', n: '苦修带', r: 1, set: 'bing', hooks: { combatStart: [{ op: 'loseHp', value: 3 }, { op: 'status', status: 'str', value: 3, who: 'self' }] } },
 
   // ---- 稀有（11 + 秘藏 7 = 18 件初始封印，每局结束解锁 1 件）----
   { id: 'u.mothscale', n: '灯蛾鳞', r: 2, sealed: true, hooks: { turnStart: [{ op: 'draw', value: 1 }] } },
@@ -30,21 +33,21 @@ export const RELICS = [
   { id: 'u.rest', n: '静音符', r: 2, sealed: true, hooks: { combatStart: [{ op: 'status', status: 'weak', value: 2, who: 'enemy' }, { op: 'status', status: 'vuln', value: 2, who: 'enemy' }] } },
 
   { id: 'g.embercore', n: '火种', r: 3, sealed: true, hooks: { turnStart: [{ op: 'energy', value: 1 }] } },
-  { id: 'g.marrow', n: '髓晶', r: 3, sealed: true, hooks: { combatStart: [{ op: 'status', status: 'str', value: 2, who: 'self' }] } },
+  { id: 'g.marrow', n: '髓晶', r: 3, sealed: true, set: 'bing', hooks: { combatStart: [{ op: 'status', status: 'str', value: 2, who: 'self' }] } },
   { id: 'g.terminus', n: '终结符', r: 3, sealed: true, hooks: { combatStart: [{ op: 'status', status: 'vuln', value: 3, who: 'enemy' }, { op: 'status', status: 'weak', value: 3, who: 'enemy' }] } },
   { id: 'g.ashes', n: '灰烬', r: 3, sealed: true, hooks: { cardPlayed: [{ cond: { cardType: 'attack' }, ops: [{ op: 'draw', value: 1 }] }] } },
 
   // ---- 内容批 P0-2：8 件新遗物（纯数据，只用 combatStart/turnStart/cardPlayed/combatEnd 四个既有钩子）----
   // 口径：新遗物必须提供「一个可以被玩家一句话说出的打法偏向」，不许再写纯 +格挡。
   // 8 件里 6 件 sealed（封印数 12 → 18）、2 件初始解锁（o.tinder / o.hollow）。
-  { id: 'o.tinder', n: '火绒', r: 1, hooks: { combatStart: [{ op: 'energy', value: 1 }] } },
-  { id: 'o.hollow', n: '空壳', r: 1, hooks: { combatStart: [{ op: 'draw', value: 1 }, { op: 'block', value: 4 }] } },
+  { id: 'o.tinder', n: '火绒', r: 1, set: 'shang', hooks: { combatStart: [{ op: 'energy', value: 1 }] } },
+  { id: 'o.hollow', n: '空壳', r: 1, set: 'shang', hooks: { combatStart: [{ op: 'draw', value: 1 }, { op: 'block', value: 4 }] } },
   { id: 'u.frayed', n: '断线', r: 2, sealed: true, hooks: { turnStart: [{ op: 'draw', value: 1 }, { op: 'loseHp', value: 1 }] } },
   { id: 'u.mirror', n: '残镜', r: 2, sealed: true, hooks: { cardPlayed: [{ cond: { cardType: 'skill' }, ops: [{ op: 'status', status: 'str', value: 1, who: 'self' }] }] } },
   { id: 'u.noose', n: '绞索', r: 2, sealed: true, hooks: { cardPlayed: [{ cond: { cardType: 'attack' }, ops: [{ op: 'block', value: 2 }] }] } },
   { id: 'g.ironlung', n: '铁肺', r: 3, sealed: true, hooks: { turnStart: [{ op: 'status', status: 'dex', value: 2, who: 'self' }, { op: 'loseHp', value: 2 }] } },
   { id: 'g.lastword', n: '遗言', r: 3, sealed: true, hooks: { combatEnd: [{ op: 'heal', value: 5 }, { op: 'status', status: 'str', value: 1, who: 'self' }] } },
-  { id: 'g.choir', n: '合唱', r: 3, sealed: true, hooks: { turnStart: [{ op: 'status', status: 'poison', value: 2, who: 'enemy' }, { op: 'status', status: 'weak', value: 1, who: 'enemy' }] } },
+  { id: 'g.choir', n: '合唱', r: 3, sealed: true, set: 'fang', hooks: { turnStart: [{ op: 'status', status: 'poison', value: 2, who: 'enemy' }, { op: 'status', status: 'weak', value: 1, who: 'enemy' }] } },
 ];
 
 export const RELIC_MAP = Object.fromEntries(RELICS.map((r) => [r.id, r]));

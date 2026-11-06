@@ -1058,6 +1058,40 @@ html, body {
 .staff-row .s-bar { height: 6px; margin-top: 6px; border-radius: var(--mg-r-pill); background: rgba(150, 170, 200, .14); overflow: hidden; }
 .staff-row .s-bar > i { display: block; height: 100%; border-radius: var(--mg-r-pill); transition: width .2s, background .2s; }
 
+/* 员工培训树（店员详情内展开） */
+.staff-train {
+  margin-top: var(--mg-sp-2);
+  border-top: 1px dashed rgba(150, 170, 200, .18);
+  padding-top: var(--mg-sp-2);
+}
+.staff-train > summary {
+  cursor: pointer; list-style: none;
+  font-size: var(--mg-fs-xs); font-weight: 600; color: var(--neon-ice);
+  padding: var(--mg-sp-1) 0;
+}
+.staff-train > summary::-webkit-details-marker { display: none; }
+.staff-train > summary::before { content: '▾ '; color: var(--text-subtle); }
+.staff-train:not([open]) > summary::before { content: '▸ '; }
+.tn-list { display: flex; flex-direction: column; gap: var(--mg-sp-1); margin-top: var(--mg-sp-1); }
+.train-node {
+  display: flex; align-items: center; gap: var(--mg-sp-2);
+  padding: 6px var(--mg-sp-2);
+  border-radius: var(--mg-r-sm);
+  background: rgba(20, 26, 36, .45);
+  border-left: 2px solid rgba(150, 170, 200, .2);
+}
+.train-node.done { border-left-color: var(--money); opacity: .82; }
+.train-node.ready { border-left-color: var(--brand); }
+.train-node.locked { border-left-color: rgba(150, 170, 200, .18); }
+.train-node .tn-main { flex: 1; min-width: 0; }
+.train-node .tn-name { font-size: var(--mg-fs-xs); font-weight: 600; }
+.train-node .tn-desc { font-size: var(--mg-fs-xs); line-height: var(--mg-lh-normal); color: var(--text-subtle); margin-top: 1px; }
+.train-node .tn-reason { font-size: var(--mg-fs-xs); color: var(--danger-text); margin-top: 1px; }
+.train-node .tn-act { flex: none; }
+.train-node .tn-owned { font-size: var(--mg-fs-xs); color: var(--money); white-space: nowrap; }
+.train-node .tn-buy { min-height: var(--mg-tap-sm); }
+.train-node.locked .tn-buy { opacity: .55; }
+
 /* 仓库分页 */
 .wh-cap { margin-bottom: 12px; }
 .wh-cap .wh-cap-text { font-size: 12px; color: var(--text-muted); }

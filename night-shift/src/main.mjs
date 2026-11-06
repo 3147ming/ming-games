@@ -78,6 +78,9 @@ import { ZONES, STORE, POND, POS, TASKBOARD, DELIVERY, GARBAGE, IDENTITIES } fro
 import { NPC, DAYNIGHT } from './art.mjs';
 /* 需求J：店员系统（采购员 / 上货员 + 维修员 / 保洁员）+ 仓库面板 API */
 import { createStaff } from './staff.mjs';
+/* 员工培训树：HUD 的培训详情与下单入口。AI/结算侧的消费分别在 staff.mjs / economy.mjs，
+ * 这里只把"看"和"买"接到店员分页上（展示层不直接 import 培训规则数据）。 */
+import { snapshotFor as trainingSnapshotFor, train as trainStaffNode } from './training.mjs';
 /* 手感优化：程序化合成音效（零外部资源，见 sfx.mjs） */
 import sfx from './sfx.mjs';
 /* 玩家设置（Esc → ⚙ 设置）：音量 / 亮度伽马暗角 / 灵敏度 / FOV，落 localStorage */
@@ -795,7 +798,9 @@ const staff = createStaff({
         toast(`🔧 ${safeText(p.name, '店员')} 修复了设备`, 'ok');
         break;
       case 'clean-done':
-        toast(`🧹 ${safeText(p.name, '保洁员')} 清理了垃圾`, 'ok');
+        /* 培训「动线规划」后一趟可能清多件（p.count）：toast 只说一次并带上件数，
+         * 不能按件循环弹 —— 那会在夜高峰刷满整个屏幕。 */
+        toast(`🧹 ${safeText(p.name, '保洁员')} 清理了垃圾${p.count > 1 ? ` ×${p.count}` : ''}`, 'ok');
         break;
       case 'errand':
         // p.name 是**货品**名（"零食饮料"），店员名走 staffName —— 原来两处都拼 p.name，
@@ -825,6 +830,19 @@ function staffApi() {
     canHire: (type) => staff.canHire(type),
     /* P1-9：排班开关（店员页的 "✅上班 / 💤休息" 按钮）。 */
     toggleDuty: (type) => staff.toggleDuty(type),
+    /* 培训树：按岗位取当前员工的详情（未雇佣返回 null）。
+     * 用 type 而不是 staffId 作为入口，是因为 HUD 的 roster 本来就按岗位渲染；
+     * 内部仍用 staffId 存培训，保证"人走技能走"的语义。 */
+    training: (type) => {
+      const m = state.staff.find((s) => s.type === type);
+      return m ? trainingSnapshotFor(state, m.id) : null;
+    },
+    /** 买下一个培训节点；结果由 HUD 弹 toast，失败原因直接回传（不在此处静默）。 */
+    train: (type, nodeId) => {
+      const m = state.staff.find((s) => s.type === type);
+      if (!m) return { ok: false, reason: '未雇佣' };
+      return trainStaffNode(state, m.id, nodeId);
+    },
   };
 }
 

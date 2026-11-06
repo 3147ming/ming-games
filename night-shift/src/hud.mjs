@@ -860,6 +860,34 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
   };
   function staffContent() {
     const snap = staffApi.snapshot();
+    /* 培训树展开区：只在已雇佣的员工行里出现。
+     * 数据全部来自 staffApi.training()（main 里包了一层 training.snapshotFor），
+     * HUD 不 import 培训表 —— 价格/前置规则只有一份真源，面板不可能和 AI 漂移。 */
+    const trainingHtml = (r) => {
+      if (!r.hired || typeof staffApi.training !== 'function') return '';
+      const tr = staffApi.training(r.type);
+      if (!tr) return '';
+      const nodes = tr.nodes.map((n) => {
+        const cls = n.unlocked ? 'done' : (n.canTrain ? 'ready' : 'locked');
+        const btn = n.unlocked
+          ? '<span class="tn-owned">已掌握</span>'
+          : `<button class="mini-btn tn-buy" data-act="train" data-type="${r.type}" data-node="${n.id}" ${n.canTrain ? '' : 'disabled'}>${fmtYuan(n.cost)}</button>`;
+        const why = (!n.unlocked && !n.canTrain && n.reason)
+          ? `<div class="tn-reason">${n.reason}</div>` : '';
+        return `<div class="train-node ${cls}">
+          <div class="tn-main">
+            <div class="tn-name">${n.unlocked ? '✅' : '🔒'} ${n.name}</div>
+            <div class="tn-desc">${n.desc}</div>
+            ${why}
+          </div>
+          <div class="tn-act">${btn}</div>
+        </div>`;
+      }).join('');
+      return `<details class="staff-train" open>
+        <summary>🎓 ${tr.title} · Lv${tr.level}/${tr.maxLevel} · 夜产出 ${fmtYuan(tr.bonuses.nightOutput)}</summary>
+        <div class="tn-list">${nodes}</div>
+      </details>`;
+    };
     const rows = snap.roster.map((r) => {
       const def = STAFF.types[r.type];
       const can = staffApi.canHire(r.type);
@@ -886,6 +914,7 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
           <div class="s-desc">${def.desc}</div>
           <div class="s-meta">${meta}${why}</div>
           ${badge}${bar}
+          ${trainingHtml(r)}
         </div>
         <div>${btn}</div>
       </div>`;
@@ -1322,6 +1351,15 @@ export function openPurchase(onClose, purchaseFn = null, shop = null, staffApi =
           toast(r?.ok
             ? (r.onDuty ? `✅ ${def.name} 今夜上班` : `💤 ${def.name} 今夜休息（不扣薪）`)
             : (r?.reason ?? '排班失败'), r?.ok ? 'ok' : 'bad');
+          render(); return;
+        }
+        if (act === 'train') {
+          /* 培训下单：成功扣现金并就地重绘（新等级 / 下一级价格 / 新倍率立刻可见）。
+           * 失败时把 training.canTrain 的中文原因原样展示，避免"点了没反应"。 */
+          const r = staffApi.train?.(el.dataset.type, el.dataset.node);
+          toast(r?.ok
+            ? `🎓 培训完成 · ${r.node?.name ?? '技能'}（Lv${r.level}）· ${fmtYuan(-r.cost)}`
+            : (r?.reason ?? '培训失败'), r?.ok ? 'ok' : 'bad');
           render(); return;
         }
         return;

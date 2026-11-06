@@ -12,6 +12,10 @@ import {
 } from './config.mjs';
 import { state, expandSlots, notify } from './state.mjs';
 import { isFestival } from './themes.mjs';
+/* 员工培训的夜末产出（纯逻辑，只读 state.staff / state.training）。
+ * 放在这里消费而不是让 main 注入，是因为它和咖啡机一样属于"结算时统一入账的
+ * 被动收益"，必须和 netProfit 在同一段算，否则测试/探针看到的报告会对不上。 */
+import { staffNightOutput } from './training.mjs';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -159,9 +163,16 @@ function availableSkuIds() {
  *   ① 有临期货（state.expiringTonight 的 SKU）优先补它 —— 今夜卖不掉就全额报废，
  *      摆上货架至少还有机会成交（临期货进价已三折，优先清它是纯赚）。
  *   ② 每格只补到 STAFF_SLOT_CAP（80%），剩下的空位是留给玩家的（见 STAFF_SLOT_CAP 注释）。
+ *
+ * @param opts 可选（不传 = 旧行为，玩家/旧测试完全不变）：
+ *   opts.capExtra  每格软上限 +N（上货员「先进先出」培训；内部仍 clamp 到 SLOT_CAP）
+ *   opts.batch     单次取货上限（上货员「立体码放」培训；默认 PICK_BATCH）
  */
-export function restockShelfIfPossible() {
+export function restockShelfIfPossible(opts = {}) {
   if (state.held) return false; // 手上已有货时不抢
+  const capExtra = Number.isFinite(opts?.capExtra) ? Math.max(0, Math.floor(opts.capExtra)) : 0;
+  const cap = Math.min(SLOT_CAP, STAFF_SLOT_CAP + capExtra);
+  const batch = Number.isFinite(opts?.batch) ? Math.max(1, Math.floor(opts.batch)) : PICK_BATCH;
   const ids = availableSkuIds();
   // 临期货优先：这一夜必须清掉的 SKU，员工先替玩家把它摆出去
   const expiringId = state.expiringTonight?.skuId ?? null;
@@ -171,10 +182,10 @@ export function restockShelfIfPossible() {
   if (!skuId) return false;
   // 找一个空格 / 同 SKU 未满软上限的格
   const slotIndex = state.slots.findIndex((s) =>
-    (!s.skuId && s.qty === 0) || (s.skuId === skuId && s.qty < STAFF_SLOT_CAP));
+    (!s.skuId && s.qty === 0) || (s.skuId === skuId && s.qty < cap));
   if (slotIndex < 0) return false;
   // 必须按挑好的 SKU 取：take() 默认是"箱子里第一个有货的"，不指定会取错商品
-  const t = take(skuId);
+  const t = take(skuId, batch);
   if (!t.ok) return false;
   const p = place(slotIndex);
   if (!p.ok) {
@@ -187,9 +198,9 @@ export function restockShelfIfPossible() {
     return false;
   }
   /* place() 是"有多少空位塞多少"，它不知道员工这套软上限（玩家上货走的是同一个 place）。
-   * 所以补完把超出的部分吐回库存箱：既保证员工永不超过 80%，又不给 place 加特殊分支。 */
+   * 所以补完把超出的部分吐回库存箱：既保证员工永不超过软上限，又不给 place 加特殊分支。 */
   const slot = state.slots[slotIndex];
-  const over = slot.qty - STAFF_SLOT_CAP;
+  const over = slot.qty - cap;
   if (over > 0) {
     slot.qty -= over;
     state.backroom[skuId] = (state.backroom[skuId] | 0) + over;
@@ -233,15 +244,18 @@ export function earnCash(amount) {
  * @param preferSkuId 可选 · 指定优先取的 SKU（员工补货要按自己挑好的 SKU 取）。
  *   不传时行为与以前完全一致（取箱子里第一个有货的），
  *   这样就必须传明确的 id 才会改变取货顺序 —— 不会顺手把别的线程的取货逻辑改坏。
+ * @param batch 可选 · 单次取货上限（默认 PICK_BATCH）。
+ *   上货员培训「立体码放」会传更大的值；玩家路径不传，仍是原批量。
  */
-export function take(preferSkuId) {
+export function take(preferSkuId, batch = PICK_BATCH) {
   if (state.held) return { ok: false, reason: '手中已有货物' };
   const ids = availableSkuIds();
   const skuId = (preferSkuId && ids.includes(preferSkuId) && (state.backroom[preferSkuId] | 0) > 0)
     ? preferSkuId
     : ids.find((id) => state.backroom[id] > 0);
   if (!skuId) return { ok: false, reason: '库存箱已空，先采购（Tab）' };
-  const qty = Math.min(PICK_BATCH, state.backroom[skuId]);
+  const max = Number.isFinite(batch) ? Math.max(1, Math.floor(batch)) : PICK_BATCH;
+  const qty = Math.min(max, state.backroom[skuId]);
   state.backroom[skuId] -= qty;
   state.held = { skuId, qty };
   notify();
@@ -532,6 +546,16 @@ export function settleNight() {
     state.revenue += coffee;
   }
 
+  /* 2.5) 员工培训的当夜产出。
+   * 与咖啡机同一条口径（先入账再算净利）：培训给的是"少停摆 / 少断货 / 干净店面"
+   * 换来的营业外产出，不进 state.prices，也不乘任何倍率 —— 它必须可预测，
+   * 玩家才能判断"这一级培训值不值"。未培训 / 今夜不上班 → 0，旧平衡不变。 */
+  const staffOutput = staffNightOutput(state);
+  if (staffOutput) {
+    state.cash += staffOutput;
+    state.revenue += staffOutput;
+  }
+
   // 3) 房租（漏出，防失控）；房租随夜次曲线上浮（P0-5）
   /* P1-9：房租 = 基准 × 周内夜次曲线 × 周难度。周内曲线保留"第 7 夜最贵"的节奏，
    * 周难度（第二周 ×1.25 / 第三周 ×1.5）把整周一起抬上去。 */
@@ -572,6 +596,8 @@ export function settleNight() {
     rent,
     utilities,
     coffee,
+    /* 员工培训产出：单独成行，结算面板可以显示"其中培训 ¥X" */
+    staffOutput,
     netProfit,
     served: state.served,
     lostSales: state.lostSales,

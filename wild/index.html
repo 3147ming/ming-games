@@ -43,6 +43,24 @@
           <!-- 阶段 6-3：装备 / 局外配装（3 槽各选 1 件，纯数值加成） -->
           <button class="pick-h" type="button" data-target="loadout-select"><span id="loadout-sum">装备 · 未配置</span><i>▾</i></button>
           <div id="loadout-select" class="loadout-select" hidden></div>
+          <!-- 音频设置（主音量 + 静音）。★ 复用皮肤/装备同一套折叠行（.pick-h + .prog-panel），
+               不新开一屏：WILD 只有标题/局内/结算三屏，音量是"随时想拧一下"的东西，
+               藏进标题页的折叠区就够，没必要为它多一次切屏、多一条开局路径。 -->
+          <button class="pick-h" type="button" data-target="audio-panel"><span id="audio-sum">音频 · 100%</span><i>▾</i></button>
+          <div id="audio-panel" class="prog-panel audio-panel" hidden>
+            <div class="prog-head">音频设置</div>
+            <div class="audio-row">
+              <label class="audio-label" for="audio-vol">主音量</label>
+              <input id="audio-vol" class="audio-range" type="range" min="0" max="100" step="1" value="100"
+                     aria-label="主音量" aria-valuetext="100%" />
+              <span id="audio-vol-val" class="audio-val">100%</span>
+            </div>
+            <button id="audio-mute" class="audio-mute" type="button" aria-pressed="false">
+              <span class="audio-mute-ico" aria-hidden="true">♪</span><span class="audio-mute-text">声音开</span>
+            </button>
+            <!-- 一句话把"为什么只有一个滑杆"讲清楚：玩家不需要猜 BGM 与音效是不是分开的。 -->
+            <p class="audio-note">主音量同时作用于背景音乐与音效</p>
+          </div>
           <!-- 阶段 4-3 目标感：三条本地纪录（大字） -->
           <div id="best-panel" class="best-panel"></div>
           <!-- 阶段10·P1-10：今日挑战（同一天同一个种子 + 本地榜） -->

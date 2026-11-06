@@ -6,6 +6,7 @@ import { CONST, STATUS_TEXT } from '../config/constants.js';
 import { ARCHETYPES, ARCHETYPE_MAP } from '../config/archetypes.js';
 import { CARD_MAP, POOL_CARDS } from '../config/cards.js';
 import { RELICS } from '../config/relics.js';
+import { SET_DEFS, countSets, activeBonuses } from './sets.js';
 import { describeCard, describeRelic, typeText, rarityText, shortCardText } from './describe.js';
 import { glyphSvg } from './glyph.js';
 import { intentView } from './enemy.js';
@@ -19,6 +20,7 @@ import { resolveLogEnv, lastLog, amendLastLog } from './logger.js';
 import { load } from './storage.js';
 
 const $ = (id) => document.getElementById(id);
+const SET_BY_ID = Object.fromEntries(SET_DEFS.map((s) => [s.id, s]));
 
 export class Ui {
   constructor(h) {
@@ -29,6 +31,7 @@ export class Ui {
       hudProgress: $('hud-progress'),
       hudSeed: $('hud-seed'),
       hudRelics: $('hud-relics'),
+      hudSets: $('hud-sets'),
       hudDeck: $('hud-deck'),
       hudDeckN: $('hud-deck-n'),
       energy: $('energy'),
@@ -253,6 +256,7 @@ export class Ui {
       this.el.hudProgress.textContent = '第 1 层 · 1/4';
       this.el.hudSeed.textContent = '种子 ——';
       this.el.hudRelics.innerHTML = '';
+      if (this.el.hudSets) this.el.hudSets.innerHTML = '';
       return;
     }
     const pct = Math.max(0, Math.min(100, (run.hp / run.maxHp) * 100));
@@ -264,10 +268,14 @@ export class Ui {
       : `第九层的尽头`;
     this.el.hudSeed.textContent = `种子 ${run.seed}`;
     // 机制批 P0-7：遗物改可点方块（去掉 title，手机上触屏没有 hover）。点击弹 toast 显示效果。
+    // 第四批套装：属于套装的遗物加一圈金边，点开时一并说出「哪套、几件、还差几件」。
+    const counts = countSets(run.relicIds);
+    const bonuses = activeBonuses(run.relicIds);
+    const bonusBySet = new Map(bonuses.map((b) => [b.setId, b]));
     this.el.hudRelics.innerHTML = run.relicIds
       .map((id) => {
         const r = RELICS.find((x) => x.id === id);
-        return r ? `<span class="relic-chip" data-relic="${r.id}">${r.n.slice(0, 1)}</span>` : '';
+        return r ? `<span class="relic-chip${r.set ? ' set-member' : ''}" data-relic="${r.id}">${r.n.slice(0, 1)}</span>` : '';
       })
       .join('');
     for (const el of this.el.hudRelics.querySelectorAll('[data-relic]')) {
@@ -275,8 +283,40 @@ export class Ui {
         const r = RELICS.find((x) => x.id === el.dataset.relic);
         if (!r) return;
         // describeRelic 输出带 <b>/<br>，toast 里只需要纯文本
-        this.toast(`${r.n}：${describeRelic(r).replace(/<br>/g, '；').replace(/<\/?b>/g, '')}`, 3200);
+        const def = r.set ? SET_BY_ID[r.set] : null;
+        const n = def ? counts[def.id] : 0;
+        const setLine = def
+          ? `；【${def.name}】${n}/3${n >= 3 ? '（已集齐）' : `，还差 ${3 - n} 件`}`
+          : '';
+        this.toast(`${r.n}：${describeRelic(r).replace(/<br>/g, '；').replace(/<\/?b>/g, '')}${setLine}`, 3600);
       };
+    }
+    // 套装进度条：只显示本局已经沾到的套装，避免 HUD 被四行空槽占满。
+    // 2 件档用金色描边（on），3 件档填金（done）—— 玩家不点开也能一眼看出「质变已生效」。
+    if (this.el.hudSets) {
+      this.el.hudSets.innerHTML = SET_DEFS.filter((s) => counts[s.id] > 0)
+        .map((s) => {
+          const n = counts[s.id];
+          const b = bonusBySet.get(s.id);
+          const cls = `set-chip${b ? ' on' : ''}${b && b.tier === 3 ? ' done' : ''}`;
+          return `<span class="${cls}" data-set="${s.id}">${s.name} ${n}/3${n < 3 ? ` · 差${3 - n}` : ''}</span>`;
+        })
+        .join('');
+      for (const el of this.el.hudSets.querySelectorAll('[data-set]')) {
+        el.onclick = () => {
+          const def = SET_BY_ID[el.dataset.set];
+          if (!def) return;
+          const n = counts[def.id];
+          const b = bonusBySet.get(def.id);
+          const stateText = b
+            ? `当前生效（${b.tier} 件）：${b.text}`
+            : `还差 ${3 - n} 件集齐 3 件效果。`;
+          this.toast(
+            `${def.name} ${n}/3｜${def.desc}｜2 件：${def.two.text}｜3 件：${def.three.text}｜${stateText}`,
+            5200
+          );
+        };
+      }
     }
     // 机制批 P0-1：牌组数字 + 只读牌组视图入口
     if (this.el.hudDeckN) this.el.hudDeckN.textContent = run.deck.length;
@@ -848,6 +888,26 @@ export class Ui {
     this.renderHud(null);
     this.el.metaTitle.textContent = '牌谱 · 只有带回来的牌才会出现在这里';
     const owned = new Set(meta.unlockedCards);
+    // 套装总览：牌谱页是玩家「离线研究构筑」的地方，必须能在这里看到 2/3 件效果，
+    // 而不是等集齐了才在战斗里靠 toast 猜。成员列表按 RELICS 的 set 字段现查，不另维护一份。
+    const setBlocks = SET_DEFS.map((s) => {
+      const members = RELICS.filter((r) => r.set === s.id);
+      const got = members.filter((r) => meta.unlockedRelics.includes(r.id)).length;
+      const flags = members
+        .map((r) =>
+          meta.unlockedRelics.includes(r.id)
+            ? `<span class="flag buff" data-relic="${r.id}">${r.n}</span>`
+            : `<span class="flag" style="opacity:.4">${r.n} · 未解封</span>`
+        )
+        .join('');
+      return `<div class="codex-set">
+        <div class="cs-head"><b>${s.name}</b><span>${got}/${members.length} 件已解封</span></div>
+        <div class="cs-desc">${s.desc}</div>
+        <div class="cs-effect"><b>2 件</b>：${s.two.text}</div>
+        <div class="cs-effect"><b>3 件</b>：${s.three.text}</div>
+        <div class="cs-members">${flags}</div>
+      </div>`;
+    }).join('');
     this.el.metaBody.innerHTML = ARCHETYPES.map((a) => {
       const list = POOL_CARDS.filter((c) => c.a === a.id);
       const got = list.filter((c) => owned.has(c.id)).length;
@@ -859,18 +919,26 @@ export class Ui {
           .join('')}</div>
       </div>`;
     }).join('') +
-      `<div style="margin-bottom:20px"><div style="font-size:13px;color:var(--gold);margin-bottom:8px">遗物 · ${meta.unlockedRelics.length}/${RELICS.length}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px">${RELICS.map((r) =>
-          meta.unlockedRelics.includes(r.id)
+      `<div style="margin-bottom:20px">
+        <div style="font-size:13px;color:var(--gold);margin-bottom:8px">遗物套装</div>
+        <div class="codex-sets">${setBlocks}</div>
+        <div style="font-size:13px;color:var(--gold);margin-bottom:8px">遗物 · ${meta.unlockedRelics.length}/${RELICS.length}
+          <span style="color:var(--paper-dim);font-size:11px">（套件以 · 套装名 标注；散件不给套装，是刻意的）</span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">${RELICS.map((r) => {
+          const setName = r.set && SET_BY_ID[r.set] ? ` · ${SET_BY_ID[r.set].name}` : '';
+          return meta.unlockedRelics.includes(r.id)
             // 第三批 P0-3：牌谱里的遗物必须能点开看效果 —— describeRelic 已在 HUD 用了，这里只是补上
-            ? `<span class="flag buff" data-relic="${r.id}" style="padding:5px 9px;font-size:11px;cursor:pointer">${r.n}</span>`
-            : `<span class="flag" style="padding:5px 9px;font-size:11px;opacity:.4">已封印</span>`
-        ).join('')}</div></div>
+            ? `<span class="flag buff" data-relic="${r.id}" style="padding:5px 9px;font-size:11px;cursor:pointer">${r.n}${setName}</span>`
+            : `<span class="flag" style="padding:5px 9px;font-size:11px;opacity:.4">已封印</span>`;
+        }).join('')}</div></div>
         <div style="display:flex;justify-content:center"><button id="btn-codex-back">返回</button></div>`;
     for (const el of this.el.metaBody.querySelectorAll('[data-relic]')) {
       el.onclick = () => {
         const r = RELICS.find((x) => x.id === el.dataset.relic);
-        if (r) this.toast(`${r.n}：${describeRelic(r).replace(/<br>/g, '；').replace(/<\/?b>/g, '')}`, 3200);
+        if (!r) return;
+        const def = r.set ? SET_BY_ID[r.set] : null;
+        const setLine = def ? `；【${def.name}】2 件：${def.two.text} 3 件：${def.three.text}` : '';
+        this.toast(`${r.n}：${describeRelic(r).replace(/<br>/g, '；').replace(/<\/?b>/g, '')}${setLine}`, 3600);
       };
     }
     $('btn-codex-back').onclick = () => this.h.onBack();

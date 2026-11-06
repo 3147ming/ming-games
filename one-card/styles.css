@@ -117,6 +117,45 @@ html, body {
   color: var(--gold);
   cursor: pointer;
 }
+/* 套件遗物加金边：不额外占位，玩家扫一眼 HUD 就知道哪几件是「一套的」 */
+.relic-chip.set-member { border-color: var(--gold); }
+
+/* ---------- 遗物套装进度（第四批）---------- */
+.hud-sets { display: flex; flex-wrap: wrap; gap: var(--mg-sp-1); margin-top: var(--mg-sp-1); }
+.hud-sets:empty { display: none; }
+.set-chip {
+  padding: 1px var(--mg-sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--mg-r-pill);
+  background: var(--ink3);
+  color: var(--paper-dim);
+  font-size: var(--mg-fs-xs);
+  line-height: var(--mg-lh-normal);
+  cursor: pointer;
+  transition: color var(--mg-t-fast) var(--mg-ease-out), border-color var(--mg-t-fast) var(--mg-ease-out);
+}
+/* 2 件档：描边变金；3 件档：填金反白 —— 两档在视觉上也要能区分 */
+.set-chip.on { color: var(--gold); border-color: var(--gold); }
+.set-chip.done { color: var(--ink); background: var(--gold); border-color: var(--gold); font-weight: var(--mg-fw-bold); }
+
+/* 牌谱页的套装总览：2/3 件效果必须在离线研究时就能读到 */
+.codex-sets { display: flex; flex-direction: column; gap: var(--mg-sp-2); margin-bottom: var(--mg-sp-3); }
+.codex-set {
+  padding: var(--mg-sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--mg-r-sm);
+  background: var(--ink2);
+}
+.cs-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--mg-sp-2);
+  color: var(--gold); font-size: var(--mg-fs-sm);
+}
+.cs-head span { color: var(--paper-dim); font-size: var(--mg-fs-xs); }
+.cs-desc { margin-top: var(--mg-sp-1); color: var(--paper-dim); font-size: var(--mg-fs-xs); }
+.cs-effect { margin-top: var(--mg-sp-1); font-size: var(--mg-fs-xs); color: var(--paper); }
+.cs-effect b { color: var(--gold); font-weight: var(--mg-fw-bold); }
+.cs-members { display: flex; flex-wrap: wrap; gap: var(--mg-sp-1); margin-top: var(--mg-sp-2); }
+.codex-set .flag { padding: 2px var(--mg-sp-2); font-size: var(--mg-fs-xs); }
 
 /* ---------- 场景容器 ---------- */
 /* 阶段 5 / T3：背景随环节变化。只用 background-color 做切换（可平滑过渡），

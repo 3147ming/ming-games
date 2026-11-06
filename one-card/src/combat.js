@@ -8,12 +8,21 @@ import { RELIC_MAP } from '../config/relics.js';
 import { makeStatuses, resolveOps, tickTurnStart, tickTurnEnd, computeDamage } from './effects.js';
 import { drawCards, discardAllHand, def } from './cards.js';
 import { makeEnemy, advanceIntent, runIntent } from './enemy.js';
+import { activeBonuses } from './sets.js';
 
 export class Combat {
   constructor({ run, enemyDef, rng }) {
     this.rng = rng;
     this.run = run;
     this.relics = run.relicIds.map((id) => RELIC_MAP[id]).filter(Boolean);
+    // 套装加成在战斗开始时一次性定格：本场战斗中途不会获得遗物（精英的遗物在战后才发），
+    // 所以不需要每帧重算；也保证「这场战斗吃到了哪一档」在一整场里稳定。
+    this.setBonuses = activeBonuses(run.relicIds);
+    this.setFlags = {};
+    for (const b of this.setBonuses) Object.assign(this.setFlags, b.effect.flags || {});
+    this.setTriggers = this.setBonuses.map((b) => b.effect.trigger).filter(Boolean);
+    // 兵家 3 件的「每回合首次攻击」判定用；每回合开始重置。
+    this._attackPlayedThisTurn = false;
     this.state = {
       player: {
         hp: run.hp,
@@ -51,9 +60,11 @@ export class Combat {
    * 用 Array.isArray(trig.ops) 区分，不允许靠猜。
    */
   fire(hook, extra = {}) {
-    for (const r of this.relics) {
-      const list = r.hooks && r.hooks[hook];
-      if (!list) continue;
+    // 遗物与套装的 2 件被动走同一条执行路径：套装钩子不是另一套语法，
+    // 只是「来源不是某一件遗物，而是凑齐的一组遗物」。
+    const fireHooks = (hooks) => {
+      const list = hooks && hooks[hook];
+      if (!list) return;
       for (const trig of list) {
         if (Array.isArray(trig.ops)) {
           const c = trig.cond;
@@ -68,6 +79,25 @@ export class Combat {
           resolveOps(this.state, [trig], { rng: this.rng });
         }
       }
+    };
+    for (const r of this.relics) fireHooks(r.hooks);
+    for (const b of this.setBonuses) fireHooks(b.effect.hooks);
+  }
+
+  /**
+   * 套装触发器（目前只有兵家 3 件的「每回合首次攻击」）。
+   * 不塞进 fire()：fire 的契约是「执行某个钩子」，无状态；
+   * 「本回合第一张攻击牌」依赖回合内状态，只有战斗循环自己知道，所以留在这里判定。
+   */
+  fireSetTriggers(when, extra = {}) {
+    for (const t of this.setTriggers) {
+      if (t.when !== when) continue;
+      if (t.when === 'firstAttackEachTurn') {
+        if (extra.cardType !== 'attack') continue;
+        if (this._attackPlayedThisTurn) continue;
+        this._attackPlayedThisTurn = true;
+      }
+      resolveOps(this.state, t.ops, { rng: this.rng });
     }
   }
 
@@ -80,9 +110,13 @@ export class Combat {
 
   startPlayerTurn() {
     const s = this.state;
-    s.player.block = 0;
+    // 匠作 3 件：不再把格挡清成 0，而是保留上一回合的一半。
+    // 没有该套装时 retainRatio = 0，行为与旧版完全一致（这也是不改旧测试的原因）。
+    const retainRatio = this.setFlags.blockRetainRatio || 0;
+    s.player.block = retainRatio > 0 ? Math.floor(s.player.block * retainRatio) : 0;
     s.player.energy = s.player.maxEnergy;
     s.cardsPlayedThisTurn = 0;
+    this._attackPlayedThisTurn = false;
     tickTurnStart(s, 'self');
     if (this.checkOver()) return;
     this.fire('turnStart');
@@ -113,7 +147,12 @@ export class Combat {
     if (d.ex) s.exhaust.push(inst);
     else s.discard.push(inst);
 
-    if (!this.over) this.fire('cardPlayed', { cardType: d.t, cost: d.cost });
+    if (!this.over) {
+      this.fire('cardPlayed', { cardType: d.t, cost: d.cost });
+      // 遗物钩子执行完再判套装触发：兵家的「首次攻击」奖励是对这次攻击的追认，
+      // 不应改变这次攻击本身的结算（避免同一张牌先吃抽牌又改伤害的歧义）。
+      this.fireSetTriggers('firstAttackEachTurn', { cardType: d.t, cost: d.cost });
+    }
     this.checkOver();
     return { ok: true };
   }
@@ -134,7 +173,9 @@ export class Combat {
   enemyTurn() {
     const s = this.state;
     s.enemy.block = 0;
-    tickTurnStart(s, 'enemy');
+    // 方士 3 件：敌人的中毒不衰减。默认口径仍是每回合 -2（POISON_DECAY），
+    // 只有 flag 打开时才跳过，旧阵容/旧测试不受影响。
+    tickTurnStart(s, 'enemy', { poisonNoDecay: !!this.setFlags.poisonNoDecay });
     if (this.checkOver()) return;
     runIntent(s, { rng: this.rng });
     if (this.checkOver()) return;

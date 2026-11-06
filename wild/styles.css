@@ -716,6 +716,140 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
 .prog-cell.done { opacity: .62; }
 .prog-cell.done .pc-name { color: var(--flux); }
 
+/* ── 音频设置（标题页折叠面板：主音量滑杆 + 静音键）──
+   复用 .prog-panel 的卡片体，这里只加两行控件。
+   ★ 所有热区 ≥ var(--mg-tap)：滑杆轨道视觉上只有 6px，但可拖区域是整行 44px；
+     手机上要精确戳中一根细线才拖得动，是"调不了音量"的常见根因。 */
+.audio-row {
+  display: flex;
+  align-items: center;
+  gap: var(--mg-sp-2);
+  min-height: var(--mg-tap);
+}
+.audio-label {
+  flex: none;
+  font-size: var(--mg-fs-sm);
+  color: var(--paper-dim);
+  letter-spacing: .08em;
+  white-space: nowrap;
+}
+/* range 原生控件：先抹掉默认外观，轨道与滑块全部自己画（WebKit / Blink / Gecko 三套都要写）。 */
+.audio-range {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--mg-tap);
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  /* 纵向滚动仍交给页面，只有横向拖动才归滑杆 —— 否则手机上想把页面往上推会误改音量 */
+  touch-action: pan-y;
+}
+.audio-range:focus-visible {
+  outline: 2px solid var(--flux);
+  outline-offset: 2px;
+  border-radius: var(--mg-r-pill);
+}
+/* Blink / WebKit 轨道：用 --fill 给已选区间染色（拖动时 JS 实时写这个变量） */
+.audio-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: var(--mg-r-pill);
+  background: linear-gradient(90deg, var(--flux) 0 var(--fill, 100%),
+    rgba(255, 255, 255, .12) var(--fill, 100%) 100%);
+}
+.audio-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -7px;   /* (20 − 6) / -2：滑块垂直居中于 6px 轨道 */
+  border-radius: 50%;
+  background: var(--paper);
+  border: 2px solid var(--flux);
+  box-shadow: var(--mg-shadow-sm);
+}
+.audio-range::-moz-range-track {
+  height: 6px;
+  border-radius: var(--mg-r-pill);
+  background: rgba(255, 255, 255, .12);
+}
+.audio-range::-moz-range-progress {
+  height: 6px;
+  border-radius: var(--mg-r-pill);
+  background: var(--flux);
+}
+.audio-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--paper);
+  border: 2px solid var(--flux);
+  box-shadow: var(--mg-shadow-sm);
+}
+.audio-val {
+  flex: none;
+  min-width: 4ch;
+  text-align: right;
+  font-size: var(--mg-fs-sm);
+  color: var(--flux);
+  font-variant-numeric: tabular-nums;   /* 数字等宽：拖动时百分比不会左右抖 */
+}
+/* 静音键：默认低饱和；静音时整键转告警红（--blade），图标加斜杠。
+   颜色 + 文案 + 斜杠三重编码 —— 只靠颜色对色弱玩家不够。 */
+.audio-mute {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--mg-sp-2);
+  width: 100%;
+  min-height: var(--mg-tap);
+  margin-top: var(--mg-sp-2);
+  padding: 0 var(--mg-sp-3);
+  font-family: var(--font);
+  font-size: var(--mg-fs-sm);
+  letter-spacing: .10em;
+  border: 1px solid var(--line);
+  border-radius: var(--mg-r-sm);
+  background: transparent;
+  color: var(--paper-dim);
+  transition: color var(--mg-t-base) var(--mg-ease-out),
+    border-color var(--mg-t-base) var(--mg-ease-out),
+    background var(--mg-t-base) var(--mg-ease-out);
+}
+.audio-mute .audio-mute-ico {
+  position: relative;
+  font-size: var(--mg-fs-lg);
+  line-height: 1;
+}
+.audio-mute:hover { color: var(--paper); border-color: var(--paper-dim); }
+.audio-mute:active { transform: translateY(1px); }
+.audio-mute.muted {
+  color: var(--blade);
+  border-color: var(--blade);
+  background: rgba(209, 84, 74, .12);
+}
+/* 斜杠用伪元素画：不依赖 emoji 字体（同名 emoji 在 iOS / Android / Windows 上长得完全不同）。 */
+.audio-mute.muted .audio-mute-ico::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  width: 2px;
+  height: calc(100% + 4px);
+  background: var(--blade);
+  border-radius: 2px;
+  transform: translateX(-50%) rotate(45deg);
+}
+.audio-note {
+  margin: var(--mg-sp-2) 0 0;
+  font-size: var(--mg-fs-xs);
+  color: #6b655d;
+  letter-spacing: .02em;
+  text-align: center;
+}
+
 /* 结算页评级大字 */
 .res-grade {
   display: flex; flex-direction: column; align-items: center; gap: 4px;

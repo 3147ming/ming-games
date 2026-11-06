@@ -18,6 +18,9 @@
 import { STAFF, WAREHOUSE, SKU_BY_ID, NIGHT_WALL_SECONDS } from './config.mjs';
 import { availableSkus } from './economy.mjs';
 import { fmtYuan } from './fmt.mjs';
+/* 培训树（纯逻辑）：每位员工点过的节点 → 累计倍率。
+ * staff 只消费 getBonuses 的结果，不认识节点价格/前置规则（那些在 training.mjs）。 */
+import { getBonuses } from './training.mjs';
 
 /**
  * @param opts.state       全局状态（含 staff / warehouse / cash / deviceStock）
@@ -85,7 +88,10 @@ export function createStaff(opts = {}) {
     const arr = roster();
     const i = arr.findIndex((s) => s.type === type);
     if (i < 0) return { ok: false, reason: '未雇佣' };
-    arr.splice(i, 1);
+    const [gone] = arr.splice(i, 1);
+    /* 培训按 staffId 存（见 training.mjs）：人走了，这条技能线也随人消失。
+     * 顺手删掉键，避免读档后留下一堆永远不会再生效的孤儿数据。 */
+    if (gone?.id && state.training && typeof state.training === 'object') delete state.training[gone.id];
     onEvent('fire', { type, name: defOf(type).name });
     return { ok: true, type };
   }
@@ -133,6 +139,13 @@ export function createStaff(opts = {}) {
 
   /* ---------- 单店员推进 ---------- */
 
+  /** 培训后的行动冷却。
+   *  口径：训练缩短的是"两次动作之间的间隔"，不是单次动作的产出 ——
+   *  这样玩家能直观看到"同一个人一分钟里多干了一件事"，而不是数值偷偷变大。 */
+  function actionCdOf(bonus) {
+    return STAFF.actionCd * (bonus?.actionCdMul ?? 1);
+  }
+
   function updateMember(s, dt, now) {
     const def = defOf(s.type);
 
@@ -157,51 +170,75 @@ export function createStaff(opts = {}) {
     if (stopped) { s.working = false; s.status = 'stopped'; return; }
     if (now < s.cooldownUntil) { s.status = s.working ? 'working' : 'idle'; return; }
 
+    /* 培训加成每次走到动作前现算：玩家可能在夜中途点完培训，
+     * 缓存到开局会让"刚花的钱这一夜不生效"，与"永久能力"的直觉不符。 */
+    const bonus = getBonuses(state, s.id);
     switch (s.type) {
-      case 'repairer': return aiRepairer(s, now);
-      case 'cleaner':   return aiCleaner(s, now);
-      case 'purchaser': return aiPurchaser(s, now);
-      case 'stocker':   return aiStocker(s, now);
+      case 'repairer': return aiRepairer(s, now, bonus);
+      case 'cleaner':   return aiCleaner(s, now, bonus);
+      case 'purchaser': return aiPurchaser(s, now, bonus);
+      case 'stocker':   return aiStocker(s, now, bonus);
       default: s.status = 'idle';
     }
   }
 
-  function aiRepairer(s, now) {
+  function aiRepairer(s, now, bonus = {}) {
     const broken = worldState.deviceList().find((d) => d.broken);
     if (!broken) { s.working = false; s.status = 'idle'; return; }
     s.working = true;
     s.status = 'repair';
     s.targetId = broken.id;
-    const r = worldState.repair(broken.id, state.cash);
+    /* 培训「维修费减免」：worldState.repair 支持第三参数 costOverride（QTE 折扣也走它），
+     * 这里用同一入口传折后价，不另开一条"先扣钱再修"的旁路。
+     * 只有真有折扣且 worldState 报价函数存在时才传，保持未培训路径的行为完全不变。 */
+    const canDiscount = (bonus.repairCostMul ?? 1) < 1 && typeof worldState.repairCost === 'function';
+    const r = canDiscount
+      ? worldState.repair(broken.id, state.cash, Math.max(1, Math.round(worldState.repairCost(broken.id) * bonus.repairCostMul)))
+      : worldState.repair(broken.id, state.cash);
     if (r.ok) onEvent('repair-done', { type: s.type, name: defOf(s.type).name, id: broken.id });
     else if (r.reason === 'insufficient') onEvent('repair-nocash', { type: s.type });
-    s.cooldownUntil = now + STAFF.actionCd;
+    s.cooldownUntil = now + actionCdOf(bonus);
   }
 
-  function aiCleaner(s, now) {
+  function aiCleaner(s, now, bonus = {}) {
     const litter = worldState.litter;
     if (!litter || litter.length === 0) { s.working = false; s.status = 'idle'; return; }
     s.working = true;
     s.status = 'clean';
-    const r = worldState.clean(litter[0].id);
+    /* 培训「一次多清」：cleanBatch 是"这一趟最多处理几件"。
+     * 逐件调用 worldState.clean 而不是新写批量接口 —— 垃圾的清理副作用
+     * （口碑/满意度/音效）都在 clean 里，绕开它会让培训变成"清了个寂寞"。 */
+    const batch = Math.max(1, bonus.cleanBatch ?? 1);
+    let count = 0;
+    for (let i = 0; i < batch; i += 1) {
+      const cur = worldState.litter;
+      if (!cur || cur.length === 0) break;
+      const r = worldState.clean(cur[0].id);
+      if (!r.ok) break;   // 清不掉就别空转，留给下一轮
+      count += 1;
+    }
     // name 必须带上：main.mjs 的 toast 要显示"谁完成的"（Bug⑥ —— 漏传就会拼出 "undefined 清理了垃圾"）
-    if (r.ok) onEvent('clean-done', { type: s.type, name: defOf(s.type).name });
-    s.cooldownUntil = now + STAFF.actionCd;
+    if (count > 0) onEvent('clean-done', { type: s.type, name: defOf(s.type).name, count });
+    s.cooldownUntil = now + actionCdOf(bonus);
   }
 
-  function aiPurchaser(s, now) {
+  function aiPurchaser(s, now, bonus = {}) {
     // 外出归来：执行挂起的采购单
     if (s.status === 'errand' && now >= s.errandUntil) {
       const p = s.pending;
       s.pending = null;
       s.status = 'idle';
       if (p) {
+        /* 培训「采购溢价减免」：premium 是 economy.purchase 的第三个参数，
+         * 直接乘在基础溢价上（0.15 × 0.4 = 0.06）。不在这里改货品进价 ——
+         * 进价是 config 的单一真源，培训只动"这个人拿到的溢价"。 */
+        const premium = (p.premium ?? 0) * (bonus.purchasePremiumMul ?? 1);
         const res = p.skuId
-          ? economy.purchase(p.skuId, p.qty, p.premium)
-          : economy.buyWarehouseGood(p.goodId, p.qty, p.premium);
+          ? economy.purchase(p.skuId, p.qty, premium)
+          : economy.buyWarehouseGood(p.goodId, p.qty, premium);
         if (res.ok) onEvent('purchase-done', { type: s.type, staffName: defOf(s.type).name, good: p.goodId ?? 'snack', name: p.name });
       }
-      s.cooldownUntil = now + STAFF.actionCd;
+      s.cooldownUntil = now + actionCdOf(bonus);
       return;
     }
     if (s.status === 'errand') return; // 外出中，不工作
@@ -215,7 +252,9 @@ export function createStaff(opts = {}) {
 
     // 出门采购（errandSec 期间不工作）
     s.status = 'errand';
-    s.errandUntil = now + STAFF.errandSec;
+    /* 培训「抄近路」：缩短往返。用乘法而不是减固定秒数 ——
+     * 6s 是配置值，未来若调长/调短，百分比仍然表达同一种"快 25%"。 */
+    s.errandUntil = now + STAFF.errandSec * (bonus.errandMul ?? 1);
     s.pending = need;
     onEvent('errand', { type: s.type, staffName: defOf(s.type).name, good: need.goodId ?? 'snack', name: need.name });
   }
@@ -267,13 +306,17 @@ export function createStaff(opts = {}) {
     return unlocked[0].id;
   }
 
-  function aiStocker(s, now) {
+  function aiStocker(s, now, bonus = {}) {
     // 1) 货架补货（backroom → 空货架格）
-    if (economy.restockShelfIfPossible()) {
+    /* 培训「理货进阶」的两个参数：
+     *   batch     —— 一趟多搬几件（默认 PICK_BATCH 6）
+     *   capExtra  —— 每格软上限往上加（economy 内部会 clamp 到 SLOT_CAP）
+     * 都做成可选参数，economy 的旧调用方（玩家/测试）不传时行为完全不变。 */
+    if (economy.restockShelfIfPossible({ capExtra: bonus.restockCapBonus ?? 0, batch: bonus.restockBatch })) {
       s.working = true;
       s.status = 'stock-shelf';
       onEvent('stock-done', { type: s.type, name: defOf(s.type).name, kind: 'shelf', label: '货架' });
-      s.cooldownUntil = now + STAFF.actionCd;
+      s.cooldownUntil = now + actionCdOf(bonus);
       return;
     }
     // 2) 售货机补货（消耗 backroom 零食饮料）
@@ -286,7 +329,7 @@ export function createStaff(opts = {}) {
         state.deviceStock.vending = (state.deviceStock.vending | 0) + 1;
         s.working = true; s.status = 'stock-vending';
         onEvent('stock-done', { type: s.type, name: defOf(s.type).name, kind: 'vending', label: '售货机' });
-        s.cooldownUntil = now + STAFF.actionCd;
+        s.cooldownUntil = now + actionCdOf(bonus);
         return;
       }
     }
@@ -297,7 +340,7 @@ export function createStaff(opts = {}) {
       state.deviceStock.claw = (state.deviceStock.claw | 0) + 1;
       s.working = true; s.status = 'stock-claw';
       onEvent('stock-done', { type: s.type, name: defOf(s.type).name, kind: 'claw', label: '娃娃机' });
-      s.cooldownUntil = now + STAFF.actionCd;
+      s.cooldownUntil = now + actionCdOf(bonus);
       return;
     }
     s.working = false;
@@ -330,6 +373,9 @@ export function createStaff(opts = {}) {
       roster: STAFF.order.map((type) => {
         const def = defOf(type);
         const entry = roster().find((s) => s.type === type);
+        /* 培训状态随快照一起给 HUD —— HUD 只读快照，不自己 import training，
+         * 避免"面板算一套、AI 算另一套"的两套口径。 */
+        const training = entry ? getBonuses(state, entry.id) : null;
         return {
           type,
           name: def.name,
@@ -343,6 +389,19 @@ export function createStaff(opts = {}) {
           onDuty: entry ? entry.onDuty !== false : true,
           stamina: entry ? Math.round(entry.stamina) : 0,
           status: entry ? entry.status : 'idle',
+          /* 培训：等级 / 总数 / 当前累计的夜产出与关键倍率（HUD 直接展示） */
+          training: training ? {
+            level: training.level,
+            maxLevel: training.maxLevel,
+            nightOutput: training.nightOutput,
+            repairCostMul: training.repairCostMul,
+            actionCdMul: training.actionCdMul,
+            purchasePremiumMul: training.purchasePremiumMul,
+            errandMul: training.errandMul,
+            cleanBatch: training.cleanBatch,
+            restockBatch: training.restockBatch,
+            restockCapBonus: training.restockCapBonus,
+          } : null,
         };
       }),
     };

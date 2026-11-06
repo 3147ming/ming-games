@@ -4,12 +4,14 @@
 //   · 纯合成 —— 振荡器 + 增益包络，不依赖任何 .mp3 / .wav。
 //   · 懒初始化 —— AudioContext 必须在用户手势后才能出声，所以第一次 resume() 由
 //     main.js 的「进入荒野」点击 / arena 的输入手势触发；构造时不碰音频设备。
-//   · 静音持久化 —— 开关写 localStorage('wild.muted')，刷新后记得上次的选择。
+//   · 音量/静音 —— 值本身由 src/audio-settings.js 管（含存档与校验），这里只负责
+//     "把值变成增益"。★ 设置值只乘一次：本文件的 _master 就是音效总线的**最终**增益，
+//     BGM 不走这条总线（见 _ensure 里 bgmBus 的接法），否则总音量会被乘两遍 = volume²。
 //   · 节流 —— 射击/命中/受伤这类高频事件内部自带最小间隔，避免一帧几十声叠成爆音。
 //   · 不参与任何玩法判定，不在 ArenaCore 里（保持 core 能无头测试）。
 //     触发全部发生在 Arena 包装层，它每帧比对 core 的状态增量来"听声辨事"。
 
-const MUTE_KEY = 'wild.muted';
+import { clampVolume, channelGain, SFX_BASE } from './audio-settings.js';
 
 // 高频事件的节流间隔（秒）：低于它则丢弃，避免同帧叠音。
 const THROTTLE = { shoot: 0.07, hit: 0.06, hurt: 0.18, death: 0.12 };
@@ -17,19 +19,33 @@ const THROTTLE = { shoot: 0.07, hit: 0.06, hurt: 0.18, death: 0.12 };
 export const Sfx = {
   _ctx: null,
   _master: null,
-  _bgmBus: null,    // B 包：BGM 引擎的输出总线（挂在 master 下，增益恒 1 直通）
+  _bgmBus: null,    // B 包：BGM 引擎的输出总线（直连 destination，增益恒 1 直通）
   _muted: false,
+  _volume: 1,       // 总音量 0..1（不含 SFX_BASE 基准；最终增益见 _applyMasterGain）
   _last: {},        // 各高频声的最后播放时刻（性能时钟，秒）
   _ready: false,
-  /** B 包：静音状态变化的通知钩子（由 main.js 挂上，用来 suspend/resume BGM 引擎）。 */
+  /** B 包：静音状态变化的通知钩子（由 main.js 挂上，用来 suspend/resume BGM 引擎 + 写存档）。 */
   onMuteChange: null,
 
   /** 读静音偏好（同步，模块加载即可用）。 */
   isMuted() { return this._muted; },
 
+  /** 读总音量（0..1）。 */
+  getVolume() { return this._volume; },
+
   /** B 包：给 BGM 引擎取上下文与输出总线（都可能是 null —— 还没在用户手势里解锁）。 */
   audioCtx() { return this._ctx; },
   bgmBus() { return this._bgmBus; },
+
+  /**
+   * 把"当前静音 × 当前音量"算成音效总线的实际增益。
+   * ★ 这里必须是**唯一**碰 _master.gain 的地方（_ensure 建节点时也走它），
+   *   否则总会出现"某条路径忘了乘静音"的失灵。
+   */
+  _applyMasterGain() {
+    if (!this._master) return;
+    this._master.gain.value = channelGain({ volume: this._volume, muted: this._muted }, SFX_BASE);
+  },
 
   /** 懒建 AudioContext + 主增益。必须在用户手势里调用（浏览器自动播放策略）。 */
   _ensure() {
@@ -38,14 +54,19 @@ export const Sfx = {
     if (!AC) return false; // 环境不支持音频 —— 静默降级，不报错
     try {
       this._ctx = new AC();
+      // ── 音效总线：增益 = 总音量 × SFX_BASE，静音时由 channelGain 直接给 0 ──
       this._master = this._ctx.createGain();
-      this._master.gain.value = this._muted ? 0 : 0.5;
+      this._applyMasterGain();
       this._master.connect(this._ctx.destination);
-      // B 包：BGM 专线。增益恒 1 —— 音量由 bgm 引擎自己的主总线承载，
-      // 两边都乘会变成平方衰减（滑杆"怎么调都很小声"，最难查的那类故障）。
+      // ── BGM 专线 ──
+      // ★ 它**直连 destination**，不挂到 _master 下面：BGM 引擎自己有主总线（getVolume 已经
+      //   乘过总音量），如果再串进 _master 就会变成 volume × volume —— 滑杆拉到一半只剩
+      //   25% 响度，听感上就是"怎么调都很小声"，而且波形完全正常、极难排查。
+      //   代价是 BGM 不受 _master 增益影响，所以静音必须由 channelGain 给 BGM 乘 0，
+      //   并且 main.js 的 onMuteChange 会 suspend() 引擎（真的停振荡器，省电）。
       this._bgmBus = this._ctx.createGain();
       this._bgmBus.gain.value = 1;
-      this._bgmBus.connect(this._master);
+      this._bgmBus.connect(this._ctx.destination);
       this._ready = true;
     } catch { this._ctx = null; }
     return this._ready;
@@ -57,26 +78,34 @@ export const Sfx = {
     if (this._ctx.state === 'suspended') this._ctx.resume().catch(() => {});
   },
 
-  /** 切换静音；写回 localStorage。返回切换后的状态。 */
-  setMuted(m) {
-    this._muted = !!m;
-    try { localStorage.setItem(MUTE_KEY, this._muted ? '1' : '0'); } catch { /* 忽略 */ }
-    if (this._master) this._master.gain.value = this._muted ? 0 : 0.5;
-    // ★ B 包：静音 = 真的把 BGM 停下来（引擎会 panic 掉所有振荡器），不是把音量拧到 0
-    try { if (typeof this.onMuteChange === 'function') this.onMuteChange(this._muted); } catch { /* 忽略 */ }
-    return this._muted;
+  /**
+   * 设置总音量（0..1）。滑杆拖动时每帧都会调到这里 —— 只改 GainNode 的 value，
+   * 不重建节点、不排队 ramp，所以拖动是**实时**的，无延迟无爆音。
+   */
+  setVolume(v) {
+    this._volume = clampVolume(v, this._volume);
+    this._applyMasterGain();
+    return this._volume;
   },
 
-  /** 启动期读一次持久化的静音偏好。 */
-  loadMuted() {
-    try {
-      const v = localStorage.getItem(MUTE_KEY);
-      this._muted = v === '1';
-    } catch { /* 忽略 */ }
+  /**
+   * 切换静音；**不写 localStorage**（存档由 audio-settings.js 统一负责）。
+   * 变化时通知 main.js：那里会写档、刷新设置面板，并 suspend/resume BGM 引擎。
+   * 值没变则连钩子都不触发 —— 设置面板与局内静音键会互相回调，这里必须幂等。
+   */
+  setMuted(m) {
+    const next = !!m;
+    const changed = next !== this._muted;
+    this._muted = next;
+    this._applyMasterGain();
+    if (changed) {
+      try { if (typeof this.onMuteChange === 'function') this.onMuteChange(this._muted); } catch { /* 忽略 */ }
+    }
     return this._muted;
   },
 
   /** 内部：发一个带 ADSR 包络的短音。type=波形，f0→f1 频率滑音，dur 秒，gain 峰值。 */
+
   _blip({ type = 'square', f0 = 440, f1 = f0, dur = 0.12, gain = 0.4, delay = 0 }) {
     if (!this._ready || this._muted || !this._ctx) return;
     const t0 = this._ctx.currentTime + delay;

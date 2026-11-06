@@ -749,6 +749,33 @@ body.ingame .combo-pop{top:calc(var(--hdh,64px) + 30px)}
 .dc-game{font-size:22px;width:44px;height:44px;border-radius:var(--mg-r-md);border:1px solid #ddd;background:#fafafa;cursor:pointer}
 .dc-game.played{background:#e8f5e9;border-color:#a5d6a7}
 .dc-sub{font-size:13px;color:#777;margin-top:4px}
+/* ===== 本周训练计划（周排程卡片 + 7 天明细弹层）===== */
+.weekplan-card{background:#fff;border:1px solid #eee7d8;border-radius:var(--mg-r-lg);padding:10px 14px;box-shadow:0 2px 6px rgba(80,60,20,.06);margin:6px 0}
+.weekplan-card.done{background:linear-gradient(120deg,#e8f5e9,#c8e6c9);border-color:#a5d6a7}
+.wp-head{display:flex;align-items:center;justify-content:space-between;gap:var(--mg-sp-2)}
+.wp-count{font-size:var(--mg-fs-xs);font-weight:700;color:#f4511e;background:#fff3e0;border-radius:var(--mg-r-pill);padding:2px 10px;white-space:nowrap}
+.wp-days{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:var(--mg-sp-2)}
+.wp-day{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:6px 2px;border:1px solid #ece4d2;background:#fafafa;border-radius:var(--mg-r-md);cursor:pointer;min-height:var(--mg-tap);transition:var(--mg-t-base) var(--mg-ease-out)}
+.wp-day b{font-size:var(--mg-fs-xs);color:#8b8371;font-weight:700;line-height:1}
+.wp-day span{font-size:18px;line-height:1}
+.wp-day i{font-style:normal;font-size:var(--mg-fs-xs);color:#7c5cff;min-height:14px;line-height:1}
+.wp-day.today{border-color:#ffb300;box-shadow:0 0 0 2px #ffe0b2}
+.wp-day.done{background:#e8f5e9;border-color:#a5d6a7}
+.wp-day.done i{color:#2e7d32;font-weight:800}
+.wp-today{font-size:var(--mg-fs-sm);color:#5c554a;margin-top:var(--mg-sp-2);line-height:1.7}
+.wp-list{text-align:left;margin:var(--mg-sp-2) 0}
+.wp-row{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px dashed #eee}
+.wp-row.today{background:#fff8e1;border-radius:var(--mg-r-sm)}
+.wp-row.done .wp-name{color:#2e7d32}
+.wp-chk{width:22px;height:22px;flex:0 0 auto;border:2px solid #ddd;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;font-weight:800}
+.wp-row.done .wp-chk{background:#66bb6a;border-color:#66bb6a}
+.wp-info{flex:1 1 auto;min-width:0}
+.wp-name{font-weight:700;font-size:var(--mg-fs-sm);color:#3a352c}
+.wp-row .btn{flex:0 0 auto;white-space:nowrap;margin:0;padding:6px 12px}
+.wp-goal{font-size:var(--mg-fs-xs);color:#8b8371;line-height:1.6;margin-top:2px}
+.wp-bar{height:6px;background:#eee;border-radius:var(--mg-r-pill);overflow:hidden;margin-top:4px}
+.wp-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ffb300,#ff7043);transition:width var(--mg-t-base) var(--mg-ease-out)}
+.wp-dims span{margin-right:8px;white-space:nowrap}
 .recent-wrap{display:flex;gap:8px;flex-wrap:wrap}
 .recent-btn{font-size:20px;width:40px;height:40px;border-radius:50%;border:1px solid #ddd;background:#fafafa;cursor:pointer}
 .linkbtn{background:none;border:none;color:#7c5cff;font-weight:700;cursor:pointer;text-decoration:underline;font-size:13px}
@@ -1097,6 +1124,228 @@ function dailyIndex(id,sc){
   return Math.max(0,Math.min(100,v));
 }
 
+/* @WEEKPLAN-PURE-BEGIN */
+/* ===================== 周训练计划 · 纯函数区 =====================
+   这一段是"排程大脑"：不读 localStorage、不碰 DOM、不取当前时间，
+   入参是 history / games / weekStart，出参是 7 天计划数组。
+   之所以写成纯函数，是因为单文件 HTML 没有模块可拆，自检脚本必须能
+   把这一整块抠出来（见 tools/check-brain-gym.mjs 第 7 节）直接断言：
+   同输入同输出、新玩家也有计划、弱项被排得更频繁。
+   存档读写与卡片渲染放在后面的 UI 区，纯函数区里一行 I/O 都没有。 */
+var WEEK_PLAN_KEY='bgym.weekPlan';
+var WEEK_PLAN_VER=1;
+var WEEK_DIMS=['mem','rxn','vis','mat','log','foc'];
+var WEEK_DIM_NAMES={mem:'记忆',rxn:'反应',vis:'视觉',mat:'数学',log:'逻辑',foc:'专注'};
+var WEEK_DAY_NAMES=['周一','周二','周三','周四','周五','周六','周日'];
+var WEEK_SKIP={tomato:1}; /* 番茄钟一局 25 分钟，不符合"每天一局"的节奏，不进排程 */
+var WEEK_MAX_PER_DIM=3;   /* 同一维度一周最多 3 天：再弱也不能整周只练一类，否则容易练疲 */
+var WEEK_PICK_DIMS=5;     /* 一周只重点练 5 个维度，留一个不排，避免天天排满 */
+/* 维度 -> 候选游戏。只挑"一局 1~2 分钟、能反复练"的项目；
+   顺序即"优先度"，但实际选哪个由历史局数决定（见 planWeek）。 */
+var WEEK_DIM_POOL={
+  mem:['spantest','flashnum','accu','dots','pixel','backspan','octmem'],
+  rxn:['reacttest','quick','stroop','rhythm','switch'],
+  vis:['eagle','colortone','eyetrack','rotate','overlay'],
+  mat:['vertmath','calc','ring','crossfill'],
+  log:['flow','sokoban','lightout','hashi','sync','nonogram'],
+  foc:['dual','blitz','pond','tiles','timer']
+};
+/* 新玩家 / 历史不足时的固定入门计划。
+   为什么固定：样本不够时"谁弱"只是噪声，与其按噪声乱排，不如先跑一条
+   覆盖 6 个维度各 1 天、第 7 天做多任务综合的基线路线，顺便把数据补齐。 */
+var WEEK_STARTER=[
+  {dim:'mem',id:'spantest',goal:1,why:'先测记忆广度，给后面的排程一个基线'},
+  {dim:'rxn',id:'reacttest',goal:1,why:'反应速度最省时，先拿到毫秒基线'},
+  {dim:'vis',id:'eagle',goal:1,why:'视觉搜索，1 分钟内能完成'},
+  {dim:'mat',id:'vertmath',goal:1,why:'心算热身，先测正确率'},
+  {dim:'log',id:'flow',goal:1,why:'推理入门，不限时更放松'},
+  {dim:'foc',id:'stroop',goal:1,why:'抗干扰专注，测抑制能力'},
+  {dim:'foc',id:'dual',goal:1,why:'周末综合：多任务处理'}
+];
+function weekPlanPad2(n){return n<10?('0'+n):(''+n)}
+/* 归一化 games：既接受 GAMES 这种对象表，也接受数组（自检里用数组）。
+   统一去重 + 过滤工具项 + 按 id 排序，保证同样的输入永远得到同样的顺序。 */
+function weekPlanGames(games){
+  var raw=[],seen={},out=[],i,g;
+  if(!games)return out;
+  if(Object.prototype.toString.call(games)==='[object Array]'){
+    for(i=0;i<games.length;i++){g=games[i];if(!g||!g.id)continue;raw.push({id:String(g.id),name:g.name||String(g.id),icon:g.icon||'🎮',low:g.low?1:0})}
+  }else{
+    for(var k in games){g=games[k]||{};raw.push({id:String(k),name:g.name||String(k),icon:g.icon||'🎮',low:g.low?1:0})}
+  }
+  for(i=0;i<raw.length;i++){
+    var id=raw[i].id;
+    if(WEEK_SKIP[id]||seen[id])continue;
+    seen[id]=1;out.push(raw[i]);
+  }
+  out.sort(function(a,b){return a.id<b.id?-1:(a.id>b.id?1:0)});
+  return out;
+}
+/* 维度得分：null = 还没有基线；数字统一夹到 0~100 */
+function weekPlanCaps(caps){
+  var m={},i;
+  for(i=0;i<WEEK_DIMS.length;i++){
+    var d=WEEK_DIMS[i],v=caps?caps[d]:null;
+    m[d]=(typeof v==='number'&&isFinite(v))?Math.max(0,Math.min(100,Math.round(v))):null;
+  }
+  return m;
+}
+/* 名额分配：先每个维度保底 1 天，剩下的名额按"缺口 / (已排天数+1)"排队。
+   为什么用除法：名额越多的维度边际收益越低，弱项能拿到第 2、3 天，
+   却不会出现"整周只练一个维度"这种极端结果。 */
+function weekPlanQuota(ranked,total){
+  var q={},n=ranked.length,i;
+  if(!n)return q;
+  for(i=0;i<n;i++)q[ranked[i].d]=1;
+  var left=total-n;
+  while(left>0){
+    var pick=null,pv=-1;
+    for(i=0;i<n;i++){
+      var r=ranked[i],c=q[r.d];
+      if(c>=WEEK_MAX_PER_DIM)continue;
+      var v=r.w/(c+1);
+      if(v>pv){pv=v;pick=r.d}
+    }
+    if(!pick)break;
+    q[pick]++;left--;
+  }
+  return q;
+}
+/* 把分数线凑成"好看的目标"：<10 取整、<100 取 5 的倍数、<1000 取 25、再往上取 100 */
+function weekPlanNice(n){
+  n=Math.max(1,Math.ceil(n||1));
+  var step=n<10?1:(n<100?5:(n<1000?25:100));
+  return Math.ceil(n/step)*step;
+}
+/* 纯日期加法（用 UTC 计算，避免本地时区/夏令时导致同一天算出不同结果） */
+function weekPlanDate(start,off){
+  if(!start)return '';
+  var p=String(start).split('-');
+  if(p.length!==3)return '';
+  var d=new Date(Date.UTC(+p[0],(+p[1])-1,(+p[2])+(off||0)));
+  return d.getUTCFullYear()+'-'+weekPlanPad2(d.getUTCMonth()+1)+'-'+weekPlanPad2(d.getUTCDate());
+}
+function weekPlanStarter(list,weekStart){
+  var avail={},all=list.slice(),days=[],i;
+  for(i=0;i<list.length;i++)avail[list[i].id]=list[i];
+  for(i=0;i<7;i++){
+    var s=WEEK_STARTER[i]||{dim:'foc',id:(all[0]&&all[0].id)||'',goal:1,why:'固定入门计划'};
+    var gid=s.id;
+    if(!avail[gid]){ /* 该游戏被下线/不在传入列表里 -> 换同维度的候选 */
+      var pool=WEEK_DIM_POOL[s.dim]||[];
+      for(var j=0;j<pool.length;j++){if(avail[pool[j]]){gid=pool[j];break}}
+    }
+    if(!avail[gid])gid=all.length?all[(i*3)%all.length].id:'';
+    var g=avail[gid]||{id:gid,name:gid,icon:'🎮',low:0};
+    days.push({d:i+1,date:weekPlanDate(weekStart,i),dim:s.dim,dimName:WEEK_DIM_NAMES[s.dim]||'',
+      gameId:gid,gameName:g.name||gid,icon:g.icon||'🎮',low:g.low?1:0,
+      goal:{type:'rounds',n:Math.max(1,+(s.goal||1))},why:s.why||'',starter:1});
+  }
+  return days;
+}
+/* 主排程：只跑 7 天，却要同时表达"弱项多排""别天天同一个""周末别太满"。
+   规则（也是产品的口径）：
+   1) 历史不足（<3 局，或已知维度 <3 个）-> 固定入门计划；
+   2) 维度得分越低，缺口 w=100-score 越大，越优先；
+      完全没测过的维度按 40 分参与排序 —— 不是 0（会让盲区霸占整周），
+      也不是 100（会让盲区永远排不进计划）；
+   3) 只取缺口最大的 5 个维度，按名额分配排 7 天，单维度封顶 3 天；
+   4) 具体游戏取该维度里"历史局数最少"的，避免天天同一个；并列按 id 排序；
+   5) 按"轮"铺天：第 1 轮把最弱放周一，次弱放周二……周初精力最好，最该练的排最前；
+   6) 目标：有历史最佳且非计时类 -> 比最佳高约 8% 的整数分；否则"完成 N 局"，
+      最弱维度给 2 局，其余 1 局。 */
+function planWeek(history,games,weekStart){
+  var hist=history||{};
+  var list=weekPlanGames(games);
+  var caps=weekPlanCaps(hist.caps);
+  var counts=hist.counts||{},best=hist.best||{};
+  var played=+(hist.played||0),i,j,k;
+  var known=0;
+  for(i=0;i<WEEK_DIMS.length;i++)if(caps[WEEK_DIMS[i]]!=null)known++;
+  if(played<3||known<3)return weekPlanStarter(list,weekStart);
+  var order={},ranked=[];
+  for(i=0;i<WEEK_DIMS.length;i++){
+    order[WEEK_DIMS[i]]=i;
+    var sc=(caps[WEEK_DIMS[i]]==null?40:caps[WEEK_DIMS[i]]);
+    ranked.push({d:WEEK_DIMS[i],v:sc,w:Math.max(1,100-sc)});
+  }
+  ranked.sort(function(a,b){return (b.w-a.w)||(order[a.d]-order[b.d])});
+  var pick=ranked.slice(0,WEEK_PICK_DIMS);
+  var quota=weekPlanQuota(pick,7);
+  var pool={},rot={};
+  for(i=0;i<pick.length;i++){
+    var dim=pick[i].d,ids=WEEK_DIM_POOL[dim]||[],cand=[],seenId={};
+    for(j=0;j<ids.length;j++){
+      var gid=ids[j];
+      if(seenId[gid])continue;
+      seenId[gid]=1;
+      for(k=0;k<list.length;k++){if(list[k].id===gid){cand.push(list[k]);break}}
+    }
+    if(!cand.length)cand=list.slice(0); /* 候选全被下线时退化为"全局最省" */
+    cand.sort(function(a,b){
+      var ca=+(counts[a.id]||0),cb=+(counts[b.id]||0);
+      if(ca!==cb)return ca-cb;                       /* 玩得少的先练 */
+      var ba=+(best[a.id]||0),bb=+(best[b.id]||0);
+      if(ba!==bb)return ba-bb;                       /* 没成绩的优先建立基线 */
+      return a.id<b.id?-1:(a.id>b.id?1:0);           /* 兜底：字典序，保证确定性 */
+    });
+    pool[dim]=cand;rot[dim]=0;
+  }
+  var slots=[],r;
+  for(r=0;r<WEEK_MAX_PER_DIM;r++){
+    for(i=0;i<pick.length;i++){if((quota[pick[i].d]||0)>r)slots.push(pick[i].d)}
+  }
+  slots=slots.slice(0,7);
+  while(slots.length<7)slots.push(pick[0].d);
+  var days=[];
+  for(i=0;i<7;i++){
+    var dm=slots[i],cp=pool[dm]||[];
+    var g=cp.length?cp[rot[dm]%cp.length]:{id:'',name:'',icon:'🎮',low:0};
+    rot[dm]=(rot[dm]||0)+1;
+    var capp=caps[dm];
+    var b=+(best[g.id]||0),goal;
+    if(!g.id)goal={type:'rounds',n:1};
+    else if(g.low)goal={type:'rounds',n:(dm===pick[0].d?2:1)};
+    else if(b>0)goal={type:'score',n:weekPlanNice(b*1.08)};
+    else goal={type:'rounds',n:(dm===pick[0].d?2:1)};
+    var why;
+    if(dm===pick[0].d)why='本周最弱（'+WEEK_DIM_NAMES[dm]+' '+(capp==null?'暂无基线':capp+' 分')+'），排最前优先补';
+    else why='保持'+WEEK_DIM_NAMES[dm]+'维度覆盖'+(capp==null?'（还没有基线，顺手测一次）':'');
+    days.push({d:i+1,date:weekPlanDate(weekStart,i),dim:dm,dimName:WEEK_DIM_NAMES[dm]||'',
+      gameId:g.id||'',gameName:g.name||g.id||'',icon:g.icon||'🎮',low:g.low?1:0,
+      goal:goal,why:why,starter:0});
+  }
+  return days;
+}
+/* 进度：只认"计划生成之后"的局（t0 过滤），否则上周的旧成绩会把新计划直接刷成完成。
+   rounds 目标数局数；score 目标只要有一局达到分数线即算完成。
+   返回值与 plan 一一对应：{d,gameId,dim,goal,need,got,done}。 */
+function planProgress(plan,history){
+  var out=[];
+  if(!plan||!plan.length)return out;
+  var hist=history||{},logs=hist.sessions||[],t0=+(hist.t0||0),i,j;
+  for(i=0;i<plan.length;i++){
+    var day=plan[i]||{},gid=day.gameId||'',goal=day.goal||{type:'rounds',n:1};
+    var need=Math.max(1,Math.round(+goal.n||1)),got=0;
+    for(j=0;j<logs.length;j++){
+      var s=logs[j];
+      if(!s||!gid||s.id!==gid)continue;
+      if(t0&&(+(s.t||0))<t0)continue;
+      var sc=+(s.sc||0);
+      if(goal.type==='score'){
+        if(day.low?(sc>0&&sc<=need):(sc>=need)){got=need;break}
+      }else{
+        got++;
+        if(got>=need)break;
+      }
+    }
+    out.push({d:day.d||(i+1),gameId:gid,dim:day.dim||'',goal:goal,
+      need:need,got:Math.min(got,need),done:got>=need});
+  }
+  return out;
+}
+/* @WEEKPLAN-PURE-END */
+
 /* --- 内容 P0-2 连续天数 + P0-3 段位经验 --- */
 function streakTouch(){
   var o={n:0,last:''};try{o=JSON.parse(S.getItem('bt_streak')||'{}')}catch(e){}
@@ -1319,7 +1568,10 @@ function finish(score,low){var g=CURRENT;if(!g)return;if(g.id==='sudoku')clearRe
   streakTouch();
   var ex=addExp(3+(rec?5:0));
   if(TRAIN)TRAIN.log.push({id:g.id,sc:score});
-  checkAch();recordDaily(g.id,score);recordWeekly(g.id);updateTopBar();
+  checkAch();recordDaily(g.id,score);recordWeekly(g.id);
+  /* 周训练计划：本局如果达成了今天的目标，勾上并给奖励（纯函数判进度，这里只落盘） */
+  try{weekPlanAfterGame()}catch(e){}
+  updateTopBar();
   /* P0-6 训练：最后一项直接出汇总 */
   if(TRAIN&&TRAIN.i>=TRAIN.plan.ids.length-1){trainSummary();return}
   var pp=overlayPanel('⏹ 本轮结束');
@@ -6758,6 +7010,161 @@ function renderWeeklyCard(){var w=weekLoad();var card=h('div','weekly-card'+(w.d
   card.appendChild(h('div','dc-title','🗓 本周挑战 '+(w.done?'✅ 完成 · +60🪙':(w.n+'/5 局 · 分类 '+catN+'/3'))));
   if(!w.done){var b=h('button','linkbtn','去玩一局');b.onclick=function(){var ids=Object.keys(GAMES);openGame(GAMES[ids[Math.floor(Math.random()*ids.length)]])};card.appendChild(b)}
   return card;}
+/* ===== 周训练计划 · 存档 / 进度 / 卡片（排程纯函数在上面的 WEEKPLAN-PURE 区） ===== */
+/* 本周一 YYYY-MM-DD。周期口径与 weekKey() 一致：周一算一周之始 */
+function weekPlanMonday(){var d=new Date();var idx=(d.getDay()+6)%7;var m=new Date(d.getFullYear(),d.getMonth(),d.getDate()-idx);
+  return m.getFullYear()+'-'+('0'+(m.getMonth()+1)).slice(-2)+'-'+('0'+m.getDate()).slice(-2)}
+/* 把 GAMES / CAPS / bt_log / bt_cnt 拼成纯函数要的 history 快照（这里只读存档，不做判断） */
+function planHistory(){
+  var counts={};try{counts=JSON.parse(S.getItem('bt_cnt')||'{}')||{}}catch(e){counts={}}
+  var best={},i,id;
+  for(id in GAMES){if(GAMES[id])best[id]=bestAll(id)}
+  var caps={};
+  for(i=0;i<CAPS.length;i++)caps[CAPS[i].d]=capScore(CAPS[i]);
+  var sessions=[];
+  try{
+    var lg=JSON.parse(S.getItem('bt_log')||'[]')||[];
+    for(i=0;i<lg.length;i++){var o=lg[i];if(o&&o.id)sessions.push({id:o.id,sc:+o.sc||0,t:+o.t||0,d:o.d})}
+  }catch(e){}
+  var played=0;for(var k in counts)played+=(+counts[k]||0);
+  return {caps:caps,counts:counts,best:best,sessions:sessions,played:played};
+}
+function planGamesList(){
+  var arr=[];for(var id in GAMES){var g=GAMES[id];if(!g)continue;arr.push({id:id,name:g.name||id,icon:g.icon||'🎮',low:g.low?1:0})}
+  arr.sort(function(a,b){return a.id<b.id?-1:(a.id>b.id?1:0)});return arr;
+}
+function weekPlanLoad(){try{var o=JSON.parse(S.getItem(WEEK_PLAN_KEY)||'null');
+  if(o&&o.v===WEEK_PLAN_VER&&o.wk&&o.plan&&o.plan.length===7)return o}catch(e){}return null}
+function weekPlanSave(o){try{S.setItem(WEEK_PLAN_KEY,JSON.stringify(o))}catch(e){}}
+/* 取本周计划。向后兼容的关键：老版本根本没有 bgym.weekPlan 这个键，
+   这里一律当作"需要生成"处理，绝不假设存档已经存在；周次变了也重排。 */
+function weekPlanEnsure(force){
+  var wk=weekKey(),cur=weekPlanLoad();
+  if(!force&&cur&&cur.wk===wk)return cur;
+  var start=weekPlanMonday();
+  var plan=planWeek(planHistory(),planGamesList(),start);
+  var st={v:WEEK_PLAN_VER,wk:wk,start:start,t0:Date.now(),plan:plan,done:{},all:0};
+  weekPlanSave(st);
+  return st;
+}
+function weekPlanState(){
+  var st=weekPlanEnsure();
+  var pr=planProgress(st.plan,{t0:st.t0,sessions:planHistory().sessions});
+  return {st:st,prog:pr};
+}
+/* 展示用进度：planProgress 只认 bt_log 里的最近 40 局，
+   同一周玩超过 40 局时早先那天的记录会被挤出环形缓冲区而不见了。
+   所以展示时再与落盘的 st.done 做一次并集，勾过的一天不会"掉勾"。 */
+function weekPlanDisplay(){
+  var s=weekPlanState(),prog=[],i;
+  for(i=0;i<s.prog.length;i++){
+    var p=s.prog[i];
+    prog.push({d:p.d,gameId:p.gameId,dim:p.dim,goal:p.goal,need:p.need,
+      got:p.done?p.need:p.got,done:!!(p.done||s.st.done[p.d])});
+  }
+  return {st:s.st,prog:prog};
+}
+function wpGoalText(goal,low){
+  if(!goal)return '';
+  if(goal.type==='score')return '达到 '+goal.n+' 分';
+  return '完成 '+goal.n+' 局'+(low?'（越快越好）':'');
+}
+function weekPlanToday(){return (new Date().getDay()+6)%7}
+/* 每局结束调用：对照计划把达标的天勾上并发奖。
+   进度由 planProgress 现算（纯函数），这里只负责"发奖 + 去重"：
+   st.done 落盘后同一天不会重复发。 */
+function weekPlanAfterGame(){
+  try{
+    var s=weekPlanState(),st=s.st,newDone=0,i;
+    for(i=0;i<s.prog.length;i++){var p=s.prog[i];if(p.done&&!st.done[p.d]){st.done[p.d]=Date.now();newDone++}}
+    if(!newDone)return 0;
+    var n=0;for(var k in st.done)n++;
+    weekPlanSave(st);
+    addExp(4*newDone);
+    if(n>=7&&!st.all){st.all=1;weekPlanSave(st);addCoins(30);toast('🗓 本周训练计划 7/7 完成！+30🪙')}
+    else toast('✅ 今日训练完成！+'+4*newDone+' EXP');
+    return newDone;
+  }catch(e){return 0}
+}
+function renderWeekPlanCard(){
+  var s=weekPlanDisplay(),st=s.st,prog=s.prog;
+  var doneN=0,i;for(i=0;i<prog.length;i++)if(prog[i].done)doneN++;
+  var card=h('div','weekplan-card'+(doneN>=7?' done':''));
+  var head=h('div','wp-head');
+  head.appendChild(h('div','dc-title','🗓 本周训练计划'));
+  head.appendChild(h('div','wp-count',(doneN>=7?'✅ 7/7 完成':doneN+'/7 天')));
+  card.appendChild(head);
+  var row=h('div','wp-days'),ti=weekPlanToday();
+  for(i=0;i<prog.length;i++){
+    (function(idx){
+      var p=prog[idx],day=st.plan[idx]||{};
+      var b=h('button','wp-day'+(p.done?' done':'')+(idx===ti?' today':''));
+      b.innerHTML='<b>'+WEEK_DAY_NAMES[idx]+'</b><span>'+(day.icon||'🎮')+'</span><i>'+(p.done?'✓':(p.got>0?(p.got+'/'+p.need):''))+'</i>';
+      b.title=(day.gameName||'')+' · '+wpGoalText(day.goal,day.low);
+      b.onclick=function(){
+        if(p.done){toast('这天已经练完了，明天继续');return}
+        if(day.gameId&&GAMES[day.gameId])openGame(GAMES[day.gameId],true);
+      };
+      row.appendChild(b);
+    })(i);
+  }
+  card.appendChild(row);
+  var td=st.plan[ti];
+  if(td&&td.gameId){
+    card.appendChild(h('div','wp-today','今天：'+(td.icon||'')+' '+(td.gameName||'')+'　'+wpGoalText(td.goal,td.low)));
+    var go=h('button','btn sm gold',prog[ti].done?'✅ 今天已练':'▶ 开始今天的训练');
+    go.onclick=function(){
+      if(prog[ti].done){toast('今天已完成，明天再来');return}
+      if(GAMES[td.gameId])openGame(GAMES[td.gameId],true);
+    };
+    card.appendChild(go);
+  }
+  var more=h('button','linkbtn','查看 7 天安排');
+  more.onclick=openWeekPlanSheet;
+  card.appendChild(more);
+  return card;
+}
+function openWeekPlanSheet(){
+  var s=weekPlanDisplay(),st=s.st,prog=s.prog,ti=weekPlanToday();
+  var pp=overlayPanel('🗓 本周训练计划'),p=pp.p,ov=pp.ov;
+  p.appendChild(h('div','hint','系统按历史成绩排：哪个维度弱就多排哪个，并把它放在周初精力最好的时候。每天一局即可。'));
+  var list=h('div','wp-list');
+  st.plan.forEach(function(day,idx){
+    var pr=prog[idx]||{done:false,got:0,need:1};
+    var row=h('div','wp-row'+(pr.done?' done':'')+(idx===ti?' today':''));
+    row.appendChild(h('div','wp-chk',pr.done?'✓':''));
+    var info=h('div','wp-info');
+    info.appendChild(h('div','wp-name',WEEK_DAY_NAMES[idx]+'　'+(day.icon||'')+' '+(day.gameName||'（暂无）')+(idx===ti?'　· 今天':'')));
+    info.appendChild(h('div','wp-goal',wpGoalText(day.goal,day.low)+(day.why?('　· '+day.why):'')));
+    var bar=h('div','wp-bar'),fill=h('i');
+    fill.style.width=Math.round(100*Math.min(1,(pr.got||0)/(pr.need||1)))+'%';
+    bar.appendChild(fill);info.appendChild(bar);
+    row.appendChild(info);
+    var btn=h('button','btn sm',pr.done?'已完成':'去练');
+    btn.disabled=!!pr.done;
+    btn.onclick=function(){if(day.gameId&&GAMES[day.gameId]){if(ov.parentNode)ov.remove();openGame(GAMES[day.gameId],true)}};
+    row.appendChild(btn);
+    list.appendChild(row);
+  });
+  p.appendChild(list);
+  var hc=planHistory().caps;
+  var dimLine=h('div','sub wp-dims');
+  dimLine.appendChild(h('span',null,'维度分：'));
+  WEEK_DIMS.forEach(function(d){var v=hc[d];dimLine.appendChild(h('span',null,WEEK_DIM_NAMES[d]+(v==null?'—':v)))});
+  p.appendChild(dimLine);
+  p.appendChild(h('div','sub','周次 '+st.wk+' · 周一起算 · 下周自动重排'));
+  var re=h('button','btn sm','🔁 重新安排（清空本周勾选）');
+  re.onclick=function(){
+    weekPlanEnsure(true);
+    if(ov.parentNode)ov.remove();
+    toast('已按最新成绩重排本周计划');
+    buildMenu();
+  };
+  p.appendChild(re);
+  var b=h('button','btn gold','关闭');b.onclick=function(){if(ov.parentNode)ov.remove()};p.appendChild(b);
+  ov.appendChild(p);document.body.appendChild(ov);
+}
+
 /* 最近玩过（P1-12） */
 function renderRecent(){var a=[];try{a=JSON.parse(S.getItem('bt_log')||'[]')}catch(e){}
   var seen={},ids=[];for(var i=a.length-1;i>=0;i--){if(!seen[a[i].id]){seen[a[i].id]=1;ids.push(a[i].id)}if(ids.length>=3)break}
@@ -6779,6 +7186,8 @@ function buildMenu(){var m=$('menu');m.innerHTML='';
   TRAIN_PLANS.forEach(function(pl){var b=h('button','diffbtn train-btn',pl.n+'<small>'+pl.t+'</small>');b.onclick=function(){startTrain(pl)};trainRow.appendChild(b)});
   m.appendChild(trainRow);
   m.appendChild(renderDailyCard());
+  /* 本周训练计划：按历史成绩自动排 7 天，入口就是这张卡 */
+  m.appendChild(renderWeekPlanCard());
   m.appendChild(renderWeeklyCard());
   m.appendChild(renderRecent());
   var note=h('div','mnote');note.innerHTML='🎯 '+Object.keys(GAMES).length+' 款 · 9 大类 · 点卡片看玩法 <button id="mnoteMore" class="linkbtn">详情</button>';

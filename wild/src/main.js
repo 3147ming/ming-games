@@ -23,6 +23,8 @@ import { settleRun, dailyBoard, achievementBoard, loadDaily, DAILY_COUNT, streak
 import { Sfx, Haptic } from './sfx.js';
 import { createBgm, moodFromRunState } from './bgm.js';
 import { BGM_MANIFEST } from './bgm-manifest.js';
+// 音频设置：主音量 + 静音的读/写/校验（纯逻辑，可无头单测）。播放层只管"把值变成增益"。
+import { createAudioSettings, bgmGain, toPercent, fromPercent } from './audio-settings.js';
 
 const params = new URLSearchParams(location.search);
 const stage = document.getElementById('stage');
@@ -58,6 +60,11 @@ const loadoutSum = document.getElementById('loadout-sum');
 const dailySum = document.getElementById('daily-sum');
 const achSum = document.getElementById('ach-sum');
 const codexSum = document.getElementById('codex-sum');
+// 音频设置面板（标题页折叠区）。缺元素时下面的渲染会自己跳过，不炸。
+const audioSum = document.getElementById('audio-sum');
+const audioVol = document.getElementById('audio-vol');
+const audioVolVal = document.getElementById('audio-vol-val');
+const audioMuteBtn = document.getElementById('audio-mute');
 
 const usePilot = params.get('pilot') === '1';
 // 阶段 9：?speed=N 现在设「开局局内倍速」初值（合法档见 GAME_SPEEDS；非法值回落 1x）。
@@ -79,19 +86,55 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
  *    标题 = menu / 局内 = explore / 高波次或最后 3 分钟 = tension / Boss 在场 = boss / 结算 = settle
  * ========================================================== */
 
-/** BGM 音量：比音效轻一档，永远别盖住射击/受击反馈。 */
-const BGM_VOLUME = 0.55;
+/**
+ * 音频设置：**全游戏唯一的音量事实来源**。
+ * 读档（含旧版 wild.muted 的迁移）、校验、持久化全在 audio-settings.js 里；
+ * 本文件只做两件事：把值贴到播放层、把值画到设置面板。
+ *
+ * ★ 为什么必须在 createBgm 之前建：BGM 引擎的 getVolume / isMuted 是取值函数，
+ *   一上来就要能读到"现在该多大声"，晚一拍就会出现起播瞬间满音量再掉下去。
+ */
+const audio = createAudioSettings();
 
 const bgm = createBgm({
-  getVolume: () => BGM_VOLUME,
-  isMuted: () => Sfx.isMuted(),
+  // ★ BGM 与音效共用同一份设置、同一个总音量，且只乘一次：
+  //   bgmGain() 已经把音量乘进 BGM 基准增益里；BGM 引擎内部不会再乘第二遍（否则是 volume²）。
+  //   只静音 BGM 而音效还在响，是玩家最讨厌的"静音失灵" —— 所以两路的 mute 判定也来自同一处。
+  getVolume: () => bgmGain(audio.get()),
+  isMuted: () => audio.get().muted,
   manifest: BGM_MANIFEST,
   // 后端拿的是**取值函数**：AudioContext 要等用户手势才建，构造时它还不存在。
   bus: { ctxRef: () => Sfx.audioCtx(), busRef: () => Sfx.bgmBus() },
 });
 
-// 静音开关联动引擎：静音时真的把振荡器全停掉（不是把音量拧到 0），取消静音时原样恢复。
-Sfx.onMuteChange = (m) => { if (m) bgm.suspend(); else bgm.resume(); };
+/**
+ * 静音联动（所有入口都收敛到这里）：
+ *   · 局内右上角的「音」键（arena.js）→ Sfx.setMuted → 本钩子
+ *   · 标题页音频设置面板 → audio.setMuted → 订阅回调 → Sfx.setMuted → 本钩子
+ * 两条路径最终都只改同一份 audio 设置，所以"面板显示开 / 实际已静音"这种分裂不会发生。
+ */
+Sfx.onMuteChange = (m) => {
+  audio.setMuted(m);                        // 持久化 + 通知订阅者（设置面板随之重画）
+  if (m) bgm.suspend(); else bgm.resume();  // 静音 = 真停振荡器（省电），不是只把音量拧到 0
+};
+
+/**
+ * 设置变化 → 播放层 + 设置面板。
+ * ★ 滑杆拖动的每一次 input 都会走到这里（见文件底部的接线），所以是**实时**生效：
+ *   · 音效：Sfx.setVolume 直接改 _master.gain（volume × SFX_BASE，静音时由 channelGain 给 0）
+ *   · BGM ：bgm.refreshVolume() 立刻 ramp 一次主总线（即使 tick 没跑到也不会有延迟）
+ */
+audio.subscribe((s) => {
+  Sfx.setVolume(s.volume);
+  Sfx.setMuted(s.muted);      // 幂等：值没变不会重复触发 onMuteChange
+  bgm.refreshVolume();
+  renderAudioSettings(s);
+});
+
+// 启动时把存档里的值贴到播放层。此刻 AudioContext 可能还没建（要等用户手势），
+// 但 Sfx 会把音量/静音记在内部，_ensure() 建节点时直接按这两个值算增益。
+Sfx.setVolume(audio.get().volume);
+Sfx.setMuted(audio.get().muted);
 
 // 诊断出口：`window.WILD_BGM.stats()` 在任何界面都能敲。为什么需要它：
 // window.WILD 只在局内存在（标题页 / 结算页是 null），而那两个界面恰恰是最需要
@@ -576,6 +619,34 @@ function renderAcctBadge() {
   if (acctTitle) acctTitle.textContent = titleOf(a.kills);
 }
 
+/**
+ * 音频设置面板（标题页）。
+ * 三个地方同步：折叠行摘要 / 滑杆数值 / 静音键。
+ * ★ 折叠行摘要必须在面板收起时也能看出当前状态 —— 面板 hidden 时玩家不会为了"看一眼音量"
+ *   去展开它，摘要行就是那时唯一的信息出口。
+ */
+function renderAudioSettings(s) {
+  const st = s || audio.get();
+  const pct = toPercent(st.volume);
+  if (audioVol) {
+    // 只有用户没在拖它时才回写 value：拖动过程中回写会让滑杆"抢"手指，
+    // 个别浏览器还会把拖动起点重置回写入值。
+    if (document.activeElement !== audioVol) audioVol.value = String(pct);
+    // 已填充的轨道用 CSS 变量画（伪元素无法直接读 JS 值），拖动时同步更新。
+    audioVol.style.setProperty('--fill', `${pct}%`);
+    audioVol.setAttribute('aria-valuetext', `${pct}%`);
+  }
+  if (audioVolVal) audioVolVal.textContent = `${pct}%`;
+  if (audioMuteBtn) {
+    // 静音状态要一眼看出来：颜色由 var(--blade) 标出，文字与 aria-pressed 同步给读屏。
+    audioMuteBtn.classList.toggle('muted', st.muted);
+    audioMuteBtn.setAttribute('aria-pressed', st.muted ? 'true' : 'false');
+    const txt = audioMuteBtn.querySelector('.audio-mute-text');
+    if (txt) txt.textContent = st.muted ? '已静音' : '声音开';
+  }
+  if (audioSum) audioSum.textContent = `音频 · ${st.muted ? '已静音' : `${pct}%`}`;
+}
+
 /** 结算页账号档案：累计 + 称号 + 距下个称号差额。 */
 function renderAccount(acc, res) {
   if (!resAccount) return;
@@ -716,7 +787,24 @@ for (const btn of document.querySelectorAll('.pick-h')) {
   };
 }
 
-Sfx.loadMuted();   // 阶段 3 音效：启动期读一次持久化的静音偏好
+// ── 音频设置面板接线（标题页）──
+// 滑杆用 `input` 而不是 `change`：input 在拖动过程中持续触发 ⟹ 音量实时跟着手指走；
+// change 只在松手时触发，玩家会以为"拖了没反应"。需求明确要求实时。
+if (audioVol) {
+  audioVol.addEventListener('input', () => {
+    // fromPercent 接住 range 的字符串 value；非法值（自动化测试/手改 DOM）回默认档。
+    audio.setVolume(fromPercent(audioVol.value));   // 订阅回调立刻贴到 Sfx / BGM
+  });
+}
+if (audioMuteBtn) {
+  // 走 toggleMuted：状态与存档都归 audio-settings 管；Sfx 的静音钩子负责停 BGM。
+  audioMuteBtn.onclick = () => audio.toggleMuted();
+}
+// 首帧就按存档画一遍（此时 audio 的值来自 localStorage 或默认值）。
+renderAudioSettings(audio.get());
+
+// 阶段 3 音效的 `Sfx.loadMuted()` 已删除：静音偏好现在由上面的 audio-settings 读档，
+// 并在文件顶部 Sfx.setMuted(audio.get().muted) 处贴到播放层 —— 只保留一个读档入口。
 Haptic.load();      // 阶段11·P1-6：触觉偏好（默认开；reducedMotion 偏好由下式注入）
 Haptic.setReduced(reducedMotion);
 renderMetaPanel();

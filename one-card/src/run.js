@@ -14,6 +14,7 @@ import { loadMeta, saveMeta, grantCardUnlock, grantRelicUnlock, rollUnlockChoice
 import { load, save, clear } from './storage.js';
 import { makeSeed, Rng } from './rng.js';
 import { emitRunLog } from './logger.js';
+import { activeBonuses } from './sets.js';
 
 export const PHASE = {
   MAP: 'map',
@@ -78,6 +79,9 @@ export class Run {
     this.phase = PHASE.MAP;
     this.outcome = null;
     this.rewardCards = [];
+    // 商贾 3 件：本场战斗胜利后还有一次额外三选一。每场战斗在 resolveCombat 里重算，
+    // 不写进快照 —— 奖励屏本来就不是存档点（刷新会重打这一场），写进去反而制造半截状态。
+    this.pendingExtraReward = false;
     this.event = null;
     this.pendingRemove = null;
     this.pendingUnlock = null;
@@ -218,6 +222,8 @@ export class Run {
   /** 战斗结算回调：由 UI 在战斗结束后调用 */
   resolveCombat(result) {
     const n = this.currentNode;
+    // 每场战斗重新判定「额外奖励」，避免任何异常路径把上一场的挂起状态带进来。
+    this.pendingExtraReward = false;
     // 机制批 P1-1：先记一笔，结算页才能告诉玩家「死在哪、打到第几回合」
     this.lastBattle = { enemyId: n.enemyId || null, turns: result.turns || 0, floor: n.floor, type: n.type };
     if (!result.won) {
@@ -232,6 +238,12 @@ export class Run {
     // 机制批 P0-4：本流派保底 + 第三批 P0-6：关键牌保底（整局至少给 1 次，不重复）
     this.rewardIndex += 1;
     this.rewardCards = this.rollRewards();
+    // 商贾 3 件：把「额外一次三选一」记在节点结算里，由 takeReward 消费。
+    // 注意它在 grantRelic() 之后算 —— 精英战刚好凑齐第三件时，这一场就吃到加成，
+    // 这是有意的「凑齐即生效」，不需要玩家再打一场才验证。
+    this.pendingExtraReward = activeBonuses(this.relicIds).some(
+      (b) => b.effect.flags && b.effect.flags.extraCombatReward
+    );
     this.phase = PHASE.REWARD;
     return this.phase;
   }
@@ -332,6 +344,15 @@ export class Run {
     // 第三批 P0-6：这一屏的三张算「已见过」，下一屏的保底据此判断。
     for (const c of this.rewardCards) this.seenKey.add(c.id);
     this.rewardCards = [];
+    // 商贾 3 件：先把额外三选一放出来，再判断 Boss 收尾。
+    // 顺序不能反 —— 先 finish 会把这一次额外奖励吞掉，玩家的套装质变就白集齐了。
+    if (this.pendingExtraReward) {
+      this.pendingExtraReward = false;
+      this.rewardIndex += 1;          // 与普通奖励同口径：额外奖励也占一次「本局第几次奖励」
+      this.rewardCards = this.rollRewards();
+      this.phase = PHASE.REWARD;
+      return this.phase;
+    }
     if (this.pendingBoss) {
       this.pendingBoss = false;
       this.finish('cleared');

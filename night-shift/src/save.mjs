@@ -45,8 +45,18 @@ export function saveKeyFor(accountId) {
   return id ? `${SAVE_KEY}.${id}` : SAVE_KEY;
 }
 
-/** 存档结构版本：与 SAVE_KEY 的版本号保持一致，做一次冗余校验 */
-export const SAVE_VERSION = 1;
+/**
+ * 存档结构版本。
+ * ⚠ 键名**仍是** `nightshift.save.v1`（见 SAVE_KEY）：升结构版本时刻意不改键名，
+ *   否则老玩家的档还躺在旧键里、新版本读的是空键 —— 那才是真的"进度没了"。
+ *   键名后缀是"存档格式家族"，结构版本才是"这一份里有哪些字段"。
+ */
+/* 2026-11 员工培训：结构只加了一个 `state.training` 字段，老档缺它时按"全未培训"。
+ * 版本号升到 2 仍然**继续接受 v1 存档**（见 validateSave 的版本区间）——
+ * 升版本不是为了把老档判废，而是为了让"这份档里有没有培训数据"可判定。 */
+export const SAVE_VERSION = 2;
+/** 仍可读取的最老版本：低于它的存档结构已经无法安全映射，判为无效。 */
+export const MIN_SAVE_VERSION = 1;
 /**
  * 自动存档间隔（游戏秒）。
  * P1-11 从 120 降到 60：一整夜只有 8 个游戏小时（约 8 分钟墙钟），
@@ -90,6 +100,9 @@ export const STATE_FIELDS = [
   'powerOutUntil', 'surgeUntil', 'posterUntil', 'vendingCooldown',
   /* 需求J：店员 / 仓库 / 设备库存（纯数据，无 mesh 引用，可安全 JSON 化） */
   'staff', 'warehouse', 'deviceStock',
+  /* 员工培训：{ [staffId]: [nodeId] }，纯字符串数组，跨夜/读档必须保留。
+   * 老存档没有这一项 → applySave 显式补 {}（见下方 state 段）。 */
+  'training',
   /* 成长线扩展（星级 / 主题 / 成就 / 定价 / 抉择 / 环境）—— 全是纯数据 */
   'star', 'starStreak',
   'themeId', 'themeNextId', 'intelNight',
@@ -313,7 +326,12 @@ export function buildSave(ctx = {}) {
  */
 export function validateSave(data) {
   if (!isObj(data)) return { ok: false, reason: 'not-object' };
-  if (numOr(data.version, -1) !== SAVE_VERSION) return { ok: false, reason: 'version' };
+  /* 版本区间而不是精确相等：v2 只是新增了 training 字段，v1 存档仍然完全可读。
+   * 精确相等会把所有老玩家挡在门外（表现是"更新后进度没了"），这不是我们要的迁移。 */
+  const ver = numOr(data.version, -1);
+  if (!Number.isInteger(ver) || ver < MIN_SAVE_VERSION || ver > SAVE_VERSION) {
+    return { ok: false, reason: 'version' };
+  }
   // 至少要有一段能恢复的内容，否则这份存档没有意义
   if (!Array.isArray(data.sections) || data.sections.length === 0) {
     return { ok: false, reason: 'empty' };
@@ -350,6 +368,11 @@ export function applySave(data, ctx = {}) {
       // slots 是数组：整段替换（长度可能因为升级变化）
       state[k] = data.state[k];
     }
+    /* 员工培训：v1 老档没有这个字段。
+     * 必须**显式补空对象**而不是"没写就跳过"—— 跳过会保留上一局/上一条读档
+     * 残留在内存里的 training，表现为"读老档后技能凭空还在"。
+     * 训练数据必须是纯对象；数组/字符串一律视为损坏并按全未培训处理。 */
+    if (!isObj(data.state.training)) state.training = {};
     // 运行时句柄一律重置：它们带 mesh 引用，读档时必须重新生成
     state.customers = [];
     state.queue = [];

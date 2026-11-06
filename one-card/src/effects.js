@@ -126,13 +126,17 @@ function resolveOp(state, op, ctx) {
   }
 }
 
-/** 回合开始结算：中毒扣血（无视格挡）后层数 -1 */
-export function tickTurnStart(state, who) {
+/**
+ * 回合开始结算：中毒扣血（无视格挡）后层数衰减。
+ * opts.poisonNoDecay 供「方士」3 件套使用：中毒照常结算伤害，但层数不衰减。
+ * 默认不传 = 旧行为（每回合 -POISON_DECAY），所以这是一条纯增量参数，不改任何旧调用。
+ */
+export function tickTurnStart(state, who, opts = {}) {
   const s = side(state, who);
   const p = s.statuses.poison || 0;
   if (p > 0) {
     dealPure(state, who, p);
-    s.statuses.poison = Math.max(0, p - CONST.POISON_DECAY);
+    s.statuses.poison = opts.poisonNoDecay ? p : Math.max(0, p - CONST.POISON_DECAY);
     state.log.push({ t: 'poison', who, value: p });
   }
 }
