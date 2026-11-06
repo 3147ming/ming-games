@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#07030f">
+<title>霓虹律动 · NEON RHYTHM</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070310'/%3E%3Cpath d='M10 22V10l12 12V10' stroke='%2300e5ff' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- 背景霓虹（纯 CSS，无图片） -->
+<div id="bg" aria-hidden="true">
+  <div class="bg-grid"></div>
+  <div class="bg-glow g1"></div>
+  <div class="bg-glow g2"></div>
+</div>
+
+<!-- 加载指示 -->
+<div id="boot"><div class="ring"></div><div class="boot-txt">载入中…</div></div>
+
+<!-- ============ 主菜单 ============ -->
+<section id="screen-menu" class="screen active">
+  <header class="menu-head">
+    <h1 class="logo">
+      <span class="logo-a">NEON</span><span class="logo-b">RHYTHM</span>
+    </h1>
+    <p class="logo-sub">霓虹律动 · 4 曲 × 3 难度</p>
+  </header>
+
+  <div class="menu-stats" id="menu-stats"></div>
+
+  <div class="song-list" id="song-list"></div>
+
+  <div class="menu-foot">
+    <button class="btn ghost" id="btn-settings">⚙ 设置</button>
+    <button class="btn ghost" id="btn-help">? 操作</button>
+  </div>
+</section>
+
+<!-- ============ 选难度 ============ -->
+<section id="screen-select" class="screen">
+  <div class="sel-head">
+    <button class="icon-btn" id="btn-back-menu" aria-label="返回">←</button>
+    <div class="sel-title" id="sel-title"></div>
+  </div>
+  <div class="diff-list" id="diff-list"></div>
+</section>
+
+<!-- ============ 游戏中 ============ -->
+<section id="screen-game" class="screen">
+  <canvas id="canvas"></canvas>
+
+  <div class="hud">
+    <div class="hud-top">
+      <div class="hud-left">
+        <div class="hud-label">SCORE</div>
+        <div class="hud-score" id="hud-score">0</div>
+      </div>
+      <div class="hud-mid">
+        <div class="hud-combo" id="hud-combo"></div>
+      </div>
+      <div class="hud-right">
+        <div class="hud-acc" id="hud-acc">100%</div>
+        <div class="hud-prog"><i id="hud-prog-bar"></i></div>
+      </div>
+    </div>
+    <div class="hud-judge" id="hud-judge"></div>
+    <div class="hud-countdown" id="hud-countdown"></div>
+  </div>
+
+  <div class="lane-hits" id="lane-hits"></div>
+
+  <div class="game-btns">
+    <button class="icon-btn sm" id="btn-pause" aria-label="暂停">⏸</button>
+    <button class="icon-btn sm" id="btn-quit" aria-label="退出">✕</button>
+  </div>
+
+  <div class="pause-mask" id="pause-mask" hidden>
+    <div class="panel">
+      <h2>暂停</h2>
+      <button class="btn" id="btn-resume">继续</button>
+      <button class="btn ghost" id="btn-restart">重来</button>
+      <button class="btn ghost" id="btn-to-menu">回主菜单</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 结算 ============ -->
+<section id="screen-result" class="screen">
+  <div class="result-card">
+    <div class="res-grade" id="res-grade">S</div>
+    <div class="res-title" id="res-title"></div>
+    <div class="res-score" id="res-score">0</div>
+    <div class="res-badges" id="res-badges"></div>
+    <div class="res-rows" id="res-rows"></div>
+    <div class="res-new" id="res-new" hidden>★ 新纪录 ★</div>
+    <div class="res-btns">
+      <button class="btn" id="btn-again">再来一次</button>
+      <button class="btn ghost" id="btn-res-menu">回主菜单</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 设置 ============ -->
+<div class="overlay" id="overlay-settings" hidden>
+  <div class="panel wide">
+    <h2>设置</h2>
+
+    <label class="row">
+      <span>判定偏移</span>
+      <input type="range" id="set-offset" min="-200" max="200" step="5" value="0">
+      <b id="set-offset-val">0 ms</b>
+    </label>
+    <p class="hint">按快了就往左拖，按慢了往右拖。±45ms 内算 PERFECT。</p>
+
+    <label class="row">
+      <span>音乐音量</span>
+      <input type="range" id="set-volume" min="0" max="100" step="5" value="80">
+      <b id="set-volume-val">80%</b>
+    </label>
+
+    <label class="row">
+      <span>下落速度</span>
+      <div class="seg" id="set-speed">
+        <button data-speed="slow">慢</button>
+        <button data-speed="normal">中</button>
+        <button data-speed="fast">快</button>
+      </div>
+    </label>
+
+    <label class="row">
+      <span>视觉特效</span>
+      <button class="toggle" id="set-fx" data-on="1">开</button>
+    </label>
+
+    <button class="btn ghost danger" id="btn-clear">清除全部成绩</button>
+    <button class="btn" id="btn-close-settings">完成</button>
+  </div>
+</div>
+
+<!-- ============ 操作说明 ============ -->
+<div class="overlay" id="overlay-help" hidden>
+  <div class="panel wide">
+    <h2>操作</h2>
+    <ul class="help-list">
+      <li><b>键盘</b>：<kbd>D</kbd> <kbd>F</kbd> <kbd>J</kbd> <kbd>K</kbd> 对应四条轨</li>
+      <li><b>触摸</b>：屏幕下半部分四条泳道，按到哪条打哪条</li>
+      <li><b>长按</b>：带尾巴的霓虹条，按住到尾巴结束再松手</li>
+      <li><b>判定</b>：PERFECT ±45ms · GREAT ±90ms · GOOD ±140ms</li>
+      <li><b>评级</b>：S ≥95% 且零 MISS；A ≥88%；B ≥75%；C ≥60%</li>
+    </ul>
+    <button class="btn" id="btn-close-help">知道了</button>
+  </div>
+</div>
+
+<script type="module" src="./src/ui.mjs"></script>
+</body>
+</html>
