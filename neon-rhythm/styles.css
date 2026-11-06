@@ -437,6 +437,55 @@ html, body {
   animation: screenIn var(--t) var(--ease) both;
   overflow-y: auto;
 }
+/* ★ 关键修复：`.pause-mask` 自己写了 `display: grid`，
+   而 `hidden` 属性在浏览器默认样式里只是 `display: none`（优先级更低）。
+   作者样式永远压过 UA 样式，于是 `hidden` 完全失效 ——
+   暂停层从进局第一帧就盖在屏幕上，看起来像"一直在暂停"。
+   必须显式写一条 `[hidden]` 才能盖回去。 */
+.pause-mask[hidden] { display: none; }
+
+/* 开场准备层（按空格/点击才开始下落） */
+.ready-mask {
+  position: absolute; inset: 0; z-index: 9;
+  display: grid; place-items: center;
+  background: rgba(7, 3, 15, .86);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: screenIn var(--mg-t-slow) var(--mg-ease-out) both;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.ready-mask[hidden] { display: none; }
+.ready-mask .panel {
+  width: min(320px, 84vw);
+  background: linear-gradient(150deg, rgba(28, 14, 56, .98), rgba(10, 5, 24, .98));
+  border: 1px solid var(--line); border-radius: var(--mg-r-lg);
+  padding: 26px 22px; display: flex; flex-direction: column; gap: 12px;
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+.ready-mask h2 { margin: 0; font-size: 15px; letter-spacing: .3em; color: var(--dim); font-weight: 700; }
+.ready-mask .ready-song { margin: 2px 0 6px; font-size: 20px; font-weight: 900; color: var(--ink); letter-spacing: .04em; }
+.ready-mask .ready-diff { font-size: 13px; color: var(--cyan); letter-spacing: .12em; }
+.ready-mask .ready-key {
+  margin-top: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-size: 14px; color: var(--ink);
+}
+.ready-mask kbd {
+  display: inline-block; min-width: 62px; padding: 7px 12px;
+  border: 1px solid var(--line); border-radius: var(--mg-r-sm);
+  background: rgba(124, 77, 255, .16); color: var(--cyan);
+  font: inherit; font-weight: 800; letter-spacing: .1em;
+  animation: readyPulse 1.6s var(--mg-ease-inout) infinite;
+}
+@keyframes readyPulse {
+  0%, 100% { opacity: .55; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ready-mask kbd { animation: none; opacity: 1; }
+}
 .overlay[hidden] { display: none; }
 .overlay .panel {
   width: min(360px, 100%);

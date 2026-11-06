@@ -78,6 +78,15 @@
     <button class="icon-btn sm" id="btn-quit" aria-label="退出">✕</button>
   </div>
 
+  <!-- 开场准备层：进局先停在这里，按空格 / 点击才开始下落 -->
+  <div class="ready-mask" id="ready-mask" hidden>
+    <div class="panel">
+      <h2>准 备</h2>
+      <div class="ready-song" id="ready-song"></div>
+      <div class="ready-diff" id="ready-diff"></div>
+      <div class="ready-key">按 <kbd>空格</kbd> 或点击开始</div>
+    </div>
+  </div>
   <div class="pause-mask" id="pause-mask" hidden>
     <div class="panel">
       <h2>暂停</h2>

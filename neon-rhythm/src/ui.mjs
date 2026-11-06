@@ -237,8 +237,53 @@ function startGame(songId, difficulty, practice = false) {
   $('hud-judge').className = 'hud-judge';
   $('pause-mask').hidden = true;
 
+  /* ★ 内容修订：进局**不再立刻开始下落**。
+     原因是玩家从选曲界面点进来的那一刻还没准备好 ——
+     音乐直接响起、音符立刻开始掉，等于强迫玩家在 1.2 秒准备段里手忙脚乱。
+     现在改成停在一个「准备」层上，按空格 / 点击才开始，
+     让"什么时候开始"由玩家自己决定。
+
+     ⚠ 这里**不**调用 engine.start()：浏览器的音频解锁要求
+     必须发生在用户手势的同一个调用栈里，所以真正的起播挪到 beginPlay()。
+     如果在 startGame 里先 start 再立刻 pause，会留下一个已解锁但停在 0 秒的
+     AudioContext —— 再按空格时时间轴对不上，音符会错位。 */
+  game.pendingStart = { song, songId, difficulty, practice };
+  showReady(song, songId, difficulty);
+}
+
+/* ---------- 开场准备层 ---------- */
+
+/** 显示准备层（不开始下落） */
+function showReady(song, songId, difficulty) {
+  const songEl = $('ready-song');
+  const diffEl = $('ready-diff');
+  if (songEl) songEl.textContent = song?.title || song?.name || songId || '';
+  if (diffEl) {
+    const label = DIFFICULTY_LABEL?.[difficulty] || difficulty || '';
+    diffEl.textContent = label;
+  }
+  game.running = false;
+  cancelAnimationFrame(game.raf);
+  $('ready-mask').hidden = false;
+}
+
+/**
+ * 真正起播 —— 由空格键或点击准备层触发。
+ * ★ 必须由**用户手势**直接调用（不能 setTimeout 里调），
+ *   否则浏览器会拒绝解锁 AudioContext，整局变成无声。
+ */
+function beginPlay() {
+  if (curScreen !== 'game' || !game.pendingStart) return;
+  if ($('ready-mask').hidden) return;   // 已经在播了，别重复起播
+
+  const { song } = game.pendingStart;
+  game.pendingStart = null;
+
+  $('ready-mask').hidden = true;
+
   // 起播：必须在用户手势的同一个调用栈里
   unlockAudio();
+  // load() 已在 startGame() 里做过（重建时间轴是同步的），这里只负责起播
   engine.start();
   game.g.begin(0);
   game.startWallMs = performance.now();
@@ -544,6 +589,28 @@ function finishGame() {
 
 const KEYMAP = { d: 0, f: 1, j: 2, k: 3, D: 0, F: 1, J: 2, K: 3, KeyD: 0, KeyF: 1, KeyJ: 2, KeyK: 3 };
 
+/* 准备层：空格 / 回车 / 点击 都能开始 */
+document.addEventListener('keydown', (e) => {
+  if (curScreen !== 'game') return;
+  const rm = $('ready-mask');
+  if (!rm || rm.hidden) return;
+  if (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.code === 'Enter') {
+    e.preventDefault();     // 空格默认会滚页面
+    if (e.repeat) return;   // 按住不放不要连续触发
+    beginPlay();
+  }
+});
+
+(() => {
+  const rm = $('ready-mask');
+  if (rm) {
+    rm.addEventListener('click', (e) => {
+      e.preventDefault();
+      beginPlay();
+    });
+  }
+})();
+
 function pressLane(lane) {
   if (curScreen !== 'game' || !game.g || !game.running) return;
   if (game.g.phase !== 'playing') return;
@@ -672,9 +739,12 @@ function resumeGame() {
 
 function quitToMenu() {
   game.running = false;
+  game.pendingStart = null;           // 准备层没开始就退出时，别留下悬空的起播状态
   cancelAnimationFrame(game.raf);
   try { engine.stop(); } catch { /* 忽略 */ }
   $('pause-mask').hidden = true;
+  const rm = $('ready-mask');
+  if (rm) rm.hidden = true;
   show('menu');
   renderMenu();
 }
