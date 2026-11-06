@@ -7,8 +7,14 @@
 /** localStorage 键名 */
 const STORAGE_KEY = 'lab-sim-progress';
 
+/** 步骤勾选进度键前缀：lab-sim-steps:<expId> */
+const STEPS_PREFIX = 'lab-sim-steps:';
+
 /** 内存降级容器：localStorage 不可用时作为唯一数据源 */
 let memoryStore = Object.create(null);
+
+/** 内存降级容器（步骤勾选）：localStorage 不可用时作为唯一数据源 */
+let memorySteps = Object.create(null);
 
 /** 可用性探测结果缓存：null 未探测 / true 可用 / false 不可用 */
 let storageUsable = null;
@@ -86,4 +92,44 @@ export function clearProgress(expId) {
   delete all[expId];
   writeAll(all);
   return true;
+}
+
+/* ==========================================================================
+   步骤勾选进度（指令包 19 / R1a）：每个实验独立的勾选态
+   ========================================================================== */
+
+/**
+ * 读取某实验的步骤勾选态，返回 { [stepIndex]: boolean }。
+ * 任何异常都退化为空对象，不抛错。
+ */
+export function getSteps(expId) {
+  if (typeof expId !== 'string' || expId === '') return {};
+  if (!canUseStorage()) return { ...(memorySteps[expId] || {}) };
+  try {
+    const raw = window.localStorage.getItem(STEPS_PREFIX + expId);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (err) {
+    return {};
+  }
+}
+
+/**
+ * 写入某实验的步骤勾选态。
+ * 只保留布尔值，过滤掉其它类型，避免脏数据把渲染带崩。
+ */
+export function setSteps(expId, map) {
+  if (typeof expId !== 'string' || expId === '') return;
+  const clean = {};
+  if (map && typeof map === 'object') {
+    Object.keys(map).forEach((key) => { clean[key] = Boolean(map[key]); });
+  }
+  if (!canUseStorage()) { memorySteps[expId] = clean; return; }
+  try {
+    window.localStorage.setItem(STEPS_PREFIX + expId, JSON.stringify(clean));
+  } catch (err) {
+    storageUsable = false;
+    memorySteps[expId] = clean;
+  }
 }

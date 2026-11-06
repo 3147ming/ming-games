@@ -822,7 +822,68 @@ button {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  position: relative;
 }
+
+/* 电路体检 HUD 卡（指令包 19 · R2）：叠加在画布左上角，不挤占画布空间 */
+.diagnostics-panel {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 6;
+  max-width: 340px;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 6px 22px rgba(20, 30, 55, 0.18);
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text);
+  /* 纯只读 HUD：绝不能吃掉画布点击/悬停（否则左上角元件无法命中）。
+     项目约定：所有 canvas 上的 DOM 覆盖层恒 pointer-events:none。 */
+  pointer-events: none;
+}
+
+.diag-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.diag-title {
+  font-weight: 600;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+}
+
+.diag-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 3px 0;
+  line-height: 1.4;
+}
+
+.diag-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex: none;
+}
+
+.diag-dot--ok { background: #3fae6b; }
+.diag-dot--red { background: #d8503f; }
+.diag-dot--yellow { background: #e0a52e; }
+
+.diag-text { flex: 1; }
+
+.diag-ok { color: #3fae6b; }
+.diag-red .diag-text { color: #c0433a; }
+.diag-yellow .diag-text { color: #b07d1f; }
 
 /* 原理图容器：纸白色底，刻意区别于实验台的浅蓝绘图纸 */
 .canvas-area--schem {
@@ -3057,6 +3118,198 @@ body[data-theme="light"] .keys-card {
 .tab-steps li::marker {
   color: var(--amber);
   font-family: var(--font-mono);
+}
+
+/* 步骤 tab：进度条 + 勾选框 + 下一步引导（R1a） */
+.tab-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tab-progress-label {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.tab-progress-track {
+  flex: 1 1 auto;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line-soft, #2a3142);
+  overflow: hidden;
+}
+
+.tab-progress-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  background: var(--amber, #f2a93b);
+  transition: width 0.18s ease;
+}
+
+.tab-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tab-check input[type='checkbox'] {
+  flex: 0 0 auto;
+  margin: 3px 0 0;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--amber, #f2a93b);
+  cursor: pointer;
+}
+
+.tab-check span {
+  min-width: 0;
+}
+
+.tab-check input[type='checkbox']:checked + span {
+  color: var(--text-faint);
+  text-decoration: line-through;
+  text-decoration-color: var(--line);
+}
+
+.tab-next {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--amber, #f2a93b);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--amber, #f2a93b) 12%, transparent);
+}
+
+.tab-next p {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+/* 数据 tab：记录 / 对比 / 导出 操作条（R1b） */
+.tab-data-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tab-data-btn {
+  font-size: 12px;
+  padding: 5px 10px;
+}
+
+.tab-data-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 报告视图（R1c）：截图 + 数据表 + 评分 + 观察 */
+.report-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.report-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.report-shot {
+  width: 100%;
+  max-height: 340px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.report-figure {
+  margin: 0;
+}
+
+.report-figure figcaption {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.report-section {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--text);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 4px;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.report-table th,
+.report-table td {
+  border: 1px solid var(--line);
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.report-table th {
+  background: var(--line-soft, #2a3142);
+  font-weight: 600;
+}
+
+.report-table tr.ok td:last-child {
+  color: var(--ok, #1e7a4b);
+}
+
+.report-table tr.bad td:last-child {
+  color: var(--bad, #b8452f);
+}
+
+.report-conclusion {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--ok, #1e7a4b);
+  background: color-mix(in srgb, var(--ok, #1e7a4b) 10%, transparent);
+  font-size: 13px;
+}
+
+.report-obs {
+  white-space: pre-wrap;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  min-height: 44px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+/* 打印 / 存为 PDF：只输出报告视图，隐藏顶栏与浮层 */
+@media print {
+  .topbar,
+  .toast-host,
+  .modal-host,
+  .keys-host,
+  .report-actions {
+    display: none !important;
+  }
+  .view:not(.is-active) {
+    display: none !important;
+  }
+  .view.is-active {
+    position: static !important;
+    inset: auto !important;
+    height: auto !important;
+  }
 }
 
 .tab-expect {

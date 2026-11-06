@@ -547,6 +547,81 @@ function refreshHealth() {
     status.textContent = parts.join(' · ');
     status.classList.toggle('is-warn', report.danglingWires.length > 0 || mixedError);
   }
+
+  renderDiagnostics(report);
+}
+
+/**
+ * 电路体检 HUD（指令包 19 · R2）：把 validateCircuit 的 electrical 六条规则
+ * 渲染成红/黄告警卡。红（未共地/未供电/短路）在前，黄（悬空/反接/超极限）在后；
+ * 全绿时显示「电路正常，共 N 个元件」。纯 DOM API，不拼 innerHTML。
+ */
+function renderDiagnostics(report) {
+  const host = board && board.diagHost;
+  if (!host) return;
+  host.replaceChildren();
+
+  const elec = report && report.electrical ? report.electrical : null;
+  const circuit = model.getState();
+  const compCount = circuit ? circuit.components.length : 0;
+
+  const red = [];
+  const yellow = [];
+  if (elec) {
+    elec.noGround.forEach((d) => red.push({ sev: 'red', text: `${d.componentId} 未接地：${d.pin} 脚没有接到 GND，芯片不会工作` }));
+    elec.noPower.forEach((d) => red.push({ sev: 'red', text: `${d.componentId} 未接电源：${d.pin} 脚没有接 +5V` }));
+    elec.shortCircuit.forEach((d) => red.push({ sev: 'red', text: `${d.netId} 网被多个电源直连（${d.sources.join('、')}），会短路` }));
+    elec.floating.forEach((d) => yellow.push({ sev: 'yellow', text: `${d.componentId}.${d.pin} 悬空：未接任何导线` }));
+    elec.reversed.forEach((d) => yellow.push({ sev: 'yellow', text: `${d.componentId} 反接：${d.reason}` }));
+    elec.overload.forEach((d) => {
+      const unit = d.unit === 'W' ? 'W' : 'A';
+      const val = Number.isFinite(d.value) ? Math.abs(d.value).toPrecision(3) : '?';
+      const lim = d.limit;
+      yellow.push({ sev: 'yellow', text: `${d.componentId} 过载：${unit === 'W' ? '功率' : '电流'} ${val}${unit} 超过 ${lim}${unit}` });
+    });
+  }
+
+  const sortKey = (x) => x.text;
+  red.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+  yellow.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+
+  if (red.length === 0 && yellow.length === 0) {
+    host.hidden = false;
+    const ok = document.createElement('div');
+    ok.className = 'diag-row diag-ok';
+    const dot = document.createElement('span');
+    dot.className = 'diag-dot diag-dot--ok';
+    const txt = document.createElement('span');
+    txt.textContent = `电路正常，共 ${compCount} 个元件`;
+    ok.append(dot, txt);
+    host.append(ok);
+    return;
+  }
+
+  host.hidden = false;
+  const head = document.createElement('div');
+  head.className = 'diag-head';
+  const hdot = document.createElement('span');
+  hdot.className = `diag-dot ${red.length ? 'diag-dot--red' : 'diag-dot--yellow'}`;
+  const htxt = document.createElement('span');
+  htxt.className = 'diag-title';
+  htxt.textContent = `电路体检 · ${red.length} 项严重 · ${yellow.length} 项告警`;
+  head.append(hdot, htxt);
+  host.append(head);
+
+  const makeRow = (item) => {
+    const row = document.createElement('div');
+    row.className = `diag-row diag-${item.sev}`;
+    const dot = document.createElement('span');
+    dot.className = `diag-dot diag-dot--${item.sev}`;
+    const txt = document.createElement('span');
+    txt.className = 'diag-text';
+    txt.textContent = item.text;
+    row.append(dot, txt);
+    return row;
+  };
+  red.forEach((item) => host.append(makeRow(item)));
+  yellow.forEach((item) => host.append(makeRow(item)));
 }
 
 /** 变更后的统一收尾：体检 → 落盘 → 属性面板 → 重绘 → 通知订阅者 → 排一次仿真 */
@@ -1639,6 +1714,7 @@ export function initBoard(options) {
   const simHost = document.getElementById('sim-panel');
   const digHost = document.getElementById('dig-panel');
   const statusHost = document.getElementById('canvas-status');
+  const diagHost = document.getElementById('diagnostics-panel');
   const btnSwitch = document.getElementById('btn-switch-platform');
   if (!canvas || !host) return null;
 
@@ -1701,6 +1777,7 @@ export function initBoard(options) {
     simHost,
     digHost,
     statusHost,
+    diagHost,
     btnSwitch,
     platformId: restoredPlatform,
     onToast,

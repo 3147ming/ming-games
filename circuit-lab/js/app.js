@@ -11,7 +11,7 @@ import {
   validateExperiment,
   normalizeExperiment,
 } from './experiments.js';
-import { getProgress, setProgress } from './store.js';
+import { getProgress, setProgress, getSteps, setSteps } from './store.js';
 import {
   initBoard,
   destroyBoard,
@@ -83,9 +83,16 @@ const dom = {
   workspaceMeta: document.getElementById('workspace-meta'),
   btnImport: document.getElementById('btn-import'),
   btnExport: document.getElementById('btn-export'),
+  btnShare: document.getElementById('btn-share'),
   fileInput: document.getElementById('file-input'),
   btnBack: document.getElementById('btn-back'),
   btnBackReport: document.getElementById('btn-back-report'),
+  reportBody: document.getElementById('report-body'),
+  reportActions: document.getElementById('report-actions'),
+  reportHeading: document.getElementById('report-heading'),
+  reportMeta: document.getElementById('report-meta'),
+  btnReportHtml: document.getElementById('btn-report-html'),
+  btnReportPrint: document.getElementById('btn-report-print'),
   tabButtons: document.querySelectorAll('.tab'),
   tabPanels: document.querySelectorAll('.tab-panel'),
   expInfoBlock: document.getElementById('exp-info-block'),
@@ -129,8 +136,9 @@ const dom = {
    视图切换
    ========================================================================== */
 
-/** 切换到指定视图：viewId ∈ view-list / view-workspace / view-report */
-function switchView(viewId) {
+/** 切换到指定视图：viewId ∈ view-list / view-workspace / view-report
+ *  @param {{fromHash?: boolean}} [options] fromHash=true 时只切 DOM、不回写 hash（避免 hashchange 递归） */
+function switchView(viewId, options = {}) {
   if (!VIEW_IDS.includes(viewId)) {
     console.warn(`[switchView] 未知视图 id：${viewId}`);
     return false;
@@ -140,7 +148,152 @@ function switchView(viewId) {
     view.hidden = !isTarget;
     view.classList.toggle('is-active', isTarget);
   });
+  syncHashForView(viewId, options.fromHash);
   return true;
+}
+
+/**
+ * 把当前视图写进 URL。
+ * UI 主动导航（fromHash=false）→ pushState，让浏览器「后退」能回到上一级视图；
+ * hash 回填 / 深链恢复（fromHash=true）→ replaceState，不新增历史记录、不触发 hashchange。
+ */
+function syncHashForView(viewId, fromHash) {
+  let hash;
+  if (viewId === 'view-list') hash = '#/list';
+  else if (viewId === 'view-workspace') hash = currentExperimentId ? `#/lab/${currentExperimentId}` : '#/list';
+  else if (viewId === 'view-report') hash = currentExperimentId ? `#/report/${currentExperimentId}` : '#/list';
+  else return;
+  if (location.hash === hash) return;
+  if (fromHash) history.replaceState(null, '', hash);
+  else history.pushState(null, '', hash);
+}
+
+/** 解析 hash：#/list · #/lab/<expId> · #/lab/<expId>/share/<encoded> · #/report/<expId> */
+function parseHash() {
+  const h = (location.hash || '').replace(/^#\/?/, '');
+  if (!h) return { view: 'list', expId: null, share: null };
+  const parts = h.split('/').filter(Boolean);
+  if (parts.length === 0 || parts[0] === 'list') return { view: 'list', expId: null, share: null };
+  if (parts[0] === 'lab') {
+    const expId = parts[1] || null;
+    if (parts[2] === 'share' && parts[3]) return { view: 'workspace', expId, share: parts[3] };
+    return { view: 'workspace', expId, share: null };
+  }
+  if (parts[0] === 'report') return { view: 'report', expId: parts[1] || null, share: null };
+  return { view: 'list', expId: null, share: null };
+}
+
+/** hash 变化（浏览器前进/后退或初始深链）→ 恢复视图/实验，必要时还原分享电路 */
+function onHashChange() {
+  const { view, expId, share } = parseHash();
+  if (view === 'list' || !expId) {
+    if (currentExperimentId) {
+      switchView('view-list', { fromHash: true });
+      currentExperimentId = null;
+      currentExample = null;
+    }
+    return;
+  }
+  if (currentExperimentId !== expId) {
+    openExperiment(expId, { fromHash: true });
+  } else {
+    switchView(view === 'report' ? 'view-report' : 'view-workspace', { fromHash: true });
+  }
+  if (share) applySharedCircuit(share);
+}
+
+/* ==========================================================================
+   电路分享（R3b）：序列化 → base64url → 拼 URL；打开分享链接时还原
+   ========================================================================== */
+
+/** UTF-8 安全的 base64url 编码（URL 安全，去掉 +/=） */
+function b64urlEncode(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 1) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** base64url 解码回 UTF-8 字符串 */
+function b64urlDecode(s) {
+  let t = String(s).replace(/-/g, '+').replace(/_/g, '/');
+  while (t.length % 4) t += '=';
+  const bin = atob(t);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+/** 当前电路 → 分享链接并复制到剪贴板 */
+function shareCurrentCircuit() {
+  const board = window.__labBoard;
+  if (!board || !currentExperimentId) {
+    showToast('请先进入一个实验再分享', 'error');
+    return;
+  }
+  const data = board.model.serializeCircuit();
+  if (!data) {
+    showToast('没有可导出的电路', 'error');
+    return;
+  }
+  const encoded = b64urlEncode(JSON.stringify(data));
+  const url = `${location.origin}${location.pathname}#/lab/${currentExperimentId}/share/${encoded}`;
+  copyToClipboard(url).then(() => {
+    showToast('分享链接已复制到剪贴板', 'success');
+  }).catch(() => {
+    window.prompt('复制这条分享链接：', url);
+  });
+}
+
+/** 打开分享链接：还原电路（含仪器）+ 立即重算，不覆盖用户自己的存档 */
+function applySharedCircuit(encoded) {
+  const board = window.__labBoard;
+  if (!board) return;
+  let data;
+  try {
+    data = JSON.parse(b64urlDecode(encoded));
+  } catch (_) {
+    showToast('分享链接已损坏，无法还原电路', 'error');
+    return;
+  }
+  if (!data || typeof data !== 'object') {
+    showToast('分享链接格式不正确', 'error');
+    return;
+  }
+  const platform = data.platform && typeof data.platform === 'string' ? data.platform : 'exp-box';
+  try {
+    board.model.loadCircuit(data, platform);
+  } catch (_) {
+    showToast('电路还原失败', 'error');
+    return;
+  }
+  if (typeof simulateNow === 'function') simulateNow('share-load');
+  if (board.requestRender) board.requestRender();
+  refreshTabPanels();
+  showToast('这是他人分享的电路', 'info');
+}
+
+/** 复制文本到剪贴板，失败时用 execCommand 兜底 */
+function copyToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise((resolve, reject) => {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.append(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (ok) resolve();
+      else reject(new Error('copy failed'));
+    } catch (e) {
+      reject(e);
+    }
+  });
 }
 
 /* ==========================================================================
@@ -628,7 +781,10 @@ function renderConfigBlock(host, example) {
   host.append(scoreActions, scoreBox);
 }
 
-/** 生成并下载单文件 HTML 报告（数据冻结在点击这一刻） */
+/**
+ * 生成实验报告：先切到报告视图，把"截图 + 波形 + 数据 + 评分"渲染进页面，
+ * 同时保留「导出 HTML」单文件下载（数据冻结在点击这一刻）。
+ */
 function generateExampleReport(example, observations) {
   const board = window.__labBoard;
   if (!board) return;
@@ -637,24 +793,154 @@ function generateExampleReport(example, observations) {
     showToast(`报告生成失败：${measured.error}`, 'error');
     return;
   }
-  const canvas = document.getElementById('breadboard-canvas');
-  const html = buildReportHtml({
+  const circuitCanvas = document.getElementById('breadboard-canvas');
+  const screenshot = circuitCanvas ? circuitCanvas.toDataURL('image/png') : '';
+  // 波形截图：抓示波器画布（若有），否则取暂态波形查看器画布
+  let waveform = '';
+  const scopeCanvas = document.querySelector('#instrument-panel .inst-scope-canvas')
+    || document.querySelector('#wave-panel canvas');
+  if (scopeCanvas) {
+    try { waveform = scopeCanvas.toDataURL('image/png'); } catch (_) { waveform = ''; }
+  }
+  const snapshot = {
     title: example.title,
     time: new Date().toLocaleString('zh-CN'),
-    screenshot: canvas ? canvas.toDataURL('image/png') : '',
+    screenshot,
+    waveform,
     circuit: circuitSummary(board.model),
     items: measured.items,
-    observations,
+    observations: observations || '',
+  };
+  const html = buildReportHtml(snapshot);
+  const pass = measured.items.filter((x) => x.pass).length;
+  switchView('view-report');
+  renderReportView(snapshot, html, pass, measured.items.length);
+  showToast(`报告已生成：${pass}/${measured.items.length} 项符合预期`, 'success');
+}
+
+/** 把报告渲染进 view-report 面板（DOM API，不用 innerHTML 拼接） */
+function renderReportView(snapshot, html, pass, total) {
+  const host = dom.reportBody;
+  if (!host) return;
+  host.replaceChildren();
+
+  // 标题 + 元信息
+  if (dom.reportHeading) dom.reportHeading.textContent = snapshot.title || '实验报告';
+  if (dom.reportMeta) dom.reportMeta.textContent = `${snapshot.time} · ${pass}/${total} 项符合预期`;
+  if (dom.reportActions) dom.reportActions.hidden = false;
+
+  // 电路截图
+  if (snapshot.screenshot) {
+    const img = document.createElement('img');
+    img.className = 'report-shot';
+    img.alt = '电路截图';
+    img.src = snapshot.screenshot;
+    host.append(img);
+  }
+
+  // 波形截图
+  if (snapshot.waveform) {
+    const wrap = document.createElement('figure');
+    wrap.className = 'report-figure';
+    const wimg = document.createElement('img');
+    wimg.className = 'report-shot';
+    wimg.alt = '波形截图';
+    wimg.src = snapshot.waveform;
+    const cap = document.createElement('figcaption');
+    cap.textContent = '波形';
+    wrap.append(wimg, cap);
+    host.append(wrap);
+  }
+
+  // 测量数据与评分
+  host.append(reportSection('测量数据与预期对比'));
+  const table = document.createElement('table');
+  table.className = 'report-table';
+  const thead = document.createElement('thead');
+  const htr = document.createElement('tr');
+  ['测量项', '期望值', '实测值', '偏差', '容差', '判定'].forEach((h) => {
+    const th = document.createElement('th');
+    th.textContent = h;
+    htr.append(th);
   });
+  thead.append(htr);
+  table.append(thead);
+  const tbody = document.createElement('tbody');
+  snapshot.items.forEach((item) => {
+    const tr = document.createElement('tr');
+    tr.className = item.pass ? 'ok' : 'bad';
+    const measured = typeof item.measured === 'number'
+      ? formatReportNumber(item.measured)
+      : String(item.measured === null || item.measured === undefined ? '—' : item.measured);
+    const deviation = item.deviation === null || item.deviation === undefined
+      ? '—'
+      : `${(item.deviation * 100).toFixed(2)}%`;
+    [
+      item.label,
+      `${item.target} ${item.unit || ''}`,
+      `${measured} ${item.unit || ''}`,
+      deviation,
+      `±${((item.tolerance || 0) * 100).toFixed(2)}%`,
+      item.pass ? '符合' : '超差',
+    ].forEach((cell) => {
+      const td = document.createElement('td');
+      td.textContent = cell;
+      tr.append(td);
+    });
+    tbody.append(tr);
+  });
+  table.append(tbody);
+  host.append(table);
+
+  // 评分结论
+  const conclusion = document.createElement('p');
+  conclusion.className = 'report-conclusion';
+  conclusion.textContent = total === 0
+    ? '本次实验没有测量项。'
+    : `共 ${total} 项测量，${pass} 项符合预期${pass === total ? '，实验结论成立。' : '，其余项超出容差，建议检查接线与元件参数。'}`;
+  host.append(conclusion);
+
+  // 我的观察
+  host.append(reportSection('我的观察'));
+  const obs = document.createElement('div');
+  obs.className = 'report-obs';
+  obs.textContent = snapshot.observations || '（未填写）';
+  host.append(obs);
+
+  // 绑定导出按钮（导出 HTML 单文件 / 打印存 PDF）
+  if (dom.btnReportHtml) {
+    dom.btnReportHtml.onclick = () => downloadReportHtml(snapshot, html);
+  }
+  if (dom.btnReportPrint) {
+    dom.btnReportPrint.onclick = () => { window.print(); };
+  }
+}
+
+/** 报告区块小标题 */
+function reportSection(title) {
+  const h = document.createElement('h3');
+  h.className = 'report-section';
+  h.textContent = title;
+  return h;
+}
+
+/** 报告数值格式化（与 report.js 保持一致） */
+function formatReportNumber(value) {
+  if (!Number.isFinite(value)) return '—';
+  const abs = Math.abs(value);
+  if (abs !== 0 && (abs < 1e-3 || abs >= 1e5)) return value.toExponential(3);
+  return String(Number(value.toPrecision(5)));
+}
+
+/** 导出单文件 HTML 报告（数据冻结在生成时刻） */
+function downloadReportHtml(snapshot, html) {
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${example.id}-report.html`;
+  a.download = `${currentExperimentId || 'circuit'}-report.html`;
   a.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 2000);
-  const pass = measured.items.filter((x) => x.pass).length;
-  showToast(`报告已生成：${pass}/${measured.items.length} 项符合预期`, 'success');
 }
 
 /**
@@ -931,7 +1217,7 @@ function renderExperimentInfo(exp) {
 }
 
 /** 进入实验工作区：记录进度、刷新列表、切换视图、写入标题、初始化实验台 */
-function openExperiment(expId) {
+function openExperiment(expId, options = {}) {
   const exp = getExperimentById(expId);
   if (!exp) {
     showToast('实验不存在或已被移除', 'error');
@@ -949,7 +1235,7 @@ function openExperiment(expId) {
   renderExperimentInfo(exp);
   renderList();
   activateTab('info');
-  switchView('view-workspace');
+  switchView('view-workspace', options);
 
   // 仪器段随存档走（包 10）：model 不认识 UI，用注入的 provider/restorer
   setInstrumentProvider(() => (instruments ? instruments.snapshot() : null));
@@ -1519,6 +1805,7 @@ function bindEvents() {
 
   dom.btnImport.addEventListener('click', handleImportClick);
   dom.btnExport.addEventListener('click', handleExport);
+  if (dom.btnShare) dom.btnShare.addEventListener('click', shareCurrentCircuit);
   dom.fileInput.addEventListener('change', handleFileChange);
 
   dom.btnBack.addEventListener('click', leaveWorkspace);
@@ -1959,7 +2246,7 @@ function tabSection(title) {
   return h;
 }
 
-/** 步骤 tab：当前实验的分步指导 + 预期值表（没有示例时给引导文案） */
+/** 步骤 tab：当前实验的分步指导（可勾选）+ 进度条 + 预期值表 */
 function renderStepsTab(example) {
   const host = dom.stepsBody;
   if (!host) return;
@@ -1971,38 +2258,132 @@ function renderStepsTab(example) {
   const steps = (example.guide && example.guide.steps) || [];
   if (steps.length === 0) {
     host.append(tabEmpty('这个实验没有分步指导，直接在画布上搭电路即可。'));
-  } else {
-    const ol = document.createElement('ol');
-    ol.className = 'tab-steps';
-    steps.forEach((text) => {
-      const li = document.createElement('li');
-      li.textContent = text;
-      ol.append(li);
-    });
-    host.append(ol);
+    appendExpectedTab(host, example);
+    return;
   }
-  const expected = (example.guide && example.guide.expected) || [];
-  if (expected.length > 0) {
-    host.append(tabSection('预期值'));
-    const dl = document.createElement('dl');
-    dl.className = 'tab-expect';
-    expected.forEach((item) => {
-      const dt = document.createElement('dt');
-      dt.textContent = item.label;
-      const dd = document.createElement('dd');
-      const tol = item.tolerance ? `（容差 ${(item.tolerance * 100).toFixed(1)}%）` : '';
-      dd.textContent = `${item.target}${item.unit ? ` ${item.unit}` : ''}${tol}`;
-      dl.append(dt, dd);
-    });
-    host.append(dl);
+
+  const done = getSteps(currentExperimentId);
+  const total = steps.length;
+  const doneCount = steps.reduce((n, _t, i) => n + (done[i] ? 1 : 0), 0);
+
+  // 进度条（顶部）：已完成 x / N
+  const progress = document.createElement('div');
+  progress.className = 'tab-progress';
+  const pLabel = document.createElement('span');
+  pLabel.className = 'tab-progress-label';
+  pLabel.textContent = `已完成 ${doneCount} / ${total}`;
+  const track = document.createElement('div');
+  track.className = 'tab-progress-track';
+  const bar = document.createElement('div');
+  bar.className = 'tab-progress-bar';
+  bar.style.width = `${total ? Math.round((doneCount / total) * 100) : 0}%`;
+  track.append(bar);
+  progress.append(pLabel, track);
+  host.append(progress);
+
+  const ol = document.createElement('ol');
+  ol.className = 'tab-steps';
+  steps.forEach((text, i) => {
+    const li = document.createElement('li');
+    li.className = 'tab-step';
+    const labelEl = document.createElement('label');
+    labelEl.className = 'tab-check';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = Boolean(done[i]);
+    cb.dataset.index = String(i);
+    const span = document.createElement('span');
+    span.textContent = text;
+    labelEl.append(cb, span);
+    li.append(labelEl);
+    ol.append(li);
+  });
+  host.append(ol);
+
+  // 勾选变化：只更新进度条 DOM + 落盘，不整体重渲染（保焦点）
+  ol.addEventListener('change', (e) => {
+    const cb = e.target;
+    if (!cb || cb.type !== 'checkbox') return;
+    const idx = Number(cb.dataset.index);
+    const map = getSteps(currentExperimentId);
+    map[idx] = cb.checked;
+    setSteps(currentExperimentId, map);
+    const count = steps.reduce((n, _t, k) => n + (map[k] ? 1 : 0), 0);
+    const p = total ? Math.round((count / total) * 100) : 0;
+    const barEl = host.querySelector('.tab-progress-bar');
+    const lblEl = host.querySelector('.tab-progress-label');
+    if (barEl) barEl.style.width = `${p}%`;
+    if (lblEl) lblEl.textContent = `已完成 ${count} / ${total}`;
+    updateNextGuide(host, count, total);
+  });
+
+  appendExpectedTab(host, example);
+  updateNextGuide(host, doneCount, total);
+}
+
+/** 末步完成后出现的「下一步」引导卡（点击切到数据 tab） */
+function updateNextGuide(host, doneCount, total) {
+  const existing = host.querySelector('.tab-next');
+  if (existing) existing.remove();
+  if (total > 0 && doneCount >= total) {
+    const card = document.createElement('div');
+    card.className = 'tab-next';
+    const p = document.createElement('p');
+    p.textContent = '全部步骤完成！接下来可以记录数据、生成实验报告。';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-primary';
+    btn.textContent = '去记录数据 →';
+    btn.addEventListener('click', () => activateTab('data'));
+    card.append(p, btn);
+    host.append(card);
   }
 }
 
-/** 数据 tab：万用表 / 示波器 / 逻辑分析仪的当前读数汇总 */
+/** 预期值区块（步骤 tab 与数据 tab 共用渲染） */
+function appendExpectedTab(host, example) {
+  const expected = (example && example.guide && example.guide.expected) || [];
+  if (expected.length === 0) return;
+  host.append(tabSection('预期值'));
+  const dl = document.createElement('dl');
+  dl.className = 'tab-expect';
+  expected.forEach((item) => {
+    const dt = document.createElement('dt');
+    dt.textContent = item.label;
+    const dd = document.createElement('dd');
+    const tol = item.tolerance ? `（容差 ${(item.tolerance * 100).toFixed(1)}%）` : '';
+    dd.textContent = `${item.target}${item.unit ? ` ${item.unit}` : ''}${tol}`;
+    dl.append(dt, dd);
+  });
+  host.append(dl);
+}
+
+/** 数据 tab：记录 / 对比 / 导出操作条 + 万用表 / 示波器 / 逻辑分析仪的当前读数汇总 */
 function renderDataTab() {
   const host = dom.dataBody;
   if (!host) return;
   host.replaceChildren();
+
+  // 操作条：委托给「实验信息 → 数据」里的 dataPanel 单例（不新建第二个实例）
+  const actions = document.createElement('div');
+  actions.className = 'tab-data-actions';
+  const recBtn = makeDataAction('记录读数', () => recordCurrentReadings());
+  const cmpBtn = makeDataAction('对比目标', () => {
+    if (dataPanel) dataPanel.selectTab('compare');
+    activateTab('info');
+    showToast('已切换到对比视图（实验信息 → 数据）', 'info');
+  });
+  const expBtn = makeDataAction('导出 CSV', () => exportRecordCsv());
+  [recBtn, cmpBtn, expBtn].forEach((b) => actions.append(b));
+  host.append(actions);
+
+  if (dataPanel) {
+    const count = dataPanel.records().length;
+    host.append(tabEmpty(count > 0
+      ? `已记录 ${count} 条读数；点「导出 CSV」可下载全部记录。`
+      : '还没记录读数；点「记录读数」保存当前万用表 / 示波器数值。'));
+  }
+
   const board = window.__labBoard;
   if (!board || !board.instruments) {
     host.append(tabEmpty('进入实验后，这里会汇总万用表 / 示波器 / 逻辑分析仪的读数。'));
@@ -2046,7 +2427,64 @@ function renderDataTab() {
   row('画布探针', markerCount ? `${markerCount} 枚已挂` : '未挂');
 
   host.append(dl);
-  host.append(tabEmpty('提示：切到「实验信息 → 数据」可以保存记录，或生成报告导出全部读数。'));
+  host.append(tabEmpty('提示：记录读数后到「实验信息 → 数据」可以对比理论曲线，或生成报告导出全部读数。'));
+}
+
+/** 数据 tab 操作条按钮（统一外观 + 点击委托） */
+function makeDataAction(label, onClick) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-ghost tab-data-btn';
+  btn.textContent = label;
+  btn.disabled = !dataPanel;
+  btn.addEventListener('click', onClick);
+  return btn;
+}
+
+/** 把当前仪器的数值读数写入 dataPanel 记录缓冲 */
+function recordCurrentReadings() {
+  const board = window.__labBoard;
+  if (!board || !board.instruments || !dataPanel) {
+    showToast('请先进入实验并放置元件', 'error');
+    return;
+  }
+  let read = null;
+  try { read = board.instruments.read(); } catch (_) { read = null; }
+  if (!read) { showToast('暂时读不到仪器数据', 'error'); return; }
+  let pushed = 0;
+  const dmm = read.dmm;
+  if (dmm && dmm.ok && Number.isFinite(dmm.value)) {
+    if (dataPanel.ingestReading('万用表', dmm.value)) pushed += 1;
+  }
+  const scope = read.scope;
+  if (scope && Array.isArray(scope.measures)) {
+    scope.measures.forEach((m, i) => {
+      if (!m) return;
+      if (Number.isFinite(m.freq) && dataPanel.ingestReading(`CH${i + 1}频率`, m.freq)) pushed += 1;
+      if (Number.isFinite(m.vpp) && dataPanel.ingestReading(`CH${i + 1}Vpp`, m.vpp)) pushed += 1;
+    });
+  }
+  if (pushed > 0) {
+    showToast(`已记录 ${pushed} 条读数`, 'success');
+    renderDataTab();
+  } else {
+    showToast('当前没有可记录的数值读数', 'info');
+  }
+}
+
+/** 导出 dataPanel 记录缓冲为 CSV 文件 */
+function exportRecordCsv() {
+  if (!dataPanel) { showToast('请先进入实验', 'error'); return; }
+  const csv = dataPanel.csv();
+  if (!csv || csv.trim() === '') { showToast('还没有记录可导出', 'info'); return; }
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${currentExperimentId || 'circuit'}-data.csv`;
+  a.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+  showToast('已导出 CSV', 'success');
 }
 
 /** 刷新两个 tab（切换示例或切 tab 时调用） */
@@ -2079,7 +2517,16 @@ function init() {
   renderList();
   renderStepsTab(null);
   renderDataTab();
-  switchView('view-list');
+
+  // 路由（R3a）：监听 hash 变化（浏览器前进/后退），并支持初始深链
+  window.addEventListener('hashchange', onHashChange);
+  const initial = parseHash();
+  if (initial.expId && initial.view !== 'list') {
+    // 深链直达某个实验（或分享链接）：交由 onHashChange 统一恢复
+    onHashChange();
+  } else {
+    switchView('view-list');
+  }
   window.__labSimReady = true;
 }
 

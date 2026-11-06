@@ -15,6 +15,7 @@
 import { getPart, footprintOf, terminalPos } from './parts.js';
 import { resetRelayState } from './devmodels.js';
 import { getPlatform, getNode, isPlatformId } from './platforms.js';
+import { solveDC } from './simdc.js';
 
 /** 撤销栈上限：超过后丢弃最早快照 */
 const UNDO_LIMIT = 60;
@@ -613,7 +614,17 @@ export function isComponentConnected(componentId) {
  *   orphanTerminals: {componentId, terminal}[],
  *   isolatedComponents: string[],
  *   overlaps: string[][],
- *   netCount: number
+ *   netCount: number,
+ *   electrical: {
+ *     noGround: {componentId, pin}[],
+ *     noPower: {componentId, pin}[],
+ *     shortCircuit: {netId, sources: string[]}[],
+ *     floating: {componentId, pin}[],
+ *     reversed: {componentId, reason}[],
+ *     overload: {componentId, value, limit, unit}[],
+ *     computed: boolean,
+ *     error: (string|null)
+ *   }
  * }}
  */
 export function validateCircuit() {
@@ -624,6 +635,16 @@ export function validateCircuit() {
     isolatedComponents: [],
     overlaps: [],
     netCount: 0,
+    electrical: {
+      noGround: [],
+      noPower: [],
+      shortCircuit: [],
+      floating: [],
+      reversed: [],
+      overload: [],
+      computed: false,
+      error: null,
+    },
   };
   if (!state) return result;
 
@@ -653,7 +674,137 @@ export function validateCircuit() {
   }
 
   result.ok = result.danglingWires.length === 0 && result.overlaps.length === 0;
+
+  // 六条电气体检（R2）：结构检查后再跑直流解，产出红/黄告警
+  result.electrical = diagnoseElectrical(list);
+
   return result;
+}
+
+/**
+ * 六条电气体检规则（指令包 19 · R2）。
+ * 前四条（未共地 / 未供电 / 短路 / 悬空）只依赖网表，不依赖直流解；
+ * 后两条（反接 / 超极限）依赖 solveDC 的节点电压与元件电流。
+ * 任何一步失败都降级（computed=false、error 说明），绝不抛错中断体检。
+ *
+ * @param {{netOf: Map<string,string>, nets: Map<string, any[]>}} list 网表（已含 netOf）
+ * @returns result.electrical 结构
+ */
+function diagnoseElectrical(list) {
+  const electrical = {
+    noGround: [],
+    noPower: [],
+    shortCircuit: [],
+    floating: [],
+    reversed: [],
+    overload: [],
+    computed: false,
+    error: null,
+  };
+  if (!state) return electrical;
+
+  const netOf = list.netOf;
+  const keyOf = (compId, term) => `c:${compId}:${term}`;
+
+  // ① 未共地 / ② 未供电 / ④ 悬空：仅看端子是否接入网
+  state.components.forEach((comp) => {
+    comp.terminals.forEach((terminal) => {
+      const net = netOf.get(keyOf(comp.id, terminal.name)) || null;
+      if (terminal.role === 'GND' && net === null) {
+        electrical.noGround.push({ componentId: comp.id, pin: terminal.name });
+      } else if (terminal.role === 'VCC' && net === null) {
+        electrical.noPower.push({ componentId: comp.id, pin: terminal.name });
+      } else if (net === null && terminal.role !== 'GND' && terminal.role !== 'VCC') {
+        electrical.floating.push({ componentId: comp.id, pin: terminal.name });
+      }
+    });
+  });
+
+  // ③ 短路：同一 net 上 ≥2 个电源类输出（vsource / isource / fgen）
+  const SOURCE_TYPES = new Set(['vsource', 'isource', 'fgen']);
+  const netSources = new Map();
+  state.components.forEach((comp) => {
+    if (!SOURCE_TYPES.has(comp.type)) return;
+    comp.terminals.forEach((terminal) => {
+      const net = netOf.get(keyOf(comp.id, terminal.name)) || null;
+      if (net === null) return;
+      if (!netSources.has(net)) netSources.set(net, []);
+      netSources.get(net).push(comp.id);
+    });
+  });
+  netSources.forEach((sources, netId) => {
+    const distinct = [...new Set(sources)];
+    if (distinct.length >= 2) {
+      electrical.shortCircuit.push({ netId, sources: distinct });
+    }
+  });
+
+  // ⑤ 反接 / ⑥ 超极限：依赖直流工作点
+  let dc;
+  try {
+    dc = solveDC({ getState, getNetlist });
+  } catch (err) {
+    electrical.error = err && err.message ? err.message : String(err);
+    return electrical;
+  }
+  if (!dc || !dc.ok) {
+    // 短路已在网表层报出；其余规则需要有效解，跳过但不报错的
+    electrical.computed = false;
+    electrical.error = dc && dc.error ? dc.error : '未求解';
+    return electrical;
+  }
+  electrical.computed = true;
+
+  const vByNet = new Map();
+  (dc.nodeVoltages || []).forEach((n) => {
+    if (n.netId !== undefined) vByNet.set(n.netId, n.v);
+  });
+  const resByComp = new Map();
+  (dc.elementResults || []).forEach((r) => resByComp.set(r.componentId, r));
+
+  const netV = (comp, name) => {
+    const net = netOf.get(keyOf(comp.id, name)) || null;
+    if (net === null) return null;
+    return vByNet.has(net) ? vByNet.get(net) : null;
+  };
+
+  state.components.forEach((comp) => {
+    // ⑤ 反接：LED/二极管 A 端电压 ≤ K 端；IC 电源 VCC 端电压 < GND 端
+    if (comp.type === 'led' || comp.type === 'diode') {
+      const vA = netV(comp, 'A');
+      const vK = netV(comp, 'K');
+      if (vA !== null && vK !== null && vA <= vK) {
+        electrical.reversed.push({ componentId: comp.id, reason: 'A 端电压 ≤ K 端电压，方向与电源相反' });
+      }
+    }
+    const vcc = comp.terminals.find((t) => t.role === 'VCC');
+    const gnd = comp.terminals.find((t) => t.role === 'GND');
+    if (vcc && gnd) {
+      const vVCC = netV(comp, vcc.name);
+      const vGND = netV(comp, gnd.name);
+      if (vVCC !== null && vGND !== null && vVCC < vGND) {
+        electrical.reversed.push({ componentId: comp.id, reason: 'VCC 端电压 < GND 端电压，电源接反' });
+      }
+    }
+
+    // ⑥ 超极限：LED 电流 |i| > 20mA；电阻功率 |V²/R| > 0.25W
+    const r = resByComp.get(comp.id);
+    if (r) {
+      if (comp.type === 'led' || comp.type === 'diode') {
+        const i = r.i;
+        if (Number.isFinite(i) && Math.abs(i) > 0.02) {
+          electrical.overload.push({ componentId: comp.id, value: i, limit: 0.02, unit: 'A' });
+        }
+      } else if (comp.type === 'resistor') {
+        const p = r.power;
+        if (Number.isFinite(p) && Math.abs(p) > 0.25) {
+          electrical.overload.push({ componentId: comp.id, value: p, limit: 0.25, unit: 'W' });
+        }
+      }
+    }
+  });
+
+  return electrical;
 }
 
 /* ==========================================================================

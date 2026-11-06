@@ -33,6 +33,7 @@
               aria-haspopup="dialog" title="快捷键一览 ( F1 / ? )">快捷键</button>
       <button class="btn btn-ghost" id="btn-import" type="button">导入实验配置</button>
       <button class="btn btn-primary" id="btn-export" type="button">导出配置模板</button>
+      <button class="btn btn-ghost" id="btn-share" type="button" title="生成当前电路的分享链接">分享电路</button>
       <!-- 隐藏的文件选择器，由"导入实验配置"按钮触发 -->
       <input type="file" id="file-input" accept=".json,application/json" hidden>
     </div>
@@ -171,6 +172,8 @@
               <canvas id="schematic-canvas" class="schem-canvas" aria-label="电路原理图画布"></canvas>
               <div class="canvas-status canvas-status--schem" id="schem-status" aria-live="polite"></div>
             </div>
+            <!-- 电路体检（指令包 19 · R2）：红/黄告警 HUD 卡，由 board.js 用 DOM API 填充 -->
+            <div class="diagnostics-panel" id="diagnostics-panel" aria-live="polite" hidden></div>
           </div>
         </section>
 
@@ -227,11 +230,15 @@
           <p class="eyebrow">REPORT</p>
           <h2 class="view-title" id="report-heading">实验报告</h2>
         </div>
-        <p class="ws-meta">待后续指令包</p>
+        <p class="ws-meta" id="report-meta">在线生成</p>
       </div>
       <div class="panel">
         <div class="panel-body">
-          <p class="placeholder">报告页（待后续指令包）</p>
+          <div class="report-actions" id="report-actions" hidden>
+            <button class="btn btn-ghost" id="btn-report-html" type="button">导出 HTML</button>
+            <button class="btn btn-ghost" id="btn-report-print" type="button">打印 / 存为 PDF</button>
+          </div>
+          <div class="report-body" id="report-body"></div>
         </div>
       </div>
     </section>
