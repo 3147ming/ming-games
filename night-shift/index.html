@@ -23,6 +23,8 @@
   <canvas id="scene-canvas"></canvas>
   <!-- HUD 由 src/hud.mjs 动态挂载 -->
   <div id="hud-root"></div>
+  <!-- P0-4：首次加载指示（纯文字 + CSS 转圈，不新增图片/字体；首帧后由 main.mjs 移除） -->
+  <div id="boot"><div class="ring"></div><div>加载中…</div></div>
 </div>
 <noscript>本游戏需要启用 JavaScript。</noscript>
 <script type="module" src="./src/main.mjs"></script>

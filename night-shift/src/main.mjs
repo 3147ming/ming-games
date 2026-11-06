@@ -27,6 +27,7 @@ import {
   closeModal,
   openCg, showPrologue, showMilestoneCg,
   setCustomerPortrait, clearCustomerPortrait,
+  hudStats,
 } from './hud.mjs';
 /* 美术资产接入：商品/人物映射表（纯逻辑，scene/hud 共用） */
 import { ITEM_ART, CHAR_ART, artUrl, itemArtFor, charArtFor } from './artmap.mjs';
@@ -2806,9 +2807,70 @@ let lastClawDolls = -1;
 /** 促销是否在售（2026-10-06 块3：用于"促销结束音"的边沿检测，需跨帧持久故在模块级） */
 let promoWasOn = false;
 
+/* ---------- P0-3 低端机自动降级 ----------
+ * 维护最近 60 帧 dt 滚动平均；连续 2s 帧时间 > 22ms 降一档（先降 bloom mips，
+ * mips 到底后再降像素比），连续 3s < 12ms 且未满则逐级回。绝不黑屏：
+ * mips=0 时 render 直出，像素比下降后 drawingBuffer 变小、postfx.syncSize 自动跟随重建。 */
+const perfAdapt = {
+  dts: [], slowSince: 0, fastSince: 0,
+  inited: false, basePr: 2, curPr: 2, prFloor: 1.25, prStep: 0.25,
+};
+function perfInit() {
+  if (perfAdapt.inited || typeof window === 'undefined') return;
+  const touch = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  perfAdapt.basePr = Math.min(window.devicePixelRatio || 1, touch ? 1.5 : 2);
+  perfAdapt.curPr = perfAdapt.basePr;
+  perfAdapt.prFloor = touch ? 1.0 : 1.25;
+  perfAdapt.inited = true;
+}
+function perfApplyPixelRatio() {
+  if (!world || !world.renderer) return;
+  world.renderer.setPixelRatio(perfAdapt.curPr);
+  world.renderer.setSize(window.innerWidth, window.innerHeight, false);
+}
+function perfDegrade() {
+  if (post.mips > 0) {
+    post.setMips(post.mips - 1);
+    console.info(`[perf] 降级：bloom mips → ${post.mips}`);
+  } else if (perfAdapt.curPr > perfAdapt.prFloor + 1e-6) {
+    perfAdapt.curPr = Math.max(perfAdapt.prFloor, perfAdapt.curPr - perfAdapt.prStep);
+    perfApplyPixelRatio();
+    console.info(`[perf] 降级：像素比 → ${perfAdapt.curPr}`);
+  }
+}
+function perfRecover() {
+  if (perfAdapt.curPr < perfAdapt.basePr - 1e-6) {
+    perfAdapt.curPr = Math.min(perfAdapt.basePr, perfAdapt.curPr + perfAdapt.prStep);
+    perfApplyPixelRatio();
+    console.info(`[perf] 恢复：像素比 → ${perfAdapt.curPr}`);
+  } else if (post.mips < 3) {
+    post.setMips(post.mips + 1);
+    console.info(`[perf] 恢复：bloom mips → ${post.mips}`);
+  }
+}
+function perfStep(dt) {
+  if (!post) return;
+  perfInit();
+  const ms = dt * 1000;
+  perfAdapt.dts.push(ms);
+  if (perfAdapt.dts.length > 60) perfAdapt.dts.shift();
+  if (perfAdapt.dts.length < 60) return;
+  const avg = perfAdapt.dts.reduce((a, b) => a + b, 0) / perfAdapt.dts.length;
+  const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+  if (avg > 22) {
+    if (!perfAdapt.slowSince) perfAdapt.slowSince = now;
+    else if (now - perfAdapt.slowSince >= 2000) { perfDegrade(); perfAdapt.slowSince = 0; perfAdapt.fastSince = 0; }
+  } else perfAdapt.slowSince = 0;
+  if (avg < 12) {
+    if (!perfAdapt.fastSince) perfAdapt.fastSince = now;
+    else if (now - perfAdapt.fastSince >= 3000) { perfRecover(); perfAdapt.fastSince = 0; perfAdapt.slowSince = 0; }
+  } else perfAdapt.fastSince = 0;
+}
+
 function step(now) {
   const dt = Math.min((now - last) / 1000, 0.05); // dt 上限钳制（ADR-003）
   last = now;
+  perfStep(dt); // P0-3 低端机自动降级：每帧喂 dt 进滚动平均
 
   // 昼夜状态每帧都要取：即使暂停，光照也要保持在上一次的值（暂停时画面不能变黑）
   const dn = dayNight.state();
@@ -2984,6 +3046,8 @@ function step(now) {
   if (state.lostSales > lastLostCount) { sfx.upset(); lastLostCount = state.lostSales; }
 
   player.update(dt);
+  // P1-6：FOV 缓动（转屏/调设置不再瞬跳）。
+  if (typeof world.updateFov === 'function') world.updateFov(dt);
   // R1：每帧按 dt 更新店员四状态（移动/动作/时间驱动），取 player 本帧位移与贴墙状态
   if (!state.paused && state.phase === 'running') updateClerk(state, dt, player);
   // 需求J：店员 AI（维修/清洁/采购/上货 + 薪资计时），与店员四状态互不干扰
@@ -3011,7 +3075,7 @@ function step(now) {
   world.setBeacons(beaconList());
   /* --- 新手引导（第 1 夜前 3 分钟，三步走完即消失） --- */
   updateTutorial();
-  renderHud(envSnapshot());
+  renderHud(envSnapshot(), dt);
   syncPauseLayer();
   syncDebug();
   // 后处理渲染（Bloom 不可用时 post 是直出替身，接口一致，无需分支）
@@ -3024,9 +3088,15 @@ function step(now) {
   }
 }
 
+let bootRemoved = false;
 function frame(now) {
   try {
     step(now);
+    if (!bootRemoved) {
+      bootRemoved = true;
+      const boot = (typeof document !== 'undefined') ? document.getElementById('boot') : null;
+      if (boot) boot.remove(); // P0-4：首帧成功渲染后撤下加载指示
+    }
   } catch (err) {
     // 不让异常断掉 rAF 链，否则整页静止表现为"卡死"
     console.error('[NIGHT SHIFT] frame error:', err);
@@ -3252,6 +3322,10 @@ window.__NS = {
     openCg, showPrologue, showMilestoneCg,
     /* 美术接入：顾客肖像显示/隐藏（探针驱动 + 验收头像位 src） */
     setCustomerPortrait, clearCustomerPortrait,
+    /** P0-2：renderHud 单帧 DOM 写入计数（脏检查前/后对比用） */
+    stats: () => hudStats(),
+    /** P1-1：结算面板（探针驱动真实开结算，验证数字 count-up） */
+    openSettle,
   },
   /* 美术资产接入：商品贴图 / 人物肖像的映射与就绪态查询（探针端到端验收） */
   art: {

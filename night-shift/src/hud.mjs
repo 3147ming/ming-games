@@ -62,10 +62,14 @@ function fmtMoney(v) {
  * 用每帧比例逼近而不是 setTimeout 补间 —— renderHud 本来就每帧跑，
  * 省掉一套计时器生命周期，也不会在暂停/切面板时残留动画。 */
 const numTween = {};
-function easeNum(key, target) {
+/** 数字"跳字"缓动（手感 5）：金币 / 满意度变化不要瞬间跳变，而是快速滚到目标值。
+ * 用 dt 驱动（1 - exp(-dt/τ)）而非"每帧固定比例 0.22" —— 这样 60Hz / 120Hz / 掉帧下
+ * 滚到位用的**墙钟时间一致**（P1-5）。τ = 0.12s。 */
+function easeNum(key, target, dt = 1 / 60) {
   let s = numTween[key];
   if (!s) { s = numTween[key] = { shown: target }; }
-  s.shown += (target - s.shown) * 0.22;
+  const k = 1 - Math.exp(-dt / 0.12);
+  s.shown += (target - s.shown) * k;
   if (Math.abs(target - s.shown) < 0.6) s.shown = target;
   return s.shown;
 }
@@ -184,9 +188,9 @@ export function clerkPortraitHtml(cls = 'clerk-portrait') {
 /** 状态条：按数值 + 阈值上色（绿=安全 / 琥珀=临界 / 红=越阈）。thr 取自 config.CLERK.thr */
 function setBar(barEl, valEl, v, color) {
   if (!barEl) return;
-  barEl.style.width = `${Math.max(0, Math.min(100, v))}%`;
-  barEl.style.background = color;
-  if (valEl) valEl.textContent = String(Math.round(v));
+  setStyleIfChanged(barEl, 'width', `${Math.max(0, Math.min(100, v))}%`);
+  setStyleIfChanged(barEl, 'background', color);
+  if (valEl) setTextIfChanged(valEl, String(Math.round(v)));
 }
 function statColor(v, lowBad, thr) {
   // lowBad=true：数值越低越糟（体力/饱食/心理）；false：数值越高越糟（疲惫）
@@ -252,10 +256,38 @@ function syncModalLayer() {
  * @param env 环境快照（worldstate.snapshot() 的派生值），由 main 传入。
  *            HUD 本身不持有 worldstate —— 保持"hud 只画、不计算"的边界（ADR-002）。
  */
-/** 脏检查写入：HTML 字符串与上次一致就跳过 innerHTML 赋值，避免每帧重排（P0-4）。
- *  指纹存在元素自身上（_fp）。显隐由调用方照常设置，本函数只管 innerHTML。 */
+/** 脏检查写入系列（P0-2 防掉帧）：只在内容/值/类/显隐真正变化时写 DOM，
+ * 避免 renderHud 每帧无条件重写一坨 innerHTML/textContent/className/style ——
+ * 这是中低端机稳定掉帧的来源之一。指纹挂在元素自身（_fp / _cls / _disp）。 */
+let _hudWritesThisFrame = 0;
+let _hudLastFrameMs = 0;
+function _markWrite() { _hudWritesThisFrame++; }
 function setHtmlIfChanged(el, html) {
-  if (el._fp !== html) { el.innerHTML = html; el._fp = html; }
+  if (!el) return;
+  if (el._fp !== html) { el.innerHTML = html; el._fp = html; _markWrite(); }
+}
+function setTextIfChanged(el, v) {
+  if (!el) return;
+  if (el._fp !== v) { el.textContent = v; el._fp = v; _markWrite(); }
+}
+function setClassIfChanged(el, v) {
+  if (!el) return;
+  if (el._cls !== v) { el.className = v; el._cls = v; _markWrite(); }
+}
+function setDisplayIfChanged(el, v) {
+  if (!el) return;
+  if (el._disp !== v) { el.style.display = v; el._disp = v; _markWrite(); }
+}
+/** 单条 style 属性的脏检查（进度条宽度 / 颜色这类逐帧重写的老写法）。
+ *  指纹按属性名存在 el._st 上，互不覆盖。 */
+function setStyleIfChanged(el, prop, v) {
+  if (!el) return;
+  const st = el._st || (el._st = {});
+  if (st[prop] !== v) { el.style[prop] = v; st[prop] = v; _markWrite(); }
+}
+/** P0-2：renderHud 单帧 DOM 写入计数（脏检查前/后对比用，探针可读 __NS.hud.stats()）。 */
+export function hudStats() {
+  return { writesThisFrame: _hudWritesThisFrame, lastFrameMs: _hudLastFrameMs };
 }
 
 /**
@@ -290,16 +322,18 @@ function nightDifficultyTag(night) {
   return '· 轻松';
 }
 
-export function renderHud(env) {
+export function renderHud(env, dt = 1 / 60) {
+  const _hudT0 = (typeof performance !== 'undefined') ? performance.now() : 0;
+  _hudWritesThisFrame = 0;
   syncModalLayer();
   if (!els.clock) return;
-  els.clock.textContent = fmtClock(state.gameHour);
+  setTextIfChanged(els.clock, fmtClock(state.gameHour));
   const seg = state.segmentLabel ?? '';
-  els.segment.textContent = seg;
-  els.track.style.width = `${Math.min(100, (state.wallElapsed / NIGHT_SECONDS) * 100)}%`;
+  setTextIfChanged(els.segment, seg);
+  setStyleIfChanged(els.track, 'width', `${Math.min(100, (state.wallElapsed / NIGHT_SECONDS) * 100)}%`);
 
-  els.night.textContent = String(state.night);
-  if (els.ntag) els.ntag.textContent = nightDifficultyTag(state.night);
+  setTextIfChanged(els.night, String(state.night));
+  if (els.ntag) setTextIfChanged(els.ntag, nightDifficultyTag(state.night));
   /* P1-11：星级 + 下一星要什么。env.stars / env.nextUnlock 由 main 传入；
    * 缺省（旧调用/单测）时静默跳过，不引入对 stars 模块的依赖。 */
   if (els.starline || els.starnext) {
@@ -308,25 +342,25 @@ export function renderHud(env) {
     if (els.starline) {
       const lv = Number(st?.level) || 1;
       const max = Number(st?.max) || 5;
-      els.starline.textContent = '★'.repeat(lv) + '☆'.repeat(Math.max(0, max - lv));
+      setTextIfChanged(els.starline, '★'.repeat(lv) + '☆'.repeat(Math.max(0, max - lv)));
     }
     if (els.starnext) {
       if (nu) {
         const left = Math.max(0, (Number(st?.need) || 2) - (Number(st?.streak) || 0));
-        els.starnext.textContent = `· 下一星 ${nu.name}（再 ${left} 夜双达标）`;
+        setTextIfChanged(els.starnext, `· 下一星 ${nu.name}（再 ${left} 夜双达标）`);
       } else {
-        els.starnext.textContent = '· 已满星';
+        setTextIfChanged(els.starnext, '· 已满星');
       }
     }
   }
-  if (els.ntarget) els.ntarget.textContent = String(state.arrivalsTarget ?? 0);
-  const cashShown = easeNum('cash', state.cash);
-  els.rep.textContent = String(Math.round(easeNum('rep', state.reputation)));
-  els.cash.textContent = fmtMoney(cashShown);
+  if (els.ntarget) setTextIfChanged(els.ntarget, String(state.arrivalsTarget ?? 0));
+  const cashShown = easeNum('cash', state.cash, dt);
+  setTextIfChanged(els.rep, String(Math.round(easeNum('rep', state.reputation, dt))));
+  setTextIfChanged(els.cash, fmtMoney(cashShown));
   const jumping = Math.abs(state.cash - cashShown) > 1.5;
-  els.cash.className = `value ${state.cash < 0 ? 'warn' : 'money'}${jumping ? ' jump' : ''}`;
-  els.rev.textContent = fmtMoney(state.revenue);
-  if (els.tokens) els.tokens.textContent = String(Math.round(easeNum('tokens', state.tokens ?? 0)));
+  setClassIfChanged(els.cash, `value ${state.cash < 0 ? 'warn' : 'money'}${jumping ? ' jump' : ''}`);
+  setTextIfChanged(els.rev, fmtMoney(state.revenue));
+  if (els.tokens) setTextIfChanged(els.tokens, String(Math.round(easeNum('tokens', state.tokens ?? 0, dt))));
 
   /* 经营环境：拆成两行（P2-9），P1-13 再收一档 —— 只留"主数字 + 事件槽"。
    * 满意度/洁净/垃圾**低阈值才显数字**：一切正常时这三行是纯噪音，
@@ -362,10 +396,10 @@ export function renderHud(env) {
         + alerts
         + `</div>`
         + (events ? `<div class="env-events">${events}</div>` : '');
-      els.envline.style.display = '';
+      setDisplayIfChanged(els.envline, '');
       setHtmlIfChanged(els.envline, envHtml);
     } else {
-      els.envline.style.display = 'none';
+      setDisplayIfChanged(els.envline, 'none');
       els.envline._fp = '';   // 隐藏时清空指纹，重新显示时必会重绘
     }
   }
@@ -374,7 +408,7 @@ export function renderHud(env) {
    * 不再单独占一条屏幕底部横条 —— 两块信息都是"这一夜要关注什么"，
    * 分开摆等于让玩家在两个角落之间来回扫。下面的 quest 块负责渲染它。 */
   if (els.regulars) {
-    els.regulars.style.display = 'none';
+    setDisplayIfChanged(els.regulars, 'none');
     els.regulars._fp = '';
   }
 
@@ -384,13 +418,13 @@ export function renderHud(env) {
    * 常驻的目标是"永远有一句可执行的下一步"。 */
   if (els.quest) {
     if (state.phase !== 'running') {
-      els.quest.style.display = 'none';
+      setDisplayIfChanged(els.quest, 'none');
       els.quest._fp = '';
     } else {
       const q = env?.quest ?? null;
       const flashing = performance.now() < questDoneUntil;
-      els.quest.style.display = '';
-      els.quest.className = `questpanel${flashing ? ' done' : ''}`;
+      setDisplayIfChanged(els.quest, '');
+      setClassIfChanged(els.quest, `questpanel${flashing ? ' done' : ''}`);
       /* P1-13：常客条并入追踪块头部 —— 熟客在场是"这一夜的即时情报"，
        * 和限时任务同属"现在该盯什么"，放一起比单独占一条底部横条好扫。 */
       const regs = (state.customers || []).filter((c) => c.regularTag);
@@ -418,48 +452,48 @@ export function renderHud(env) {
   // 准星 / 提示
   const h = state.hover;
   if (h && state.phase === 'running' && !state.paused) {
-    els.prompt.style.display = '';
-    els.prompt.className = `prompt${h.ok ? '' : ' denied'}`;
-    els.prompt.innerHTML = `<kbd>E</kbd>${h.prompt}`;
-    els.crosshair.className = `crosshair${h.ok ? ' is-hover' : ''}`;
+    setDisplayIfChanged(els.prompt, '');
+    setClassIfChanged(els.prompt, `prompt${h.ok ? '' : ' denied'}`);
+    setHtmlIfChanged(els.prompt, `<kbd>E</kbd>${h.prompt}`);
+    setClassIfChanged(els.crosshair, `crosshair${h.ok ? ' is-hover' : ''}`);
     // 美术接入：交互对象带身份（结账队首顾客）时显示其肖像，无身份则隐藏
     setCustomerPortrait(h.identityId);
   } else {
-    els.prompt.style.display = 'none';
-    els.crosshair.className = 'crosshair';
+    setDisplayIfChanged(els.prompt, 'none');
+    setClassIfChanged(els.crosshair, 'crosshair');
     clearCustomerPortrait();
   }
 
   // 手持
   if (state.held) {
     const sku = SKU_BY_ID[state.held.skuId];
-    els.held.style.display = '';
-    els.held.textContent = `手中：${sku?.emoji ?? ''} ${sku?.name ?? ''} ×${state.held.qty}`;
+    setDisplayIfChanged(els.held, '');
+    setTextIfChanged(els.held, `手中：${sku?.emoji ?? ''} ${sku?.name ?? ''} ×${state.held.qty}`);
   } else {
-    els.held.style.display = 'none';
+    setDisplayIfChanged(els.held, 'none');
   }
 
   // 队列（P2-11）：只有真有顾客在等结账时才显示整个面板。
   // 原来恒显示"结账队列(0/5) 暂无顾客"，与右上角"顾客 4~5 人"并列，
   // 玩家会以为排队逻辑坏了 —— 现在是"没人排队就整块消失"。
   if (state.queue.length === 0) {
-    if (els.queuebox) els.queuebox.style.display = 'none';
+    if (els.queuebox) setDisplayIfChanged(els.queuebox, 'none');
   } else {
-    if (els.queuebox) els.queuebox.style.display = '';
-    els.qlen.textContent = String(state.queue.length);
-    els.qmax.textContent = String(5);
+    if (els.queuebox) setDisplayIfChanged(els.queuebox, '');
+    setTextIfChanged(els.qlen, String(state.queue.length));
+    setTextIfChanged(els.qmax, String(5));
     const head = state.customers.find((c) => c.id === state.queue[0]);
     const blackout = state.blackoutUntil !== null && state.wallElapsed < state.blackoutUntil;
-    els.qbody.className = blackout ? 'alert' : '';
+    setClassIfChanged(els.qbody, blackout ? 'alert' : '');
     if (blackout) {
-      els.qbody.textContent = '⚡ 停电中，无法结账';
+      setTextIfChanged(els.qbody, '⚡ 停电中，无法结账');
     } else if (head && Array.isArray(head.items) && head.items.length) {
       /* 块7：队首显示组合购物篮（主件 + 搭配件） */
       const label = head.items.map((it) => `${SKU_BY_ID[it.skuId]?.name ?? it.skuId} ×${it.qty}`).join(' + ');
-      els.qbody.textContent = `队首：${label}（耐心 ${Math.ceil(head.patience ?? 0)}s）`;
+      setTextIfChanged(els.qbody, `队首：${label}（耐心 ${Math.ceil(head.patience ?? 0)}s）`);
     } else {
       const sku = head ? SKU_BY_ID[head.skuId] : null;
-      els.qbody.textContent = `队首：${sku?.emoji ?? ''}${sku?.name ?? ''} ×${head?.qty ?? 0}（耐心 ${Math.ceil(head?.patience ?? 0)}s）`;
+      setTextIfChanged(els.qbody, `队首：${sku?.emoji ?? ''}${sku?.name ?? ''} ×${head?.qty ?? 0}（耐心 ${Math.ceil(head?.patience ?? 0)}s）`);
     }
   }
 
@@ -477,16 +511,17 @@ export function renderHud(env) {
   const pfLevel = env?.fatigueLevel ?? 0;
   if (els.pfatigue) {
     if (pf > 0) {
-      els.pfatigue.style.display = 'flex';
-      els.pfval.textContent = String(Math.round(pf));
-      els.pfval.style.color = pfLevel >= 3 ? 'var(--warning)' : pfLevel >= 2 ? 'var(--brand)' : 'var(--money)';
+      setDisplayIfChanged(els.pfatigue, 'flex');
+      setTextIfChanged(els.pfval, String(Math.round(pf)));
+      setStyleIfChanged(els.pfval, 'color', pfLevel >= 3 ? 'var(--warning)' : pfLevel >= 2 ? 'var(--brand)' : 'var(--money)');
     } else {
-      els.pfatigue.style.display = 'none';
+      setDisplayIfChanged(els.pfatigue, 'none');
     }
   }
   if (els.doze) {
-    els.doze.style.display = env?.dozing ? 'block' : 'none';
+    setDisplayIfChanged(els.doze, env?.dozing ? 'block' : 'none');
   }
+  if (typeof performance !== 'undefined') _hudLastFrameMs = performance.now() - _hudT0;
 }
 
 /* ---------- Toast（提示队列） ----------
@@ -1813,9 +1848,51 @@ function paybackText(id, cost) {
   return Number.isFinite(n) && n > 0 ? `回本 ≈ ${n} 夜` : '';
 }
 
+/**
+ * P1-1：结算账目数字 count-up（0 → 目标，约 0.5s ease-out）。
+ * - 尊重 prefers-reduced-motion：直接显示最终值（不滚动）。
+ * - 无 window / 无 rAF 的环境（Node 单测）直接跳过，保留 HTML 里的静态最终值。
+ * - 净利行在动画期间加一次 num-jump（.value.jump，tokens.css 已有 keyframes）。
+ */
+function animateReportNumbers(root) {
+  if (typeof window === 'undefined' || !window.document) return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const spans = Array.from(root.querySelectorAll('.report [data-anim]'));
+  if (!spans.length) return;
+  if (typeof requestAnimationFrame === 'undefined') return; // 无 rAF 则保留静态最终值
+  const netLine = Array.from(root.querySelectorAll('.report .line'))
+    .find((l) => l.firstElementChild && l.firstElementChild.textContent === '本夜净利');
+  const netVal = netLine ? netLine.lastElementChild : null;
+  if (netVal) netVal.classList.add('jump');
+  const DUR = 500;
+  const start = performance.now();
+  for (const sp of spans) sp.textContent = fmtYuan(0); // 起始归零
+  function tick(now) {
+    const t = Math.min(1, (now - start) / DUR);
+    const e = 1 - Math.pow(1 - t, 3); // ease-out cubic
+    for (const sp of spans) {
+      const target = Number(sp.dataset.anim);
+      sp.textContent = target < 0 ? fmtYuanSigned(target * e) : fmtYuan(target * e);
+    }
+    if (t < 1) {
+      requestAnimationFrame(tick);
+    } else {
+      for (const sp of spans) {
+        const target = Number(sp.dataset.anim);
+        sp.textContent = target < 0 ? fmtYuanSigned(target) : fmtYuan(target);
+      }
+      if (netVal) netVal.classList.remove('jump');
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
 export function openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNight, onOpenShop, extra = null) {
-  const line = (label, v, cls = '') =>
-    `<div class="line"><span>${label}</span><span class="${cls}">${v}</span></div>`;
+  /* 结算行。animNum 传数值时，金额 <span> 带 data-anim，交给 animateReportNumbers
+   * 做 0→目标 的 count-up（P1-1）；不传则静态（如"较昨夜""客单价"等非净额行）。 */
+  const line = (label, v, cls = '', animNum = null) =>
+    `<div class="line"><span>${label}</span>`
+    + `<span class="${cls}"${typeof animNum === 'number' && Number.isFinite(animNum) ? ` data-anim="${animNum}"` : ''}>${v}</span></div>`;
 
   /* ---------- P1-6：结论（按"缺货 / 报废 / 固定支出"取最大，给一句可执行建议） ---------- */
   const lostByReason = report.lostByReason ?? { outOfStock: 0, queueFull: 0, impatient: 0 };
@@ -1969,16 +2046,16 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNi
         ${conclusion ? `<div class="set-tip">${conclusion}</div>` : ''}
         ${themeBlock}
         <div class="report">
-          ${line('营业收入', fmtMoney(report.revenue), 'pos')}
-          ${line('　其中小费', fmtMoney(report.tips ?? 0), 'pos')}
-          ${line('采购成本', `-${fmtMoney(report.purchaseCost)}`, 'neg')}
-          ${line('过期损耗', `-${fmtMoney(report.loss)}`, 'neg')}
-          ${report.expiring?.loss ? line('　临期货报废', `-${fmtMoney(report.expiring.loss)}`, 'neg') : ''}
-          ${line('租金', `-${fmtMoney(report.rent)}`, 'neg')}
-          ${line('水电', `-${fmtMoney(report.utilities ?? 0)}`, 'neg')}
-          ${report.coffee ? line('咖啡机增益', fmtMoney(report.coffee), 'pos') : ''}
-          ${report.stall ? line('夜市摊收入', `+${fmtMoney(report.stall)}`, 'pos') : ''}
-          ${line('本夜净利', fmtMoney(report.netProfit), report.netProfit >= 0 ? 'pos' : 'neg')}
+          ${line('营业收入', fmtYuan(report.revenue), 'pos', report.revenue)}
+          ${line('　其中小费', fmtYuan(report.tips ?? 0), 'pos', report.tips ?? 0)}
+          ${line('采购成本', fmtYuan(-report.purchaseCost), 'neg', -report.purchaseCost)}
+          ${line('过期损耗', fmtYuan(-report.loss), 'neg', -report.loss)}
+          ${report.expiring?.loss ? line('　临期货报废', fmtYuan(-report.expiring.loss), 'neg', -report.expiring.loss) : ''}
+          ${line('租金', fmtYuan(-report.rent), 'neg', -report.rent)}
+          ${line('水电', fmtYuan(-(report.utilities ?? 0)), 'neg', -(report.utilities ?? 0))}
+          ${report.coffee ? line('咖啡机增益', fmtYuan(report.coffee), 'pos', report.coffee) : ''}
+          ${report.stall ? line('夜市摊收入', fmtYuan(report.stall), 'pos', report.stall) : ''}
+          ${line('本夜净利', fmtYuan(report.netProfit), report.netProfit >= 0 ? 'pos' : 'neg', report.netProfit)}
           ${(() => {
             /* P1-6：结算复盘。让"净利 +¥86"不再是孤立数字 ——
              * ① 较昨夜（第 1 夜无对比，显示占位不显示 +¥0/NaN）；
@@ -2021,7 +2098,7 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNi
           ${line('垃圾遗留', `${report.litter ?? 0} 件`)}
           ${line('突发事件', `${report.incidents ?? 0} 次`)}
           <div class="line"><span>评级</span><span class="stars">${'★'.repeat(report.stars)}${'☆'.repeat(3 - report.stars)}</span></div>
-          ${line('期末现金', fmtMoney(report.cashEnd), report.cashEnd >= 0 ? 'pos' : 'neg')}
+          ${line('期末现金', fmtYuan(report.cashEnd), report.cashEnd >= 0 ? 'pos' : 'neg', report.cashEnd)}
         </div>
         ${ledgerBlock}
         ${tbBlock}
@@ -2039,6 +2116,9 @@ export function openSettle(report, onNext, upgradesList, buyUpgradeFn, onRetryNi
       </div>
     </div>`;
   modalOpen = true;
+
+  // P1-1：结算账目数字 count-up（0 → 目标）。reduced-motion / 无 rAF 环境会自动跳过。
+  animateReportNumbers(els.modal);
 
   els.modal.addEventListener('click', (e) => {
     const btn = e.target.closest('button');

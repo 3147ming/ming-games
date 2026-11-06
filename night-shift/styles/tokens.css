@@ -166,10 +166,34 @@ html, body {
   box-shadow: 0 0 8px rgba(232, 169, 78, .75), 0 0 0 1.5px rgba(0, 0, 0, .5);
 }
 
+/* P0-4：首次加载指示（纯 CSS 转圈，不新增图片/字体） */
+#boot {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--text-muted);
+  font-size: 14px;
+  letter-spacing: .08em;
+  background: var(--bg);
+  z-index: 60;
+}
+#boot .ring {
+  width: 34px; height: 34px;
+  border: 3px solid rgba(150, 170, 200, .25);
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  animation: boot-spin .9s linear infinite;
+}
+@keyframes boot-spin { to { transform: rotate(360deg); } }
+
 /* ---------- 顶部时间轴 ---------- */
 .topbar {
   position: absolute;
-  top: 12px;
+  top: calc(12px + env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%);
   width: min(560px, 80vw);
@@ -198,7 +222,7 @@ html, body {
   height: 100%;
   width: 0%;
   background: var(--brand);
-  transition: width .2s linear;
+  transition: width .2s ease-out;
 }
 
 /* ---------- 角落信息 ---------- */
@@ -213,8 +237,8 @@ html, body {
   line-height: 1.7;
   min-width: 150px;
 }
-.corner.tl { top: 12px; left: 12px; }
-.corner.tr { top: 12px; right: 12px; text-align: right; }
+.corner.tl { top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); }
+.corner.tr { top: calc(12px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); text-align: right; }
 .corner .label { color: var(--text-muted); font-size: 13px; }
 .corner .value { font-size: 19px; font-weight: 700; }
 
@@ -384,7 +408,7 @@ html, body {
   height: 100%;
   width: 100%;
   border-radius: 4px;
-  transition: width .2s linear, background .2s linear;
+  transition: width .2s ease-out, background .2s ease-out;
 }
 .statusbars .stat-val {
   text-align: right;
@@ -1606,6 +1630,11 @@ details.set-sec[open] > summary.sec-head::after { content: '收起 ▴'; }
   /* 任务6：序章/里程碑的逐句浮现改为直接显示（不靠它传达信息，去掉也不损失） */
   .cg-line { animation: none !important; opacity: 1 !important; }
   .cg-img { transition: none !important; }
+  /* 手感批四 P1-3：补全未覆盖的动效（结算/商店面板淡入、数字跳字、事件横幅、各进度条过渡） */
+  .modal-mask, .modal, .value.jump, .incident,
+  .we-bar-fill, .questpanel .q-bar > i, .wh-cap .wh-cap-bar > i, .staff-row .s-bar > i {
+    transition: none !important; animation: none !important;
+  }
 }
 
 /* ---------- 监控室（模块 4 子功能①） ---------- */

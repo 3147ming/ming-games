@@ -187,7 +187,7 @@ export function createBloom(renderer, opts = {}) {
   const cfg = LIGHTING.bloom;
   const threshold = opts.threshold ?? cfg.threshold;
   const strength = opts.strength ?? cfg.strength;
-  const mips = Math.max(0, Math.min(3, opts.mips ?? cfg.mips));
+  let mips = Math.max(0, Math.min(3, opts.mips ?? cfg.mips));
   // 膝盖宽度取阈值的 40%，是"刚好不硬"的经验值
   const knee = opts.knee ?? threshold * 0.4;
 
@@ -329,6 +329,15 @@ export function createBloom(renderer, opts = {}) {
     }
   }
 
+  /** 运行时调整泛光层级（P0-3 低端机自动降级用）：0 = 直出（无泛光，绝不黑屏）。 */
+  function setMips(n) {
+    n = Math.max(0, Math.min(3, Math.round(n)));
+    if (n === mips) return;
+    mips = n;
+    uniforms.composite.mipCount.value = mips;
+    allocate(size.x, size.y); // 重建模糊链（与尺寸变化同一条路，天然不黑屏）
+  }
+
   /** 用给定材质把 src 画到 dst 上 */
   function blit(mat, target) {
     quad.material = mat;
@@ -359,6 +368,10 @@ export function createBloom(renderer, opts = {}) {
 
   return {
     get enabled() { return mips > 0 && !broken; },
+
+    /** P0-3：当前 bloom 层级（0 = 直出），供自动降级读取 */
+    get mips() { return mips; },
+    setMips,
 
     /** 参数可运行时调（昼夜轮换会动态改强度） */
     uniforms,

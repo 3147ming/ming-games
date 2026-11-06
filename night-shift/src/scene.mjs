@@ -3043,6 +3043,9 @@ export function createWorld(canvas) {
   window.addEventListener('resize', resize);
   resize();
 
+  // P1-6：FOV 缓动。setFov 只写目标值，updateFov 每帧用 exp 逼近，转屏/调设置不再瞬跳。
+  let targetFov = camera.fov;
+
   return {
     renderer, scene, camera, world, colliders, lights,
     anchors: {
@@ -3064,10 +3067,20 @@ export function createWorld(canvas) {
     fadeOutSlot,
     /** 收银飞钱：从顾客脚边抛到收银台（块3） */
     flyCoins,
-    /** 设置页：视场角（70–90 度）。改完必须 updateProjectionMatrix，否则不生效 */
+    /** 设置页：视场角（70–90 度）。只写目标值；实际镜头在 updateFov 里每帧平滑逼近（P1-6）。 */
     setFov(deg) {
       if (!Number.isFinite(deg)) return;
-      camera.fov = Math.max(30, Math.min(110, deg));
+      targetFov = Math.max(30, Math.min(110, deg));
+    },
+    /** P1-6：每帧把 camera.fov 用 exp 逼近 targetFov（τ=0.18s）。reduced-motion 直接到位。 */
+    updateFov(dt) {
+      if (typeof dt !== 'number' || !Number.isFinite(dt)) return;
+      const reduce = (typeof window !== 'undefined' && window.matchMedia
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      if (reduce) { camera.fov = targetFov; camera.updateProjectionMatrix(); return; }
+      const k = 1 - Math.exp(-dt / 0.18);
+      camera.fov += (targetFov - camera.fov) * k;
+      if (Math.abs(targetFov - camera.fov) < 0.05) camera.fov = targetFov;
       camera.updateProjectionMatrix();
     },
     /** 标签过滤 / 新手引导箭头（P1-5、P1-7、P2-10） */

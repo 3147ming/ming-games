@@ -89,9 +89,12 @@ export function createMobileControls({ player, interaction, interact, panels = {
    * 现在：**左半屏 = 移动区（浮动摇杆：手指按在哪，摇杆中心就在哪）**，
    * **右半屏 = 视角区（拖拽转视角，轻触 = 交互）**。分区以视口中线为界。
    */
+  // 视角拖拽倍率：抽成模块顶常量方便手感调参（本批只做跟手，不做惯性，避免过度工程）
   const TOUCH_LOOK_MULT = 1.7;
   let joyId = null, joyCx = 0, joyCy = 0, joyR = 56;
   let lookId = null, lastX = 0, lastY = 0, startX = 0, startY = 0, moved = 0, t0 = 0;
+  // 摇杆方向低通：平滑后的输出（与 player.mjs L239 速度平滑同思路），替代每帧硬跳，防"搭手就飘"
+  let joyOutX = 0, joyOutY = 0, joyLastT = 0;
   /** 在触摸点显示浮动摇杆（joy 为 fixed 定位，用 inline left/top 覆盖默认左下角） */
   function showJoyAt(x, y) {
     joy.style.display = 'block';
@@ -99,6 +102,7 @@ export function createMobileControls({ player, interaction, interact, panels = {
     joy.style.top = (y - joyR) + 'px';
     joyCx = x; joyCy = y;
     knob.style.transform = 'translate(0,0)';
+    joyOutX = 0; joyOutY = 0; joyLastT = 0; // 新一次摇杆从零起步
   }
   function hideJoy() {
     joy.style.display = 'none';
@@ -125,9 +129,25 @@ export function createMobileControls({ player, interaction, interact, panels = {
           let dx = t.clientX - joyCx, dy = t.clientY - joyCy;
           const d = Math.hypot(dx, dy);
           if (d > joyR) { dx = (dx / d) * joyR; dy = (dy / d) * joyR; }
-          knob.style.transform = `translate(${dx}px, ${dy}px)`;
-          // 上 = 前进(iz 正)，右 = 右移(ix 正)
-          player.setTouchMove(dx / joyR, -dy / joyR);
+          // 死区：中心 15% 半径内视为"没推"，角色站定（防手搭左半屏就漂）
+          const norm = Math.hypot(dx, dy) / joyR;
+          const DEAD = 0.15;
+          let tx = 0, ty = 0;
+          if (norm >= DEAD) {
+            const k = (norm - DEAD) / (1 - DEAD); // 死区外 0.15→1.0 重映：轻推慢走、推满快走
+            tx = (dx / joyR) * k;
+            ty = (-dy / joyR) * k; // 上 = 前进(iz 正)，右 = 右移(ix 正)
+          }
+          // 方向低通：用事件间 dt 平滑，替代每帧硬跳
+          const now = t.timeStamp || performance.now();
+          const mdt = joyLastT ? Math.max(0, (now - joyLastT) / 1000) : 0.016;
+          joyLastT = now;
+          const a = 1 - Math.exp(-mdt / 0.06); // 时间常数 0.06s
+          joyOutX += (tx - joyOutX) * a;
+          joyOutY += (ty - joyOutY) * a;
+          // 旋钮视觉跟随实际偏转（死区内归零）
+          knob.style.transform = norm >= DEAD ? `translate(${dx}px, ${dy}px)` : 'translate(0,0)';
+          player.setTouchMove(joyOutX, joyOutY);
         } else if (t.identifier === lookId) {
           const dx = t.clientX - lastX, dy = t.clientY - lastY;
           lastX = t.clientX; lastY = t.clientY;
@@ -143,6 +163,7 @@ export function createMobileControls({ player, interaction, interact, panels = {
           joyId = null;
           hideJoy();
           player.setTouchMove(0, 0);
+          joyOutX = 0; joyOutY = 0;
         } else if (t.identifier === lookId) {
           const dt = Date.now() - t0;
           if (moved < 14 && dt < 250) {
@@ -157,6 +178,7 @@ export function createMobileControls({ player, interaction, interact, panels = {
       joyId = null; lookId = null;
       hideJoy();
       player.setTouchMove(0, 0);
+      joyOutX = 0; joyOutY = 0;
     });
   }
 
