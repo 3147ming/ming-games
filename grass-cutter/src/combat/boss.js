@@ -34,8 +34,20 @@ export class BossController {
     this.windup = 0;
     this.windupMax = 0;
     this.recover = 0;
-    this.pendingSkill = 0; // 0=无，1=近身，2=AOE
+    this.pendingSkill = 0; // 0=无，1=近身，2=AOE，3=突进斩（仅狂暴）
     this.facing = 0;
+    /* 内容批：突进斩的冲刺状态。
+       dashT > 0 表示"正在冲"，每帧沿 chargeAng 推进；
+       dashHit 保证一次冲刺最多结算一次伤害（否则每帧都命中，一秒掉几百血）。 */
+    this.dashT = 0;
+    this.dashHit = false;
+    this.chargeAng = 0;
+    /* ★ 冲刺原点必须在**起手那一刻**快照一次，之后不再变。
+       如果每帧现取 this.t.x，原点会跟着 Boss 一起往前跑 ——
+       于是"玩家站在走廊里"这个判断用的是移动后的坐标系，
+       侧移出走廊也会被判成命中（实测就是这么暴露的）。 */
+    this.dashOx = 0;
+    this.dashOz = 0;
     this.attackCount = 0;
     this.events = [];
     this.hitFlash = 0;
@@ -78,10 +90,19 @@ export class BossController {
 
     // ── 移动：朝玩家走，但停在近身距离（不贴脸，给玩家走位空间）
     const keep = this.cfg.ATTACK_REACH * 0.85;
-    if (this.windup <= 0 && this.recover <= 0 && dist > keep) {
+    // 内容批：dashT > 0 时不走向玩家 —— 冲刺自己会推进位移，两者叠加会冲过头
+    if (this.dashT <= 0 && this.windup <= 0 && this.recover <= 0 && dist > keep) {
       const sp = this.cfg.MOVE_SPEED * step;
       this.t.x += (dx / dist) * Math.min(sp, dist - keep);
       this.t.z += (dz / dist) * Math.min(sp, dist - keep);
+    }
+
+    // ── 内容批：突进斩的冲刺推进
+    //    ★ 放在"出手计时"之前：冲刺期间 windup/recover 都是 0，
+    //      如果不先消费 dashT，下面会立刻重新进入 _beginAttack，变成连续冲刺。
+    if (this.dashT > 0) {
+      this._updateDash(step, playerPos, ctx);
+      return this.events;
     }
 
     // ── 出手计时
@@ -98,12 +119,30 @@ export class BossController {
   }
 
   _beginAttack(dist) {
-    // 远 → AOE 逼玩家靠近；近 → 近身扇形
-    this.pendingSkill = dist > this.cfg.ATTACK_REACH * 1.6 ? 2 : 1;
-    if (this.pendingSkill === 2) {
-      this.windup = this.cfg.SKILL2_WINDUP;
+    /* 内容批：招式选择
+       ─────────────────────────────────────────────────────────────────
+       正常阶段：完全保持原逻辑（远→AOE 逼玩家靠近；近→近身扇形）。
+                 这样"狂暴前"的手感与改动前逐字一致，旧测试也不受影响。
+
+       狂暴阶段：加入第三招「突进斩」。选取规则刻意做成**可学习**的轮转 + 距离门槛，
+                 而不是纯随机 —— 随机会让玩家没法形成"看到前摇就知道往哪躲"的记忆，
+                 那正是 Boss 战设计里最忌讳的东西。
+
+         · dist ∈ [SKILL3_MIN_RANGE, ATTACK_REACH*3)  → 突进斩优先
+           太近（<5m）不划算：冲过去直接越过玩家，收益为负。
+           太远（>12m）也不划算：冲完还剩一大段，白送硬直。
+         · 其它距离回落原逻辑。 */
+    const canCharge = this.berserk && dist >= this.cfg.SKILL3_MIN_RANGE && dist < this.cfg.ATTACK_REACH * 3;
+    if (canCharge) {
+      this.pendingSkill = 3;
+      this.windup = this.cfg.SKILL3_WINDUP;
     } else {
-      this.windup = this.cfg.ATTACK_WINDUP;
+      this.pendingSkill = dist > this.cfg.ATTACK_REACH * 1.6 ? 2 : 1;
+      if (this.pendingSkill === 2) {
+        this.windup = this.cfg.SKILL2_WINDUP;
+      } else {
+        this.windup = this.cfg.ATTACK_WINDUP;
+      }
     }
     this.windupMax = this.windup;
     this.events.push({ type: 'boss-windup', skill: this.pendingSkill });
@@ -116,6 +155,23 @@ export class BossController {
     const dx = px - this.t.x;
     const dz = pz - this.t.z;
     const dist = Math.hypot(dx, dz);
+
+    if (this.pendingSkill === 3) {
+      /* 内容批：突进斩起手 —— 把前摇结束这一刻的朝向**锁死**，然后开始冲刺。
+         ★ 锁死是刻意的：如果冲刺过程中还持续转向玩家，那这一招就没有"侧移可躲"
+           的解法（玩家怎么跑都会被追上），第三招也就退化成了"必吃伤害"。
+         锁定之后玩家往侧边挪一步就能离开走廊 —— 这才是我们要的"横向答案"。 */
+      this.chargeAng = this.facing;
+      this.dashT = this.cfg.SKILL3_RANGE / this.cfg.SKILL3_SPEED;
+      this.dashHit = false;
+      this.dashOx = this.t.x;
+      this.dashOz = this.t.z;
+      this.pendingSkill = 0;
+      this.attackCount++;
+      this.attackTimer = this._interval();
+      this.events.push({ type: 'boss-dash-start', ang: this.chargeAng });
+      return;
+    }
 
     if (this.pendingSkill === 2) {
       // AOE：范围内必中
@@ -150,6 +206,61 @@ export class BossController {
     this.pendingSkill = 0;
     this.attackCount++;
     this.attackTimer = this._interval();
+  }
+
+  /**
+   * 内容批：突进斩的每帧推进 + 命中判定。
+   * ---------------------------------------------------------------------------
+   * 判定用"走廊"：玩家相对 Boss **出发原点**的偏移，投影到冲刺方向上
+   *   · proj ∈ [0, SKILL3_RANGE]  → 在冲刺路径的长度范围内
+   *   · |perp| ≤ SKILL3_HALF_WIDTH + 玩家半径  → 在路径的横向宽度内
+   * 同时满足就算命中，**侧移出去就躲掉**。
+   *
+   * ★ 用"出发原点"而不是"Boss 当前位置"来投影：
+   *   用当前位置的话，Boss 冲过去之后原点也跟着动，玩家明明站在走廊里
+   *   却因为相对位置变了而判不中 —— 这是这类直线技能最经典的判定 bug。
+   *
+   * ★ dashHit 只允许命中一次：每帧都结算的话，0.64s 的冲刺按 60fps 会打 38 下，
+   *   30 伤害 × 38 = 1140，玩家瞬间暴毙且完全不知道为什么。
+   */
+  _updateDash(step, playerPos, ctx = {}) {
+    const cfg = this.cfg;
+    const dirX = -Math.sin(this.chargeAng);
+    const dirZ = -Math.cos(this.chargeAng);
+    const move = cfg.SKILL3_SPEED * step;
+
+    this.t.x += dirX * move;
+    this.t.z += dirZ * move;
+    this.dashT -= step;
+
+    // 命中判定（每次冲刺最多一次）
+    if (!this.dashHit && playerPos) {
+      const px = playerPos.x ?? 0;
+      const pz = playerPos.z ?? 0;
+      // ★ 用起手快照的 dashOx/dashOz（不是当前 this.t.x）—— 见构造函数里的说明
+      const dx = px - this.dashOx;
+      const dz = pz - this.dashOz;
+      const proj = dx * dirX + dz * dirZ;      // 沿冲刺方向的投影
+      const perp = dx * dirZ - dz * dirX;      // 垂直方向的偏移（有符号，取绝对值）
+      const halfW = cfg.SKILL3_HALF_WIDTH + (this.t.radius ?? 1);
+      if (proj >= -halfW && proj <= cfg.SKILL3_RANGE && Math.abs(perp) <= halfW) {
+        this.dashHit = true;
+        if (ctx.invincible) {
+          this.events.push({ type: 'boss-miss', skill: 3, reason: 'invincible', dist: Math.hypot(dx, dz) });
+        } else {
+          const dmgMul = this.berserk ? cfg.BERSERK_DAMAGE_MUL : 1;
+          this.events.push({ type: 'boss-hit', skill: 3, damage: cfg.SKILL3_DAMAGE * dmgMul, dist: Math.hypot(dx, dz) });
+        }
+      }
+    }
+
+    if (this.dashT <= 0) {
+      this.dashT = 0;
+      this.recover = cfg.SKILL3_RECOVER;
+      if (!this.dashHit) {
+        this.events.push({ type: 'boss-miss', skill: 3, reason: 'dodged' });
+      }
+    }
   }
 
   /** 受击闪白（表现层读它） */
