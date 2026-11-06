@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#14110f">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="《纸上迷城》——文字解谜 / 密室逃脱。一座纸做的、写不完的城。纯静态，零依赖。">
+<title>纸上迷城 · 文字解谜</title>
+<link rel="stylesheet" href="./styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2314110f'/%3E%3Cpath d='M8 7h16v18H8z' fill='%23e8e0d0'/%3E%3Cpath d='M11 12h10M11 16h10M11 20h6' stroke='%23201b17' stroke-width='1.6'/%3E%3C/svg%3E">
+</head>
+<body>
+<div id="app" class="app">
+
+  <header class="hud">
+    <div class="hud-left">
+      <span class="room-glyph" id="roomGlyph" aria-hidden="true">囚</span>
+      <span class="room-name" id="roomName">折纸囚室</span>
+    </div>
+    <div class="hud-right">
+      <button class="icon-btn" id="btnHint" type="button" aria-label="提示">提示</button>
+      <button class="icon-btn" id="btnMute" type="button" aria-label="音效开关" aria-pressed="false">♪</button>
+    </div>
+  </header>
+
+  <div class="meter" role="img" aria-label="收集度"><i id="meterFill"></i></div>
+
+  <main class="stage" id="stage">
+    <p class="desc" id="desc"></p>
+    <h2 class="sec-title">可查看</h2>
+    <div class="hotspots" id="hotspots"></div>
+    <h2 class="sec-title">出口</h2>
+    <div class="exits" id="exits"></div>
+  </main>
+
+  <nav class="tabs" id="tabs" aria-label="面板">
+    <button type="button" data-tab="bag">背包</button>
+    <button type="button" data-tab="journal">日记</button>
+    <button type="button" data-tab="codex">图鉴</button>
+    <button type="button" data-tab="settings">设置</button>
+  </nav>
+
+  <section class="sheet" id="sheet" hidden aria-label="面板内容">
+    <div class="sheet-head">
+      <h2 id="sheetTitle">背包</h2>
+      <button class="icon-btn" id="sheetClose" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </section>
+
+  <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-card">
+      <div class="sheet-head">
+        <h2 id="modalTitle">谜题</h2>
+        <button class="icon-btn" id="modalClose" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="boot" id="bootOverlay">
+    <div class="boot-lamp" aria-hidden="true"><i></i></div>
+    <h1>纸上迷城</h1>
+    <p class="boot-sub">一座纸做的、写不完的城</p>
+    <p class="boot-stats dim" id="bootStats">正在点亮纸灯…</p>
+    <button class="btn primary big" id="bootStart" type="button">点亮纸灯</button>
+    <p class="boot-tip dim small">方向键 / WASD 移动 · 点击物件查看 · 卡关 90 秒后可按提示</p>
+  </div>
+</div>
+
+<script type="module" src="./src/ui.mjs"></script>
+</body>
+</html>
