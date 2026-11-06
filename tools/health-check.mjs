@@ -28,6 +28,7 @@ const PAGES = [
   { id: 'paper-maze', url: 'paper-maze/', label: '纸上迷城' },
   { id: 'neon-rhythm', url: 'neon-rhythm/', label: '霓虹律动' },
   { id: 'pixel-runner', url: 'pixel-runner/', label: '像素跑酷' },
+  { id: 'grass-cutter', url: 'grass-cutter/', label: '传统割草游戏' },
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
