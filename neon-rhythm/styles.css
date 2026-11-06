@@ -164,7 +164,7 @@ html, body {
 .song-card:active { transform: translateY(0) scale(.99); }
 
 .song-ico {
-  flex: 0 0 auto; width: 46px; height: 46px; border-radius: 12px;
+  flex: 0 0 auto; width: 46px; height: 46px; border-radius: var(--mg-r-md);
   display: grid; place-items: center; font-size: 20px; font-weight: 900;
   color: #07030f;
   background: linear-gradient(135deg, var(--c1, var(--cyan)), var(--c2, var(--pink)));
@@ -177,7 +177,7 @@ html, body {
 .song-grades { display: flex; gap: 4px; margin-top: 6px; }
 .gchip {
   font-size: 10px; font-weight: 800; letter-spacing: .06em;
-  padding: 2px 6px; border-radius: 5px;
+  padding: 2px 6px; border-radius: var(--mg-r-sm);
   border: 1px solid var(--line); color: var(--dim);
   background: rgba(255, 255, 255, .03);
 }
@@ -258,7 +258,7 @@ html, body {
 }
 .hud-prog {
   width: 84px; height: 3px; margin-top: 6px; margin-left: auto;
-  background: rgba(255, 255, 255, .12); border-radius: 2px; overflow: hidden;
+  background: rgba(255, 255, 255, .12); border-radius: var(--mg-r-xs); overflow: hidden;
 }
 .hud-prog > i {
   display: block; height: 100%; width: 0%;
@@ -327,7 +327,7 @@ html, body {
 .pause-mask .panel {
   width: min(320px, 84vw);
   background: linear-gradient(150deg, rgba(28, 14, 56, .98), rgba(10, 5, 24, .98));
-  border: 1px solid var(--line); border-radius: 18px;
+  border: 1px solid var(--line); border-radius: var(--mg-r-lg);
   padding: 22px; display: flex; flex-direction: column; gap: 10px;
   box-shadow: var(--shadow);
 }
@@ -399,8 +399,8 @@ html, body {
 
 /* ---------- 通用按钮 ---------- */
 .btn {
-  min-height: 46px; padding: 0 18px;
-  border: 1px solid rgba(0, 229, 255, .42); border-radius: 11px;
+  min-height: var(--mg-tap); padding: 0 18px;
+  border: 1px solid rgba(0, 229, 255, .42); border-radius: var(--mg-r-md);
   background: linear-gradient(135deg, rgba(0, 229, 255, .16), rgba(124, 77, 255, .16));
   color: var(--ink); font-size: 14px; font-weight: 800; letter-spacing: .08em;
   font-family: inherit; cursor: pointer;
@@ -415,9 +415,9 @@ html, body {
 .btn.danger:hover { border-color: var(--red); box-shadow: 0 0 18px rgba(255, 59, 92, .3); }
 
 .icon-btn {
-  width: 46px; height: 46px; min-width: 46px;
+  width: 46px; height: 46px; min-width: var(--mg-tap);
   display: grid; place-items: center;
-  border: 1px solid var(--line); border-radius: 11px;
+  border: 1px solid var(--line); border-radius: var(--mg-r-md);
   background: rgba(255, 255, 255, .04); color: var(--ink);
   font-size: 17px; font-family: inherit; cursor: pointer;
   transition: background var(--t) var(--ease), border-color var(--t) var(--ease), transform var(--t-fast) var(--ease);
@@ -441,7 +441,7 @@ html, body {
 .overlay .panel {
   width: min(360px, 100%);
   background: linear-gradient(155deg, rgba(28, 14, 56, .98), rgba(10, 5, 24, .98));
-  border: 1px solid var(--line); border-radius: 18px;
+  border: 1px solid var(--line); border-radius: var(--mg-r-lg);
   padding: 22px 20px; display: flex; flex-direction: column; gap: 12px;
   box-shadow: var(--shadow);
 }
@@ -451,13 +451,13 @@ html, body {
 .row {
   display: flex; align-items: center; gap: 10px;
   font-size: 13px; color: var(--dim);
-  min-height: 44px;
+  min-height: var(--mg-tap);
 }
 .row > span { flex: 0 0 74px; }
 .row > b { flex: 0 0 62px; text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 12px; }
 .row input[type="range"] {
   flex: 1 1 auto; -webkit-appearance: none; appearance: none;
-  height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .14);
+  height: 4px; border-radius: var(--mg-r-xs); background: rgba(255, 255, 255, .14);
   outline: none; cursor: pointer;
 }
 .row input[type="range"]::-webkit-slider-thumb {
@@ -477,7 +477,7 @@ html, body {
 .seg { display: flex; gap: 6px; flex: 1 1 auto; }
 .seg button {
   flex: 1 1 0; min-height: 40px;
-  border: 1px solid var(--line); border-radius: 9px;
+  border: 1px solid var(--line); border-radius: var(--mg-r-sm);
   background: rgba(255, 255, 255, .035); color: var(--dim);
   font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
   transition: all var(--t) var(--ease);
@@ -491,7 +491,7 @@ html, body {
 
 .toggle {
   min-height: 40px; min-width: 74px; padding: 0 14px;
-  border: 1px solid var(--line); border-radius: 9px;
+  border: 1px solid var(--line); border-radius: var(--mg-r-sm);
   background: rgba(255, 255, 255, .035); color: var(--dim);
   font-family: inherit; font-size: 13px; font-weight: 800; cursor: pointer;
   transition: all var(--t) var(--ease);
@@ -508,7 +508,7 @@ html, body {
 .help-list li b { color: var(--ink); }
 .help-list kbd {
   display: inline-block; padding: 1px 6px; margin: 0 1px;
-  border: 1px solid var(--line); border-radius: 5px;
+  border: 1px solid var(--line); border-radius: var(--mg-r-sm);
   background: rgba(255, 255, 255, .06); color: var(--ink);
   font-family: ui-monospace, monospace; font-size: 11px;
 }
