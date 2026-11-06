@@ -28,3 +28,7 @@ brain-gym/audio/*.wav
 # 系统/编辑器噪音
 .DS_Store
 Thumbs.db
+
+# 主控脚本的临时目录（CDP 浏览器 profile / 一次性验证脚本 / 截图）
+# 这些不进版本库：profile 有几十 MB 且含本机路径，验证脚本是一次性的
+.tmp/
