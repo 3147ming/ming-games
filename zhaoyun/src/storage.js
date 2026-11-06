@@ -13,6 +13,7 @@
     killTotal: P + 'kill_total',// 累计击杀
     muted: P + 'muted',         // 静音
     lowfx: P + 'lowfx',         // 第四批 P1-6：低配模式（双击静音键切换）
+    volume: P + 'volume',       // 主音量（0~100 整数；与 muted 分开：一个是偏好，一个是临时开关）
     /* —— 第一批新增 6 键 ——
      * 旧存档里这 6 个键不存在，所有读取都带默认值（''/{} /[] /0），
      * 不迁移、不清档、不报错；写入一律 try/catch（隐私模式静默失败）。 */
@@ -72,6 +73,23 @@
     addKills: function (v) { writeNum(KEYS.killTotal, Save.getKillTotal() + (v || 0)); },
     getMuted: function () { try { return localStorage.getItem(KEYS.muted) === '1'; } catch (e) { return false; } },
     setMuted: function (v) { try { localStorage.setItem(KEYS.muted, v ? '1' : '0'); } catch (e) { /* noop */ } },
+    /* 主音量（0~100 的整数存，避免浮点 toString 出现 0.30000000000000004 这种脏值）。
+       ★ 读的时候坏值/越界一律回落 100 —— 宁可回到默认，也不要让玩家面对一个哑掉的游戏。 */
+    getVolume: function () {
+      try {
+        const raw = localStorage.getItem(KEYS.volume);
+        if (raw === null || raw === "") return 100;
+        const n = Number(raw);
+        if (!isFinite(n)) return 100;
+        return Math.max(0, Math.min(100, Math.round(n)));
+      } catch (e) { return 100; }
+    },
+    setVolume: function (v) {
+      const n = Number(v);
+      const val = isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 100;
+      try { localStorage.setItem(KEYS.volume, String(val)); } catch (e) { /* noop */ }
+      return val;
+    },
     getLowFx: function () { try { return localStorage.getItem(KEYS.lowfx) === '1'; } catch (e) { return false; } },
     setLowFx: function (v) { try { localStorage.setItem(KEYS.lowfx, v ? '1' : '0'); } catch (e) { /* noop */ } },
 

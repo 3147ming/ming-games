@@ -7,7 +7,29 @@
 
   let ctx = null;
   let muted = false;
+  /* 主音量（0~1）。默认 1 = 各音效自身的 gain 就是设计值。
+     ★ 与 muted 分开存：静音是"临时不想听"，音量是"长期偏好"，
+       合并成一个值的话，调音量会意外解除静音（反过来同样糟）。 */
+  let volume = 1;
   let lastAt = {};
+
+  /**
+   * ★ 全模块**唯一**的音量计算点。
+   *   所有音效的最终增益都必须过这里 —— 只要有一处绕过，
+   *   就会出现"调了音量但某个音效还是原响度"这种极难定位的问题。
+   *   静音时直接返回 0（覆盖音量，而不是再乘一次）。
+   */
+  function eff(g) {
+    const base = Number(g);
+    if (!isFinite(base) || base <= 0) return 0;
+    if (muted) return 0;
+    const v = Number(volume);
+    const clampV = isFinite(v) ? Math.max(0, Math.min(1, v)) : 1;
+    return base * clampV;
+  }
+
+  /** 指数斜坡不能到 0，需要一个极小值兜底（Web Audio 的硬限制） */
+  const EPS = 0.0001;
 
   function ensure() {
     if (muted) return null;
@@ -30,9 +52,11 @@
     osc.type = type || 'sine';
     osc.frequency.setValueAtTime(freq, t0);
     if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(40, slide), t0 + dur);
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(gain || 0.12, t0 + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    const lvl = eff(gain || 0.12);
+    if (lvl <= 0) { osc.disconnect(); g.disconnect(); return; }   // 静音/0 音量：不发声，省掉一次调度
+    g.gain.setValueAtTime(EPS, t0);
+    g.gain.exponentialRampToValueAtTime(lvl, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(EPS, t0 + dur);
     osc.connect(g); g.connect(ac.destination);
     osc.start(t0); osc.stop(t0 + dur + 0.02);
   }
@@ -51,10 +75,11 @@
     const src = ac.createBufferSource(); src.buffer = buf;
     const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq || 900;
     const g = ac.createGain();
-    const lvl = gain || 0.06;
-    g.gain.setValueAtTime(0.0001, t0);
+    const lvl = eff(gain || 0.06);
+    if (lvl <= 0) return;   // 静音/0 音量：连缓冲都不用建
+    g.gain.setValueAtTime(EPS, t0);
     g.gain.linearRampToValueAtTime(lvl, t0 + Math.min(0.012, dur * 0.4));
-    g.gain.linearRampToValueAtTime(0.0001, t0 + dur);
+    g.gain.linearRampToValueAtTime(EPS, t0 + dur);
     src.connect(bp); bp.connect(g); g.connect(ac.destination);
     src.start(t0); src.stop(t0 + dur + 0.01);
   }
@@ -97,9 +122,23 @@
   };
 
   ZY.Audio = {
-    play: function (name) { if (muted) return; const f = SFX[name]; if (f) { try { f(); } catch (e) { /* 忽略音频异常 */ } } },
+    /* 音量 0 与静音等价，直接跳过调度（省 CPU，也让"拖到 0"立刻静下来） */
+    play: function (name) {
+      if (muted || volume <= 0) return;
+      const f = SFX[name];
+      if (f) { try { f(); } catch (e) { /* 忽略音频异常 */ } }
+    },
     setMuted: function (v) { muted = !!v; },
     isMuted: function () { return muted; },
+    /** 设主音量（0~1）。非数字/越界一律夹到合法区间，避免 NaN 让整个音频哑掉 */
+    setVolume: function (v) {
+      const n = Number(v);
+      volume = isFinite(n) ? Math.max(0, Math.min(1, n)) : 1;
+      return volume;
+    },
+    getVolume: function () { return volume; },
+    /* 暴露给自检用：验证"唯一音量计算点"确实生效 */
+    _eff: eff,
     unlock: function () { ensure(); },
   };
 })(window.ZY);

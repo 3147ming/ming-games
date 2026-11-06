@@ -49,6 +49,15 @@
         <button class="diff-btn" data-diff="1.2">困难</button>
       </div>
 
+      <!-- 主音量：与 AI 难度同属"开局偏好"，放一起语义一致。
+           静音仍然由对局内的「音」键控制 —— 那是临时开关，不该和长期偏好混在一处。 -->
+      <div class="vol-row">
+        <span class="d-lab">主音量</span>
+        <input class="vol-range" id="vol-range" type="range" min="0" max="100" step="5" value="100"
+               aria-label="主音量" aria-valuetext="100%" />
+        <span class="vol-val" id="vol-val">100%</span>
+      </div>
+
       <div class="save" id="save-info"></div>
 
       <details class="rules">

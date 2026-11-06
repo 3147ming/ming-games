@@ -1292,6 +1292,108 @@ section('内容批：天气');
   const dmg = G.hurt(s, atk, tgt, 100);
   ok('天气：state 没有 weather 字段时不崩且按 1 计算', Math.abs(dmg - 100) < 1e-6, 'dmg=' + dmg);
 }
+/* ============================================================ 内容批：主音量 */
+section('内容批：主音量');
+
+/* ⚠ 注意：localStorage 只存在于 vm 上下文里，测试文件本身（Node 作用域）访问不到。
+   所以凡是"直接读写原始存档"的用例，都必须走 vm.runInContext。 */
+const lsGet = (k) => vm.runInContext('localStorage.getItem(' + JSON.stringify(k) + ')', ctx);
+const lsSet = (k, v) => vm.runInContext('localStorage.setItem(' + JSON.stringify(k) + ',' + JSON.stringify(v) + ')', ctx);
+const lsDel = (k) => vm.runInContext('localStorage.removeItem(' + JSON.stringify(k) + ')', ctx);
+
+{
+  const S = ZY.Save, A = ZY.Audio;
+
+  lsDel(S.KEYS.volume);
+  ok('音量：默认 100', S.getVolume() === 100, 'got=' + S.getVolume());
+  ok('音量：键名符合约定', S.KEYS.volume === 'zhaoyun_volume', 'key=' + S.KEYS.volume);
+
+  S.setVolume(35);
+  ok('音量：写入后能读回', S.getVolume() === 35, 'got=' + S.getVolume());
+
+  const clampCases = [
+    [-20, 0], [200, 100], [12.6, 13], ['abc', 100], [NaN, 100], [null, 0], ['75', 75],
+  ];
+  let clampBad = [];
+  for (const [input, expect] of clampCases) {
+    const got = S.setVolume(input);
+    if (got !== expect || S.getVolume() !== expect) {
+      clampBad.push(JSON.stringify(input) + '→' + got + '(期望' + expect + ')');
+    }
+  }
+  ok('音量：越界与非法值都被夹取到 0~100', clampBad.length === 0, clampBad.join('; '));
+
+  // 坏存档：写脏值后读取应回落默认（这是"存档被人手改坏"的真实场景）
+  lsSet(S.KEYS.volume, 'not-a-number');
+  ok('音量：存档是脏字符串时回落 100', S.getVolume() === 100, 'got=' + S.getVolume());
+  lsSet(S.KEYS.volume, '');
+  ok('音量：存档为空串时回落 100', S.getVolume() === 100, 'got=' + S.getVolume());
+  lsSet(S.KEYS.volume, '9999');
+  ok('音量：存档越界时夹到 100', S.getVolume() === 100, 'got=' + S.getVolume());
+  lsDel(S.KEYS.volume);
+}
+
+{
+  /* ★ 关键：主 harness 把 ZY.Audio 换成了空壳（全局静音，避免测试时出声），
+     而且 audio.js 根本不在它的加载列表里。所以这里**另开一个 vm 上下文**
+     单独加载真实的 audio.js —— 这样既不打扰既有 300+ 条用例的静音前提，
+     又能真正验证音量逻辑。
+     audio.js 只依赖 window.ZY + 可选的 AudioContext；
+     setVolume/getVolume/_eff/setMuted 都不碰 AudioContext（只有实际发声才碰），
+     所以这里不需要伪造音频设备。 */
+  const audioCtx = vm.createContext({ console });
+  vm.runInContext('window = globalThis; window.ZY = {};', audioCtx);
+  vm.runInContext(fs.readFileSync(DIR + 'audio.js', 'utf8'), audioCtx, { filename: 'audio.js' });
+  const A = audioCtx.ZY.Audio;
+
+  ok('音量：真实 audio.js 能被加载并暴露 setVolume', typeof A.setVolume === 'function');
+
+  A.setVolume(0.5);
+  ok('音量：Audio 层接受 0~1', Math.abs(A.getVolume() - 0.5) < 1e-9, 'got=' + A.getVolume());
+
+  const aClamp = [[-1, 0], [2, 1], ['x', 1], [NaN, 1]];
+  let aBad = [];
+  for (const [input, expect] of aClamp) {
+    const got = A.setVolume(input);
+    if (Math.abs(got - expect) > 1e-9) aBad.push(JSON.stringify(input) + '→' + got);
+  }
+  ok('音量：Audio 层也夹取 0~1', aBad.length === 0, aBad.join('; '));
+
+  /* ★ 核心：静音**覆盖**音量，而不是简单再乘一次。
+     断言的是"静音时不发声"这条语义，而不是某个乘法顺序。 */
+  A.setMuted(false); A.setVolume(1);
+  ok('音量：未静音 + 满音量 → eff = 基准', A._eff(0.5) === 0.5, 'got=' + A._eff(0.5));
+  A.setVolume(0.4);
+  ok('音量：未静音 + 40% → eff = 基准 × 0.4', Math.abs(A._eff(0.5) - 0.2) < 1e-9, 'got=' + A._eff(0.5));
+  A.setMuted(true);
+  ok('音量：静音时 eff 恒为 0（哪怕音量是 1）', A._eff(1) === 0, 'got=' + A._eff(1));
+  A.setVolume(1);
+  ok('音量：静音 + 满音量仍然 0', A._eff(1) === 0, 'got=' + A._eff(1));
+  A.setMuted(false);
+  A.setVolume(0);
+  ok('音量：音量 0 时 eff = 0', A._eff(0.5) === 0, 'got=' + A._eff(0.5));
+
+  ok('音量：eff 对非法基准返回 0 而不是 NaN', A._eff(NaN) === 0 && A._eff(-1) === 0, 'nan=' + A._eff(NaN));
+  ok('音量：eff 结果永远不超过基准（不会因为音量 >1 而放大）', A._eff(0.3) <= 0.3);
+}
+
+{
+  /* ★ 接线：audio.js 里不允许有绕过 eff() 的增益赋值。
+     做法：找所有 RampToValueAtTime 的第一个实参，只允许 lvl / EPS；
+     出现数字字面量就说明有人写死了增益、绕过音量控制。 */
+  const src = fs.readFileSync(DIR + 'audio.js', 'utf8');
+  const ramps = src.match(/(?:exponential|linear)RampToValueAtTime\([^,]+/g) || [];
+  const literalArgs = ramps.filter((r) => /RampToValueAtTime\(\s*[0-9.]+\s*$/.test(r));
+  ok('★ 接线：所有增益斜坡都走 eff()（没有裸数字绕过音量）',
+    literalArgs.length === 0, '裸数字 ' + literalArgs.length + ' 处：' + literalArgs.join(' | '));
+
+  ok('★ 接线：存在唯一的 eff() 计算点', /function eff\(/.test(src), '找不到 eff()');
+  ok('★ 接线：静音在 eff() 里直接返回 0', /if \(muted\) return 0;/.test(src), 'eff 里没有静音短路');
+  ok('★ 接线：play() 在静音或 0 音量时跳过调度',
+    /if \(muted \|\| volume <= 0\) return;/.test(src), 'play() 没有短路');
+  ok('★ 接线：UI 滑杆监听 input（拖动实时生效，不是松手才响）',
+    /addEventListener\('input'/.test(fs.readFileSync(DIR + 'ui.js', 'utf8')), 'ui.js 没有 input 监听');
+}
 console.log('\n──────────────────────────────');
 console.log('通过 ' + pass + ' / ' + (pass + fail) + (fail ? '  ❌ 失败 ' + fail : '  ✅ 全部通过'));
 process.exit(fail ? 1 : 0);

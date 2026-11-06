@@ -86,6 +86,24 @@
     el.hudBun = $('hud-bun');
     el.btnPause = $('btn-pause');
     el.btnMute = $('btn-mute');
+    el.volRange = $('vol-range');   // 内容批：主音量滑杆
+    el.volVal = $('vol-val');       // 内容批：音量百分比
+
+    /* 内容批：主音量滑杆绑定。
+       ★ 必须放在 el 缓存之后。曾经把它写在模块顶层，那时 el.volRange 还是 undefined，
+         if 直接跳过 —— 滑杆在页面上完全没反应，而单测因为不跑 UI 发现不了。
+       ★ 监听 input 而不是 change：input 在拖动过程中持续触发，拧的时候就能听到变化；
+         change 只在松手时触发，手感是"拧完才响"。 */
+    if (el.volRange) {
+      el.volRange.addEventListener('input', function () {
+        setVolume(el.volRange.value);
+      });
+      /* 松手时补一声轻响，给"调到多少"一个听觉确认（音量 0 时 Audio 层自己会跳过） */
+      el.volRange.addEventListener('change', function () {
+        setVolume(el.volRange.value);
+        ZY.Audio.play('tap');
+      });
+    }
     el.btnSpeed = $('btn-speed');
     el.banner = $('banner');
     el.toast = $('toast');
@@ -123,6 +141,8 @@
     bindGame();
     refreshSave();
     setMute(ZY.Save.getMuted());
+  /* 内容批：开机先把存档里的音量灌进音频层，否则玩家上次调的 30% 会失效 */
+  setVolume(ZY.Save.getVolume());
     applyLowFx(ZY.Save.getLowFx ? ZY.Save.getLowFx() : false);   // 第四批 P1-6：低配模式随存档恢复
     syncRotate();
     window.addEventListener('resize', syncRotate);
@@ -242,6 +262,23 @@
     ZY.Audio.setMuted(v);
     el.btnMute.textContent = v ? '静' : '音';
     el.btnMute.classList.toggle('off', v);
+  }
+
+  /**
+   * 主音量（内容批）。0~100 的整数，落 localStorage。
+   * ★ 这里只负责「UI ↔ 音频」同步；夹取与兜底在 Save / Audio 里各做一次 ——
+   *   读档路径和拖动路径是两条独立入口，任何一条漏夹取都会出现越界值。
+   */
+  function setVolume(v, persist) {
+    const val = ZY.Save.setVolume(v);      // 返回值是夹取后的整数（0~100）
+    ZY.Audio.setVolume(val / 100);         // 音频层吃 0~1
+    if (el.volRange) {
+      if (persist !== false) el.volRange.value = String(val);
+      el.volRange.setAttribute("data-zero", val === 0 ? "1" : "0");
+      el.volRange.setAttribute("aria-valuetext", val + "%");
+    }
+    if (el.volVal) el.volVal.textContent = val + "%";
+    return val;
   }
 
   /* 第四批 P1-6：低配模式 —— 不新增 HUD 按钮，双击静音键切换，落 localStorage */

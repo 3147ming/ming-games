@@ -1379,3 +1379,26 @@ body.lowfx .card.pair { animation: none; box-shadow: 0 0 0 2px var(--gold) !impo
 @media (prefers-reduced-motion: reduce) {
   .zy-weather, .zy-weather-tint { transition: none !important; animation: none !important; }
 }
+/* ── 主音量滑杆（内容批） ──
+   与 .diff 同宽同节奏，让"开局偏好"这一组看起来是一件事。
+   滑杆本体用 accent-color 跟随主题色，省掉一堆 ::-webkit-slider 伪元素。 */
+.vol-row {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; max-width: 520px; margin: 10px auto 0;
+  padding: 8px 14px; min-height: var(--mg-tap, 44px);
+  border: 1px solid var(--line); border-radius: var(--mg-r-md, 12px);
+  background: rgba(0, 0, 0, .18);
+}
+.vol-row .d-lab { flex: 0 0 auto; font-size: 13px; color: var(--ink-2); letter-spacing: .06em; }
+.vol-range {
+  flex: 1 1 auto; min-width: 0; height: var(--mg-tap-sm, 40px);
+  accent-color: var(--gold);
+  background: transparent; cursor: pointer;
+}
+.vol-val {
+  flex: 0 0 auto; min-width: 46px; text-align: right;
+  font-size: 13px; font-variant-numeric: tabular-nums; color: var(--gold-deep);
+}
+/* 音量 0 时给一点"哑了"的提示，避免玩家以为游戏坏了 */
+.vol-range[data-zero="1"] { accent-color: var(--ink-3); }
+.vol-range[data-zero="1"] + .vol-val { color: var(--ink-3); }
