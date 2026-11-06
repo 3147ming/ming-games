@@ -29,6 +29,7 @@ const PAGES = [
   { id: 'neon-rhythm', url: 'neon-rhythm/', label: '霓虹律动' },
   { id: 'pixel-runner', url: 'pixel-runner/', label: '像素跑酷' },
   { id: 'grass-cutter', url: 'grass-cutter/', label: '传统割草游戏' },
+  { id: 'shanhai', url: 'shanhai/', label: '山海拾遗' },
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111513">
+  <meta name="color-scheme" content="dark">
+  <title>山海拾遗 · 残卷战棋</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23111513'/%3E%3Cpath d='M14 46c8-5 11-18 18-25 5 9 11 12 18 12-5 8-11 13-18 17-6-5-12-6-18-4z' fill='%23b24b36'/%3E%3Ccircle cx='32' cy='14' r='4' fill='%23c8a96b'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../shared/tokens.css">
+  <link rel="stylesheet" href="./styles/game.css">
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="masthead">
+      <div class="brand">
+        <span class="brand__seal" aria-hidden="true">山海</span>
+        <div class="brand__text">
+          <h1>山海拾遗</h1>
+          <p id="stage-caption">残卷战棋 · 未择卷</p>
+        </div>
+      </div>
+      <nav class="masthead__actions" aria-label="对局操作">
+        <button class="btn btn--ghost btn--small" id="pick-stage" type="button">择卷</button>
+        <button class="btn btn--ghost btn--small" id="restart-stage" type="button" disabled>重开</button>
+      </nav>
+    </header>
+
+    <main class="layout">
+      <section class="battle" aria-label="战场">
+        <div class="battle__meta">
+          <div class="stage-meta">
+            <p class="eyebrow" id="stage-kicker">残卷 · 待启</p>
+            <h2 id="stage-name">山海拾遗</h2>
+            <p id="stage-subtitle">择一卷，入山海。</p>
+          </div>
+          <div class="turn-meta" aria-live="polite">
+            <span class="turn-meta__round" id="round-label">第 1 回合</span>
+            <span class="turn-meta__side" id="turn-label">待战</span>
+          </div>
+        </div>
+
+        <div class="board-wrap">
+          <div class="board-frame">
+            <div class="board" id="board" role="grid" aria-label="八列六行战棋战场"></div>
+            <span class="board-frame__seal" aria-hidden="true">拾遗</span>
+            <div class="turn-veil" id="turn-veil" hidden>
+              <span>敌方行止</span>
+            </div>
+          </div>
+          <p class="hint" id="hint">点选我方单位，查看墨色可移动格。</p>
+          <ul class="terrain-key" aria-label="地形说明">
+            <li><i class="terrain-swatch terrain-swatch--plain"></i>平地</li>
+            <li><i class="terrain-swatch terrain-swatch--forest"></i>林地 · 防↑</li>
+            <li><i class="terrain-swatch terrain-swatch--mountain"></i>山地 · 移×2</li>
+            <li><i class="terrain-swatch terrain-swatch--water"></i>水泽 · 阻</li>
+          </ul>
+        </div>
+
+        <div class="action-bar">
+          <button class="btn btn--primary" id="end-turn" type="button" disabled>结束回合</button>
+          <button class="btn btn--ghost" id="wait-unit" type="button" disabled>待命</button>
+        </div>
+      </section>
+
+      <aside class="side" aria-label="战况与单位">
+        <section class="panel panel--roster">
+          <div class="panel__head">
+            <h3>阵中</h3>
+            <span class="panel__mark">我方</span>
+          </div>
+          <div class="roster" id="roster">
+            <p class="empty-note">尚未入卷。</p>
+          </div>
+        </section>
+
+        <section class="panel panel--log">
+          <div class="panel__head">
+            <h3>战报</h3>
+            <span class="panel__mark">即时</span>
+          </div>
+          <ol class="log" id="log" aria-live="polite">
+            <li class="log__item log__item--muted">风过残卷，尚无战事。</li>
+          </ol>
+        </section>
+
+        <section class="panel panel--rule">
+          <div class="panel__head">
+            <h3>兵势</h3>
+            <span class="panel__mark">克制</span>
+          </div>
+          <p class="rule-line"><b>剑</b> 克 弓 <span>·</span> <b>弓</b> 克 术 <span>·</span> <b>术</b> 克 剑</p>
+          <p class="rule-copy">克制 ×1.3，被克 ×0.8。术士命中主目标时，相邻敌人受半伤。</p>
+        </section>
+      </aside>
+    </main>
+
+    <footer class="footline">
+      <span>纯静态 · 零依赖</span>
+      <span id="save-status">存档 v1 · 本地</span>
+    </footer>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <section class="screen" id="stage-screen" role="dialog" aria-modal="true" aria-labelledby="stage-screen-title">
+    <div class="screen__panel stage-select">
+      <p class="eyebrow">SHAN HAI · SHI YI</p>
+      <div class="hero-mark" aria-hidden="true">拾</div>
+      <h2 id="stage-screen-title">山海拾遗</h2>
+      <p class="hero-sub">八荒有遗，拾而为卷</p>
+      <p class="hero-copy">墨色为野，石青为山，朱砂为火。三步之内见胜负，一纸之间藏山海。</p>
+      <div class="stage-list" id="stage-list" aria-label="选择关卡"></div>
+      <div class="screen__foot">
+        <span class="fineprint">进度只存在此设备 · 存档版本 v1</span>
+        <button class="btn btn--ghost btn--small" id="stage-close" type="button" hidden>继续此卷</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" id="result-screen" role="dialog" aria-modal="true" aria-labelledby="result-title" hidden>
+    <div class="screen__panel result-panel">
+      <div class="result-stamp" id="result-stamp" aria-hidden="true">捷</div>
+      <p class="eyebrow" id="result-kicker">战事已定</p>
+      <h2 id="result-title">青丘路开</h2>
+      <div class="rating-block">
+        <span class="rating-block__value" id="result-rating">S</span>
+        <span class="rating-block__label">评级</span>
+      </div>
+      <dl class="result-stats">
+        <div><dt>回合</dt><dd id="result-rounds">1</dd></div>
+        <div><dt>余血</dt><dd id="result-hp">0 / 0</dd></div>
+        <div><dt>战果</dt><dd id="result-kills">0</dd></div>
+      </dl>
+      <p class="result-note" id="result-note">残卷收拢，山风复静。</p>
+      <div class="result-actions">
+        <button class="btn btn--primary" id="result-retry" type="button">再战此卷</button>
+        <button class="btn btn--ghost" id="result-next" type="button" hidden>续读下卷</button>
+        <button class="btn btn--ghost" id="result-back" type="button">返回择卷</button>
+      </div>
+    </div>
+  </section>
+
+  <noscript>
+    <p class="noscript">本卷需要启用 JavaScript 才能展开。</p>
+  </noscript>
+
+  <!-- 浏览器 file:// 下 ES module 会触发 CORS；这些 .mjs 以经典脚本按顺序加载，
+       同一份文件在 Node 测试中通过 import 执行，仍然零构建、零依赖。 -->
+  <script defer src="./src/core.mjs"></script>
+  <script defer src="./src/maps.mjs"></script>
+  <script defer src="./src/units.mjs"></script>
+  <script defer src="./src/storage.mjs"></script>
+  <script defer src="./src/game.mjs"></script>
+</body>
+</html>
