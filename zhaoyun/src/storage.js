@@ -14,6 +14,7 @@
     muted: P + 'muted',         // 静音
     lowfx: P + 'lowfx',         // 第四批 P1-6：低配模式（双击静音键切换）
     volume: P + 'volume',       // 主音量（0~100 整数；与 muted 分开：一个是偏好，一个是临时开关）
+    endlessBoard: P + 'endless_board',  // 无尽排行榜：JSON 数组，按波数降序保留前 10（与 waveBest 单值互补）
     /* —— 第一批新增 6 键 ——
      * 旧存档里这 6 个键不存在，所有读取都带默认值（''/{} /[] /0），
      * 不迁移、不清档、不报错；写入一律 try/catch（隐私模式静默失败）。 */
@@ -216,6 +217,52 @@
       a.unshift(rec);
       if (a.length > 20) a.length = 20;
       writeJSON(KEYS.log, a);
+    },
+
+    /* ---------------- 无尽排行榜（内容批）----------------
+     * 与 waveBest 的分工：
+     *   · waveBest 只有一个数字 —— 回答"我最好到第几波"；
+     *   · 本榜保留**每一局**的明细（前 10）—— 回答"我这几局分别打得怎么样"。
+     * 两者刻意都留着：单值便宜（每次结算 O(1)），榜单贵一点但只在结算时写一次。
+     *
+     * 排序：波数降序 → 击杀降序 → 用时升序。
+     *   ★ 第三关键字用"用时升序"而不是降序：同样波数同样击杀，**更快**说明推得更果断，
+     *     这是唯一能让"打得快"被奖励的地方（其他两个维度都是"多"才赢）。
+     * ★ 同一条记录不会重复入榜：用 date（毫秒时间戳）做唯一标识去重，
+     *   否则结算面板每次重绘都会塞一条进去。
+     */
+    getEndlessBoard: function () {
+      const a = readJSON(KEYS.endlessBoard, []);
+      if (!Array.isArray(a)) return [];
+      // 防御：过滤掉结构坏掉的条目（手改存档 / 旧版本残留）
+      return a.filter(function (r) {
+        return r && typeof r.wave === "number" && isFinite(r.wave) && r.wave >= 0;
+      });
+    },
+    /** 记一局无尽成绩，返回 { board, rank }（rank 从 1 开始；没进榜返回 0） */
+    addEndlessRecord: function (rec) {
+      if (!rec || typeof rec.wave !== "number" || !isFinite(rec.wave)) {
+        return { board: Save.getEndlessBoard(), rank: 0 };
+      }
+      const list = Save.getEndlessBoard().slice();
+      const entry = {
+        date: rec.date || Date.now(),
+        wave: Math.max(0, Math.round(rec.wave)),
+        kills: Math.max(0, Math.round(rec.kills || 0)),
+        dur: Math.max(0, Math.round(rec.dur || 0)),
+        leaked: Math.max(0, Math.round(rec.leaked || 0)),
+      };
+      // 去重：同一毫秒的同一局不重复入榜
+      if (!list.some(function (r) { return r.date === entry.date; })) list.push(entry);
+      list.sort(function (a, b) {
+        if (b.wave !== a.wave) return b.wave - a.wave;
+        if (b.kills !== a.kills) return b.kills - a.kills;
+        return a.dur - b.dur;
+      });
+      if (list.length > 10) list.length = 10;
+      writeJSON(KEYS.endlessBoard, list);
+      const rank = list.findIndex(function (r) { return r.date === entry.date; }) + 1;
+      return { board: list, rank: rank };
     },
 
     rankName: function (i) { return ZY.RANKS[Math.max(0, Math.min(ZY.RANKS.length - 1, i || 0))]; },

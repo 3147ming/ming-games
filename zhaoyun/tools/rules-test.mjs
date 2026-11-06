@@ -1394,6 +1394,100 @@ const lsDel = (k) => vm.runInContext('localStorage.removeItem(' + JSON.stringify
   ok('★ 接线：UI 滑杆监听 input（拖动实时生效，不是松手才响）',
     /addEventListener\('input'/.test(fs.readFileSync(DIR + 'ui.js', 'utf8')), 'ui.js 没有 input 监听');
 }
+
+/* ============================================================ 内容批：无尽排行榜 */
+section('内容批：无尽排行榜');
+
+{
+  const S = ZY.Save;
+  lsDel('zhaoyun_endless_board');
+
+  ok('无尽榜：键名符合约定', S.KEYS.endlessBoard === 'zhaoyun_endless_board', 'key=' + S.KEYS.endlessBoard);
+  ok('无尽榜：初始为空数组', Array.isArray(S.getEndlessBoard()) && S.getEndlessBoard().length === 0);
+
+  // 入榜 + 名次
+  let r1 = S.addEndlessRecord({ date: 1000, wave: 12, kills: 80, dur: 300, leaked: 1 });
+  ok('无尽榜：第一局进榜且名次 1', r1.rank === 1 && r1.board.length === 1, 'rank=' + r1.rank);
+  ok('无尽榜：条目字段完整', (() => {
+    const e = r1.board[0];
+    return e.wave === 12 && e.kills === 80 && e.dur === 300 && e.leaked === 1 && e.date === 1000;
+  })(), JSON.stringify(r1.board[0]));
+
+  // 排序：波数降序
+  let r2 = S.addEndlessRecord({ date: 2000, wave: 20, kills: 10, dur: 400, leaked: 0 });
+  ok('无尽榜：波数更高的排第一', r2.board[0].wave === 20 && r2.rank === 1, 'board=' + JSON.stringify(r2.board.map((x) => x.wave)));
+
+  // 排序：同波数比击杀
+  let r3 = S.addEndlessRecord({ date: 3000, wave: 20, kills: 99, dur: 500, leaked: 0 });
+  ok('无尽榜：同波数时击杀多的靠前', r3.board[0].kills === 99, 'board=' + JSON.stringify(r3.board.map((x) => x.wave + '/' + x.kills)));
+
+  // 排序：同波数同击杀比用时（快的靠前）
+  let r4 = S.addEndlessRecord({ date: 4000, wave: 20, kills: 99, dur: 100, leaked: 0 });
+  ok('★ 无尽榜：同波数同击杀时用时短的靠前', r4.board[0].date === 4000,
+    'board=' + JSON.stringify(r4.board.map((x) => x.date + '/' + x.dur)));
+
+  // 去重：同 date 不重复入榜
+  const before = S.getEndlessBoard().length;
+  const rDup = S.addEndlessRecord({ date: 4000, wave: 20, kills: 99, dur: 100, leaked: 0 });
+  ok('★ 无尽榜：同一 date 的重复记录不会二次入榜', rDup.board.length === before,
+    'before=' + before + ' after=' + rDup.board.length);
+
+  // 上限 10
+  lsDel('zhaoyun_endless_board');
+  for (let i = 0; i < 15; i++) S.addEndlessRecord({ date: 10000 + i, wave: i + 1, kills: i, dur: 100, leaked: 0 });
+  ok('无尽榜：最多保留 10 条', S.getEndlessBoard().length === 10, 'len=' + S.getEndlessBoard().length);
+  ok('无尽榜：保留的是最高的 10 条', (() => {
+    const ws = S.getEndlessBoard().map((x) => x.wave);
+    return ws[0] === 15 && ws[9] === 6;
+  })(), 'waves=' + JSON.stringify(S.getEndlessBoard().map((x) => x.wave)));
+
+  // 落榜返回 rank 0
+  const rLow = S.addEndlessRecord({ date: 99999, wave: 1, kills: 0, dur: 10, leaked: 9 });
+  ok('无尽榜：没进前 10 时 rank 为 0', rLow.rank === 0, 'rank=' + rLow.rank);
+
+  // 坏数据防御
+  lsSet('zhaoyun_endless_board', 'not-json');
+  ok('无尽榜：存档是坏 JSON 时返回空数组而不崩', Array.isArray(S.getEndlessBoard()) && S.getEndlessBoard().length === 0);
+  lsSet('zhaoyun_endless_board', '{"a":1}');
+  ok('无尽榜：存档是对象时返回空数组', S.getEndlessBoard().length === 0);
+  lsSet('zhaoyun_endless_board', '[{"wave":"x"},{"wave":5,"kills":1,"dur":1,"leaked":0,"date":1}]');
+  ok('★ 无尽榜：过滤掉 wave 非数字的坏条目', (() => {
+    const b = S.getEndlessBoard();
+    return b.length === 1 && b[0].wave === 5;
+  })(), 'len=' + S.getEndlessBoard().length);
+
+  // 非法入参
+  lsDel('zhaoyun_endless_board');
+  const rBad1 = S.addEndlessRecord(null);
+  const rBad2 = S.addEndlessRecord({ wave: 'abc' });
+  const rBad3 = S.addEndlessRecord({ wave: NaN });
+  ok('无尽榜：非法入参不崩且不入榜',
+    rBad1.rank === 0 && rBad2.rank === 0 && rBad3.rank === 0 && S.getEndlessBoard().length === 0,
+    'len=' + S.getEndlessBoard().length);
+
+  // 负数/浮点被规整
+  const rNorm = S.addEndlessRecord({ date: 55555, wave: 7.6, kills: -3, dur: -10, leaked: -1 });
+  const e = rNorm.board[0];
+  ok('无尽榜：负数与浮点被规整到合法值',
+    e.wave === 8 && e.kills === 0 && e.dur === 0 && e.leaked === 0,
+    JSON.stringify(e));
+
+  lsDel('zhaoyun_endless_board');
+}
+
+{
+  /* ★ 接线：结算流程里必须真的调用 addEndlessRecord，
+     否则"榜单永远是空的"—— 而这在 UI 上表现为"功能没做"，很难被当成 bug 报上来。 */
+  const uiSrc = fs.readFileSync(DIR + 'ui.js', 'utf8');
+  ok('★ 无尽榜：无尽结算调用了 addEndlessRecord', /addEndlessRecord\(/.test(uiSrc));
+  ok('★ 无尽榜：战绩面板会读取 getEndlessBoard', /getEndlessBoard\(/.test(uiSrc));
+  ok('★ 无尽榜：结算里 setWaveBest 仍被调用（旧功能没丢）', /setWaveBest\(state\.wave\.idx\)/.test(uiSrc));
+  ok('★ 无尽榜：入榜顺序在 setWaveBest 之前（先算名次再读历史最高）', (() => {
+    const a = uiSrc.indexOf('addEndlessRecord(');
+    const b = uiSrc.indexOf('setWaveBest(state.wave.idx)');
+    return a > 0 && b > 0 && a < b;
+  })());
+}
 console.log('\n──────────────────────────────');
 console.log('通过 ' + pass + ' / ' + (pass + fail) + (fail ? '  ❌ 失败 ' + fail : '  ✅ 全部通过'));
 process.exit(fail ? 1 : 0);

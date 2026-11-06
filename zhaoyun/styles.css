@@ -1402,3 +1402,23 @@ body.lowfx .card.pair { animation: none; box-shadow: 0 0 0 2px var(--gold) !impo
 /* 音量 0 时给一点"哑了"的提示，避免玩家以为游戏坏了 */
 .vol-range[data-zero="1"] { accent-color: var(--ink-3); }
 .vol-range[data-zero="1"] + .vol-val { color: var(--ink-3); }
+/* ── 无尽榜（内容批） ──
+   前三名给一点视觉重量，其余保持安静 ——
+   榜单是"让我看到自己的进步"，不是发奖杯，所以不该整块都在喊。 */
+.rank-line {
+  margin: 6px 0 0; padding: 6px 10px;
+  border-left: 3px solid var(--gold);
+  background: rgba(200, 163, 74, .10);
+  border-radius: var(--mg-r-sm, 8px);
+  font-size: 13px; color: var(--ink);
+}
+.rank-line b { color: var(--gold-deep); font-size: 15px; }
+
+.rank-row { gap: 10px; }
+.rank-row .rk {
+  flex: 0 0 auto; min-width: 22px; text-align: center;
+  font-weight: 700; color: var(--gold-deep);
+}
+.rank-row:nth-of-type(1) .rk { color: var(--gold); font-size: 16px; }
+.rank-row:nth-of-type(2) .rk,
+.rank-row:nth-of-type(3) .rk { font-size: 15px; }

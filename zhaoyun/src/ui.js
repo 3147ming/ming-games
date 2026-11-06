@@ -1973,10 +1973,30 @@
       btns = '<button class="btn primary" data-act="restart">再来一局</button>' +
         '<button class="btn" data-act="home">返回主菜单</button>';
     } else if (state.mode === 'endless') {
+      /* 内容批：无尽排行榜入榜。
+         ★ 顺序：先入榜拿到「本局名次」，再读历史最高 ——
+           因为 addEndlessRecord 会立刻把本局写进去；若先读 getWaveBest，
+           显示的会是「含本局」的数字，玩家会觉得「我早就打到这了」。 */
+      let boardRank = 0;
+      try {
+        const res = ZY.Save.addEndlessRecord({
+          date: Date.now(),
+          wave: state.wave.idx,
+          kills: state.stats.kills,
+          dur: state.t,
+          leaked: state.leaked.player,
+        });
+        boardRank = res.rank;
+      } catch (e) { boardRank = 0; }   // 榜单写失败不能影响结算
       ZY.Save.setWaveBest(state.wave.idx);
       ZY.Save.addKills(state.stats.kills);
       title = '守 家 结 算';
-      body = '<p>最高波数 <b>' + state.wave.idx + '</b> · 总击杀 <b>' + state.stats.kills + '</b></p>' +
+      /* 内容批：名次文案。没进前 10 就不报具体名次 ——
+         「第 11 名」对玩家是噪音，只说「未进前 10」就够。 */
+      const rankLine = boardRank > 0 && boardRank <= 10
+        ? '<p class="rank-line">本次第 <b>' + boardRank + '</b> 名 · 已记入无尽榜</p>'
+        : '<p class="dim">本次未进前 10</p>';
+      body = '<p>最高波数 <b>' + state.wave.idx + '</b> · 总击杀 <b>' + state.stats.kills + '</b></p>' + rankLine +
         '<p class="dim">用时 ' + Math.round(state.t) + 's · 历史最高 ' + ZY.Save.getWaveBest() + ' 波</p>' +
         // 第三批 P0-5：无尽结算同样给「漏怪 / 峰值」
         '<p class="dim">漏怪 ' + (state.leaked.player || 0) + ' 次 · 最后一漏在第 ' +
@@ -2330,6 +2350,19 @@
         '</span><span>' + res + ' · 第' + (r.wave || 0) + '波 · 杀' + (r.kills || 0) + ' · 漏' + (r.leaked || 0) +
         ' · ' + (r.dur || 0) + 's</span></div>';
     });
+    /* 内容批：无尽榜（前 10）。放在「最近 10 局」之后、「成就」之前 ——
+       这三块正好对应三种时间尺度：最近一局 / 我的最好几局 / 长期成就。 */
+    const endlessBoard = ZY.Save.getEndlessBoard ? ZY.Save.getEndlessBoard() : [];
+    h += '<p class="dim" style="margin-top:12px">无尽榜 · 前 ' + endlessBoard.length + ' / 10</p>';
+    if (!endlessBoard.length) {
+      h += '<p class="dim">还没有无尽记录，去打一局守家。</p>';
+    } else {
+      endlessBoard.forEach(function (r, i) {
+        const medal = i === 0 ? '①' : i === 1 ? '②' : i === 2 ? '③' : (i + 1) + '.';
+        h += '<div class="rec-row rank-row"><span class="rk">' + medal + '</span>' +
+          '<span>第 <b>' + r.wave + '</b> 波 · 杀 <b>' + r.kills + '</b> · ' + r.dur + 's · 漏 ' + r.leaked + '</span></div>';
+      });
+    }
     h += '<p class="dim" style="margin-top:10px">成就 ' + Object.keys(achv).length + ' / ' + ZY.ACHV.length + '</p><div class="achv-grid">';
     ZY.ACHV.forEach(function (a) {
       const on = !!achv[a.id];
