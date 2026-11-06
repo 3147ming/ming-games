@@ -106,3 +106,60 @@ export class Stage {
     };
   }
 }
+
+/**
+ * 阶段压力的"人数重同步"（第 3 批 P0-6）—— 纯函数，只吃池子与玩家位置。
+ * ---------------------------------------------------------------------------
+ * 为什么必须有它：`aliveCap` 只管**重生上限**，它不会让"已经站着的 45 个人"自己变少，
+ * 也不会把被休眠的人放回来。所以阶段切换时，加压与减压都要**显式做一次**。
+ *
+ * dormant 的语义与 `Stage.start()` 完全一致：不参战、不渲染、不计击杀。
+ *   · 压小了 → 从**离玩家最远**的那批开始休眠；`guardOf` 的据点守卫不动，
+ *     否则据点守卫会被压掉，那个据点就永远占不下来。
+ *   · 压大了 → 从休眠池里按**原始布点**（t.spawn）把人放回来，并复位 AI。
+ */
+export function resyncAlive(enemyPool, target, playerPos = { x: 0, z: 0 }) {
+  const items = enemyPool.items;
+  const px = Number.isFinite(playerPos.x) ? playerPos.x : 0;
+  const pz = Number.isFinite(playerPos.z) ? playerPos.z : 0;
+  let alive = 0;
+  for (const t of items) if (t.alive) alive++;
+
+  // 压小了：从离玩家最远的那批开始休眠（据点守卫不动，否则据点永远占不下来）
+  if (alive > target) {
+    const pool = items
+      .filter((t) => t.alive && !t.guardOf)
+      .sort((a, b) => Math.hypot(b.x - px, b.z - pz) - Math.hypot(a.x - px, a.z - pz));
+    for (const t of pool) {
+      if (alive <= target) break;
+      if (t.slot) { enemyPool.director.slots.release(t.id); t.slot = false; }
+      t.dormant = true;
+      t.alive = false;
+      t.windup = 0;
+      t.recover = 0;
+      t.stunTimer = 0;
+      t.respawnTimer = 0;
+      alive--;
+    }
+  }
+
+  // 压大了：从休眠池里按**原始布点**把人放回来（重生守卫会接管之后的补充）
+  if (alive < target) {
+    for (const t of items) {
+      if (alive >= target) break;
+      if (t.alive || !t.dormant || t.guardOf) continue;
+      t.dormant = false;
+      t.alive = true;
+      t.hp = t.maxHp;
+      t.x = t.spawn.x;
+      t.z = t.spawn.z;
+      t.home = { x: t.x, z: t.z };
+      t.respawnTimer = 0;
+      t.knockVX = 0;
+      t.knockVZ = 0;
+      enemyPool.director.initEnemy(t, t.index ?? 0);
+      alive++;
+    }
+  }
+  return alive;
+}

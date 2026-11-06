@@ -42,6 +42,8 @@ const INK = new Color(0x1c1c1e);
 const CINNABAR = new Color(0xb5322a);
 const DAICING = new Color(0x3a6f8a);
 const PAPER = new Color(0xefe9d8);
+// 第 4 批 P1-3：刀尖闪白的临时色（模块级复用，避免每次 spawn 分配对象）
+const WHITE = new Color(0xffffff);
 
 function isHeavy(id = '') {
   return id === 'H' || id.startsWith('C') || id === 'CHARGED' || id === 'musou' || id.startsWith('art');
@@ -218,11 +220,17 @@ class RibbonPool {
       const m = new Mesh(geo, mat);
       m.visible = false; m.frustumCulled = false; m.renderOrder = 3;
       scene.add(m);
-      this.pool.push({ mesh: m, life: 0, max: 1, color: INK });
+      this.pool.push({ mesh: m, life: 0, max: 1, color: INK, baseColor: new Color(), tipFlash: 0, tipT: 0 });
     }
     this.cursor = 0;
   }
-  spawn(ax, az, bx, bz, width, life, color, tipColor) {
+  /**
+   * @param tipFlash 第 4 批 P1-3：命中瞬间"刀尖闪白"的时长（秒，读 INKFX.RIBBON_TIP_FLASH）。
+   *   原来这个配置是死的（全库只有定义、0 处使用），重击收尾刀光缺最后那一下白刃爆点。
+   *   实现方式是把整条 ribbon 的材质色从纯白按 tipFlash 内 lerp 回本色 —— 复用同一条刀光，
+   *   不新增对象、不新增 draw call。
+   */
+  spawn(ax, az, bx, bz, width, life, color, tipColor, tipFlash = 0) {
     const s = this.pool[this.cursor];
     this.cursor = (this.cursor + 1) % this.pool.length;
     const dx = bx - ax, dz = bz - az;
@@ -236,6 +244,10 @@ class RibbonPool {
     s.mesh.material.opacity = 0.8;
     s.life = life; s.max = life; s.color = color || INK;
     if (tipColor) s.mesh.material.color.lerp(tipColor, 0.35);
+    s.baseColor.copy(s.mesh.material.color); // 复用槽位里的 Color，不分配
+    s.tipFlash = Math.max(0, Number.isFinite(tipFlash) ? tipFlash : 0);
+    s.tipT = s.tipFlash;
+    if (s.tipT > 0) s.mesh.material.color.copy(WHITE);
   }
   update(dt) {
     for (const s of this.pool) {
@@ -243,6 +255,12 @@ class RibbonPool {
       s.life -= dt;
       const k = Math.max(0, s.life / s.max);
       s.mesh.material.opacity = 0.8 * k;
+      // 刀尖闪白：从纯白回到本色（k: 1 → 0）
+      if (s.tipT > 0 && s.baseColor) {
+        s.tipT = Math.max(0, s.tipT - dt);
+        const f = s.tipT / Math.max(1e-4, s.tipFlash);
+        s.mesh.material.color.copy(s.baseColor).lerp(WHITE, f);
+      }
       if (s.life <= 0) s.mesh.visible = false;
     }
   }
@@ -343,6 +361,12 @@ export class InkFx {
 
     // 降级开关
     this.degrade = { bloom: true, grass: true, ink: true };
+    // 第 4 批 P1-1：无障碍动态效果开关（震屏 / 全屏纸闪）。
+    // ⚠ 顿帧与无双慢动作**不在此列** —— 顿帧是打击感核心、慢动作不产生空间位移，都不会引起晕动。
+    this.motion = { shake: true, paper: true };
+
+    // 第 4 批 P1-2：重击命中回调（main 接 rig.punchFov）。默认 null = 不接就不触发。
+    this.onHeavyHit = null;
   }
 
   setCamera(cam) { this.camera = cam; }
@@ -399,8 +423,19 @@ export class InkFx {
       this._shake(INKFX.SHAKE_HEAVY);
     } else {
       this.particles.emit(x, y, z, { count: lightN, color: INK, life: INKFX.SPARK_LIFE_LIGHT, size: 0.05, speed: 3, up: 2.2, spread: 1.2 });
+      // 第 4 批 P0-3：轻击也补一个小而淡的冲击环（比重击环短、比它淡，一眼可分）
+      if (INKFX.RING_LIGHT_ENABLED) {
+        this.rings.spawn(x, z, (ev.move?.reach ?? 1.8) * INKFX.RING_LIGHT_MUL, INKFX.RING_LIGHT_LIFE, INK, {
+          r0: INKFX.RING_LIGHT_R0,
+          opacity: INKFX.RING_LIGHT_OPACITY,
+        });
+      }
       this._shake(INKFX.SHAKE_LIGHT);
     }
+
+    // 第 4 批 P1-2：重击/C 技命中时的镜头 FOV 冲击回调（由 main 接到 rig.punchFov）。
+    // 无双/武艺（ev.aoe）刻意不触发 —— 那是范围技，每次跳伤都推一下会晕。
+    if (heavy && !ev.aoe && this.onHeavyHit) this.onHeavyHit(ev);
 
     // ★SPEC(模块13) 敌人墨烟消散：小墨浪环（0.8m）+ 8~12 粒墨点爆开
     if (ev.result?.killed) this._deathPoof(x, y, z);
@@ -410,7 +445,9 @@ export class InkFx {
       const px = this.playerPos.x, pz = this.playerPos.z;
       const w = INKFX.RIBBON_WIDTH[0] + Math.random() * (INKFX.RIBBON_WIDTH[1] - INKFX.RIBBON_WIDTH[0]);
       const lf = INKFX.RIBBON_LIFE[0] + Math.random() * (INKFX.RIBBON_LIFE[1] - INKFX.RIBBON_LIFE[0]);
-      this.ribbons.spawn(px, pz, x, z, w, lf, INK, INKFX.RIBBON_CINNABAR_TIP && heavy ? CINNABAR : null);
+      // 第 4 批 P1-3：重击/C 技命中时给刀光一个 0.05s 的刀尖闪白（轻击不闪）
+      this.ribbons.spawn(px, pz, x, z, w, lf, INK, INKFX.RIBBON_CINNABAR_TIP && heavy ? CINNABAR : null,
+        heavy ? INKFX.RIBBON_TIP_FLASH : 0);
     }
 
     // 伤害飘字
@@ -488,6 +525,7 @@ export class InkFx {
   }
 
   _shake(range) {
+    if (!this.motion.shake) return; // 第 4 批 P1-1：系统开了"减弱动态效果"时归零
     const a = range[0] + Math.random() * (range[1] - range[0]);
     this.shakeAmp = Math.max(this.shakeAmp, a);
     this.shake = INKFX.SHAKE_DUR;
@@ -596,6 +634,7 @@ export class InkFx {
   }
 
   _flashPaper() {
+    if (!this.motion.paper) return; // 第 4 批 P1-1：reduced-motion 下无双不再全屏纸闪
     if (!this._paper) {
       this._paper = document.createElement('div');
       this._paper.style.cssText = 'position:fixed;inset:0;background:#efe9d8;pointer-events:none;z-index:9;opacity:0;mix-blend-mode:screen;';
@@ -641,6 +680,22 @@ export class InkFx {
       for (const s of this.ribbons.pool) { s.life = 0; s.mesh.visible = false; }
       for (const s of this.afterimages.pool) { s.life = 0; s.mesh.visible = false; }
     }
+  }
+
+  /**
+   * 第 4 批 P1-1：无障碍动态效果开关（震屏 / 全屏纸闪），与画质降级 setDegrade 分开。
+   * ---------------------------------------------------------------------------
+   * 为什么不塞进 setDegrade：模块 13 的护栏测试按**文本顺序**钉死了 main.js 里
+   * "关泛光 → 关草 → setDegrade" 这条降级链（tests/module13-ink.test.mjs L384），
+   * 启动早期再插一句 `inkFx.setDegrade(...)` 会让那条断言在字符串层面就找不到正确的档位。
+   * 分成两个方法之后：画质降级链保持原样，无障碍开关走自己的入口，语义也更清楚
+   * （"省性能"和"照顾晕动症"本来就是两件事）。
+   */
+  setMotion(m = {}) {
+    if (m.shake !== undefined) this.motion.shake = !!m.shake;
+    if (m.paper !== undefined) this.motion.paper = !!m.paper;
+    if (!this.motion.shake) { this.shake = 0; this.shakeAmp = 0; this._shakeOff.set(0, 0, 0); }
+    return this.motion;
   }
 
   shakeOffset() { return this._shakeOff; }

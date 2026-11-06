@@ -10,10 +10,26 @@
 <body>
   <canvas id="stage"></canvas>
 
+  <!-- 触屏操作层（第 3 批 P0-1）。默认 hidden，只有粗指针设备由 main.js 打开；
+       手指动作被翻译成**已有的键码**，所以 controller/playerCombat 一行都不用改。 -->
+  <div id="touch" class="touch" hidden>
+    <div class="t-stick" id="t-stick"><i class="t-knob"></i></div>
+    <div class="t-btns">
+      <button type="button" class="t-b" data-code="KeyN">攻</button>
+      <button type="button" class="t-b" data-code="KeyR">重</button>
+      <button type="button" class="t-b" data-code="ShiftLeft">闪</button>
+      <button type="button" class="t-b" data-code="Space">跳</button>
+      <button type="button" class="t-b" data-code="KeyQ">武1</button>
+      <button type="button" class="t-b" data-code="KeyE">武2</button>
+      <button type="button" class="t-b" data-code="Tab">无双</button>
+      <button type="button" class="t-b" data-code="KeyF">防</button>
+    </div>
+  </div>
+
   <div id="boot" class="boot">
     <div class="boot-inner">
       <h1>传统割草游戏</h1>
-      <p class="boot-sub">3D 战场原型 · 模块 1-4</p>
+      <p class="boot-sub">3D 割草 · 水墨战场</p>
       <p class="boot-line">正在生成战场地形、光照、摄像机、战斗系统与敌人分层 AI…</p>
     </div>
   </div>

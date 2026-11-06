@@ -46,6 +46,8 @@ body.locked #stage { cursor: none; }
 
 .boot.gone {
   opacity: 0;
+  /* 第 4 批 P1-6：淡出后不再占一层合成（低端机上白占一份显存/合成开销） */
+  visibility: hidden;
   pointer-events: none;
 }
 
@@ -169,4 +171,28 @@ body.locked #stage { cursor: none; }
   font-size: 14px;
   white-space: pre-wrap;
   z-index: 40;
+}
+
+/* ───────────── 触屏层（第 3 批 P0-1）：只在 pointer:coarse 设备上显示 */
+.touch { position: fixed; inset: 0; z-index: 12; pointer-events: none; }
+.t-stick { position: absolute; left: 18px; bottom: calc(18px + env(safe-area-inset-bottom));
+  width: 118px; height: 118px; border-radius: 50%; pointer-events: auto;
+  background: rgba(28,28,30,.22); box-shadow: inset 0 0 0 2px rgba(239,233,216,.55);
+  touch-action: none; }
+.t-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px;
+  border-radius: 50%; background: rgba(239,233,216,.72); box-shadow: inset 0 0 0 2px #1c1c1e;
+  pointer-events: none; }
+.t-btns { position: absolute; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom));
+  display: grid; grid-template-columns: repeat(2, 62px); gap: 8px; pointer-events: auto; }
+.t-b { width: 62px; height: 62px; border-radius: 50%; border: 2px solid #1c1c1e;
+  background: rgba(239,233,216,.78); color: #1c1c1e;
+  font: 700 15px/1 "Microsoft YaHei", system-ui, sans-serif;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+.t-b.on { background: #b5322a; color: #efe9d8; }
+.hint.hide { opacity: 0; }
+
+/* ───────────── 竖屏（第 3 批 P0-7）：只收提示条与准星，不动调试面板本身 */
+@media (max-width: 520px) {
+  .hint { display: none; }      /* 键盘说明对触屏玩家没有意义 */
+  .reticle { display: none; }   /* 触屏没有鼠标准星，中间那个点是误导 */
 }

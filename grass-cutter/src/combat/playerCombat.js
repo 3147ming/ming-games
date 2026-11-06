@@ -56,6 +56,12 @@ export class PlayerCombat {
     this.ranbuTimer = 0; // ★SPEC 无双乱舞剩余时间（>0 = 正在释放，期间无敌）
     this.ranbuTickAcc = 0; // 无双 AOE 的结算累加器
     this.arts = { art1: { cd: 0 }, art2: { cd: 0 } }; // ★SPEC 两套武艺的冷却计时
+    // 触屏辅助朝向（P0-2）：默认关闭，只由 main 在 pointer:coarse 时打开。
+    // ⚠ 默认关闭是硬要求 —— 桌面 swingFacing === cameraYaw 必须逐字与改动前一致。
+    this.assist = { enabled: false, range: 4.5, arcDeg: 160 };
+    // 局内成长加成（P0-5）：与 main 的 `run.mods` **共用同一个对象**，默认值 = 不注入时的原行为。
+    // ⚠ 只是乘子/加数，公式一个都不动 —— 全默认时 applyDamage 结果必须与改动前逐点一致。
+    this.mods = { damage: 1, kiRegen: 1, musouGain: 1, lifesteal: 0, maxHpBonus: 0 };
 
     this.lastDamage = 0; // 最近一次命中的伤害（HUD 用）
     this.lastHitAt = -Infinity;
@@ -224,10 +230,42 @@ export class PlayerCombat {
 
   _onSwingStart(ev, cameraYaw) {
     const move = ev.move;
-    this.swingFacing = cameraYaw; // 锁定朝向
-    this.player.facing = cameraYaw;
+    this.swingFacing = this._assistFacing(cameraYaw); // ← 原为 cameraYaw（触屏辅助朝向）
+    this.player.facing = this.swingFacing;
     this.lunged = 0;
     this.events.push({ type: 'swing', move, id: move.id, charged: !!ev.charged });
+  }
+
+  /**
+   * 触屏辅助朝向（第 3 批 P0-2，新增）：手机没有鼠标瞄准，边跑边点攻击时朝向常差 40°~90°，
+   * 70° 的 N3 突刺会整段砍空。这里只在**镜头前方 160°、4.5m 内**挑最近的敌人作为朝向，
+   * 找不到就原样返回镜头朝向 —— 于是"背对敌人挥刀"依旧是背对，不会自己转身。
+   * ⚠ 手指正在转视角（最近 0.35s 有拖拽）时不抢朝向，否则会出现"想转镜头结果被拉回去"。
+   * ⚠ assist.enabled 默认 false：桌面这一路一次都不会进，swingFacing 逐字等于 cameraYaw。
+   */
+  _assistFacing(cameraYaw) {
+    const a = this.assist;
+    if (!a || !a.enabled) return cameraYaw;
+    if (this.input && this.input._t - (this.input.lastLookAt ?? -Infinity) < 0.35) return cameraYaw;
+    const p = this.player.position;
+    const half = ((a.arcDeg * Math.PI) / 180) / 2;
+    let best = null;
+    let bestD = Infinity;
+    for (const t of this._collectTargets()) {
+      if (!t.alive) continue;
+      const dx = t.x - p.x;
+      const dz = t.z - p.z;
+      const d = Math.hypot(dx, dz);
+      if (d > a.range || d >= bestD) continue;
+      const want = Math.atan2(-dx, -dz); // yaw=0 面向 -Z，与全项目一致
+      let diff = want - cameraYaw;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      if (Math.abs(diff) > half) continue;
+      best = want;
+      bestD = d;
+    }
+    return best === null ? cameraYaw : best;
   }
 
   /** 判定生效 → 结算命中 */
@@ -254,7 +292,7 @@ export class PlayerCombat {
     });
 
     for (const t of found) {
-      const res = applyDamage(t, move, origin);
+      const res = applyDamage(t, move, origin, { damageMultiplier: this.mods.damage }); // ← P0-5 乘子（hitbox.js 本来就支持）
       seen.add(t.id);
       const p = this._poolOf(t);
       if (p) {
@@ -269,11 +307,13 @@ export class PlayerCombat {
       this.combo++;
       this.comboTimer = this.cfg.COMBO_WINDOW;
       this.maxCombo = Math.max(this.maxCombo, this.combo);
-      this.musou = Math.min(this.musouCfg.GAUGE_MAX, this.musou + (move.gain || 0));
+      this.musou = Math.min(this.musouCfg.GAUGE_MAX, this.musou + (move.gain || 0) * this.mods.musouGain);
 
       if (res.killed) {
         this.kills++;
         this.ki = Math.min(this.musouCfg.KI_MAX, this.ki + this.musouCfg.GAIN_ON_KILL);
+        // P0-5「饮血」：击杀回血（heal 早就在 controller 里，本批之前全项目 0 处调用）
+        if (this.mods.lifesteal > 0) this.player.heal(this.mods.lifesteal);
       }
       this.events.push({ type: 'damage', move, target: t, result: res, combo: this.combo });
     }
@@ -394,8 +434,8 @@ export class PlayerCombat {
   _updateSpecial(step, cameraYaw) {
     const M = this.musouCfg;
     const R = M.RANBU;
-    // 斗气自动恢复（★SPEC 每秒 1.2）
-    if (this.kiRegen > 0) this.ki = Math.min(M.KI_MAX, this.ki + this.kiRegen * step);
+    // 斗气自动恢复（★SPEC 每秒 1.2；P0-5 的「吐纳」只是给它一个乘子）
+    if (this.kiRegen > 0) this.ki = Math.min(M.KI_MAX, this.ki + this.kiRegen * this.mods.kiRegen * step);
 
     // 武艺冷却递减
     for (const id of ['art1', 'art2']) {
@@ -480,7 +520,7 @@ export class PlayerCombat {
         id: cfg.id, damage: cfg.DAMAGE, stun: cfg.STUN,
         knockback: cfg.KNOCKBACK, height: 1.1,
       };
-      const res = applyDamage(t, move, origin);
+      const res = applyDamage(t, move, origin, { damageMultiplier: this.mods.damage }); // ← P0-5 乘子
       const p = this._poolOf(t);
       if (p) {
         p.push(t, res.knock, move.knockback);
@@ -494,6 +534,7 @@ export class PlayerCombat {
       if (res.killed) {
         this.kills++;
         this.ki = Math.min(this.musouCfg.KI_MAX, this.ki + this.musouCfg.GAIN_ON_KILL);
+        if (this.mods.lifesteal > 0) this.player.heal(this.mods.lifesteal); // P0-5「饮血」对 AOE 击杀同样生效
       }
       n++;
       this.events.push({ type: 'damage', move, target: t, result: res, aoe: true, source: cfg.id });

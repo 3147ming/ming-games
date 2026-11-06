@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -21,16 +21,121 @@
     -webkit-font-smoothing: antialiased;
     display: flex; flex-direction: column; align-items: center;
     padding: 40px 14px 30px;
+    /* 安全区兜底：无刘海/无手势条的环境 env() 求值为 0，视觉与旧版完全一致 */
+    padding-left: calc(14px + env(safe-area-inset-left));
+    padding-right: calc(14px + env(safe-area-inset-right));
+    padding-bottom: calc(30px + env(safe-area-inset-bottom));
   }
   .hub-head { text-align: center; margin-bottom: 26px; }
   .hub-title { font-size: 30px; letter-spacing: .22em; margin: 0; font-weight: 600; }
   .hub-sub { font-size: 12px; letter-spacing: .3em; color: var(--gold); margin: 8px 0 0; }
 
+  /* ---------- A 包新增：平台层外壳（把工具栏 / 最近在玩 / 卡片网格竖着排） ---------- */
+  .hub-shell { width: min(94%, 760px); display: flex; flex-direction: column; gap: 16px; }
+
+  .hub-tools { display: flex; flex-direction: column; gap: 10px; }
+  .hub-search { position: relative; display: flex; align-items: center; }
+  .hub-search-ico {
+    position: absolute; left: 13px; font-size: 14px; opacity: .5; pointer-events: none;
+  }
+  #q {
+    width: 100%; min-height: 46px; padding: 0 46px 0 36px;
+    border: 1px solid var(--line); border-radius: 12px;
+    background: linear-gradient(180deg, var(--ink2), var(--ink));
+    color: var(--paper); font-family: inherit; font-size: 15px; letter-spacing: .04em;
+    -webkit-appearance: none; appearance: none;
+    transition: border-color .16s, box-shadow .16s;
+  }
+  #q::placeholder { color: #6b6357; }
+  #q:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 2px rgba(214,171,88,.14); }
+  #q::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+  .hub-clear {
+    position: absolute; right: 8px; width: 30px; height: 30px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line); border-radius: 50%;
+    background: rgba(10,9,8,.6); color: var(--paper-dim);
+    font: inherit; font-size: 16px; line-height: 1; cursor: pointer;
+    transition: color .15s, border-color .15s, transform .12s;
+  }
+  .hub-clear::before { content: ""; position: absolute; inset: -8px; border-radius: 50%; } /* 30+2×8-2×1 = 44px 热区 */
+  .hub-clear:hover { color: var(--gold); border-color: rgba(214,171,88,.55); }
+  .hub-clear:active { transform: scale(.9); }
+  .hub-clear[hidden] { display: none; }
+
+  .hub-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    min-height: 44px; padding: 0 15px;
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--line); border-radius: 999px;
+    background: rgba(20,17,13,.72); color: var(--paper-dim);
+    font-family: inherit; font-size: 13px; letter-spacing: .06em; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color .15s, color .15s, background .15s, transform .1s;
+  }
+  .chip:hover { border-color: rgba(214,171,88,.5); color: var(--paper); }
+  .chip:active { transform: scale(.96); }
+  .chip:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .chip[aria-pressed="true"] {
+    border-color: var(--gold); color: var(--gold); background: rgba(214,171,88,.13);
+  }
+
+  .hub-tags {
+    display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 4px;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .hub-tags::-webkit-scrollbar { display: none; }
+  .tag-chip {
+    flex: 0 0 auto; min-height: 44px; padding: 0 15px;
+    border: 1px solid var(--line); border-radius: 999px; background: transparent;
+    color: var(--paper-dim); font-family: inherit; font-size: 13px; letter-spacing: .06em;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+    transition: border-color .15s, color .15s, background .15s, transform .1s;
+  }
+  .tag-chip:hover { border-color: rgba(168,154,230,.5); color: var(--paper); }
+  .tag-chip:active { transform: scale(.96); }
+  .tag-chip:focus-visible { outline: 2px solid var(--flux); outline-offset: 2px; }
+  .tag-chip[aria-pressed="true"] {
+    border-color: var(--flux); color: var(--flux); background: rgba(168,154,230,.13);
+  }
+  .hub-count { margin: 0; font-size: 11px; letter-spacing: .1em; color: var(--paper-dim); }
+  .hub-count[hidden] { display: none; }
+
+  /* ---------- 最近在玩（横向列表，空态整块隐藏） ---------- */
+  .hub-recent { display: flex; flex-direction: column; gap: 8px; }
+  .hub-recent[hidden] { display: none; }
+  .hub-sec {
+    margin: 0; font-size: 11px; font-weight: 500; letter-spacing: .24em; color: var(--paper-dim);
+  }
+  .recent-row {
+    display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 6px;
+    scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .recent-row::-webkit-scrollbar { display: none; }
+  .recent-item {
+    flex: 0 0 auto; width: 84px; scroll-snap-align: start;
+    display: flex; flex-direction: column; gap: 6px; align-items: center;
+    text-decoration: none; color: inherit; -webkit-tap-highlight-color: transparent;
+  }
+  .recent-thumb {
+    width: 84px; height: 84px; border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--line); background: #0a0908;
+    transition: border-color .15s, transform .12s;
+  }
+  .recent-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .recent-item:hover .recent-thumb { border-color: var(--gold); }
+  .recent-item:active .recent-thumb { transform: scale(.95); }
+  .recent-name {
+    width: 100%; font-size: 11px; line-height: 1.3; color: var(--paper-dim);
+    text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* ---------- 卡片网格（结构 / 排序 / 视觉基调与旧版一致，只加星标与分类标签） ---------- */
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     align-items: start;
-    gap: 16px; width: min(94%, 760px);
+    gap: 16px; width: 100%;
   }
   .card {
     position: relative; border: 1px solid var(--line); border-radius: 16px;
@@ -49,8 +154,29 @@
   .card-cover img {
     width: 100%; height: auto; display: block;
   }
+  /* 骨架屏：只在「未加载完 / 加载失败」时用 aspect-ratio 撑出与真图一致的盒子
+     （--ar 由数据里的 ar 字段给出 = 该封面原始宽高比），因此图加载完替换时几乎无跳动。
+     纯 CSS，不新增图片、不引第三方库。 */
+  .card-cover.skel, .card-cover.failed { aspect-ratio: var(--ar, 3 / 4); min-height: 84px; }
+  .card-cover.skel::before {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(100deg, #16130f 28%, #262019 50%, #16130f 72%);
+    background-size: 240% 100%;
+    animation: hub-shimmer 1.25s linear infinite;
+  }
+  @keyframes hub-shimmer { from { background-position: 130% 0; } to { background-position: -130% 0; } }
+  /* 加载失败占位：纯 CSS 斜纹块 + 游戏名（不出现破图） */
+  .card-cover.failed::after {
+    content: attr(data-ph);
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    padding: 10px; text-align: center; font-size: 12px; line-height: 1.5; letter-spacing: .08em;
+    color: var(--paper-dim);
+    background: repeating-linear-gradient(45deg, #14110d 0 10px, #1a1611 10px 20px);
+  }
+  .card-cover.failed img { display: none; }
+
   .card-status {
-    position: absolute; top: 8px; right: 8px;
+    position: absolute; top: 8px; right: 46px; /* 让位给右上角星标 */
     font-size: 10px; letter-spacing: .12em; line-height: 1;
     padding: 5px 8px; border-radius: 999px;
     background: rgba(10,9,8,.72); backdrop-filter: blur(4px);
@@ -69,8 +195,34 @@
   .card-status.dev { color: var(--paper-dim); }
   .card-status.dev::before { background: var(--paper-dim); }
 
+  /* 收藏星标：视觉 30px，::before 把触控热区撑到 44×44（满足 ≥44px 要求） */
+  .card-fav {
+    position: absolute; top: 8px; right: 8px;
+    width: 30px; height: 30px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line); border-radius: 50%;
+    background: rgba(10,9,8,.72); backdrop-filter: blur(4px);
+    color: var(--paper-dim); font: inherit; font-size: 15px; line-height: 1; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: color .15s, border-color .15s, background .15s, transform .12s;
+  }
+  .card-fav::before { content: ""; position: absolute; inset: -8px; border-radius: 50%; } /* 30+2×8-2×1 = 44px 热区 */
+  .card-fav:hover { color: var(--gold); border-color: rgba(214,171,88,.6); }
+  .card-fav:active { transform: scale(.86); }
+  .card-fav:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .card-fav.on {
+    color: var(--gold); border-color: rgba(214,171,88,.7);
+    background: rgba(214,171,88,.16); text-shadow: 0 0 8px rgba(214,171,88,.55);
+  }
+
   .card-body { display: flex; flex-direction: column; gap: 8px; padding: 14px 14px 16px; flex: 1; }
   .card-name { font-size: 18px; letter-spacing: .06em; font-weight: 600; line-height: 1.25; }
+  .card-tag {
+    align-self: flex-start;
+    font-size: 10px; letter-spacing: .12em; line-height: 1;
+    padding: 4px 8px; border-radius: 999px;
+    color: var(--flux); border: 1px solid rgba(168,154,230,.32);
+  }
   .card-desc { font-size: 12px; line-height: 1.6; color: var(--paper-dim); margin: 0; }
   .card-enter {
     margin-top: auto; min-height: 44px;
@@ -82,8 +234,117 @@
   .card:hover .card-enter { background: rgba(214,171,88,.12); }
   .card.coming .card-enter { color: var(--paper-dim); border-color: var(--line); }
 
+  .hub-empty {
+    margin: 0; padding: 26px 16px; text-align: center;
+    font-size: 13px; line-height: 1.9; letter-spacing: .04em; color: var(--paper-dim);
+    border: 1px dashed var(--line); border-radius: 14px;
+  }
+  .hub-empty[hidden] { display: none; }
+  .hub-empty b { color: var(--paper); font-weight: 500; }
+
   .hub-foot { margin-top: 26px; font-size: 11px; line-height: 1.8; letter-spacing: .04em; color: var(--paper-dim); text-align: center; max-width: 560px; }
   .hub-foot b { color: var(--paper); font-weight: 500; }
+
+  /* ---------- 弹层（成就页 / 每日聚合页共用同一张 sheet） ---------- */
+  .hub-modal {
+    position: fixed; inset: 0; z-index: 60;
+    display: flex; align-items: flex-end; justify-content: center;
+    background: rgba(6,5,4,.72); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  }
+  .hub-modal[hidden] { display: none; }
+  .hub-sheet {
+    width: min(100%, 720px); max-height: 86vh; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 14px;
+    padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, #1a1611, #0f0d0a);
+    border: 1px solid var(--line); border-radius: 18px 18px 0 0;
+    animation: hub-rise .22s ease-out;
+    overscroll-behavior: contain;
+  }
+  @keyframes hub-rise { from { transform: translateY(20px); opacity: .35; } to { transform: none; opacity: 1; } }
+  .hub-sheet-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    position: sticky; top: -18px; padding: 6px 0 8px; margin-top: -6px;
+    background: linear-gradient(180deg, #1a1611 70%, rgba(26,22,17,0));
+  }
+  .hub-sheet-title { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: .14em; }
+  .hub-sheet-note { margin: 0; font-size: 11px; line-height: 1.7; color: var(--paper-dim); letter-spacing: .04em; }
+  .hub-sheet-close {
+    flex: 0 0 auto; width: 44px; height: 44px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line); border-radius: 12px;
+    background: transparent; color: var(--paper-dim);
+    font: inherit; font-size: 18px; line-height: 1; cursor: pointer;
+    transition: color .15s, border-color .15s, transform .12s;
+  }
+  .hub-sheet-close:hover { color: var(--gold); border-color: rgba(214,171,88,.5); }
+  .hub-sheet-close:active { transform: scale(.94); }
+
+  .ach-game {
+    border: 1px solid var(--line); border-radius: 14px;
+    background: rgba(20,17,13,.6); padding: 12px 13px 14px;
+    display: flex; flex-direction: column; gap: 9px;
+  }
+  .ach-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .ach-name { font-size: 15px; font-weight: 600; letter-spacing: .08em; }
+  .ach-state {
+    flex: 0 0 auto; font-size: 10px; letter-spacing: .12em; line-height: 1;
+    padding: 4px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--paper-dim);
+  }
+  .ach-state.on { color: var(--live); border-color: rgba(76,175,110,.4); }
+  .ach-rows { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+  .ach-kv {
+    display: inline-flex; align-items: baseline; gap: 6px;
+    font-size: 12px; line-height: 1.5; color: var(--paper);
+    border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px;
+    background: rgba(10,9,8,.45);
+  }
+  .ach-kv i { font-style: normal; color: var(--paper-dim); font-size: 11px; letter-spacing: .04em; }
+  .ach-none { margin: 0; font-size: 12px; color: var(--paper-dim); line-height: 1.7; }
+
+  .daily-item {
+    border: 1px solid var(--line); border-radius: 14px;
+    background: rgba(20,17,13,.6); padding: 12px 13px 13px;
+    display: flex; flex-direction: column; gap: 7px;
+  }
+  .daily-badge {
+    flex: 0 0 auto; font-size: 10px; letter-spacing: .12em; line-height: 1;
+    padding: 4px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--paper-dim);
+  }
+  .daily-badge.yes { color: var(--live); border-color: rgba(76,175,110,.4); }
+  .daily-badge.partial { color: var(--gold); border-color: rgba(214,171,88,.4); }
+  .daily-title { font-size: 13px; color: var(--paper); letter-spacing: .06em; }
+  .daily-note { margin: 0; font-size: 12px; line-height: 1.75; color: var(--paper-dim); }
+  .daily-where { margin: 0; font-size: 11px; line-height: 1.7; color: var(--paper-dim); letter-spacing: .04em; }
+  .daily-link {
+    align-self: flex-start; min-height: 44px; padding: 0 16px; margin-top: 2px;
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid rgba(214,171,88,.45); border-radius: 10px;
+    color: var(--gold); font-size: 13px; letter-spacing: .08em; text-decoration: none;
+    transition: background .15s, transform .12s;
+  }
+  .daily-link:hover { background: rgba(214,171,88,.12); }
+  .daily-link:active { transform: scale(.97); }
+  .daily-link[aria-disabled="true"] {
+    color: var(--paper-dim); border-color: var(--line); pointer-events: none; opacity: .55;
+  }
+
+  /* ---------- 无障碍：动效敏感者一律关掉动画 ---------- */
+  @media (prefers-reduced-motion: reduce) {
+    .card-cover.skel::before { animation: none; }
+    .hub-sheet { animation: none; }
+    .card, .chip, .tag-chip, .recent-thumb, .card-fav, .hub-clear, .daily-link, .hub-sheet-close,
+    .hub-recent, #q { transition: none; }
+    .card:hover { transform: none; }
+    .chip:active, .tag-chip:active, .card-fav:active, .hub-clear:active, .daily-link:active,
+    .recent-item:active .recent-thumb, .hub-sheet-close:active { transform: none; }
+  }
+
+  /* 桌面：弹层居中而不是贴底 */
+  @media (min-width: 700px) {
+    .hub-modal { align-items: center; padding: 24px; }
+    .hub-sheet { border-radius: 18px; }
+  }
 </style>
 </head>
 <body>
@@ -92,11 +353,51 @@
     <p class="hub-sub">GAME HUB</p>
   </header>
 
-  <main class="grid" id="grid"></main>
+  <div class="hub-shell">
+    <!-- 工具层：搜索 / 收藏筛选 / 成就 / 每日聚合 -->
+    <section class="hub-tools" aria-label="大厅工具">
+      <div class="hub-search">
+        <span class="hub-search-ico" aria-hidden="true">🔍</span>
+        <input id="q" type="search" inputmode="search" enterkeyhint="search" autocomplete="off"
+               aria-label="搜索游戏（中文名 / 英文名 / id / 关键字）"
+               placeholder="搜索游戏：中文名 / 英文名 / id / 关键字">
+        <button id="q-clear" class="hub-clear" type="button" aria-label="清除搜索" hidden>×</button>
+      </div>
+      <div class="hub-actions">
+        <button id="btn-fav" class="chip" type="button" aria-pressed="false">☆ 只看收藏</button>
+        <button id="btn-ach" class="chip" type="button">🏆 成就</button>
+        <button id="btn-daily" class="chip" type="button">📅 每日挑战</button>
+      </div>
+      <div class="hub-tags" id="tags" role="group" aria-label="按分类筛选分类"></div>
+      <p class="hub-count" id="count" hidden></p>
+    </section>
+
+    <!-- 最近在玩：空态整块隐藏 -->
+    <section class="hub-recent" id="recent" hidden aria-label="最近在玩">
+      <h2 class="hub-sec">最近在玩</h2>
+      <div class="recent-row" id="recent-row"></div>
+    </section>
+
+    <main class="grid" id="grid"></main>
+    <p class="hub-empty" id="empty" hidden></p>
+  </div>
 
   <footer class="hub-foot">
-    <b>存档说明</b>：各游戏存档保存在各自浏览器的本地（localStorage），<b>不同域名之间不互通</b> —— 例如荒野的旧档在 ming-game-0714 链有效，其他游戏从第一次进入开始累积。全部纯单机离线可玩。
+    <b>存档说明</b>：各游戏存档保存在各自浏览器的本地（localStorage），<b>不同域名之间不互通</b> —— 例如荒野的旧档在 ming-game-0714 链有效，其他游戏从第一次进入开始累积。全部纯单机离线可玩。<br>
+    <b>最近在玩 / 收藏 / 成就页</b>只存在你这台设备的大厅里（<code>hub.recent</code> / <code>hub.fav</code>），成就页对所有游戏存档<b>只读不写</b>。
   </footer>
+
+  <!-- 弹层：成就页与每日聚合页共用 -->
+  <div class="hub-modal" id="hub-modal" hidden role="dialog" aria-modal="true" aria-labelledby="hub-sheet-title">
+    <div class="hub-sheet" id="hub-sheet">
+      <div class="hub-sheet-head">
+        <h2 class="hub-sheet-title" id="hub-sheet-title">标题</h2>
+        <button class="hub-sheet-close" id="hub-sheet-close" type="button" aria-label="关闭">✕</button>
+      </div>
+      <p class="hub-sheet-note" id="hub-sheet-note"></p>
+      <div id="hub-sheet-body"></div>
+    </div>
+  </div>
 
 <script>
 /* 游戏总目录（数据驱动）：加新游戏 / 下线游戏 = 增减下面一条数据，
@@ -105,13 +406,26 @@
    order 越小越靠前；status: 'live' 已上线 / 'dev' 开发中。
    orientation: 'portrait' 竖屏 / 'landscape' 横屏 —— 封面整张按原图比例显示，
    绝不裁切，所以混排时卡片高度天然不同（对齐方式见 .grid 的 align-items）；
-   横屏游戏额外在封面左上角挂一枚「横屏」角标，提示玩家转屏。 */
+   横屏游戏额外在封面左上角挂一枚「横屏」角标，提示玩家转屏。
+   ── A 包新增字段（都是"加东西"，不影响已有排序与视觉基调）──
+   en  英文名（搜索用）；kw 关键字（中英混杂，搜索用，空格分隔）；
+   tag 分类（筛选用）；ar  封面原始宽高比（骨架屏占位用，与 covers/*.png 实测一致）。 */
+/* 同一份文件在两种托管下都能用（这是唯一与 ming-games 主站版的差异点，已做成自适应，
+   复制过去不用改任何一行）：
+     · GitHub Pages / Cloudflare Pages（ming-games）——游戏就在同源子目录，用相对路径；
+     · surge 入口镜像（本域只放大厅、不含游戏文件）——跳 pages.dev 主站。 */
+const BASE = /(^|\.)surge\.sh$/i.test(location.hostname) ? 'https://ming-games.pages.dev/' : '';
+
 const GAMES = [
   {
     id: 'wild',
     name: '荒野 WILD',
+    en: 'Wild',
     desc: '十分钟单局生存割草。四把武器、三系职业、秽气进化、长期成长与转生。',
+    kw: '荒野 割草 生存 肉鸽 roguelike 转生 武器 职业',
+    tag: '动作',
     cover: 'covers/wild.png',
+    ar: '780 / 1688',
     url: 'wild/',
     status: 'live',
     order: 1,
@@ -120,8 +434,12 @@ const GAMES = [
   {
     id: 'raid',
     name: '搜打撤',
+    en: 'Soudache Raid',
     desc: '3D 第一人称撤离射击。搜物资 → 交火变硬 → 活着撤离，带出去的才是你的。',
+    kw: '搜打撤 撤离 射击 塔科夫 FPS 3D 战利品 军械商',
+    tag: '射击',
     cover: 'covers/raid.png',
+    ar: '1280 / 800',
     url: 'soudache/',
     status: 'live',
     order: 2,
@@ -130,8 +448,12 @@ const GAMES = [
   {
     id: 'card',
     name: '一世一牌',
+    en: 'One Card',
     desc: '每一世只带回一张牌的卡牌肉鸽。你是死在第九层的无名氏，轮回不止。',
+    kw: '一世一牌 卡牌 肉鸽 roguelike 轮回 流派 遗物 难度阶梯',
+    tag: '卡牌',
     cover: 'covers/card.png',
+    ar: '780 / 1688',
     url: 'one-card/',
     status: 'live',
     order: 3,
@@ -140,8 +462,12 @@ const GAMES = [
   {
     id: 'gym',
     name: '脑力训练场',
+    en: 'Brain Gym',
     desc: '53 款脑力小游戏：记忆 / 反应 / 视觉 / 数学 / 益智，九大类每日开练。',
+    kw: '脑力 训练 记忆 反应 视觉 数学 益智 小游戏 每日挑战',
+    tag: '益智',
     cover: 'covers/gym.png',
+    ar: '1280 / 800',
     url: 'brain-gym/',
     status: 'live',
     order: 4,
@@ -150,8 +476,12 @@ const GAMES = [
   {
     id: 'sim',
     name: '夜班便利店',
+    en: 'Night Shift',
     desc: '深夜营业的 3D 模拟经营。补货、收银、应付奇奇怪怪的夜客，撑过七个夜班。',
+    kw: '夜班 便利店 模拟 经营 收银 补货 3D 上班',
+    tag: '模拟',
     cover: 'covers/sim.png',
+    ar: '1280 / 800',
     url: 'night-shift/',
     status: 'live',
     order: 5,
@@ -160,8 +490,12 @@ const GAMES = [
   {
     id: 'zhaoyun',
     name: '赵云与阿斗',
+    en: 'Zhaoyun',
     desc: '水墨风塔防原型。长坂坡七进七出，护住阿斗突出重围。',
+    kw: '赵云 阿斗 三国 塔防 水墨 长坂坡 修罗八阵 今日之战',
+    tag: '策略',
     cover: 'covers/zhaoyun.png',
+    ar: '780 / 1688',
     url: 'zhaoyun/',
     status: 'live',
     order: 6,
@@ -170,8 +504,12 @@ const GAMES = [
   {
     id: 'quiz',
     name: '知识问答',
+    en: 'Quiz',
     desc: '百词斩式分类刷题：分类书架 / 实力检测 / AI 建题库 / 错题本 / 背景音乐。',
+    kw: '问答 刷题 题库 错题本 知识 测验 选择题',
+    tag: '益智',
     cover: 'covers/quiz.png',
+    ar: '1200 / 1600',
     url: 'quiz/',
     status: 'live',
     order: 7,
@@ -180,8 +518,12 @@ const GAMES = [
   {
     id: 'lab',
     name: '电路实验模拟器',
+    en: 'Circuit Lab',
     desc: '面包板 / 数字实验箱上搭电路，实时算直流、数字与暂态，配万用表、示波器和 8 个示例实验。',
+    kw: '电路 面包板 示波器 万用表 物理 实验 模拟 数字电路',
+    tag: '模拟',
     cover: 'covers/lab.png',
+    ar: '1280 / 800',
     url: 'circuit-lab/',
     status: 'live',
     order: 8,
@@ -192,29 +534,613 @@ const GAMES = [
 const grid = document.getElementById('grid');
 const STATUS_TEXT = { live: '已上线', dev: '开发中' };
 
-[...GAMES]
-  .sort((a, b) => (a.order ?? 99) - (b.order ?? 99))
-  .forEach((g) => {
-    const live = g.status !== 'dev';
-    const landscape = g.orientation === 'landscape';
-    const card = document.createElement('a');
-    card.className = 'card' + (live ? '' : ' coming');
-    card.dataset.orientation = g.orientation || 'portrait';
-    card.href = live ? g.url : 'javascript:void(0)';
-    if (live) { card.target = '_blank'; card.rel = 'noopener'; }
-    card.innerHTML = `
-      <div class="card-cover">
-        <img src="${g.cover}" alt="${g.name} 封面" loading="lazy">
-        ${landscape ? '<span class="card-orient">横屏</span>' : ''}
-        <span class="card-status ${live ? 'live' : 'dev'}">${STATUS_TEXT[g.status] || g.status}</span>
-      </div>
-      <div class="card-body">
-        <span class="card-name">${g.name}</span>
-        <p class="card-desc">${g.desc}</p>
-        <span class="card-enter">${live ? '进入游戏 ▶' : '敬请期待'}</span>
-      </div>`;
-    grid.appendChild(card);
+/* ============================================================================
+ * A 包 · 平台层（最近在玩 / 收藏 / 搜索 / 分类 / 骨架屏 / 成就页 / 每日聚合）
+ * 唯一持久化 = localStorage；两个键：hub.recent / hub.fav
+ * ========================================================================== */
+const LS = { recent: 'hub.recent', fav: 'hub.fav' };
+const RECENT_MAX = 6;
+
+/** 全部读取都兜异常：隐私模式 / 配额写满 / 存档被手改成非法 JSON 都不许抛。 */
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
+function jparse(raw, def) {
+  if (raw == null) return def;
+  try { const o = JSON.parse(raw); return o == null ? def : o; } catch (e) { return def; }
+}
+function num(v, def) { const n = Number(v); return Number.isFinite(n) ? n : (def === undefined ? 0 : def); }
+function objKeys(o) { return o && typeof o === 'object' && !Array.isArray(o) ? Object.keys(o) : []; }
+/** 统计一个对象里"非空"的键数（用于图鉴 / 成就这类 {id:1} 结构）。 */
+function objTrue(o) { return objKeys(o).filter(function (k) { return !!o[k]; }).length; }
+function sumBy(o, f) { return objKeys(o).reduce(function (s, k) { return s + num(f(o[k])); }, 0); }
+function fmtSec(s) {
+  s = Math.max(0, Math.round(num(s)));
+  if (!s) return '—';
+  const m = Math.floor(s / 60);
+  return m + ':' + String(s % 60).padStart(2, '0');
+}
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+/** 本地日期键，与各游戏一致的 YYYY-MM-DD（不用 toISOString，避免东八区串日）。 */
+function todayKey(d) {
+  const t = d || new Date();
+  return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+}
+
+const GAME_BY_ID = new Map(GAMES.map(function (g) { return [g.id, g]; }));
+const ORDERED = GAMES.slice().sort(function (a, b) { return (a.order == null ? 99 : a.order) - (b.order == null ? 99 : b.order); });
+const TAGS = [];
+ORDERED.forEach(function (g) { if (g.tag && TAGS.indexOf(g.tag) < 0) TAGS.push(g.tag); });
+
+/* 检索串归一：小写 + 把 - _ / · 之类的分隔符统一成空格。
+   这样 id「one-card」用 one-card / one card 都搜得到，英文名大写也照搜。 */
+function norm(s) {
+  return String(s == null ? '' : s).toLowerCase()
+    .replace(/[-_/\\·,，、()（）]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+/* 每张卡的检索串：中文名 / 英文名 / id / 分类 / 关键字 / 简介 */
+ORDERED.forEach(function (g) {
+  g._hay = norm([g.name, g.en, g.id, g.tag, g.kw, g.desc].filter(Boolean).join(' '));
+});
+
+const state = { q: '', tag: '', favOnly: false, fav: loadFav() };
+
+/* ---------- 1. 最近在玩 ---------- */
+function loadRecent() {
+  const arr = jparse(lsGet(LS.recent), []);
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .filter(function (x) { return x && typeof x.id === 'string' && GAME_BY_ID.has(x.id); })
+    .map(function (x) { return { id: x.id, t: num(x.t) }; })
+    .sort(function (a, b) { return b.t - a.t; })
+    .slice(0, RECENT_MAX);
+}
+function pushRecent(id) {
+  if (!GAME_BY_ID.has(id)) return;
+  const list = loadRecent().filter(function (x) { return x.id !== id; });
+  list.unshift({ id: id, t: Date.now() });
+  lsSet(LS.recent, JSON.stringify(list.slice(0, RECENT_MAX)));
+}
+
+/* ---------- 2. 收藏 ---------- */
+function loadFav() {
+  const arr = jparse(lsGet(LS.fav), []);
+  const set = new Set();
+  if (Array.isArray(arr)) arr.forEach(function (x) { if (typeof x === 'string' && GAME_BY_ID.has(x)) set.add(x); });
+  return set;
+}
+function toggleFav(id) {
+  if (state.fav.has(id)) state.fav.delete(id); else state.fav.add(id);
+  lsSet(LS.fav, JSON.stringify(Array.from(state.fav)));
+  return state.fav.has(id);
+}
+
+/* ---------- 3. 卡片渲染（骨架屏 / 星标 / 分类标签） ---------- */
+function hrefOf(g) { return g.status === 'dev' ? 'javascript:void(0)' : BASE + g.url; }
+function isLive(g) { return g.status !== 'dev'; }
+
+function buildCard(g) {
+  const live = isLive(g);
+  const landscape = g.orientation === 'landscape';
+  const fav = state.fav.has(g.id);
+  const card = document.createElement('a');
+  card.className = 'card' + (live ? '' : ' coming');
+  card.dataset.orientation = g.orientation || 'portrait';
+  card.dataset.id = g.id;
+  card.setAttribute('data-tag', g.tag || '');
+  card.href = hrefOf(g);
+  if (live) { card.target = '_blank'; card.rel = 'noopener'; }
+  card.innerHTML =
+    '<div class="card-cover skel" style="--ar:' + esc(g.ar) + '" data-ph="' + esc(g.name) + ' · 封面加载失败">' +
+      '<img src="' + esc(g.cover) + '" alt="' + esc(g.name) + ' 封面" loading="lazy" decoding="async">' +
+      (landscape ? '<span class="card-orient">横屏</span>' : '') +
+      '<span class="card-status ' + (live ? 'live' : 'dev') + '">' + (STATUS_TEXT[g.status] || g.status) + '</span>' +
+      '<button class="card-fav' + (fav ? ' on' : '') + '" type="button" aria-pressed="' + fav + '"' +
+        ' aria-label="' + (fav ? '取消收藏 ' : '收藏 ') + esc(g.name) + '"' +
+        ' title="' + (fav ? '取消收藏' : '收藏') + '">' + (fav ? '★' : '☆') + '</button>' +
+    '</div>' +
+    '<div class="card-body">' +
+      '<span class="card-name">' + esc(g.name) + '</span>' +
+      (g.tag ? '<span class="card-tag">' + esc(g.tag) + '</span>' : '') +
+      '<p class="card-desc">' + esc(g.desc) + '</p>' +
+      '<span class="card-enter">' + (live ? '进入游戏 ▶' : '敬请期待') + '</span>' +
+    '</div>';
+
+  /* 骨架屏收尾：load 去掉 shimmer 露出真图；error 换成纯 CSS 占位块（绝不出现破图） */
+  const cover = card.querySelector('.card-cover');
+  const img = card.querySelector('img');
+  const done = function () { cover.classList.remove('skel'); };
+  img.addEventListener('load', done);
+  img.addEventListener('error', function () { cover.classList.remove('skel'); cover.classList.add('failed'); });
+  if (img.complete && img.naturalWidth > 0) done();   /* 命中缓存时 load 可能已经错过 */
+
+  /* 星标点击：不进入游戏（<a> 里，所以 preventDefault + stopPropagation 两道都要） */
+  const star = card.querySelector('.card-fav');
+  star.addEventListener('click', function (ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const on = toggleFav(g.id);
+    star.classList.toggle('on', on);
+    star.textContent = on ? '★' : '☆';
+    star.setAttribute('aria-pressed', String(on));
+    star.setAttribute('aria-label', (on ? '取消收藏 ' : '收藏 ') + g.name);
+    star.title = on ? '取消收藏' : '收藏';
+    if (state.favOnly) renderGrid();  /* 只看收藏时，取消收藏应当立刻消失 */
+    else updateCount();
   });
+
+  /* 进入游戏时记一笔「最近在玩」（开发中的卡不记） */
+  card.addEventListener('click', function () { if (live) pushRecent(g.id); });
+
+  return card;
+}
+
+function renderGrid() {
+  const q = norm(state.q);
+  const terms = q ? q.split(' ').filter(Boolean) : [];
+  const hit = ORDERED.filter(function (g) {
+    if (state.favOnly && !state.fav.has(g.id)) return false;
+    if (state.tag && g.tag !== state.tag) return false;
+    if (!terms.length) return true;
+    return terms.every(function (t) { return g._hay.indexOf(t) >= 0; });
+  });
+
+  grid.innerHTML = '';
+  hit.forEach(function (g) { grid.appendChild(buildCard(g)); });
+
+  const empty = document.getElementById('empty');
+  if (!hit.length) {
+    let msg;
+    if (state.favOnly && !state.fav.size) msg = '还没有收藏 —— 点卡片右上角的 <b>☆</b> 就能收藏，收藏只存在你这台设备上。';
+    else if (state.favOnly) msg = '收藏的游戏都被关键词/分类挡掉了 —— 清掉搜索或分类再试。';
+    else if (terms.length) msg = '没有找到匹配 <b>' + esc(state.q.trim()) + '</b> 的游戏 —— 换个关键词，或点搜索框右侧的 × 看全部。';
+    else if (state.tag) msg = '「<b>' + esc(state.tag) + '</b>」分类下暂时没有游戏。';
+    else msg = '没有可显示的游戏。';
+    empty.innerHTML = msg;
+    empty.hidden = false;
+  } else {
+    empty.hidden = true;
+    empty.innerHTML = '';
+  }
+  updateCount(hit.length);
+}
+
+function updateCount(n) {
+  const el = document.getElementById('count');
+  const filtering = !!(state.q.trim() || state.tag || state.favOnly);
+  if (!filtering) { el.hidden = true; el.textContent = ''; return; }
+  const shown = n == null ? grid.querySelectorAll('.card').length : n;
+  el.textContent = '显示 ' + shown + ' / ' + ORDERED.length + ' 款' +
+    (state.tag ? ' · 分类「' + state.tag + '」' : '') +
+    (state.favOnly ? ' · 只看收藏' : '');
+  el.hidden = false;
+}
+
+/* ---------- 最近在玩：横向列表（空态不显示） ---------- */
+function renderRecent() {
+  const host = document.getElementById('recent');
+  const row = document.getElementById('recent-row');
+  const list = loadRecent();
+  if (!list.length) { host.hidden = true; row.innerHTML = ''; return; }
+  host.hidden = false;
+  row.innerHTML = list.map(function (it) {
+    const g = GAME_BY_ID.get(it.id);
+    if (!g) return '';
+    const live = isLive(g);
+    return '<a class="recent-item" data-id="' + esc(g.id) + '" href="' + esc(hrefOf(g)) + '"' +
+      (live ? ' target="_blank" rel="noopener"' : '') + '>' +
+      '<span class="recent-thumb"><img src="' + esc(g.cover) + '" alt="" loading="lazy" decoding="async"></span>' +
+      '<span class="recent-name">' + esc(g.name) + '</span></a>';
+  }).join('');
+  Array.prototype.forEach.call(row.querySelectorAll('.recent-item'), function (el) {
+    el.addEventListener('click', function () { pushRecent(el.dataset.id); });
+  });
+}
+
+/* ---------- 4. 工具栏事件 ---------- */
+function renderTags() {
+  const host = document.getElementById('tags');
+  const all = [{ t: '', label: '全部' }].concat(TAGS.map(function (t) { return { t: t, label: t }; }));
+  host.innerHTML = all.map(function (x) {
+    return '<button class="tag-chip" type="button" data-tag="' + esc(x.t) + '" aria-pressed="' +
+      (state.tag === x.t) + '">' + esc(x.label) + '</button>';
+  }).join('');
+  Array.prototype.forEach.call(host.querySelectorAll('.tag-chip'), function (btn) {
+    btn.addEventListener('click', function () {
+      state.tag = btn.dataset.tag || '';
+      Array.prototype.forEach.call(host.querySelectorAll('.tag-chip'), function (b) {
+        b.setAttribute('aria-pressed', String((b.dataset.tag || '') === state.tag));
+      });
+      renderGrid();
+    });
+  });
+}
+
+function bindTools() {
+  const q = document.getElementById('q');
+  const clear = document.getElementById('q-clear');
+  /* 输入即过滤：直接绑 input，不加防抖/节流（8 条数据没有任何延迟感可言） */
+  q.addEventListener('input', function () {
+    state.q = q.value;
+    clear.hidden = !q.value;
+    renderGrid();
+  });
+  clear.addEventListener('click', function () {
+    q.value = '';
+    state.q = '';
+    clear.hidden = true;
+    q.focus();
+    renderGrid();
+  });
+
+  const favBtn = document.getElementById('btn-fav');
+  favBtn.addEventListener('click', function () {
+    state.favOnly = !state.favOnly;
+    favBtn.setAttribute('aria-pressed', String(state.favOnly));
+    favBtn.textContent = (state.favOnly ? '★' : '☆') + ' 只看收藏';
+    renderGrid();
+  });
+
+  document.getElementById('btn-ach').addEventListener('click', openAchievements);
+  document.getElementById('btn-daily').addEventListener('click', openDaily);
+}
+
+/* ============================================================================
+ * 5. 跨游戏成就页（**只读**：整页不调用任何 setItem，除了大厅自己的弹层状态无持久化）
+ *    任何键缺失 / JSON 损坏 / 隐私模式 => 该行显示「—」，整款显示「未开始」，绝不报错。
+ * ========================================================================== */
+function rowsOf(pairs) {
+  return pairs.filter(function (p) { return p && p[1] !== undefined; })
+    .map(function (p) { return { k: p[0], v: p[1] }; });
+}
+function kv(label, v) { return [label, (v === undefined || v === null || v === '') ? '—' : String(v)]; }
+function pctStr(a, b) { return b > 0 ? Math.round((a / b) * 100) + '%' : '—'; }
+
+/** 荒野 WILD：wild.meta.v2 / wild.best.v1 / wild.achieve.v1 / wild.daily.v1 / wild.codex.v1 / wild.challenge.v1 */
+function readWild() {
+  const meta = jparse(lsGet('wild.meta.v2'), null);
+  const best = jparse(lsGet('wild.best.v1'), null);
+  const ach = jparse(lsGet('wild.achieve.v1'), null);
+  const daily = jparse(lsGet('wild.daily.v1'), null);
+  const codex = jparse(lsGet('wild.codex.v1'), null);
+  const ch = jparse(lsGet('wild.challenge.v1'), null);
+  const lvSum = sumBy(meta && meta.levels, function (v) { return v; });
+  const unlocked = ach && Array.isArray(ach.unlocked) ? ach.unlocked.length : 0;
+  const started = !!(meta || best || ach || daily || codex || ch);
+  return {
+    started: started,
+    rows: rowsOf([
+      kv('灵魂', meta ? num(meta.souls) : undefined),
+      kv('属性等级合计', meta ? 'Lv.' + lvSum : undefined),
+      kv('转生', meta ? num(meta.rebirth) + ' 次' : undefined),
+      kv('最长存活', best ? fmtSec(best.bestSec) : undefined),
+      kv('最高击杀', best ? num(best.bestKills) : undefined),
+      kv('最高等级', best ? 'Lv.' + num(best.bestLevel) : undefined),
+      kv('成就', ach ? unlocked + ' 个' : undefined),
+      kv('图鉴', codex ? objTrue(codex) + ' 条' : undefined),
+      kv('今日任务完成', daily && Array.isArray(daily.done) ? daily.done.length + ' 项' : undefined),
+      kv('今日挑战', ch && ch.best ? num(ch.best.score) + ' 分 / ' + num(ch.runs) + ' 局' : undefined),
+    ]),
+  };
+}
+
+/** 搜打撤 SOUDACHE：soudache.save.v1 */
+function readRaid() {
+  const s = jparse(lsGet('soudache.save.v1'), null);
+  const st = s && s.stats ? s.stats : null;
+  const started = !!s;
+  return {
+    started: started,
+    rows: rowsOf([
+      kv('突袭次数', st ? num(st.raids) : undefined),
+      kv('成功撤离', st ? num(st.extracts) + '（撤离率 ' + pctStr(num(st.extracts), num(st.raids)) + '）' : undefined),
+      kv('阵亡', st ? num(st.deaths) : undefined),
+      kv('累计击杀', st ? num(st.kills) : undefined),
+      kv('最高分', st ? num(st.bestScore) : undefined),
+      kv('最高带出价值', st ? num(st.bestValue) : undefined),
+      kv('连续撤离', st ? num(st.streak) + ' 次' : undefined),
+      kv('每日突袭', st ? num(st.dailyCount) + ' 次' : undefined),
+      kv('军械商声望', s && s.rep ? num(s.rep.xp) + ' XP' : undefined),
+      kv('图鉴（见过/带出）', s && s.codex ? objTrue(s.codex.seen) + ' / ' + objTrue(s.codex.brought) : undefined),
+      kv('成就', s ? objKeys(s.achievements).length + ' 个' : undefined),
+    ]),
+  };
+}
+
+/** 一世一牌 ONE-CARD：one-card:save:v1 / one-card:daily:v1 */
+function readCard() {
+  const m = jparse(lsGet('one-card:save:v1'), null);
+  const d = jparse(lsGet('one-card:daily:v1'), null);
+  const today = d && d.date === todayKey() ? d : null;
+  return {
+    started: !!(m || d),
+    rows: rowsOf([
+      kv('轮回局数', m ? num(m.runs) : undefined),
+      kv('通关次数', m ? num(m.wins) : undefined),
+      kv('最深节点', m ? num(m.bestFloor) : undefined),
+      kv('难度阶梯', m ? '修罗 ' + num(m.ascension) + ' 层' : undefined),
+      kv('解锁卡牌', m && Array.isArray(m.unlockedCards) ? m.unlockedCards.length + ' 张' : undefined),
+      kv('解锁遗物', m && Array.isArray(m.unlockedRelics) ? m.unlockedRelics.length + ' 件' : undefined),
+      kv('累计时长', m ? num(m.totalMinutes).toFixed(1) + ' 分钟' : undefined),
+      kv('今日之牌', today && today.best
+        ? (today.best.cleared ? '已通关' : num(today.best.nodes) + ' 节点') : undefined),
+    ]),
+  };
+}
+
+/** 脑力训练场 BRAIN-GYM：bt_* / bt2_* / bd_coins */
+function readGym() {
+  const cnt = jparse(lsGet('bt_cnt'), null);
+  const ach = jparse(lsGet('bt_ach'), null);
+  const streak = jparse(lsGet('bt_streak'), null);
+  const keys = allKeys();
+  let bestMax = 0, bestHits = 0;
+  keys.forEach(function (k) {
+    if (k.indexOf('bt2_') !== 0) return;
+    const v = num(lsGet(k));
+    if (v > 0) bestHits += 1;
+    if (v > bestMax) bestMax = v;
+  });
+  const played = cnt ? objKeys(cnt).filter(function (k) { return num(cnt[k]) > 0; }).length : 0;
+  const total = cnt ? sumBy(cnt, function (v) { return v; }) : 0;
+  const started = !!(cnt || ach || streak || bestHits || num(lsGet('bt_exp')) || num(lsGet('bd_coins')));
+  return {
+    started: started,
+    rows: rowsOf([
+      kv('累计练习', total + ' 局'),
+      kv('玩过的项目', played + ' 款'),
+      kv('有纪录的项目', bestHits + ' 款'),
+      kv('段位经验', num(lsGet('bt_exp')) + ' EXP'),
+      kv('段位', '🥉🥈🥇💎👑🏆 第 ' + (num(lsGet('bt_rank')) + 1) + ' 档'),
+      kv('连续天数', streak ? num(streak.n) + ' 天' : undefined),
+      kv('每日挑战完成', num(lsGet('bt_daily_n')) + ' 次'),
+      kv('成就', ach && Array.isArray(ach) ? ach.length + ' 个' : undefined),
+      kv('金币', num(lsGet('bd_coins'))),
+    ]),
+  };
+}
+
+/** 夜班便利店 NIGHT-SHIFT：nightshift.save.v1[.账号] / nightshift.records.v1 */
+function readSim() {
+  const keys = allKeys();
+  const saveKeys = keys.filter(function (k) { return k.indexOf('nightshift.save.v1') === 0; });
+  let s = null, usedKey = '';
+  saveKeys.forEach(function (k) {
+    if (s) return;
+    const o = jparse(lsGet(k), null);
+    if (o && o.state) { s = o; usedKey = k; }
+  });
+  const st = s && s.state ? s.state : null;
+  const rec = jparse(lsGet('nightshift.records.v1'), null);
+  const recN = rec ? objKeys(rec).length : 0;
+  return {
+    started: !!s,
+    rows: rowsOf([
+      kv('当前夜班', st ? '第 ' + num(st.night) + ' 夜' : undefined),
+      kv('周目', st ? '第 ' + num(st.week) + ' 周' : undefined),
+      kv('现金', s && s.wallet ? num(s.wallet.cash) : undefined),
+      kv('代币', s && s.wallet ? num(s.wallet.tokens) : undefined),
+      kv('已服务顾客', st ? num(st.served) : undefined),
+      kv('营业额', st ? num(st.revenue) : undefined),
+      kv('星级', st ? num(st.star) + ' 星' : undefined),
+      kv('成就', st ? objKeys(st.achievements).length + ' 个' : undefined),
+      kv('本地纪录', recN ? recN + ' 项' : undefined),
+      kv('存档键', usedKey || undefined),
+    ]),
+  };
+}
+
+/** 赵云与阿斗 ZHAOYUN：zhaoyun_* */
+function readZhaoyun() {
+  const stars = (lsGet('zhaoyun_stars') || '').replace(/[^0-9]/g, '');
+  let starSum = 0;
+  for (let i = 0; i < stars.length; i += 1) starSum += num(stars[i]);
+  const achv = jparse(lsGet('zhaoyun_achv'), null);
+  const codex = jparse(lsGet('zhaoyun_codex'), null);
+  const daily = jparse(lsGet('zhaoyun_daily'), null);
+  const today = daily && daily.date === todayKey() ? daily : null;
+  const touched = ['zhaoyun_level', 'zhaoyun_stars', 'zhaoyun_wave_best', 'zhaoyun_kill_total', 'zhaoyun_achv', 'zhaoyun_codex', 'zhaoyun_daily']
+    .some(function (k) { return lsGet(k) != null; });
+  return {
+    started: touched,
+    rows: rowsOf([
+      kv('关卡进度', '第 ' + (num(lsGet('zhaoyun_level')) + 1) + ' 关'),
+      kv('军衔', '第 ' + (num(lsGet('zhaoyun_rank')) + 1) + ' 级'),
+      kv('总星数', starSum + ' / 40'),
+      kv('无尽最高波', num(lsGet('zhaoyun_wave_best'))),
+      kv('累计击杀', num(lsGet('zhaoyun_kill_total'))),
+      kv('成就', achv ? objKeys(achv).length + ' 个' : undefined),
+      kv('图鉴', codex ? objTrue(codex) + ' 条' : undefined),
+      kv('今日之战', today ? num(today.stars) + ' 星 / 第 ' + (num(today.levelIdx) + 1) + ' 关' : undefined),
+    ]),
+  };
+}
+
+/** 知识问答 QUIZ：bt_qa_stats / bt_qa_best / bt_qa_weak / bt_qa_daily */
+function readQuiz() {
+  const st = jparse(lsGet('bt_qa_stats'), null);
+  const best = jparse(lsGet('bt_qa_best'), null);
+  const weak = jparse(lsGet('bt_qa_weak'), []);
+  const daily = jparse(lsGet('bt_qa_daily'), null);
+  const n = st ? sumBy(st, function (o) { return o && o.n; }) : 0;
+  const c = st ? sumBy(st, function (o) { return o && o.c; }) : 0;
+  let bestMax = 0;
+  objKeys(best).forEach(function (k) { if (num(best[k]) > bestMax) bestMax = num(best[k]); });
+  const td = daily ? daily[todayKey()] : null;
+  return {
+    started: !!(st || best || (Array.isArray(weak) && weak.length) || daily),
+    rows: rowsOf([
+      kv('累计答题', n + ' 题'),
+      kv('答对', c + ' 题（正确率 ' + pctStr(c, n) + '）'),
+      kv('练过的分类', objKeys(st).length + ' 个'),
+      kv('最高分', bestMax ? bestMax : undefined),
+      kv('错题本', Array.isArray(weak) ? weak.length + ' 题' : undefined),
+      kv('今日做题', td ? num(td.n) + ' 题（对 ' + num(td.c) + '）' : undefined),
+    ]),
+  };
+}
+
+/** 电路实验模拟器 CIRCUIT-LAB：lab-sim-progress / lab-sim-circuit-<expId> */
+function readLab() {
+  const prog = jparse(lsGet('lab-sim-progress'), null);
+  const opened = prog ? objKeys(prog).length : 0;
+  const opens = prog ? sumBy(prog, function (o) { return o && o.openedCount; }) : 0;
+  const circuitKeys = allKeys().filter(function (k) { return k.indexOf('lab-sim-circuit-') === 0; });
+  return {
+    started: !!(prog || circuitKeys.length),
+    rows: rowsOf([
+      kv('打开过的实验', opened + ' 个'),
+      kv('累计打开次数', opens),
+      kv('保存的电路', circuitKeys.length + ' 份'),
+    ]),
+  };
+}
+
+const ACH_READERS = {
+  wild: readWild, raid: readRaid, card: readCard, gym: readGym,
+  sim: readSim, zhaoyun: readZhaoyun, quiz: readQuiz, lab: readLab,
+};
+
+/** 扫一遍 localStorage 的名字（成就页用；隐私模式下拿不到就返回空数组，不报错）。 */
+function allKeys() {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const k = localStorage.key(i);
+      if (k != null) out.push(k);
+    }
+  } catch (e) { /* 隐私模式 / 被禁用：当作没有任何键 */ }
+  return out;
+}
+
+function openAchievements() {
+  const parts = ORDERED.map(function (g) {
+    const reader = ACH_READERS[g.id];
+    let res = { started: false, rows: [] };
+    try { res = reader ? reader() : res; } catch (e) { res = { started: false, rows: [] }; }
+    const rows = (res.rows || []).map(function (r) {
+      return '<span class="ach-kv"><i>' + esc(r.k) + '</i>' + esc(r.v) + '</span>';
+    }).join('');
+    return '<div class="ach-game" data-game="' + esc(g.id) + '">' +
+      '<div class="ach-head">' +
+        '<span class="ach-name">' + esc(g.name) + '</span>' +
+        '<span class="ach-state' + (res.started ? ' on' : '') + '">' + (res.started ? '已有存档' : '未开始') + '</span>' +
+      '</div>' +
+      (res.started && rows
+        ? '<div class="ach-rows">' + rows + '</div>'
+        : '<p class="ach-none">未开始 —— 玩过一局后这里会出现进度摘要。</p>') +
+    '</div>';
+  }).join('');
+  openSheet('成就总览', '各游戏的<b>本地存档读取摘要</b>（最高分 / 最深层 / 已通关数 / 图鉴 / 成就）。本页<b>只读不写</b>，不会改动任何游戏存档；键缺失或存档损坏一律显示「未开始」或「—」。', parts);
+}
+
+/* 每日聚合：逐款核对过源码（见交付报告），有就给入口、没有就如实写「该游戏暂无每日」 */
+const DAILY_INFO = {
+  wild: {
+    level: 'yes', badge: '有每日', title: '每日挑战 + 每日任务',
+    note: '每日挑战：固定日种子（daily-YYYY-MM-DD，同一天全局一致），本地榜只留当天；每日任务：每日 3 条、按日重置，完成后在标题页领灵魂。',
+    where: '入口：进入游戏 → 标题页「每日任务」面板 / 挑战入口（无 URL 深链）',
+  },
+  raid: {
+    level: 'yes', badge: '有每日', title: '每日突袭',
+    note: '种子由本地日期散列得出（soudache-daily-YYYYMMDD），全服同一张图；当天只记最好的一局，跨天自然重置，撤离成功计入「每日三餐」成就。',
+    where: '入口：进入游戏 → 主菜单「每日突袭」按钮（无 URL 深链）',
+  },
+  card: {
+    level: 'yes', badge: '有每日', title: '今日之牌',
+    note: '日期决定流派与种子（daily-YYYY-MM-DD），同日重开完全一致；每日局成绩单独记在 one-card:daily:v1，不污染普通局统计。',
+    where: '入口：进入游戏 → 标题页「今日之牌」按钮；本作支持深链 ?daily=1',
+    deep: '?daily=1',
+  },
+  gym: {
+    level: 'yes', badge: '有每日', title: '每日挑战',
+    note: '按日种子（YYYYMMDD 做随机种子）从 20 款里固定抽 3 款；3 项都刷到正向指数即「今日挑战完成」+15 EXP，另有连续天数打卡。',
+    where: '入口：进入游戏 → 首页「每日挑战」卡（无 URL 深链）',
+  },
+  sim: {
+    level: 'no', badge: '暂无每日', title: '暂无每日玩法',
+    note: '该游戏暂无每日挑战 / 每日任务机制。源码里唯一的「每日」是账号「重开」的每日 3 次配额（reset.mjs / config.mjs 的 daily-limit），属于防刷限额，不是每日玩法。',
+    where: '入口：—',
+  },
+  zhaoyun: {
+    level: 'yes', badge: '有每日', title: '今日之战',
+    note: '每日按日期固定阵图与关卡（每日固定修罗 1 层），当天记录最高星级，跨日自动作废。',
+    where: '入口：进入游戏 → 主菜单「今日之战」（无 URL 深链）',
+  },
+  quiz: {
+    level: 'partial', badge: '仅每日统计', title: '没有每日挑战玩法',
+    note: '该游戏没有「每日挑战」玩法，只有每日做题统计：bt_qa_daily 记每天题数 / 正确数（保留最近 30 天）并画趋势图 —— 是统计维度，不是固定日种子的挑战局。',
+    where: '入口：进入游戏 → 统计页看每日趋势',
+  },
+  lab: {
+    level: 'no', badge: '暂无每日', title: '暂无每日玩法',
+    note: '该游戏暂无每日挑战 / 每日任务机制（存档只有实验打开记录与电路草稿）。',
+    where: '入口：—',
+  },
+};
+
+function openDaily() {
+  const parts = ORDERED.map(function (g) {
+    const info = DAILY_INFO[g.id] || { level: 'no', badge: '暂无每日', title: '暂无每日玩法', note: '该游戏暂无每日机制。', where: '入口：—' };
+    const live = isLive(g);
+    const href = info.deep ? (BASE + g.url + info.deep) : hrefOf(g);
+    const link = live
+      ? '<a class="daily-link" href="' + esc(href) + '" target="_blank" rel="noopener">' +
+          (info.deep ? '直达今日之牌 ▸' : '进入游戏 ▸') + '</a>'
+      : '<a class="daily-link" aria-disabled="true" href="javascript:void(0)">敬请期待</a>';
+    return '<div class="daily-item" data-game="' + esc(g.id) + '" data-level="' + info.level + '">' +
+      '<div class="ach-head">' +
+        '<span class="ach-name">' + esc(g.name) + '</span>' +
+        '<span class="daily-badge ' + info.level + '">' + esc(info.badge) + '</span>' +
+      '</div>' +
+      '<p class="daily-title">' + esc(info.title) + '</p>' +
+      '<p class="daily-note">' + esc(info.note) + '</p>' +
+      '<p class="daily-where">' + esc(info.where) + '</p>' +
+      link +
+    '</div>';
+  }).join('');
+  openSheet('每日挑战', '把各游戏的「今日 / 每日」入口集中在这里。<b>本列表逐款核对过各游戏源码</b>：真有每日机制才给入口，没有就如实写「该游戏暂无每日」，不伪造不存在的功能。', parts);
+}
+
+/* ---------- 弹层开关 ---------- */
+let lastFocus = null;
+function openSheet(title, note, bodyHTML) {
+  document.getElementById('hub-sheet-title').textContent = title;
+  document.getElementById('hub-sheet-note').innerHTML = note;
+  document.getElementById('hub-sheet-body').innerHTML = bodyHTML;
+  const modal = document.getElementById('hub-modal');
+  lastFocus = document.activeElement;
+  modal.hidden = false;
+  document.body.style.overflow = 'hidden';
+  document.getElementById('hub-sheet-close').focus();
+}
+function closeSheet() {
+  const modal = document.getElementById('hub-modal');
+  if (modal.hidden) return;
+  modal.hidden = true;
+  document.body.style.overflow = '';
+  document.getElementById('hub-sheet-body').innerHTML = '';
+  if (lastFocus && lastFocus.focus) { try { lastFocus.focus(); } catch (e) { /* 忽略 */ } }
+}
+function bindSheet() {
+  document.getElementById('hub-sheet-close').addEventListener('click', closeSheet);
+  document.getElementById('hub-modal').addEventListener('click', function (ev) {
+    if (ev.target && ev.target.id === 'hub-modal') closeSheet();  /* 点遮罩关闭 */
+  });
+  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closeSheet(); });
+}
+
+/* ---------- 启动 ---------- */
+renderTags();
+bindTools();
+bindSheet();
+renderGrid();
+renderRecent();
 </script>
 </body>
 </html>

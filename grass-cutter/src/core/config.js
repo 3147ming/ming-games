@@ -78,6 +78,18 @@ export const CAMERA = {
 
   FOLLOW_K: 0.08, // ★SPEC 平滑跟随插值系数（在 60fps 下的每帧插值比例）
 
+  // ── 第 4 批 P1-2：镜头朝向提前量与 FOV 冲击（都不动 ★SPEC 的 8m/4m/±60°）──
+  //   提前量：注视点沿玩家水平速度方向前移 min(LOOK_AHEAD_MAX, |v|·LOOK_AHEAD_K) 米。
+  //   走路 4.2m/s → 1.47m，闪避 8.5m/s → 被钳到 2.5m，静止时恒为 0。
+  LOOK_AHEAD_K: 0.35,
+  LOOK_AHEAD_MAX: 2.5,
+  //   FOV 冲击：重击/C 技命中时推近 FOV_PUNCH_DEG 度，再用 FOV_PUNCH_K 的阻尼弹回。
+  //   ⚠ FOV_PUNCH_K 走 cameraMath.damp()，那里的 k 会被钳到 [0,1]（语义是"60fps 下的每帧插值比"，
+  //     不是"每秒速率"）。填 12 会被钳成 1 = 一帧直接归零，冲击根本看不见。
+  //     0.25 约 0.3s 回到基准（3° → 1.5° 约 0.08s）
+  FOV_PUNCH_DEG: 3,
+  FOV_PUNCH_K: 0.25,
+
   // ——— 碰撞 ———
   COLLIDE_ENABLED: true, // ★SPEC 摄像机碰撞检测
   COLLIDE_MARGIN: 0.35, // 命中点再往里退这么多，避免近平面切进墙里
@@ -113,6 +125,7 @@ export const PLAYER = {
   RADIUS: 0.45, // 碰撞半径
   HEIGHT: 1.8, // 站立高度（模块 3/4 的受击盒要用同一个数）
   HP: 100, // ★SPEC 玩家最大生命值（模块 5/7/8 的血条与胜负判定都读它）
+  HURT_IFRAME: 0.22, // 第 3 批 P0-3 受击后短无敌：防"被 35 个插槽围殴时一刀接一刀"（100 血 1 秒掉 30 的元凶）
   WALK_SPEED: 4.2, // ★SPEC 基础移动速度 m/s
   ACCEL: 30, // 未 spec：达到全速约 0.14s（下面是手感补的，不是 spec）
   DECEL: 36, // 未 spec：松手停下约 0.12s
@@ -514,6 +527,13 @@ export const STAGE = {
   KILLS_TO_CONTEST: 60, // 杂兵阶段累计击杀到这个数 → 进入"据点争夺"阶段
   PHASES: ['frontline', 'contest', 'boss'], // 线性三阶段
   RESPAWN_DELAY_BASE: 6.0, // 杂兵重生基础间隔（受士气拉伸）
+  // 第 3 批 P0-6：阶段压力表。⚠ 不改 MAX_ACTIVE(45) 这个常量（config.test.mjs L336 钉死它），
+  //   只在运行期把 enemyPool.aliveCap 与攻击插槽容量压到这里的值。
+  PRESSURE: {
+    frontline: { active: 28, attackers: 14, dmg: 0.8 },
+    contest:   { active: 38, attackers: 22, dmg: 1.0 },
+    boss:      { active: 45, attackers: 26, dmg: 1.1 },
+  },
 };
 
 /**
@@ -548,6 +568,8 @@ export const BOSS = {
 // ─────────────────────────────────────────────────────────────── 渲染
 export const RENDER = {
   MAX_PIXEL_RATIO: 2,
+  MOBILE_MAX_PIXEL_RATIO: 1.5, // 第 3 批 P1-4 触屏设备首帧像素比上限（3x 屏按 1.5 渲染，约省 44% 像素）
+  LOW_END_SHADOW: true,        // 第 3 批 P1-4 允许把"关阴影"作为第 5 档降级手段
   TONE_MAPPING_EXPOSURE: 1.0, // ACES 显影曝光：用来压住 1.2+0.3 的光量，不动 spec 光强
   SHADOW_TYPE_PCF: true,
   POWER_PREFERENCE: 'high-performance',
@@ -702,6 +724,15 @@ export const INKFX = {
   RING_WAVE_OPACITY: 0.95, // 起始不透明度（普通环 0.8）
   RING_WAVE_R0: 1, // ★SPEC 起始半径 1m
 
+  // ── 第 4 批 P0-3：轻击命中的「小而淡的冲击环」──
+  //   轻击（N1~N5 连点）是割草最高频动作，原来只有墨点 + 弱震 + 飘字，连点手感偏软。
+  //   刻意比重击环**更短更淡**（0.2s / 0.5 不透明度），不与重击的 0.25s + 0.3s 墨浪环抢戏。
+  RING_LIGHT_ENABLED: true,
+  RING_LIGHT_LIFE: 0.2,
+  RING_LIGHT_MUL: 0.5, // 终点半径 = 打击盒半径 × 0.5
+  RING_LIGHT_R0: 0.4,
+  RING_LIGHT_OPACITY: 0.5,
+
   // ── 模块 13：敌人墨烟消散（击杀时的小墨浪 + 墨点爆开）──
   DEATH_POOF_RADIUS: 0.8, // ★SPEC 小墨浪环半径 0.8m
   DEATH_POOF_LIFE: 0.3,
@@ -849,6 +880,14 @@ export const INK_UI = {
   FONT: '"Ma Shan Zheng","ZCOOL XiaoWei","STKaiti","KaiTi","Kaiti SC",serif', // 毛笔书法字体栈
   LOW_HP: 0.25, // 血量≤25% 血条闪烁
   SCROLL_BANNER: { open: 0.6, hold: 2.5, close: 0.5 }, // 卷轴横幅（0.6s 展开 / 停留 2.5s / 0.5s 收卷）
+  // ── 第 4 批 P1-4：把散落在 characters.js / main.js / enemyMesh.js 的硬编码杂色收编进三色体系 ──
+  //   ⚠ 原本太刀刀刃 emissive 是亮青 0x66ccff、金饰是 0xc9a24a、敌人肤色是肉色 0xb98a63，
+  //     三样都不属于「墨灰 + 朱砂 + 淡青黛蓝」，近景割草时会冒出一堆不属于水墨基调的颜色。
+  KATANA_GLOW: 0x3a6f8a,   // 太刀刀刃自发光 = 淡青黛蓝（原 0x66ccff 亮青）
+  KATANA_GUARD: 0x3a3a3e,  // 刀镡/护手 = 墨阶（原 0xc9a24a 金）
+  HERO_TRIM: 0xb5322a,     // 主角胸甲饰件 = 朱砂（唯一强调色，让主角一眼可辨）
+  BOSS_TRIM: 0xb5322a,     // Boss 肩甲/大刀 = 朱砂（原 0xc9a24a 金）
+  ENEMY_SKIN: 0x8e8b86,    // 杂兵肤色 = 压饱和的墨灰（原 0xb98a63 肉色）
 };
 
 export const AUDIO = {

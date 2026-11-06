@@ -28,7 +28,7 @@ import {
   SphereGeometry,
   Vector3,
 } from '../../vendor/three/three.module.js';
-import { HERO, PLAYER } from '../core/config.js';
+import { HERO, INK_UI, PLAYER } from '../core/config.js';
 import { computeHeroTarget } from './heroMap.js';
 
 /**
@@ -127,9 +127,10 @@ function roughnessTexture() {
  * @returns {{group:object, blade:object, matBlade:object}}
  */
 export function createKatana() {
-  const matBlade = new MeshStandardMaterial({ color: 0xdfe6ee, roughness: 0.2, metalness: 0.9, emissive: new Color(0x66ccff), emissiveIntensity: 0.15 });
+  // 第 4 批 P1-4：刀刃自发光与刀镡都收编进水墨三色（原亮青 0x66ccff / 金 0xc9a24a 游离在体系外）
+  const matBlade = new MeshStandardMaterial({ color: 0xdfe6ee, roughness: 0.2, metalness: 0.9, emissive: new Color(INK_UI.KATANA_GLOW), emissiveIntensity: 0.15 });
   const matWood = new MeshStandardMaterial({ color: 0x6b4f2f, roughness: 0.85, metalness: 0.05 });
-  const matTrim = new MeshStandardMaterial({ color: 0xc9a24a, roughness: 0.4, metalness: 0.6 });
+  const matTrim = new MeshStandardMaterial({ color: INK_UI.KATANA_GUARD, roughness: 0.4, metalness: 0.6 });
   const group = new Group();
   const pole = new Mesh(new CylinderGeometry(0.035, 0.035, 1.4, 8), matWood); pole.position.y = -0.5; group.add(pole);
   const guard = new Mesh(new BoxGeometry(0.18, 0.05, 0.08), matTrim); guard.position.y = 0.12; group.add(guard);
@@ -155,7 +156,7 @@ class HeroAnimator {
     });
     const matSkin = new MeshStandardMaterial({ color: 0xc99a6a, roughness: 0.8, metalness: 0.05 });
     const matCloth = new MeshStandardMaterial({ color: HERO.BODY_ALBEDO, roughness: 0.95, metalness: 0.0, side: DoubleSide });
-    const matTrim = new MeshStandardMaterial({ color: 0xc9a24a, roughness: 0.4, metalness: 0.6 });
+    const matTrim = new MeshStandardMaterial({ color: INK_UI.HERO_TRIM, roughness: 0.4, metalness: 0.6 }); // 第 4 批 P1-4：朱砂强调
 
     // 层级
     this.hips = new Group(); this.hips.position.y = 0.95; root.add(this.hips);

@@ -46,10 +46,14 @@ import { CombatUi } from './ui/combatUi.js';
 import { MoveList } from './ui/moveList.js';
 // ── 模块 5–8：无双/武艺(纯逻辑已在 playerCombat)、据点士气、关卡流程、Boss、正式战场 UI ──
 import { CaptureSystem } from './game/points.js';
-import { Stage } from './game/stage.js';
+import { Stage, resyncAlive as resyncAlivePool } from './game/stage.js';
 import { BossController } from './combat/boss.js';
 import { BattleHud } from './ui/battleHud.js';
 import { DefenseSystem } from './combat/defense.js';
+// ── 第 3 批 P0-5：局内成长（纯逻辑 + 卡池 + 三选一弹层）
+import { RunProgress } from './game/progression.js';
+import { CARDS, drawThree } from './game/cards.js';
+import { LevelUpPanel } from './ui/levelUp.js';
 // ── 模块 10/11：水墨后处理 / 环境氛围 / 风草 / 贴花 / 武将模型 / 时间通道 / 水墨战斗特效 / 战斗音效 ──
 import { PostFX } from './core/postfx.js';
 import { enhanceWorld } from './core/environment.js';
@@ -64,6 +68,9 @@ import { InkFx } from './combat/inkFx.js';
 import { AudioManager } from './audio/sfx.js';
 
 const hud = new DebugHud();
+// P0-7：调试面板默认**收起**。它固定左上、min-width 356px，375 宽竖屏上会盖掉大半个画面
+// （还压着准星）。手机上按 F3 仍要能打开 —— 所以是"收起来"而不是"在 CSS 里禁掉"。
+hud.show(false);
 const fatal = (msg) => {
   hud.set('warn', msg);
   const box = document.getElementById('fatal') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'fatal', className: 'fatal' }));
@@ -86,7 +93,11 @@ try {
 }
 renderer.outputColorSpace = SRGBColorSpace;
 renderer.setSize(window.innerWidth, window.innerHeight, false);
-configureRenderer(renderer, { maxPixelRatio: RENDER.MAX_PIXEL_RATIO, exposure: RENDER.TONE_MAPPING_EXPOSURE });
+// 粗指针设备（手机/平板）：P0-1 的触屏层与 P1-4 的首帧像素比都要读它，只声明这一次
+const coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+// P1-4：像素比上限是**可变**的 —— 降级到第 4 档要把它压到 1，转屏时也不许被打回 2x
+let currentMaxRatio = coarse ? RENDER.MOBILE_MAX_PIXEL_RATIO : RENDER.MAX_PIXEL_RATIO;
+configureRenderer(renderer, { maxPixelRatio: currentMaxRatio, exposure: RENDER.TONE_MAPPING_EXPOSURE });
 
 // ─────────────────────────────────────────────── 场景 + 世界
 const scene = new Scene();
@@ -148,6 +159,9 @@ attachHeroOutline(playerMesh);
 if (HERO.ASSET_PATH) {
   const ph = createSilhouette();
   scene.add(ph);
+  // 第 4 批 P1-6：外部模型加载有感知（纯文案，不新增进度条）
+  const bootLine = boot?.querySelector('.boot-line');
+  if (bootLine) bootLine.textContent = '正在载入武将模型…';
   loadHeroAsset().then((asset) => {
     scene.remove(ph);
     if (!asset) return; // 失败：保留程序化武将
@@ -186,6 +200,10 @@ if (decalPool?.ok && world.layout?.roads?.length) {
 const timeControl = new TimeControl();
 const audio = new AudioManager();
 
+// ── 第 4 批 P1-1：无障碍「减弱动态效果」。命中则关震屏与全屏纸闪；
+//    ⚠ 顿帧与无双慢动作**保留**（顿帧是打击感核心、慢动作不产生空间位移，都不会引起晕动）。
+const reducedMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
 // 开局别让镜头从原点飞过来：直接落到位、朝向也对上
 rig.setTarget(player.position);
 rig.setLook(world.layout.spawn.yaw, 0);
@@ -214,7 +232,25 @@ const enemyPool = new EnemyPool({
 const enemyRenderer = new EnemyRenderer(scene, { maxCount: ENEMY.COUNT + 64, stateRings: DEBUG.ENEMY_STATE_RINGS });
 
 const combat = new PlayerCombat({ player, input, pools: [dummyPool, enemyPool] });
+
+// ── 触屏（P0-1）：只在粗指针设备上接管；桌面一行都不执行（coarse 见渲染器那段）。
+//    ⚠ 这块必须放在 combat 构造之后：P0-2 要在这里打开触屏辅助朝向，写前面会踩 TDZ。
+if (coarse) {
+  const touchRoot = document.getElementById('touch');
+  input.attachTouch(touchRoot);
+  if (touchRoot) touchRoot.hidden = false;
+  document.body.classList.add('touch');
+  document.getElementById('hint')?.classList.add('hide');
+  // P0-2：触屏攻击自动朝向（只吸镜头前 160°/4.5m 内最近的那个，背身挥刀不会自动回头）
+  combat.assist.enabled = true;
+}
+// 手机浏览器要求用户手势后才允许出声：首个 pointerdown 解一次（不重做 #boot）
+window.addEventListener('pointerdown', () => audio.resume(), { once: true });
 const inkFx = new InkFx(scene, { camera, timeControl, decals: decalPool, audio });
+// 第 4 批 P1-1：系统开「减弱动态效果」→ 关震屏与全屏纸闪（顿帧/慢动作保留）
+if (reducedMotion) inkFx.setMotion({ shake: false, paper: false });
+// 第 4 批 P1-2：重击/C 技命中 → 镜头 FOV 短促推近再弹回（无双/武艺不触发）
+inkFx.onHeavyHit = () => rig.punchFov(rig.cfg.FOV_PUNCH_DEG);
 const combatUi = new CombatUi();
 // 模块 7：正式战场 UI（BattleHud）接管了血条/无双槽/击杀/据点，旧的临时面板退役。
 // 只隐藏它的文字面板；保留它的"受击红晕"作为玩家挨打反馈（flashHit 走的是独立的 vignette 元素）。
@@ -226,9 +262,48 @@ const capture = new CaptureSystem();
 const stage = new Stage();
 const battleHud = new BattleHud();
 const defense = new DefenseSystem(); // 防御/卸势（2026-09-25，机制见 combat/defense.js）
+
+// ── 局内成长（P0-5）：run 是唯一真相，combat.mods 与它**共用同一个对象**（加点即时生效）
+const run = new RunProgress();
+const runPanel = new LevelUpPanel();
+combat.mods = run.mods;
+let runPaused = false;   // 本批唯一的暂停标志（P1-1 切后台与 P0-5 升级弹层共用）
+
+// ── 暂停（P1-1）：切后台自动暂停 + 右上角 Ⅱ 键。⚠ 不复用 MUSOU.hold()：
+//    那是探针的抓拍冻结接口，语义被占用会让归因变乱（held 与 runPaused 是两个独立标志）。
+const setPaused = (on) => {
+  const blocked = !on && (run.pending > 0 || runPanel.open); // 升级弹层期间不许"继续"把游戏放开
+  runPaused = !!on || blocked;
+  // 暂停那一刻把"按下沿"丢掉：切后台/暂停期间手指按的技能不该在恢复后补发（P1-1 的本意之一）
+  if (runPaused) input.pressedAt.clear();
+  if (runPaused && !blocked) battleHud.showPause(); else battleHud.hidePause();
+};
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPaused(true); });
+battleHud.onPause = () => setPaused(true);
+battleHud.onResume = () => setPaused(false);
+
 // 开局就把同屏并发压到 STAGE.MAX_ACTIVE(45)，并把冗余敌人休眠；给据点指派守卫。
 stage.start(enemyPool);
 stage.setupGuards(enemyPool);
+
+// ── 阶段压力（P0-6）：aliveCap 只管"重生上限"，已经站着的 45 个人不会自己变少，
+//    被休眠的也不会自己回来 —— 所以加压与减压都要显式做一次。dormant 的语义与
+//    stage.start()（stage.js）完全一致：不参战、不渲染、不计击杀。
+let pressureDmg = 1;
+
+function applyPressure() {
+  const P = STAGE.PRESSURE[stage.phase] ?? STAGE.PRESSURE.frontline;
+  enemyPool.aliveCap = P.active;
+  enemyPool.director.slots.setCapacity(P.attackers);
+  pressureDmg = P.dmg;
+  resyncAlive(P.active);
+}
+
+function resyncAlive(target) {
+  return resyncAlivePool(enemyPool, target, player.position);
+}
+
+applyPressure(); // 开局先按 frontline 压到 28
 
 // Boss 作为 combat 的一个独立靶池存在（复用命中结算），但单独渲染、单独行为（BossController）。
 // 开局不激活（alive=false），关卡推进到 boss 阶段触发时再摆位 + 实例化 BossController。
@@ -243,9 +318,16 @@ combat.pools.push(bossPool);
 let boss = null; // BossController 实例（阶段触发时创建）
 let bossMesh = null; // 独立网格
 let victoryShown = false;
+let defeatShown = false;      // 战败只结算一次（P0-3）
+let lastHurt = null;          // { x, z, t }：最近一次受击的来源与时刻（P1-3 的箭头要用）
+let hurtUiAt = -Infinity;     // P1-3 限频用（10Hz）
 // 招式表 / 教学提示：按 N1、N2、C3、C4、C5 显示，**不出现 C1/C2**
 // （C1/C2 就是 N1/N2 本身，一个动作两个名字只会让文案和数值各说各的）
 const moveList = new MoveList();
+// P0-7 的延伸：招式表是 322px 宽、整篇键盘/鼠标键位（「鼠标左键 / N」「TAB」「F 按住」），
+// 375 宽竖屏上它会铺满整屏并压住血条与目标条 —— 那正是 P0-7 要消灭的"首屏一堆看不懂的读数"。
+// 桌面上保持原样（F2 开关）；手机上默认收起，售后/自查仍可用 MUSOU.moveList.show(true) 调出来。
+if (coarse) moveList.show(false);
 // 右键是重攻击：不拦掉浏览器菜单的话，一按蓄力就弹出菜单，蓄力直接中断
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -279,7 +361,7 @@ function createBossMesh() {
   const g = new Group();
   g.name = 'boss-mesh';
   const mat = new MeshStandardMaterial({ color: 0x6b1f1f, roughness: 0.7, metalness: 0.15 });
-  const trim = new MeshStandardMaterial({ color: 0xc9a24a, roughness: 0.5, metalness: 0.4 });
+  const trim = new MeshStandardMaterial({ color: INK_UI.BOSS_TRIM, roughness: 0.5, metalness: 0.4 }); // 第 4 批 P1-4：金 → 朱砂
   const body = new Mesh(new CylinderGeometry(BOSS.RADIUS * 0.85, BOSS.RADIUS, BOSS.HEIGHT * 0.62, 12), mat);
   body.position.y = BOSS.HEIGHT * 0.31;
   const head = new Mesh(new BoxGeometry(BOSS.RADIUS * 1.1, BOSS.HEIGHT * 0.32, BOSS.RADIUS * 1.1), mat);
@@ -318,6 +400,8 @@ function resize() {
   const h = window.innerHeight;
   camera.aspect = w / Math.max(1, h);
   camera.updateProjectionMatrix();
+  // P1-4：像素比在这里重设（用 currentMaxRatio，避免降档后转屏又被写回 2x）
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, currentMaxRatio));
   renderer.setSize(w, h, false);
   // 描边宽度是屏幕像素，换视口就要重设分辨率（否则窗口变高后描边按比例变粗）
   const ol = playerMesh.userData.inkOutline;
@@ -339,19 +423,49 @@ let simTime = 0; // 累计**仿真**时间（钳制后的 dt 之和）
 let lastDt = 0;
 let held = false; // 抓拍冻结位（见下方 MUSOU.hold）
 let enemyHitsTaken = 0; // 玩家被敌人打中的累计次数（HUD 读数）
-let degradeStep = 0;    // 性能降级档位 0=全开 1=关泛光 2=关草 3=关水墨粒子/残影
+let degradeStep = 0;    // 性能降级档位 0=全开 1=关泛光 2=关草 3=关水墨粒子/残影 4=像素比→1 5=关阴影
 let lowFpsAccum = 0;    // 累计低帧时长（秒），用于触发降级
 
-// 性能降级：按档位逐级关模块 10/11 的效果，保护模块 9 的 60fps 目标
+// 性能降级：按档位逐级关模块 10/11 的效果，保护模块 9 的 60fps 目标。
+// 第 3 批 P1-4：从 3 档扩到 5 档 —— 原来"像素比"与"阴影"这两个最贵的开关永远摸不到。
 function applyDegrade(step) {
   if (step >= 1 && postfx && postfx.ok) postfx.setBloomEnabled(false);
   if (step >= 2 && grassField) grassField.setVisible(false);
   if (step >= 3 && inkFx) inkFx.setDegrade({ ink: false });
+  if (step >= 4) { currentMaxRatio = 1; resize(); } // ⚠ 先改档位再 resize，否则会被 resize 写回去
+  if (step >= 5 && RENDER.LOW_END_SHADOW) {
+    // 一次性重编译，只在跨档那一帧执行；绝不能放进 tick()
+    renderer.shadowMap.enabled = false;
+    scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; });
+  }
 }
 // 敌人 AI 的 ctx：**复用同一个对象**。每帧新建一个的话，
 // 60fps × 每秒 60 个对象不算什么，但里面装着 shapes 与 others 两个引用，
 // 一旦哪天有人不小心把 others 写成新数组，就是每帧 160 元素的分配 —— 直接原地复用堵掉这条路。
 const ectx = { x: 0, z: 0, invincible: false, shapes, others: dummyPool.alive };
+
+// ── 玩家唯一扣血入口（P0-3）：敌人路径与 Boss 路径都走这里，
+//    这样"受击无敌 / 掉血浮字 / 战败判定"只需要写一遍。
+//    ⚠ defeatShown / lastHurt / hurtUiAt 已在上面 victoryShown 旁声明，这里直接用。
+function hurtPlayer(amount, fromX, fromZ) {
+  const dealt = player.damage(amount);
+  if (dealt <= 0) return 0;                      // 被无敌吃掉（闪避/无双/卸势），什么都不做
+  player.grantInvincible(PLAYER.HURT_IFRAME);     // 0.22s 短无敌（已有 API，取 max 不覆盖）
+  lastHurt = { x: fromX, z: fromZ, t: simTime };
+  // 掉血浮字：与卸势火花走同一条 inkFx damage 链路（带 hitPoint 就会浮数字）
+  inkFx.handle([{
+    type: 'damage',
+    move: { id: 'HURT', damage: dealt, reach: 1.2 },
+    result: { killed: false, damage: dealt, hitPoint: { x: player.position.x, y: 1.2, z: player.position.z } },
+  }]);
+  if (!player.alive && !defeatShown) {
+    defeatShown = true;
+    combat.chain.reset();       // 0 血后不该再累积连段（chain.js reset）
+    battleHud.hideBoss();
+    battleHud.showDefeat({ kills: enemyPool.kills, elapsed: stage.elapsed });
+  }
+  return dealt;
+}
 
 function tick() {
   const raw = clock.getDelta();
@@ -361,9 +475,9 @@ function tick() {
   //   为什么不干脆"不再排下一帧"：那样画面只能靠合成器残留，preserveDrawingBuffer=false
   //   时不保证还在；持续重绘同一状态才是稳的。刀光只亮 0.2s、火花只活 0.16s，而 CDP 一次
   //   captureScreenshot 往返就跨过整个窗口 —— 不冻结根本拍不到命中帧。
-  if (held) dt = 0;
-  // 通关后：冻结仿真、只保持渲染（结算面板已弹出），主循环继续存活以便探针/截图。
-  if (victoryShown) {
+  if (held || runPaused) dt = 0;
+  // 通关 / 战败后：冻结仿真、只保持渲染（结算面板已弹出），主循环继续存活以便探针/截图。
+  if (victoryShown || defeatShown) {
     if (postfx) postfx.render(); else renderer.render(scene, camera);
     frame++;
     window.MUSOU.frame = frame;
@@ -399,9 +513,24 @@ function tick() {
   // 模块 12 描边：武艺是**瞬发**的（combat 里没有持续状态位），只能靠事件"闪"一段朱砂红；
   // 无双有 ranbuTimer 天然可持续，直接读状态即可，这里一并刷新只是让闪窗覆盖整个乱舞。
   for (const ev of combat.events) {
-    if (ev.type === 'art') cinnabarTimer = Math.max(cinnabarTimer, HERO.OUTLINE_ART_FLASH);
+    if (ev.type === 'damage' && ev.result?.killed) run.addKill(1); // P0-5：击杀得经验
+    else if (ev.type === 'art') cinnabarTimer = Math.max(cinnabarTimer, HERO.OUTLINE_ART_FLASH);
     else if (ev.type === 'musou-release') cinnabarTimer = Math.max(cinnabarTimer, ev.duration || HERO.OUTLINE_ART_FLASH);
   }
+
+  // 升级 → 三选一（P0-5）。⚠ 一次升级可能 pending > 1（连杀跨两级），选完继续弹下一张。
+  function pickCards() {
+    input.pressedAt.clear(); // 弹层期间按下的攻击/闪避不该在恢复后补发
+    runPanel.show(drawThree(CARDS, run.taken), (card) => {
+      run.take(card);
+      player.maxHp = PLAYER.HP + run.mods.maxHpBonus;
+      player.heal(20);                                // 走已有的 heal()（controller.js）
+      player.hp = Math.min(player.hp, player.maxHp);  // 背水那类减上限的卡不许把血留在外面
+      if (run.pending > 0) pickCards();
+      else { runPanel.hide(); runPaused = false; }
+    });
+  }
+  if (run.pending > 0 && !runPanel.open) { runPaused = true; pickCards(); }
   inkFx.handle(combat.events);
   if (cinnabarTimer > 0) cinnabarTimer = Math.max(0, cinnabarTimer - dt);
   {
@@ -436,7 +565,7 @@ function tick() {
   ectx.z = player.position.z;
   ectx.invincible = snap.invincible;
   // 模块 6：把士气换算的"攻击减伤 / 重生拉长"缩放写进敌人 ctx（enemyPool.update 不会覆盖这两个字段）
-  enemyPool.ctx.damageScale = capture.attackScale;
+  enemyPool.ctx.damageScale = capture.attackScale * pressureDmg; // 士气 × 阶段，两个乘子叠加
   enemyPool.ctx.respawnScale = capture.respawnScale;
   // 练武场的草人也参与分离：不让一群敌人直接从草人身上穿过去（看着很假）
   enemyPool.update(pdt, combat.time, ectx);
@@ -459,7 +588,7 @@ function tick() {
       } else {
         combatUi.flashHit(res.type === 'block' ? 0.35 : 1); // 防住的攻击只给弱红晕
         enemyHitsTaken++;
-        player.damage(ev.damage * res.damageScale);
+        hurtPlayer(ev.damage * res.damageScale, ev.enemy.x, ev.enemy.z);
       }
     }
   }
@@ -479,6 +608,7 @@ function tick() {
     if (ev.type === 'phase') {
       if (ev.to === 'contest') battleHud.setPhaseLabel('据点争夺');
       else if (ev.to === 'boss') battleHud.setPhaseLabel('Boss 战');
+      applyPressure(); // P0-6：换阶段就换档（28 → 38 → 45）
       if (ev.bossSpawn) spawnBoss();
     } else if (ev.type === 'victory' && !victoryShown) {
       victoryShown = true;
@@ -506,7 +636,7 @@ function tick() {
           }]);
         } else {
           combatUi.flashHit(res.type === 'block' ? 0.35 : 1);
-          player.damage(ev.damage * res.damageScale);
+          hurtPlayer(ev.damage * res.damageScale, bossTarget.x, bossTarget.z);
         }
       }
     }
@@ -529,16 +659,28 @@ function tick() {
     musouRatio: cSnap.musouRatio,
     musouReady: cSnap.musouReady,
     musouMax: MUSOU.GAUGE_MAX,
+    ki: cSnap.ki,                 // 第 4 批 P0-1：斗气槽
+    kiRatio: cSnap.kiRatio,
+    kiMax: MUSOU.KI_MAX,
     art1: cSnap.art1,
     art2: cSnap.art2,
     kills: kills,
     points: capture.snapshot().points,
     morale: capture.morale,
+    run: run.snapshot(), // P0-5：等级与经验条
+    stage: stage.snapshot(), // P1-2：阶段目标条
   });
+
+  // 受击方向（P1-3）：10Hz 足够，别每帧写 DOM
+  if (lastHurt && simTime - lastHurt.t < 0.9 && simTime - hurtUiAt >= 0.1) {
+    hurtUiAt = simTime;
+    const rel = Math.atan2(-(lastHurt.x - player.position.x), -(lastHurt.z - player.position.z)) - rig.yaw;
+    battleHud.showHurtFrom(rel);
+  }
 
   inkFx.update(dt, combat.fxState(), player);
 
-  rig.setTarget(player.position);
+  rig.setTarget(player.position, player.velocity); // 第 4 批 P1-2：第二参 = 水平速度，用于朝向提前量
   lastDebug = rig.update(dt);
   // 镜头震动（命中 / 无双 / 武艺触发，由 inkFx 累积，纯视觉不进玩法时间）
   if (inkFx) {
@@ -560,10 +702,11 @@ function tick() {
   fpsFrames++;
   if (fpsAccum >= 0.5) {
     fps = fpsFrames / fpsAccum;
-    // 性能降级：持续低于 40fps 时逐级关效果（泛光 → 草 → 水墨粒子/残影），保护模块 9 的 60fps 目标
+    // 性能降级：持续低于 40fps 时逐级关效果（泛光 → 草 → 水墨粒子/残影 → 像素比 → 阴影），
+    // 保护模块 9 的 60fps 目标
     if (fps < 40) {
       lowFpsAccum += 0.5;
-      if (lowFpsAccum >= 1.0 && degradeStep < 3) { degradeStep++; applyDegrade(degradeStep); lowFpsAccum = 0; }
+      if (lowFpsAccum >= 1.0 && degradeStep < 5) { degradeStep++; applyDegrade(degradeStep); lowFpsAccum = 0; }
     } else {
       lowFpsAccum = 0;
     }
@@ -805,6 +948,35 @@ window.MUSOU = {
   },
   setMusou: (v) => { combat.musou = Math.max(0, Math.min(MUSOU.GAUGE_MAX, v)); },
   setKi: (v) => { combat.ki = Math.max(0, Math.min(MUSOU.KI_MAX, v)); },
+  // ── 第 3 批 P0-5：局内成长（探针用 MUSOU.run.level / runSnapshot() 验验收）
+  run,
+  runPanel,
+  runSnapshot: () => run.snapshot(),
+  /** 探针用：把待选卡次数直接设成 n（不开弹层也能验 HUD 与暂停语义） */
+  setPending: (n) => { run.pending = Math.max(0, n | 0); return run.pending; },
+  // ── 第 3 批 P1-4：画质降级（探针用 MUSOU.degrade() 读像素比/阴影真实档位）
+  applyDegrade,
+  degrade: () => ({
+    step: degradeStep,
+    maxPixelRatio: currentMaxRatio,
+    pixelRatio: renderer.getPixelRatio(),
+    shadow: renderer.shadowMap.enabled,
+    bloom: !!(postfx && postfx.ok),
+    coarse,
+  }),
+  // ── 第 3 批 P1-1：暂停（探针用；与 hold() 的抓拍语义**完全分开**）
+  pause: (on = true) => { setPaused(on); return runPaused; },
+  isPaused: () => runPaused,
+  // ── 第 3 批 P0-6：阶段压力（探针用它验"28 → 38 → 45"与插槽容量）
+  applyPressure,
+  resyncAlive,
+  pressure: () => ({
+    phase: stage.phase,
+    dmg: pressureDmg,
+    aliveCap: enemyPool.aliveCap,
+    attackers: enemyPool.director.slots.capacity,
+    active: STAGE.PRESSURE[stage.phase] ?? STAGE.PRESSURE.frontline,
+  }),
 };
 
 boot.classList.add('gone');
@@ -812,6 +984,6 @@ requestAnimationFrame(tick);
 console.log(
   '[传统割草游戏] 模块5-8 已启动（无双/武艺 · 据点/士气 · 战场UI · 关卡/Boss）',
   JSON.stringify(world.stats),
-  `敌人 ${enemyPool.count}（同屏上限 ${STAGE.MAX_ACTIVE} · 攻击插槽 ${ENEMY_AI.MAX_ATTACKERS}）`,
+  `敌人 ${enemyPool.count}（同屏 ${STAGE.PRESSURE.frontline.active}~${STAGE.MAX_ACTIVE} · 攻击插槽 ${STAGE.PRESSURE.frontline.attackers}~${ENEMY_AI.MAX_ATTACKERS}）`,
   `据点 ${POINTS.LIST.length} · 练武场靶子 ${dummyPool.count}`
 );

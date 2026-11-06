@@ -66,6 +66,12 @@ export class InputState {
     this.canvas = null;
     this._t = 0; // 由 update() 推进的内部时钟（秒），比每次读 performance.now() 稳定
     this.onKey = null; // 供调试面板/后续模块挂钩
+
+    // ── 触屏（第 3 批 P0-1）：必须在构造里初始化，否则 axis() 会读到 undefined。
+    this.touch = false;        // 当前是否走触屏（main 用它判断要不要开自动朝向）
+    this.stick = null;         // { x, y } ∈ [-1,1]，y 向下为正；没接触屏时为 null
+    this.touchBound = false;
+    this.lastLookAt = -Infinity; // 最近一次"手指正在转视角"的时刻（秒），P0-2 用
   }
 
   attach(canvas) {
@@ -118,6 +124,88 @@ export class InputState {
     return this;
   }
 
+  /**
+   * 触屏层接线（第 3 批 P0-1，新增）。刻意不新建输入类、不改已有事件：
+   * 手指按下 = 往 held 里塞一个"键码"，于是按住防御/蓄力这些语义天然继承。
+   * 三块：动作按钮（8 颗）→ held + pressedAt；左摇杆 → this.stick；空白拖拽 → mouse.dx/dy。
+   */
+  attachTouch(root) {
+    if (this.touchBound || !root) return this;
+    this.touchBound = true;
+    this.touch = true;
+    this.stick = { x: 0, y: 0 };
+
+    // ── 1) 动作按钮：pointerdown/up → held + pressedAt（走已有的 0.12~0.2s 输入缓冲）
+    for (const b of root.querySelectorAll('[data-code]')) {
+      const code = b.dataset.code;
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        this.held.add(code);
+        this.pressedAt.set(code, this._t);
+        b.classList.add('on');
+      });
+      const up = () => { this.held.delete(code); b.classList.remove('on'); };
+      b.addEventListener('pointerup', up);
+      b.addEventListener('pointercancel', up);
+      b.addEventListener('pointerleave', up);
+    }
+
+    // ── 2) 左摇杆：相对圆心归一化到 [-1,1]，直接写进 this.stick
+    const el = root.querySelector('#t-stick');
+    const knob = el.querySelector('.t-knob');
+    const R = 52;
+    let id = null, cx = 0, cy = 0;
+    el.addEventListener('pointerdown', (e) => {
+      id = e.pointerId;
+      el.setPointerCapture(id);
+      const r = el.getBoundingClientRect();
+      cx = r.left + r.width / 2;
+      cy = r.top + r.height / 2;
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== id) return;
+      const dx = e.clientX - cx, dy = e.clientY - cy;
+      const len = Math.hypot(dx, dy) || 1;
+      const k = Math.min(1, len / R);
+      this.stick.x = (dx / len) * k;
+      this.stick.y = (dy / len) * k;
+      knob.style.transform = `translate(${(dx / len) * k * R}px, ${(dy / len) * k * R}px)`;
+    });
+    const end = (e) => {
+      if (e.pointerId !== id) return;
+      id = null;
+      this.stick.x = 0;
+      this.stick.y = 0;
+      knob.style.transform = 'translate(0,0)';
+    };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+
+    // ── 3) 空白处拖拽 = 转视角。⚠ 不走 _onMouseMove（它要求 pointerLocked），
+    //    直接累加 mouse.dx/dy，main 的 consumeMouseDelta → rig.addLook 链路原样复用。
+    let lookId = null, lx = 0, ly = 0;
+    const t = this.target;
+    t.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') return;
+      if (e.target.closest && e.target.closest('.t-b, .t-stick')) return;
+      lookId = e.pointerId;
+      lx = e.clientX;
+      ly = e.clientY;
+    });
+    t.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== lookId) return;
+      // 手指滑 100px → 增量 160 → yaw 变化 160×0.0022 ≈ 0.35rad ≈ 20°（与桌面手速接近）
+      this.mouse.dx += (e.clientX - lx) * 1.6;
+      this.mouse.dy += (e.clientY - ly) * 1.6;
+      this.lastLookAt = this._t;
+      lx = e.clientX;
+      ly = e.clientY;
+    });
+    t.addEventListener('pointerup', (e) => { if (e.pointerId === lookId) lookId = null; });
+    t.addEventListener('pointercancel', (e) => { if (e.pointerId === lookId) lookId = null; });
+    return this;
+  }
+
   /** 每帧先调它，推进内部时钟 */
   update(dt) {
     this._t += Number.isFinite(dt) && dt > 0 ? dt : 0;
@@ -145,9 +233,20 @@ export class InputState {
     return !!btns && btns.some((b) => this.mouse.buttons.has(b));
   }
 
-  /** 轴：按下为正方向，未按为 0；同时按相反键时抵消 */
+  /**
+   * 轴：按下为正方向，未按为 0；同时按相反键时抵消。
+   * 第 3 批 P0-1：再叠加触屏摇杆的模拟量（stick 为 null 时与旧实现逐字等价）。
+   */
   axis(negAction, posAction) {
-    return Number(this.isActionDown(posAction)) - Number(this.isActionDown(negAction));
+    const digital = Number(this.isActionDown(posAction)) - Number(this.isActionDown(negAction));
+    const s = this.stick;
+    if (!s) return digital;
+    const analog =
+      posAction === 'forward' ? -s.y :
+      posAction === 'back' ? s.y :
+      posAction === 'right' ? s.x :
+      posAction === 'left' ? -s.x : 0;
+    return Math.max(-1, Math.min(1, digital + analog));
   }
 
   /**

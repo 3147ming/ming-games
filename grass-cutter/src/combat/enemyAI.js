@@ -90,6 +90,15 @@ export class AttackSlots {
     return this.holders.delete(id);
   }
 
+  /**
+   * 第 3 批 P0-6：运行期改名额。刻意**不驱逐已占用**的 —— 阶段切换那一帧把 14 个人踹出去
+   * 会很突兀（而且他们的 windup 状态会卡在半路）。只影响之后的 acquire()。
+   */
+  setCapacity(n) {
+    this.capacity = Math.max(0, n | 0);
+    return this.capacity;
+  }
+
   clear() {
     this.holders.clear();
   }

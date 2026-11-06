@@ -47,6 +47,11 @@ export class CameraRig {
 
     this.yaw = cfg.YAW_INIT_DEG * DEG;
     this.userPitch = cfg.PITCH_INIT_DEG * DEG;
+    // 第 4 批 P1-2：朝向提前量用的玩家速度（setTarget 第二参；不传则为 null）
+    this.targetVel = null;
+    // 第 4 批 P1-2：FOV 冲击余量（度）。>0 时 camera.fov = cfg.FOV + fovPunch，随后向 0 回弹。
+    // ⚠ 恒为 0 时**完全不碰** camera.fov —— 既有相机测试对 FOV 的断言因此零风险。
+    this.fovPunch = 0;
 
     this.target = { x: 0, y: 0, z: 0 }; // 玩家真实位置（模块 2 每帧喂进来）
     this.pivot = { x: 0, y: cfg.PIVOT_HEIGHT, z: 0 }; // 平滑后的注视点
@@ -82,14 +87,34 @@ export class CameraRig {
     };
   }
 
-  /** 每帧喂入玩家位置（模块 2 的 PlayerController 会调它） */
-  setTarget(pos) {
+  /**
+   * 每帧喂入玩家位置（模块 2 的 PlayerController 会调它）。
+   * 第 4 批 P1-2：可选第二个参数 = 玩家水平速度，用于「朝向提前量」。
+   * ⚠ 不传（单测就是这么调的）时提前量恒为 0，`update()` 与改动前逐值一致 ——
+   *   这是本条不破坏既有相机断言的**唯一**保证，别把 velocity 做成必填。
+   */
+  setTarget(pos, velocity = null) {
     const p = pos || {};
     this.target = {
       x: Number.isFinite(p.x) ? p.x : 0,
       y: Number.isFinite(p.y) ? p.y : 0,
       z: Number.isFinite(p.z) ? p.z : 0,
     };
+    const v = velocity || null;
+    this.targetVel = v && (Number.isFinite(v.x) || Number.isFinite(v.z))
+      ? { x: Number.isFinite(v.x) ? v.x : 0, z: Number.isFinite(v.z) ? v.z : 0 }
+      : null;
+    return this;
+  }
+
+  /**
+   * 第 4 批 P1-2：命中重击/C 技时给镜头一个短促的 FOV 冲击（推近再弹回）。
+   * 无双/武艺**不**触发（那是范围技，每次跳伤都推一下会晕）。
+   */
+  punchFov(deg) {
+    const d = Number.isFinite(deg) ? deg : 0;
+    this.fovPunch = Math.max(this.fovPunch, Math.max(0, d));
+    return this.fovPunch;
   }
 
   /** 鼠标增量 → 视角。dx 右为正、dy 下为正（与浏览器 mousemove 一致）
@@ -161,7 +186,20 @@ export class CameraRig {
 
   update(dt) {
     const cfg = this.cfg;
-    const desiredPivot = { x: this.target.x, y: this.target.y + cfg.PIVOT_HEIGHT, z: this.target.z };
+    // 第 4 批 P1-2：注视点沿玩家水平速度方向前移一小段（快速移动/闪避时不再纯追脚后跟）。
+    // targetVel 为 null（单测/静止）时 lead 恒为 0，与改动前逐值一致。
+    let leadX = 0;
+    let leadZ = 0;
+    const tv = this.targetVel;
+    if (tv) {
+      const sp = Math.hypot(tv.x, tv.z);
+      if (sp > 1e-3) {
+        const lead = Math.min(cfg.LOOK_AHEAD_MAX, sp * cfg.LOOK_AHEAD_K);
+        leadX = (tv.x / sp) * lead;
+        leadZ = (tv.z / sp) * lead;
+      }
+    }
+    const desiredPivot = { x: this.target.x + leadX, y: this.target.y + cfg.PIVOT_HEIGHT, z: this.target.z + leadZ };
     // ① 平滑：spec 的 0.08。帧率无关（见 cameraMath.dampFactor）
     this.pivot = dampVec3(this.pivot, desiredPivot, cfg.FOLLOW_K, dt);
 
@@ -239,6 +277,18 @@ export class CameraRig {
     this.camera.position.set(pos.x, y, pos.z);
     this.camera.lookAt(this.pivot.x, this.pivot.y, this.pivot.z);
 
+    // 第 4 批 P1-2：FOV 冲击回弹（约 0.2s 弹回基准 FOV）。
+    // ⚠ 只在 fovPunch > 0 时改写 camera.fov —— 平时连一次 updateProjectionMatrix 都不多调。
+    if (this.fovPunch > 0) {
+      this.fovPunch = damp(this.fovPunch, 0, cfg.FOV_PUNCH_K, dt);
+      if (this.fovPunch < 0.01) this.fovPunch = 0;
+      const wantFov = cfg.FOV + this.fovPunch;
+      if (this.camera.fov !== wantFov) {
+        this.camera.fov = wantFov;
+        this.camera.updateProjectionMatrix();
+      }
+    }
+
     // 诊断
     this.blocked = nearest < this.boom;
     this.hitDistance = nearest;
@@ -259,6 +309,12 @@ export class CameraRig {
     const flat = Math.hypot(this.camera.position.x - this.pivot.x, this.camera.position.z - this.pivot.z);
     d.horizontalDistance = flat;
     d.heightAbovePivot = this.camera.position.y - this.pivot.y;
+    // 第 4 批 P1-2：提前量与 FOV 冲击的读数（探针用）
+    d.leadX = leadX;
+    d.leadZ = leadZ;
+    d.lead = Math.hypot(leadX, leadZ);
+    d.fovPunch = this.fovPunch;
+    d.fov = this.camera.fov;
     // ⚠ 返回**快照**而不是 this.debug 本身：
     // 否则调用方拿到的引用会被下一帧就地改写 —— "跑 600 帧之后再回头断言第 1 帧的读数"
     // 会读到最后一帧的值，测试会出现极难查的假绿/假红。

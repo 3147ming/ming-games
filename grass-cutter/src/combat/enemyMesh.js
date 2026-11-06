@@ -37,6 +37,10 @@ import {
   Vector3,
 } from '../../vendor/three/three.module.js';
 import { ENEMY_AI, SCENE_INK } from '../core/config.js';
+// ⚠ 单独一行、刻意不并进上面那条 import：tests/module13-ink.test.mjs L302 用**精确字符串**
+//   钉住了 `import { ENEMY_AI, SCENE_INK } from '../core/config.js'` 这条护栏，
+//   并进去会让"远处剪影真的接上了"这条断言在文本层面失败。ESM 允许多次 import 同一模块。
+import { INK_UI } from '../core/config.js';
 import { hexToRgb } from '../core/inkTone.js';
 import { at, mergeParts, placed } from '../core/geoMerge.js';
 import { ENEMY_STATE } from './enemyAI.js';
@@ -50,7 +54,7 @@ const C = {
   leather: 0x6a5443,
   steel: 0x8f98a6,
   steelDark: 0x646d7a,
-  skin: 0xb98a63,
+  skin: INK_UI.ENEMY_SKIN, // 第 4 批 P1-4：肉色 0xb98a63 → 压饱和的墨灰（三色体系外的高饱和色一律收编）
   trim: 0x8b6b3e,
   blade: 0xb9c2cf,
   wood: 0x6b4f2f,
