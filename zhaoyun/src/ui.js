@@ -102,6 +102,18 @@
     el.skillFx.className = 'skill-fx';
     el.board.appendChild(el.skillFx);
 
+    /* 天气（内容批）：一层色调 + 一个角标。
+       ★ 分两个元素而不是一个：色调层要盖满整块棋盘（pointer-events:none），
+         角标要固定在上方居中。合成一个的话，角标的 padding 会把色调层的
+         可见区域挤成一个小方块 —— 那是第一次实现时踩过的坑。 */
+    el.weatherTint = document.createElement('div');
+    el.weatherTint.className = 'zy-weather-tint';
+    el.board.appendChild(el.weatherTint);
+    el.weatherBadge = document.createElement('div');
+    el.weatherBadge.className = 'zy-weather';
+    el.weatherBadge.hidden = true;
+    el.board.appendChild(el.weatherBadge);
+
     // V8 性能：棋盘尺寸变化（进场/横竖屏切换/窗口缩放）时才重算一次 frameRect
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(measureFrame).observe(el.fx);
     window.addEventListener('resize', measureFrame);
@@ -415,8 +427,36 @@
     syncHand(); syncBarracks(); syncItems();
     syncHud();
     applySpeed();   // V8：重置倍速显示（baseState 已将 speed 置 1，状态不存档）
-    bannerText(state.mode === 'level' ? ('第 ' + (state.levelIdx + 1) + ' 关 · ' + state.levelName)
-      : (state.mode === 'endless' ? '守住阿斗' : '竞技 · 对局开始'), 1.8);
+    syncWeather(state);
+    bannerText(state.mode === 'level'
+      ? ('第 ' + (state.levelIdx + 1) + ' 关 · ' + state.levelName + weatherSuffix(state))
+      : (state.mode === 'endless' ? '守住阿斗' + weatherSuffix(state) : '竞技 · 对局开始' + weatherSuffix(state)), 1.8);
+  }
+
+  /**
+   * 内容批：把当前天气同步到角标与色调层。
+   * ★ 天气只在开局（applyState）时变一次，所以这里不需要每帧调用 ——
+   *   放到帧循环里就是每帧一次 getComputedStyle 级别的浪费。
+   */
+  function syncWeather(s) {
+    if (!el.weatherBadge || !ZY.Weather) return;
+    const w = ZY.Weather.byId(s && s.weather);
+    el.weatherBadge.hidden = !w;
+    if (!w) return;
+    el.weatherBadge.innerHTML = '<span class="zy-weather-glyph">' + w.glyph + '</span>' +
+      '<span>' + w.name + '</span>';
+    el.weatherBadge.title = w.note;
+    if (el.weatherTint) el.weatherTint.setAttribute('data-weather', w.id);
+    // 晴是基准，不打扰玩家；其余三种才挂角标
+    el.weatherBadge.hidden = (w.id === 'clear');
+  }
+
+  /** 拼进 banner 的后缀（空天气时返回空串，不产生多余分隔符） */
+  function weatherSuffix(s) {
+    if (!ZY.Weather) return '';
+    const w = ZY.Weather.byId(s && s.weather);
+    if (!w || w.id === 'clear') return '';
+    return ' · ' + w.glyph + ' ' + w.name + '（' + w.note + '）';
   }
 
   function buildAdou() {

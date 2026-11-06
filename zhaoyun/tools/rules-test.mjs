@@ -24,7 +24,7 @@ vm.runInContext(`
   };
 `, ctx);
 
-for (const f of ['units.js', 'maps.js', 'board.js', 'storage.js', 'ai.js', 'game.js']) {
+for (const f of ['units.js', 'maps.js', 'board.js', 'storage.js', 'weather.js', 'ai.js', 'game.js']) {
   vm.runInContext(fs.readFileSync(DIR + f, 'utf8'), ctx, { filename: f });
 }
 vm.runInContext('ZY.Audio = { play: function(){}, setMuted: function(){}, unlock: function(){} };', ctx);
@@ -1191,6 +1191,107 @@ section('第三批 P1-10：清空存档全键');
     lfOn === true && ZY.Save.getLowFx() === false, 'on=' + lfOn + ' off=' + ZY.Save.getLowFx());
 }
 
+
+/* ============================================================ 内容批：天气 */
+section('内容批：天气');
+
+{
+  const W = ZY.Weather;
+  ok('天气：模块已挂载且至少 4 种', !!W && W.WEATHERS.length >= 4, 'n=' + (W ? W.WEATHERS.length : 'null'));
+
+  // 每种天气的字段完整性
+  let bad = [];
+  for (const w of W.WEATHERS) {
+    if (!w.id || !w.name || !w.note) bad.push(w.id || '?');
+    if (!w.dmgMul || typeof w.dmgMul.player !== 'number' || typeof w.dmgMul.enemy !== 'number') bad.push(w.id + ':dmgMul');
+    if (!(w.dmgMul.player > 0) || !(w.dmgMul.enemy > 0)) bad.push(w.id + ':nonpositive');
+  }
+  ok('天气：每种都有 id/name/note 与正的双方伤害倍率', bad.length === 0, bad.join(','));
+
+  // 确定性：同一关永远同一天气
+  let det = true;
+  for (let i = 0; i < 8; i++) {
+    if (W.forLevel(i).id !== W.forLevel(i).id) det = false;
+  }
+  ok('天气：同一关卡永远返回同一天气（可复现）', det);
+
+  // 相邻关不同
+  let adjSame = 0;
+  for (let i = 0; i < 8; i++) {
+    if (W.forLevel(i).id === W.forLevel(i + 1).id) adjSame++;
+  }
+  ok('天气：相邻两关不会撞成同一种', adjSame === 0, '撞了 ' + adjSame + ' 次');
+
+  // 未知 id 回落
+  ok('天气：未知 id 回落到"晴"而不是 undefined', W.byId('__nope__').id === 'clear');
+
+  // byId / dmgMul 的健壮性
+  ok('天气：dmgMul 接受 id 字符串', Math.abs(W.dmgMul('rain', 'player') - 0.92) < 1e-9);
+  ok('天气：dmgMul 接受天气对象', Math.abs(W.dmgMul(W.byId('rain'), 'player') - 0.92) < 1e-9);
+  ok('天气：未知阵营按 1 处理（火球等中立来源）', W.dmgMul('rain', 'neutral') === 1);
+  ok('天气：非法输入不崩且按 1 处理', W.dmgMul('__nope__', 'player') === 1 && W.dmgMul(null, 'player') === 1);
+
+  // ★ 关键：真的进了结算
+  const sW = G.newLevel ? null : null;  // 占位，下面直接构造
+}
+
+{
+  /* 用真实对局验证"天气真的改变了伤害"：
+     同一关的 state（雨）与手工改成晴的 state，各打一次同样的一击，
+     伤害必须不同，且比例等于 weather.dmgMul。 */
+  const W = ZY.Weather;
+  const rainIdx = W.WEATHERS.findIndex(w => w.id === 'rain');
+  ok('天气：存在"雨"这一种（后续断言依赖它）', rainIdx >= 0);
+
+  function oneHit(weatherId) {
+    const s = G.baseState ? G.baseState('level', { levelIdx: rainIdx }) : null;
+    if (!s) return null;
+    s.weather = weatherId;
+    // 造一个攻击者与目标：用最小代价（直接塞 units）
+    const atk = { id: 9001, side: 'player', atk: 100, row: 0, col: 0, hp: 999, maxHp: 999, dead: false };
+    const tgt = { id: 9002, side: 'enemy', hp: 100000, maxHp: 100000, row: 0, col: 1, dead: false,
+                  dmgReduce: 0, crit: 0, critMul: 1 };
+    s.units = [atk, tgt];
+    return G.hurt(s, atk, tgt, 100);
+  }
+
+  const dRain = oneHit('rain');
+  const dClear = oneHit('clear');
+  if (dRain === null || dClear === null) {
+    ok('天气：能构造对局并结算一次伤害', false, 'baseState 不可用');
+  } else {
+    ok('天气：雨天与晴天的同一击伤害不同', Math.abs(dRain - dClear) > 1e-6, dRain + ' vs ' + dClear);
+    ok('天气：雨/晴伤害比 = 天气倍率（0.92）',
+      Math.abs((dRain / dClear) - W.dmgMul('rain', 'player')) < 1e-6,
+      (dRain / dClear).toFixed(6));
+  }
+}
+
+{
+  /* 敌方阵营也要吃到自己那一份 —— 雾天敌方 -6% */
+  const W = ZY.Weather;
+  const s = G.baseState('level', { levelIdx: 0 });
+  s.weather = 'fog';
+  const atk = { id: 9101, side: 'enemy', atk: 100, row: 0, col: 0, hp: 999, maxHp: 999, dead: false };
+  const tgt = { id: 9102, side: 'player', hp: 100000, maxHp: 100000, row: 0, col: 1, dead: false,
+                dmgReduce: 0, crit: 0, critMul: 1 };
+  s.units = [atk, tgt];
+  const dmg = G.hurt(s, atk, tgt, 100);
+  ok('天气：雾天敌方伤害也吃自己那一份（-6%）',
+    Math.abs(dmg - 100 * 0.94) < 1e-6, 'dmg=' + dmg);
+}
+
+{
+  /* 旧 state 没有 weather 字段时不许崩、按 1 处理 */
+  const s = G.baseState('level', { levelIdx: 0 });
+  delete s.weather;
+  const atk = { id: 9201, side: 'player', atk: 100, row: 0, col: 0, hp: 999, maxHp: 999, dead: false };
+  const tgt = { id: 9202, side: 'enemy', hp: 100000, maxHp: 100000, row: 0, col: 1, dead: false,
+                dmgReduce: 0, crit: 0, critMul: 1 };
+  s.units = [atk, tgt];
+  const dmg = G.hurt(s, atk, tgt, 100);
+  ok('天气：state 没有 weather 字段时不崩且按 1 计算', Math.abs(dmg - 100) < 1e-6, 'dmg=' + dmg);
+}
 console.log('\n──────────────────────────────');
 console.log('通过 ' + pass + ' / ' + (pass + fail) + (fail ? '  ❌ 失败 ' + fail : '  ✅ 全部通过'));
 process.exit(fail ? 1 : 0);

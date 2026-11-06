@@ -170,6 +170,11 @@
   function hurt(state, src, tgt, amount) {
     if (!tgt || tgt.dead) return 0;
     let dmg = num(amount, 0);
+    /* 天气（内容批）：按**攻击方**的阵营取倍率。
+       ★ 放在 buff 之前，是为了让"神兵符 ×1.35 再 × 天气"的顺序稳定 ——
+         乘法虽然可交换，但浮点累乘的顺序会影响末位，探针断言会飘。
+       ★ 没有 weather 字段的旧存档/旧探针构造的 state 一律按 1 处理（不崩）。 */
+    if (state.weather && ZY.Weather) dmg *= ZY.Weather.dmgMul(state.weather, src ? src.side : null);
     if (src && state.buff[src.side] > 0) dmg *= C.WARCRY_MULT;
     if (src && src.crit && Math.random() < src.crit) {
       dmg *= src.critMul;
@@ -1234,6 +1239,10 @@
       leaked: { player: 0, enemy: 0 },     // 第一批：漏怪统计（踏进阿斗格即 +1）
       hasAdou: { player: true, enemy: mode === 'versus' },
       wave: { idx: 0, timer: 0, interval: mode === 'level' ? T.levelFirstGap : T.endlessInterval, pending: [], spawnT: 0, spawnGap: SPAWN_GAP, done: false, breakEntrance: false, total: 0 },
+      /* 天气（内容批）：由关卡序号决定，同一关永远同一天气。
+         刻意**不**用 opts 覆盖 —— 天气是这一关的身份，不该被调用方随便改，
+         否则"第 3 关是雾"这件事在探针/测试里就复现不了。 */
+      weather: (ZY.Weather ? ZY.Weather.forLevel(num(opts.levelIdx, 0)).id : 'clear'),
       aiT: 0, fx: [], banner: null,
       stats: { kills: 0, waves: 0, duration: 0, leakWave: 0, peakEnemies: 0 },   // 第三批 P0-5：失败复盘
     };

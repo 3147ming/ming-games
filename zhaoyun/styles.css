@@ -1352,3 +1352,30 @@ body.lowfx .card.pair { animation: none; box-shadow: 0 0 0 2px var(--gold) !impo
 /* 武将塔立绘改为铺满整格（名牌已移出流内，立绘可独占高度） */
 .unit.span2 .fig-wrap { height: 100%; }
 
+
+/* ───────── 天气（内容批） ─────────
+   做法：不改棋盘本身的配色（那套是用户拍板过的 V7.1 棋盘 + V7.2 白色路径），
+   只在棋盘**上面**盖一层极淡的色调 + 用角标说明当前天气。
+   这样"天气"读得出来，但棋盘的可读性一点没受影响。 */
+.zy-weather {
+  position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: var(--mg-r-pill);
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  background: rgba(36, 33, 28, .82); color: #ece6da;
+  border: 1px solid rgba(236, 230, 218, .22);
+  pointer-events: none; z-index: 6; white-space: nowrap;
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+.zy-weather .zy-weather-glyph { font-size: 13px; line-height: 1; }
+
+/* 全场色调：用 ::after 盖一层，不影响任何子元素的命中/布局 */
+.zy-weather-tint { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.zy-weather-tint[data-weather="rain"] { background: linear-gradient(180deg, rgba(70, 110, 160, .10), rgba(30, 50, 80, .16)); }
+.zy-weather-tint[data-weather="fog"]  { background: radial-gradient(120% 90% at 50% 40%, rgba(226, 230, 238, .16), rgba(180, 190, 205, .05)); }
+.zy-weather-tint[data-weather="wind"] { background: linear-gradient(105deg, rgba(200, 220, 235, .05), rgba(150, 190, 220, .12) 55%, rgba(200, 220, 235, .04)); }
+.zy-weather-tint[data-weather="clear"] { background: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .zy-weather, .zy-weather-tint { transition: none !important; animation: none !important; }
+}
