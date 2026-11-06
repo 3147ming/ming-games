@@ -6,7 +6,7 @@
  *
  * 性能与健壮性：
  * - 复用 scene3d 的光照 / 雾 / 自适应阴影；相机挂到场景里以便渲染武器视图模型。
- * - 曳光弹 / 碎片用对象池（LineSegments / Points），避免每帧 new。
+ * - 曳光弹（面片四边形）/ 碎片（Points）/ 弹壳（InstancedMesh）全部对象池化，避免每帧 new。
  * - 战局切换（world 变化）时重建关卡与敌人模型，并释放旧资源。
  */
 
@@ -192,7 +192,11 @@ export class Renderer3D {
    */
   constructor(handle, canvas, device) {
     this.handle = handle;
-    this._lowQuality = !!(device && device.quality === 'low');
+    // 只有桌面（high）才开全屏后处理：low / mid 触屏档都直接关（最稳、最省）
+    this._lowQuality = !!(device && device.quality && device.quality !== 'high');
+    // 无障碍（P1-7）：系统要求减少动态效果时，震屏 / 枪模惯性 / 后坐位移幅度归零
+    this._reducedMotion = !!(device && device.reducedMotion);
+    this._motionScale = this._reducedMotion ? 0 : 1;
     this.THREE = handle.THREE;
     this.canvas = canvas;
     this.world = null;
@@ -203,6 +207,11 @@ export class Renderer3D {
     this._vmWeaponId = null;
     this._vm = null; // 视图模型基位姿（插值用）
     this._recoil = 0; // 后坐量（0~1）
+    this._reload = 0; // 换弹下沉/侧翻量（0~1，P0-2）
+    this._swayX = 0; // 转身惯性：yaw 角速度的低通结果（rad/s，P0-3）
+    this._swayY = 0; // 转身惯性：pitch 角速度的低通结果
+    this._lastYaw = null;
+    this._lastPitch = null;
     this._itemProps = new Map(); // 世界掉落物品模型（container → { count, models }）
     this._terminalModels = new Map(); // 数据终端对象 → 模型
     this._airdropBeacon = null; // 空投信标（着陆后隐藏）
@@ -216,6 +225,7 @@ export class Renderer3D {
     // 任何一步失败都回退到直渲，保证不黑屏、不崩溃。
     this._postTried = false;
     this._postEnabled = false;
+    this._postBlocked = false; // 被帧率闸门永久关闭（P0-4），不再重试初始化
     this._postVerified = false; // 首帧后是否已校验过着色器编译状态
     this._rt = null;
     this._postScene = null;
@@ -224,34 +234,56 @@ export class Renderer3D {
     // 相机挂入场景，使武器视图模型（相机子节点）参与渲染
     this.handle.scene.add(this.handle.camera);
     this._initFx();
+    // 后处理归渲染层所有，scene3d 只负责判断"何时该关"（P0-4）。
+    // 注册时若已经降过级，scene3d 会立刻回调一次，避免丢掉这一档。
+    if (typeof this.handle.setPerfHook === 'function') {
+      this.handle.setPerfHook(() => this.setPostEnabled(false));
+    }
   }
 
   /* ---------------- 特效对象池 ---------------- */
 
   _initFx() {
     const T = this.THREE;
-    // 曳光弹：一条 LineSegments，每帧只更新缓冲与 drawRange
+    const fx = VIEW3D.fx;
+    // 曳光弹（P0-5）：每条弹道 = 一块沿弹道拉伸的四边形（2 个三角面 / 6 个顶点）。
+    // 为什么不再用 LineSegments：WebGL 的 lineWidth 恒为 1，config 里的 tracerWidth 是死键，
+    // 交火时那条 1px 细线几乎看不见。改成面片后宽度真实生效，还能走加色混合。
     this._tracerMax = 96;
+    this._tracerVerts = 6; // 每条弹道占用的顶点数
     this._camUp = new T.Vector3(0, 1, 0);
     this._camRight = new T.Vector3(1, 0, 0);
+    this._camPos = new T.Vector3();
     this._muzzleWorld = new T.Vector3(); // 复用：玩家曳光弹起点取枪口世界坐标
     this._qYaw = new T.Quaternion();
     this._qPitch = new T.Quaternion();
+    // 弹道中心线缓存（x1,y1,z1,x2,y2,z2）：既是几何计算的中间量，也是测试/探针的读取口。
+    // 有它就不必为了校验去反解"被加宽偏移过"的顶点坐标。
+    this._tracerEnds = new Float32Array(this._tracerMax * 6);
     const tg = new T.BufferGeometry();
-    tg.setAttribute('position', new T.BufferAttribute(new Float32Array(this._tracerMax * 2 * 3), 3));
-    tg.setAttribute('color', new T.BufferAttribute(new Float32Array(this._tracerMax * 2 * 3), 3));
+    tg.setAttribute('position', new T.BufferAttribute(new Float32Array(this._tracerMax * this._tracerVerts * 3), 3));
+    tg.setAttribute('color', new T.BufferAttribute(new Float32Array(this._tracerMax * this._tracerVerts * 3), 3));
     tg.setDrawRange(0, 0);
     this._tracerGeo = tg;
-    this._tracerLines = new T.LineSegments(
+    this._tracerMesh = new T.Mesh(
       tg,
-      new T.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false }),
+      new T.MeshBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.9,
+        // 加色混合：夜战里弹道是"发光"的而不是"贴上去的一条灰线"
+        blending: T.AdditiveBlending,
+        depthWrite: false,
+        side: T.DoubleSide,
+        fog: false,
+      }),
     );
-    this._tracerLines.frustumCulled = false;
-    this._tracerLines.renderOrder = 6;
-    this.handle.scene.add(this._tracerLines);
+    this._tracerMesh.frustumCulled = false;
+    this._tracerMesh.renderOrder = 6;
+    this.handle.scene.add(this._tracerMesh);
 
-    // 碎片 / 血点：Points 云
-    this._particleMax = 240;
+    // 碎片 / 血点：Points 云。上限统一读 config（P1-8），逻辑侧与渲染缓冲因此永远一致。
+    this._particleMax = Math.max(1, fx.maxParticles | 0);
     const pg = new T.BufferGeometry();
     pg.setAttribute('position', new T.BufferAttribute(new Float32Array(this._particleMax * 3), 3));
     pg.setAttribute('color', new T.BufferAttribute(new Float32Array(this._particleMax * 3), 3));
@@ -272,6 +304,33 @@ export class Renderer3D {
     this._particles.renderOrder = 6;
     this.handle.scene.add(this._particles);
 
+    /* --- 弹壳对象池（P0-1）：一个 InstancedMesh 画完全部弹壳，零逐帧分配 --- */
+    this._shellPool = Math.max(1, fx.shellMax | 0);
+    const shellGeo = new T.CylinderGeometry(0.35, 0.35, 1, 5, 1, false);
+    const shellMat = new T.MeshStandardMaterial({
+      color: new T.Color(fx.shellColor),
+      emissive: new T.Color(fx.shellColor),
+      emissiveIntensity: 0.35,
+      roughness: 0.38,
+      metalness: 0.82,
+    });
+    this._shellMesh = new T.InstancedMesh(shellGeo, shellMat, this._shellPool);
+    this._shellMesh.frustumCulled = false; // 实例会跑到世界各处，默认包围球只会导致误剔除
+    this._shellMesh.count = 0;
+    this._shellMesh.renderOrder = 5;
+    // 主动建好 instanceColor（首次 setColorAt 才分配），避免运行期第一次开火时分配
+    this._shellColor = new T.Color(fx.shellColor);
+    for (let i = 0; i < this._shellPool; i += 1) this._shellMesh.setColorAt(i, this._shellColor);
+    this._shellMesh.instanceColor.needsUpdate = true;
+    this.handle.scene.add(this._shellMesh);
+    this._shellM = new T.Matrix4();
+    this._shellQ = new T.Quaternion();
+    this._shellE = new T.Euler();
+    this._shellP = new T.Vector3();
+    this._shellS = new T.Vector3();
+    this._shellTmp = new T.Color();
+    this._lastShellN = 0;
+
     // 每帧复用的临时对象与缓存：避免逐帧分配 Color、重复解析颜色字符串。
     // 颜色缓存直接存 THREE.Color，保证与原先 col.set(字符串) 的
     // sRGB→线性色彩管理结果完全一致（用 setRGB 会跳过换算而改变观感）。
@@ -279,7 +338,7 @@ export class Renderer3D {
     this._fxFog = new T.Color(PALETTE3D.fog);
     this._flashColor = new T.Color(VIEW3D.enemy.hitFlashColor);
     this._colorCache = new Map();
-    // 上一帧的曳光弹 / 粒子数量，用于跳过空闲时的无谓 GPU 缓冲上传
+    // 上一帧的曳光弹 / 粒子 / 弹壳数量，用于跳过空闲时的无谓 GPU 缓冲上传
     this._lastTracerN = 0;
     this._lastParticleM = 0;
   }
@@ -362,6 +421,17 @@ export class Renderer3D {
     this._vmWeaponId = null;
     this._vm = null;
     this._recoil = 0;
+    // 换局/切枪时把枪模附加姿态归零：否则会带着上一局的下沉/甩枪偏移开局
+    this._reload = 0;
+    this._swayX = 0;
+    this._swayY = 0;
+    this._lastYaw = null;
+    this._lastPitch = null;
+    // 弹壳属于上一局的世界数据，换局立刻清空实例
+    if (this._shellMesh) {
+      this._shellMesh.count = 0;
+      this._lastShellN = 0;
+    }
   }
 
   _buildWorld(world) {
@@ -509,6 +579,8 @@ export class Renderer3D {
         model.userData._lastHf = hf;
         for (const m of model.userData.mats) {
           if (hf > 0) m.emissive.copy(flashColor).multiplyScalar(0.6 * hf);
+          // #P0-2：空闲帧还原到敌人底亮度自发光（而非纯黑），保证暗处可见
+          else if (m.userData.baseEmissive) m.emissive.copy(m.userData.baseEmissive);
           else m.emissive.setRGB(0, 0, 0);
         }
       }
@@ -595,15 +667,20 @@ export class Renderer3D {
     cam.quaternion.copy(this._qYaw).multiply(this._qPitch);
 
     // 震屏：消费 world.shake 并衰减（避免在更新循环中转移，渲染层一次性处理）
+    // 减少动态效果时完全不震（P1-7）：晕屏/光敏玩家对镜头抖动最敏感，这一条必须归零。
     let sx = 0;
     let sy = 0;
     let sz = 0;
     if (world.shake > 0.01) {
-      const amt = (Math.min(16, world.shake) / 16) * u(VIEW3D.fx.shakeMax);
-      sx = (Math.random() - 0.5) * 2 * amt;
-      sy = (Math.random() - 0.5) * 2 * amt;
-      sz = (Math.random() - 0.5) * 2 * amt;
-      world.shake = Math.max(0, world.shake * Math.exp(-VIEW3D.fx.shakeDecay * dt));
+      if (this._reducedMotion) {
+        world.shake = 0; // 直接清掉，避免残留值在关闭无障碍时突然补一次抖动
+      } else {
+        const amt = (Math.min(16, world.shake) / 16) * u(VIEW3D.fx.shakeMax);
+        sx = (Math.random() - 0.5) * 2 * amt;
+        sy = (Math.random() - 0.5) * 2 * amt;
+        sz = (Math.random() - 0.5) * 2 * amt;
+        world.shake = Math.max(0, world.shake * Math.exp(-VIEW3D.fx.shakeDecay * dt));
+      }
     }
     cam.position.set(player.x + sx, this.eyeHeight + sy, player.y + sz);
 
@@ -656,6 +733,32 @@ export class Renderer3D {
     const recoilY = u(vm.recoilKick * 0.5) * this._recoil;
     const recoilRot = vm.recoilRot * this._recoil;
 
+    // 换弹（P0-2）：枪身下沉 + 绕 Z 侧翻。reloading 期间 0→1，结束自动 1→0 回正，
+    // 同一套指数平滑因此天然没有跳变；被移动打断 / 切枪时 reloading 立刻变假，也就立刻回正。
+    const reloading = !!(player.currentWeapon && player.currentWeapon.reloading);
+    this._reload += ((reloading ? 1 : 0) - this._reload) * (1 - Math.exp(-vm.reloadLerp * dt));
+    const reloadDrop = vm.reloadDrop * this._reload;
+    const reloadRoll = vm.reloadRoll * this._reload;
+
+    // 转身惯性（P0-3）：把视角的**角速度**低通成"甩枪速度"，再乘 swayAmp 变成枪模滞后位移。
+    // 只动枪模、不动相机 —— 相机滞后会直接变成晕屏，这条线不能越。
+    // 用 rad/s 而非"每帧增量"，否则同一段转身在 30fps / 60fps 下摆幅会差一倍。
+    const yawNow = player.angle || 0;
+    const pitchNow = player.pitch || 0;
+    let dyaw = yawNow - (this._lastYaw == null ? yawNow : this._lastYaw);
+    while (dyaw > Math.PI) dyaw -= Math.PI * 2; // 跨 ±π 时不能算成"猛地转了 6 弧度"
+    while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    const dpitch = pitchNow - (this._lastPitch == null ? pitchNow : this._lastPitch);
+    this._lastYaw = yawNow;
+    this._lastPitch = pitchNow;
+    const invDt = 1 / Math.max(1e-4, dt);
+    const swayK = 1 - Math.exp(-vm.swayLerp * dt);
+    this._swayX += (dyaw * invDt - this._swayX) * swayK;
+    this._swayY += (dpitch * invDt - this._swayY) * swayK;
+    // 乘 1/60 把"角速度"折算回单帧角度：与 60fps 下的原始手感一致，同时保持帧率无关
+    const swayX = this._swayX * (1 / 60) * vm.swayAmp * u(1);
+    const swayY = this._swayY * (1 / 60) * vm.swayAmp * u(1);
+
     // 摆动（待机呼吸 + 移动起伏 + 侧倾）
     const moving = player.moving ? 1 : 0;
     const bobSpeed = moving ? vm.bobMoveSpeed : vm.bobIdleSpeed;
@@ -665,8 +768,13 @@ export class Renderer3D {
     const bobY = Math.abs(Math.sin(this._bobT)) * u(bobAmp) * (moving ? 1 : 0.5);
     const roll = Math.sin(this._bobT * 0.5) * u(vm.bobRollAmp) * moving;
 
-    g.position.set(this._vm.x + bobX, this._vm.y + bobY - recoilY, this._vm.z - recoilZ);
-    g.rotation.set(this._vm.rx + recoilRot, this._vm.ry, this._vm.rz + roll);
+    const ms = this._motionScale; // 减少动态效果时 = 0（换弹下沉保留：那是信息性动作，不是晕动源）
+    g.position.set(
+      this._vm.x + bobX * ms + swayX * ms,
+      this._vm.y + bobY * ms - recoilY * ms + swayY * ms - u(reloadDrop),
+      this._vm.z - recoilZ * ms,
+    );
+    g.rotation.set(this._vm.rx + recoilRot * ms, this._vm.ry, this._vm.rz + (roll * ms) + reloadRoll);
 
     // 枪口火光
     const flash = player.muzzleFlash > 0;
@@ -678,47 +786,105 @@ export class Renderer3D {
     const col = this._fxColor;
     const fog = this._fxFog;
 
-    // 曳光弹：敌人弹道抬到胸高；玩家自己的弹道从相机眼高发出、终点也抬到眼高，
-    // 这样水平方向恰好沿屏幕中心准星射出，视觉上与准星对齐。
+    // 曳光弹（P0-5）：每条弹道展开成一块正对镜头的四边形。
+    // 中心线与旧实现逐位一致：敌人弹道抬到胸高；玩家自己的弹道从相机眼高发出、
+    // 终点抬到命中高度，所以水平方向恰好沿屏幕中心准星射出。
     const tracers = world.tracers || [];
     const tp = this._tracerGeo.attributes.position.array;
     const tc = this._tracerGeo.attributes.color.array;
+    const ends = this._tracerEnds;
     const hT = u(1.15);
     const player = world.player;
     const eyeH = this.eyeHeight;
+    const cam = this.handle.camera;
+    if (cam && typeof cam.getWorldPosition === 'function') cam.getWorldPosition(this._camPos);
+    const camPos = this._camPos;
+    // 曳光弹宽度：用**屏幕宽度**（不是世界宽度）。
+    // 为什么：世界宽 5cm 的弹道在 30m 外只有 1px，而在 0.7m 处却有 20px ——
+    // 同一发子弹近处像根管子、远处像不存在。屏幕宽则任何距离都稳定在 ~3px，
+    // 既看得见又不会在枪口糊成一条宽带。tracerWidth 作为像素宽的来源（0.05 → 每侧 1.6px）。
+    const Hpx = (this.canvas && this.canvas.clientHeight) || 375;
+    const fovRad = (((cam && cam.fov) || VIEW3D.fov) * Math.PI) / 180;
+    const pxPerUnit = Math.tan(fovRad * 0.5) / Math.max(1, Hpx / 2); // 每单位宽度 / 距离 → 像素
+    const halfWpx = Math.max(1.6, (VIEW3D.fx.tracerWidth || 0.05) * 32);
     let n = 0;
     for (let i = 0; i < tracers.length && n < this._tracerMax; i += 1) {
       const tr = tracers[i];
       const c = this._colorOf(tr.color);
-      const o = n * 6;
+      let ax; let ay; let az; let bx; let by; let bz;
       if (tr.player && player) {
-        // 玩家曳光弹：从枪口（viewmodel 的 muzzle 节点世界坐标）发出，终点精确落在
-        // 3D 命中点 (tr.x2, tr.h, tr.y2)。这样视觉上子弹「从枪管飞出」，同时始终收敛到
-        // 准星命中点——近远都对齐弹着点，精度不受影响（弹道逻辑仍取自相机眼高）。
-        let sx0 = player.x, sy0 = eyeH, sz0 = player.y; // 兜底：相机眼高（无枪模/无武器时）
-        const vm = this.viewmodel;
-        if (vm && vm.userData && vm.userData.muzzle) {
-          vm.updateWorldMatrix(true, false);
-          this._muzzleWorld.copy(vm.userData.muzzle).applyMatrix4(vm.matrixWorld);
-          sx0 = this._muzzleWorld.x; sy0 = this._muzzleWorld.y; sz0 = this._muzzleWorld.z;
-        }
-        tp[o] = sx0; tp[o + 1] = sy0; tp[o + 2] = sz0;
-        tp[o + 3] = tr.x2;
-        tp[o + 4] = (tr.h != null) ? tr.h : eyeH;
-        tp[o + 5] = tr.y2;
+        // 玩家曳光弹：从「相机中心（眼位）」发出、终点精确落在 3D 命中点
+        // (tr.x2, tr.h, tr.y2)。弹道逻辑本就取自相机眼高、与准星逐字对齐（同一条射线），
+        // 所以曳光弹起点也应回到相机中心，而非 viewmodel 枪口——否则枪口在屏幕右下偏移，
+        // 会让玩家误以为「子弹从右边飞出 / 弹着点偏右」。viewmodel 的枪口偏移只做视觉表现
+        // （枪口火光仍挂在枪管上），绝不参与弹道与曳光弹起点。
+        // 沿相机前向略微前移，避免起点贴脸被近裁剪面吞掉、也更接近真实出膛位置。
+        const fwd = this._camFwd || (this._camFwd = new this.THREE.Vector3());
+        if (cam && typeof cam.getWorldDirection === 'function') cam.getWorldDirection(fwd);
+        else fwd.set(Math.cos(player.angle || 0), 0, Math.sin(player.angle || 0));
+        const fwdLen = 14; // ≈ 0.7m，仅用于把起点推出近裁剪面
+        ax = player.x + fwd.x * fwdLen;
+        ay = eyeH + fwd.y * fwdLen;
+        az = player.y + fwd.z * fwdLen;
+        bx = tr.x2;
+        by = (tr.h != null) ? tr.h : eyeH;
+        bz = tr.y2;
       } else {
         // 敌人曳光弹：起点取枪口眼高 h1，终点精确落在 3D 命中高度 h（敌我同源）。
         // 缺字段时回退到固定胸高 hT（向后兼容旧数据）。
-        const sh = (tr.h1 != null) ? tr.h1 : hT;
-        const eh = (tr.h != null) ? tr.h : hT;
-        tp[o] = tr.x1; tp[o + 1] = sh; tp[o + 2] = tr.y1;
-        tp[o + 3] = tr.x2; tp[o + 4] = eh; tp[o + 5] = tr.y2;
+        ax = tr.x1; ay = (tr.h1 != null) ? tr.h1 : hT; az = tr.y1;
+        bx = tr.x2; by = (tr.h != null) ? tr.h : hT; bz = tr.y2;
       }
-      tc[o] = c.r; tc[o + 1] = c.g; tc[o + 2] = c.b;
-      tc[o + 3] = c.r; tc[o + 4] = c.g; tc[o + 5] = c.b;
+      const dx = bx - ax;
+      const dy = by - ay;
+      const dz = bz - az;
+      const len = Math.hypot(dx, dy, dz);
+      if (len < 1e-4) continue; // 退化弹道（零长度）没有可画的面积
+      // 中心线缓存：与旧实现的 position 缓冲布局完全一致，测试/探针可直接读
+      const oe = n * 6;
+      ends[oe] = ax; ends[oe + 1] = ay; ends[oe + 2] = az;
+      ends[oe + 3] = bx; ends[oe + 4] = by; ends[oe + 5] = bz;
+
+      // 侧向 = dir × (相机 → 中点)：四边形因此永远正对镜头，任何角度都不会被看成一条边
+      const mx = (ax + bx) * 0.5;
+      const my = (ay + by) * 0.5;
+      const mz = (az + bz) * 0.5;
+      const vx = camPos.x - mx;
+      const vy = camPos.y - my;
+      const vz = camPos.z - mz;
+      let sxv = dy * vz - dz * vy;
+      let syv = dz * vx - dx * vz;
+      let szv = dx * vy - dy * vx;
+      let sl = Math.hypot(sxv, syv, szv);
+      if (sl < 1e-6) {
+        // 弹道几乎正对镜头（自己开枪的常见情形）：屏幕投影本就退化成点，
+        // 任取一个与弹道垂直的方向收边即可 —— 视觉等价，但不能出 NaN。
+        sxv = -dy; syv = dx; szv = 0;
+        sl = Math.hypot(sxv, syv, szv);
+        if (sl < 1e-6) { sxv = 1; syv = 0; szv = 0; sl = 1; }
+      }
+      const o = n * 18; // 6 顶点 × 3 分量
+      // v0 = A+w, v1 = A-w, v2 = B-w, v3 = B+w；两个三角形 (v0,v1,v2) + (v0,v2,v3)
+      // 两端各按「自身到相机的距离」换算宽度：否则离眼 0.7m 的近端会糊成一条宽带。
+      const halfWA = Math.hypot(camPos.x - ax, camPos.y - ay, camPos.z - az) * pxPerUnit * halfWpx;
+      const halfWB = Math.hypot(camPos.x - bx, camPos.y - by, camPos.z - bz) * pxPerUnit * halfWpx;
+      const kA = halfWA / sl;
+      const kB = halfWB / sl;
+      const wax = sxv * kA; const way = syv * kA; const waz = szv * kA;
+      const wbx = sxv * kB; const wby = syv * kB; const wbz = szv * kB;
+      tp[o] = ax + wax; tp[o + 1] = ay + way; tp[o + 2] = az + waz;
+      tp[o + 3] = ax - wax; tp[o + 4] = ay - way; tp[o + 5] = az - waz;
+      tp[o + 6] = bx - wbx; tp[o + 7] = by - wby; tp[o + 8] = bz - wbz;
+      tp[o + 9] = ax + wax; tp[o + 10] = ay + way; tp[o + 11] = az + waz;
+      tp[o + 12] = bx - wbx; tp[o + 13] = by - wby; tp[o + 14] = bz - wbz;
+      tp[o + 15] = bx + wbx; tp[o + 16] = by + wby; tp[o + 17] = bz + wbz;
+      for (let k = 0; k < 6; k += 1) {
+        const q = o + k * 3;
+        tc[q] = c.r; tc[q + 1] = c.g; tc[q + 2] = c.b;
+      }
       n += 1;
     }
-    this._tracerGeo.setDrawRange(0, n * 2);
+    this._tracerGeo.setDrawRange(0, n * this._tracerVerts);
     // 空闲帧（本帧与上一帧都没有曳光弹）跳过缓冲上传
     if (n > 0 || this._lastTracerN > 0) {
       this._tracerGeo.attributes.position.needsUpdate = true;
@@ -753,6 +919,59 @@ export class Renderer3D {
       this._particleGeo.attributes.color.needsUpdate = true;
     }
     this._lastParticleM = m;
+
+    // 弹壳接在末尾：它自己也走"数量比对 + 空闲帧跳过上传"的同一套优化写法
+    this._syncShells(world);
+  }
+
+  /**
+   * 弹壳渲染（P0-1）。
+   *
+   * 逻辑侧（combat.js）只维护 x / y / 水平速度 / 自旋，弹壳因此在逻辑上"存在"却从没被画出来。
+   * 这里把同一份数据翻译成可见的抛壳：从胸口高度抛出、受重力落回地面、落地后静止，
+   * 末段收缩并向雾色淡出。
+   *
+   * 全部走一个 InstancedMesh（一次 draw call），实例数由 config 的 shellMax 钳住，
+   * 不开火时 count=0，零绘制开销。
+   * @param {object} world 战局上下文
+   * @returns {void}
+   */
+  _syncShells(world) {
+    const list = world.shells || [];
+    const fx = VIEW3D.fx;
+    const baseHalf = u(fx.shellSize);
+    const fadeStart = fx.shellFadeStart != null ? fx.shellFadeStart : 0.72;
+    const grav = fx.sparkGravity || 9.5; // m/s²
+    let n = 0;
+    for (let i = 0; i < list.length && n < this._shellPool; i += 1) {
+      const s = list[i];
+      const life = s.life || 1.1;
+      const k = Math.min(1, Math.max(0, s.t / life));
+      // 起点在胸口高度：弹壳从枪膛甩出，而不是从地面冒出来
+      const baseM = elevationAt(world.map, s.x, s.y);
+      const vh = (s.vh != null) ? s.vh : 1.2; // m/s（逻辑侧缺字段时的兜底）
+      let hM = baseM + 1.15 + vh * s.t - 0.5 * grav * s.t * s.t;
+      if (hM < baseM) hM = baseM; // 落地后贴地（不做弹跳，避免 1.1s 内抖动）
+      // 末段收缩淡出：视觉上"消失"，不需要逐实例透明度（那要自定义着色器）
+      const fade = k <= fadeStart ? 1 : Math.max(0, 1 - (k - fadeStart) / (1 - fadeStart));
+      const sc = baseHalf * (0.25 + 0.75 * fade);
+      this._shellE.set(s.rot * 0.7, s.rot, s.rot * 0.45);
+      this._shellQ.setFromEuler(this._shellE);
+      this._shellP.set(s.x, u(hM), s.y);
+      this._shellS.set(sc, sc, sc);
+      this._shellM.compose(this._shellP, this._shellQ, this._shellS);
+      this._shellMesh.setMatrixAt(n, this._shellM);
+      // 颜色向雾色淡出：暗场里不会在墙上留一颗刺眼的亮点
+      this._shellTmp.copy(this._shellColor).lerp(this._fxFog, 1 - fade);
+      this._shellMesh.setColorAt(n, this._shellTmp);
+      n += 1;
+    }
+    this._shellMesh.count = n;
+    if (n > 0 || this._lastShellN > 0) {
+      this._shellMesh.instanceMatrix.needsUpdate = true;
+      if (this._shellMesh.instanceColor) this._shellMesh.instanceColor.needsUpdate = true;
+    }
+    this._lastShellN = n;
   }
 
   _syncHighlight(world) {
@@ -807,7 +1026,9 @@ export class Renderer3D {
         const m = buildItemModel(item.id, item.rarity);
         const ang = (i / Math.max(1, n)) * Math.PI * 2;
         const rad = u(0.55);
-        m.position.set(c.x + Math.cos(ang) * rad, u(0.95), c.y + Math.sin(ang) * rad);
+        // y 对齐地面高程 + 略高于容器顶面（不再固定 0.95 悬空）
+        const baseY = u(elevationAt(world.map, c.x, c.y)) + u(0.72);
+        m.position.set(c.x + Math.cos(ang) * rad, baseY, c.y + Math.sin(ang) * rad);
         m.rotation.y = ang;
         this.handle.scene.add(m);
         models.push(m);
@@ -842,7 +1063,8 @@ export class Renderer3D {
         this._groundProps.set(it.uid, rec);
       }
       rec.bob += 0.05;
-      rec.model.position.set(it.x, u(0.55) + Math.sin(rec.bob) * u(0.06), it.y);
+      // y 对齐地面高程 + 贴地轻微悬浮（不再固定 0.55 悬空），减少"物品浮空"观感
+      rec.model.position.set(it.x, u(elevationAt(world.map, it.x, it.y)) + u(0.18) + Math.sin(rec.bob) * u(0.06), it.y);
       rec.model.rotation.y += 0.03;
     }
     for (const [uid, rec] of this._groundProps) {
@@ -1027,6 +1249,7 @@ export class Renderer3D {
     const T = this.THREE;
     const r = this.handle.renderer;
     try {
+      if (this._postBlocked) return; // 已被帧率闸门关掉（P0-4），不再重建 RT
       if (this._lowQuality) return; // 手机降档：直接关闭后处理（最稳、最省）
       const cap = r.capabilities;
       if (!POST3D.enabled) return; // 配置层总开关
@@ -1099,6 +1322,27 @@ export class Renderer3D {
     }
   }
 
+  /**
+   * 运行时开关全屏后处理（P0-4 帧率闸门调用）。
+   *
+   * 后处理是整条管线里最贵的一项（SSAO 12 采样 + 色差 + 颗粒 + 一张全屏 RT），
+   * 弱 GPU 桌面往往"阴影关了还是掉帧"，闸门必须能关掉它并**释放 RT**，否则显存白占。
+   * 只降级不升级：关掉后置 _postBlocked，本次会话不再重建（避免阈值附近反复建/销毁）。
+   * @param {boolean} on true = 允许开启（仍受 WebGL2 / 配置 / 设备档约束）；false = 立刻关闭并释放
+   * @returns {void}
+   */
+  setPostEnabled(on) {
+    if (!on) {
+      this._postBlocked = true;
+      this._postEnabled = false;
+      this._disposePost();
+      return;
+    }
+    if (this._postBlocked) return;
+    this._postTried = false;
+    this._ensurePost();
+  }
+
   /** 视口尺寸变化 */
   resize() {
     if (this.handle && this.handle.resize) this.handle.resize();
@@ -1112,10 +1356,13 @@ export class Renderer3D {
   /** 释放全部 GPU 资源 */
   dispose() {
     this._teardownWorld();
-    this.handle.scene.remove(this._tracerLines);
+    this.handle.scene.remove(this._tracerMesh);
     this.handle.scene.remove(this._particles);
+    this.handle.scene.remove(this._shellMesh);
     this._tracerGeo.dispose();
-    this._tracerLines.material?.dispose?.();
+    this._tracerMesh.material?.dispose?.();
+    this._shellMesh.geometry?.dispose?.();
+    this._shellMesh.material?.dispose?.();
     this._particles.geometry.dispose();
     this._particles.material?.dispose?.();
     if (this._rope) {

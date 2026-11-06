@@ -45,15 +45,11 @@ const BUTTONS = [
   { a: 'heal', t: '治疗', size: 'combat' },
   { a: 'ads', t: '瞄准', size: 'minor', toggle: 'ads' },
   { a: 'switch', t: '切枪', size: 'minor' },
-  // 蹲伏：桌面上有 Ctrl，手机上以前**完全没有入口** —— 于是"蹲行更安静、更难被发现"
-  // 这条核心潜行机制对手机玩家是不存在的。放在火力区（右拇指），和瞄准同一档，
-  // 因为它和瞄准是同一类动作：临场姿态切换。
-  { a: 'crouch', t: '蹲伏', size: 'minor', toggle: 'crouch' },
-  // 贴顶部边缘的系统钮：背包 / 任务 / 暂停（远离两个拇指作业区）
+  // 任务：底部一键调出当前任务清单（P1-4）。落在左下机动区，不占右侧火力区。
+  { a: 'tasks', t: '任务', size: 'minor' },
+  // 贴顶部边缘的系统钮：背包 / 暂停（远离两个拇指作业区）
   // 灵敏度**不放这里**：玩家反馈"暂停后调不了灵敏度"，所以改到暂停面板里用滑块调。
   { a: 'bag', t: '背包', size: 'minor', slot: 'top' },
-  // 任务面板：桌面上是 J 键，手机以前没有入口 —— 合约进度只能靠"折叠标题里的 3/2"猜。
-  { a: 'tasks', t: '任务', size: 'minor', slot: 'top' },
   { a: 'pause', t: '暂停', size: 'minor', slot: 'top' },
 ];
 
@@ -121,10 +117,21 @@ export function createTouchControls(opts) {
     b.appendChild(label);
     btnEls.set(def.a, b);
     b.addEventListener('pointerdown', onBtnPointerDown);
-    (def.slot === 'top' ? zoneTop : def.fire ? zoneL : (['reload', 'heal', 'ads', 'crouch'].includes(def.a) ? zoneR : zoneL)).appendChild(b);
+    (def.slot === 'top' ? zoneTop : def.fire ? zoneL : (['reload', 'heal', 'ads'].includes(def.a) ? zoneR : zoneL)).appendChild(b);
   }
   // 开火键必须是「右下火力区」的主键，而不是左下机动区
   zoneR.appendChild(btnEls.get('fire'));
+
+  // 换弹进度环（P1-6）：叠在开火键外圈，换弹时按进度填充，结束后自动隐藏。
+  // 用 CSS conic-gradient + mask 画环，零 canvas、零额外布局（绝对定位在按钮内）。
+  const fireBtn = btnEls.get('fire');
+  let reloadRing = null;
+  if (fireBtn) {
+    reloadRing = document.createElement('div');
+    reloadRing.className = 'tc-reload-ring';
+    reloadRing.dataset.role = 'tc-reload-ring';
+    fireBtn.appendChild(reloadRing);
+  }
 
   // 上下文交互键（默认隐藏）
   const ctxBtn = document.createElement('button');
@@ -165,7 +172,7 @@ export function createTouchControls(opts) {
   const panelTouch = new Map();
   // 面板容器选择器：覆盖战前配置/暂停/商店/仓库/背包/战利品/结算等所有面板。
   // 注意：战利品与背包是战斗内浮层，用 .battle-panel；其余 UI 屏用 .panel。
-  const PANEL_SEL = '.panel, .modal, .battle-panel, [data-scroll]';
+  const PANEL_SEL = '.panel, .modal, .battle-panel, [data-scroll], .hud-tap';
   // 是否有「面板式 UI」当前可见（非 3D 战斗界面）：
   // 任一 .screen（非 battle）/ 任意 .battle-panel（战利品/背包）处于显示态。
   function panelUIActive() {
@@ -189,6 +196,10 @@ export function createTouchControls(opts) {
   let leftMag = 0;          // 当前左摇杆归一化幅值 [0,1]
   let sprintPushStart = 0;  // 首次超过阈值的时刻（now()），0 = 未推满
   let sprintRaf = 0;
+  // 双击左摇杆 = 蹲/起。不新增按钮：局内按钮已被玩家反馈精简到 7 个
+  // （tests/touch-controls.test.mjs 锁死），蹲伏改走手势。
+  let tapStart = null;      // 本次落指的时间与坐标 { t, x, y }
+  let lastTapAt = 0;        // 上一次有效轻点的时刻（now()），用于判定双击
   const now = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
   function clearSprintTimer() {
     if (sprintRaf) {
@@ -219,6 +230,7 @@ export function createTouchControls(opts) {
     if (input.sprint) input.sprint = false;
     sprintPushStart = 0;
     leftMag = 0;
+    input.touchMoveMag = 0; // 松手即归零：撤离读条不会因为"上次推过"而误判
     clearSprintTimer();
   }
 
@@ -238,6 +250,31 @@ export function createTouchControls(opts) {
     left.knob.style.transform = 'translate(-50%, -50%)';
   }
 
+  /**
+   * 按钮命中判定（P0-C / P0-A 加固）：右半屏「直接滑动转视角」与按钮必须严格分离，
+   * 落点只要压在某个按钮的像素盒上就一定被当作按钮处理，绝不会被误判成「视角拖拽」而吞掉开火。
+   * 优先级：
+   *   1) 事件 target 的 closest('.tc-btn') —— 绝大多数浏览器 & 测试桩走这条；
+   *   2) elementFromPoint 兜底 —— 真机偶发 touch.target 指向内部子元素 / SVG 图标时仍能命中；
+   *   3) 包围盒包含判定 —— 极端情况下（target 解析不到）按坐标保底，确保开火键不被误吞。
+   * 隐藏按钮（如未弹出的上下文键）一律跳过。
+   */
+  function hitTestButton(x, y, tgt) {
+    const byTarget = tgt && tgt.closest ? tgt.closest('.tc-btn') : null;
+    if (byTarget && !byTarget.classList.contains('hidden')) return byTarget;
+    if (typeof document !== 'undefined' && document.elementFromPoint) {
+      const atPoint = document.elementFromPoint(x, y);
+      const byPoint = atPoint && atPoint.closest ? atPoint.closest('.tc-btn') : null;
+      if (byPoint && !byPoint.classList.contains('hidden')) return byPoint;
+    }
+    for (const b of btnEls.values()) {
+      if (b.classList.contains('hidden')) continue;
+      const r = b.getBoundingClientRect();
+      if (r.width && r.height && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return b;
+    }
+    return null;
+  }
+
   // ---- 触摸处理 ----
   function onTouchStart(ev) {
     if (!active || editing) return; // 编辑布局时屏蔽游戏输入，只走拖拽
@@ -255,10 +292,8 @@ export function createTouchControls(opts) {
         panelInvolved = true;
         continue;
       }
-      const targetBtn = tgt && tgt.closest ? tgt.closest('.tc-btn') : null;
+      const targetBtn = hitTestButton(touch.clientX, touch.clientY, tgt);
       if (targetBtn) {
-        // 隐藏的上下文键不接收触摸
-        if (targetBtn.classList.contains('hidden')) continue;
         const action = targetBtn.dataset.action;
         buttonIds.set(touch.identifier, action);
         onPress(action, targetBtn);
@@ -271,6 +306,7 @@ export function createTouchControls(opts) {
         if (leftId === null) {
           leftId = touch.identifier;
           left.cx = x; left.cy = touch.clientY;
+          tapStart = { t: now(), x, y: touch.clientY }; // 双击蹲伏要在 touchend 知道"这一下点在哪、点了多久"
           if (left.visible) {
             left.base.style.left = `${x}px`;
             left.base.style.top = `${touch.clientY}px`;
@@ -319,7 +355,10 @@ export function createTouchControls(opts) {
         right.py = touch.clientY;
         const s = lookSens();
         input.yaw -= dx * s;
-        input.pitch = clampPitch(input.pitch - dy * s);
+        // 视角 Y 轴：默认 false = 自然（手指上滑→视角上）。
+        // invertY 开启后上下翻转。与 input.js 鼠标路径的 ySign 保持一致。
+        const ySign = input.invertY ? -1 : 1;
+        input.pitch = clampPitch(input.pitch - dy * s * ySign);
       }
     }
     // 仅当本次触摸完全归摇杆管辖时才 preventDefault，面板内触摸放行原生滚动。
@@ -343,6 +382,20 @@ export function createTouchControls(opts) {
         left.base.classList.remove('tc-live');
         stopSprint();
         resetMove();
+        // 双击左摇杆 = 蹲/起。不新增按钮：局内按钮已被玩家反馈精简到 7 个
+        // （tests/touch-controls.test.mjs L165-172 锁死），蹲伏改走手势。
+        // 判定条件：本次轻点 ≤260ms 且位移 ≤14px，且距上一次轻点 ≤320ms。
+        const tap = tapStart;
+        tapStart = null;
+        if (tap && now() - tap.t <= 260 && Math.hypot(touch.clientX - tap.x, touch.clientY - tap.y) <= 14) {
+          if (now() - lastTapAt <= 320) {
+            lastTapAt = 0;
+            input.crouch = !input.crouch;
+            onAction('crouch', input.crouch);
+          } else {
+            lastTapAt = now();
+          }
+        }
       } else if (touch.identifier === rightId) {
         rightId = null;
       }
@@ -367,6 +420,9 @@ export function createTouchControls(opts) {
     // 左摇杆：记录归一化幅值并据此评估自动冲刺（推满持续 0.25s → 冲刺）
     if (stick === left) {
       leftMag = Math.min(1, Math.hypot(nx, ny));
+      // 把"推了多少"告诉玩家层：up/down/left/right 是布尔量，光看模长永远是 0/1/1.41，
+      // 撤离读条要靠这个字段才能区分"拇指余压"与"真的走开"。
+      input.touchMoveMag = leftMag;
       evaluateSprint();
     }
   }
@@ -650,6 +706,21 @@ export function createTouchControls(opts) {
     getLookSens: () => input.touchLookSens || 1,
     getLookSensPresets: () => LOOK_PRESETS.slice(),
     cycleLookSens,
+    /**
+     * 换弹进度环（P1-6）：由 main.js 每帧调用。
+     * @param {boolean} active 是否正在换弹
+     * @param {number} progress 0~1 进度
+     */
+    setReload(active, progress) {
+      if (!reloadRing) return;
+      if (active) {
+        reloadRing.classList.add('tc-live');
+        const p = Math.max(0, Math.min(1, Number(progress) || 0));
+        reloadRing.style.setProperty('--p', String(Math.round(p * 100)));
+      } else {
+        reloadRing.classList.remove('tc-live');
+      }
+    },
     // 按钮尺寸 / 布局自定义（位置 / 大小可调）
     setButtonScale,
     applyLayout,

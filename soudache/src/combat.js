@@ -5,7 +5,7 @@
  * 命中即结算。表现层用枪口火光、弹道 tracer、弹壳、屏幕震动与飘字补足射击手感。
  */
 
-import { COMBAT, CELL, VIEW3D } from './config.js';
+import { COMBAT, CELL, VIEW3D, HITDIR } from './config.js';
 import { cellAt, crateRectIndexAt, damageCrateRect, elevationAt } from './mapgen.js';
 
 /**
@@ -336,6 +336,13 @@ export function applyDamage(world, target, raw, source, hx, hy, hitHeight) {
   const px = typeof hx === 'number' ? hx : target.x;
   const py = typeof hy === 'number' ? hy : target.y;
   const angle = Math.atan2(py - (source ? source.y : py - 1), px - (source ? source.x : px));
+  // P1-6 受击方向提示：记下「玩家 → 伤害来源」的方位角，供 HUD 在对应屏幕边缘闪红。
+  // 注意不能直接复用上面的 angle —— 那是「来源 → 命中点」，正好差 180°，
+  // 直接用会把背后来的枪显示成正面来的（比没有提示更误导）。
+  if (target.isPlayer && source) {
+    world.hitDir = Math.atan2(source.y - target.y, source.x - target.x);
+    world.hitDirT = HITDIR.life;
+  }
   if (world.spawnBlood) world.spawnBlood(px, py, angle, target.isPlayer ? 5 : COMBAT.bloodPerHit, hitHeight);
   if (world.addDamageNumber) {
     world.addDamageNumber(px, py, Math.round(dmg), target.isPlayer ? '#ff5c5c' : '#ffd166', hitHeight);
@@ -487,12 +494,17 @@ export function fireWeapon(world, shooter, opts = {}) {
   }
   if (world.shells) {
     const side = shooter.angle + Math.PI / 2;
+    const rot0 = world.rng.float(0, Math.PI * 2);
     world.shells.push({
       x: ox, y: oy,
       vx: Math.cos(side) * world.rng.float(30, 70) + Math.cos(shooter.angle) * -20,
       vy: Math.sin(side) * world.rng.float(30, 70) + Math.sin(shooter.angle) * -20,
-      rot: world.rng.float(0, Math.PI * 2),
+      rot: rot0,
       vr: world.rng.float(-12, 12),
+      // 竖直初速（m/s）：抛壳要有"弹出→落回地面"的弧线（P0-1 渲染用）。
+      // 由已抽到的 rot0 推导，**绝不额外消耗 world.rng** —— 那是玩法主随机流，
+      // 多抽一次会让同 seed 下的散布 / AI / 掉落全部错位，破坏可复现性。
+      vh: 0.55 + (rot0 / (Math.PI * 2)) * 1.25,
       t: 0, life: COMBAT.shellLife,
     });
   }

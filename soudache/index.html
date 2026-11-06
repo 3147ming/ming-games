@@ -9,7 +9,8 @@
     <!-- 内联空图标：避免移动端浏览器请求 /favicon.ico 产生一条 404 console 错误 -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1219'/%3E%3Cpath d='M8 8h6v3H11v13h3v3H8z' fill='%23ffb020'/%3E%3C/svg%3E" />
     <title>搜打撤 · SEARCH / STRIKE / EXTRACT</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./shared/tokens.css" />
+  <link rel="stylesheet" href="./styles.css" />
     <!-- 最大的文件先走：surge 的 keep-alive 只有 5s，若 three.js 排在 20+ 个模块请求之后，
          很可能复用一条已被服务端关掉的空闲连接而被 RST。modulepreload 让它在解析阶段就出发。 -->
     <link rel="modulepreload" href="./vendor/three.module.js" />
@@ -59,6 +60,54 @@
             show('资源加载失败：网络较慢或连接被中断。请检查网络后重试。');
           }
         }, LIMIT);
+
+        /* 正向加载提示（P1-10）：ES 模块 + three.js 在弱网下要几秒，
+           原来这段时间是"纯黑 + 干等"，玩家容易以为白屏而提前关页面。
+           这里只补一个"正在进入战区…"的过渡态，12s 超时重试逻辑完全不动。 */
+        var bootEl = null;
+        (function showLoading() {
+          try {
+            var style = document.createElement('style');
+            style.textContent =
+              '@keyframes sdc-boot-spin{to{transform:rotate(360deg)}}'
+              + '#boot-loading .sdc-ring{animation:sdc-boot-spin .9s linear infinite}'
+              + '@media (prefers-reduced-motion: reduce){#boot-loading .sdc-ring{animation:none}}';
+            document.head.appendChild(style);
+
+            bootEl = document.createElement('div');
+            bootEl.id = 'boot-loading';
+            bootEl.style.cssText = 'position:fixed;inset:0;z-index:9000;display:flex;flex-direction:column;'
+              + 'align-items:center;justify-content:center;gap:16px;background:#080c12;'
+              + 'color:#9fb0c4;font-family:system-ui,sans-serif;pointer-events:none;'
+              + 'transition:opacity .22s ease-out';
+            var ring = document.createElement('div');
+            ring.className = 'sdc-ring';
+            ring.style.cssText = 'width:34px;height:34px;border-radius:50%;'
+              + 'border:3px solid rgba(255,176,32,0.22);border-top-color:#ffb020';
+            var txt = document.createElement('div');
+            txt.textContent = '正在进入战区…';
+            txt.style.cssText = 'font-size:14px;letter-spacing:.08em';
+            bootEl.appendChild(ring);
+            bootEl.appendChild(txt);
+            document.body.appendChild(bootEl);
+          } catch (e) { bootEl = null; }
+        })();
+
+        // 就绪即撤（留两帧给首帧上屏，避免"撤得太快看到黑画布"）；最多挂 4s 兜底。
+        var bootStart = Date.now();
+        function dropLoading() {
+          if (!bootEl) return;
+          var el = bootEl;
+          bootEl = null;
+          el.style.opacity = '0';
+          setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 240);
+        }
+        var bootTimer = setInterval(function () {
+          if (window.SOUDACHE || Date.now() - bootStart > 4000) {
+            clearInterval(bootTimer);
+            setTimeout(dropLoading, 160);
+          }
+        }, 100);
       })();
     </script>
     <script type="module" src="./src/main.js"></script>

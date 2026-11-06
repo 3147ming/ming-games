@@ -9,7 +9,6 @@
 import {
   TILE, MAP_COLS, MAP_ROWS, WORLD_W, WORLD_H, CELL, MATCH, VIEW3D,
   CONTAINERS, CONTAINER_SPAWN_WEIGHTS, POI, ENEMY_SPAWN_WEIGHTS, CRATE, VEHICLE,
-  ROOM_TAGS, ROOM_CONTAINER_WEIGHTS,
 } from './config.js';
 import { createRng } from './rng.js';
 
@@ -545,14 +544,6 @@ export function generateMap(seed) {
   connectTree(root, grid, cols, rng);
   const rooms = leaves.map((l) => l.room);
 
-  // 1.5) 房间区域标签：每个房间掷一个标签（办公 / 仓储 / 实验），
-  //      标签决定这间房刷什么容器（见 ROOM_CONTAINER_WEIGHTS）。
-  //      在容器生成**之前**打标，因此容器权重可以直接按 room.tag 取。
-  const roomTagEntries = ROOM_TAGS.map((t) => [t.id, t.weight]);
-  for (const room of rooms) {
-    room.tag = rng.weighted(roomTagEntries);
-  }
-
   const map = {
     seed: seed >>> 0,
     cols, rows, tile: TILE,
@@ -628,39 +619,28 @@ export function generateMap(seed) {
   }
 
   // 5) 容器
-  //    权重按房间标签取：办公区多抽屉、仓储区多补给箱、实验区多保险箱。
-  //    typeEntries 必须在房间循环**内部**算（早先提到循环外是 TDZ 修复的副产品，
-  //    但那样就没法按房间区分权重了）；按 tag 缓存一次，避免每个容器都 Object.entries。
-  const typeEntriesByTag = {};
-  for (const tag of Object.keys(ROOM_CONTAINER_WEIGHTS)) {
-    typeEntriesByTag[tag] = Object.entries(ROOM_CONTAINER_WEIGHTS[tag]);
-  }
-  const fallbackTypeEntries = Object.entries(CONTAINER_SPAWN_WEIGHTS);
+  const typeEntries = Object.entries(CONTAINER_SPAWN_WEIGHTS);
   let cid = 0;
   for (const room of rooms) {
-    const typeEntries = typeEntriesByTag[room.tag] || fallbackTypeEntries;
     const count = Math.max(1, Math.min(3, Math.round((room.tw * room.th) / 13)));
     for (let i = 0; i < count; i += 1) {
+      const type = rng.weighted(typeEntries);
       let placed = null;
       for (let attempt = 0; attempt < 12 && !placed; attempt += 1) {
         const p = roomFloorPoint(room, rng, 1.1);
         if (isSolidAt(map, p.x, p.y)) continue;
-        if (circleHitsSolid(map, p.x, p.y, 16)) continue;
+        // 避让半径取该类型容器的实际半径：此前固定 16 小于 crate(20)/weaponbox(22) 的视觉半径，
+        // 导致木箱 / 武器箱被判定可放、实际却插进墙根 / 地面（穿模）。
+        const clear = (CONTAINERS[type] && CONTAINERS[type].radius) || 16;
+        if (circleHitsSolid(map, p.x, p.y, clear)) continue;
         if (map.containers.some((c) => Math.hypot(c.x - p.x, c.y - p.y) < 62)) continue;
         placed = p;
       }
       if (!placed) continue;
-      const type = rng.weighted(typeEntries);
-      const node = {
+      map.containers.push({
         id: cid, type, x: Math.round(placed.x), y: Math.round(placed.y),
         r: CONTAINERS[type].radius, searched: false, loot: null, spawned: false,
-        tag: room.tag,
-      };
-      // 保险箱按 lockedChance 上锁：上锁的不用读条开，只能消耗一张门卡直开。
-      if (type === 'safe' && CONTAINERS.safe.lockedChance > 0) {
-        node.locked = rng.chance(CONTAINERS.safe.lockedChance);
-      }
-      map.containers.push(node);
+      });
       cid += 1;
     }
   }
@@ -768,8 +748,8 @@ export function generateMap(seed) {
     };
   }
 
-  // 8) 撤离点默认全部关闭，逐点 openAt 由 8.5 之后统一赋值（要等 kind 定下来：
-  //    最早开放的必须是保底免费点，而不是数组顺序里的第一个）。
+  // 8) 撤离点默认全部关闭：固定 2 个点，统一在「最后 2 分钟」由 main.js 打开。
+  //    （不在此处随机开放，避免早期就能撤离 —— 撤离窗口本来就压在局末。）
   for (const ex of map.extracts) ex.open = false;
 
   // 8.5) 撤离点类型：free / paid / guarded
@@ -782,12 +762,10 @@ export function generateMap(seed) {
     if (ex.kind === 'paid') ex.cost = MATCH.extractFee;
   });
 
-  // 8.6) 分阶段开放：免费点第 extractFirstOpen 秒（2:30）先开，其余压在局末
-  //     （剩余 extractOpenAt 秒，即经过 duration - extractOpenAt 秒）。
-  //     openAt 是**经过秒数**，与 main.js 的 w.time 同口径 —— 写成"剩余秒数"会让
-  //     第二个点比第一个还早开（main 那侧是 w.time < openAt 的加法比较）。
-  //     ⚠ 用逐点 openAt 而不是一个全局 opened 标志：地图会重排点位顺序，
-  //     全局标志只能"一起开"，没法表达"免费点已经能撤了、守点还锁着"。
+  // 8.6) 撤离点按 openAt 依次开启：免费点先开（它是"早走"的选项），付费/守点压在局末。
+  // 注意：免费点不是索引 0 —— 上面 rng.shuffle 随机挑了保底免费点（8.5 步），
+  // 所以这里必须按 kind 判断，不能按下标判断。
+  // openAt 是**经过秒数**（与 world.time 同口径），不是剩余秒数。
   for (const ex of map.extracts) {
     ex.openAt = ex.kind === 'free' ? MATCH.extractFirstOpen : (MATCH.duration - MATCH.extractOpenAt);
   }
@@ -807,6 +785,9 @@ export function generateMap(seed) {
       for (let attempt = 0; attempt < 40 && !pos; attempt += 1) {
         const p = roomFloorPoint(rng.pick(pool), rng, 1.2);
         if (isSolidAt(map, p.x, p.y) || circleHitsSolid(map, p.x, p.y, 14)) continue;
+        // 高度校验：敌人不刷在架高平台上（避免一出生就"站在高墙顶 / 屋顶"的观感异常），
+        // 抢占高地交给 AI 的 pickHighGround 在战斗中按需执行。
+        if (elevationAt(map, p.x, p.y) > 0.5) continue;
         if (Math.hypot(p.x - map.playerSpawn.x, p.y - map.playerSpawn.y) < minDist) continue;
         // 敌人出生点必须能从玩家出生点走到，避免生成在封闭孤岛
         const idx = Math.floor(p.y / TILE) * cols + Math.floor(p.x / TILE);

@@ -35,7 +35,12 @@ export function isWebGLAvailable() {
  * @returns {object|null} 场景句柄
  */
 export function createScene3D(canvas, device) {
-  const lowQ = !!(device && device.quality === 'low');
+  const quality = (device && device.quality) || 'high';
+  const lowQ = quality === 'low';
+  const midQ = quality === 'mid';
+  const highQ = !lowQ && !midQ;
+  // 无障碍：系统要求减少动态效果时，纯装饰性的动态（空气尘埃）直接关掉
+  const reduced = !!(device && device.reducedMotion);
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({
@@ -51,16 +56,25 @@ export function createScene3D(canvas, device) {
 
   // 像素比上限会随自适应降级下调，统一经 applyViewport 应用，避免各处逻辑不一致
   // 手机降档：像素比直接压到 1（高分屏 devicePixelRatio 常为 2~3，最划算的省电/提帧手段）
-  let pixelRatioCap = lowQ ? 1 : VIEW3D.maxPixelRatio;
+  // 中端档（P1-9）：给到 1.25，配合空气尘埃换一点画面清晰度，仍不碰阴影/后处理。
+  let pixelRatioCap = lowQ ? 1 : (midQ ? 1.25 : VIEW3D.maxPixelRatio);
+  // 缓冲分辨率缩放（P1-9 超省档）：<1 时按更小的缓冲渲染、再由 CSS 拉伸回满屏。
+  // 这是最后一根杠杆 —— 像素比已经压到 1 之后，只剩它能继续换帧率。
+  let bufferScale = 1;
 
   /** 按当前像素比上限应用视口尺寸 */
   function applyViewport() {
-    renderer.setPixelRatio(Math.min(pixelRatioCap, window.devicePixelRatio || 1));
+    const dpr = Math.min(pixelRatioCap, window.devicePixelRatio || 1) * bufferScale;
+    renderer.setPixelRatio(dpr);
+    // updateStyle=false：CSS 尺寸由 #game-canvas{position:absolute;inset:0} 决定，
+    // 缓冲变小只是变糊，不会让画布缩水。
     renderer.setSize(Math.max(1, window.innerWidth), Math.max(1, window.innerHeight), false);
   }
   applyViewport();
 
-  renderer.shadowMap.enabled = !lowQ;
+  // 中端档保留阴影？——不保留。移动端 fill rate 是最紧的资源，阴影贴图 2048 的开销
+  // 与"能看见尘埃"完全不是一个量级，宁可把预算留给清晰度。
+  renderer.shadowMap.enabled = highQ;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   if ('outputColorSpace' in renderer) renderer.outputColorSpace = THREE.SRGBColorSpace;
   // 色调映射：把 HDR 光照压回显示器能表现的范围内，高光不再糊成死白，
@@ -100,6 +114,7 @@ export function createScene3D(canvas, device) {
   scene.background = skyTex;
   // 手机降档：缩短视距 + 加密雾，既保帧率又避免远处被裁出后露出空洞边界
   // （必须在 scene.fog 之前声明：fog 与 camera 都要用它们）
+  // 中端档不缩视距：地图以室内为主，裁剪开销本来就低，先保清晰度。
   const far = lowQ ? 1150 : VIEW3D.far;
   const fogDensity = VIEW3D.fogDensityPerMeter * (lowQ ? 1.9 : 1) / VIEW3D.metersToUnits;
   // 设计文档的雾密度以"米"为单位，这里换算到场景单位
@@ -130,6 +145,23 @@ export function createScene3D(canvas, device) {
   camera.rotation.order = 'YXZ';
   camera.position.set(WORLD_W / 2, VIEW3D.eyeStand, WORLD_H / 2);
 
+  // #P0-2 玩家头灯：跟随相机向前打出 15m 锥形光，暗处探路。
+  // 作为相机子节点，天然随视角转动；target 也挂相机下，保证 SpotLight 朝向 -Z（视线方向）。
+  // decay=0 让光强在 15m 内恒定（便于校准），到 distance 处平滑收边。
+  const hl = VIEW3D.headlight;
+  const headlight = new THREE.SpotLight(
+    new THREE.Color(hl.color),
+    hl.intensity,
+    hl.distance * VIEW3D.metersToUnits,
+    hl.angle,
+    hl.penumbra,
+    hl.decay,
+  );
+  headlight.position.set(0, 0, 0);
+  headlight.target.position.set(0, 0, -1);
+  camera.add(headlight);
+  camera.add(headlight.target);
+
   /* ---------------- 光照 ---------------- */
 
   const hemi = new THREE.HemisphereLight(
@@ -150,7 +182,7 @@ export function createScene3D(canvas, device) {
     new THREE.Color(PALETTE3D.dirLight),
     VIEW3D.dirIntensity,
   );
-  sun.castShadow = !lowQ;
+  sun.castShadow = highQ;
   sun.shadow.mapSize.set(VIEW3D.shadowMapSize, VIEW3D.shadowMapSize);
   sun.shadow.bias = VIEW3D.shadowBias;
   sun.shadow.normalBias = 0.02;
@@ -184,8 +216,10 @@ export function createScene3D(canvas, device) {
    * 并对超出半径的分量做环绕折返，这样任何位置都能看到浮尘，又不需要铺满全图。
    */
   let dust = null;
-  // 手机降档：关闭空气尘埃（纯装饰，零收益但每帧要更新一批顶点）
-  const dustN = lowQ ? 0 : Math.max(0, VIEW3D.dustCount | 0);
+  // 手机低档 / 减少动态效果：关闭空气尘埃（纯装饰，零收益但每帧要更新一批顶点）
+  // 中端档：保留但只给 60% 数量，兼顾体积感与填充率。
+  const dustBase = reduced ? 0 : Math.max(0, VIEW3D.dustCount | 0);
+  const dustN = lowQ ? 0 : (midQ ? Math.round(dustBase * 0.6) : dustBase);
   if (dustN > 0) {
     const R = VIEW3D.dustRadius * VIEW3D.metersToUnits;
     const pos = new Float32Array(dustN * 3);
@@ -211,45 +245,72 @@ export function createScene3D(canvas, device) {
 
   /* ---------------- 自适应性能 ---------------- */
 
-  // 只降级不升级，避免在阈值附近来回抖动
-  let perfLevel = 0; // 0=2048 阴影, 1=1024 阴影, 2=关闭阴影, 3=降低渲染分辨率
+  // 只降级不升级，避免在阈值附近来回抖动。
+  // 阶梯（P0-4 / P1-9 统一）：
+  //   0 → 1  阴影贴图 2048 → 1024
+  //   1 → 2  关闭实时阴影
+  //   2 → 3  关闭全屏后处理（SSAO / 色差 / 颗粒 —— 通常比阴影还贵，所以提到降分辨率之前）
+  //   3 → 4  像素比压到 minPixelRatioFallback
+  //   4 → 5  缓冲分辨率 0.75×（超省档；像素比已到 1 之后唯一还能换帧率的杠杆）
+  //
+  // 起步档：桌面 0；中端触屏 2（阴影本就没开）；低端触屏 3（阴影 + 后处理都没开）。
+  const PERF_MAX = 5;
+  let perfLevel = lowQ ? 3 : (midQ ? 2 : 0);
   let acc = 0;
   let frames = 0;
+  // 渲染层注册的降级钩子：后处理归渲染层所有，scene3d 只负责"什么时候该关"。
+  let perfHook = null;
+
+  /**
+   * 执行某一级降级。每一步都带前置判断：能力已经不在的档位直接跳过（不刷误导性日志）。
+   * @param {number} level 目标档位
+   * @returns {void}
+   */
+  function applyPerfLevel(level) {
+    perfLevel = level;
+    if (level === 1) {
+      sun.shadow.mapSize.set(VIEW3D.shadowMapSizeFallback, VIEW3D.shadowMapSizeFallback);
+      sun.shadow.map?.dispose();
+      sun.shadow.map = null;
+      console.info('[搜打撤] 帧率偏低，阴影贴图降级为 1024');
+    } else if (level === 2) {
+      sun.castShadow = false;
+      renderer.shadowMap.enabled = false;
+      console.info('[搜打撤] 帧率仍偏低，已关闭实时阴影以保帧率');
+    } else if (level === 3) {
+      // 交给渲染层释放 RT 并停用全屏 pass（scene3d 不持有后处理资源）
+      if (perfHook) console.info('[搜打撤] 帧率仍偏低，已关闭全屏后处理以保帧率');
+      if (perfHook) perfHook(level);
+    } else if (level === 4) {
+      if (pixelRatioCap > VIEW3D.minPixelRatioFallback) {
+        pixelRatioCap = VIEW3D.minPixelRatioFallback;
+        applyViewport();
+        console.info('[搜打撤] 帧率仍偏低，已降低渲染分辨率以保帧率');
+      }
+    } else if (level === 5) {
+      if (bufferScale !== 0.75) {
+        bufferScale = 0.75;
+        applyViewport();
+        console.info('[搜打撤] 帧率仍偏低，已启用 0.75× 缓冲超省档');
+      }
+    }
+  }
 
   /**
    * 累积帧时间，连续低于 ~45fps 时逐级降级画质以保帧率。
-   * 降级顺序遵循"先牺牲画质细节、最后才动分辨率"：
-   * 阴影贴图 2048 → 1024 → 关闭实时阴影 → 像素比降到 minPixelRatioFallback。
+   * 降级顺序遵循"先牺牲画质细节、最后才动分辨率"。
    * @param {number} dt 帧间隔秒
    * @returns {void}
    */
   function samplePerf(dt) {
-    // 手机端已在最低档（像素比 1 + 关阴影），没有进一步降级空间；跳过以免打出误导性的降级日志
-    if (lowQ) return;
-    if (perfLevel >= 3) return;
+    if (perfLevel >= PERF_MAX) return;
     acc += dt;
     frames += 1;
     if (frames < 90) return;
     const avg = acc / frames;
     acc = 0;
     frames = 0;
-    if (avg > 0.0222) {
-      perfLevel += 1;
-      if (perfLevel === 1) {
-        sun.shadow.mapSize.set(VIEW3D.shadowMapSizeFallback, VIEW3D.shadowMapSizeFallback);
-        sun.shadow.map?.dispose();
-        sun.shadow.map = null;
-        console.info('[搜打撤] 帧率偏低，阴影贴图降级为 1024');
-      } else if (perfLevel === 2) {
-        sun.castShadow = false;
-        console.info('[搜打撤] 帧率仍偏低，已关闭实时阴影以保帧率');
-      } else {
-        // 阴影已关仍不达标，分辨率是最后一个杠杆（对低端 GPU 效果最直接）
-        pixelRatioCap = VIEW3D.minPixelRatioFallback;
-        applyViewport();
-        console.info('[搜打撤] 帧率仍偏低，已降低渲染分辨率以保帧率');
-      }
-    }
+    if (avg > 0.0222) applyPerfLevel(perfLevel + 1);
   }
 
   /* ---------------- resize ---------------- */
@@ -288,6 +349,9 @@ export function createScene3D(canvas, device) {
     sun,
     hemi,
     ambient,
+    headlight,
+    quality,
+    reducedMotion: reduced,
     resize,
     /** 把阴影视锥（与平行光）聚焦到玩家周围，换取更清晰的近处阴影 */
     focusShadow(x, z) {
@@ -295,8 +359,21 @@ export function createScene3D(canvas, device) {
       updateDust(x, z);
     },
     samplePerf,
+    /**
+     * 注册渲染层的降级钩子（P0-4）：后处理资源归渲染层所有，scene3d 只负责判断时机。
+     * 若注册时已经降过级（例如初始化慢了一拍），立刻补一次，避免丢掉"关后处理"这一档。
+     * @param {(level:number)=>void} fn 钩子，收到 >=3 的档位表示"该关后处理了"
+     * @returns {void}
+     */
+    setPerfHook(fn) {
+      perfHook = fn;
+      if (typeof fn === 'function' && perfLevel >= 3) fn(perfLevel);
+    },
     get perfLevel() {
       return perfLevel;
+    },
+    get bufferScale() {
+      return bufferScale;
     },
     dispose() {
       if (dust) {

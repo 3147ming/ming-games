@@ -4,18 +4,14 @@
 
 import {
   TILE, MATCH, PLAYER, ITEMS, WEAPONS, ARMORS, CONTAINERS, SHOP, SCORING, POI, AMMO_STACK, COLORS,
-  ENEMY_TYPES, KILLFEED, COMBAT, INSURANCE, REP, SHOP_TIER,
+  ENEMY_TYPES, KILLFEED, COMBAT, INSURANCE, REP, SHOP_TIER, ITEM_IDS, VIEW3D,
 } from './config.js';
 import { pickContracts, updateContracts, settleExtractContracts } from './contracts.js';
 import { createRng, randomSeed } from './rng.js';
-import {
-  dailySeed, dailyStatus, todayKey, repLevel, repGain, refreshShopDaily,
-  shopPrice, shopRemain, requiredRep, markCodexSeen, markCodexBrought,
-  codexStats, checkAchievements,
-} from './meta.js';
 import { generateMap, hasLineOfSight } from './mapgen.js';
 import {
-  createItem, autoPlace, hasSpace, totalValue, totalWeight, consumeById, removeItemByUid, itemValue,
+  createItem, autoPlace, hasSpace, totalValue, totalWeight, consumeById, removeItemByUid,
+  itemValue, itemWeight, displayUnits,
 } from './inventory.js';
 import * as Loot from './loot.js';
 import { Player, buildLoadoutItems } from './player.js';
@@ -33,9 +29,11 @@ const canvas = document.getElementById('game-canvas');
 const uiRoot = document.getElementById('ui-root');
 
 const audio = createAudio();
-// 设备分级：手机走 low 档（降像素比 / 关阴影与后处理 / 缩短视距），桌面完全维持原画质
+// 设备分级：手机走 low / mid 档（降像素比 / 关阴影与后处理 / 缩短视距），桌面完全维持原画质
 const device = detectDeviceTier();
 const touchMode = device.isTouch;
+// 粒子上限（P1-8）：逻辑裁剪与渲染缓冲都读 config 的同一项，两边不会再对不齐。
+const PARTICLE_CAP = Math.max(1, VIEW3D.fx.maxParticles | 0);
 const sceneHandle = isWebGLAvailable() ? createScene3D(canvas, device) : null;
 const renderer = sceneHandle ? new Renderer3D(sceneHandle, canvas, device) : new NoopRenderer3D();
 
@@ -48,6 +46,7 @@ let openContainer = null;
 
 const input = createInput();
 input.invertMouseX = save.settings.invertMouseX;
+input.invertY = save.settings.invertY;
 input.sensitivityMul = save.settings.mouseSens;
 input.touchLookSens = save.settings.touchLookSens || 1.0;
 COMBAT.aimAssist.enabled = save.settings.aimAssist; // 辅助瞄准开关随存档恢复
@@ -235,50 +234,6 @@ function formatTime(seconds) {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
-/**
- * 把一件物品放进仓库；放不下就按出售比例折现入账。
- * @param {object} item 物品实例
- * @returns {number} 折现金额（成功入库返回 0）
- */
-function placeOrCash(item) {
-  if (autoPlace(save.stash, item)) return 0;
-  const cash = Math.round(itemValue(item) * SHOP.sellRatio);
-  save.currency += cash;
-  return cash;
-}
-
-/**
- * 一组物品的估值合计（走口径换算，弹药按"盒"计价）。
- * @param {Array<object>} items 物品数组
- * @returns {number} 总估值
- */
-function gearValueOf(items) {
-  return items.reduce((s, it) => s + itemValue(it), 0);
-}
-
-/**
- * 本次部署的保险费用（0 表示没买保险）。
- * @returns {number} 保费
- */
-function insurancePremium() {
-  if (!INSURANCE.enabled || !save.insurance.enabled) return 0;
-  const lo = save.loadout;
-  const parts = [];
-  if (lo.primary && ITEMS[lo.primary]) parts.push(ITEMS[lo.primary]);
-  if (lo.secondary && ITEMS[lo.secondary]) parts.push(ITEMS[lo.secondary]);
-  if (lo.armor && lo.armor !== 'none' && ITEMS[lo.armor]) parts.push(ITEMS[lo.armor]);
-  const gearValue = parts.reduce((s, d) => s + (d.value || 0), 0);
-  return Math.round(gearValue * INSURANCE.rate);
-}
-
-/**
- * 存档里的军械商声望等级。
- * @returns {{lv: number, name: string, xp: number, nextXp: number, isMax: boolean}} 等级
- */
-function currentRep() {
-  return repLevel(save.rep ? save.rep.xp : 0);
-}
-
 /* ====================== 指针锁定（输入模式）管理 ====================== */
 
 /**
@@ -376,10 +331,12 @@ function handleLootKeys(key, ev) {
   }
 }
 
-/** 更新暂停面板里的"鼠标水平反转"按钮文案 */
+/** 更新暂停面板里的"鼠标水平反转 / 视角 Y 轴反转"按钮文案 */
 function updateInvertLabel() {
-  const btn = document.querySelector('[data-role="invert-toggle"]');
-  if (btn) btn.textContent = save.settings.invertMouseX ? '鼠标水平轴：反转' : '鼠标水平轴：正常';
+  const xBtn = document.querySelector('[data-role="invert-toggle"]');
+  if (xBtn) xBtn.textContent = save.settings.invertMouseX ? '鼠标水平轴：反转' : '鼠标水平轴：正常';
+  const yBtn = document.querySelector('[data-role="invert-y-toggle"]');
+  if (yBtn) yBtn.textContent = save.settings.invertY ? '视角Y轴：反转' : '视角Y轴：正常';
 }
 function updateAimAssistLabel() {
   const btn = document.querySelector('[data-role="aim-toggle"]');
@@ -427,6 +384,9 @@ function createWorld(map, seed, rng, player, enemies) {
     decals: [],
     explored: new Uint8Array(map.cols * map.rows),
     hitMarker: 0,
+    // P1-6 受击方向：hitDir = 「玩家 → 伤害来源」的方位角（弧度），hitDirT 是剩余淡出时间
+    hitDir: 0,
+    hitDirT: 0,
     shake: 0,
     over: false,
     result: null,
@@ -440,12 +400,8 @@ function createWorld(map, seed, rng, player, enemies) {
     contractsDone: 0,
     audio,
     exploreTimer: 0,
-    // 撤离点改为逐点 openAt（见 mapgen），这里不再需要全局 opened 标志 ——
-    // 它只能表达"一起开"，而分阶段开放要的是"ALPHA 已开、BRAVO 还锁"。
-    // 击杀来源：阵亡结算时用来告诉玩家"死在谁手上"，而不是一句干巴巴的"你倒在了战区里"。
-    killedBy: null,
-    isDaily: false, // 本局是否每日突袭
-    insurancePaid: 0, // 本局实际扣除的保费
+    insured: false, // 本局是否投保（由 startRaid 的 opts 显式传入，不从存档现读）
+    killedBy: null, // 死亡来源：{ type, dist }，用于结算页复盘
     get carriedValue() {
       return player.carriedValue;
     },
@@ -503,7 +459,7 @@ function createWorld(map, seed, rng, player, enemies) {
           h: height,
         });
       }
-      if (w.particles.length > 320) w.particles.splice(0, w.particles.length - 320);
+      if (w.particles.length > PARTICLE_CAP) w.particles.splice(0, w.particles.length - PARTICLE_CAP);
     },
     spawnImpact(x, y, angle, height) {
       for (let i = 0; i < 5; i += 1) {
@@ -560,17 +516,6 @@ function createWorld(map, seed, rng, player, enemies) {
       w.searchedCount += 1;
       if (audio) audio.searchDone();
       if (container.loot && container.loot.length) {
-        // 图鉴："翻到过"就算见过 —— 不管有没有拿走。
-        // 记录点放在开箱瞬间而不是拾取瞬间，是因为"见过"的语义是"知道这东西存在"，
-        // 而玩家在战利品面板里已经把它看完了（拿走与否是另一件事）。
-        let fresh = 0;
-        for (const it of container.loot) {
-          if (markCodexSeen(save, it.id)) fresh += 1;
-        }
-        if (fresh > 0) {
-          Storage.saveGame(save);
-          ui.toast(`图鉴新发现 ${fresh} 件`);
-        }
         openContainer = container;
         // 打开战利品面板但**不**释放指针锁定：面板是键盘驱动侧边抽屉，
         // 玩家保持锁定状态、可继续转动视角，避免"搜物资被切身切自由鼠标"的割裂感。
@@ -611,16 +556,16 @@ function createWorld(map, seed, rng, player, enemies) {
       }
       endRaid('extract');
     },
-    onDeath(entity, killer) {
+    onDeath(entity, source) {
       if (entity.isPlayer) {
-        // 死亡来源复盘：结算面板要能回答"我是怎么死的"。
-        // 敌人给兵种中文名，环境（坠落 / 未知）留 null 由文案兜底。
-        if (killer && killer.typeId) {
-          const def = ENEMY_TYPES[killer.typeId];
-          w.killedBy = (def && def.name) || '未知敌人';
-        } else {
-          w.killedBy = null;
-        }
+        // 记下击杀来源：结算页要把「被什么、从多远打死」写出来，玩家下一把才知道怎么改。
+        // source 可能是 null（环境伤害），必须容错。
+        w.killedBy = source
+          ? {
+            type: source.typeId || 'unknown',
+            dist: Math.round(Math.hypot(source.x - entity.x, source.y - entity.y)),
+          }
+          : null;
         return; // 玩家死亡由主循环统一结算
       }
       w.kills += 1;
@@ -690,16 +635,9 @@ function setPaused(value) {
 
 /* ============================ 局外：商店与配置 ============================ */
 
-/**
- * 是否正在为「每日突袭」做战前配置。
- * 用模块级标记而不是给 deploy 传参：菜单点「每日突袭」→ 进战前配置 → 点「部署」，
- * 中间隔着一次屏幕切换，参数传不过去，只能靠这个标记把意图带过去。
- */
-let dailyPending = false;
-
 function refreshLoadout() {
   Storage.ensureMinimumKit(save);
-  ui.renderLoadout(save, { daily: dailyPending, rep: currentRep() });
+  ui.renderLoadout(save);
 }
 
 function deploy() {
@@ -711,18 +649,22 @@ function deploy() {
     audio.error();
     return;
   }
-  // 装备保险：部署时一次性收保费。买不起就**自动降级为不投保**并明确告知，
-  // 而不是把玩家拦在部署之外 —— 保险是"可选容错"，不该成为进图的门槛。
-  let premium = insurancePremium();
-  if (premium > 0 && save.currency < premium) {
-    ui.toast(`资金不足，本次未投保（保费 ${money(premium)}）`);
-    premium = 0;
-  }
-  if (premium > 0) {
-    save.currency -= premium;
-    ui.toast(`已投保 · 保费 ${money(premium)}（阵亡时赔回带入的武器与护甲）`);
-  }
   const lo = save.loadout;
+  // 保费要在扣装备之前算：consumeById 之后仓库里已经没有那把枪了。
+  const insured = Boolean(save.insurance && save.insurance.enabled && INSURANCE.enabled);
+  if (insured) {
+    const gearValue = [lo.primary, lo.secondary]
+      .filter((id) => id && WEAPONS[id])
+      .reduce((s, id) => s + WEAPONS[id].value, 0)
+      + (lo.armor && lo.armor !== 'none' && ARMORS[lo.armor] ? ARMORS[lo.armor].value : 0);
+    const premium = Math.round(gearValue * INSURANCE.rate);
+    if (premium > save.currency) {
+      ui.toast(`资金不足：保费 ${money(premium)}`);
+      audio.error();
+      return;
+    }
+    save.currency -= premium;
+  }
   const weapons = [lo.primary, lo.secondary].filter((id) => id && WEAPONS[id]);
   for (const id of weapons) consumeById(save.stash, id, 1);
   if (lo.armor && lo.armor !== 'none' && ARMORS[lo.armor]) consumeById(save.stash, lo.armor, 1);
@@ -731,31 +673,20 @@ function deploy() {
   consumeById(save.stash, 'medkit', lo.medkits || 0);
   consumeById(save.stash, 'bandage', lo.bandages || 0);
   Storage.saveGame(save);
-  const daily = dailyPending;
-  dailyPending = false;
-  startRaid(daily ? dailySeed() : ui.getSeed(), { daily, premium });
+  startRaid(ui.getSeed(), { insured });
 }
 
 function buy(id) {
   const def = ITEMS[id];
   if (!def) return;
-  // 1) 声望门槛：高档货不是有钱就能买（见 config.SHOP_TIER / REP）
-  const needLv = requiredRep(id, SHOP_TIER);
-  const rep = currentRep();
-  if (rep.lv < needLv) {
-    ui.toast(`声望不足：${def.name} 需要军械商 Lv.${needLv}（当前 Lv.${rep.lv}）`);
+  // 声望门槛：UI 只是展示锁，判定必须在逻辑层。
+  const needLv = SHOP_TIER[id] || 1;
+  if (Storage.repLevel((save.rep && save.rep.xp) || 0) < needLv) {
+    ui.toast(`需声望 Lv.${needLv}`);
     audio.error();
     return;
   }
-  // 2) 每日特价限购
-  if (shopRemain(id, save) <= 0) {
-    ui.toast(`${def.name} 今日特价已售完`);
-    audio.error();
-    return;
-  }
-  // 3) 实际售价（特价商品按折扣）
-  const { price, discounted } = shopPrice(id, save, def);
-  if (save.currency < price) {
+  if (save.currency < def.value) {
     ui.toast('资金不足');
     audio.error();
     return;
@@ -766,31 +697,26 @@ function buy(id) {
     audio.error();
     return;
   }
-  save.currency -= price;
-  if (discounted) {
-    if (!save.shop.sold) save.shop.sold = {};
-    save.shop.sold[id] = (save.shop.sold[id] || 0) + 1;
-  }
+  save.currency -= def.value;
   autoPlace(save.stash, item);
   Storage.saveGame(save);
   ui.renderShop(save);
   audio.cash();
-  ui.toast(discounted
-    ? `已购买 ${def.name} · 特价 ${money(price)}（省 ${money(def.value - price)}）`
-    : `已购买 ${def.name}`);
+  ui.toast(`已购买 ${def.name}`);
 }
 
 function sell(uid) {
   const item = save.stash.items.find((it) => it.uid === uid);
   if (!item) return;
-  const price = Math.round(item.value * item.qty * SHOP.sellRatio);
+  const price = Math.round(itemValue(item) * SHOP.sellRatio);
   removeItemByUid(save.stash, uid);
   save.currency += price;
   Storage.saveGame(save);
   ui.renderShop(save);
   ui.renderStash(save);
   audio.cash();
-  ui.toast(`出售 ${item.name} ×${item.qty} → ${money(price)}`);
+  const sd = displayUnits(item);
+  ui.toast(`出售 ${item.name} ×${sd.count}${sd.unit} → ${money(price)}`);
 }
 
 function sellAll() {
@@ -800,7 +726,7 @@ function sellAll() {
     return;
   }
   let gained = 0;
-  for (const item of items) gained += Math.round(item.value * item.qty * SHOP.sellRatio);
+  for (const item of items) gained += Math.round(itemValue(item) * SHOP.sellRatio);
   save.stash.items.length = 0;
   save.currency += gained;
   Storage.saveGame(save);
@@ -812,7 +738,7 @@ function sellAll() {
 
 /* ============================ 战局生命周期 ============================ */
 
-function startRaid(seedInput, opts = {}) {
+function startRaid(seedInput, opts) {
   const seed = seedInput && seedInput > 0 ? (Number(seedInput) >>> 0) : randomSeed();
   const map = generateMap(seed);
   const rng = createRng((seed ^ 0x9e3779b9) >>> 0);
@@ -837,11 +763,8 @@ function startRaid(seedInput, opts = {}) {
   const enemies = spawnEnemies(map, rng);
 
   world = createWorld(map, seed, rng, player, enemies);
-  world.isDaily = Boolean(opts.daily);
-  world.insurancePaid = Math.max(0, Number(opts.premium) || 0);
-  // 开局就把"图鉴里还没见过的物品"抓一份快照，结算时对比即可算出"新发现 N 件"，
-  // 不必在拾取时做 UI 反馈（那样每捡一件就弹一次，会盖住战斗信息）。
-  world.codexBefore = codexStats(save).seen;
+  // 保险状态只能从本次部署显式传入：若从 save 现读，控制台调 SOUDACHE.startRaid(1) 会白嫖保险。
+  world.insured = Boolean(opts && opts.insured);
   openContainer = null;
   paused = false;
   input.fire = false;
@@ -853,11 +776,17 @@ function startRaid(seedInput, opts = {}) {
   go('battle');
   audio.ensure();
   if (audio.startAmbient) audio.startAmbient();
-  if (world.isDaily) {
-    ui.toast(`每日突袭 · 种子 ${seed} · 今日地图固定，全服同一张`);
-  } else {
-    ui.toast(`已部署 · 种子 ${seed} · ${map.extracts.length} 个撤离点（免费点 2:30 先开，其余 6:00）`);
-  }
+  ui.toast(`已部署 · 种子 ${seed} · ${map.extracts.length} 个撤离点（免费点 2:30 先开，其余剩余 2:00）`);
+}
+
+/**
+ * 放进仓库；放不下就按出售价折现（与既有溢出逻辑同一口径）。
+ * @param {object} item 物品实例
+ * @returns {number} 折现金额（0 = 已放进仓库）
+ */
+function placeOrCash(item) {
+  if (autoPlace(save.stash, item)) return 0;
+  return Math.round(itemValue(item) * SHOP.sellRatio);
 }
 
 function endRaid(reason) {
@@ -880,30 +809,34 @@ function endRaid(reason) {
   }
 
   const broughtOut = success ? carried.concat(gear) : [];
-  const lost = success ? [] : carried.concat(gear);
+  let lost = success ? [] : carried.concat(gear);
+  if (!success && world.insured) {
+    // 保险只赔带进去的装备：gear 回仓库（满了折现），随身物资照旧清空。
+    lost = carried.slice();
+    let cash = 0;
+    for (const it of gear) cash += placeOrCash(it);
+    if (cash > 0) {
+      save.currency += cash; // 折现的钱必须真正到账，否则"理赔"是假的
+      ui.toast(`保险理赔：仓库已满，折现 ${money(cash)}`);
+    }
+  }
   const lootValue = Loot.valueOf(broughtOut);
-  // 「高价值撤离」/「静默渗透」类合约：只有真正撤离成功才结算
+  // 「高价值撤离」类合约：只有真正撤离成功才结算（带出估值达标即达成）
   if (success) settleExtractContracts(world, lootValue, (c) => completeContract(world, c));
 
   if (success) {
     let overflow = 0;
     for (const item of broughtOut) overflow += placeOrCash(item);
     if (overflow > 0) {
+      save.currency += overflow;
       ui.toast(`仓库已满，溢出物资自动折现 ${money(overflow)}`);
     }
     if (audio) audio.extract();
   } else {
-    // 保险理赔：只赔"带入的武器与护甲"，背包里搜到的东西照旧全丢 ——
-    // 保险削掉的是"带好装备进图就归零"的挫败，不是死亡惩罚本身。
-    if (world.insurancePaid > 0 && gear.length) {
-      let cashed = 0;
-      for (const item of gear) cashed += placeOrCash(item);
-      ui.toast(`保险理赔 · ${gear.length} 件带入装备已返还仓库${cashed > 0 ? `（仓库满，折现 ${money(cashed)}）` : ''}`);
-    }
     if (audio) audio.death();
   }
 
-  // ---- 统计 ----
+  // 统计
   const survived = Math.min(MATCH.duration, world.time);
   const accuracy = player.shotsFired ? Math.round((player.hits / player.shotsFired) * 100) : 0;
   const score = Math.round(
@@ -915,71 +848,58 @@ function endRaid(reason) {
     + (world.scoreBonus || 0),
   );
   const rating = SCORING.ratings.find((r) => score >= r.min) || SCORING.ratings[SCORING.ratings.length - 1];
-  // 评级奖励：把"评级"从纯展示变成一条收入线（见 config.SCORING.ratingBonus）
-  const ratingBonus = SCORING.ratingBonus[rating.grade] || 0;
+
+  // 评级奖励：只在撤离成功时发（S 1500 / A 800 / B 400 / C 150 / D 0）
+  const ratingBonus = success ? ((SCORING.ratingBonus && SCORING.ratingBonus[rating.grade]) || 0) : 0;
   if (ratingBonus > 0) save.currency += ratingBonus;
 
-  // 声望：撤离成功给固定加成 + 按带出估值提成。拼的是"带出什么"，不是"熬了多久"。
-  const repXp = repGain({ lootValue, success });
-  if (!save.rep) save.rep = { xp: 0 };
-  const repBefore = repLevel(save.rep.xp).lv;
-  save.rep.xp += repXp;
-  const repAfter = repLevel(save.rep.xp).lv;
-
-  // 图鉴：撤离成功时把带出的每件物品记一次"带出过"
-  if (success) {
-    for (const item of broughtOut) markCodexBrought(save, item.id);
-  }
-  const codexNow = codexStats(save);
-  const codexNew = Math.max(0, codexNow.seen - (world.codexBefore || 0));
-
   save.stats.raids += 1;
-  if (success) {
-    save.stats.extracts += 1;
-    save.stats.streak = (save.stats.streak || 0) + 1;
-  } else {
-    save.stats.deaths += 1;
-    save.stats.streak = 0;
-  }
+  if (success) save.stats.extracts += 1;
+  else save.stats.deaths += 1;
   save.stats.kills += world.kills;
   save.stats.bestScore = Math.max(save.stats.bestScore, score);
   save.stats.bestValue = Math.max(save.stats.bestValue, lootValue);
 
-  // 每日突袭：只记当天最好的一局，跨天自然重置（dailyStatus 按日期串判定）
-  let dailyBest = false;
-  if (world.isDaily) {
-    const key = todayKey();
-    if (!save.daily || save.daily.date !== key) save.daily = { date: key, bestScore: 0, extracted: false };
-    if (success) {
-      save.daily.extracted = true;
-      save.stats.dailyCount = (save.stats.dailyCount || 0) + 1;
-    }
-    if (score > (save.daily.bestScore || 0)) {
-      save.daily.bestScore = score;
-      dailyBest = true;
-    }
+  /* ---- 新增持久化：必须全部落在下面那次 saveGame 之前 ----
+   * 写反了的表现是"结算页有，退出重进就没了"。 */
+
+  // 每日突袭：日期变了就重置；只有「今日种子」才算成绩
+  const today = String(Storage.dailySeed());
+  if (!save.daily || save.daily.date !== today) save.daily = { date: today, bestScore: 0, extracted: false };
+  if (world.seed === Storage.dailySeed()) {
+    save.daily.bestScore = Math.max(save.daily.bestScore, score);
+    if (success) save.daily.extracted = true;
   }
 
-  // 成就：必须在 stats / codex / currency 全部落账**之后**再查，否则本局刚达成的条件要等下一局
-  const newAch = checkAchievements(save);
-  let achReward = 0;
-  for (const a of newAch) {
-    achReward += a.reward;
-    save.currency += a.reward;
+  // 图鉴：本局新发现的件数（brought 只在真正带出时记录）
+  let newFound = 0;
+  for (const it of broughtOut) {
+    const rec = save.codex || (save.codex = { seen: {}, brought: {} });
+    if (!rec.brought[it.id]) newFound += 1;
+    rec.brought[it.id] = true;
   }
+
+  // 军械商声望：带出估值换经验，阵亡留 30%
+  const rep = save.rep || (save.rep = { xp: 0 }); // 老档没有 rep 字段：就地补，别让 buy() 崩
+  const xpGain = Math.round(lootValue * REP.xpPerValue * (success ? 1 : REP.deathXp));
+  const beforeLv = Storage.repLevel(rep.xp);
+  rep.xp += xpGain;
+  const afterLv = Storage.repLevel(rep.xp);
+  const repLine = afterLv > beforeLv
+    ? `Lv.${afterLv} · ${REP.levels.find((l) => l.level === afterLv).label}`
+    : null;
 
   Storage.saveGame(save);
   Storage.ensureMinimumKit(save);
 
+  // 死因复盘：只有 dead 的副标题是动态的，其余三条原样
+  const killer = world.killedBy;
+  const killedText = killer
+    ? `倒在 ${(ENEMY_TYPES[killer.type] && ENEMY_TYPES[killer.type].name) || '未知目标'} 枪下 · ${killer.dist}m`
+    : '你倒在了战区里，随身物资全部丢失。';
   const titles = {
     extract: { title: '撤离成功', subtitle: '你活着把东西带了出来。', ok: true },
-    dead: {
-      title: '阵亡',
-      subtitle: world.killedBy
-        ? `你被${world.killedBy}击倒，随身物资全部丢失。`
-        : '你倒在了战区里，随身物资全部丢失。',
-      ok: false,
-    },
+    dead: { title: '阵亡', subtitle: killedText, ok: false },
     timeout: { title: '超时未撤离', subtitle: '撤离窗口关闭，你被留在了战区。', ok: false },
     abandon: { title: '放弃战局', subtitle: '你主动放弃了这次突袭。', ok: false },
   };
@@ -997,17 +917,19 @@ function endRaid(reason) {
   if (world.extractFeePaid > 0) {
     stats.push(['撤离手续费', money(world.extractFeePaid)]);
   }
-  if (world.insurancePaid > 0) {
-    stats.push(['装备保险', success ? `已投保 ${money(world.insurancePaid)}` : `已理赔 ${money(world.insurancePaid)} 保费`]);
+  // 评级奖励与「距下一档还差多少」：让 S 和 C 的收益差别看得见
+  if (ratingBonus > 0) stats.push(['评级奖励', money(ratingBonus)]);
+  if (success) {
+    const nextGrade = SCORING.ratings.filter((r) => r.min > score).pop();
+    if (nextGrade) stats.push([`距 ${nextGrade.grade}`, `${nextGrade.min - score} 分`]);
+    // 图鉴进度（分母是 ITEM_IDS.length，现在是 19，含 lv2/lv3）
+    // 撤离成功但一件都没带出来时 save.codex 可能还不存在，这里必须兜底。
+    const total = Object.keys((save.codex && save.codex.brought) || {}).length;
+    stats.push(['图鉴', `${newFound > 0 ? `新发现 ${newFound} 件 · ` : ''}${total}/${ITEM_IDS.length}`]);
   }
+  // 声望提升（只在真的跨级时出现）
+  if (repLine) stats.push(['声望提升', repLine]);
   stats.push(['评分', String(score)]);
-  if (ratingBonus > 0) stats.push(['评级奖励', `+${money(ratingBonus)}`]);
-  // 「距下一档还差多少」：评级从"看完就忘的字母"变成一条可追求的目标线。
-  // ratings 从高到低排列，filter(min > score).pop() 取到的是**严格更高**的最低一档。
-  const nextGrade = SCORING.ratings.filter((r) => r.min > score).pop();
-  if (success && nextGrade) stats.push([`距 ${nextGrade.grade} 级`, `${nextGrade.min - score} 分`]);
-  stats.push(['军械商声望', `+${repXp} XP${repAfter > repBefore ? ` · 升到 Lv.${repAfter}` : ''}`]);
-  if (achReward > 0) stats.push(['成就奖励', `+${money(achReward)}`]);
 
   ui.renderResult({
     success: info.ok,
@@ -1018,10 +940,6 @@ function endRaid(reason) {
     emptyText: success ? '这次什么都没带出来。' : '没有可损失的物资。',
     items: success ? broughtOut : lost,
     stats,
-    // 图鉴与成就的"本局增量"，由结算面板单独一行展示
-    codex: codexNew > 0 ? { added: codexNew, seen: codexNow.seen, total: codexNow.total } : null,
-    achievements: newAch.map((a) => ({ name: a.name, reward: a.reward })),
-    daily: world.isDaily ? { extracted: success, best: dailyBest } : null,
   });
   world.result = reason;
   go('result');
@@ -1041,8 +959,11 @@ function takeLootItem(uid) {
     return;
   }
   autoPlace(world.player.inventory, item);
+  // 图鉴：拾取过就记 seen（不在这里落盘 —— endRaid 那次 saveGame 会一起写下去，
+  // 一次拾取多写一遍 localStorage 是白给的开销）
+  save.codex = save.codex || { seen: {}, brought: {} };
+  save.codex.seen[item.id] = true;
   list.splice(idx, 1);
-  markCodexSeen(save, item.id); // 二开已搜容器 / 尸体面板（没走搜索读条）也要进图鉴
   audio.pickup();
   if (list.length) ui.refreshLoot();
   else ui.closeLoot();
@@ -1053,10 +974,11 @@ function takeAllLoot() {
   const list = (openContainer.loot || []).slice();
   let taken = 0;
   for (const item of list) {
-    if (openContainer.loot.indexOf(item) < 0) continue;
     if (!hasSpace(world.player.inventory, item)) continue;
     autoPlace(world.player.inventory, item);
-    markCodexSeen(save, item.id);
+    // 图鉴：只记 seen（循环外不要逐件 saveGame）
+    save.codex = save.codex || { seen: {}, brought: {} };
+    save.codex.seen[item.id] = true;
     const idx = openContainer.loot.indexOf(item);
     if (idx >= 0) openContainer.loot.splice(idx, 1);
     taken += 1;
@@ -1212,28 +1134,19 @@ function updateAirdrop(w) {
   if (!a || a.landed) return;
   if (w.time < a.delay) return;
   a.landed = true;
-  const loot = Loot.rollContainer('airdrop', w.rng);
-  // 空投保底一张门卡：上锁保险箱只能靠门卡开，如果门卡全图只靠运气出，
-  // "上锁保险箱"就会变成纯劝退。空投是限时公开目标，给它一张门卡，
-  // 等于给"去抢空投"加了第二个理由（第一个是它本来就很肥）。
-  loot.push(createItem(ITEMS.keycard, 1));
-  for (const it of loot) markCodexSeen(save, it.id);
   w.map.containers.push({
     id: `airdrop-${w.seed}`,
     type: 'airdrop',
     x: Math.round(a.x), y: Math.round(a.y),
     r: CONTAINERS.airdrop.radius,
     searched: false,
-    loot,
+    loot: Loot.rollContainer('airdrop', w.rng),
   });
     ui.toast('空投已着陆！前往标记点夺取高级物资');
     if (audio) {
       if (audio.airdrop) audio.airdrop();
       else audio.searchDone();
     }
-  // 落地噪音：整张地图都听得见（POI.airdropLure）。空投不是免费补给箱，
-  // 是一次公开的"来打一架"邀请 —— 想去拿，就得先想好怎么打。
-  w.emitNoise(a.x, a.y, POI.airdropLure, 'airdrop');
 }
 
 function update(dt) {
@@ -1243,6 +1156,8 @@ function update(dt) {
   w.time += dt;
   w.timeLeft = Math.max(0, MATCH.duration - w.time);
   w.hitMarker = Math.max(0, w.hitMarker - dt);
+  // 受击方向提示（P1-6）：0.6s 内淡出，超时即视为"忘了从哪挨的枪"
+  w.hitDirT = Math.max(0, (w.hitDirT || 0) - dt);
   updateAirdrop(w);
 
   w.player.update(dt, input, w);
@@ -1254,16 +1169,15 @@ function update(dt) {
   updateExplored(dt);
   input.firePressed = false;
 
-  // 撤离点**分阶段**开放：每个点自带 openAt（**经过秒数**，与 w.time 同口径），到点逐个开启。
-  // 早先是"所有点在同一帧一起开"，于是"去哪个撤离点"从来不是选择题 ——
-  // 开放时刻相同，那就永远只跑最近的那个。错开之后才有取舍：
-  // 免费点 2:30 先开（近，跑快点到），其余 6:00 压局末（远，但常伴随守军/手续费）。
+  // 撤离点按各自的 openAt 依次开启：免费点先开（"早走"的选项），付费/守点压在局末。
+  // 只在状态真的变化时发 toast，不进每帧的刷屏路径。
+  // openAt 与 w.time 同为「经过秒数」；缺字段按 0 处理（测试手搓的 map 没有 openAt）。
   for (const ex of w.map.extracts) {
     if (ex.open || w.time < (ex.openAt || 0)) continue;
     ex.open = true;
-    const kind = ex.kind || 'free';
-    const sub = kind === 'paid' ? '（付费撤离）' : (kind === 'guarded' ? '（有守军）' : '');
-    ui.toast(`${ex.name} 已开放${sub} · 站定 ${MATCH.extractChannel} 秒撤离`);
+    const fee = ex.kind === 'paid' ? `（手续费 ${money(ex.cost || MATCH.extractFee)}）` : '';
+    const noMore = w.map.extracts.every((p) => p.open);
+    ui.toast(`${ex.name} 已开放${fee}${noMore ? ' · 最后一处出口' : ''}`);
     if (audio && audio.warn) audio.warn();
   }
 
@@ -1291,6 +1205,13 @@ function frame(ts) {
     ui.renderHud(world, dt, paused || screen === 'result');
   }
 
+  // P1-6 换弹进度环：开火键外圈按换弹进度填充，换弹结束自动消失
+  if (touchControls) {
+    const wpn = world && world.player ? world.player.currentWeapon : null;
+    const reloading = !!(screen === 'battle' && wpn && wpn.reloading && wpn.reloadTotal > 0);
+    touchControls.setReload(reloading, reloading ? 1 - wpn.reloadTimer / wpn.reloadTotal : 0);
+  }
+
   // 该锁定却没锁定 → 明确提示玩家点画面恢复，而不是让他们以为输入坏了
   ui.setLockHint(wantsMouseLock() && !input.locked);
 }
@@ -1298,50 +1219,46 @@ function frame(ts) {
 /* ============================ UI 动作 ============================ */
 
 const ui = createUI(uiRoot, {
-  'goto-menu': () => { dailyPending = false; go('menu'); },
+  'goto-menu': () => go('menu'),
   'goto-loadout': () => {
-    dailyPending = false;
     refreshLoadout();
     go('loadout');
-  },
-  // 每日突袭：种子由日期决定，走同一条战前配置 → 部署流程（只是换种子来源）
-  'goto-daily': () => {
-    dailyPending = true;
-    refreshLoadout();
-    go('loadout');
-    ui.toast('每日突袭 · 今日地图与战利品固定，全服同一张');
   },
   'goto-stash': () => {
     ui.renderStash(save);
     go('stash');
   },
   'goto-shop': () => {
-    refreshShopDaily(save);
-    Storage.saveGame(save);
     ui.renderShop(save);
     go('shop');
   },
+  'goto-howto': () => go('howto'),
   'goto-codex': () => {
     ui.renderCodex(save);
     go('codex');
   },
-  'goto-howto': () => go('howto'),
-  deploy,
+  // 每日突袭：复用 setSeed / refreshLoadout / go，不新写部署流程
+  'daily-raid': () => {
+    const seed = Storage.dailySeed();
+    ui.setSeed(seed);
+    refreshLoadout();
+    go('loadout');
+    const done = save.daily && save.daily.date === String(seed) && save.daily.extracted;
+    ui.toast(`每日突袭 · 今日种子 ${seed}${done ? ' · 今日已通关' : ''}`);
+  },
   'toggle-insurance': () => {
+    save.insurance = save.insurance || { enabled: false };
     save.insurance.enabled = !save.insurance.enabled;
     Storage.saveGame(save);
-    ui.renderLoadout(save, { daily: dailyPending, rep: currentRep() });
-    const p = insurancePremium();
-    ui.toast(save.insurance.enabled
-      ? `装备保险：开启 · 本次保费 ${money(p)}`
-      : '装备保险：关闭');
-    audio.ui();
+    ui.renderLoadout(save);
+    audio.ui(0.4);
   },
+  deploy,
   'set-loadout': (data) => {
     const slot = data.slot;
     save.loadout[slot] = data.value === '' ? null : data.value;
     Storage.saveGame(save);
-    ui.renderLoadout(save, { daily: dailyPending, rep: currentRep() });
+    ui.renderLoadout(save);
     audio.ui();
   },
   'step-loadout': (data) => {
@@ -1350,7 +1267,7 @@ const ui = createUI(uiRoot, {
     const next = Math.max(0, Math.min(6, (save.loadout[kind] || 0) + delta));
     save.loadout[kind] = next;
     Storage.saveGame(save);
-    ui.renderLoadout(save, { daily: dailyPending, rep: currentRep() });
+    ui.renderLoadout(save);
     audio.ui(0.4);
   },
   buy: (data) => buy(data.id),
@@ -1361,8 +1278,6 @@ const ui = createUI(uiRoot, {
     go('stash');
   },
   'result-again': () => {
-    // 「再来一局」= 普通战局（每日突袭一天打一次就是一次，不该被"再来一局"续上）
-    dailyPending = false;
     refreshLoadout();
     go('loadout');
   },
@@ -1405,6 +1320,13 @@ const ui = createUI(uiRoot, {
     Storage.saveGame(save);
     updateInvertLabel();
     ui.toast(save.settings.invertMouseX ? '鼠标水平轴：反转' : '鼠标水平轴：正常');
+  },
+  'toggle-invert-y': () => {
+    save.settings.invertY = !save.settings.invertY;
+    input.invertY = save.settings.invertY;
+    Storage.saveGame(save);
+    updateInvertLabel();
+    ui.toast(save.settings.invertY ? '视角Y轴：反转' : '视角Y轴：正常');
   },
   'set-fov': (data) => {
     const v = Math.max(60, Math.min(100, Number(data.value) || 75));
@@ -1473,13 +1395,24 @@ const ui = createUI(uiRoot, {
   },
   'reset-save': () => {
     save = Storage.resetSave();
-    dailyPending = false;
-    refreshShopDaily(save);
-    Storage.saveGame(save);
     ui.renderMenu(save);
     ui.toast('存档已清空');
   },
+}, {
+  // 无障碍（P1-7）：系统开了「减少动态效果」时，HUD 只保留信息、不保留闪烁/弹动
+  reducedMotion: device.reducedMotion,
 });
+
+// 手机端任务面板入口：命中区是 DOM（canvas 是 pointer-events:none，收不到触摸），
+// 矩形由 renderHud 每帧从 L.tasks 同步，这里只负责把点击接到已有的 toggleTasks。
+const tasksTap = document.querySelector('[data-role="tasks-tap"]');
+if (tasksTap) {
+  tasksTap.addEventListener('click', () => {
+    if (screen !== 'battle' || paused) return;
+    ui.toggleTasks();
+    audio.ui(0.4); // 让玩家确知"这一下点到了"
+  });
+}
 
 /* ============================ 输入 ============================ */
 
@@ -1638,11 +1571,6 @@ window.addEventListener('resize', () => {
 
 /* ============================ 启动 ============================ */
 
-// 启动即对齐"今天"的商店特价：否则玩家第一次进商店时 save.shop.date 还是空的，
-// 得先进一次再退出来才看到折扣（静默的时序 bug，肉眼极难发现）。
-refreshShopDaily(save);
-Storage.saveGame(save);
-
 go('menu');
 window.requestAnimationFrame(frame);
 
@@ -1673,12 +1601,6 @@ window.SOUDACHE = {
   // 之前只能靠"按完没报错"推断，那是弱证据：按键绑错了也照样不报错。
   isTasksOpen: ui.isTasksOpen,
   toggleTasks: ui.toggleTasks,
-  // 长期进度：探针需要能构造"今日已打过 / 声望 Lv.N"这类状态来断言 UI，
-  // 而不是靠点几十局把数值堆上去。
-  dailySeed,
-  dailyStatus: () => dailyStatus(save),
-  repLevel: () => currentRep(),
-  codexStats: () => codexStats(save),
-  shopDeals: () => (save.shop ? save.shop.deals.slice() : []),
-  insurancePremium,
+  // 渲染器句柄（含 .handle.scene / .handle.camera），仅供探针/调试遍历使用。
+  renderer,
 };

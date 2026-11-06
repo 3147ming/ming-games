@@ -29,13 +29,9 @@ export const MATCH = {
   warnTime: 120, // 剩余 2 分钟计时转红（紧迫提示）
   extractChannel: 3, // 撤离读条 3 秒（站定不动即可撤离）
   extractTotal: 2, // 地图上的撤离点总数（固定 2 个）
-  extractOpenAt: 120, // 全部撤离点开放的时刻（最后 2 分钟；免费点更早，见 extractFirstOpen）
-  // 分阶段开放：第一个撤离点（最近的）提前到剩余 extractFirstOpen 秒开放，
-  // 其余按 extractOpenAt。两个点错开 30 秒，玩家才有"先赶近点、还是等远点"的决策。
-  extractFirstOpen: 150,
-  // 守点撤离受击不清零，而是把读条回退到当前进度的该比例 —— "扛着打"变成可行，
-  // 但持续挨打仍然撤不出去（3 秒读条 + 每发回退 20%，等于要求把守卫压制住）。
-  extractHitPenalty: 0.8,
+  extractOpenAt: 120, // 最后 2 分钟：剩余撤离点全部开放
+  extractFirstOpen: 150, // 第 2 分 30 秒先开一个出口：把「何时撤」还给玩家
+  extractHitPenalty: 0.8, // 撤离读条被打中一次回退的秒数（不是清零）
   extractRadius: 64,
   interactRange: 56,
   itemPickupRange: 38, // 地面掉落物的拾取距离（比容器/终端更近，避免误触）
@@ -65,14 +61,15 @@ export const PLAYER = {
   staminaSprintDrain: 24,
   staminaRegen: 18,
   staminaRegenDelay: 0.8,
-  // 负重上限 = 基础 20kg + 护甲加成（二级 +3kg / 三级 +6kg，见 weightLimitFor）。
-  // 带上限内的重量不产生任何惩罚；超重后进入"硬性超重"：减速 + 禁奔跑。
+  // 负重上限 = 基础 28kg + 护甲加成（二级 +8kg / 三级 +12kg，见 weightLimitFor）。
+  // P0-1（2026-10-30）：原基础 20kg 上调到 28kg（无甲即 28kg 上限），超重仍只减速不禁跑。
+  // 带上限内的重量不产生任何惩罚；超重后进入"硬性超重"：移速下降（减速），但**仍允许奔跑**。
   // weightLimit 保留为"无甲基准值"，供不关心护甲的调用点（UI 进度条分母等）直接使用。
-  weightLimit: 20,
-  weightBaseLimit: 20,
-  weightArmorBonus: { none: 0, lv2: 3, lv3: 6 },
-  // 硬性超重：移速与体力恢复都按超重比例线性下降，各自触底后不再下降。
-  // 超重即禁跑（见 player.js overweight），因此"减速 50% + 无法奔跑"是同一件事的两面。
+  weightLimit: 28,
+  weightBaseLimit: 28,
+  weightArmorBonus: { none: 0, lv2: 8, lv3: 12 },
+  // 硬性超重：移速按超重比例线性下降（减速），但**不再禁止奔跑**——
+  // 玩家超重时只是"跑得慢"，逃命手段依旧可用，避免"一超重就完全跑不动"的憋屈。
   weightOverSpeedFloor: 0.5, // 移速下限（两倍超重时触底 = 减速 50%）
   weightOverStaminaFloor: 0.4, // 体力恢复下限（比移速更早触底：体力是逃命的底线）
   staminaExhaustSpeedMul: 0.55, // 疲惫时移速倍率（体力耗尽后）
@@ -80,9 +77,7 @@ export const PLAYER = {
   noiseCrouch: 70,
   noiseWalk: 150,
   noiseSprint: 340,
-  // 搜刮 / 破解读条期间持续发出的噪音：比走路响、比冲刺轻。
-  // 以前读条是"完全静音"的，等于给了一个免费的安静搜刮窗口 —— 门后有人也不知道。
-  noiseSearch: 220,
+  noiseSearch: 220, // 搜刮 / 破解读条期间周期性发出的响动
   backpack: { cols: 5, rows: 6 },
   stash: { cols: 10, rows: 8 },
 };
@@ -334,25 +329,22 @@ export const ITEMS = {
   keycard: {
     id: 'keycard', name: '实验室门卡', category: 'valuable', rarity: 'legendary',
     value: 7200, weight: 0.1, size: { w: 1, h: 1 }, icon: 'keycard',
-    desc: '本局最贵的一件东西，几乎不占重量。也用来直接开上锁的保险箱。',
+    desc: '本局最贵的一件东西，几乎不占重量。',
   },
-  // ---- 传说级扩充：原来传说池只有「门卡」一件，掷到传说就等于掷到门卡，
-  // 稀有度分级形同虚设。补三件不同格数/重量/价值的传说，
-  // 让"出货了"和"出的是什么"变成两级惊喜（也才有图鉴可收集）。----
   serverRack: {
-    id: 'serverRack', name: '加密服务器', category: 'valuable', rarity: 'legendary',
-    value: 8600, weight: 2.6, size: { w: 2, h: 2 }, icon: 'chip',
-    desc: '整机拆下来的加密服务器。占四格、压得人跑不动，但买家出价极狠。',
+    id: 'serverRack', name: '服务器阵列', category: 'valuable', rarity: 'legendary',
+    value: 5200, weight: 3.2, size: { w: 2, h: 2 }, icon: 'chip',
+    desc: '整机拆下来的存储阵列，值钱，但重得像块砖。',
   },
   prototypeOptic: {
-    id: 'prototypeOptic', name: '原型热成像', category: 'valuable', rarity: 'legendary',
-    value: 9400, weight: 1.2, size: { w: 2, h: 1 }, icon: 'optic',
-    desc: '没量产的试验型热成像瞄具，收藏家眼里的圣物。',
+    id: 'prototypeOptic', name: '原型瞄具', category: 'valuable', rarity: 'legendary',
+    value: 4800, weight: 0.8, size: { w: 2, h: 1 }, icon: 'optic',
+    desc: '没有编号的样机，军火商不问来路。',
   },
   sealedOrder: {
-    id: 'sealedOrder', name: '密封军令', category: 'valuable', rarity: 'legendary',
-    value: 10200, weight: 0.2, size: { w: 1, h: 1 }, icon: 'doc',
-    desc: '火漆封口的最高级军令。没人敢拆，但人人想要。',
+    id: 'sealedOrder', name: '密封命令书', category: 'valuable', rarity: 'legendary',
+    value: 4400, weight: 0.2, size: { w: 1, h: 1 }, icon: 'doc',
+    desc: '火漆还在。里面的内容不该被你看见。',
   },
 
   /* --- 武器（由 WEAPONS 展开） --- */
@@ -402,10 +394,7 @@ export const CONTAINERS = {
     id: 'safe', name: '保险箱', searchTime: 4.6, rolls: [3, 4],
     rarityWeights: { common: 15, rare: 38, epic: 34, legendary: 13 },
     categoryBias: { valuable: 2.2 }, radius: 18, color: '#7a5a3a',
-    // 地图生成时按此概率上锁。上锁的保险箱不能用"搜刮读条"开，只能消耗一张门卡直开 ——
-    // 于是门卡从"纯卖钱的传说物"变成了一把钥匙，玩家要决定卖它还是留它。
-    lockedChance: 0.35,
-    desc: '需要长时间开锁，高风险高回报。部分箱子加了电子锁，得用门卡。',
+    desc: '需要长时间开锁，高风险高回报。',
   },
   body: {
     id: 'body', name: '尸体', searchTime: 1.8, rolls: [1, 3],
@@ -427,20 +416,12 @@ export const POI = {
   terminalReward: 500, // 破解成功立即入账的情报费
   terminalRadius: 22, // 交互半径
   airdropRadius: 24,
-  // 空投落地噪音半径：整张地图都听得见。空投不是"免费补给箱"，
-  // 而是一次公开的"来打一架"邀请 —— 想去拿就得先想好怎么打。
-  airdropLure: 900,
 };
 
 /**
  * 局内合约：每局随机抽取若干条，达成即入账奖励与评分。
- * type 决定进度来源：
- *   kill=击杀数 / terminal=破解终端数 / search=搜刮容器数 / extractValue=带出估值 /
- *   demolish=摧毁掩体箱 / survival=存活秒数 / silent=全程未开火（仅在撤离成功时结算）。
+ * type 决定进度来源：kill=击杀数 / terminal=破解终端数 / search=搜刮容器数 / extractValue=带出估值。
  * target 为 [下限, 上限]，开局时在此区间随机取整数；desc 里的 {n} 会被替换成实际目标值。
- *
- * 池子从 6 条扩到 12 条：每局仍然只抽 contractCount(3) 条，但组合数从 C(6,3)=20
- * 涨到 C(12,3)=220，连打十局都很难重复 —— "每局任务都一样"的观感就是池子太小的直接后果。
  */
 export const CONTRACTS = [
   {
@@ -467,30 +448,6 @@ export const CONTRACTS = [
     id: 'survival', name: '死守待援', type: 'survival',
     desc: '存活满 {n} 秒', target: [180, 300], reward: 500, score: 120,
   },
-  {
-    id: 'ghost', name: '静默渗透', type: 'silent',
-    desc: '全程不开一枪，存活满 {n} 秒', target: [150, 240], reward: 1100, score: 300,
-  },
-  {
-    id: 'purge', name: '全面清剿', type: 'kill',
-    desc: '击杀 {n} 名敌对人员', target: [7, 11], reward: 1500, score: 340,
-  },
-  {
-    id: 'audit', name: '数据回收', type: 'terminal',
-    desc: '破解 {n} 个数据终端', target: [2, 3], reward: 1200, score: 260,
-  },
-  {
-    id: 'sweep', name: '深度搜刮', type: 'search',
-    desc: '搜刮 {n} 个容器', target: [9, 14], reward: 1000, score: 220,
-  },
-  {
-    id: 'vault', name: '满载而归', type: 'extractValue',
-    desc: '带出估值不低于 ¥{n} 的物资', target: [15000, 24000], reward: 0, score: 400,
-  },
-  {
-    id: 'razed', name: '彻底摧毁', type: 'demolish',
-    desc: '摧毁 {n} 个掩体箱', target: [5, 9], reward: 1100, score: 240,
-  },
 ];
 
 export const CONTAINER_IDS = Object.keys(CONTAINERS);
@@ -498,27 +455,6 @@ export const CONTAINER_IDS = Object.keys(CONTAINERS);
 /** 地图生成时容器的类型权重 */
 export const CONTAINER_SPAWN_WEIGHTS = {
   drawer: 34, crate: 26, weaponbox: 17, safe: 11, body: 12,
-};
-
-/**
- * 房间区域标签。每个房间在生成时掷一个标签，标签决定**这个房间里刷什么容器**。
- *
- * 为什么要有它：以前整张图的容器都走同一张 CONTAINER_SPAWN_WEIGHTS，
- * 于是"办公区"和"仓储区"的产出分布一模一样 —— 探索没有信息量，
- * 玩家没有理由记住地图，也没法根据房间判断"这间值不值得赌一个保险箱"。
- * 有了标签，"去仓储区翻补给箱、去实验区赌保险箱"就成了可学习的策略。
- */
-export const ROOM_TAGS = [
-  { id: 'office', name: '办公区', weight: 45, color: '#7FA8C4' },
-  { id: 'depot', name: '仓储区', weight: 35, color: '#C9A227' },
-  { id: 'lab', name: '实验区', weight: 20, color: '#35E0D0' },
-];
-
-/** 每个区域标签各自的容器权重（相加无须为 100，走 rng.weighted） */
-export const ROOM_CONTAINER_WEIGHTS = {
-  office: { drawer: 56, crate: 20, weaponbox: 8, safe: 9, body: 7 },
-  depot: { drawer: 12, crate: 46, weaponbox: 22, safe: 10, body: 10 },
-  lab: { drawer: 24, crate: 16, weaponbox: 18, safe: 32, body: 10 },
 };
 
 /* ============================== 敌人 ============================== */
@@ -625,39 +561,6 @@ export const ENEMY_TYPES = {
     score: 70,
     lootBonus: 1.1,
   },
-  /**
-   * 重装兵：用"打不动"换"跑不掉"。
-   * 210 血 + 80 甲 ≈ 需要 12 发 5.56 才能拿下（巡逻兵 5 发），
-   * 但移速只有 88（全兵种最慢），且机枪散布大、精度低 ——
-   * 它是**移动掩体**而不是狙击手：逼你换位置、逼你打头、逼你算弹量。
-   * 打法上的意义：给 M4A1 的 30 发弹匣制造真正的"弹量压力"，
-   * 在此之前任何敌人都能用半匣解决，弹量管理从未成为真问题。
-   */
-  heavy: {
-    id: 'heavy',
-    name: '重装兵',
-    hp: 210,
-    armor: 80,
-    speed: 88, // 最慢
-    radius: 13,
-    color: '#5A6472',
-    weapon: {
-      id: 'enemy_lmg', name: 'PKM 通用机枪', auto: true,
-      damage: 10, rpm: 560, magSize: 45, reloadTime: 3.6,
-      spread: 0.026, spreadPerShot: 0.010, spreadMax: 0.10, recoil: 0.020,
-      range: 620, noiseRadius: 620, ammoItem: 'ammo556',
-    },
-    visionRange: 340,
-    visionAngle: (78 * Math.PI) / 180,
-    hearing: 380,
-    reactionTime: 0.65,
-    accuracy: 0.50,
-    fireDelay: [1.2, 2.0],
-    burst: [4, 6], // 长点射：压得你抬不起头
-    preferredRange: 230,
-    score: 200,
-    lootBonus: 2.2, // 打掉它就该给够回报
-  },
 };
 
 /**
@@ -723,11 +626,10 @@ export const AI = {
 
 /** 地图生成时各兵种的权重（相加无须为 100，走 rng.weighted） */
 export const ENEMY_SPAWN_WEIGHTS = {
-  patrol: 40,
-  rusher: 21,
-  marksman: 17,
-  elite: 17,
-  heavy: 8, // 重装兵是"稀有但改变节奏"的存在，权重压低才不腻
+  patrol: 42,
+  rusher: 22,
+  marksman: 18,
+  elite: 18,
 };
 
 /* ============================== 战斗数值 ============================== */
@@ -768,59 +670,23 @@ export const SHOP = {
   sellRatio: 0.6, // 出售价 = 价值 * 0.6
   items: ['rifle', 'smg', 'pistol', 'lv2', 'lv3', 'ammo556', 'ammo9mm', 'medkit', 'bandage', 'pill'],
   restock: { pistol: 999, ammo556: 999, ammo9mm: 999, medkit: 999, bandage: 999, pill: 999 },
-  /**
-   * 每日特价：每天（按 dailySeed）从在售清单里抽 dealCount 件打折，
-   * 每件每天限购 limitPerDay 件。目的不是"便宜"，是**给玩家一个今天来逛商店的理由**，
-   * 也顺手让"仓库里堆着钱但没什么想买"的中期有个消耗口。
-   */
-  daily: {
-    dealCount: 2,
-    dealDiscount: 0.65, // 特价 = 原价 × 0.65
-    limitPerDay: 2, // 每件特价每日限购件数
-  },
 };
 
-/**
- * 军械商声望：把"钱"变成"关系"。
- * 钱能买的东西是有限的（就那 10 件），中期之后资金会失去意义；
- * 声望则把这些商品按等级**重新上锁**，让"买得到"本身成为一个目标。
- * xpPerValue：每带出 ¥1 价值得 xpPerValue 点声望 —— 所以拼的是"带出什么"，不是"打了多久"。
- */
+/** 装备保险：战前付保费，撤离失败时只赔「带进去的武器与护甲」，随身物资照旧丢失。 */
+export const INSURANCE = { enabled: true, rate: 0.18 };
+
+/** 军械商声望：撤离带出的估值换经验，等级决定商店能买什么。 */
 export const REP = {
   levels: [
-    { lv: 1, name: '新面孔', xp: 0 },
-    { lv: 2, name: '常客', xp: 700 },
-    { lv: 3, name: '熟手', xp: 2000 },
-    { lv: 4, name: '老关系', xp: 4500 },
-    { lv: 5, name: '军械商之友', xp: 9000 },
+    { level: 1, need: 0, label: '新兵' },
+    { level: 2, need: 300, label: '熟客' },
+    { level: 3, need: 900, label: '军需商' },
+    { level: 4, need: 2000, label: '黑市渠道' },
   ],
-  xpPerValue: 0.01, // 带出估值 ¥100 = 1 点声望
-  extractXp: 40, // 撤离成功固定加成
-  deathXp: 8, // 阵亡也有一点（"他还记得你来过"）
-  maxLevel: 5,
+  xpPerValue: 0.01, // 每带出 ¥100 得 1 点经验
+  deathXp: 0.3, // 阵亡也留 30% 经验，避免一次失败清零挫败
 };
-
-/**
- * 商店声望门槛：任意等级以上的商品需要对应声望才能买。
- * 没列出的商品对所有人开放（弹药 / 医疗 / 手枪是"保底基建"，不能锁）。
- */
-export const SHOP_TIER = {
-  rifle: 2,
-  smg: 2,
-  lv3: 3,
-};
-
-/**
- * 装备保险：部署时按带入装备价值收取 rate 比例的保费，
- * 阵亡时把**带入的武器与护甲**赔回仓库（战利品照旧全丢）。
- *
- * 这是一个明确的"用钱买容错"：不改变死亡惩罚的结构（背包里搜到的东西一定丢），
- * 只削掉"带三级甲进去一发 RPG 就归零"的挫败感 —— 玩家才敢带好装备进图。
- */
-export const INSURANCE = {
-  enabled: true,
-  rate: 0.18, // 保费 = 带入装备估值 × 0.18
-};
+export const SHOP_TIER = { rifle: 2, smg: 2, lv3: 3 }; // 未写进表里的默认 Lv.1
 
 export const START_CURRENCY = 4000;
 
@@ -836,12 +702,6 @@ export const SCORING = {
   extractBonus: 500,
   survivalPerSecond: 1.6,
   terminalBonus: 150, // 每破解一个数据终端的额外评分
-  /**
-   * 评级奖励：结算时按评级直接发钱。
-   * 以前评级只是"好看"——同样打完一局，S 和 C 的收入完全一样，
-   * 于是玩家没有任何理由去优化打法。把评级挂上钱，评分才变成一条真正的追求线。
-   */
-  ratingBonus: { S: 1500, A: 800, B: 400, C: 150, D: 0 },
   ratings: [
     { grade: 'S', min: 1600 },
     { grade: 'A', min: 1100 },
@@ -849,28 +709,8 @@ export const SCORING = {
     { grade: 'C', min: 350 },
     { grade: 'D', min: 0 },
   ],
+  ratingBonus: { S: 1500, A: 800, B: 400, C: 150, D: 0 },
 };
-
-/* ============================== 成就 ============================== */
-
-/**
- * 成就：长期目标，达成即一次性发钱（幂等，见 save.achievements[id]）。
- * stat 指向下面 ACHIEVEMENT_STATS 里的取数口径，need 是门槛。
- */
-export const ACHIEVEMENTS = [
-  { id: 'first_extract', name: '活着回来', desc: '成功撤离 1 次', stat: 'extracts', need: 1, reward: 600 },
-  { id: 'extract10', name: '老练撤离客', desc: '累计成功撤离 10 次', stat: 'extracts', need: 10, reward: 2500 },
-  { id: 'kill50', name: '战场清扫工', desc: '累计击杀 50 名敌人', stat: 'kills', need: 50, reward: 2000 },
-  { id: 'kill200', name: '血色履历', desc: '累计击杀 200 名敌人', stat: 'kills', need: 200, reward: 6000 },
-  { id: 'streak3', name: '三连撤离', desc: '连续 3 局成功撤离', stat: 'streak', need: 3, reward: 1800 },
-  { id: 'rich', name: '一夜暴富', desc: '单局带出估值 ≥ ¥20,000', stat: 'bestValue', need: 20000, reward: 3000 },
-  { id: 'gradeS', name: 'S 级行动', desc: '单局评分达到 S 级', stat: 'bestScore', need: 1600, reward: 2500 },
-  { id: 'raids25', name: '常驻战区', desc: '累计参与 25 次突袭', stat: 'raids', need: 25, reward: 1500 },
-  { id: 'codex10', name: '图鉴学者', desc: '发现 10 种物资', stat: 'codexSeen', need: 10, reward: 1200 },
-  { id: 'codexAll', name: '万物归档', desc: '收集全部物资图鉴', stat: 'codexSeen', need: 'allItems', reward: 5000 },
-  { id: 'tycoon', name: '大户人家', desc: '资金达到 ¥100,000', stat: 'currency', need: 100000, reward: 4000 },
-  { id: 'daily7', name: '每日三餐', desc: '累计完成 7 次每日突袭', stat: 'dailyCount', need: 7, reward: 3500 },
-];
 
 /* ============================== 视觉 ============================== */
 
@@ -948,18 +788,17 @@ export const PALETTE3D = {
   enemyElite: '#DC2626',
   enemyMarksman: '#7B68A6', // 精确射手：紫
   enemyRusher: '#E08A3C', // 冲锋兵：橙
-  enemyHeavy: '#8A6D3B', // 重装兵：沙棕（与 ENEMY_TYPES.heavy.color 同源，与巡逻兵浅灰拉开色相）
   vmBody: '#393E36',
   vmDark: '#22281F',
   sky: '#1A2430',
-  fog: '#1A2430',
+  fog: '#33465C', // P0-2 提亮雾色：远处不再被压成死黑（与提亮后的天空协调）
   dust: '#C9D6E4', // 空气尘埃颜色
   ceiling: '#4A524A', // 天花板基色（略亮于墙，配合自发光避免从下看发黑）
   ceilingBeam: '#33392F', // 结构横梁基色
   hemiSky: '#93C5FD',
   hemiGround: '#475569',
   dirLight: '#FFF7ED',
-  ambient: '#1E293B',
+  ambient: '#3C4C66',
   tracer: '#FFD9A0',
   impact: '#D2C8AA',
   blood: '#B22020',
@@ -1024,9 +863,12 @@ export const VIEW3D = {
   fogDensityPerMeter: 0.012, // 设计文档的 FogExp2 密度（每米），换算到每单位见 scene3d
   // #24 暗色光照小幅调优：夜战氛围不变，但暗部不再死黑、可读性更稳。
   // hemi 抬天光填充、ambient 抬阴影底色、dir 维持主光不变量；三值均小幅上调。
-  hemiIntensity: 0.85,
+  // #P0-2（2026-10-31）夜战可见性：原暗部过黑导致 30m 外敌人/物资难辨。
+  // ambient/hemi 大幅抬升（已接近并超过主光 dir 的 2.1），让天花板遮挡主光后的室内
+  // 仍有充分填充光；仍保留夜战氛围（暗调、冷色环境光）。
+  hemiIntensity: 26, // #P0-2 夜战可见性：由 3.0 大幅抬升，室内天花板遮挡主光后仍有充分填充光（已标定：26 仍保留夜战氛围且不发灰）
   dirIntensity: 2.1,
-  ambientIntensity: 0.34,
+  ambientIntensity: 17, // #P0-2 夜战可见性：由 2.0 大幅抬升（已标定：17/26 为"可导航又不发糊"的甜区）
   dirLightOffset: { x: 620, y: 760, z: 420 }, // 平行光相对聚焦点的偏移（单位）
   shadowRadius: 32, // 阴影视锥半径（米）
   shadowNear: 1,
@@ -1034,16 +876,33 @@ export const VIEW3D = {
   shadowMapSize: 2048,
   shadowMapSizeFallback: 1024, // 帧率不足时的降级尺寸
   shadowBias: -0.0009,
+  // 玩家头灯（夜战探照）：始终开启，跟随相机向前打出 15m 锥形光。
+  // decay=0 让光强在 15m 内保持恒定（便于校准，避免近处过曝、远处全黑），
+  // 到 distance 处再平滑收边（penumbra 控制软硬）。
+  headlight: {
+    color: '#FFE9C2',
+    intensity: 5.0,
+    distance: 15, // 米，建模时 × metersToUnits
+    angle: 0.62, // 弧度（≈35° 半角）
+    penumbra: 0.45,
+    decay: 0,
+  },
+  // 敌人/物资的轻微自发光：暗处至少保留一层"底亮度"轮廓，不至于死黑不可见。
+  // 敌人用偏冷的自发光，使其在暗背景中也能被一眼辨识（30m 外仍可见）。
+  enemyEmissive: '#5C7790',
+  enemyEmissiveIntensity: 1.6,
+  lootEmissive: '#6A5230',
+  lootEmissiveIntensity: 0.55,
 
   // --- 画面质量（色调映射 / 环境反射 / 气氛） ---
   // ACES 色调映射是"从能看变成能看"的关键一步：没有它，Standard 材质在强光下会直接
   // 过曝成一片死白，整体观感发灰发平。
-  toneMappingExposure: 1.12, // 色调映射曝光（>1 提亮，配合 ACES 使用）
+  toneMappingExposure: 1.7, // 色调映射曝光（>1 提亮，配合 ACES 使用；P0-2 由 1.12 提至 1.7 改善夜战暗部）
   envIntensity: 0.85, // 程序化环境贴图强度（给 Standard 材质提供天光反射）
   envMapSize: 128, // 环境贴图（PMREM）分辨率，越大越细腻但生成越慢
-  skyTop: '#101823', // 天空渐变顶部
-  skyMid: '#26364A', // 天空渐变中部（地平线附近）
-  skyBottom: '#3A4A5C', // 天空渐变底部
+  skyTop: '#26344A', // 天空渐变顶部（P0-2 提亮：夜空不再是死黑，env 贴图随之变亮）
+  skyMid: '#3E5168', // 天空渐变中部（地平线附近）
+  skyBottom: '#5A6E82', // 天空渐变底部
   dustCount: 420, // 空气尘埃粒子数（营造体积感，0 = 关闭）
   dustRadius: 70, // 尘埃分布半径（米，跟随相机的局部范围）
   dustSize: 0.035, // 尘埃颗粒大小（米）
@@ -1097,7 +956,15 @@ export const VIEW3D = {
     bloodSize: 0.07,
     bloodSpeed: 5.5,
     bloodGravity: 11,
+    // 粒子上限的**唯一来源**：逻辑侧裁剪（main.js spawn*）与渲染缓冲（renderer3d._particleMax）
+    // 都读它，避免出现"逻辑 320 / 渲染 240"这种对不齐的隐偏差。
+    // 低端机可整体降到 120（与 device.quality 挂钩），改这一处即可。
     maxParticles: 220,
+    // 弹壳（P0-1，纯表现层）：逻辑侧只维护 x/y/速度/自旋，渲染层负责抛壳、落地与淡出。
+    shellColor: '#C9A227', // 暖金属，与 PALETTE3D.ammoBox 同系
+    shellSize: 0.02, // 弹壳最大边长（米）
+    shellMax: 48, // 渲染对象池上限（同时最多画 48 个弹壳）
+    shellFadeStart: 0.72, // 生命周期进度超过该值后开始收缩淡出（0~1）
     muzzleFlashLife: 0.06,
     muzzleFlashScale: 0.34,
     muzzleFlashColor: '#FFD08A',
@@ -1120,6 +987,21 @@ export const VIEW3D = {
     ceilingBeamW: 0.22, // 横梁宽度（米）
     ceilingEmissive: 0.14, // 天花板/横梁自发光系数，保证从下观看不发黑
   },
+};
+
+/**
+ * 受击方向提示（P1-6）：被击中时在 HUD 屏幕边缘按方位闪一段危险色扇形。
+ *
+ * 口径：`world.hitDir` 存的是「玩家 → 伤害来源」的方位角（弧度，与 player.yaw 同一坐标系），
+ * 因此在屏幕上的水平偏移就是 `hitDir - player.yaw`：0 = 正前方（画在顶边），
+ * ±π = 正后方（画在底边），>0 偏右侧。
+ */
+export const HITDIR = {
+  life: 0.6, // 总存活时间（秒），线性淡出
+  radiusX: 0.27, // 提示椭圆半径（相对屏幕宽）
+  radiusY: 0.30, // 提示椭圆半径（相对屏幕高）
+  span: 0.34, // 扇形张角（弧度，单侧）
+  width: 9, // 扇形线宽（CSS 像素）
 };
 
 /**

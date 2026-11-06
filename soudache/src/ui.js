@@ -102,23 +102,26 @@ export function hudLayout(W, H, touch = false, tasksOpen = false) {
       },
       // 武器卡：右对齐到 RIGHT，整块让开开火键区。宽度随视口收窄，
       // 内部各锚点按比例跟随之（否则窄屏下弹药数会跑出卡外）
+      // P1-5 紧凑化：卡高 82→68、弹药字号 24→20、各基线整体上收。
       weapon: {
-        x: RIGHT - weaponW, y: 10, w: weaponW, h: 82,
-        nameY: 30, subY: 46, ammoY: 58, footY: 76,
+        x: RIGHT - weaponW, y: 10, w: weaponW, h: 68,
+        nameY: 20, subY: 33, ammoY: 44, footY: 56,
         ammoX: RIGHT - Math.round(weaponW * 0.28),
         reserveX: RIGHT - 16,
         barX: RIGHT - Math.round(weaponW * 0.38),
         barW: Math.round(weaponW * 0.3),
-        barY: 66, compact: true,
+        barY: 60, compact: true,
       },
+      // P1-5：小地图压到 120×88，贴在武器卡下方（10+68+8=86）
       minimap: {
-        x: RIGHT - Math.min(128, weaponW), y: 100,
-        w: Math.min(128, weaponW), h: 96,
+        x: RIGHT - Math.min(120, weaponW), y: 86,
+        w: Math.min(120, weaponW), h: 88,
       },
       // 击杀流：贴中列，限 2 条（横屏没有竖向空间给 5 条）
       killfeed: { x: midX, y: 100, w: midW, rowH: 20, max: 2, compact: true },
       // 罗盘：与计时/击杀流**共用中列**，因此永不与右半区相撞
-      compass: { x: midX, w: midW, y: 62, h: 24 },
+      // P0-3：紧贴大号计时下方，压到 28px 高（原 24）
+      compass: { x: midX, w: midW, y: 62, h: 28 },
       // 武器槽：横排在移动按钮行正上方。x 与按钮行起点对齐（11.5vw + 66px + 2）
       slots,
       medHintY: H - 118,
@@ -182,19 +185,16 @@ export function hudLayout(W, H, touch = false, tasksOpen = false) {
 import {
   ITEMS, WEAPONS, ARMORS, SHOP, RARITY, RARITY_ORDER, CONTAINERS, ENEMY_TYPES, PLAYER, MATCH, AMMO_STACK, SCORING,
   COLORS, MINIMAP, MINIMAP_LAYERS, TILE, WORLD_W, WORLD_H, COMBAT, KILLFEED, VIEW3D,
-  INSURANCE, REP, SHOP_TIER, ROOM_TAGS,
+  INSURANCE, REP, SHOP_TIER, ITEM_IDS, ITEMS_BY_RARITY, HITDIR,
 } from './config.js';
 import {
-  totalWeight, totalValue, itemCount, weightLimitFor, weightTier, itemValue, itemWeight, displayUnits,
-  weightSpeedMultiplier,
+  totalWeight, totalValue, itemCount, weightLimitFor, weightTier,
+  displayUnits, itemWeight, itemValue, weightSpeedMultiplier,
 } from './inventory.js';
-import {
-  repLevel, dailyStatus, dailySeed, codexEntries, codexStats, achievementProgress,
-  shopPrice, shopRemain, requiredRep, todayKey,
-} from './meta.js';
 import { drawGlyph } from './glyphs.js';
 import { EnemyState } from './enemy.js';
 import { sortTasksByPriority } from './contracts.js';
+import { dailySeed, repLevel } from './storage.js';
 
 /** 等宽 / 无衬线字体（与旧 2D 渲染器保持一致） */
 const MONO = '"Consolas", "SFMono-Regular", "JetBrains Mono", "Courier New", monospace';
@@ -238,36 +238,14 @@ function money(n) {
 }
 
 /**
- * 玩家当前所在房间的区域标签（中文名 + 主题色）。
- *
- * 带**房间级缓存**：HUD 每帧都会画任务面板，而 map.rooms 有 8~11 个，
- * 每帧全遍历纯属浪费 —— 先试缓存里的那个房间是否还装得下玩家，
- * 装不下才重新找（换房间 / 换局时自然失效）。
- * @param {object} world 战局
- * @param {number} px 玩家逻辑 x
- * @param {number} py 玩家逻辑 y
- * @returns {{name: string, color: string}|null} 区域标签，不在任何房间内（走廊）时返回 null
- */
-const _roomTagCache = { room: null, out: null };
-function roomLabelAt(world, px, py) {
-  const rooms = (world && world.map && world.map.rooms) || [];
-  const hit = (r) => px >= r.x && px < r.x + r.w && py >= r.y && py < r.y + r.h;
-  if (!_roomTagCache.room || !hit(_roomTagCache.room)) {
-    const room = rooms.find(hit) || null;
-    const def = room && ROOM_TAGS.find((t) => t.id === room.tag);
-    _roomTagCache.room = room;
-    _roomTagCache.out = def ? { name: def.name, color: def.color } : null;
-  }
-  return _roomTagCache.out;
-}
-
-/**
  * 创建 UI 控制器。
  * @param {HTMLElement} root UI 根节点
  * @param {object} handlers 动作处理函数表
  * @returns {object} UI 控制器
  */
-export function createUI(root, handlers) {
+export function createUI(root, handlers, opts) {
+  // 无障碍（P1-7）：系统开启「减少动态效果」时，HUD 关掉闪烁、抖动类动态，只保留信息
+  const reducedMotion = !!(opts && opts.reducedMotion);
   root.innerHTML = `
     <div class="screen" data-screen="menu">
       <div class="menu">
@@ -279,13 +257,12 @@ export function createUI(root, handlers) {
         <div class="menu-stats" data-role="menu-stats"></div>
         <div class="menu-actions">
           <button class="btn primary" data-action="goto-loadout">开始战局</button>
-          <button class="btn" data-action="goto-daily" data-role="daily-btn">每日突袭</button>
+          <button class="btn" data-action="daily-raid">每日突袭</button>
           <button class="btn" data-action="goto-stash">仓库</button>
           <button class="btn" data-action="goto-shop">商店</button>
-          <button class="btn" data-action="goto-codex">图鉴 / 成就</button>
+          <button class="btn" data-action="goto-codex">图鉴</button>
           <button class="btn" data-action="goto-howto">玩法说明</button>
         </div>
-        <div class="menu-daily" data-role="menu-daily"></div>
         <div class="menu-foot">
           <button class="link" data-action="toggle-mute">音效开关</button>
           <button class="link danger" data-action="reset-save">清空存档</button>
@@ -315,11 +292,10 @@ export function createUI(root, handlers) {
                 <input class="seed-input" data-role="seed" placeholder="留空则随机" inputmode="numeric" />
                 <p class="hint">同一种子会生成完全相同的地图、战利品与敌人分布。</p>
               </div>
-              <div class="side-block hidden" data-role="loadout-daily"></div>
               <div class="side-block">
                 <h3>装备保险</h3>
                 <button class="btn toggle" data-action="toggle-insurance" data-role="insurance-toggle">装备保险：关</button>
-                <p class="hint" data-role="insurance-hint"></p>
+                <div class="hint" data-role="insurance-hint">投保后阵亡只赔带入的武器与护甲，随身物资照旧丢失。</div>
               </div>
               <div class="side-block warn-block" data-role="loadout-warn"></div>
               <button class="btn primary big" data-action="deploy">部署进入战局</button>
@@ -353,6 +329,7 @@ export function createUI(root, handlers) {
             </div>
             <div class="side-block">
               <button class="btn" data-action="goto-shop">前往商店</button>
+              <button class="btn" data-action="goto-codex">物资图鉴</button>
               <button class="btn ghost" data-action="sell-all">一键出售全部物资</button>
             </div>
           </aside>
@@ -382,26 +359,6 @@ export function createUI(root, handlers) {
       </div>
     </div>
 
-    <div class="screen" data-screen="codex">
-      <div class="panel wide">
-        <header class="panel-head">
-          <h2>图鉴 / 成就</h2>
-          <div class="head-right">
-            <span class="coin" data-role="codex-sum"></span>
-            <button class="btn ghost" data-action="goto-menu">返回</button>
-          </div>
-        </header>
-        <div class="panel-body codex-body">
-          <div class="codex-tabs">
-            <button class="tab active" data-role="tab-codex">物资图鉴</button>
-            <button class="tab" data-role="tab-ach">成就</button>
-          </div>
-          <div class="codex-grid" data-role="codex-grid"></div>
-          <div class="codex-ach-list hidden" data-role="codex-ach"></div>
-        </div>
-      </div>
-    </div>
-
     <div class="screen" data-screen="howto">
       <div class="panel">
         <header class="panel-head">
@@ -422,6 +379,7 @@ export function createUI(root, handlers) {
               <li><kbd>R</kbd> 换弹 · <kbd>Q</kbd> 使用医疗物资</li>
               <li><kbd>E</kbd> 搜索 / 撤离 / 交互</li>
               <li><kbd>Ctrl</kbd> 蹲行（更安静、更难被发现）</li>
+              <li class="touch-only">双击左摇杆 蹲行（更安静、更难被发现）</li>
               <li><kbd>Shift</kbd> 冲刺（消耗体力，体力耗尽无法冲刺，静止快速恢复）</li>
               <li><kbd>1</kbd><kbd>2</kbd> 切换武器 · <kbd>Tab</kbd> 背包 · <kbd>Esc</kbd> 暂停</li>
               <li><kbd>V</kbd> 绳索速降（从高地快速下滑）</li>
@@ -434,11 +392,26 @@ export function createUI(root, handlers) {
               <li>敌人有视野锥，被墙挡住就看不见你；他们也会听枪声和脚步。</li>
               <li>保险箱价值最高，但搜索时间最长 —— 记得先清场再开。</li>
               <li>超重会明显减速并拖慢体力恢复，别什么都往包里塞。</li>
-              <li>单局 ${Math.round(MATCH.duration / 60)} 分钟，撤离点分阶段开放：免费点 2:30 先开、其余 6:00（最后 2 分钟）全开，站定 ${MATCH.extractChannel} 秒即可撤离。</li>
+              <li>单局 ${Math.round(MATCH.duration / 60)} 分钟，撤离点依次开放：免费点 ${Math.floor(MATCH.extractFirstOpen / 60)}:${String(MATCH.extractFirstOpen % 60).padStart(2, '0')} 先开，其余剩余 ${MATCH.extractOpenAt / 60}:00 全部开放，站定 ${MATCH.extractChannel} 秒即可撤离。</li>
               <li>地图固定 ${MATCH.extractTotal} 个撤离点（灰色未开放、绿色已开启），撤离成功带走全部物资，阵亡则尽数丢失。</li>
               <li>敌人被击杀后会留下可搜索的尸体。</li>
             </ul>
           </section>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen" data-screen="codex">
+      <div class="panel wide">
+        <header class="panel-head">
+          <h2>图鉴 CODEX</h2>
+          <div class="head-right">
+            <span class="coin" data-role="codex-progress"></span>
+            <button class="btn ghost" data-action="goto-menu">返回</button>
+          </div>
+        </header>
+        <div class="panel-body">
+          <div class="codex-body" data-role="codex-body"></div>
         </div>
       </div>
     </div>
@@ -467,6 +440,7 @@ export function createUI(root, handlers) {
         <div class="panel-body">
           <p class="hint">战局已暂停。放弃战局将视为阵亡，随身物资全部丢失。</p>
           <button class="btn toggle" data-action="toggle-invert" data-role="invert-toggle">鼠标水平轴：反转</button>
+          <button class="btn toggle" data-action="toggle-invert-y" data-role="invert-y-toggle">视角Y轴：正常</button>
           <button class="btn toggle" data-action="toggle-aim-assist" data-role="aim-toggle">辅助瞄准：开</button>
           <div class="setting-row">
             <label>视野 FOV</label>
@@ -522,6 +496,10 @@ export function createUI(root, handlers) {
     </div>
 
     <div class="lock-hint hidden" data-role="lock-hint">点击画面以恢复鼠标控制</div>
+
+    <!-- 手机端任务面板命中区：canvas 是 pointer-events:none，用这块透明 DOM 接收点击。
+         矩形由 renderHud 每帧从 L.tasks 同步，绝不另写坐标。 -->
+    <div class="hud-tap hidden" data-role="tasks-tap" aria-hidden="true"></div>
 
     <div class="toasts" data-role="toasts"></div>
   `;
@@ -584,16 +562,13 @@ export function createUI(root, handlers) {
   function itemRow(item, extra) {
     const row = el('div', 'item-row');
     row.appendChild(iconEl(item.icon, RARITY[item.rarity].color, 24));
+    const disp = displayUnits(item);
     const main = el('div', 'item-main');
-    main.appendChild(el('div', 'item-name', item.qty > 1 ? `${item.name} ×${item.qty}` : item.name));
-    main.appendChild(el('div', 'item-meta', `${item.w}×${item.h} 格 · ${itemWeight(item).toFixed(1)}kg · ${RARITY[item.rarity].name}`));
-    // 价值密度：第四行 ¥/kg。它回答的是负重游戏里唯一重要的问题 ——
-    // "同样 1 公斤，我该带哪件"。只给总值的话，重而便宜的货看起来和轻而贵的货一样香。
-    const kg = itemWeight(item);
-    if (kg > 0) {
-      const density = Math.round(itemValue(item) / kg);
-      main.appendChild(el('div', 'item-density', `¥${density.toLocaleString('en-US')}/kg`));
-    }
+    main.appendChild(el('div', 'item-name', item.qty > 1 ? `${item.name} ×${disp.count}${disp.unit}` : item.name));
+    // 价值密度放最后：丢东西时能逐件比较"同样占一格，谁更值钱"
+    const density = Math.round(itemValue(item) / Math.max(0.1, itemWeight(item)));
+    main.appendChild(el('div', 'item-meta',
+      `${item.w}×${item.h} 格 · ${itemWeight(item).toFixed(1)}kg · ${RARITY[item.rarity].name} · ${money(density)}/kg`));
     row.appendChild(main);
     if (extra) row.appendChild(extra);
     return row;
@@ -606,8 +581,6 @@ export function createUI(root, handlers) {
     host.innerHTML = '';
     const stats = save.stats;
     const rate = stats.raids ? Math.round((stats.extracts / stats.raids) * 100) : 0;
-    const rep = repLevel(save.rep ? save.rep.xp : 0);
-    const codex = codexStats(save);
     const entries = [
       ['资金', money(save.currency)],
       ['突袭次数', String(stats.raids)],
@@ -615,46 +588,44 @@ export function createUI(root, handlers) {
       ['累计击杀', String(stats.kills)],
       ['最高评分', String(stats.bestScore)],
       ['仓库估值', money(totalValue(save.stash))],
-      ['军械商', `Lv.${rep.lv} ${rep.name}`],
-      ['图鉴', `${codex.seen}/${codex.total}`],
     ];
+    // 今日突袭状态：让玩家在菜单上就看得见"今天打过没有"
+    const daily = save.daily || {};
+    const isToday = daily.date === String(dailySeed());
+    entries.push(['今日突袭', isToday ? (daily.extracted ? '已通关' : `最高 ${daily.bestScore} 分`) : '未开始']);
     for (const [k, v] of entries) {
       const node = el('div', 'stat');
       node.appendChild(el('span', 'k', k));
       node.appendChild(el('span', 'v', v));
       host.appendChild(node);
     }
-
-    // 每日突袭状态：今天打过没有、最好成绩多少。
-    // 放在菜单上是刻意的 —— 每日挑战的全部张力来自"今天还没做"，
-    // 藏进二级菜单就等于没有。
-    const ds = dailyStatus(save);
-    const dailyHost = q('menu-daily');
-    if (dailyHost) {
-      dailyHost.innerHTML = '';
-      const seed = dailySeed();
-      const state = ds.extracted ? '今日已完成' : (ds.played ? '今日已尝试 · 尚未撤离' : '今日未挑战');
-      dailyHost.appendChild(el('span', `daily-state${ds.extracted ? ' ok' : ''}`, state));
-      dailyHost.appendChild(el('span', 'daily-seed', `种子 ${seed}`));
-      if (ds.bestScore > 0) {
-        dailyHost.appendChild(el('span', 'daily-best', `今日最佳 ${ds.bestScore}`));
-      }
-    }
-    const dailyBtn = q('daily-btn');
-    if (dailyBtn) {
-      dailyBtn.textContent = ds.extracted ? '每日突袭 · 今日已完成' : '每日突袭';
-      dailyBtn.classList.toggle('done', ds.extracted);
-    }
   }
 
   /* ---------------- 战前配置 ---------------- */
 
-  function renderLoadout(save, opts = {}) {
-    const rep = opts.rep || repLevel(save.rep ? save.rep.xp : 0);
-    q('loadout-currency').textContent = `${money(save.currency)} · 军械商 Lv.${rep.lv}`;
+  function renderLoadout(save) {
+    q('loadout-currency').textContent = money(save.currency);
     const host = q('loadout-options');
     host.innerHTML = '';
     const lo = save.loadout;
+
+    // 装备保险开关：显示当前状态与本次保费（保费按当前配置的武器+护甲价值算）
+    const insured = Boolean(save.insurance && save.insurance.enabled && INSURANCE.enabled);
+    const insBtn = q('insurance-toggle');
+    if (insBtn) {
+      insBtn.textContent = insured ? '装备保险：开' : '装备保险：关';
+      insBtn.classList.toggle('on', insured);
+    }
+    const insHint = q('insurance-hint');
+    if (insHint) {
+      const gearValue = [lo.primary, lo.secondary]
+        .filter((id) => id && WEAPONS[id])
+        .reduce((s, id) => s + WEAPONS[id].value, 0)
+        + (lo.armor && lo.armor !== 'none' && ARMORS[lo.armor] ? ARMORS[lo.armor].value : 0);
+      insHint.textContent = insured
+        ? `本次保费 ${money(Math.round(gearValue * INSURANCE.rate))} —— 阵亡只赔带入的武器与护甲，随身物资照旧丢失。`
+        : '投保后阵亡只赔带入的武器与护甲，随身物资照旧丢失。';
+    }
 
     const optionGroup = (title, options, currentValue, slot, renderLabel, renderMissing) => {
       const block = el('div', 'opt-block');
@@ -746,8 +717,8 @@ export function createUI(root, handlers) {
     weightHost.appendChild(el(
       'p', est.over ? 'hint warn-text' : 'hint',
       est.over
-        ? `已超重：移速下降且无法奔跑（上限 ${est.limit} kg = 基础 20 + ${armorName}加成）。带得越少跑得越快。`
-        : `负重上限 ${est.limit} kg（基础 20 + ${armorName}加成）。超过即减速并无法奔跑。`,
+        ? `已超重：移速下降但仍可奔跑（上限 ${est.limit} kg = 基础 20 + ${armorName}加成）。带得越少跑得越快。`
+        : `负重上限 ${est.limit} kg（基础 20 + ${armorName}加成）。超过即减速，但仍可奔跑。`,
     ));
 
     // 校验提示
@@ -759,41 +730,6 @@ export function createUI(root, handlers) {
       for (const p of problems) warn.appendChild(el('p', 'warn-text', `· ${p}`));
     } else {
       warn.classList.remove('active');
-    }
-
-    // ---- 每日突袭横幅（只有从菜单点「每日突袭」进来才显示）----
-    const dailyHost = q('loadout-daily');
-    if (dailyHost) {
-      dailyHost.innerHTML = '';
-      if (opts.daily) {
-        dailyHost.classList.remove('hidden');
-        const ds = dailyStatus(save);
-        dailyHost.appendChild(el('h3', null, '每日突袭'));
-        dailyHost.appendChild(el('p', 'daily-banner', `种子 ${dailySeed()} · 今日地图与战利品固定`));
-        dailyHost.appendChild(el('p', 'hint', ds.extracted
-          ? `今日已完成 · 最佳评分 ${ds.bestScore}。再打一次不会重复计成就，但照样能拿物资。`
-          : '每日突袭的成绩单独记录，撤离成功计入「每日三餐」成就。'));
-      } else {
-        dailyHost.classList.add('hidden');
-      }
-    }
-
-    // ---- 装备保险 ----
-    const insBtn = q('insurance-toggle');
-    if (insBtn) {
-      const on = Boolean(save.insurance && save.insurance.enabled);
-      insBtn.textContent = `装备保险：${on ? '开' : '关'}`;
-      insBtn.classList.toggle('on', on);
-      const gearValue = [lo.primary, lo.secondary, lo.armor]
-        .filter((id) => id && id !== 'none' && ITEMS[id])
-        .reduce((s, id) => s + (ITEMS[id].value || 0), 0);
-      const premium = Math.round(gearValue * (INSURANCE.rate || 0));
-      const hint = q('insurance-hint');
-      if (hint) {
-        hint.textContent = on
-          ? `本次保费 ${money(premium)}：阵亡时把带入的武器与护甲赔回仓库（战利品照旧全丢）。`
-          : `部署时按带入装备价值的 ${Math.round((INSURANCE.rate || 0) * 100)}% 收费（本次 ${money(premium)}），阵亡时赔回武器与护甲。`;
-      }
     }
   }
 
@@ -893,50 +829,41 @@ export function createUI(root, handlers) {
 
   function renderShop(save) {
     q('shop-currency').textContent = money(save.currency);
-    const rep = repLevel(save.rep ? save.rep.xp : 0);
+    // 声望等级：决定哪些货架上锁（真正判定在 main.js 的 buy()，这里只负责显示）
+    const lv = repLevel((save.rep && save.rep.xp) || 0);
+    const lvDef = REP.levels.find((l) => l.level === lv) || REP.levels[0];
+    const nextLv = REP.levels.find((l) => l.level === lv + 1);
     const buyHost = q('shop-buy');
     buyHost.innerHTML = '';
-    // 顶部一行声望条：把"还差多少解锁下一档货"直接写出来，
-    // 否则玩家只会看到几个灰按钮而不知道要做什么。
-    const repBar = el('div', 'shop-rep');
-    repBar.appendChild(el('span', 'shop-rep-lv', `军械商 Lv.${rep.lv} · ${rep.name}`));
-    repBar.appendChild(el('span', 'shop-rep-xp', rep.isMax
-      ? '已满级'
-      : `${Math.round(save.rep.xp)} / ${rep.nextXp} XP`));
-    buyHost.appendChild(repBar);
+    // 声望条：让玩家知道"离下一级还差多少"
+    const repRow = el('div', 'shop-rep');
+    repRow.appendChild(el('span', 'k', `军械商 Lv.${lv} · ${lvDef.label}`));
+    repRow.appendChild(el('span', 'v', nextLv
+      ? `${Math.round((save.rep && save.rep.xp) || 0)}/${nextLv.need} XP`
+      : '已满级'));
+    buyHost.appendChild(repRow);
 
     for (const id of SHOP.items) {
       const def = ITEMS[id];
       if (!def) continue;
-      const needLv = requiredRep(id, SHOP_TIER);
-      const locked = rep.lv < needLv;
-      const { price, discounted } = shopPrice(id, save, def);
-      const remain = shopRemain(id, save);
-      const soldOut = remain <= 0;
-
-      const row = el('div', `item-row${locked ? ' locked' : ''}`);
+      const needLv = SHOP_TIER[id] || 1;
+      const locked = lv < needLv;
+      const row = el('div', locked ? 'item-row locked' : 'item-row');
       row.appendChild(iconEl(def.icon, RARITY[def.rarity].color, 24));
       const main = el('div', 'item-main');
-      const nameRow = el('div', 'item-name');
-      nameRow.textContent = def.name;
-      if (discounted) nameRow.appendChild(el('span', 'badge deal', '特价'));
-      if (locked) nameRow.appendChild(el('span', 'badge lock', `Lv.${needLv}`));
-      main.appendChild(nameRow);
+      main.appendChild(el('div', 'item-name', locked ? `${def.name}（需声望 Lv.${needLv}）` : def.name));
       const meta = [];
       if (def.category === 'weapon') meta.push(`伤害 ${WEAPONS[id].damage} · 射速 ${WEAPONS[id].rpm}RPM · 弹匣 ${WEAPONS[id].magSize}`);
       else if (def.category === 'armor') meta.push(`护甲 ${def.armor} · ${def.weight}kg`);
       else if (def.category === 'ammo') meta.push(`${def.ammoQty} 发 · ${def.weight}kg`);
       else if (def.heal) meta.push(`恢复 ${def.heal} 生命 · ${def.useTime}s`);
       meta.push(`${def.size.w}×${def.size.h} 格`);
-      if (discounted) meta.push(`今日限购 剩余 ${remain}/${SHOP.daily.limitPerDay}`);
       main.appendChild(el('div', 'item-meta', meta.join(' · ')));
       row.appendChild(main);
-
-      const buy = el('button', 'btn small', discounted ? `${money(price)}（原价 ${money(def.value)}）` : money(price));
+      const buy = el('button', locked ? 'btn small lock' : 'btn small', locked ? `Lv.${needLv}` : money(def.value));
       buy.dataset.action = 'buy';
       buy.dataset.id = id;
-      if (locked || soldOut || save.currency < price) buy.disabled = true;
-      if (soldOut && discounted) buy.textContent = '今日售完';
+      if (locked || save.currency < def.value) buy.disabled = true;
       row.appendChild(buy);
       buyHost.appendChild(row);
     }
@@ -950,9 +877,10 @@ export function createUI(root, handlers) {
     for (const item of sellable) {
       const row = el('div', 'item-row');
       row.appendChild(iconEl(item.icon, RARITY[item.rarity].color, 24));
+      const disp = displayUnits(item);
       const main = el('div', 'item-main');
-      main.appendChild(el('div', 'item-name', item.qty > 1 ? `${item.name} ×${item.qty}` : item.name));
-      main.appendChild(el('div', 'item-meta', `${itemWeight(item).toFixed(1)}kg · 单价 ${money(item.value)}${item.category === 'ammo' ? '/盒' : ''}`));
+      main.appendChild(el('div', 'item-name', item.qty > 1 ? `${item.name} ×${disp.count}${disp.unit}` : item.name));
+      main.appendChild(el('div', 'item-meta', `${itemWeight(item).toFixed(1)}kg · 单价 ${money(item.value)}`));
       row.appendChild(main);
       const sell = el('button', 'btn small', money(itemValue(item) * SHOP.sellRatio));
       sell.dataset.action = 'sell';
@@ -962,63 +890,48 @@ export function createUI(root, handlers) {
     }
   }
 
-  /* ---------------- 图鉴 / 成就 ---------------- */
+  /* ---------------- 图鉴 ---------------- */
 
   /**
-   * 图鉴 + 成就页。两个页签共用一块面板：图鉴按稀有度分组渲染全部物品定义，
-   * 未获得的显示剪影；成就列表直接读 meta.achievementProgress 的快照。
-   *
-   * 放在 ui.js 而不是 main.js：图标/网格工具都在这里，
-   * 而"该显示什么"已由 meta.js 的纯函数算好（三态、进度、总数）。
+   * 渲染战利品图鉴（三态：未发现 / 已见过 / 已带出）。
+   * 分母用 ITEM_IDS.length（现在是 19，含 lv2/lv3，不要写死 17）。
+   * @param {object} save 存档
+   * @returns {void}
    */
   function renderCodex(save) {
-    const stats = codexStats(save);
-    q('codex-sum').textContent = `已见 ${stats.seen} · 带出 ${stats.brought} / ${stats.total}`;
+    const codex = save.codex || {};
+    const seen = codex.seen || {};
+    const brought = codex.brought || {};
+    const seenCount = ITEM_IDS.filter((id) => seen[id]).length;
+    const broughtCount = ITEM_IDS.filter((id) => brought[id]).length;
+    const prog = q('codex-progress');
+    if (prog) prog.textContent = `已见 ${seenCount} · 带出 ${broughtCount} / ${ITEM_IDS.length}`;
 
-    const grid = q('codex-grid');
-    grid.innerHTML = '';
-    const entries = codexEntries(save);
-    for (const r of RARITY_ORDER) {
-      const group = entries.filter((e) => e.def.rarity === r);
-      if (!group.length) continue;
-      grid.appendChild(el('div', 'codex-group', RARITY[r].name));
-      for (const it of group) {
-        const cell = el('div', `codex-cell${it.brought ? ' brought' : (it.seen ? ' seen' : '')}`);
-        cell.appendChild(iconEl(it.def.icon, RARITY[it.def.rarity].color, 30));
-        cell.appendChild(el('div', 'codex-name', it.seen ? it.def.name : '???'));
-        cell.appendChild(el('div', 'codex-state',
-          it.brought ? `已带出 ×${it.brought}` : (it.seen ? '已见过' : '未发现')));
+    const host = q('codex-body');
+    host.innerHTML = '';
+    for (const rarity of RARITY_ORDER) {
+      const ids = ITEMS_BY_RARITY[rarity] || [];
+      if (!ids.length) continue;
+      const block = el('section', 'codex-group');
+      const head = el('h3', 'codex-head',
+        `${RARITY[rarity].name} ${ids.filter((id) => seen[id]).length}/${ids.length}`);
+      head.style.color = RARITY[rarity].color;
+      block.appendChild(head);
+      const grid = el('div', 'codex-grid');
+      for (const id of ids) {
+        const def = ITEMS[id];
+        if (!def) continue;
+        const hasSeen = Boolean(seen[id]);
+        const hasBrought = Boolean(brought[id]);
+        const cell = el('div', `codex-cell${hasSeen ? '' : ' unknown'}${hasBrought ? ' brought' : ''}`);
+        cell.appendChild(iconEl(def.icon, RARITY[def.rarity].color, 30));
+        cell.appendChild(el('div', 'codex-name', hasSeen ? def.name : '？？？'));
+        cell.appendChild(el('div', 'codex-meta',
+          hasBrought ? `已带出 · ${money(def.value)}` : (hasSeen ? '已见过' : '未发现')));
         grid.appendChild(cell);
       }
-    }
-
-    renderAchievements(save);
-
-    // 页签切换：直接绑 onclick 而不是走 data-action 委托 ——
-    // 委托表在 main.js，而"切页签"是纯 UI 状态，不该为它加一个全局 action。
-    const tabCodex = q('tab-codex');
-    const tabAch = q('tab-ach');
-    const achList = q('codex-ach');
-    const setTab = (which) => {
-      tabCodex.classList.toggle('active', which === 'codex');
-      tabAch.classList.toggle('active', which === 'ach');
-      grid.classList.toggle('hidden', which !== 'codex');
-      achList.classList.toggle('hidden', which !== 'ach');
-    };
-    tabCodex.onclick = () => setTab('codex');
-    tabAch.onclick = () => setTab('ach');
-    setTab('codex');
-  }
-
-  function renderAchievements(save) {
-    const host = q('codex-ach');
-    host.innerHTML = '';
-    for (const a of achievementProgress(save)) {
-      const row = el('div', `ach-row${a.done ? ' done' : ''}`);
-      row.appendChild(el('div', 'ach-name', a.def.name));
-      row.appendChild(el('div', 'ach-desc', a.def.desc));
-      row.appendChild(el('div', 'ach-prog', a.done ? '✓ 已达成' : `${a.value}/${a.need}`));
-      host.appendChild(row);
+      block.appendChild(grid);
+      host.appendChild(block);
     }
   }
 
@@ -1037,28 +950,6 @@ export function createUI(root, handlers) {
     head.appendChild(el('div', 'result-sub', result.subtitle));
     const grade = el('div', 'result-grade', result.grade);
     head.appendChild(grade);
-
-    // 图鉴 / 成就 / 每日：本局"顺带拿到"的东西单独一行小徽章。
-    // 它们不属于"战果数值"，塞进 stats 会把评分与物资总值淹掉，
-    // 但完全不提又等于白做 —— 折中成标题下方的一条徽章带。
-    const tags = [];
-    if (result.codex && result.codex.added > 0) {
-      tags.push({ text: `图鉴 +${result.codex.added} · ${result.codex.seen}/${result.codex.total}`, cls: 'codex' });
-    }
-    for (const a of (result.achievements || [])) {
-      tags.push({ text: `成就 · ${a.name} +${money(a.reward)}`, cls: 'ach' });
-    }
-    if (result.daily) {
-      tags.push({
-        text: result.daily.extracted ? '每日突袭 · 今日已完成' : '每日突袭 · 今日未完成',
-        cls: result.daily.extracted ? 'daily-ok' : 'daily-bad',
-      });
-    }
-    if (tags.length) {
-      const band = el('div', 'result-tags');
-      for (const t of tags) band.appendChild(el('span', `tag ${t.cls}`, t.text));
-      head.appendChild(band);
-    }
 
     const statsHost = q('result-stats');
     statsHost.innerHTML = '';
@@ -1079,8 +970,9 @@ export function createUI(root, handlers) {
     for (const item of result.items) {
       const row = el('div', 'item-row');
       row.appendChild(iconEl(item.icon, RARITY[item.rarity].color, 22));
+      const disp = displayUnits(item);
       const main = el('div', 'item-main');
-      main.appendChild(el('div', 'item-name', item.qty > 1 ? `${item.name} ×${item.qty}` : item.name));
+      main.appendChild(el('div', 'item-name', item.qty > 1 ? `${item.name} ×${disp.count}${disp.unit}` : item.name));
       main.appendChild(el('div', 'item-meta', `${RARITY[item.rarity].name} · ${itemWeight(item).toFixed(1)}kg`));
       row.appendChild(main);
       row.appendChild(el('div', 'item-value', money(itemValue(item))));
@@ -1122,13 +1014,10 @@ export function createUI(root, handlers) {
       const row = el('div', 'item-row');
       if (i === lootSel) row.classList.add('selected');
       row.appendChild(iconEl(item.icon, RARITY[item.rarity].color, 22));
+      const disp = displayUnits(item);
       const main = el('div', 'item-main');
-      main.appendChild(el('div', 'item-name', item.qty > 1 ? `${item.name} ×${item.qty}` : item.name));
-      const kg = itemWeight(item);
-      const meta = `${item.w}×${item.h}格 · ${kg.toFixed(1)}kg · ${RARITY[item.rarity].name}`;
-      main.appendChild(el('div', 'item-meta', kg > 0
-        ? `${meta} · ¥${Math.round(itemValue(item) / kg).toLocaleString('en-US')}/kg`
-        : meta));
+      main.appendChild(el('div', 'item-name', item.qty > 1 ? `${item.name} ×${disp.count}${disp.unit}` : item.name));
+      main.appendChild(el('div', 'item-meta', `${item.w}×${item.h}格 · ${itemWeight(item).toFixed(1)}kg · ${RARITY[item.rarity].name}`));
       row.appendChild(main);
       row.appendChild(el('div', 'item-value', money(itemValue(item))));
       const take = el('button', 'btn tiny', '拾取');
@@ -1171,10 +1060,11 @@ export function createUI(root, handlers) {
     renderGrid(q('backpack-grid'), inventory, null);
     const w = totalWeight(inventory);
     const over = w > weightLimit;
-    // 页脚要说清"超重到底会怎样"。以前只写"点击丢弃"，玩家超重时看到的
-    // 唯一信号是 HUD 上那串变红的负重数字 —— 它不解释后果，于是被当成装饰。
-    q('backpack-info').textContent = over
-      ? `超重 ${(w - weightLimit).toFixed(1)}kg · 移速 −${Math.round((1 - weightSpeedMultiplier(w, weightLimit, PLAYER.weightOverSpeedFloor)) * 100)}% 且无法奔跑 —— 丢点东西吧`
+    // 页脚把"超重"翻译成玩家能感知的后果。
+    // ⚠ 超重**仍可奔跑**（ed4a181 已改），这里绝不能写"无法奔跑"——那是当场说谎。
+    const tier = weightTier(w, weightLimit);
+    q('backpack-info').textContent = tier > 0
+      ? `超重：移速 ×${weightSpeedMultiplier(w, weightLimit, PLAYER.weightOverSpeedFloor).toFixed(2)}（仍可奔跑，冲刺更费体力）`
       : '点击医疗物资直接使用，点击其他丢弃';
 
     // 第三层（弹窗）承接从常驻 HUD 移下来的资产信息：
@@ -1188,11 +1078,11 @@ export function createUI(root, handlers) {
       const entries = [
         ['随身估值', money(value), 'value'],
         ['负重', `${w.toFixed(1)} / ${weightLimit} kg`, over ? 'over' : ''],
-        // 价值密度：整包的 ¥/kg。它才是"这趟油水足不足"的真实读数 ——
-        // 估值高但全是服务器机柜的局，走出去会有代价。
-        ['价值密度', w > 0 ? `¥${Math.round(value / w).toLocaleString('en-US')}/kg` : '—', ''],
         ['占用格数', `${cells} / ${cellMax}`, cells >= cellMax ? 'over' : ''],
       ];
+      // 第四行：价值密度。背包满时的唯一取舍依据 —— 同样占一格，谁更值钱。
+      const density = Math.round(value / Math.max(0.1, w));
+      entries.push(['价值密度', `${money(density)}/kg`, over ? 'over' : '']);
       for (const [k, v, cls] of entries) {
         const node = el('div', `bp-stat${cls ? ` ${cls}` : ''}`);
         node.appendChild(el('span', 'k', k));
@@ -1315,13 +1205,19 @@ export function createUI(root, handlers) {
     hudCtx.clearRect(0, 0, hudCanvas.width || window.innerWidth || 1280, hudCanvas.height || window.innerHeight || 720);
   }
 
-  /** 顶部罗盘（仿三角洲：随朝向滚动显示 N / E / S / W）。矩形来自 hudLayout，保证与体检工具同源。 */
+  /** 顶部罗盘（仿三角洲：随朝向滚动显示 N / E / S / W）。矩形来自 hudLayout，保证与体检工具同源。
+   *  P0-3：压缩到 28px，并把「撤离倒计时」并入罗盘条右侧（右侧小芯片）。 */
   function drawCompass(world, W, L) {
     const ctx = hudCtx;
     const p = world.player;
     const { w: cw, y: y0, h: ch } = L.compass;
     // x 由 hudLayout 给：触屏横屏时罗盘与计时/击杀流共用中列，不是屏幕居中
     const x0 = L.compass.x;
+    // 右侧撤离芯片尺寸（先算出来，给方向刻度让位）
+    const chipW = Math.min(74, Math.max(56, Math.round(cw * 0.30)));
+    const chipGap = 6;
+    const usableRight = x0 + cw - chipW - chipGap - 2;
+
     ctx.fillStyle = 'rgba(10,14,19,0.7)';
     roundRect(ctx, x0, y0, cw, ch, 6); ctx.fill();
     ctx.strokeStyle = 'rgba(255,176,32,0.2)'; ctx.lineWidth = 1;
@@ -1334,9 +1230,30 @@ export function createUI(root, handlers) {
       const off = ((deg - yawDeg + 540) % 360) - 180; // 相对当前朝向的屏幕偏移 -180..180
       const px = cx + (off / 180) * (cw / 2 - 22);
       if (Math.abs(px - cx) > cw / 2 - 6) continue;
+      if (px > usableRight) continue; // 让开右侧撤离芯片
       ctx.fillStyle = lab === 'N' ? COLORS.danger : COLORS.dim;
-      ctx.fillText(lab, px, y0 + 16);
+      ctx.fillText(lab, px, y0 + 17);
     }
+    // 目标针：撤离 / 终端 / 空投按方位贴在罗盘上，转头时一起滑动。
+    // 目标数量有硬上限（2 + 3 + 1 = 6），不碰全场景遍历（尤其不能出现 map.containers）。
+    const marks = [];
+    for (const ex of (world.map.extracts || [])) {
+      marks.push({ x: ex.x, y: ex.y, color: ex.open ? COLORS.ok : COLORS.dim, size: ex.open ? 5 : 3 });
+    }
+    for (const t of (world.map.terminals || [])) {
+      if (!t.hacked) marks.push({ x: t.x, y: t.y, color: COLORS.accent2, size: 3 });
+    }
+    const air = world.map.airdrop;
+    if (air && !air.landed) marks.push({ x: air.x, y: air.y, color: COLORS.accent, size: 4 });
+    for (const m of marks) {
+      const off = ((Math.atan2(m.y - p.y, m.x - p.x) - p.yaw) * 180 / Math.PI + 540) % 360 - 180;
+      if (Math.abs(off) > 90) continue; // 只画视野前方 ±90°
+      const px = cx + (off / 90) * (cw / 2 - 8);
+      if (px > usableRight) continue;
+      ctx.fillStyle = m.color;
+      ctx.fillRect(px - m.size / 2, y0 + ch - 6, m.size, m.size);
+    }
+
     // 中心指示三角
     ctx.fillStyle = COLORS.accent;
     ctx.beginPath();
@@ -1345,76 +1262,31 @@ export function createUI(root, handlers) {
     ctx.lineTo(cx + 5, y0 - 10);
     ctx.closePath(); ctx.fill();
 
-    /* ---- 目标针（P0-5）----
-     * 罗盘原来只说"朝向"，不说"该往哪走"——玩家要不停开小地图找撤离点。
-     * 在一条横向罗盘上标出目标方位，等于把"方向感"这件事交还给 HUD。
-     *
-     * 取舍：
-     *   · 只标 6 个（按距离取最近）—— 全标就变成一锅彩色图钉，反而没有信息；
-     *   · 撤离点用绿（已开）/ 灰（未开）、终端青、空投金，与小地图同一套配色；
-     *   · 再单独画出"最近可用撤离点的距离"，因为那才是局末唯一真正要看的东西。
-     */
-    const targets = [];
-    for (const ex of (world.map.extracts || [])) {
-      targets.push({
-        x: ex.x, y: ex.y, color: ex.open ? COLORS.ok : 'rgba(150,160,175,0.9)', open: Boolean(ex.open),
-      });
+    // P0-3：撤离倒计时并入罗盘右侧
+    const exs = world.map.extracts || [];
+    let nextOpen = null;
+    for (const e of exs) {
+      if (e.open) continue;
+      const t = (e.openAt || 0) - world.time;
+      if (t > 0 && (nextOpen == null || t < nextOpen)) nextOpen = t;
     }
-    for (const t of (world.map.terminals || [])) {
-      if (!t.hacked) targets.push({ x: t.x, y: t.y, color: '#35E0D0' });
-    }
-    const drop = world.map.airdrop;
-    if (drop && !drop.landed) targets.push({ x: drop.x, y: drop.y, color: '#FFB020' });
-    for (const t of targets) t.d = Math.hypot(t.x - p.x, t.y - p.y);
-    targets.sort((a, b) => a.d - b.d);
-    const ticks = targets.slice(0, 6);
-    for (const t of ticks) {
-      // 罗盘角度约定与方位字母完全一致：yaw 为 0 时朝 N，atan2(dy,dx) 给同一套角度
-      const bearing = ((Math.atan2(t.y - p.y, t.x - p.x) * 180) / Math.PI + 360) % 360;
-      const off = ((bearing - yawDeg + 540) % 360) - 180;
-      if (Math.abs(off) > 175) continue; // 背后不画（画在边缘会误导方向）
-      const px = cx + (off / 180) * (cw / 2 - 22);
-      ctx.fillStyle = t.color;
-      ctx.beginPath();
-      ctx.moveTo(px, y0 + ch - 2);
-      ctx.lineTo(px - 3.4, y0 + ch - 7);
-      ctx.lineTo(px + 3.4, y0 + ch - 7);
-      ctx.closePath();
-      ctx.fill();
-    }
-    // 最近一个"已开放"撤离点的距离（米）—— 局末唯一真正需要的数字
-    let nearestOpen = null;
-    for (const ex of (world.map.extracts || [])) {
-      if (!ex.open) continue;
-      const d = Math.hypot(ex.x - p.x, ex.y - p.y);
-      if (!nearestOpen || d < nearestOpen.d) nearestOpen = { d, name: ex.name };
-    }
-    ctx.textAlign = 'center';
-    if (nearestOpen) {
-      ctx.fillStyle = COLORS.ok;
-      ctx.font = `600 ${L.compass.w < 200 ? 10 : 11}px ${MONO}`;
-      // TILE=40 逻辑单位 = 2 米 ⇒ 20 逻辑单位 = 1 米（与 VIEW3D.metersToUnits 同源）
-      ctx.fillText(`撤离 ${Math.round(nearestOpen.d / VIEW3D.metersToUnits)}m`, cx, y0 + ch + 11);
-    } else {
-      // 还没到开放时间：给出倒计时，而不是让玩家盯着灰色罗盘发呆。
-      // 取"下一个将要开放的点"而不是写死免费点 —— 免费点开完之后，
-      // 这里要自动变成守点/付费点的倒计时。
-      let nextAt = null;
-      for (const ex of (world.map.extracts || [])) {
-        if (ex.open) continue;
-        const at = ex.openAt || 0;
-        if (nextAt === null || at < nextAt) nextAt = at;
-      }
-      const wait = nextAt === null ? 0 : Math.max(0, Math.ceil(nextAt - world.time));
-      ctx.fillStyle = COLORS.dim;
-      ctx.font = `${L.compass.w < 200 ? 10 : 11}px ${MONO}`;
-      // mm:ss —— 与顶部倒计时同格式（见 renderHud 里的 String(mm).padStart(2,'0')）。
-      // ⚠ 这里原写作 formatTime(wait)，但本文件从未定义过该函数：局内每帧 renderHud
-      //    都会抛 ReferenceError，HUD 画到罗盘就断掉（Node 单测与语法检查都抓不到）。
-      const mm = Math.floor(wait / 60);
-      const ss = wait % 60;
-      ctx.fillText(`撤离 T-${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`, cx, y0 + ch + 11);
-    }
+    let exLabel;
+    let exColor;
+    if (nextOpen != null) { exLabel = `撤离 ${Math.ceil(nextOpen)}s`; exColor = COLORS.accent; }
+    else if (exs.some((e) => e.open)) { exLabel = '撤离开放'; exColor = COLORS.ok; }
+    else { exLabel = '撤离 —'; exColor = COLORS.dim; }
+    const chipX = x0 + cw - chipW - chipGap;
+    const chipY = y0 + 4;
+    const chipH = ch - 8;
+    ctx.fillStyle = 'rgba(8,11,16,0.94)';
+    roundRect(ctx, chipX, chipY, chipW, chipH, 5); ctx.fill();
+    ctx.strokeStyle = nextOpen != null ? 'rgba(255,176,32,0.45)' : 'rgba(93,220,122,0.35)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, chipX + 0.5, chipY + 0.5, chipW - 1, chipH - 1, 5); ctx.stroke();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = exColor; ctx.font = `700 ${chipH < 20 ? 9 : 10}px ${MONO}`;
+    ctx.fillText(exLabel, chipX + chipW / 2, chipY + chipH / 2 + 1);
+    ctx.textBaseline = 'alphabetic';
   }
 
   /** 取容器内最高稀有度（用于小地图着色，与 UI / 世界辉光配色一致）。 */
@@ -1544,13 +1416,6 @@ export function createUI(root, handlers) {
         ctx.fillStyle = RARITY[top].color;
         const r = (top === 'legendary' || top === 'epic') ? 3.2 : 2.4;
         ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
-        // 上锁的保险箱：外圈金色锁环。没有它的话，玩家无法在战前/跑图时
-        // 判断"该不该为这个点留一张门卡"—— 门卡是一次性资源，这个信息很贵。
-        if (c.locked) {
-          ctx.strokeStyle = '#FFD27A';
-          ctx.lineWidth = 1.2;
-          ctx.beginPath(); ctx.arc(p.x, p.y, r + 2.5, 0, Math.PI * 2); ctx.stroke();
-        }
         if (top === 'legendary' || top === 'epic') {
           ctx.globalAlpha = 0.5;
           ctx.strokeStyle = RARITY[top].color; ctx.lineWidth = 1;
@@ -1622,6 +1487,19 @@ export function createUI(root, handlers) {
     const player = world.player;
     ctx.clearRect(0, 0, W, H);
 
+    // 任务面板命中区：折叠态把 24px 标题上下各撑到 44px 触控高度（≥44px 的手游惯例）。
+    // 矩形来自 L.tasks，与体检工具同源，绝不另写坐标（写死会在 667 宽屏压到别的东西）。
+    const tap = q('tasks-tap');
+    if (tap) {
+      const C = L.tasks;
+      const h = Math.max(44, C.headH);
+      tap.style.left = `${C.x}px`;
+      tap.style.top = `${C.y - (h - C.headH) / 2}px`;
+      tap.style.width = `${C.w}px`;
+      tap.style.height = `${h}px`;
+      tap.classList.toggle('hidden', !L.touch || paused || world.over);
+    }
+
     const panel = (x, y, w, h) => {
       ctx.fillStyle = 'rgba(10,14,19,0.82)';
       roundRect(ctx, x, y, w, h, 8); ctx.fill();
@@ -1638,6 +1516,25 @@ export function createUI(root, handlers) {
     ctx.fillStyle = COLORS.text; ctx.font = `600 ${M.compact ? 12 : 13}px ${SANS}`;
     ctx.fillText(`击杀 ${world.kills}`, tx, M.y + M.rowY[0]);
     ctx.fillText(`搜刮 ${world.searchedCount}`, tx + M.col2, M.y + M.rowY[0]);
+    // 读数条第 1 行右端：蹲伏状态优先（只在蹲着时出现），否则显示最近已开放撤离点的距离。
+    // 两者共用同一格并互斥，永不重叠。
+    if (player.crouching) {
+      ctx.textAlign = 'right';
+      ctx.fillStyle = COLORS.ok; ctx.font = `600 ${M.compact ? 10 : 11}px ${SANS}`;
+      ctx.fillText('蹲伏', M.x + M.w - 8, M.y + M.rowY[0]);
+    } else {
+      // 只遍历 map.extracts（2 个），绝不顺手遍历 map.containers。
+      let nearest = Infinity;
+      for (const ex of (world.map.extracts || [])) {
+        if (ex.open) nearest = Math.min(nearest, Math.hypot(ex.x - player.x, ex.y - player.y));
+      }
+      if (Number.isFinite(nearest)) {
+        ctx.textAlign = 'right';
+        ctx.fillStyle = COLORS.ok;
+        ctx.font = `${M.compact ? 9 : 10}px ${MONO}`;
+        ctx.fillText(`撤离 ${Math.round(nearest)}m`, M.x + M.w - 8, M.y + M.rowY[0]);
+      }
+    }
     const weight = player.weight;
     const wLimit = player.weightLimit;
     const over = weight > wLimit;
@@ -1645,7 +1542,7 @@ export function createUI(root, handlers) {
     ctx.font = `600 ${M.compact ? 11 : 12}px ${MONO}`;
     // 超重时直接写出后果，不让玩家猜为什么"跑不动了"
     ctx.fillText(
-      over ? `负重 ${weight.toFixed(1)}/${wLimit}kg · 禁跑` : `负重 ${weight.toFixed(1)}/${wLimit}kg`,
+      over ? `负重 ${weight.toFixed(1)}/${wLimit}kg · 减速` : `负重 ${weight.toFixed(1)}/${wLimit}kg`,
       tx, M.y + M.rowY[1],
     );
     // 超重警示条：把读数条右半边的空档用起来，红底让"禁跑"无法被忽略
@@ -1659,7 +1556,7 @@ export function createUI(root, handlers) {
       roundRect(ctx, bx + 0.5, by + 0.5, bw - 1, Math.round(M.h * 0.42) - 1, 4); ctx.stroke();
       ctx.textAlign = 'center';
       ctx.fillStyle = COLORS.danger; ctx.font = `700 ${M.compact ? 10 : 11}px ${SANS}`;
-      ctx.fillText('超重 · 无法奔跑', bx + bw / 2, by + Math.round(M.h * 0.42) * 0.68);
+      ctx.fillText('超重 · 减速', bx + bw / 2, by + Math.round(M.h * 0.42) * 0.68);
     }
 
     // 顶部中央：倒计时
@@ -1667,20 +1564,23 @@ export function createUI(root, handlers) {
     const mm = Math.floor(timeLeft / 60);
     const ss = Math.floor(timeLeft % 60);
     const urgent = timeLeft <= MATCH.warnTime;
-    const blink = urgent && Math.floor(world.time * 2) % 2 === 0;
+    // 减少动态效果时不闪（改恒亮红），避免光敏/晕屏玩家被 2Hz 闪烁刺激
+    const blink = urgent && !reducedMotion && Math.floor(world.time * 2) % 2 === 0;
+    const urgentColor = reducedMotion ? COLORS.danger : (blink ? COLORS.danger : COLORS.accent);
     ctx.textAlign = 'center';
     const T = L.timer;
     ctx.fillStyle = 'rgba(10,14,19,0.85)';
     roundRect(ctx, T.x, T.y, T.w, T.h, 8); ctx.fill();
     ctx.strokeStyle = urgent ? 'rgba(255,77,77,0.6)' : 'rgba(255,176,32,0.25)'; ctx.lineWidth = 1.4;
     roundRect(ctx, T.x, T.y, T.w, T.h, 8); ctx.stroke();
-    ctx.fillStyle = urgent ? (blink ? COLORS.danger : COLORS.accent) : COLORS.text;
-    ctx.font = `700 ${T.compact ? 24 : 30}px ${MONO}`;
+    ctx.fillStyle = urgent ? urgentColor : COLORS.text;
+    // P0-3：大号居中时间（触屏 24→28）
+    ctx.font = `700 ${T.compact ? 28 : 30}px ${MONO}`;
     ctx.fillText(`${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`, W / 2, T.timeY);
     ctx.font = `11px ${SANS}`; ctx.fillStyle = COLORS.dim;
     ctx.fillText('剩余时间', W / 2, T.labelY);
     if (urgent && !world.over) {
-      ctx.fillStyle = blink ? COLORS.danger : COLORS.accent; ctx.font = `700 ${T.compact ? 12 : 15}px ${SANS}`;
+      ctx.fillStyle = urgentColor; ctx.font = `700 ${T.compact ? 12 : 15}px ${SANS}`;
       // 触屏横屏顶部没有空隙了，紧急提示改挂在计时条下方 6px 处（不越出 h）
       ctx.fillText('撤离点即将关闭', W / 2, T.compact ? T.y + T.h + 14 : T.y + T.h + 38);
     }
@@ -1695,17 +1595,18 @@ export function createUI(root, handlers) {
     const gx = G.x + 16;
     ctx.textAlign = 'left';
     if (weapon) {
-      ctx.fillStyle = COLORS.text; ctx.font = `600 ${G.compact ? 12 : 13}px ${SANS}`;
+      // P1-5 紧凑化：名称 12→11、弹药 24→20、备弹 13→12（触屏档）
+      ctx.fillStyle = COLORS.text; ctx.font = `600 ${G.compact ? 11 : 13}px ${SANS}`;
       ctx.fillText(weapon.def.name, gx, G.y + G.nameY);
-      ctx.fillStyle = COLORS.dim; ctx.font = `10px ${MONO}`;
+      ctx.fillStyle = COLORS.dim; ctx.font = `9px ${MONO}`;
       ctx.fillText(`${weapon.def.auto ? '全自动' : '半自动'} · ${weapon.def.ammoType}`, gx, G.y + G.subY);
       ctx.textAlign = 'right';
       const ammoColor = weapon.ammo === 0 ? COLORS.danger : (weapon.ammo <= weapon.def.magSize * 0.25 ? COLORS.accent : COLORS.text);
-      ctx.fillStyle = ammoColor; ctx.font = `700 ${G.compact ? 24 : 30}px ${MONO}`;
+      ctx.fillStyle = ammoColor; ctx.font = `700 ${G.compact ? 20 : 30}px ${MONO}`;
       ctx.fillText(String(weapon.ammo), G.ammoX, G.y + G.ammoY);
-      ctx.fillStyle = COLORS.dim; ctx.font = `600 ${G.compact ? 13 : 16}px ${MONO}`;
+      ctx.fillStyle = COLORS.dim; ctx.font = `600 ${G.compact ? 12 : 16}px ${MONO}`;
       ctx.fillText(`/ ${player.reserveAmmo(weapon.def.ammoItem)}`, G.reserveX, G.y + G.ammoY);
-      ctx.textAlign = 'left'; ctx.font = `10px ${MONO}`;
+      ctx.textAlign = 'left'; ctx.font = `9px ${MONO}`;
       if (weapon.reloading) {
         const p = 1 - weapon.reloadTimer / weapon.reloadTotal;
         ctx.fillStyle = COLORS.accent; ctx.fillText('换弹中', gx, G.y + G.footY);
@@ -1763,15 +1664,30 @@ export function createUI(root, handlers) {
       const shown = C.open ? sortTasksByPriority(contracts) : [];
       const cap = C.open ? Math.min(shown.length, 3) : 2;
       panel(C.x, y0, cw, C.headH + cap * C.rowH);
-      // 标题行：左「任务 N/M」，右折叠/展开提示
+      // 标题行：左「任务 N/M」；右——展开时是收起提示，折叠时直接显示「任务 1 摘要」（P1-4）。
+      // 折叠态常驻一条最关键的任务，玩家不必展开就知道下一步做什么。
       const doneCount = contracts.filter((c) => c.done).length;
       ctx.textAlign = 'left';
       ctx.fillStyle = COLORS.dim; ctx.font = `600 ${C.compact ? 11 : 12}px ${SANS}`;
       ctx.fillText(`任务 ${doneCount}/${contracts.length}`, C.x + 14, y0 + C.headH * 0.66);
       ctx.textAlign = 'right';
-      ctx.fillStyle = C.open ? COLORS.accent : COLORS.dim;
-      ctx.font = `${C.compact ? 10 : 11}px ${MONO}`;
-      ctx.fillText(C.open ? '▾ J 收起' : '▸ J 展开', C.x + cw - 14, y0 + C.headH * 0.66);
+      if (C.open) {
+        ctx.fillStyle = COLORS.accent;
+        ctx.font = `${C.compact ? 10 : 11}px ${MONO}`;
+        // 手机上没有 J 键：触屏分支改写成"点击"，与 DOM 命中区（tasks-tap）同一语义。
+        ctx.fillText(
+          document.body.classList.contains('touch-mode') ? '▾ 点击收起' : '▾ J 收起',
+          C.x + cw - 14, y0 + C.headH * 0.66,
+        );
+      } else {
+        const top = sortTasksByPriority(contracts)[0];
+        if (top) {
+          ctx.fillStyle = top.done ? COLORS.ok : COLORS.accent;
+          ctx.font = `600 ${C.compact ? 10 : 11}px ${SANS}`;
+          const prog = top.done ? '✓' : `${Math.floor(top.progress)}/${top.target}`;
+          ctx.fillText(`${top.name} ${prog}`, C.x + cw - 14, y0 + C.headH * 0.66);
+        }
+      }
 
       if (C.open) {
         // 目标概览独占合约区第一行（数据终端 / 空投倒计时）——
@@ -1788,19 +1704,9 @@ export function createUI(root, handlers) {
           airdropInfo = '空投已着陆';
         }
         ctx.fillText(
-          `目标 终端 ${world.terminalsHacked}/${MATCH.terminalCount} · ${airdropInfo}`,
+          `目标 · 终端 ${world.terminalsHacked}/${MATCH.terminalCount} · ${airdropInfo}`,
           C.x + 14, goalY,
         );
-        // 当前区域：拼在目标行**右列**而不是新增一行。
-        // ⚠ 不能加行：tasksH 由 hudLayout 按 4 行算死，多画一行会溢出面板、
-        // 把血条压过触屏 246px 底缘硬约束。区域名 3 个字，右列放得下。
-        const tag = roomLabelAt(world, player.x, player.y);
-        if (tag) {
-          ctx.textAlign = 'right';
-          ctx.fillStyle = tag.color;
-          ctx.font = `600 ${C.compact ? 9 : 10}px ${MONO}`;
-          ctx.fillText(tag.name, C.x + cw - 14, goalY);
-        }
         shown.slice(0, cap).forEach((c, i) => {
           const nameY = y0 + C.headH + 10 + (i + 1) * C.rowH;
           ctx.textAlign = 'left';
@@ -1910,8 +1816,9 @@ export function createUI(root, handlers) {
         prompt = { title: '按 E 撤离', sub };
       } else if (ni) {
         // 地面掉落物：排在撤离点之后、容器之前，与 player.interact 优先级一致
-        const qty = ni.qty > 1 ? ` ×${ni.qty}` : '';
-        prompt = { title: `按 E 拾取 ${ni.name}${qty}`, sub: `${money(ni.value * (ni.qty || 1))} · ${(ni.weight * (ni.qty || 1)).toFixed(1)}kg` };
+        const disp = displayUnits(ni);
+        const qty = ni.qty > 1 ? ` ×${disp.count}${disp.unit}` : '';
+        prompt = { title: `按 E 拾取 ${ni.name}${qty}`, sub: `${money(itemValue(ni))} · ${itemWeight(ni).toFixed(1)}kg` };
       } else if (c) {
         prompt = { title: c.searched ? '已搜刮' : '按 E 搜索', sub: c.searched ? '' : '搜刮容器' };
       }
@@ -1957,22 +1864,36 @@ export function createUI(root, handlers) {
       const bloom = maxSpread > 0 ? cur / maxSpread : 0;
       spread += bloom * (player.ads ? COMBAT.crosshairBloomAds : COMBAT.crosshairBloom);
     }
-    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2;
+    // 命中强度（0~1）：命中标记与准星染红共用，避免两套计时
+    const hitA = world.hitMarker > 0 ? Math.min(1, world.hitMarker / 0.12) : 0;
+
+    // 准星（P1-11）：先铺一层深色描边再画前景。
+    // 夜战整体提亮后（hemi 26 / ambient 17），纯白准星在亮雾、天空、头灯亮区会"融"进背景，
+    // 而瞄准极度依赖准星，所以必须保证任意背景都可读。
     ctx.beginPath();
     ctx.moveTo(cx - spread - 8, cy); ctx.lineTo(cx - spread, cy);
     ctx.moveTo(cx + spread, cy); ctx.lineTo(cx + spread + 8, cy);
     ctx.moveTo(cx, cy - spread - 8); ctx.lineTo(cx, cy - spread);
     ctx.moveTo(cx, cy + spread); ctx.lineTo(cx, cy + spread + 8);
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 4.5;
     ctx.stroke();
+    // 命中瞬间准星由白转红（与红 X 叠加），强化"这一枪进了"
+    const cg = Math.round(255 - 178 * hitA);
+    ctx.strokeStyle = hitA > 0 ? `rgba(255,${cg},${cg},0.95)` : 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.lineCap = 'butt';
 
-    // 命中标记
-    if (world.hitMarker > 0) {
-      const a = Math.min(1, world.hitMarker / 0.12);
+    // 命中标记：同样先描边，红 X 才不会被亮背景吃掉
+    if (hitA > 0) {
       const s = 7;
-      ctx.strokeStyle = `rgba(255,77,77,${a})`; ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.moveTo(cx - s, cy - s); ctx.lineTo(cx + s, cy + s);
       ctx.moveTo(cx + s, cy - s); ctx.lineTo(cx - s, cy + s);
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 5;
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255,77,77,${hitA})`; ctx.lineWidth = 2.5;
       ctx.stroke();
     }
 
@@ -1983,6 +1904,36 @@ export function createUI(root, handlers) {
       g.addColorStop(0, 'rgba(255,0,0,0)');
       g.addColorStop(1, `rgba(255,0,0,${a})`);
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
+
+    // 受击方向提示（P1-6）：全屏红晕只说明"掉血了"，这里补上"从哪边打的"。
+    // 把「玩家 → 伤害来源」的方位角投影到屏幕边缘：0 = 正前方（顶边）、±π = 背后（底边）、
+    // 正值偏右。与红晕叠加、0.6s 线性淡出。
+    if (world.hitDirT > 0) {
+      let off = (world.hitDir || 0) - (player.yaw || 0);
+      while (off > Math.PI) off -= Math.PI * 2;
+      while (off < -Math.PI) off += Math.PI * 2;
+      const a = Math.min(1, world.hitDirT / HITDIR.life);
+      const rx = W * HITDIR.radiusX;
+      const ry = H * HITDIR.radiusY;
+      // 椭圆参数角：点 (rx*sin(off), -ry*cos(off)) 对应的中心角
+      const ang = Math.atan2(-Math.cos(off), Math.sin(off));
+      ctx.save();
+      ctx.beginPath();
+      if (typeof ctx.ellipse === 'function') {
+        ctx.ellipse(cx, cy, rx, ry, 0, ang - HITDIR.span, ang + HITDIR.span);
+      } else {
+        ctx.arc(cx, cy, Math.min(rx, ry), ang - HITDIR.span, ang + HITDIR.span);
+      }
+      ctx.lineCap = 'round';
+      // 外层柔光 + 内层实心：暗场里也能一眼看到方向
+      ctx.strokeStyle = `rgba(255,60,60,${0.32 * a})`;
+      ctx.lineWidth = HITDIR.width * 2.1;
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255,120,110,${0.95 * a})`;
+      ctx.lineWidth = HITDIR.width;
+      ctx.stroke();
+      ctx.restore();
     }
 
     if (paused) {
@@ -1999,6 +1950,7 @@ export function createUI(root, handlers) {
     toast,
     toggleTasks,
     isTasksOpen,
+    renderCodex,
     updateFovLabel(v) {
       const el = q('fov-val');
       if (el) el.textContent = `${Math.round(v)}°`;
@@ -2027,7 +1979,6 @@ export function createUI(root, handlers) {
     renderLoadout,
     renderStash,
     renderShop,
-    renderCodex,
     renderResult,
     openLoot,
     refreshLoot,

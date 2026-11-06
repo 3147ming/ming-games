@@ -1,3 +1,8 @@
+/* ★ 本文件已接入 ming-games 共用设计 token（shared/tokens.css）。
+     圆角 / 阴影 / 间距 / 字阶 / 动效 / 层级 用 var(--mg-*)；
+     主色（--bg / --panel / --amber / --cyan / --danger）保持
+     「搜打撤」自己的战术暗色气质，**不统一**。 */
+
 /* ========================================================================
    搜打撤 —— 军事战术风 UI
    深色底 + 琥珀 / 青色高亮，数值统一使用等宽字体
@@ -21,7 +26,8 @@
   --legendary: #ffb020;
   --common: #9aa7b8;
   --cell: 46px;
-  --radius: 10px;
+  /* 接入 ming-games 共用 token：圆角统一到 md 档（原 10px） */
+  --radius: var(--mg-r-md);
   --sans: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
   --mono: "Consolas", "SFMono-Regular", "JetBrains Mono", "Courier New", monospace;
 }
@@ -64,6 +70,12 @@ body {
 #game-canvas {
   position: absolute;
   inset: 0;
+  /* ⚠ canvas 是替换元素：只写 inset:0、不写 width/height 时，CSS 宽度会取「属性宽度」
+     （即绘图缓冲宽度），setSize 的缓冲变化会直接改变画布在页面上的尺寸。
+     显式撑满后，缓冲再小也只是变糊，由 CSS 上采样拉回满屏 —— 这是 P1-9
+     「bufferScale 0.75 超省档」的前提，少了这两行会缩成右上角一块。 */
+  width: 100%;
+  height: 100%;
   display: none;
   background: #0a0e13;
 }
@@ -85,7 +97,7 @@ body {
   top: 62%;
   transform: translate(-50%, -50%);
   padding: 10px 18px;
-  border-radius: 8px;
+  border-radius: var(--mg-r-sm);
   background: rgba(10, 14, 19, 0.82);
   border: 1px solid rgba(255, 176, 32, 0.45);
   color: #ffb020;
@@ -150,7 +162,7 @@ body {
   text-align: center;
   padding: 40px 32px 28px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: var(--mg-r-lg);
   background: linear-gradient(180deg, rgba(16, 22, 31, 0.94), rgba(10, 14, 20, 0.94));
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
@@ -187,7 +199,7 @@ body {
 
 .stat {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--mg-r-sm);
   background: rgba(8, 11, 16, 0.6);
   padding: 10px 8px;
   display: flex;
@@ -252,7 +264,7 @@ body {
   font-size: 14px;
   font-weight: 600;
   padding: 11px 18px;
-  border-radius: 8px;
+  border-radius: var(--mg-r-sm);
   cursor: pointer;
   transition: transform 0.08s ease, border-color 0.15s ease, background 0.15s ease;
 }
@@ -296,7 +308,7 @@ body {
 .btn.tiny {
   padding: 4px 9px;
   font-size: 11px;
-  border-radius: 6px;
+  border-radius: var(--mg-r-sm);
 }
 
 .btn.big {
@@ -325,7 +337,7 @@ body {
   width: min(760px, 100%);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--mg-r-md);
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
   overflow: hidden;
   display: flex;
@@ -437,7 +449,7 @@ body {
   gap: 7px;
   padding: 9px 12px;
   border: 1px solid var(--line-2);
-  border-radius: 8px;
+  border-radius: var(--mg-r-sm);
   background: rgba(10, 14, 20, 0.7);
   color: var(--text);
   font-size: 13px;
@@ -467,7 +479,7 @@ body {
 .step {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--mg-r-sm);
   border: 1px solid var(--line-2);
   background: rgba(10, 14, 20, 0.8);
   color: var(--text);
@@ -502,7 +514,7 @@ body {
 
 .side-block {
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--mg-r-md);
   padding: 12px;
   background: rgba(8, 11, 16, 0.55);
   display: flex;
@@ -546,7 +558,7 @@ body {
 
 .weight-bar {
   height: 8px;
-  border-radius: 4px;
+  border-radius: var(--mg-r-xs);
   background: rgba(255, 255, 255, 0.07);
   overflow: hidden;
 }
@@ -564,7 +576,7 @@ body {
 .seed-input {
   width: 100%;
   padding: 9px 11px;
-  border-radius: 8px;
+  border-radius: var(--mg-r-sm);
   border: 1px solid var(--line-2);
   background: rgba(6, 9, 13, 0.9);
   color: var(--text);
@@ -602,7 +614,7 @@ body {
     linear-gradient(to bottom, var(--line) 1px, transparent 1px);
   background-size: var(--cell) var(--cell);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--mg-r-sm);
   background-color: rgba(8, 11, 16, 0.5);
 }
 
@@ -614,7 +626,7 @@ body {
   position: relative;
   margin: 2px;
   padding: 3px;
-  border-radius: 6px;
+  border-radius: var(--mg-r-sm);
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: linear-gradient(160deg, rgba(38, 48, 62, 0.95), rgba(20, 26, 35, 0.95));
   display: flex;
@@ -714,7 +726,7 @@ body {
   gap: 10px;
   padding: 9px 11px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--mg-r-sm);
   background: rgba(10, 14, 20, 0.65);
 }
 
@@ -799,7 +811,7 @@ kbd {
   margin-right: 4px;
   border: 1px solid var(--line-2);
   border-bottom-width: 2px;
-  border-radius: 5px;
+  border-radius: var(--mg-r-sm);
   background: rgba(20, 26, 35, 0.9);
   font-family: var(--mono);
   font-size: 11px;
@@ -844,11 +856,12 @@ kbd {
 }
 
 .result-grade {
-  position: absolute;
-  right: 24px;
-  top: 18px;
+  position: relative;
+  right: auto;
+  top: auto;
+  margin: 10px auto 0;
   font-family: var(--mono);
-  font-size: 54px;
+  font-size: 44px;
   font-weight: 800;
   color: var(--amber);
   text-shadow: 0 0 26px rgba(255, 176, 32, 0.4);
@@ -887,7 +900,7 @@ kbd {
   flex-direction: column;
   background: rgba(10, 14, 20, 0.96);
   border: 1px solid rgba(255, 176, 32, 0.35);
-  border-radius: 10px;
+  border-radius: var(--mg-r-md);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.65);
   overflow: hidden;
 }
@@ -937,7 +950,7 @@ kbd {
   margin: 10px 12px 0;
   background: var(--line);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--mg-r-sm);
   overflow: hidden;
 }
 
@@ -993,7 +1006,7 @@ body.touch-mode .bp-stat .v {
 
 .toast {
   padding: 8px 16px;
-  border-radius: 20px;
+  border-radius: var(--mg-r-lg);
   background: rgba(10, 14, 20, 0.94);
   border: 1px solid var(--line-2);
   color: var(--text);
@@ -1047,7 +1060,7 @@ body.touch-mode .bp-stat .v {
 
 ::-webkit-scrollbar-thumb {
   background: #26303e;
-  border-radius: 5px;
+  border-radius: var(--mg-r-sm);
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -1088,9 +1101,9 @@ body.touch-mode .bp-stat .v {
 
 .touch-controls {
   --tc-scale: 1;     /* 按钮大小可调倍率（0.8~1.3），由暂停面板滑块写入 */
-  --tc-core: calc(84px * var(--tc-scale));   /* 核心：移动摇杆 / 开火 */
-  --tc-combat: calc(60px * var(--tc-scale)); /* 刚需：换弹 / 治疗 / 上下文交互 */
-  --tc-minor: calc(46px * var(--tc-scale));  /* 次要：其余 */
+  --tc-core: calc(84px * var(--tc-scale));   /* 核心：移动摇杆 / 开火（最大，P1-5 保持） */
+  --tc-combat: calc(52px * var(--tc-scale)); /* 刚需：换弹 / 治疗 / 上下文交互（P1-5 由 60 压缩） */
+  --tc-minor: calc(44px * var(--tc-scale));  /* 次要：其余（P1-5 由 46 压缩到 44，仍守住触控 44px 下限） */
   --tc-gap: 8px;
   --tc-edge: 10px;
 
@@ -1232,7 +1245,7 @@ body.touch-mode .tc-stick-left {
   flex: 0 0 auto;
   box-sizing: border-box;
   padding: 2px;
-  border-radius: 12px;
+  border-radius: var(--mg-r-md);
   border: 1px solid rgba(255, 176, 32, 0.4);
   background: linear-gradient(180deg, rgba(30, 39, 51, 0.7), rgba(14, 19, 27, 0.7));
   color: var(--text);
@@ -1249,6 +1262,29 @@ body.touch-mode .tc-stick-left {
 
 .tc-label {
   pointer-events: none; /* 文案不参与命中，保证 elementFromPoint 始终返回按钮本身 */
+  position: relative;
+  z-index: 3; /* 压在换弹进度环之上，进度环只露外圈 */
+}
+
+/* 换弹进度环（P1-6）：叠在开火键外圈，conic-gradient 按 --p(0~100) 填充，
+   中心用 mask 掏空成环；换弹结束移除 .tc-live 即消失。 */
+.tc-reload-ring {
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  pointer-events: none;
+  display: none;
+  background: conic-gradient(
+    rgba(255, 176, 32, 0.95) calc(var(--p, 0) * 1%),
+    rgba(255, 255, 255, 0.12) 0
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
+  z-index: 2;
+}
+
+.tc-reload-ring.tc-live {
+  display: block;
 }
 
 /* 三级尺寸：core 最大最醒目，combat 次之，minor 收敛到触控下限附近 */
@@ -1262,14 +1298,14 @@ body.touch-mode .tc-stick-left {
 .tc-btn-combat {
   width: var(--tc-combat);
   height: var(--tc-combat);
-  border-radius: 14px;
+  border-radius: var(--mg-r-md);
   font-size: 13px;
 }
 
 .tc-btn-minor {
   width: var(--tc-minor);
   height: var(--tc-minor);
-  border-radius: 11px;
+  border-radius: var(--mg-r-md);
   font-size: 11px;
   opacity: 0.9;
 }
@@ -1382,7 +1418,7 @@ body.touch-mode .tc-stick-left {
   text-align: center;
   padding: 28px 24px;
   border: 1px solid var(--line-2);
-  border-radius: 14px;
+  border-radius: var(--mg-r-md);
   background: var(--panel);
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
 }
@@ -1416,7 +1452,7 @@ body.touch-mode .tc-stick-left {
 
 .rotate-dismiss {
   margin-top: 18px;
-  min-height: 44px;
+  min-height: var(--mg-tap);
 }
 
 /* 手机端：禁掉页面滚动 / 双击缩放 / 长按选中，避免和游戏手势打架 */
@@ -1479,7 +1515,7 @@ body.touch-mode .tc-zone-top {
   width: 76px;
   padding: 10px 4px;
   border: 1px dashed rgba(53, 224, 208, 0.4);
-  border-radius: 14px;
+  border-radius: var(--mg-r-md);
   background: rgba(10, 16, 22, 0.4);
   color: var(--cyan);
   font-size: 11px;
@@ -1559,17 +1595,17 @@ body.touch-mode .item-row {
 
 body.touch-mode .item-row .btn.tiny {
   min-width: 64px;
-  min-height: 44px;
+  min-height: var(--mg-tap);
   font-size: 13px;
 }
 
 body.touch-mode .battle-panel .btn,
 body.touch-mode .battle-panel .icon-btn {
-  min-height: 44px;
+  min-height: var(--mg-tap);
 }
 
 body.touch-mode .battle-panel .icon-btn {
-  min-width: 44px;
+  min-width: var(--mg-tap);
 }
 
 /* =======================================================================
@@ -1579,12 +1615,12 @@ body.touch-mode .battle-panel .icon-btn {
 body.touch-mode .setting-row input[type='range'] {
   /* range 需要显式的 pan-x 权限才能用手指拖动 */
   touch-action: pan-x;
-  min-height: 44px;
+  min-height: var(--mg-tap);
   flex: 1;
 }
 
 body.touch-mode .setting-row {
-  min-height: 48px;
+  min-height: var(--mg-tap);
 }
 
 body.touch-mode .setting-row label {
@@ -1605,322 +1641,148 @@ body.touch-mode .battle-panel:not(.hidden) {
   touch-action: auto;
 }
 
-
-
-/* ========================================================================
-   第一批新增：每日突袭 / 军械商声望 / 图鉴 / 成就 / 商店特价 / 价值密度
-   （机制批 + 内容批共用这一块，风格沿用军事暗色 + 琥珀/青高亮）
+/* =======================================================================
+   第三批：任务面板命中区 / 装备保险 / 军械商声望 / 图鉴
    ===================================================================== */
 
-/* ---- 主菜单：每日突袭状态行 ---- */
-.menu-daily {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  margin: 10px auto 0;
-  padding: 7px 14px;
-  width: fit-content;
-  max-width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(10, 14, 20, 0.7);
-  font-family: var(--mono);
-  font-size: 12px;
+/* 手机端任务面板命中区：透明、可点、不吃手势。
+   矩形由 ui.js 的 renderHud 每帧从 L.tasks 同步，本块只管"能点到"。 */
+.hud-tap {
+  position: absolute;
+  z-index: 30;
+  pointer-events: auto;
+  touch-action: manipulation;
+  background: transparent;
 }
 
-.daily-state {
-  color: var(--amber);
-  font-weight: 700;
-}
-
-.daily-state.ok {
+/* 开关按钮的"已开启"状态（装备保险）。老开关只改文案，互不影响。 */
+.btn.on {
+  border-color: rgba(93, 220, 122, 0.65);
   color: var(--ok);
+  background: rgba(93, 220, 122, 0.1);
 }
 
-.daily-seed {
-  color: var(--dim);
-}
-
-.daily-best {
-  color: var(--cyan);
-}
-
-.btn.done {
-  border-color: rgba(93, 220, 122, 0.55);
-  color: var(--ok);
-}
-
-/* ---- 战前面板：装备保险开关 / 每日横幅 ---- */
-.btn.toggle {
-  width: 100%;
-  text-align: center;
-}
-
-.btn.toggle.on {
-  border-color: rgba(93, 220, 122, 0.6);
-  color: var(--ok);
-  background: linear-gradient(180deg, rgba(28, 60, 38, 0.9), rgba(16, 36, 24, 0.9));
-}
-
-.daily-banner {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--amber);
-  margin: 4px 0 0;
-}
-
-/* ---- 商店：声望条 / 角标 / 锁定行 ---- */
+/* 军械商声望条（商店顶部）：让玩家知道离下一级还差多少 */
 .shop-rep {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 12px;
-  margin-bottom: 10px;
-  border: 1px solid var(--line-2);
-  border-radius: 8px;
-  background: rgba(53, 224, 208, 0.06);
+  padding: 9px 11px;
+  margin-bottom: 6px;
+  border: 1px solid rgba(53, 224, 208, 0.3);
+  border-radius: var(--mg-r-sm);
+  background: rgba(53, 224, 208, 0.07);
 }
 
-.shop-rep-lv {
+.shop-rep .k {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--cyan);
 }
 
-.shop-rep-xp {
-  font-family: var(--mono);
-  font-size: 11px;
+.shop-rep .v {
+  font-size: 12px;
   color: var(--dim);
-}
-
-.badge {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 6px;
-  border-radius: 4px;
   font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 700;
-  vertical-align: middle;
 }
 
-.badge.deal {
-  color: #1a1205;
-  background: var(--amber);
-}
-
-.badge.lock {
-  color: var(--dim);
-  border: 1px solid var(--line-2);
-}
-
+/* 声望未达标的货架：整行压暗，按钮位置显示 Lv.N */
 .item-row.locked {
   opacity: 0.55;
 }
 
-.item-row.locked .item-name {
-  color: var(--dim);
-}
-
-/* ---- 物品行：价值密度第四行 ---- */
-.item-density {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--cyan);
-  margin-top: 2px;
-}
-
-/* ---- 结算页：图鉴 / 成就 / 每日徽章带 ---- */
-.result-tags {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.tag {
-  padding: 3px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--line-2);
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--dim);
-}
-
-.tag.codex {
-  border-color: rgba(79, 163, 255, 0.5);
-  color: var(--rare);
-}
-
-.tag.ach {
-  border-color: rgba(255, 176, 32, 0.55);
+.btn.lock {
   color: var(--amber);
+  border-color: rgba(255, 176, 32, 0.5);
 }
 
-.tag.daily-ok {
-  border-color: rgba(93, 220, 122, 0.5);
-  color: var(--ok);
-}
-
-.tag.daily-bad {
-  border-color: var(--line-2);
-}
-
-/* ---- 图鉴 / 成就页 ---- */
+/* 图鉴：按稀有度分组，未发现的格子褪成剪影 */
 .codex-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-}
-
-.codex-tabs {
-  display: flex;
-  gap: 8px;
-}
-
-.tab {
-  appearance: none;
-  border: 1px solid var(--line-2);
-  background: transparent;
-  color: var(--dim);
-  font-family: var(--sans);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 7px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.tab.active {
-  border-color: var(--amber);
-  color: var(--amber);
-  background: rgba(255, 176, 32, 0.1);
-}
-
-.codex-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 8px;
-  overflow-y: auto;
+  gap: 18px;
+  max-height: 62vh;
+  overflow: auto;
   padding-right: 4px;
 }
 
 .codex-group {
-  grid-column: 1 / -1;
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: var(--dim);
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 4px;
-  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.codex-head {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.codex-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 8px;
 }
 
 .codex-cell {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  padding: 10px 6px;
+  gap: 4px;
+  padding: 10px 8px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--mg-r-sm);
   background: rgba(10, 14, 20, 0.65);
-  text-align: center;
 }
 
-/* 未发现：剪影（灰度 + 压暗），"见过/带出"逐级点亮 */
-.codex-cell:not(.seen):not(.brought) {
+.codex-cell.unknown {
   filter: grayscale(1) brightness(0.35);
-}
-
-.codex-cell.seen {
-  border-color: rgba(124, 136, 153, 0.5);
 }
 
 .codex-cell.brought {
   border-color: rgba(255, 176, 32, 0.55);
-  background: rgba(255, 176, 32, 0.08);
 }
 
 .codex-name {
   font-size: 12px;
   color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
+  text-align: center;
 }
 
-.codex-state {
-  font-family: var(--mono);
+.codex-meta {
   font-size: 10px;
   color: var(--dim);
+  text-align: center;
 }
 
-.codex-cell.brought .codex-state {
+.codex-cell.brought .codex-meta {
   color: var(--amber);
 }
 
-.codex-ach-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  overflow-y: auto;
-  padding-right: 4px;
+body.touch-mode .codex-body {
+  max-height: 52vh;
 }
 
-.ach-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas: "name prog" "desc prog";
-  align-items: center;
-  gap: 0 12px;
-  padding: 9px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(10, 14, 20, 0.65);
+body.touch-mode .codex-grid {
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
 }
 
-.ach-row.done {
-  border-color: rgba(93, 220, 122, 0.45);
-  background: rgba(93, 220, 122, 0.07);
+/* ============================================================================
+   无障碍 · 减少动态效果（P1-7）
+   系统开启「减少动态效果」时，把所有 CSS 动画/过渡压到接近瞬时的兜底。
+   三维部分（震屏 / 枪模摆动 / 尘埃）由 device.reducedMotion 在 JS 层单独关闭。
+   ============================================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
-.ach-name {
-  grid-area: name;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-}
 
-.ach-row.done .ach-name {
-  color: var(--ok);
-}
-
-.ach-desc {
-  grid-area: desc;
-  font-size: 11px;
-  color: var(--dim);
-  margin-top: 2px;
-}
-
-.ach-prog {
-  grid-area: prog;
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--amber);
-}
-
-.ach-row.done .ach-prog {
-  color: var(--ok);
-}
-
-/* 图鉴页在手机横屏下要能滚动：面板 body 自己撑满，网格内部滚 */
-body.touch-mode .codex-grid,
-body.touch-mode .codex-ach-list {
-  max-height: 100%;
-}

@@ -53,6 +53,7 @@ export function lowPolyMat(color, opts = {}) {
     flatShading: opts.flat !== false,
   };
   if (opts.emissive) params.emissive = new THREE.Color(opts.emissive);
+  if (opts.emissiveIntensity != null) params.emissiveIntensity = opts.emissiveIntensity;
   if (opts.transparent) {
     params.transparent = true;
     params.opacity = opts.opacity != null ? opts.opacity : 1;
@@ -652,15 +653,13 @@ export function buildVehicleModel() {
 
 /**
  * 构建一个敌人模型（独立 Group，便于各自转向与受击闪红）。
- * @param {string} typeId 敌人类型（patrol / elite / marksman / rusher / heavy）
+ * @param {string} typeId 敌人类型（patrol / elite / marksman / rusher）
  * @returns {THREE.Group} 敌人模型
  */
 export function buildEnemyModel(typeId) {
-  // 体型：精英 / 精确射手 / 重装兵用大号，冲锋兵用瘦小号，其余用标准。
-  // 重装兵走大号而不是新开一套 dims：轮廓辨识靠**配色 + 大号**已经足够，
-  // 再单独造一套骨骼会多一份几何/材质，而收益只是"看起来更胖一点"。
+  // 体型：精英与精确射手用大号，冲锋兵用瘦小号，其余用标准
   const dims = VIEW3D.enemy;
-  const dim = (typeId === 'elite' || typeId === 'marksman' || typeId === 'heavy')
+  const dim = (typeId === 'elite' || typeId === 'marksman')
     ? dims.elite
     : (typeId === 'rusher' ? dims.rusher : dims.patrol);
   const tints = {
@@ -668,7 +667,6 @@ export function buildEnemyModel(typeId) {
     elite: PALETTE3D.enemyElite,
     marksman: PALETTE3D.enemyMarksman,
     rusher: PALETTE3D.enemyRusher,
-    heavy: PALETTE3D.enemyHeavy,
   };
   const tint = tints[typeId] || PALETTE3D.enemyPatrol;
   const group = new THREE.Group();
@@ -682,6 +680,16 @@ export function buildEnemyModel(typeId) {
   const eyeMat = lowPolyMat('#12161A'); // 眼部暗色，做出"有脸"
   // mats 用于受击闪红，因此要覆盖所有可见材质
   const mats = [bodyMat, darkMat, gunMat, skinMat, helmetMat, packMat];
+
+  // #P0-2 夜战可见性：给敌人全体可见材质加一层轻微自发光，暗处也能看清轮廓
+  // （30m 外仍可见）。baseEmissive 会被 renderer3d 的受击闪红逻辑还原，
+  // 空闲帧不会被刷成纯黑而丢失底亮度。
+  const ENEMY_EM = new THREE.Color(VIEW3D.enemyEmissive);
+  for (const m of mats) {
+    m.emissive.copy(ENEMY_EM);
+    m.emissiveIntensity = VIEW3D.enemyEmissiveIntensity;
+    m.userData.baseEmissive = ENEMY_EM.clone();
+  }
 
   const legH = u(dim.legH);
   const torsoH = u(dim.torsoH);

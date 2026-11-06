@@ -31,6 +31,7 @@ export function createInput() {
     aim: { x: 0, y: 0 }, // 兼容旧逻辑的瞄准点（无指针锁定时回退用）
     locked: false, // 指针锁定是否激活
     invertMouseX: false, // 鼠标水平轴反转（由存档设置注入）
+    invertY: false, // 视角 Y 轴反转（触屏/鼠标通用，由存档设置注入；默认 false = 自然：手指/鼠标上滑→视角上）
     sensitivityMul: 1, // 鼠标灵敏度倍率（由存档设置注入，1=默认）
   };
 }
@@ -77,7 +78,9 @@ export function setupMouseLook(canvas, input, opts = {}) {
     const s = VIEW3D.sensitivity * (input.sensitivityMul || 1);
     const xSign = input.invertMouseX ? 1 : -1;
     input.yaw -= (ev.movementX || 0) * s * xSign;
-    input.pitch -= (ev.movementY || 0) * s;
+    // invertY：默认 false = 自然（鼠标上滑→视角上）。开启后上下反转。
+    const ySign = input.invertY ? -1 : 1;
+    input.pitch -= (ev.movementY || 0) * s * ySign;
     clampPitch();
   });
 

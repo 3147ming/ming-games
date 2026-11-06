@@ -111,12 +111,12 @@ export function rollEnemyLoot(enemyType, rng) {
 
 /**
  * 计算一组物品的总价值。
- * 走 itemValue（弹药按「盒」换算），否则一盒 5.56 会按 60 倍多算 —— 见 inventory.displayUnits。
  * @param {Array<object>} items 物品实例数组
  * @returns {number} 总价值
  */
 export function valueOf(items) {
   if (!Array.isArray(items)) return 0;
+  // 口径铁律：弹药 value 是「每盒」口径，必须经 itemValue 换算，禁止裸乘 qty。
   return Math.round(items.reduce((s, it) => s + itemValue(it), 0));
 }
 
@@ -127,5 +127,6 @@ export function valueOf(items) {
  */
 export function weightOf(items) {
   if (!Array.isArray(items)) return 0;
+  // 口径铁律：弹药 weight 是「每盒」口径，必须经 itemWeight 换算，禁止裸乘 qty。
   return Math.round(items.reduce((s, it) => s + itemWeight(it), 0) * 10) / 10;
 }

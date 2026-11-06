@@ -17,7 +17,7 @@ import {
   buildContainerParts, buildExtractMarker, CONTAINER_COLORS, getConcreteTexture, surfaceMat,
 } from './models.js';
 // 只为挑台阶朝向而查询格子是否实心（纯查询，不修改 mapgen 的任何输出）
-import { isTileSolid } from './mapgen.js';
+import { isTileSolid, elevationAt } from './mapgen.js';
 
 /** 把颜色按亮度系数缩放（k>1 提亮，k<1 压暗），返回 CSS 十六进制串 */
 function shade(hex, k) {
@@ -202,12 +202,31 @@ export function buildLevel(scene, map, rng) {
   const typeSlots = {}; // type → { main, trim, count, capacity }
   const instanceOf = new Map(); // container 对象 → { type, index, scale }
 
+  // #P0-2 夜战可见性：可搜刮容器（不含尸体）加轻微自发光，暗处不致死黑。
+  const LOOT_TYPES = new Set(['drawer', 'crate', 'weaponbox', 'safe', 'airdrop']);
+  // 可搜刮容器脚下的自发光地光环（地面高亮，一眼能找到物资）。
+  const glowGeo = new THREE.RingGeometry(u(0.55), u(0.8), 28);
+  glowGeo.rotateX(-Math.PI / 2);
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(VIEW3D.lootEmissive).multiplyScalar(3.2),
+    transparent: true,
+    opacity: 0.85,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    fog: false,
+  });
+
   // 预留容量：尸体会在局内动态增加（每个被击杀的敌人留一具）
   const extraBodies = MATCH.enemyCountMax + 2;
   for (const [type, part] of Object.entries(parts)) {
     const existing = map.containers.filter((c) => c.type === type).length;
     const capacity = existing + (type === 'body' ? extraBodies : MATCH.enemyCountMax) + 2;
-    const mainMat = lowPolyMat(CONTAINER_COLORS[type], { map: part.mainTex || null });
+    const isLoot = LOOT_TYPES.has(type);
+    const mainMat = lowPolyMat(CONTAINER_COLORS[type], {
+      map: part.mainTex || null,
+      emissive: isLoot ? VIEW3D.lootEmissive : null,
+      emissiveIntensity: isLoot ? VIEW3D.lootEmissiveIntensity : 0,
+    });
     const main = new THREE.InstancedMesh(part.main, mainMat, Math.max(1, capacity));
     main.count = 0;
     main.castShadow = true;
@@ -248,7 +267,8 @@ export function buildLevel(scene, map, rng) {
   function writeInstance(type, index, container, dimmed) {
     const slot = typeSlots[type];
     const s = containerScale(type, container);
-    vpos.set(container.x, 0, container.y);
+    // y 对齐地面高程：容器若落在架高平台上，必须抬到平台顶面，否则会陷进地里 / 卡墙根。
+    vpos.set(container.x, u(elevationAt(map, container.x, container.y)), container.y);
     quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (container.id % 8) * (Math.PI / 4));
     vscl.set(s, s, s);
     mat4.compose(vpos, quat, vscl);
@@ -280,6 +300,13 @@ export function buildLevel(scene, map, rng) {
     if (slot.main.instanceColor) slot.main.instanceColor.needsUpdate = true;
     if (slot.trim && slot.trim.instanceColor) slot.trim.instanceColor.needsUpdate = true;
     instanceOf.set(container, { type: container.type, index, container });
+    // #P0-2 夜战可见性：可搜刮容器脚下补一圈地光环（尸体不补）
+    if (LOOT_TYPES.has(container.type)) {
+      const ring = new THREE.Mesh(glowGeo, glowMat);
+      ring.position.set(container.x, u(elevationAt(map, container.x, container.y)) + u(0.03), container.y);
+      ring.renderOrder = 2;
+      group.add(ring);
+    }
   }
 
   for (const container of map.containers) addContainer(container);

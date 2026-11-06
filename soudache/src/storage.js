@@ -2,7 +2,7 @@
  * localStorage 存档：货币、仓库、装备配置、统计
  */
 
-import { ITEMS, START_CURRENCY, PLAYER, AMMO_STACK, BAILOUT } from './config.js';
+import { ITEMS, START_CURRENCY, PLAYER, AMMO_STACK, BAILOUT, REP } from './config.js';
 import {
   createInventory, createItem, autoPlace, countById, serializeInventory, deserializeInventory,
 } from './inventory.js';
@@ -61,13 +61,12 @@ export function defaultSave() {
       kills: 0,
       bestScore: 0,
       bestValue: 0,
-      streak: 0, // 连续成功撤离次数（撤离 +1，失败清零）
-      dailyCount: 0, // 累计完成的每日突袭次数
     },
     settings: {
       volume: 0.6,
       muted: false,
       invertMouseX: true, // 鼠标水平轴反转（按用户要求默认开启）
+      invertY: false, // 视角 Y 轴反转（默认关闭=自然：手指/鼠标上滑→视角上；触屏"Y轴翻转"开关控制）
       fov: 75, // 第一人称视野（腰射 FOV），60~100 可调
       mouseSens: 1.0, // 鼠标灵敏度倍率，0.3~3 可调
       touchLookSens: 1.0, // 触屏右摇杆视角灵敏度倍率，0.6~2.4 可调
@@ -75,14 +74,34 @@ export function defaultSave() {
       touchButtonScale: 1.0, // 触控按钮尺寸倍率，0.8~1.3 可调（位置/大小可调需求）
     },
     layout: { touch: {} }, // 触控按钮布局偏移：{ [action]: { x, y } }（绝对像素，相对触屏控制容器）
-    // ---- 长期进度（以下字段都是"追加"，靠 loadSave 的浅/深合并天然兼容老档）----
-    insurance: { enabled: false }, // 装备保险：是否在部署时购买
-    daily: { date: '', bestScore: 0, extracted: false }, // 每日突袭当日成绩
-    rep: { xp: 0 }, // 军械商声望经验
-    codex: { seen: {}, brought: {} }, // 图鉴：见过 / 带出过
-    shop: { date: '', deals: [], sold: {} }, // 商店每日特价与限购计数
-    achievements: {}, // 成就达成时间戳 { id: ms }
+    insurance: { enabled: false }, // 装备保险开关（战前付保费，失败时赔带入的武器与护甲）
+    daily: { date: '', bestScore: 0, extracted: false }, // 每日突袭：当日种子与成绩
+    codex: { seen: {}, brought: {} }, // 图鉴：seen=拾取过，brought=真正带出过
+    rep: { xp: 0 }, // 军械商声望经验（等级由 xp 现算，见 repLevel）
   };
+}
+
+/**
+ * 每日种子：按本地日期拼成 YYYYMMDD，同一天同一张图。
+ * 不联网、不取服务器时间，只用设备本地时间。
+ * @param {Date} [now] 当前时间（默认 new Date()，测试可注入）
+ * @returns {number} 8 位种子
+ */
+export function dailySeed(now = new Date()) {
+  return Number(
+    `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`,
+  );
+}
+
+/**
+ * 当前声望等级（纯函数，UI 与结算共用）。等级不落盘，避免两份数据打架。
+ * @param {number} xp 声望经验
+ * @returns {number} 等级 1~N
+ */
+export function repLevel(xp) {
+  let lv = 1;
+  for (const l of REP.levels) if (xp >= l.need) lv = l.level;
+  return lv;
 }
 
 /**
@@ -103,21 +122,6 @@ export function loadSave() {
       stats: { ...base.stats, ...(data.stats || {}) },
       settings: { ...base.settings, ...(data.settings || {}) },
       layout: { touch: { ...(data.layout && data.layout.touch) } },
-      // 新增的嵌套对象必须逐个深合并：浅合并会把老档缺失的整个子键覆盖成 undefined，
-      // 之后任何 `save.codex.seen[id]` 都会抛 "cannot read properties of undefined"。
-      insurance: { ...base.insurance, ...(data.insurance || {}) },
-      daily: { ...base.daily, ...(data.daily || {}) },
-      rep: { ...base.rep, ...(data.rep || {}) },
-      codex: {
-        seen: { ...(data.codex && data.codex.seen) },
-        brought: { ...(data.codex && data.codex.brought) },
-      },
-      shop: {
-        date: (data.shop && data.shop.date) || base.shop.date,
-        deals: Array.isArray(data.shop && data.shop.deals) ? data.shop.deals.slice() : [],
-        sold: { ...(data.shop && data.shop.sold) },
-      },
-      achievements: { ...(data.achievements) },
     };
     save.version = VERSION;
     return save;

@@ -66,8 +66,6 @@ export class Player {
     this.hurtFlash = 0;
     this.fireLocked = false;
     this.noiseTimer = 0;
-    this.searchNoiseTimer = 0; // 搜刮读条的噪音节流（比脚步慢，读条是持续作业不是走动）
-    this.hackNoiseTimer = 0; // 破解读条的噪音节流
     this.recoilPitch = 0; // 开火抬枪（视角上抬），仅视觉，自动回落
 
     this.search = null; // { container, progress, total }
@@ -413,36 +411,29 @@ export class Player {
       my = iDown - iUp;
     }
     const mag = Math.hypot(mx, my);
-    // moveMag：摇杆的原始推杆量（0..1）。键盘只会是 0 或 1，触屏则可能 0.02。
-    // 撤离读条用它做"真推杆"判定（阈值见下），而不是用 moving —— 见 busy 分支。
-    this.moveMag = mag > 1 ? 1 : mag;
+    // 触屏摇杆推了多少，只有触屏层知道（up/down/... 是布尔量，光看 mag 永远是 0/1/1.41）。
+    // 桌面键盘没有这个字段，回落成布尔模长，行为完全不变。
+    this.moveMag = typeof input.touchMoveMag === 'number' ? input.touchMoveMag : mag;
     this.moving = mag > 0.01;
     if (this.moving) {
       mx /= mag;
       my /= mag;
     }
 
-    // 读条中被移动打断。
-    // ⚠ 阈值分档：撤离走 0.45（"明显在推"，过滤触屏摇杆的手指漂移），
-    // 其余读条仍走 0.05（几乎只要动一下就算动）。
-    // 根因：手机上站着撤离时拇指压在摇杆上，硬件漂移常年 0.05~0.3，
-    // 用 0.05 判定等于"只要摸到摇杆就永远撤不出去"，而玩家根本没想走。
-    // 撤离是唯一需要"站定 3 秒"的读条，所以只有它需要容忍漂移。
-    if (this.busy && this.moving) {
-      const threshold = this.extract ? 0.45 : 0.05;
-      if (this.moveMag > threshold) {
-        const wasExtract = Boolean(this.extract);
-        this.interrupt('move');
-        // 打断时明确告诉玩家"是你自己动了"，否则会被当成"撤离有 bug"
-        if (wasExtract && world && world.toast) world.toast('移动打断了撤离');
-      }
+    // 读条中被移动打断。撤离读条对摇杆漂移更宽容：明显推动（>0.45）才算走开；
+    // 其余读条（search / heal / hack）阈值 0.05，等价于原来的布尔 moving。
+    const breakAt = this.extract ? 0.45 : 0.05;
+    if (this.busy && this.moving && this.moveMag >= breakAt) {
+      const wasExtract = Boolean(this.extract);
+      this.interrupt('move');
+      if (wasExtract && world.toast) world.toast('移动打断了撤离');
     }
 
-    // 硬性超重：禁止奔跑（不是"惩罚"，是拿不到奔跑这个选项）。
-    // 与超重减速同时生效 —— 负重直接砍掉逃命的手段，而不是让逃命变慢一点。
+    // 硬性超重：**不再禁止奔跑**，只是移速会按超重比例下降（减速，见下方 weightMul）。
+    // 与超重减速同时生效 —— 玩家超重时"跑得慢但还能跑"，逃命手段依旧可用。
     const overweight = isOverweight(this.weight, this.weightLimit);
     const wantSprint = Boolean(input.sprint) && !this.crouching && !this.busy
-      && !this.exhausted && !overweight;
+      && !this.exhausted;
     // 注意：冲刺可一直消耗到体力为 0（不再用 >1 的门槛提前截断），
     // 体力归零时进入 exhausted 锁定冲刺，直至恢复到 staminaExhaustRecovery 阈值才解除。
     this.sprinting = wantSprint && this.moving;
@@ -519,29 +510,15 @@ export class Player {
     }
 
     // ---- 读条推进 ----
-    // 读条不是"静音作业"：翻箱倒柜与被破解终端都会响。
-    // 节流不同（1.2s / 1.5s）是因为搜刮的手上动作更碎、破解是稳定的电流嗡鸣。
-    // 这条噪音让"在敌人附近开箱"变成一个要算的选择，而不是无风险的免费收益。
-    if (this.search) {
-      this.searchNoiseTimer -= dt;
-      if (this.searchNoiseTimer <= 0) {
-        this.searchNoiseTimer = 1.2;
-        if (world && world.emitNoise) world.emitNoise(this.x, this.y, PLAYER.noiseSearch, 'player');
-      }
-    } else {
-      this.searchNoiseTimer = 0;
-    }
-    if (this.hack) {
-      this.hackNoiseTimer -= dt;
-      if (this.hackNoiseTimer <= 0) {
-        this.hackNoiseTimer = 1.5;
-        if (world && world.emitNoise) world.emitNoise(this.x, this.y, PLAYER.noiseSearch, 'player');
-      }
-    } else {
-      this.hackNoiseTimer = 0;
-    }
     if (this.search) {
       this.search.progress += dt;
+      // 搜刮会发出周期性响动（节流 1.2 秒）：贴脸开箱不再是零风险。
+      // 不能每帧发 —— world.emitNoise 会遍历全部敌人。
+      this.search.noiseCd = (this.search.noiseCd || 0) - dt;
+      if (this.search.noiseCd <= 0) {
+        this.search.noiseCd = 1.2;
+        world.emitNoise(this.x, this.y, PLAYER.noiseSearch, 'player');
+      }
       if (this.search.progress >= this.search.total) {
         const container = this.search.container;
         this.search = null;
@@ -570,6 +547,12 @@ export class Player {
     }
     if (this.hack) {
       this.hack.progress += dt;
+      // 破解同样出声（节流 1.5 秒，比搜刮更慢节奏）：终端不是免费的情报费。
+      this.hack.noiseCd = (this.hack.noiseCd || 0) - dt;
+      if (this.hack.noiseCd <= 0) {
+        this.hack.noiseCd = 1.5;
+        world.emitNoise(this.x, this.y, PLAYER.noiseSearch, 'player');
+      }
       if (this.hack.progress >= this.hack.total) {
         const terminal = this.hack.terminal;
         this.hack = null;
@@ -672,7 +655,7 @@ export class Player {
     const extract = this.nearestExtract(world);
     if (extract) {
       if (world.canAffordExtract && !world.canAffordExtract(extract)) return false;
-      this.extract = { point: extract, progress: 0 };
+      this.extract = { point: extract, progress: 0, warned: false };
       if (world.toast) world.toast(`开始撤离：${extract.name} — ${MATCH.extractChannel} 秒`);
       if (world.audio) world.audio.extractStart();
       return true;
@@ -695,22 +678,6 @@ export class Player {
       }
       if (world.toast) world.toast('这个容器已经空了');
       return false;
-    }
-    // 上锁的保险箱：不走"蹲 4.6 秒读条"，而是直接烧掉一张实验室门卡。
-    // 于是门卡从"纯卖钱的传说物"变成了一把钥匙 —— 卖掉（¥7200）还是留着开箱，
-    // 是个真正的取舍；也给空投（保底一张门卡）加了第二个去拿的理由。
-    if (container.locked) {
-      if (countById(this.inventory, 'keycard') < 1) {
-        if (world.toast) world.toast('保险箱已上锁 · 需要实验室门卡（空投保底一张）');
-        if (world.audio) world.audio.error();
-        return false;
-      }
-      consumeById(this.inventory, 'keycard', 1);
-      container.locked = false;
-      if (world.audio) world.audio.searchStart();
-      if (world.onSearchComplete) world.onSearchComplete(container);
-      if (world.toast) world.toast('门卡已验证 · 保险箱开启');
-      return true;
     }
     this.search = { container, progress: 0, total: world.containerSearchTime(container) };
     if (world.audio) world.audio.searchStart();
@@ -794,23 +761,16 @@ export class Player {
    */
   onDamaged(source, world) {
     this.damageTaken += 1;
-    // 治疗与破解：受击即断（这两个读条没有"扛着做"的语义）
-    if (this.heal || this.hack) {
+    if (this.heal) {
       this.interrupt('damage');
-      if (world && world.toast) world.toast('读条被打断！');
+      if (world && world.toast) world.toast('治疗被打断！');
     }
-    // 撤离：不清零，按 MATCH.extractHitPenalty 回退。
-    //
-    // 旧实现里 interrupt('damage') 其实**不清** extract，只是弹了一句"读条被打断"——
-    // 玩家看到提示以为白读，进度却还在走；而如果哪天 interrupt 真清了，
-    // 又变成"守点撤离挨一发就归零"，等于把 guarded 撤离点变成不可用。
-    // 现在两者都不是：进度真的按比例回退（扛得住就还能撤），并且只提示一次
-    // （连续挨打刷屏会把"回退"这件事本身淹掉）。
+    // 撤离读条不直接清零：只回退一段进度，让「在火力下强撤」变成一次赌博。
     if (this.extract) {
-      this.extract.progress = Math.max(0, this.extract.progress * MATCH.extractHitPenalty);
-      if (!this.extract.warned) {
+      this.extract.progress = Math.max(0, this.extract.progress - MATCH.extractHitPenalty);
+      if (!this.extract.warned && world && world.toast) {
         this.extract.warned = true;
-        if (world && world.toast) world.toast('撤离受击 · 进度回退，稳住位置继续');
+        world.toast('撤离被打断！先清掉守卫');
       }
     }
   }
