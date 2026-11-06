@@ -1,3 +1,7 @@
+/* ★ 本文件已接入 ming-games 共用设计 token（shared/tokens.css）。
+     圆角 / 阴影 / 间距 / 字阶 / 动效 / 层级 用 var(--mg-*)；
+     主色（水墨基调：墨黑 / 宣纸 / 朱砂）保持「传统割草游戏」自己的气质，**不统一**。 */
+
 /* 传统割草游戏 — 页面外壳样式
    模块 1 只要"深渊黑底 + 一个能被看见的调试面板 + 明确的准星"，
    正式战场 UI（血条/无双槽/击杀数）是模块 7 的事。 */
@@ -77,7 +81,7 @@ body.locked #stage { cursor: none; }
   transform: translateX(-50%);
   padding: 6px 14px;
   border: 1px solid var(--edge);
-  border-radius: 999px;
+  border-radius: var(--mg-r-pill);
   background: var(--panel);
   color: var(--ink-dim);
   font-size: 12px;
@@ -116,7 +120,7 @@ body.locked #stage { cursor: none; }
   max-width: 400px;
   padding: 8px 10px 10px;
   border: 2px solid #1c1c1e;
-  border-radius: 6px;
+  border-radius: var(--mg-r-sm);
   background: linear-gradient(180deg, rgba(239,233,216,0.9), rgba(225,218,200,0.84));
   box-shadow: 0 3px 14px rgba(20,20,22,0.4);
   color: #1c1c1e;
@@ -165,7 +169,7 @@ body.locked #stage { cursor: none; }
   max-width: min(720px, 86vw);
   padding: 18px 22px;
   border: 1px solid var(--danger);
-  border-radius: 10px;
+  border-radius: var(--mg-r-md);
   background: rgba(38, 12, 10, 0.94);
   color: #ffd9d5;
   font-size: 14px;
