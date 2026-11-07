@@ -145,6 +145,20 @@ document.addEventListener('visibilitychange', function() {
   }
 });
 
+
+// 页面卸载时清理游戏循环（避免后台继续消耗资源）
+window.addEventListener('pagehide', function() {
+  try {
+    if (typeof cancelAnimationFrame === 'function' && window.__mgRAF) cancelAnimationFrame(window.__mgRAF);
+  } catch(e) {}
+  try {
+    if (typeof clearInterval === 'function' && window.__mgIntervals) {
+      for (var i = 0; i < window.__mgIntervals.length; i++) clearInterval(window.__mgIntervals[i]);
+      window.__mgIntervals = [];
+    }
+  } catch(e) {}
+});
+
 </script>
 </body>
 </html>
