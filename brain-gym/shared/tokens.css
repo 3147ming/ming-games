@@ -1,0 +1,143 @@
+/* ==========================================================================
+   ming-games 共用设计 token（v1）
+   --------------------------------------------------------------------------
+   目的：让 11 款游戏看起来像"同一个系列"，而不是 11 个各自为政的作品。
+
+   ★ 边界（非常重要）：
+     · 这里**只有中性参数** —— 圆角 / 阴影 / 间距 / 字阶 / 动效时长与缓动 / 层级。
+     · **主色一律不进这里**：每个游戏保留自己的气质（荒野的墨金、霓虹的赛博、
+       纸上迷城的旧纸、夜班便利店的深夜蓝……）。统一的是"尺度感"，不是"颜色"。
+     · 引入方式：每个游戏在自己的 tokens / styles.css 顶部 @import 或直接粘贴，
+       然后用 var(--mg-*) 替换散落的裸值。**不要一次性全局替换**，
+       按"先新游戏、后老游戏"的顺序逐款迁移，每款迁移后跑一次回归。
+
+   用法示例：
+     .panel { border-radius: var(--mg-r-md); box-shadow: var(--mg-shadow-md); }
+     .btn   { transition: background var(--mg-t-fast) var(--mg-ease-out); }
+   ========================================================================== */
+
+:root {
+  /* ─────────── 圆角：四档，不再出现 2/3/5/6/7/9/11/13/14/18px 这些零散值 ───────────
+     现状普查（8 款共 14+ 种取值），统一为：
+       xs  4px  小徽标 / 标签 / 色块
+       sm  8px  输入框 / 小按钮 / 单元格
+       md 12px  卡片 / 面板 / 主要按钮
+       lg 18px  弹层 / 大容器
+       pill     胶囊（角标 / 开关 / 进度条）                                     */
+  --mg-r-xs: 4px;
+  --mg-r-sm: 8px;
+  --mg-r-md: 12px;
+  --mg-r-lg: 18px;
+  --mg-r-pill: 999px;
+
+  /* ─────────── 阴影：三档 + 内阴影 ───────────
+     只分"贴地 / 浮起 / 弹层"三层，不再各写各的模糊半径与透明度。 */
+  --mg-shadow-sm: 0 2px 8px rgba(0, 0, 0, .24);
+  --mg-shadow-md: 0 6px 20px rgba(0, 0, 0, .32);
+  --mg-shadow-lg: 0 16px 48px rgba(0, 0, 0, .48);
+  --mg-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, .06);
+
+  /* ─────────── 间距：4px 基准的八档（只用到 sm/md/lg/xl 就够） ─────────── */
+  --mg-sp-1: 4px;
+  --mg-sp-2: 8px;
+  --mg-sp-3: 12px;
+  --mg-sp-4: 16px;
+  --mg-sp-5: 20px;
+  --mg-sp-6: 24px;
+  --mg-sp-8: 32px;
+  --mg-sp-10: 40px;
+
+  /* ─────────── 触控热区：无障碍下限 ─────────── */
+  --mg-tap: 44px;          /* Apple HIG / Material 的最小可点尺寸 */
+  --mg-tap-sm: 40px;       /* 紧凑场景的下限，不得再小 */
+
+  /* ─────────── 字阶：1.25 比例（Mobile 友好，不再出现 9/10/11/13/15/17px 这种乱跳） ───────────
+     用法：标题用 lg/xl，正文用 md，辅助用 sm，脚注用 xs。 */
+  --mg-fs-xs: 11px;
+  --mg-fs-sm: 13px;
+  --mg-fs-md: 15px;
+  --mg-fs-lg: 18px;
+  --mg-fs-xl: 22px;
+  --mg-fs-2xl: 28px;
+  --mg-fs-3xl: 36px;
+
+  /* 行高：正文宽松、标题收紧 */
+  --mg-lh-tight: 1.2;
+  --mg-lh-normal: 1.55;
+  --mg-lh-loose: 1.8;
+
+  /* ─────────── 字重：只三档 ─────────── */
+  --mg-fw-normal: 400;
+  --mg-fw-bold: 700;
+  --mg-fw-black: 900;
+
+  /* ─────────── 动效：时长四档 + 缓动三档 ───────────
+     ★ 全局纪律（所有游戏一致）：
+       · 微反馈（hover / active / 按下）：fast  = 120ms
+       · 常规过渡（颜色 / 边框 / 透明度）：base = 180ms
+       · 面板进出 / 屏切换：slow    = 260ms
+       · 大块位移 / 结算弹入：slower = 380ms
+       · 装饰性循环动画（呼吸 / 漂浮）：须单独写，时长 ≥ 2s，且必须能被减弱动效关掉
+
+     ★ 缓动只用三条：
+       out  —— 进场、消失、反馈收尾（默认用它）
+       in   —— 退场（一般不用，退场用 out 更自然）
+       inout—— 需要两端对称的位移（抽屉 / 折叠） */
+  --mg-t-fast: 120ms;
+  --mg-t-base: 180ms;
+  --mg-t-slow: 260ms;
+  --mg-t-slower: 380ms;
+
+  --mg-ease-out: cubic-bezier(.22, .61, .36, 1);
+  --mg-ease-in: cubic-bezier(.55, .06, .68, .19);
+  --mg-ease-inout: cubic-bezier(.45, .05, .55, .95);
+
+  /* ─────────── 层级：统一 z-index 语义，避免 9999 / 10000 这种魔法数 ─────────── */
+  --mg-z-base: 1;
+  --mg-z-hud: 10;
+  --mg-z-overlay: 50;
+  --mg-z-modal: 100;
+  --mg-z-toast: 200;
+  --mg-z-boot: 900;
+}
+
+/* ─────────── 全局兜底：减弱动效 ───────────
+   凡是引入本 token 的游戏，自动获得这条兜底；
+   各游戏仍可追加自己特有的动画选择器。 */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    /* 关键技巧：把时长 token 本身降为 0，
+       这样所有用 var(--mg-t-*) 的地方自动失效，不必逐条列选择器。 */
+    --mg-t-fast: 1ms;
+    --mg-t-base: 1ms;
+    --mg-t-slow: 1ms;
+    --mg-t-slower: 1ms;
+  }
+}
+
+/* ─────────── 通用工具类（可选，用不上就别引）─────────── */
+.mg-sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 触控热区扩展：视觉尺寸不变，点击区域撑到 --mg-tap。
+   适合小图标（关闭按钮、角标、翻页箭头）。 */
+.mg-tap-target {
+  position: relative;
+}
+.mg-tap-target::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: var(--mg-tap);
+  height: var(--mg-tap);
+  transform: translate(-50%, -50%);
+  min-width: 100%;
+  min-height: 100%;
+}
