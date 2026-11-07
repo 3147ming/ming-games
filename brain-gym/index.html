@@ -803,6 +803,56 @@ body.ingame .combo-pop{top:calc(var(--hdh,64px) + 30px)}
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
 }
 @supports not (backdrop-filter:blur(4px)){.score-float{background:rgba(18,22,40,.82)}}
+/* ================= 第 4 批新增 3 款（2026-11-06）公共样式 =================
+   三条硬约束，三道实现：
+   ① 触控热区 ≥ var(--mg-tap)：所有可点元素显式写 min-height/min-width，
+      不用 padding 拼凑 —— 小屏上 padding 会被 flex 压缩，热区就没了；
+   ② 圆角 / 间距 / 字阶 / 动效全部走 --mg-* token，跟随全局主题与"减少动效"偏好；
+   ③ 颜色沿用本应用「暖纸 + 橙金」体系（#eee7d8 描边 / #fff 卡面），
+      不另起一套色板，否则和已有的 57 款摆在一起会像另一个应用。 */
+/* --- A. 隔位回想（n-back 工作记忆） --- */
+.nb-stage{display:flex;flex-direction:column;align-items:center;gap:var(--mg-sp-3)}
+.nb-card{width:min(280px,72vw);aspect-ratio:5/4;display:flex;align-items:center;justify-content:center;
+  background:#fff;border:2px solid #eee7d8;border-radius:var(--mg-r-lg);box-shadow:var(--mg-shadow-sm);
+  font-size:92px;line-height:1;color:#3a352c;
+  transition:border-color var(--mg-t-fast) var(--mg-ease-out),transform var(--mg-t-fast) var(--mg-ease-out)}
+.nb-card.nb-fb-ok{border-color:#66bb6a;transform:scale(1.03)}
+.nb-card.nb-fb-bad{border-color:#ef5350;animation:nbShake var(--mg-t-slow) var(--mg-ease-inout)}
+@keyframes nbShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.nb-ansrow{display:flex;gap:var(--mg-sp-3);flex-wrap:wrap;justify-content:center}
+.nb-ans{min-height:var(--mg-tap);min-width:128px;font-size:var(--mg-fs-lg);font-weight:800;margin:0}
+.nb-ans:disabled{opacity:.42;cursor:default}
+.nb-n{font-size:var(--mg-fs-xs);color:#8b8371;text-align:center;line-height:1.6}
+/* --- B. 同中寻同（形状 × 颜色 × 点数的联合搜索） --- */
+.cj-tgoal{display:flex;align-items:center;justify-content:center;gap:var(--mg-sp-3);
+  width:max-content;max-width:100%;margin:0 auto var(--mg-sp-3);padding:var(--mg-sp-3) var(--mg-sp-4);
+  background:#fff;border:2px solid #ffe082;border-radius:var(--mg-r-lg);box-shadow:var(--mg-shadow-sm)}
+.cj-tshape{font-size:32px;line-height:1}
+.cj-tlabel{font-size:var(--mg-fs-xs);color:#8b8371}
+.cj-grid{display:grid;gap:6px;width:min(420px,100%);margin:0 auto}
+.cj-cell{aspect-ratio:1;min-width:var(--mg-tap);min-height:var(--mg-tap);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  background:#fff;border:2px solid #eee7d8;border-radius:var(--mg-r-md);cursor:pointer;
+  transition:transform var(--mg-t-fast) var(--mg-ease-out),border-color var(--mg-t-fast) var(--mg-ease-out),background var(--mg-t-fast)}
+.cj-cell:active{transform:scale(.94)}
+.cj-cell.ok{border-color:#66bb6a;background:#f1f8e9}
+.cj-cell.bad{border-color:#ef5350;background:#ffebee}
+.cj-shape{font-size:clamp(17px,4.6vw,25px);line-height:1}
+.cj-dots{font-size:9px;letter-spacing:1px;color:#8d6e63;line-height:1}
+/* --- C. 规律补全（数列推理） --- */
+.sq-terms{display:flex;gap:var(--mg-sp-2);flex-wrap:wrap;justify-content:center;align-items:center;margin:var(--mg-sp-4) 0}
+.sq-chip{min-width:var(--mg-tap);min-height:var(--mg-tap);padding:0 var(--mg-sp-3);
+  display:flex;align-items:center;justify-content:center;
+  background:#fff;border:2px solid #eee7d8;border-radius:var(--mg-r-md);
+  font-size:var(--mg-fs-xl);font-weight:800;color:#3a352c;box-shadow:var(--mg-shadow-sm)}
+.sq-chip.q{border-style:dashed;border-color:#ffb300;background:#fff8e1;color:#f4511e}
+.sq-opts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--mg-sp-3);max-width:380px;margin:var(--mg-sp-3) auto 0}
+.sq-opt{min-height:calc(var(--mg-tap) + 12px);font-size:var(--mg-fs-lg);font-weight:800;
+  border:2px solid #eee7d8;border-radius:var(--mg-r-md);background:#fff;color:#5c554a;cursor:pointer;
+  transition:var(--mg-t-base) var(--mg-ease-out)}
+.sq-opt.ok{border-color:#66bb6a;background:#f1f8e9;color:#2e7d32}
+.sq-opt.bad{border-color:#ef5350;background:#ffebee;color:#c62828}
+.sq-opt:disabled{opacity:.78;cursor:default}
 </style>
 </head>
 <body data-page-node-id="ylKBDl45wyZonEnmr1Awzz">
@@ -1018,7 +1068,9 @@ function median(arr){if(!arr.length)return 0;var b=arr.slice().sort(function(x,y
 /* --- P0-4 金币换算（按量纲分游戏） --- */
 var COIN_UNIT={g2048:400,tetris:200,snake:150,plane:150,breaker:120,mosaic:60,
   sudoku:120,killer:120,samurai:120,jigsaw:120,sudokuX:120,sokoban:60,flow:40,
-  quick:4,eagle:4,colortone:3,stroop:2,pond:6,dual:12,blitz:12,quiz:40};
+  quick:4,eagle:4,colortone:3,stroop:2,pond:6,dual:12,blitz:12,quiz:40,
+/* 第 4 批：三款都是"答对个数"量纲，单位分压低，避免一局就刷出满额金币 */
+nback:4,conj:5,seq:5};
 var COIN_LOW={reacttest:4,spantest:5};
 function coinFor(id,score,diff,rec){
   var n;
@@ -1064,7 +1116,9 @@ function capConclusion(){
 /* --- P0-7 自适应难度建议 --- */
 var TARGETS={quick:[30,40,50],eagle:[12,20,28],colortone:[8,14,20],
   stroop:[18,28,38],flashnum:[5,7,8],calc:[1,3,5],ring:[8,14,20],
-  vertmath:[15,25,35],sudoku:[1200,3000,5000],pond:[8,14,20]};
+  vertmath:[15,25,35],sudoku:[1200,3000,5000],pond:[8,14,20],
+  /* 第 4 批：自适应难度建议的达标线（三档），口径同其它游戏：连两局超 1.15 倍升档 */
+  nback:[7,10,13],conj:[10,16,24],seq:[8,12,16]};
 function suggestDiff(id){
   var T=TARGETS[id];if(!T)return 0;
   var r=logRecent(id,CURDIFF,2);if(r.length<2)return 0;
@@ -1149,10 +1203,13 @@ var WEEK_PICK_DIMS=5;     /* 一周只重点练 5 个维度，留一个不排，
 /* 维度 -> 候选游戏。只挑"一局 1~2 分钟、能反复练"的项目；
    顺序即"优先度"，但实际选哪个由历史局数决定（见 planWeek）。 */
 var WEEK_DIM_POOL={
-  mem:['spantest','flashnum','accu','dots','pixel','backspan','octmem'],
+  /* 第 4 批新增的 3 款按"练什么"挂到对应维度（追加在末尾，不改已有候选顺序）：
+     nback = 工作记忆（mem）；conj = 视觉搜索（vis）；seq = 数字规律（mat）。
+     挂上维度是硬性要求 —— 否则 planWeek 的候选池里永远没有它们。 */
+  mem:['spantest','flashnum','accu','dots','pixel','backspan','octmem','nback'],
   rxn:['reacttest','quick','stroop','rhythm','switch'],
-  vis:['eagle','colortone','eyetrack','rotate','overlay'],
-  mat:['vertmath','calc','ring','crossfill'],
+  vis:['eagle','colortone','eyetrack','rotate','overlay','conj'],
+  mat:['vertmath','calc','ring','crossfill','seq'],
   log:['flow','sokoban','lightout','hashi','sync','nonogram'],
   foc:['dual','blitz','pond','tiles','timer']
 };
@@ -6914,6 +6971,383 @@ else startBtn.textContent='▶ 下一轮'}
 startBtn.onclick=function(){if(running)return;begin()};
 stopBtn.onclick=function(){if(!running)return;judge(false)}}
 
+/* ================= 第 4 批新增 3 款（2026-11-06）=================
+   为什么另起一段而不是塞进已有游戏里：单文件 HTML 没有模块，新玩法集中在一处
+   才好在自检脚本里整段定位（见 tools/check-brain-gym.mjs 第 9 节）。
+
+   ---- 先解决一个公共问题：难度曲线怎么同时表达「难度档」和「关卡」----
+   已有的 L(cfgArr,d,lv,fields) 只在 1~12 关之间对「第 1 档的起点」和「第 3 档的终点」
+   插值，因此同一关下三档拿到的参数完全一样 —— 选「简单 / 困难」在同一关没区别。
+   本批 3 款不再沿用这个口径：curve2 把两个维度拆开，rows[d] = 该难度档的
+   [第 1 关参数, 第 12 关参数]，lv 只决定在区间里的位置。于是：
+     · 同档内：关卡越深越难（单调）；
+     · 同关下：困难档始终比简单档更紧（档位真的有用）。
+   返回浮点，整数参数用 curve2i 取整。 */
+function curve2(d,lv,rows){
+  var r=rows[Math.max(0,Math.min(rows.length-1,d|0))]||rows[0];
+  var t=(Math.max(1,Math.min(LEVELS_PER_GAME,lv||1))-1)/(LEVELS_PER_GAME-1);
+  return r[0]+(r[1]-r[0])*t;
+}
+function curve2i(d,lv,rows){return Math.round(curve2(d,lv,rows))}
+
+/* ================= A. 隔位回想（n-back 工作记忆） =================
+   玩法：卡片一张张闪过，判断「当前这张的【形状】是否与 N 张前那张相同」。
+   和已有记忆类为什么不一样：
+     · 数字短时记忆（闪念/倒背/积少成多）是「存一条序列，末尾一次性输出」；
+     · 本作是「流水线工作记忆」：每来一张新卡都要把最老的一张从队列里挤出去，
+       同时对位比较。这是 n-back 特有的"更新 + 比对"双负荷，已有项目一个都没覆盖。
+   设计上的三个刻意选择（为什么）：
+   1) 只考形状，颜色全程独立随机 —— 颜色相同不代表形状相同，反过来也不成立。
+      若让颜色和答案相关，玩家会退化成"记颜色"的单通道任务，难度就没了；
+      而现在颜色是纯干扰源，专门制造"颜色一样但形状不同"的错判。
+   2) 前 N 张只记牌、不许作答 —— 这是 n-back 的标准口径。否则开局几张没有
+      "N 张前"，玩家会当成送分题，也会误以为题目出错了。
+   3) 卡片可见时长 = 允许思考时长，到点自动判错进下一张。工作记忆的难点是
+      "在窗口内完成队列更新"，不是额外读秒；把它做成唯一计时器，规则只有一句。
+   难度曲线（明确规则，全部可对照 diff 文案）：
+     · N（回溯步数）：1~4 关 1-back，5~8 关 2-back，9~12 关 3-back；
+     · 题数：难度档基数 12 / 16 / 20，每关 +1，封顶 +6；
+     · 单张时长：简单 2.3s→1.5s、中等 2.0s→1.25s、困难 1.7s→1.05s（按关线性收缩）；
+     · 近期干扰：高关卡里「不同」题有 10%→65% 的概率把【上一张】的形状塞进来。
+       这是 n-back 最容易骗人的 lure——靠"刚见过"的熟悉感会答错，
+       必须真的维护 N 步队列而不是 1 步队列。 */
+function gNBack(d,lv){stopTimers();d=d||0;
+var lvSel=Math.max(1,Math.min(LEVELS_PER_GAME,lv||CUR_LV||1));
+var ms=curve2i(d,lvSel,[[2300,1500],[2000,1250],[1700,1050]]);
+var q=[12,16,20][Math.max(0,Math.min(2,d|0))]+Math.min(lerpLv(lvSel,0,6),6);
+var N=lvSel>=9?3:(lvSel>=5?2:1);
+var lure=curve2(d,lvSel,[[0.10,0.35],[0.20,0.50],[0.30,0.65]]);
+var lives=[3,3,2][Math.max(0,Math.min(2,d|0))];
+var SHAPES=['▲','■','◆','★','♥','✚'];
+var COLORS=['#e53935','#1e88e5','#43a047','#fb8c00','#8e24aa','#00897b'];
+/* 先决定「相同 / 不同」各占一半，再据此生成序列。
+   若答案纯随机，一局里可能连续 8 题都是"不同"，玩家一直点"不同"就能刷分。 */
+var ansPlan=[],i;for(i=0;i<q;i++)ansPlan.push(i<Math.round(q/2)?1:0);ansPlan=shuffle(ansPlan);
+var shapes=[],colors=[];
+for(i=0;i<q+N;i++){
+  if(i<N)shapes.push(pick(SHAPES));
+  else if(ansPlan[i-N])shapes.push(shapes[i-N]);
+  else{
+    var bad=shapes[i-N];
+    /* lure 只在「上一张 ≠ N 张前」时可用：否则这题本来就该判"相同"，
+       塞进去会把答案变成另一个，和 ansPlan 冲突。 */
+    if(i>0&&Math.random()<lure&&shapes[i-1]!==bad)shapes.push(shapes[i-1]);
+    else shapes.push(pick(SHAPES.filter(function(s){return s!==bad})));
+  }
+  colors.push(pick(COLORS));
+}
+var st=$('stage');st.innerHTML='';
+st.appendChild(h('div','hud','<span>第 <b id="nbI">0</b>/<b id="nbN">'+q+'</b> 题</span><span>回溯 <b>'+N+'</b> 步</span><span>✅ <b id="nbC">0</b></span><span>❤️ <b id="nbL">'+'❤'.repeat(lives)+'</b></span>'));
+var wrap=h('div','nb-stage');st.appendChild(wrap);
+var hint=h('div','hint','');wrap.appendChild(hint);
+var cardEl=h('div','nb-card','');wrap.appendChild(cardEl);
+var row=h('div','nb-ansrow');wrap.appendChild(row);
+var bSame=h('button','btn gold nb-ans','⬅️ 相同');var bDiff=h('button','btn nb-ans','不相同 ➡️');
+row.appendChild(bSame);row.appendChild(bDiff);
+wrap.appendChild(h('div','nb-n','前 '+N+' 张只记牌，从第 '+(N+1)+' 张起作答（键盘 ← / → 同样可以）'));
+var cur=-1,armed=false,correct=0,scored=0,done=false,ended=false,t0=0;
+function nbUpd(){$('nbC').textContent=correct;$('nbL').textContent='❤'.repeat(Math.max(lives,0));if(CURRENT)setLive(CURRENT.id,correct,false)}
+function nbNext(){
+  if(done)return;
+  cur++;
+  if(cur>=q+N){nbEnd();return}
+  cardEl.classList.remove('nb-fb-ok','nb-fb-bad');
+  cardEl.textContent=shapes[cur];cardEl.style.color=colors[cur];
+  armed=(cur>=N);
+  bSame.disabled=!armed;bDiff.disabled=!armed;
+  if(armed){scored++;$('nbI').textContent=scored;
+    hint.innerHTML='这张的<b>形状</b>，和 <b>'+N+'</b> 张前<b>相同</b>吗？（颜色只是干扰项）'}
+  else hint.innerHTML='👀 先记牌：前 '+N+' 张不计分，盯住每张的<b>形状</b>';
+  t0=nowClock();
+}
+function nbJudge(choice){
+  if(!armed||done)return;
+  armed=false;
+  var isSame=(shapes[cur]===shapes[cur-N]);
+  var good=(choice===null)?false:(choice===isSame);
+  if(good){correct++;sfx('ok');cardEl.classList.add('nb-fb-ok')}
+  else{
+    lives--;sfx('bad');cardEl.classList.add('nb-fb-bad');
+    hint.innerHTML=(choice===null?'⏰ 超时！':'❌ 答错了。')+'正确答案是 <b>'+(isSame?'相同':'不同')+'</b>（'+N+' 张前是 '+shapes[cur-N]+'）';
+    if(lives<=0){nbUpd();done=true;later(nbEnd,780);return}
+  }
+  nbUpd();
+  later(function(){if(!done)nbNext()},good?250:760);
+}
+function nbEnd(){
+  if(ended)return;ended=true;done=true;
+  stopTimers();document.onkeydown=null;
+  if(CURRENT)setLive(CURRENT.id,correct,false);
+  /* n 用"实际出现过的计分题数"而不是 q：中途生命耗尽时 4/7 才有意义，4/20 是假数据 */
+  LAST_META={ok:correct,n:scored};
+  finish(correct);
+}
+bSame.onclick=function(){nbJudge(true)};
+bDiff.onclick=function(){nbJudge(false)};
+document.onkeydown=function(e){if(!e)return;
+  if(e.key==='ArrowLeft'){e.preventDefault();nbJudge(true)}
+  else if(e.key==='ArrowRight'){e.preventDefault();nbJudge(false)}};
+/* 计时走 every(tick) + nowClock()，而不是 later()：
+   every() 在暂停时会被跳过、nowClock() 会扣掉暂停时长，所以"暂停"对本题真的冻结；
+   later() 不受暂停影响，用它做倒计时会在切后台时白扣时间。 */
+every(function(){if(done||!armed)return;if(nowClock()-t0>=ms)nbJudge(null)},40);
+nbUpd();nbNext()}
+
+/* ================= B. 同中寻同（形状 × 颜色 × 点数的联合视觉搜索） =================
+   玩法：先给一张"目标卡"（形状 + 颜色 + 点数），再在网格里找出与它完全一致的那一个。
+   和「火眼金睛」为什么不同（这是本作存在的唯一理由）：
+     · 火眼金睛是 odd-one-out：先默认"其余都一样"，只需比较一个特征；
+     · 本作是正向的全特征匹配，且每个干扰项都和目标共享 1~2 个特征 ——
+       任何单个线索（只看形状 / 只看颜色）都会同时命中好几个候选，
+       必须把三个特征联合起来逐项核对。这正是视觉搜索里最费时的那一类
+       （Treisman 的特征联合搜索），和找异类不是同一种负荷。
+   难度曲线（明确规则）：
+     · 列数：3 起，每找到 6 个 +1，第 5 关起再 +1、第 9 关起再 +1，封顶 6；
+       同时受屏幕宽度硬约束（见 maxCols），小屏不会为了"更难"而把热区压到 44px 以下；
+     · 相似度：干扰项"只差一项"的概率 25%→85%（简单档）~45%→85%（困难档），
+       越像越难，而不是单纯堆数量；
+     · 限时：简单 90s→60s、中等 75s→50s、困难 60s→42s（按关收缩）；
+     · 点错扣时 2s→6s（按档 + 按关），但不直接结束：这类任务该惩罚"乱点"，
+       不该一次手抖就废掉整局。 */
+function gConj(d,lv){stopTimers();d=d||0;
+var lvSel=Math.max(1,Math.min(LEVELS_PER_GAME,lv||CUR_LV||1));
+var tMax=curve2i(d,lvSel,[[90,60],[75,50],[60,42]]);
+var pen=curve2i(d,lvSel,[[2,4],[3,5],[4,6]]);
+var nearP=curve2(d,lvSel,[[0.25,0.55],[0.35,0.70],[0.45,0.85]]);
+var SHAPES=['▲','■','◆','★','♥','✚'];
+var COLORS=['#e53935','#1e88e5','#43a047','#fb8c00','#8e24aa','#00897b'];
+var ok=0,bad=0,t=tMax,over=false;
+var st=$('stage');st.innerHTML='';
+st.appendChild(h('div','hud','<span>⏱ <b id="cjT">'+tMax+'</b>s</span><span>✅ 找到 <b id="cjO">0</b> 个</span><span style="color:#999">点错 −'+pen+'s</span>'));
+var hint=h('div','hint','找出与<b>目标卡完全相同</b>的那一格（形状 + 颜色 + 点数三项都要一样）');st.appendChild(hint);
+var tgt=h('div','cj-tgoal');st.appendChild(tgt);
+var wrap=h('div');st.appendChild(wrap);
+/* 触控热区硬约束：一格必须 ≥ --mg-tap(44px)。6 列在 320px 小屏上只剩约 41px，
+   那不是"看不清"而是"点不准"，所以按可用宽度反推列数上限（3~6 列）。 */
+function maxCols(){
+  var w=Math.min(420,Math.max(240,(window.innerWidth||360)-40));
+  return Math.max(3,Math.min(6,Math.floor((w+6)/(44+6))));
+}
+function dotStr(k){return new Array(k+1).join('●')}
+function newRound(){
+  if(over)return;
+  var n=Math.min(maxCols(),3+Math.floor(ok/6)+(lvSel>=5?1:0)+(lvSel>=9?1:0));
+  var T={s:ri(SHAPES.length),c:ri(COLORS.length),k:1+ri(4)};
+  tgt.innerHTML='<span class="cj-tlabel">目标</span>'
+    +'<span class="cj-tshape" style="color:'+COLORS[T.c]+'">'+SHAPES[T.s]+'</span>'
+    +'<span class="cj-dots">'+dotStr(T.k)+'</span>'
+    +'<span class="cj-tlabel">'+T.k+' 个点</span>';
+  /* 预先把"只差一项"和"差两项以上"的候选池各自打散再取用。
+     为什么不边随机边去重：near 池在 6 列时需要 35 个干扰项，而"只差一项"的
+     组合恰好也只有 35 个 —— 靠随机撞唯一解会退化成死循环。先池化再抽，
+     既不重复也保证一定抽得到。 */
+  var near=[],far=[],s2,c2,k2,d1;
+  for(s2=0;s2<SHAPES.length;s2++)for(c2=0;c2<COLORS.length;c2++)for(k2=1;k2<=4;k2++){
+    if(s2===T.s&&c2===T.c&&k2===T.k)continue;
+    d1=(s2!==T.s?1:0)+(c2!==T.c?1:0)+(k2!==T.k?1:0);
+    (d1<=1?near:far).push({s:s2,c:c2,k:k2});
+  }
+  near=shuffle(near);far=shuffle(far);
+  var cells=[],cnt=n*n,target=ri(cnt),ni=0,fi=0,j;
+  for(j=0;j<cnt;j++){
+    if(j===target){cells.push(T);continue}
+    var useNear=(Math.random()<nearP&&ni<near.length)||fi>=far.length;
+    if(useNear)cells.push(near[ni++]);
+    else cells.push(far[fi++]);
+  }
+  cells=shuffle(cells);
+  wrap.innerHTML='';
+  var g=h('div','cj-grid');
+  g.style.gridTemplateColumns='repeat('+n+',minmax(0,1fr))';
+  for(j=0;j<cells.length;j++)(function(cell){
+    var el=h('div','cj-cell');
+    el.innerHTML='<span class="cj-shape" style="color:'+COLORS[cell.c]+'">'+SHAPES[cell.s]+'</span>'
+      +'<span class="cj-dots">'+dotStr(cell.k)+'</span>';
+    el.onclick=function(){
+      if(over)return;
+      if(cell.s===T.s&&cell.c===T.c&&cell.k===T.k){
+        ok++;sfx('ok');el.classList.add('ok');$('cjO').textContent=ok;
+        if(CURRENT)setLive(CURRENT.id,ok,false);
+        later(function(){if(!over)newRound()},260);
+      }else{
+        bad++;sfx('bad');el.classList.add('bad');
+        /* 扣时通过"把起始时刻往前挪"实现，而不是直接减 t：
+           tick 每秒按 tMax-(now-t0) 重算，直接减 t 会被下一次重算覆盖掉。 */
+        t0-=pen*1000;
+        later(function(){el.classList.remove('bad')},420);
+        cjTick();
+      }
+    };
+    g.appendChild(el)
+  })(cells[j]);
+  wrap.appendChild(g);
+}
+var t0=nowClock();
+function cjTick(){
+  if(over)return;
+  var left=Math.max(0,tMax-Math.round((nowClock()-t0)/1000));
+  t=left;$('cjT').textContent=t;
+  if(t<=0)endGame();
+}
+function endGame(){
+  if(over)return;over=true;
+  stopTimers();document.onkeydown=null;
+  if(CURRENT)setLive(CURRENT.id,ok,false);
+  LAST_META={ok:ok,n:ok+bad};
+  finish(ok);
+}
+every(cjTick,250);
+newRound()}
+
+/* ================= C. 规律补全（数列推理） =================
+   玩法：给出一列数（4~6 项）和一个「?」，从 4 个选项里选出下一项。
+   为什么不是"又一款算术题"：
+     · 精打细算考凑数（搜索 + 四则运算）、竖式接龙考单点逆推、环形幻方考约束满足，
+       三者都是"算已知"；
+     · 本作考"先归纳生成规则、再外推" —— 玩家必须自己假设规则并验证，
+       是唯一一款"建模再预测"的数学项。这也是唯一能覆盖"数字规律"这一常见
+       训练题型的项目。
+   难度曲线（按认知负荷分层，与关卡绑定）：
+     · 1~3 关：等差 / 等比 —— 一步规则，只有"公差/公比"一个未知量；
+     · 4~6 关：+ 平方数 / 二阶等差 —— 要对"差"再做一次差，多一层抽象；
+     · 7~9 关：+ 递推（前两项相加）/ 交替（+p 与 ×q 轮流）—— 规则本身有分支；
+     · 10~12 关：全规则（含立方）+ 项数 4→6 + 数值量级 ×3；
+     · 限时：简单 95s→65s、中等 80s→52s、困难 65s→42s（按关收缩）；
+     · 干扰项永远只取"答案 ±1/±2/±3/±公差"这类近邻：
+       不放荒谬的大数，否则玩家不用推理，靠数量级就能排除，题目就废了。 */
+function sqGen(kind,len,mag){
+  var out=[],i,d,r,a,b,c,p,q2;
+  if(kind==='arith'){
+    d=(2+ri(8))*mag;a=1+ri(9*mag);
+    for(i=0;i<=len;i++)out.push(a+i*d);
+    return{seq:out,step:d,why:'等差：每次 +'+d};
+  }
+  if(kind==='geo'){
+    r=ri(2)?2:3;a=1+ri(4);
+    for(i=0;i<=len;i++)out.push(a*Math.pow(r,i));
+    return{seq:out,step:Math.max(1,out[len]-out[len-1]),why:'等比：每次 ×'+r};
+  }
+  if(kind==='square'){
+    b=1+ri(6);c=ri(3)-1;
+    for(i=0;i<=len;i++)out.push((b+i)*(b+i)+c);
+    return{seq:out,step:2*(b+len)-1,why:'平方数：相邻差依次 +2（(n+1)²−n²=2n+1）'};
+  }
+  if(kind==='diff2'){
+    a=1+ri(5*mag);d=(1+ri(3))*mag;var dd=1+ri(3);
+    for(i=0;i<=len;i++)out.push(a+i*d+(i*(i-1)/2)*dd);
+    return{seq:out,step:d+(len-1)*dd,why:'二阶等差：相邻差每次再 +'+dd};
+  }
+  if(kind==='fib'){
+    a=1+ri(5);b=a+1+ri(4);out=[a,b];
+    while(out.length<=len)out.push(out[out.length-1]+out[out.length-2]);
+    return{seq:out,step:out[len-2],why:'递推：每项 = 前两项之和'};
+  }
+  if(kind==='alt'){
+    p=(2+ri(4))*mag;q2=2+ri(2);a=1+ri(4);out=[a];
+    for(i=1;i<=len;i++)out.push(i%2?out[i-1]+p:out[i-1]*q2);
+    return{seq:out,step:Math.max(1,out[len-1]-out[len-2]),why:'交替：先 +'+p+' 再 ×'+q2+' 轮流'};
+  }
+  b=1+ri(3);
+  for(i=0;i<=len;i++)out.push(Math.pow(b+i,3));
+  return{seq:out,step:Math.pow(b+len,3)-Math.pow(b+len-1,3),why:'立方数：n³'};
+}
+/* 干扰项：从"最近的邻居"里取，凑满 4 个互不相同的正数选项 */
+function sqOpts(ans,step){
+  var res=[ans],used={},i,v,k=4;
+  used[ans]=1;
+  var ds=[1,-1,2,-2,3,-3,step,-step,step+1,step-1];
+  for(i=0;i<ds.length&&res.length<4;i++){
+    v=ans+ds[i];
+    if(v>0&&!used[v]){used[v]=1;res.push(v)}
+  }
+  while(res.length<4){
+    v=ans+k;
+    if(v>0&&!used[v]){used[v]=1;res.push(v)}
+    k++;
+  }
+  return shuffle(res);
+}
+function gSeq(d,lv){stopTimers();d=d||0;
+var lvSel=Math.max(1,Math.min(LEVELS_PER_GAME,lv||CUR_LV||1));
+var tMax=curve2i(d,lvSel,[[95,65],[80,52],[65,42]]);
+var lives=[3,3,2][Math.max(0,Math.min(2,d|0))];
+var len=4+(lvSel>=7?1:0)+(lvSel>=10?1:0);
+var mag=1+Math.floor((lvSel-1)/4);
+var RULES=lvSel<=3?['arith','geo']
+  :lvSel<=6?['arith','geo','square','diff2']
+  :lvSel<=9?['arith','geo','square','diff2','fib','alt']
+  :['arith','geo','square','diff2','fib','alt','cube'];
+var ok=0,bad=0,over=false,locked=false;
+var st=$('stage');st.innerHTML='';
+function updHud(){
+  $('sqO').textContent=ok;
+  $('sqL').textContent='❤'.repeat(Math.max(lives,0));
+  if(CURRENT)setLive(CURRENT.id,ok,false);
+}
+st.appendChild(h('div','hud','<span>⏱ <b id="sqT">'+tMax+'</b>s</span><span>✅ 答对 <b id="sqO">0</b> 题</span><span>❤️ <b id="sqL">'+'❤'.repeat(lives)+'</b></span>'));
+var hint=h('div','hint','观察下面这列数，选出「?」处应有的数字');st.appendChild(hint);
+var termsEl=h('div','sq-terms');st.appendChild(termsEl);
+var optsEl=h('div','sq-opts');st.appendChild(optsEl);
+var ans=0,why='',round=0;
+function nextRound(){
+  if(over)return;
+  round++;locked=false;
+  var gen=null,tries=0;
+  /* 兜底：极少数参数组合会让末项超过 4 位数（心算负担过大），重抽即可 */
+  do{
+    gen=sqGen(pick(RULES),len,mag);
+    tries++;
+  }while(tries<12&&gen.seq[len]>9999);
+  var seq=gen.seq;
+  ans=seq[len];why=gen.why;
+  termsEl.innerHTML='';
+  for(var i=0;i<len;i++)termsEl.appendChild(h('div','sq-chip',String(seq[i])));
+  termsEl.appendChild(h('div','sq-chip q','?'));
+  optsEl.innerHTML='';
+  var opts=sqOpts(ans,gen.step);
+  for(var j=0;j<opts.length;j++)(function(v){
+    var b=h('button','sq-opt',String(v));
+    b.onclick=function(){answer(v,b)};
+    optsEl.appendChild(b)
+  })(opts[j]);
+  hint.innerHTML='第 '+round+' 题 · 观察下面这列数，选出「?」处应有的数字';
+}
+function answer(v,btn){
+  if(locked||over)return;
+  locked=true;
+  var all=optsEl.querySelectorAll('.sq-opt'),i;
+  for(i=0;i<all.length;i++){
+    all[i].disabled=true;
+    if(+all[i].textContent===ans)all[i].classList.add('ok');
+  }
+  if(v===ans){
+    ok++;sfx('ok');updHud();
+    hint.innerHTML='✅ 正确！这次是「'+why+'」';
+    later(nextRound,420);
+  }else{
+    bad++;lives--;sfx('bad');btn.classList.add('bad');updHud();
+    hint.innerHTML='❌ 正确答案是 <b>'+ans+'</b>（'+why+'）';
+    if(lives<=0)later(endGame,950);
+    else later(nextRound,1150);
+  }
+}
+var t0=nowClock();
+function sqTick(){
+  if(over)return;
+  var left=Math.max(0,tMax-Math.round((nowClock()-t0)/1000));
+  $('sqT').textContent=left;
+  if(left<=0)endGame();
+}
+function endGame(){
+  if(over)return;over=true;
+  stopTimers();document.onkeydown=null;
+  if(CURRENT)setLive(CURRENT.id,ok,false);
+  LAST_META={ok:ok,n:ok+bad};
+  finish(ok);
+}
+every(sqTick,250);
+nextRound()}
+
 var GAMES={
 qa:{icon:'💡',name:'知识问答',start:gQA,rules:'<ol><li>在输入框输入<b>题目类型</b>（如 数学 / 地理 / 编程 / 历史 / 科学 / 英语 / 常识），系统自动匹配题库并<b>动态生成</b>选择题</li><li>也支持<b>自定义题库</b>：输入一个不存在的类型名 → 「新建并录入」即可建立专属题库（题目存本地，可任意添加）</li><li>每个类型有独立题库，支持<b>任意数量</b>的类型与题目自由扩充</li><li>作答完毕按类型记录最好成绩</li><li>内置<b>海量题库</b>（由 <b>AI 联网整理</b>，覆盖 地理 / 历史 / 编程 / 科学 / 英语 / 常识 / 文学 / 体育 / 动物 / 天文 / 美食 等），并支持<b>联网实时更新</b>：点「🌐 联网」类型或「🔄 联网更新题库」即可拉取最新题目（自动缓存到本地，离线也能用）</li><li>支持<b>难度 / 学业阶段</b>选择：<b>数学</b>按 小学 / 初中 / 高中 / 大学 分级出题，<b>编程</b>按 入门 / 进阶 / 熟练 分级出题，其余学科提供 <b>简单（10题）/ 中等（15题）/ 困难（20题·答错扣 5 分）</b>；上次选择的档位会被记住</li><li>新增「😵 不会」按钮：任何题目下方都有，点了本题跳过、得 0 分且不计入对错，并自动沉淀到「📚 回顾薄弱题」薄弱题库，可随时回头重做巩固</li><li>新增「🤖 自动匹配」难度：根据连续答对 / 答错 / 点「不会」自动升降难度（连对 2 题升一档、连错 2 题或点「不会」降一档），跨会话记住你的实力档位，越做越贴合你</li></ol>'},
 killer:{icon:'🧮',name:'杀手数独',start:gKiller,diffs:[{n:'🟢 简单',d:'20提示'},{n:'🟡 中等',d:'10提示'},{n:'🔴 困难',d:'0提示·纯推理'}],rules:'<ol><li>9×9 标准数独：每行/列/宫 1-9 不重复</li><li>虚线笼内数字<b>不重复</b>，且<b>和=左上角数字</b></li><li>填满且全部合法即通关</li><li>可开启 <b>✏️ 笔记模式</b>：点数字键在空格做候选数标记；普通模式填入确定数字会自动清除同行/列/宫及同笼的相同候选。</li></ol>'}
@@ -6977,13 +7411,20 @@ rhythm:{icon:'🥁',name:'节奏敲击',start:gRhythm,diffs:[{n:'🟢 简单',d:
 hashi:{icon:'🌉',name:'数桥',start:gHashi,diffs:[{n:'🟢 简单',d:'8×8 · 8 岛'},{n:'🟡 中等',d:'10×10 · 11 岛'},{n:'🔴 困难',d:'12×12 · 14 岛'}],rules:'<ol><li>在<b>相邻岛</b>之间架 <b>1~2 座桥</b>（横或竖，不能交叉）</li><li>每座岛的<b>桥数必须等于岛上的数字</b></li><li>所有岛必须<b>连成一体</b>，不能有孤岛</li><li>点一个岛再点相邻岛即可架桥，再点加到 2 座，再点取消</li><li>限时 240 秒；🗺 共 12 关，棋盘与岛数随关卡变大</li></ol>'},
 lightout:{icon:'🕯️',name:'点灯',start:gLightOut,diffs:[{n:'🟢 简单',d:'5×5 · 最少 3 步'},{n:'🟡 中等',d:'5×5 · 最少 5 步'},{n:'🔴 困难',d:'5×5 · 最少 7 步'}],rules:'<ol><li>点一盏灯会翻转<b>它自己和上下左右</b>共 5 盏</li><li>目标：让 <b>5×5 全部熄灭</b></li><li>系统会给出<b>最少步数</b>，步数越接近评分越高</li><li>限时 180 秒；🗺 共 12 关，最少步数随关卡增加</li></ol>'},
 switch:{icon:'🔀',name:'规则切换',start:gSwitch,diffs:[{n:'🟢 简单',d:'12 题 · 每 5 题切一次'},{n:'🟡 中等',d:'16 题 · 每 4 题切一次'},{n:'🔴 困难',d:'20 题 · 每 3 题切一次'}],rules:'<ol><li>三张卡<b>外观完全一样</b>：一张<b>形状图标</b> + 一个<b>颜色名</b>，图标颜色与文字颜色<b>故意错开</b></li><li>规则 <b>⭕ 看【文字颜色】</b>：题干给一个色块 → 找<b>文字被涂成该色</b>的那张卡</li><li>规则 <b>🔷 看【图标形状】</b>：题干给一个形状 → 找<b>图标是该形</b>的那张卡</li><li>规则会<b>突然切换</b>（前两次有 ⚠️ 提示，之后要自己盯规则条）</li><li>切换后正确率越高越好；🗺 共 12 关，题数与切换频率随关卡递增</li></ol>'},
-timer:{icon:'⏲️',name:'时间估测',start:gTimer,diffs:[{"n":"🟢 简单","d":"4 轮 · 短"},{"n":"🟡 中等","d":"5 轮 · 中"},{"n":"🔴 困难","d":"6 轮 · 长"}],rules:'<ol><li>点「开始」，在心里默数到提示的秒数</li><li>觉得<b>刚好到了</b>就点「停」，系统同时给出<b>实际按压毫秒数</b>与真实误差</li><li>误差越小越好，结束给出平均误差与时间感评级</li></ol>'}
+timer:{icon:'⏲️',name:'时间估测',start:gTimer,diffs:[{"n":"🟢 简单","d":"4 轮 · 短"},{"n":"🟡 中等","d":"5 轮 · 中"},{"n":"🔴 困难","d":"6 轮 · 长"}],rules:'<ol><li>点「开始」，在心里默数到提示的秒数</li><li>觉得<b>刚好到了</b>就点「停」，系统同时给出<b>实际按压毫秒数</b>与真实误差</li><li>误差越小越好，结束给出平均误差与时间感评级</li></ol>'},
+/* ---- 第 4 批新增 3 款（2026-11-06）----
+   三款各挂一个不同维度：mem / vis / mat，保证周训练计划在任意一个维度变弱时
+   都能排到新的候选（见 WEEK_DIM_POOL）。diffs 文案写的是「第 1 关 → 第 12 关」的真实区间，
+   不是拍脑袋的档位名，方便玩家对照。 */
+nback:{icon:'🧠',name:'隔位回想',start:gNBack,diffs:[{n:'🟢 简单',d:'1~3 步回溯 · 2.3s→1.5s · 3 命'},{n:'🟡 中等',d:'1~3 步回溯 · 2.0s→1.25s · 3 命'},{n:'🔴 困难',d:'1~3 步回溯 · 1.7s→1.05s · 2 命'}],unit:' 题',low:0,rules:'<ol><li>卡片一张张出现，判断<b>当前这张的形状</b>是否与 <b>N 张前</b>那张相同；颜色只是干扰项，不参与判断</li><li><b>前 N 张只记牌、不计分</b>，从第 N+1 张起才作答（点按钮或按 <b>← / →</b>）</li><li>卡片可见时长 = 作答时限，到点自动判错；答错扣 1 命，命用完即结束</li><li>🗺 <b>N 随关卡加码</b>：1~4 关 1-back，5~8 关 2-back，9~12 关 3-back；题数每关 +1，单张时长逐关收紧</li><li>高关卡会出现<b>近期干扰</b>：拿"上一张"的形状冒充答案，靠"刚见过"的熟悉感会答错，必须真的维护 N 步队列</li></ol>'},
+conj:{icon:'🔎',name:'同中寻同',start:gConj,diffs:[{n:'🟢 简单',d:'90s→60s · 干扰项 25%→55% 只差一项'},{n:'🟡 中等',d:'75s→50s · 35%→70%'},{n:'🔴 困难',d:'60s→42s · 45%→85% · 点错 −4~6s'}],unit:' 个',low:0,rules:'<ol><li>上方先给一张<b>目标卡</b>：形状 + 颜色 + 点数</li><li>在网格里找出与它<b>三项完全一致</b>的那一格</li><li>其余格子都与目标<b>共享 1~2 项</b> —— 只看形状或只看颜色都会同时命中好几个，必须联合比对</li><li>点对即换题、网格变大；点错<b>扣时</b>但不结束（惩罚乱点，不惩罚手抖）</li><li>🗺 网格 3×3→6×6，干扰项越像、限时越短；小屏会自动减列，<b>保证每格热区 ≥44px</b></li></ol>'},
+seq:{icon:'🔢',name:'规律补全',start:gSeq,diffs:[{n:'🟢 简单',d:'95s→65s · 仅等差/等比'},{n:'🟡 中等',d:'80s→52s · 加平方/二阶等差'},{n:'🔴 困难',d:'65s→42s · 全规则 · 项数→6'}],unit:' 题',low:0,rules:'<ol><li>给出一列数（4~6 项）和一个「?」，从 4 个选项里选出<b>下一项</b></li><li>规则不固定：等差 / 等比 / 平方数 / 二阶等差 / 递推（前两项相加）/ 交替（+p 与 ×q 轮流）/ 立方</li><li>先观察、再假设规则、最后外推 —— 这是<b>归纳</b>题，不是纯计算</li><li>答错扣 1 命并公布规则解析；限时内答对越多越好</li><li>🗺 规则按认知负荷<b>逐段解锁</b>：1~3 关只需一步规则，4~6 关要对"差"再做差，7~9 关出现分支规则，10~12 关全规则 + 项数 6</li></ol>'}
 };
 var CATS=[
-{n:'🧠 记忆挑战',ids:['repair','cook','dots','pixel','flashnum','accu','flasht','octmem','backspan']},
+{n:'🧠 记忆挑战',ids:['repair','cook','dots','pixel','flashnum','accu','flasht','octmem','backspan','nback']},
 {n:'⚡ 反应速度',ids:['quick','sortcolor','dual','blitz','stroop','rhythm','switch']},
-{n:'👁 视觉洞察',ids:['eagle','eyetrack','colortone','rotate','overlay']},
-{n:'🔢 逻辑数学',ids:['calc','crossfill','vertmath','ring','sudoku','killer','samurai']},
+{n:'👁 视觉洞察',ids:['eagle','eyetrack','colortone','rotate','overlay','conj']},
+{n:'🔢 逻辑数学',ids:['calc','crossfill','vertmath','ring','sudoku','killer','samurai','seq']},
 {n:'🎮 休闲挑战',ids:['g2048','pond','magicstone','dotsgold','sync']},
 {n:'🧩 益智解谜',ids:['jigsaw','sudokuX','nonogram','mosaic','flow','reflect','sokoban','hashi','lightout']},
 {n:'🧪 测试小屋',ids:['reacttest','spantest','quiz','timer']},
@@ -7035,7 +7476,7 @@ $('btnBg').onclick=openBgPicker;
 $('btnShop').onclick=openShop;
 
 /* 菜单时长标签（P1-12） */
-var DUR={quick:'30 秒',eagle:'60 秒',sudoku:'5~15 分',spantest:'2 分钟',reacttest:'1 分钟',stroop:'60 秒',flashnum:'30 秒',flasht:'30 秒',colortone:'60 秒',dual:'60 秒',blitz:'60 秒',vertmath:'2 分钟',calc:'1 分钟',ring:'1 分钟',crossfill:'3 分钟',accu:'1 分钟',dots:'1 分钟',pixel:'1 分钟',pond:'30 秒',sync:'1 分钟',tiles:'2 分钟',mines:'随局',tomato:'25 分',qa:'5 分钟',quiz:'5 分钟',g2048:'随局',magicstone:'随局',dotsgold:'随局',tetris:'随局',snake:'随局',breaker:'随局',flappy:'随局',plane:'随局',bubble:'随局',pong:'随局',killer:'15 分',samurai:'20 分',jigsaw:'10 分',sudokuX:'10 分',nonogram:'10 分',flow:'随关',reflect:'随局',sokoban:'随关',repair:'随局',cook:'随局',octmem:'1 分钟',eyetrack:'30 秒',rotate:'30 秒',overlay:'30 秒',sortcolor:'30 秒',mosaic:'随局',backspan:'1 分钟',rhythm:'30 秒',switch:'30 秒',timer:'2 分钟',hashi:'4 分钟',lightout:'3 分钟'};
+var DUR={quick:'30 秒',eagle:'60 秒',sudoku:'5~15 分',spantest:'2 分钟',reacttest:'1 分钟',stroop:'60 秒',flashnum:'30 秒',flasht:'30 秒',colortone:'60 秒',dual:'60 秒',blitz:'60 秒',vertmath:'2 分钟',calc:'1 分钟',ring:'1 分钟',crossfill:'3 分钟',accu:'1 分钟',dots:'1 分钟',pixel:'1 分钟',pond:'30 秒',sync:'1 分钟',tiles:'2 分钟',mines:'随局',tomato:'25 分',qa:'5 分钟',quiz:'5 分钟',g2048:'随局',magicstone:'随局',dotsgold:'随局',tetris:'随局',snake:'随局',breaker:'随局',flappy:'随局',plane:'随局',bubble:'随局',pong:'随局',killer:'15 分',samurai:'20 分',jigsaw:'10 分',sudokuX:'10 分',nonogram:'10 分',flow:'随关',reflect:'随局',sokoban:'随关',repair:'随局',cook:'随局',octmem:'1 分钟',eyetrack:'30 秒',rotate:'30 秒',overlay:'30 秒',sortcolor:'30 秒',mosaic:'随局',backspan:'1 分钟',rhythm:'30 秒',switch:'30 秒',timer:'2 分钟',hashi:'4 分钟',lightout:'3 分钟',nback:'2 分钟',conj:'1 分钟',seq:'1 分钟'};
 var MNOTE_FULL='🎯 共 '+Object.keys(GAMES).length+' 款游戏 · 涵盖记忆 / 反应 / 视觉 / 数学 / 休闲 / 益智 / 测试 / 工具 / 热门街机 9 大类<br>🎚 每款游戏都可选 🟢简单 / 🟡中等 / 🔴困难 三档难度，难度选择自动记忆<br>🕹 街机区：俄罗斯方块 · 贪吃蛇 · 扫雷 · 打砖块 · 飞扬的小鸟 · 别踩白块儿 · 飞机大战 · 泡泡龙 · 乒乓<br>⚙️ 支持选关：连线作战 · 推箱子 关卡无上限，进度自动保存<br>💾 中途退出也会记录成绩 · 点右上「📊 战绩」查看全部记录<br>⌨️ 快捷键：街机 P 暂停 / R 重开 / Esc 菜单；解谜 H 提示 / K 跳关';
 /* 能力雷达 SVG（P0-5） */
 function capRadarSVG(vals){
@@ -7288,7 +7729,7 @@ var ARCADE=['tetris','snake','mines','breaker','flappy','tiles','plane','bubble'
 var ARCADE_SET=(function(){var s={};ARCADE.forEach(function(x){s[x]=1});return s})();
 /* 计时类解谜游戏同样应当可暂停：它们有倒计时或按时长计分，被来电/切后台打断就直接判负。
    道具栏与积分浮层仍只归 ARCADE(isArcade)，这里只扩展「可暂停」范围。 */
-var PAUSABLE_EXTRA=['mosaic','quiz','nonogram','jigsaw','sudokuX','hashi','lightout'];
+var PAUSABLE_EXTRA=['mosaic','quiz','nonogram','jigsaw','sudokuX','hashi','lightout','nback','conj','seq'];
 var PAUSABLE_SET=(function(){var s={};ARCADE.forEach(function(x){s[x]=1});PAUSABLE_EXTRA.forEach(function(x){s[x]=1});return s})();
 function canPause(id){return !!PAUSABLE_SET[id]}
 var SKINS={
