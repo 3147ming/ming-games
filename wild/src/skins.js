@@ -25,6 +25,11 @@ export const SKINS = [
   { id: 'obsid',   name: '玄曜', color: '#2b2b33', tier: 2, desc: '黑曜涂装 · 无声之影' },
   { id: 'moss',    name: '苔痕', color: '#5f8a4a', tier: 3, desc: '苔绿涂装 · 荒野同色' },
   { id: 'ember',   name: '余烬', color: '#c86a30', tier: 3, desc: '橙褐涂装 · 余火不灭' },
+  // 阶段 11：再补 4 套（8 → 12），让三阶晋升的仪式感更饱满。
+  { id: 'violet',  name: '紫电', color: '#8e44ad', tier: 3, desc: '紫罗兰涂装 · 电光火石' },
+  { id: 'teal',    name: '碧波', color: '#1abc9c', tier: 2, desc: '青碧涂装 · 波光粼粼' },
+  { id: 'crimson', name: '赤霄', color: '#c0392b', tier: 3, desc: '深红涂装 · 霄汉冲天' },
+  { id: 'slate',   name: '墨竹', color: '#34495e', tier: 2, desc: '墨蓝涂装 · 竹影摇曳' },
 ];
 
 export const DEFAULT_SKIN = 'default';
