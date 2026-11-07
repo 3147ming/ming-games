@@ -895,13 +895,33 @@ export const ARENA = {
   RAIN_JITTER: 0.30,        // 格内抖动比例（0 = 严格落在格心；太大则格子边界糊在一起，安全间隙就没意义了）
   // ★ 阶段10·P1-3：按 BOSS_TYPES.idx 取值，**加 Boss 必须同时给这两张表补一档** ——
   //   _beginRain 直接 RAIN_COUNT[idx]，undefined 不会抛错，只会让预警圈永远停在场上。
-  RAIN_COUNT: [30, 44, 52], // 每波落点数：Boss1 30 / Boss2 44 / Boss3 52（终局最密）
-  RAIN_WARN: [0.8, 0.6, 0.55], // 预警时长 s：Boss1 0.8 / Boss2 0.6 / Boss3 0.55（终局最难躲）
+  RAIN_COUNT: [30, 44, 52, 40], // 每波落点数：Boss1 30 / Boss2 44 / Boss3 52 / Boss4 40
+  RAIN_WARN: [0.8, 0.6, 0.55, 0.62], // 预警时长 s：Boss1 0.8 / Boss2 0.6 / Boss3 0.55 / Boss4 0.62
   RAIN_DMG: 12,             // 单发伤害（90 血挨 8 发死；使命是"可躲但不秒杀"，留出走位余地）
   RAIN_R: 46,               // 命中判定半径 px（与预警圈同 size，所见即所判）
   RAIN_COVER_MAX: 0.70,     // 覆盖率硬上限。实测：Boss1 21.6% / Boss2 31.7%（远低于上限，留足走位余地）
                             //   ⟹ 对应的"安全采样点占比" Boss1 79.2% / Boss2 69.6%，不存在无处可躲的死局
   RAIN_IMPACT_T: 0.22,      // 命中后的残渣停留时长 s（纯表现）
+
+  // ───────── 内容批：boss4「寂光之瞳」数值 ─────────
+  BOSS4_RAGE_AT: 0.40,      // 狂暴阈值：血量 ≤40%
+  BOSS4_CYCLE: 5,           // 基础节拍 5s，与前 3 只 BOSS_CYCLE 一致
+  BOSS4_RAGE_CYCLE: 3.4,    // 狂暴节拍 5 → 3.4s
+  BOSS4_GAZE_WIND: 0.9,     // 凝视前摇 0.9s
+  BOSS4_GAZE_TRACK: 0.55,   // 前 0.55s 持续跟随玩家；后 0.35s 方向锁死
+  BOSS4_GAZE_T: 0.32,       // 光束存在时长（= 伤害判定窗口）
+  BOSS4_GAZE_RANGE: 900,    // 射程 px
+  BOSS4_GAZE_HALF_W: 15,    // 光束半宽 15px
+  BOSS4_GAZE_DMG: 22,       // 命中伤害
+  BOSS4_SWEEP_ARC: 0.9,     // 狂暴后扫射角度 ±0.9rad
+  BOSS4_VULN_T: 2.4,        // 躲掉光束后的瞳孔过载窗口 2.4s
+  BOSS4_VULN_MUL: 0.6,      // 窗口内 Boss 受伤 +60%
+  BOSS4_MARK_WIND: 1.4,     // 追猎印记：先跟踪 1.4s
+  BOSS4_MARK_LOCK: 0.5,     // 然后锁死 0.5s 后引爆
+  BOSS4_MARK_R: 44,         // 引爆半径
+  BOSS4_MARK_DMG: 16,       // 引爆伤害
+  BOSS4_MARK_MAX: 4,        // 同屏印记硬上限
+  BOSS4_RAGE_SWEEP_MUL: 1.25, // 狂暴时光束判定宽度 ×1.25
 
   // ── 阶段11·P1-12：终局压力 ──
   // ★ 为什么需要它：16 局 sim 实测 16/16 跑满、全程最低血量 86/90 ⟹ 玩家从不濒死，
@@ -1005,6 +1025,12 @@ export const BOSS_TYPES = {
   //   ★ bossSpawned/bossKills 由 BOSS_ORDER.map() 自动变成 3 项，不要手改长度。
   boss3: { id: 'boss3', idx: 2, label: '荒野之喉', atSec: 540,
     hpMul: 70, r: 44, speed: 46, shape: 12, spikes: true, color: '#2c3a2a', summon: 8 },
+  // ───────── 内容批：第 4 只 Boss ─────────
+  // ★ 为什么放在 570s：本项目单局 600s（10 分钟），700s 的 Boss 在整局里永远不会出场。
+  //   570s 是"严格晚于 540s"里还能留出 30 秒收尾窗口的最大整十秒。
+  // ★ style: 'gaze' 是 stepBoss 的分流标记——有新招式就别往冲锋三态机里塞。
+  boss4: { id: 'boss4', idx: 3, label: '寂光之瞳', atSec: 570,
+    hpMul: 110, r: 40, speed: 48, shape: 21, spikes: false, color: '#6fa8b8', summon: 0, style: 'gaze' },
 };
 /** Boss 的出场顺序（按 atSec 升序）："没死不刷下一个"靠这个顺序推进。 */
 export const BOSS_ORDER = Object.keys(BOSS_TYPES).sort((a, b) => BOSS_TYPES[a].atSec - BOSS_TYPES[b].atSec);
@@ -1304,6 +1330,7 @@ export class ArenaCore {
     //   ⟹ 所以放在这两段之间，别的顺序都不行。
     this._applyClassPerks();
     this.stoneT = 0;        // 磐石：短窗减伤的剩余时间
+    this.playerVulnT = 0;   // 瞳孔过载剩余时间：躲掉 boss4 光束后开启，Boss 受伤 ×1.6
     this.windStacks = 0;    // 猎风：当前层数
     this.windDist = 0;      // 猎风：已走完但还没凑够一层的位移
     this.windIdleT = 0;     // 猎风：站定累计时间
@@ -1713,6 +1740,7 @@ export class ArenaCore {
     // 阶段 8-2 删除：slowZones 的逐帧衰减（容器本身也删了，见构造器注释）。
     if (this.stoneT > 0) this.stoneT = Math.max(0, this.stoneT - dt);
     if (this.invulnT > 0) this.invulnT = Math.max(0, this.invulnT - dt);   // 无敌窗口衰减（复活用，玩法类→随倍速）
+    if (this.playerVulnT > 0) this.playerVulnT = Math.max(0, this.playerVulnT - dt);   // 瞳孔过载衰减
     // 阶段 4-3：连杀窗口衰减 —— 2 秒内没有新的击杀就断连（spec 一-3）。
     // ★ combo 是**纯显示**：断连只清这两个字段，不碰任何伤害/经济/刷怪口径。
     if (this.comboT > 0) {
@@ -2480,7 +2508,11 @@ export class ArenaCore {
         this.critAcc -= every;              // ★ 取模而不是清零：否则小额伤害会让暴击永久累积不到阈值
       }
     }
-    const dmg_eff = crit ? amount_eff * this.critMul : amount_eff;
+    let dmg_eff = crit ? amount_eff * this.critMul : amount_eff;
+    // 内容批：瞳孔过载——躲掉 boss4 光束后开启，窗口内打 gaze 风格的 Boss 伤害 ×1.6
+    if (this.playerVulnT > 0 && isBossKind(e.kind) && BOSS_TYPES[e.kind].style === 'gaze') {
+      dmg_eff *= (1 + ARENA.BOSS4_VULN_MUL);
+    }
     e.hp -= dmg_eff;
     if (this.dmgDealt[src] != null) this.dmgDealt[src] += Math.min(dmg_eff, _before);
     if (hit) this.hits += 1;
@@ -2832,6 +2864,15 @@ export class ArenaCore {
       phase: 'idle', bossT: 0,                       // idle / windup / charge
       aimX: 0, aimY: 0, cvx: 0, cvy: 0,              // 冲锋方向 / 速度
       touchCd: 0,
+      // ── gaze 状态机（只有 boss4 style === 'gaze' 用）──
+      gazePhase: 'idle',   // idle | beamW | beamF | markT | markL
+      gazeT: ARENA.BOSS4_CYCLE,        // 下一拍距离剩余秒
+      gazeAngle: 0,                    // 光束当前方向
+      gazeSlot: 0,                     // 0=光束 / 1=印记 / 2=弹雨 轮转
+      gazeMarks: [],                   // 追猎印记 [{x,y,phase:'track'|'lock',t}]
+      rage: false,                     // 血量 ≤40% 后狂暴，只触发一次
+      beamHitCd: 0,                    // 光束命中冷却，避免每帧扣血
+      beamHit: false,                  // 本次光束是否命中过玩家（决定过载奖励）
     };
     this.enemies.push(e);
     this.bossRef = e;
@@ -2854,6 +2895,32 @@ export class ArenaCore {
    * 攻击选择不消耗 rng（按 cycN 轮转）：Boss1 冲锋/召唤各半；Boss2 每 3 轮才召一次（更频繁地冲）。
    */
   stepBoss(e, ux, uy, d, dt) {
+    // ── gaze 分支：style === 'gaze' 的 Boss（boss4）完全不走冲锋三态机 ──
+    if (BOSS_TYPES[e.kind].style === 'gaze') {
+      // ── 狂暴：血量 ≤40% 触发一次，只缩节拍（不加伤，避免数值墙）──
+      if (!e.rage && e.hp <= e.maxHp * ARENA.BOSS4_RAGE_AT) {
+        e.rage = true;
+        this.milestones.push({ text: `寂光之瞳·狂暴`, t: 0, life: ARENA.MILE_FADE });
+      }
+
+      // ── 持续状态优先：光束前摇/射出、印记跟踪/引爆 都在每帧推进 ──
+      if (e.gazePhase === 'beamW') { return this._stepGazeBeamW(e, ux, uy, d, dt); }
+      if (e.gazePhase === 'beamF') { return this._stepGazeBeamF(e, dt); }
+      if (e.gazePhase === 'markT') { return this._stepGazeMarkTrack(e, ux, uy, d, dt); }
+      if (e.gazePhase === 'markL') { return this._stepGazeMarkLock(e, dt); }
+
+      // ── 只有 idle 时才轮转下一个招式 ──
+      const cycle = e.rage ? ARENA.BOSS4_RAGE_CYCLE : ARENA.BOSS4_CYCLE;
+      e.gazeT -= dt;
+      if (e.gazeT > 1e-9) return;   // 下一拍还没到（留 epsilon 避免浮点误差卡死）
+      e.gazeT = cycle;
+      e.gazeSlot = (e.gazeSlot + 1) % 3;   // 0=光束 / 1=印记 / 2=弹雨 轮转
+      if (e.gazeSlot === 0) this._beginGazeBeam(e);
+      else if (e.gazeSlot === 1) this._beginGazeMark(e);
+      else this._beginRain(3);   // boss4 弹雨只用 40 档，不召唤（summon:0）
+      return;
+    }
+
     if (e.phase === 'windup') {
       e.bossT -= dt;
       if (e.bossT <= 0) {
@@ -2913,6 +2980,105 @@ export class ArenaCore {
       this.spawnEnemy(ARENA.BOSS_SUMMON_R * 0.5, ARENA.BOSS_SUMMON_R, at);
     }
   }
+
+  // ───────── 内容批：boss4「寂光之瞳」gaze 状态机 ─────────
+
+  /** 启动光束招式：前摇跟踪 → 锁死方向 → 射出光带。 */
+  _beginGazeBeam(e) {
+    e.gazePhase = "beamW";
+    e.gazeT = ARENA.BOSS4_GAZE_WIND;   // 总前摇 0.9s：前 0.55s 跟踪 + 后 0.35s 锁死
+    e.gazeTrackLeft = ARENA.BOSS4_GAZE_TRACK;
+    e.gazeAngle = Math.atan2(this.player.y - e.y, this.player.x - e.x);
+    e.beamHitCd = 0;
+    e.beamHit = false;                  // 本次光束是否命中过玩家
+  }
+
+  /** 光束前摇推进：先跟踪玩家，剩余 0.35s 时锁死方向。 */
+  _stepGazeBeamW(e, ux, uy, d, dt) {
+    e.gazeT -= dt;
+    if (e.gazeTrackLeft > 0) {
+      e.gazeTrackLeft -= dt;
+      // 跟踪段：每帧更新方向指向玩家
+      e.gazeAngle = Math.atan2(this.player.y - e.y, this.player.x - e.x);
+    }
+    // 锁死段：方向不再跟随，保持 gazeAngle
+    if (e.gazeT <= 0) {
+      e.gazePhase = "beamF";
+      e.gazeT = ARENA.BOSS4_GAZE_T;   // 光束存在时长 0.32s
+      e.beamDirX = Math.cos(e.gazeAngle);
+      e.beamDirY = Math.sin(e.gazeAngle);
+    }
+  }
+
+  /** 光束射出中：每帧对玩家做射线带命中判定。 */
+  _stepGazeBeamF(e, dt) {
+    e.gazeT -= dt;
+    const px = this.player.x, py = this.player.y;
+    // 玩家中心到射线（e.x,e.y + dir*t）的垂直距离
+    const cross = Math.abs(e.beamDirX * (py - e.y) - e.beamDirY * (px - e.x));
+    const forward = e.beamDirX * (px - e.x) + e.beamDirY * (py - e.y);
+    const hit = cross <= ARENA.BOSS4_GAZE_HALF_W + ARENA.PLAYER_RADIUS && forward >= 0 && forward <= ARENA.BOSS4_GAZE_RANGE;
+    if (hit && e.beamHitCd <= 0) {
+      this.damagePlayer(ARENA.BOSS4_GAZE_DMG, { src: "gaze", kind: "boss4" });
+      e.beamHitCd = 0.2;          // 每 0.2s 最多扣一次，避免每帧叠加
+      e.beamHit = true;           // 标记本次光束命中过玩家
+      this.playerVulnT = 0;        // 被打就不再享受过载奖励
+    }
+    if (e.beamHitCd > 0) e.beamHitCd = Math.max(0, e.beamHitCd - dt);
+    if (e.gazeT <= 0) {
+      e.gazePhase = "idle";
+      e.gazeT = ARENA.BOSS4_CYCLE;   // 重置节拍，避免立即轮转到下一个招式
+      // 躲掉光束（未命中） → 瞳孔过载：窗口内打 Boss 受伤 ×1.6（兑现"躲掉有回报"）
+      if (!e.beamHit) this.playerVulnT = ARENA.BOSS4_VULN_T;
+    }
+  }
+
+  /** 启动追猎印记：先跟玩家走，再锁死引爆。 */
+  _beginGazeMark(e) {
+    const m = {
+      x: this.player.x, y: this.player.y,
+      phase: "track",      // track：跟随玩家 / lock：已锁死等引爆
+      t: ARENA.BOSS4_MARK_WIND,
+    };
+    e.gazeMarks.push(m);
+    e.gazePhase = "markT";
+    e.gazeT = ARENA.BOSS4_MARK_WIND;
+    e.markLockLeft = ARENA.BOSS4_MARK_LOCK;
+  }
+
+  /** 印记跟踪推进：钉在玩家脚下，到点转锁死。 */
+  _stepGazeMarkTrack(e, ux, uy, d, dt) {
+    const m = e.gazeMarks[e.gazeMarks.length - 1];
+    m.x = this.player.x; m.y = this.player.y;
+    m.t -= dt;
+    if (m.t <= 0) {
+      // 跟踪结束 → 锁死：位置固定在最后跟踪到的玩家脚下
+      m.phase = "lock";
+      m.t = ARENA.BOSS4_MARK_LOCK;
+      e.gazePhase = "markL";
+      e.gazeT = ARENA.BOSS4_MARK_LOCK;
+      return;
+    }
+    if (e.gazeMarks.length > ARENA.BOSS4_MARK_MAX) e.gazeMarks.shift();
+    return;
+  }
+
+  /** 印记锁死引爆：半径 44 + 玩家半径 = 56px。 */
+  _stepGazeMarkLock(e, dt) {
+    const m = e.gazeMarks[e.gazeMarks.length - 1];
+    if (!m || m.phase !== "lock") { e.gazePhase = "idle"; return; }
+    m.t -= dt;
+    if (m.t <= 0) {
+      // 引爆判定：玩家在半径内
+      const dx = this.player.x - m.x, dy = this.player.y - m.y;
+      const R2 = (ARENA.BOSS4_MARK_R + ARENA.PLAYER_RADIUS) ** 2;
+      if (dx * dx + dy * dy <= R2) this.damagePlayer(ARENA.BOSS4_MARK_DMG, { src: "mark", kind: "boss4" });
+      e.gazeMarks.pop();
+      e.gazePhase = "idle";
+    }
+    return;
+  }
+
 
   // ───────── 阶段 8：Boss 全屏弹幕雨 ─────────
 
