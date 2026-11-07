@@ -560,3 +560,10 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: 0.04em; }
 }
 
 body{touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;}button:focus,input:focus,select:focus{outline:2px solid var(--mg-r-md,#46c8e6);outline-offset:2px;}
+
+/* 键盘焦点可见性（无障碍） */
+:focus-visible {
+  outline: 2px solid #4a9eff;
+  outline-offset: 2px;
+  border-radius: 2px;
+}

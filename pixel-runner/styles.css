@@ -454,3 +454,10 @@ html, body {
   .res-best { animation: none; }
   #boot .bar i { animation: none; width: 100%; }
 }
+
+/* 键盘焦点可见性（无障碍） */
+:focus-visible {
+  outline: 2px solid #4a9eff;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
