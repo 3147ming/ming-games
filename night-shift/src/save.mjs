@@ -51,10 +51,17 @@ export function saveKeyFor(accountId) {
  *   否则老玩家的档还躺在旧键里、新版本读的是空键 —— 那才是真的"进度没了"。
  *   键名后缀是"存档格式家族"，结构版本才是"这一份里有哪些字段"。
  */
-/* 2026-11 员工培训：结构只加了一个 `state.training` 字段，老档缺它时按"全未培训"。
- * 版本号升到 2 仍然**继续接受 v1 存档**（见 validateSave 的版本区间）——
- * 升版本不是为了把老档判废，而是为了让"这份档里有没有培训数据"可判定。 */
-export const SAVE_VERSION = 2;
+/* 版本演进（每次升版都只加字段，且继续读得动所有老版本）：
+ *   v1 → v2  员工培训：结构只加了 `state.training`，老档缺它时按"全未培训"。
+ *   v2 → v3  常客剧情线：结构只加了 `state.storylines`，老档缺它时按"所有角色未开始"
+ *            （见 applySave 的显式补空）。
+ * 升版本不是为了把老档判废 —— 精确相等会把所有老玩家挡在门外（"更新后进度没了"），
+ * 所以校验用**版本区间**（见 validateSave）；MIN_SAVE_VERSION 保持 1，
+ * v1（无 training）与 v2（无 storylines）都还能读。
+ *
+ * 为什么缺失字段必须显式补空而不是"没写就跳过"：读档发生在两次开局之间，
+ * 跳过会保留上一局内存里的剧情进度，表现为"读老档后剧情凭空还在"。 */
+export const SAVE_VERSION = 3;
 /** 仍可读取的最老版本：低于它的存档结构已经无法安全映射，判为无效。 */
 export const MIN_SAVE_VERSION = 1;
 /**
@@ -119,6 +126,11 @@ export const STATE_FIELDS = [
   'reviews', 'inbox', 'errand', 'errandsDoneTonight', 'remedy', 'badReviewStreak',
   /* 模块 4：二手市场（owned 跨夜保留）/ 常客脸谱（跨夜累积）；thief 每夜临时不存 */
   'secondHand', 'regularFaces',
+  /* 常客剧情线（storylines.mjs）：{ chars: { [charId]: { faceId, stage, nights, bought, rewarded } } }。
+   * 纯数据、无 mesh 引用；它是**跨夜**进度（今天聊一句、明天推进一段），
+   * 所以必须在白名单里，否则读档后剧情会退回第一段、奖励也可能重发。
+   * 老存档没有这一项 → applySave 显式补空（见下方 state 段）。 */
+  'storylines',
   /* P1-7：常备库存目标（只加字段，既有白名单项一个都不许改） */
   'autoOrder',
   /* 任务6 CG：已弹过的 CG id 数组。存了才不会读档后把里程碑 CG 再弹一遍。
@@ -373,6 +385,11 @@ export function applySave(data, ctx = {}) {
      * 残留在内存里的 training，表现为"读老档后技能凭空还在"。
      * 训练数据必须是纯对象；数组/字符串一律视为损坏并按全未培训处理。 */
     if (!isObj(data.state.training)) state.training = {};
+    /* 常客剧情线：v1/v2 老档没有这个字段（v3 才有）。
+     * 同 training 的理由 —— 必须**显式清空**而不是"没写就跳过"：
+     * 跳过会留着上一局内存里的剧情进度，读老档后变成"剧情凭空已推进"。
+     * 结构清洗交给 storylines.ensure()（它每次读写前都会把脏数据修成合法形状）。 */
+    if (!isObj(data.state.storylines)) state.storylines = {};
     // 运行时句柄一律重置：它们带 mesh 引用，读档时必须重新生成
     state.customers = [];
     state.queue = [];

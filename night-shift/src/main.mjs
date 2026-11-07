@@ -93,6 +93,9 @@ import { createPhone } from './phone.mjs';
 import { createMonitor } from './monitor.mjs';
 import { createSecondHand } from './secondhand.mjs';
 import { createRegulars } from './regulars.mjs';
+/* 常客剧情线（storylines.mjs）：4 位常客 × 3 段，靠"多次到店"逐步展开。
+ * 纯逻辑层，只读写 state；对白/奖励的发声统一收口在本文件下面的 onEvent。 */
+import { createStorylines } from './storylines.mjs';
 import { isFestival, THEME_BY_ID } from './themes.mjs';
 import { fmtYuan, fmtYuanSigned, safeText } from './fmt.mjs';
 import {
@@ -158,9 +161,44 @@ const regulars = createRegulars({
   },
 });
 
+/* 常客剧情线（2026-11）：4 位常客各 3 段，靠"多次到店"一段段展开。
+ *
+ * 为什么表现层要**延迟 1.2 秒**播：到店那一刻 customers.spawn 还会弹一条
+ * "⭐ 老周（熟客·夜猫子）来了"，两条同时挤进 toast 队列会互相盖住。
+ * 先让玩家看见"人来了"，再接他说的话，节奏才对。
+ *
+ * 为什么对白用 info 档 + 5.2 秒：剧情是**要读的一句台词**，
+ * 普通提示的 2~3 秒只够扫一眼标题，玩家会永远只看到半句。 */
+const storylines = createStorylines({
+  state,
+  onEvent: (type, p) => {
+    if (type === 'story-stage') {
+      setTimeout(() => {
+        toast(`${p.emoji} ${p.name}：${p.text}`, 'info', 5200);
+        /* 奖励单独一条、再晚 0.7 秒：对白和"到手了什么"混在同一行
+         * 会让台词被金额挤掉（玩家读到的永远是后半句）。 */
+        if (p.rewardText) setTimeout(() => toast(p.rewardText, 'ok', 2800), 700);
+      }, 1200);
+    } else if (type === 'story-done') {
+      setTimeout(() => toast(`📖 ${p.emoji} ${p.name} 的剧情线走完了 · ${p.title}`, 'ok', 3600), 1200);
+    }
+  },
+});
+
 const customers = createCustomers(world.scene, {
-  /* 块7：把本夜抽到的身份透传给 regulars.judge —— 常客首次入场即固化该身份（与忠诚度共存） */
-  regularJudge: (faceId, identityId) => regulars.judge(faceId, identityId),
+  /* 块7：把本夜抽到的身份透传给 regulars.judge —— 常客首次入场即固化该身份（与忠诚度共存）。
+   *
+   * 常客剧情线：每一次"到店"都要过这里 —— 这是整条剧情线**唯一**的推进点。
+   * 放在 regularJudge（而不是 checkout / 每帧）的理由：
+   *   ① 只有这个回调同时拿到 faceId + 名字 + 当前夜，三者缺一无法认人；
+   *   ② 它天然是"人进店了"这个语义，剧情节奏就是"人来了才聊"；
+   *   ③ 它已经被 customers.spawn 覆盖到每一条真实到店路径（含常客与普通顾客），
+   *      不需要在别处再埋一遍、也不会因为漏埋而静默不推进。 */
+  regularJudge: (faceId, identityId) => {
+    const r = regulars.judge(faceId, identityId);
+    if (r) storylines.noteArrival({ faceId, name: r.name, night: state.night });
+    return r;
+  },
   /* P1-7：主题级身份权重（学生夜学生翻倍 / 考试周护士顶上）。
    * 传**回调**而不是快照：主题每夜翻页，顾客生成时必须读当前生效的效果；
    * `themes` 在下方才创建，但回调只在开局 spawn 之后被调用，不存在 TDZ 问题。 */
@@ -532,6 +570,13 @@ setCheckoutDoneHook((info) => {
     toast(`${sku?.emoji ?? ''}${sku?.name ?? '该商品'} 售罄 · 记得补货`, 'info', 2000);
   }
   if (!info.faceId) return;
+  /* 常客剧情线：结账**只记账不推进**（推进点只有"到店"，见 storylines.mjs 的节奏说明）。
+   * 挂在 checkoutDoneHook 而不是"从货架扣货"处：剧情要的是"他本人买走了什么"，
+   * 清仓 / 报废 / 打烊清场都不该算成他买过。组合购买逐件记账 ——
+   * 一单里便当 + 咖啡都买了，两个条件就该同时往前走。 */
+  for (const it of (info.items || [{ skuId: info.skuId, qty: info.qty }])) {
+    storylines.notePurchase(info.faceId, it.skuId, it.qty || 0);
+  }
   const r = regulars.recordPurchase(info.faceId, info.skuId);
   if (r.leveled) {
     const lv = regulars.loyaltyOf(info.faceId);
@@ -3315,6 +3360,9 @@ window.__NS = {
    * customers 也一并暴露：常客"熟"标必须走 customers.spawn() 的真实到店路径，
    * 直接往 state.customers 塞假对象会被 customers.update 的 c.mesh.position 打爆。 */
   monitor, secondhand, regulars, customers,
+  /* 常客剧情线：探针走真实入口（noteArrival / notePurchase）验收触发条件、
+   * 顺序推进与"奖励只发一次"，而不是只看 HUD 上有没有飘字。 */
+  storylines,
   /* 内容批：跨周纪录 / 任务板 / 排行榜数据装配 —— 探针要走真实读写入口验收，
    * 不暴露的话只能看 DOM，验不出"周终图表的数据源到底对不对"。 */
   records, taskboard, leaderboardBoards,

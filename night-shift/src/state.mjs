@@ -264,6 +264,11 @@ function baseState() {
     /** 常客脸谱：{ [faceId]: { nights:[夜号数组去重], name, emoji } }，跨夜保留 */
     regularFaces: {},
 
+    /** 常客剧情线（storylines.mjs）：{ chars: { [charId]: { faceId, stage, nights, bought, rewarded } } }。
+     *  跨夜 / 读档必须保留 —— 剧情就是靠"多来几晚"一段段推进的。
+     *  老存档没有这一项时按"所有角色未开始"处理（save.mjs 显式补 {}，storylines.ensure() 补全结构）。 */
+    storylines: {},
+
     /* P1-7：常备库存 —— { [skuId]: 目标件数 }。每夜开局自动补齐差额（走 delivery.order，
      * 仍 45 秒到货）。**新增存档字段**：只加不改既有白名单（见 save.mjs 的 STATE_FIELDS）。 */
     autoOrder: {},
