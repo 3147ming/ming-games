@@ -7882,6 +7882,15 @@ window.addEventListener('pagehide', function() {
   } catch(e) {}
 });
 
+
+// 全局错误捕获（非破坏性：只记录，不阻断游戏）
+window.addEventListener('error', function(e) {
+  try { console.error('[Game Error]', e.message, e.filename, e.lineno); } catch(err) {}
+});
+window.addEventListener('unhandledrejection', function(e) {
+  try { console.error('[Unhandled Rejection]', e.reason); } catch(err) {}
+});
+
 </script>
 </body>
 </html>
