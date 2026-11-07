@@ -9,6 +9,7 @@
 import {
   TILE, MAP_COLS, MAP_ROWS, WORLD_W, WORLD_H, CELL, MATCH, VIEW3D,
   CONTAINERS, CONTAINER_SPAWN_WEIGHTS, POI, ENEMY_SPAWN_WEIGHTS, CRATE, VEHICLE,
+  MAPS, DEFAULT_MAP_ID,
 } from './config.js';
 import { createRng } from './rng.js';
 
@@ -378,9 +379,15 @@ export function nearestWalkableTile(map, tx, ty) {
 
 /* ============================ 地图生成 ============================ */
 
-function carveRect(grid, cols, x, y, w, h) {
+/**
+ * 在网格上挖一个矩形房间。
+ *
+ * rows 必须由调用方传入而不是读全局 MAP_ROWS：两张地图虽然当前同为 60×45，
+ * 但生成函数不该再把"世界有多大"写死，否则以后换尺寸时 BSP 边界会静默错位。
+ */
+function carveRect(grid, cols, rows, x, y, w, h) {
   for (let ty = y; ty < y + h; ty += 1) {
-    if (ty < 1 || ty >= MAP_ROWS - 1) continue;
+    if (ty < 1 || ty >= rows - 1) continue;
     for (let tx = x; tx < x + w; tx += 1) {
       if (tx < 1 || tx >= cols - 1) continue;
       grid[ty * cols + tx] = CELL.FLOOR;
@@ -388,8 +395,8 @@ function carveRect(grid, cols, x, y, w, h) {
   }
 }
 
-function carveH(grid, cols, x1, x2, y, h) {
-  const y0 = Math.max(1, Math.min(MAP_ROWS - 1 - h, y));
+function carveH(grid, cols, rows, x1, x2, y, h) {
+  const y0 = Math.max(1, Math.min(rows - 1 - h, y));
   const a = Math.max(1, Math.min(x1, x2));
   const b = Math.min(cols - 2, Math.max(x1, x2));
   for (let x = a; x <= b; x += 1) {
@@ -397,26 +404,26 @@ function carveH(grid, cols, x1, x2, y, h) {
   }
 }
 
-function carveV(grid, cols, y1, y2, x, w) {
+function carveV(grid, cols, rows, y1, y2, x, w) {
   const x0 = Math.max(1, Math.min(cols - 1 - w, x));
   const a = Math.max(1, Math.min(y1, y2));
-  const b = Math.min(MAP_ROWS - 2, Math.max(y1, y2));
+  const b = Math.min(rows - 2, Math.max(y1, y2));
   for (let y = a; y <= b; y += 1) {
     for (let dx = 0; dx < w; dx += 1) grid[y * cols + x0 + dx] = CELL.FLOOR;
   }
 }
 
-const MIN_LEAF = 9;
+const DEFAULT_LEAF_MIN = 9;
 /** 出生点校验时使用的碰撞半径，略大于玩家半径以留出余量 */
 const PLAYER_SPAWN_R = 15;
 
-function buildTree(node, rng, depth) {
+function buildTree(node, rng, depth, minLeaf = DEFAULT_LEAF_MIN) {
   if (depth <= 0) {
     node.leaf = true;
     return node;
   }
-  const canH = node.h >= MIN_LEAF * 2;
-  const canV = node.w >= MIN_LEAF * 2;
+  const canH = node.h >= minLeaf * 2;
+  const canV = node.w >= minLeaf * 2;
   if (!canH && !canV) {
     node.leaf = true;
     return node;
@@ -430,16 +437,16 @@ function buildTree(node, rng, depth) {
     horiz = canH;
   }
   if (horiz) {
-    const cut = rng.int(MIN_LEAF, node.h - MIN_LEAF);
+    const cut = rng.int(minLeaf, node.h - minLeaf);
     node.left = { x: node.x, y: node.y, w: node.w, h: cut };
     node.right = { x: node.x, y: node.y + cut, w: node.w, h: node.h - cut };
   } else {
-    const cut = rng.int(MIN_LEAF, node.w - MIN_LEAF);
+    const cut = rng.int(minLeaf, node.w - minLeaf);
     node.left = { x: node.x, y: node.y, w: cut, h: node.h };
     node.right = { x: node.x + cut, y: node.y, w: node.w - cut, h: node.h };
   }
-  buildTree(node.left, rng, depth - 1);
-  buildTree(node.right, rng, depth - 1);
+  buildTree(node.left, rng, depth - 1, minLeaf);
+  buildTree(node.right, rng, depth - 1, minLeaf);
   return node;
 }
 
@@ -453,14 +460,14 @@ function collectLeaves(node, out) {
   return out;
 }
 
-function carveRoom(grid, cols, leaf, rng) {
+function carveRoom(grid, cols, rows, leaf, rng, fillMin = 0.62) {
   const maxW = Math.max(3, leaf.w - 2);
   const maxH = Math.max(3, leaf.h - 2);
-  const w = rng.int(Math.max(3, Math.ceil(maxW * 0.62)), maxW);
-  const h = rng.int(Math.max(3, Math.ceil(maxH * 0.62)), maxH);
+  const w = rng.int(Math.max(3, Math.ceil(maxW * fillMin)), maxW);
+  const h = rng.int(Math.max(3, Math.ceil(maxH * fillMin)), maxH);
   const x = leaf.x + 1 + rng.int(0, Math.max(0, maxW - w));
   const y = leaf.y + 1 + rng.int(0, Math.max(0, maxH - h));
-  carveRect(grid, cols, x, y, w, h);
+  carveRect(grid, cols, rows, x, y, w, h);
   return {
     tx: x, ty: y, tw: w, th: h,
     x: x * TILE, y: y * TILE, w: w * TILE, h: h * TILE,
@@ -468,19 +475,46 @@ function carveRoom(grid, cols, leaf, rng) {
   };
 }
 
-function connectTree(node, grid, cols, rng) {
+function connectTree(node, grid, cols, rows, rng, width = 2) {
   if (node.leaf) return node.room;
-  const a = connectTree(node.left, grid, cols, rng);
-  const b = connectTree(node.right, grid, cols, rng);
-  const w = 2;
+  const a = connectTree(node.left, grid, cols, rows, rng, width);
+  const b = connectTree(node.right, grid, cols, rows, rng, width);
+  const w = width;
   if (rng.chance(0.5)) {
-    carveH(grid, cols, Math.floor(a.cx / TILE), Math.floor(b.cx / TILE), Math.floor(a.cy / TILE), w);
-    carveV(grid, cols, Math.floor(a.cy / TILE), Math.floor(b.cy / TILE), Math.floor(b.cx / TILE), w);
+    carveH(grid, cols, rows, Math.floor(a.cx / TILE), Math.floor(b.cx / TILE), Math.floor(a.cy / TILE), w);
+    carveV(grid, cols, rows, Math.floor(a.cy / TILE), Math.floor(b.cy / TILE), Math.floor(b.cx / TILE), w);
   } else {
-    carveV(grid, cols, Math.floor(a.cy / TILE), Math.floor(b.cy / TILE), Math.floor(a.cx / TILE), w);
-    carveH(grid, cols, Math.floor(a.cx / TILE), Math.floor(b.cx / TILE), Math.floor(b.cy / TILE), w);
+    carveV(grid, cols, rows, Math.floor(a.cy / TILE), Math.floor(b.cy / TILE), Math.floor(a.cx / TILE), w);
+    carveH(grid, cols, rows, Math.floor(a.cx / TILE), Math.floor(b.cx / TILE), Math.floor(b.cy / TILE), w);
   }
   return rng.chance(0.5) ? a : b;
+}
+
+/**
+ * 额外环路：在随机两个房间中心之间再挖一条 L 形通道。
+ *
+ * 为什么窄图需要这个：1 格宽走廊的 BSP 树本质是一棵树，任意一条走廊被打断/
+ * 被箱子挤窄，后面就是一整片死胡同。多挖几条环路把树变成网，
+ * 玩家才有"换一条路绕回去"的选择，窄图也才敢往里走。
+ * 只挖地面、不拆墙以外的东西，因此只会改善连通性，不会制造不可达区域。
+ */
+function carveLoops(grid, cols, rows, rooms, rng, count, width) {
+  for (let i = 0; i < count; i += 1) {
+    const a = rng.pick(rooms);
+    const b = rng.pick(rooms);
+    if (!a || !b || a === b) continue;
+    const ax = Math.floor(a.cx / TILE);
+    const ay = Math.floor(a.cy / TILE);
+    const bx = Math.floor(b.cx / TILE);
+    const by = Math.floor(b.cy / TILE);
+    if (rng.chance(0.5)) {
+      carveH(grid, cols, rows, ax, bx, ay, width);
+      carveV(grid, cols, rows, ay, by, bx, width);
+    } else {
+      carveV(grid, cols, rows, ay, by, ax, width);
+      carveH(grid, cols, rows, ax, bx, by, width);
+    }
+  }
 }
 
 function mergeCells(grid, cols, rows, value) {
@@ -526,25 +560,55 @@ function roomFloorPoint(room, rng, inset = 1.4) {
 }
 
 /**
+ * 解析地图定义：接受地图 id、地图定义对象，或空值（默认旧图）。
+ * 未知 id 直接抛错 —— 地图 id 只可能来自 MAPS 与 UI 常量，静默回落成旧图
+ * 会让"选错图"变成一张看起来正常、实际不是玩家想要的局，更难排查。
+ * @param {string|object|undefined} mapId 地图 id / 定义 / 空
+ * @returns {object} 地图定义
+ */
+function resolveMapDef(mapId) {
+  if (mapId && typeof mapId === 'object') return mapId;
+  const id = mapId == null ? DEFAULT_MAP_ID : String(mapId);
+  const def = MAPS[id];
+  if (!def) throw new Error(`未知地图 id: ${id}`);
+  return def;
+}
+
+/**
  * 生成一张完整地图。
- * @param {number} seed 随机种子（同种子必得同一张图）
+ *
+ * 同一 seed 必得同一张图；第二参数只决定"用哪套地形参数"，不改变随机源。
+ * 旧图（不传 mapId）的随机调用顺序必须与历史版本逐次一致 ——
+ * 新增参数只允许以"值为旧字面量"的方式接入，绝不能多消耗一次 rng。
+ * @param {number} seed 随机种子
+ * @param {string|object} [mapId] 地图 id（'depot' / 'conduit'）或地图定义
  * @returns {object} 地图对象
  */
-export function generateMap(seed) {
+export function generateMap(seed, mapId) {
+  const def = resolveMapDef(mapId);
   const rng = createRng(seed >>> 0 || 1);
-  const cols = MAP_COLS;
-  const rows = MAP_ROWS;
+  const cols = def.cols;
+  const rows = def.rows;
   const grid = new Uint8Array(cols * rows).fill(CELL.WALL);
 
   // 1) BSP 切分 + 房间
   const root = { x: 1, y: 1, w: cols - 2, h: rows - 2 };
-  buildTree(root, rng, 4);
+  buildTree(root, rng, def.bspDepth, def.leafMin);
   const leaves = collectLeaves(root, []);
-  for (const leaf of leaves) leaf.room = carveRoom(grid, cols, leaf, rng);
-  connectTree(root, grid, cols, rng);
+  for (const leaf of leaves) leaf.room = carveRoom(grid, cols, rows, leaf, rng, def.roomFillMin);
+  connectTree(root, grid, cols, rows, rng, def.corridorWidth);
+  // 只对窄图额外加环路：disconnected 的树状走廊在 1 格宽时太容易变成死胡同。
+  if (def.loopCorridors > 0) {
+    carveLoops(grid, cols, rows, leaves.map((l) => l.room), rng, def.loopCorridors, def.corridorWidth);
+  }
   const rooms = leaves.map((l) => l.room);
 
   const map = {
+    // 地图身份：只用于 UI / 结算展示，不参与生成，也不进 golden 哈希。
+    id: def.id,
+    name: def.name,
+    tagline: def.tagline,
+    desc: def.desc,
     seed: seed >>> 0,
     cols, rows, tile: TILE,
     width: WORLD_W, height: WORLD_H,
@@ -565,10 +629,13 @@ export function generateMap(seed) {
 
   // 2) 房间内掩体箱（实心，值 2）
   for (const room of rooms) {
-    const count = rng.int(1, Math.max(1, Math.min(3, Math.floor((room.tw * room.th) / 12))));
+    const count = rng.int(
+      def.crateCountMin,
+      Math.max(def.crateCountMin, Math.min(def.crateCountMax, Math.floor((room.tw * room.th) / def.crateAreaDiv))),
+    );
     for (let i = 0; i < count; i += 1) {
-      const wTiles = rng.chance(0.5) ? 1 : 2;
-      const hTiles = rng.chance(0.7) ? 1 : 2;
+      const wTiles = rng.chance(def.crateWideChance) ? 1 : 2;
+      const hTiles = rng.chance(def.crateTallChance) ? 1 : 2;
       const tx = rng.int(room.tx + 1, Math.max(room.tx + 1, room.tx + room.tw - 1 - wTiles));
       const ty = rng.int(room.ty + 1, Math.max(room.ty + 1, room.ty + room.th - 1 - hTiles));
       let ok = true;
@@ -610,7 +677,7 @@ export function generateMap(seed) {
 
   // 4) 草丛（非实心，提供隐蔽）
   for (const room of rooms) {
-    const count = rng.int(0, 2);
+    const count = rng.int(0, def.bushMax);
     for (let i = 0; i < count; i += 1) {
       const p = roomFloorPoint(room, rng, 0.8);
       if (isSolidAt(map, p.x, p.y)) continue;
@@ -622,7 +689,7 @@ export function generateMap(seed) {
   const typeEntries = Object.entries(CONTAINER_SPAWN_WEIGHTS);
   let cid = 0;
   for (const room of rooms) {
-    const count = Math.max(1, Math.min(3, Math.round((room.tw * room.th) / 13)));
+    const count = Math.max(1, Math.min(def.containerMax, Math.round((room.tw * room.th) / def.containerAreaDiv)));
     for (let i = 0; i < count; i += 1) {
       const type = rng.weighted(typeEntries);
       let placed = null;
@@ -651,7 +718,7 @@ export function generateMap(seed) {
   const picked = [];
   for (const room of candidates) {
     if (picked.length >= MATCH.extractTotal) break;
-    if (picked.some((r) => Math.hypot(r.cx - room.cx, r.cy - room.cy) < 430)) continue;
+    if (picked.some((r) => Math.hypot(r.cx - room.cx, r.cy - room.cy) < def.extractSpread)) continue;
     picked.push(room);
   }
   while (picked.length < MATCH.extractTotal && candidates.length > picked.length) {
@@ -679,11 +746,19 @@ export function generateMap(seed) {
   });
 
   // 7) 玩家出生点：离所有撤离点最远的房间（房间按"离撤离点距离"降序逐个尝试合法落点）
-  const spawnCandidates = rooms.slice().sort((a, b) => {
+  let spawnCandidates = rooms.slice().sort((a, b) => {
     const sa = Math.min(...map.extracts.map((e) => Math.hypot(e.x - a.cx, e.y - a.cy)));
     const sb = Math.min(...map.extracts.map((e) => Math.hypot(e.x - b.cx, e.y - b.cy)));
     return sb - sa;
   });
+  // 窄图（conduit）要求出生点离最近出口足够远：物资多，但"搬回去"本身就是风险。
+  // 只在 def.spawnMinExtractDist > 0 时过滤，旧图（0）完全走原路径、随机序列不变。
+  // 若整张图没有任何房间满足下限（极端种子），保留原排序结果兜底 —— 宁可不满足参数，也不能生成失败。
+  if (def.spawnMinExtractDist > 0) {
+    const distToNearest = (room) => Math.min(...map.extracts.map((e) => Math.hypot(e.x - room.cx, e.y - room.cy)));
+    const far = spawnCandidates.filter((room) => distToNearest(room) >= def.spawnMinExtractDist);
+    if (far.length) spawnCandidates = far;
+  }
   let spawnPoint = null;
   for (const room of spawnCandidates) {
     for (let attempt = 0; attempt < 24 && !spawnPoint; attempt += 1) {
@@ -771,7 +846,7 @@ export function generateMap(seed) {
   }
 
   // 9) 敌人出生点
-  const enemyCount = rng.int(MATCH.enemyCountMin, MATCH.enemyCountMax);
+  const enemyCount = rng.int(def.enemyCountMin, def.enemyCountMax);
   // 敌人不刷在玩家出生房间（按离出生点距离剔除）
   const spawnRooms = rooms.filter(
     (r) => Math.hypot(r.cx - map.playerSpawn.x, r.cy - map.playerSpawn.y) > TILE * 6,
@@ -810,7 +885,7 @@ export function generateMap(seed) {
   // 9.4) 架高平台：在大房间内部挑空地架台 —— 站上去抬高视点，并能越过掩体箱观察。
   // 平台格本身仍是 FLOOR（可通行），高程只是附加属性，因此不影响连通性与碰撞。
   {
-    const wanted = Math.max(0, MATCH.platformCount || 0);
+    const wanted = Math.max(0, def.platformCount || 0);
     const pad = 18;
     // 注意：room.x / room.w 是**世界坐标**（见 roomFloorPoint），需要先换算成格
     const bigRooms = map.rooms
@@ -879,7 +954,8 @@ export function generateMap(seed) {
 
   // 9.6) 机动载具：停在大房间的空地上，用于快速转移。
   // 只要求"周围够空旷能开出去"，不写进 grid（不是静态障碍），碰撞由玩家驾驶时自行处理。
-  if (VEHICLE.enabled) {
+  // def.vehicles 为 false 的图（管廊）完全不消耗这段的随机数，也不生成载具。
+  if (def.vehicles && VEHICLE.enabled) {
     const wanted = Math.round(rng.float(VEHICLE.count[0], VEHICLE.count[1]));
     const clear = VEHICLE.radius + 18; // 预留出一圈能开动的余量
     const rooms = map.rooms.slice().sort(() => rng.float(-1, 1));

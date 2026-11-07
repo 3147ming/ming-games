@@ -185,7 +185,7 @@ export function hudLayout(W, H, touch = false, tasksOpen = false) {
 import {
   ITEMS, WEAPONS, ARMORS, SHOP, RARITY, RARITY_ORDER, CONTAINERS, ENEMY_TYPES, PLAYER, MATCH, AMMO_STACK, SCORING,
   COLORS, MINIMAP, MINIMAP_LAYERS, TILE, WORLD_W, WORLD_H, COMBAT, KILLFEED, VIEW3D,
-  INSURANCE, REP, SHOP_TIER, ITEM_IDS, ITEMS_BY_RARITY, HITDIR,
+  INSURANCE, REP, SHOP_TIER, ITEM_IDS, ITEMS_BY_RARITY, HITDIR, MAPS, DEFAULT_MAP_ID,
 } from './config.js';
 import {
   totalWeight, totalValue, itemCount, weightLimitFor, weightTier,
@@ -249,6 +249,19 @@ function money(n) {
 export function createUI(root, handlers, opts) {
   // 无障碍（P1-7）：系统开启「减少动态效果」时，HUD 关掉闪烁、抖动类动态，只保留信息
   const reducedMotion = !!(opts && opts.reducedMotion);
+
+  // 地图选择卡：地图名 / 一句定位 / 风险收益描述全部来自 config.MAPS，
+  // 不在这里另写一份文案 —— 否则生成参数改了，选图界面上的承诺会悄悄过期。
+  // 卡片用 <button> 而非 <div>：键盘可聚焦、可回车选择，读屏会报成按钮。
+  const mapCards = Object.values(MAPS).map((m) => `
+    <button type="button" class="map-card${m.id === DEFAULT_MAP_ID ? ' active' : ''}"
+      data-action="select-map" data-map="${m.id}"
+      aria-pressed="${m.id === DEFAULT_MAP_ID ? 'true' : 'false'}">
+      <span class="map-card-name">${m.name}</span>
+      <span class="map-card-tag">${m.tagline}</span>
+      <span class="map-card-desc">${m.desc}</span>
+    </button>`).join('');
+
   root.innerHTML = `
     <div class="screen" data-screen="menu">
       <div class="menu">
@@ -290,6 +303,10 @@ export function createUI(root, handlers, opts) {
               <div class="side-block">
                 <h3>负重估算</h3>
                 <div data-role="loadout-weight"></div>
+              </div>
+              <div class="side-block">
+                <h3>作战地图</h3>
+                <div class="map-pick" data-role="map-pick">${mapCards}</div>
               </div>
               <div class="side-block">
                 <h3>地图种子</h3>
@@ -2115,6 +2132,32 @@ export function createUI(root, handlers, opts) {
     },
     setSeed(value) {
       q('seed').value = value ? String(value) : '';
+    },
+    /**
+     * 当前选中的地图 id。
+     *
+     * 以 UI 的 active 卡片为唯一真值源（而不是让 main 再存一份）：
+     * 选图是纯 UI 状态，刷新/重建 UI 后不会出现"main 记着 A、界面高亮 B"的错位。
+     * 找不到 active（旧 DOM / 测试桩）时回落到默认图，保证部署永远有合法地图。
+     * @returns {string} 地图 id
+     */
+    getMap() {
+      const active = root.querySelector('[data-map].active');
+      return (active && active.dataset.map) || DEFAULT_MAP_ID;
+    },
+    /**
+     * 切换选图高亮。只改 class 与 aria-pressed，不触发生成 ——
+     * 生成发生在点"部署"时，避免每次点卡片都白算一张图。
+     * @param {string} id 地图 id
+     * @returns {void}
+     */
+    setMap(id) {
+      const cards = root.querySelectorAll('[data-map]');
+      for (const card of cards) {
+        const on = card.dataset.map === id;
+        card.classList.toggle('active', on);
+        card.setAttribute('aria-pressed', on ? 'true' : 'false');
+      }
     },
     getScreen() {
       return current;

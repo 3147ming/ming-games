@@ -4,7 +4,7 @@
 
 import {
   TILE, MATCH, PLAYER, ITEMS, WEAPONS, ARMORS, CONTAINERS, SHOP, SCORING, POI, AMMO_STACK, COLORS,
-  ENEMY_TYPES, KILLFEED, COMBAT, INSURANCE, REP, SHOP_TIER, ITEM_IDS, VIEW3D,
+  ENEMY_TYPES, KILLFEED, COMBAT, INSURANCE, REP, SHOP_TIER, ITEM_IDS, VIEW3D, MAPS, DEFAULT_MAP_ID,
 } from './config.js';
 import { pickContracts, updateContracts, settleExtractContracts } from './contracts.js';
 import { createRng, randomSeed } from './rng.js';
@@ -674,7 +674,7 @@ function deploy() {
   consumeById(save.stash, 'medkit', lo.medkits || 0);
   consumeById(save.stash, 'bandage', lo.bandages || 0);
   Storage.saveGame(save);
-  startRaid(ui.getSeed(), { insured });
+  startRaid(ui.getSeed(), { insured, mapId: ui.getMap() });
 }
 
 function buy(id) {
@@ -769,7 +769,10 @@ function sellAll() {
 
 function startRaid(seedInput, opts) {
   const seed = seedInput && seedInput > 0 ? (Number(seedInput) >>> 0) : randomSeed();
-  const map = generateMap(seed);
+  // 地图只在"部署"这一刻定格：暂停/恢复不会重新生成，界面选图也不会中途换图。
+  // 缺省回落到旧图，保证控制台 SOUDACHE.startRaid(1) 等既有调试入口行为不变。
+  const mapId = (opts && opts.mapId) || DEFAULT_MAP_ID;
+  const map = generateMap(seed, mapId);
   const rng = createRng((seed ^ 0x9e3779b9) >>> 0);
 
   for (const container of map.containers) {
@@ -812,7 +815,7 @@ function startRaid(seedInput, opts) {
   go('battle');
   audio.ensure();
   if (audio.startAmbient) audio.startAmbient();
-  ui.toast(`已部署 · 种子 ${seed} · ${map.extracts.length} 个撤离点（免费点 2:30 先开，其余剩余 2:00）`);
+  ui.toast(`已部署 · ${map.name} · 种子 ${seed} · ${map.extracts.length} 个撤离点（免费点 2:30 先开，其余剩余 2:00）`);
 }
 
 /**
@@ -1293,6 +1296,19 @@ const ui = createUI(uiRoot, {
     Storage.saveGame(save);
     ui.renderLoadout(save);
     audio.ui(0.4);
+  },
+  // 选图：UI 负责高亮，main 只校验 id 并把结果写回 UI。
+  // 未知 id（旧 DOM / 手改 DOM）不静默吞掉，toast 说明并回落到默认图。
+  'select-map': (data) => {
+    const id = data && data.map;
+    if (!MAPS[id]) {
+      ui.toast('未知地图，已切回默认地图');
+      ui.setMap(DEFAULT_MAP_ID);
+      return;
+    }
+    ui.setMap(id);
+    audio.ui(0.4);
+    ui.toast(`已选择地图 · ${MAPS[id].name} · ${MAPS[id].tagline}`);
   },
   deploy,
   'set-loadout': (data) => {
