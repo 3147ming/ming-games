@@ -38,7 +38,7 @@
       <button aria-label="导出" class="btn btn-primary" id="btn-export" type="button">导出配置模板</button>
       <button class="btn btn-ghost" id="btn-share" type="button" title="生成当前电路的分享链接">分享电路</button>
       <!-- 隐藏的文件选择器，由"导入实验配置"按钮触发 -->
-      <input type="file" id="file-input" accept=".json,application/json" hidden>
+      <input type="file" id="file-input" accept=".json,application/json" hidden
     </div>
   </header>
 
@@ -156,12 +156,12 @@
                         title="显示选项：机箱丝印 / 教学模式">显示</button>
                 <div class="hep-display-menu" id="hep-display-menu" hidden>
                   <label class="hep-opt">
-                    <input type="checkbox" id="hep-opt-silk" checked>
-                    <span>机箱丝印</span>
+                    <input type="checkbox" id="hep-opt-silk" checked
+                    <span autocomplete="off">机箱丝印</span>
                   </label>
                   <label class="hep-opt">
-                    <input type="checkbox" id="hep-opt-teach">
-                    <span>教学模式（全部常驻）</span>
+                    <input type="checkbox" id="hep-opt-teach"
+                    <span autocomplete="off">教学模式（全部常驻）</span>
                   </label>
                   <p aria-live="polite" class="hep-opt-hint">默认：悬停看信息、点击展开单张；Esc 收起</p>
                 </div>
