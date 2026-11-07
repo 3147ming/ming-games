@@ -1018,3 +1018,11 @@ button.big.ghost:hover { background: var(--ink3); border-color: var(--paper-dim)
 .ra-next { font-size: 12px; color: var(--paper-dim); }
 .ra-next b { color: var(--flux); }
 .ra-local { font-size: 9px; color: #5a554e; letter-spacing: .1em; text-align: right; }
+
+/* 触屏设备最小点击区域（无障碍 WCAG 2.5.5） */
+@media (pointer: coarse) {
+  button, [role="button"], a[href], input[type="submit"], input[type="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

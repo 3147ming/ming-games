@@ -1006,3 +1006,11 @@ button.big:hover { background: #2a2419; }
 .sfx-ctl.muted .sfx-range,
 .sfx-ctl.muted .sfx-vol-label,
 .sfx-ctl.muted .sfx-vol-val { opacity: .45; }
+
+/* 触屏设备最小点击区域（无障碍 WCAG 2.5.5） */
+@media (pointer: coarse) {
+  button, [role="button"], a[href], input[type="submit"], input[type="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
