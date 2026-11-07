@@ -42,7 +42,7 @@
              全部音效由 src/sfx.js 用 Web Audio 现合成，不加载任何音频文件。
              滑杆按 input 事件实时生效，不是松手才生效。 -->
         <div id="sfx-ctl" class="sfx-ctl">
-          <button id="btn-sfx" class="sfx-toggle" type="button" aria-label="音效开关" aria-pressed="true">♪</button>
+          <button aria-expanded="false" id="btn-sfx" class="sfx-toggle" type="button" aria-label="音效开关" aria-pressed="true">♪</button>
           <label class="sfx-vol-label" for="sfx-vol">音量</label>
           <input id="sfx-vol" class="sfx-range" type="range" min="0" max="100" step="1" value="100"
                  aria-label="主音量" aria-valuetext="100%" />
