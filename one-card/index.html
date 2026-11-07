@@ -126,6 +126,18 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </div>
 </div>
-<script type="module" src="src/main.js"></script>
+<script type="module" src="src/main.js">
+// 页面可见性变化时暂停/恢复游戏循环（避免后台继续消耗资源）
+document.addEventListener('visibilitychange', function() {
+  if (document.hidden) {
+    // 暂停逻辑：停止 requestAnimationFrame / setInterval
+    if (typeof pauseGame === 'function') pauseGame();
+  } else {
+    // 恢复逻辑：重新开始游戏循环
+    if (typeof resumeGame === 'function') resumeGame();
+  }
+});
+
+</script>
 </body>
 </html>
