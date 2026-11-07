@@ -39,15 +39,15 @@
           <!-- 阶段 4-5：英雄选择（流浪者默认；重壳守卫/疾风行者用灵魂解锁） -->
           <div id="hero-select" class="hero-select"></div>
           <!-- 阶段 6-2：皮肤选择（纯外观；摘要行常驻，点开才展开全部 8 套） -->
-          <button aria-label="选择皮肤" class="pick-h" type="button" data-target="skin-select"><span id="skin-sum">皮肤 · 默认</span><i>▾</i></button>
+          <button aria-expanded="false" aria-label="选择皮肤" class="pick-h" type="button" data-target="skin-select"><span id="skin-sum">皮肤 · 默认</span><i>▾</i></button>
           <div id="skin-select" class="skin-select" hidden></div>
           <!-- 阶段 6-3：装备 / 局外配装（3 槽各选 1 件，纯数值加成） -->
-          <button aria-label="选择装备" class="pick-h" type="button" data-target="loadout-select"><span id="loadout-sum">装备 · 未配置</span><i>▾</i></button>
+          <button aria-expanded="false" aria-label="选择装备" class="pick-h" type="button" data-target="loadout-select"><span id="loadout-sum">装备 · 未配置</span><i>▾</i></button>
           <div id="loadout-select" class="loadout-select" hidden></div>
           <!-- 音频设置（主音量 + 静音）。★ 复用皮肤/装备同一套折叠行（.pick-h + .prog-panel），
                不新开一屏：WILD 只有标题/局内/结算三屏，音量是"随时想拧一下"的东西，
                藏进标题页的折叠区就够，没必要为它多一次切屏、多一条开局路径。 -->
-          <button class="pick-h" type="button" data-target="audio-panel"><span id="audio-sum">音频 · 100%</span><i>▾</i></button>
+          <button aria-expanded="false" class="pick-h" type="button" data-target="audio-panel"><span id="audio-sum">音频 · 100%</span><i>▾</i></button>
           <div id="audio-panel" class="prog-panel audio-panel" hidden>
             <div class="prog-head">音频设置</div>
             <div class="audio-row">
@@ -68,16 +68,16 @@
           <div id="challenge-panel" class="prog-panel"></div>
           <!-- 阶段 7：每日任务（按天重置，完成奖励灵魂）+ 成就（永久里程碑） -->
           <!-- 阶段11·P1-11：三块 36 格面板默认收起（摘要行常驻），否则属性树被顶到几屏之外。 -->
-          <button class="pick-h" type="button" data-target="daily-panel"><span id="daily-sum">每日任务</span><i>▾</i></button>
+          <button aria-expanded="false" class="pick-h" type="button" data-target="daily-panel"><span id="daily-sum">每日任务</span><i>▾</i></button>
           <div id="daily-panel" class="prog-panel" hidden></div>
-          <button class="pick-h" type="button" data-target="ach-panel"><span id="ach-sum">成就</span><i>▾</i></button>
+          <button aria-expanded="false" class="pick-h" type="button" data-target="ach-panel"><span id="ach-sum">成就</span><i>▾</i></button>
           <div id="ach-panel" class="prog-panel" hidden></div>
           <!-- 阶段10·P1-11：图鉴（敌人 / Boss / 进化 / 武器 / 皮肤） -->
-          <button class="pick-h" type="button" data-target="codex-panel"><span id="codex-sum">图鉴</span><i>▾</i></button>
+          <button aria-expanded="false" class="pick-h" type="button" data-target="codex-panel"><span id="codex-sum">图鉴</span><i>▾</i></button>
           <div id="codex-panel" class="prog-panel" hidden></div>
           <div id="meta-panel" class="meta-panel"></div>
           <p id="title-meta" class="title-meta"></p>
-          <a class="more-games" href="https://ming-games.surge.sh" target="_blank" rel="noopener">更多游戏 → ming-games.surge.sh</a>
+          <a aria-expanded="false" class="more-games" href="https://ming-games.surge.sh" target="_blank" rel="noopener">更多游戏 → ming-games.surge.sh</a>
           <!-- ★ 广告位预留：固定高度占位，先占好坑。
                广告是异步插入的，不预留的话它一进来就会把下方内容整片顶走（布局跳动 / CLS）；
                预留后无论广告加载成功、失败还是被拦截，页面高度都不变。 -->
@@ -104,7 +104,7 @@
           <!-- 阶段 4-5：本地账号档案（累计 + 称号 + 距下个称号差额） -->
           <div id="res-account" class="res-account"></div>
           <p id="res-next" class="over-next"></p>
-          <div class="result-actions">
+          <div aria-live="polite" class="result-actions">
             <button id="btn-retry" class="big">再来一局</button>
             <button id="btn-home" class="big ghost">回标题</button>
           </div>

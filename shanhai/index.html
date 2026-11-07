@@ -49,7 +49,7 @@
               <span>敌方行止</span>
             </div>
           </div>
-          <p class="hint" id="hint">点选我方单位，查看墨色可移动格。</p>
+          <p aria-live="polite" class="hint" id="hint">点选我方单位，查看墨色可移动格。</p>
           <ul class="terrain-key" aria-label="地形说明">
             <li><i class="terrain-swatch terrain-swatch--plain"></i>平地</li>
             <li><i class="terrain-swatch terrain-swatch--forest"></i>林地 · 防↑</li>
@@ -120,12 +120,12 @@
   </section>
 
   <section class="screen" id="result-screen" role="dialog" aria-modal="true" aria-labelledby="result-title" hidden>
-    <div class="screen__panel result-panel">
-      <div class="result-stamp" id="result-stamp" aria-hidden="true">捷</div>
-      <p class="eyebrow" id="result-kicker">战事已定</p>
+    <div aria-live="polite" class="screen__panel result-panel">
+      <div aria-live="polite" class="result-stamp" id="result-stamp" aria-hidden="true">捷</div>
+      <p aria-live="polite" class="eyebrow" id="result-kicker">战事已定</p>
       <h2 id="result-title">青丘路开</h2>
       <div class="rating-block">
-        <span class="rating-block__value" id="result-rating">S</span>
+        <span aria-live="polite" class="rating-block__value" id="result-rating">S</span>
         <span class="rating-block__label">评级</span>
       </div>
       <dl class="result-stats">
@@ -133,8 +133,8 @@
         <div><dt>余血</dt><dd id="result-hp">0 / 0</dd></div>
         <div><dt>战果</dt><dd id="result-kills">0</dd></div>
       </dl>
-      <p class="result-note" id="result-note">残卷收拢，山风复静。</p>
-      <div class="result-actions">
+      <p aria-live="polite" class="result-note" id="result-note">残卷收拢，山风复静。</p>
+      <div aria-live="polite" class="result-actions">
         <button class="btn btn--primary" id="result-retry" type="button">再战此卷</button>
         <button class="btn btn--ghost" id="result-next" type="button" hidden>续读下卷</button>
         <button class="btn btn--ghost" id="result-back" type="button">返回择卷</button>

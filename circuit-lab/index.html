@@ -115,7 +115,7 @@
           </div>
           <div class="panel-body panel-fill panel-palette" id="parts-palette"></div>
           <div class="panel-foot">
-            <p class="foot-hint">拖拽到画布，或点选后在画布上落点</p>
+            <p aria-live="polite" class="foot-hint">拖拽到画布，或点选后在画布上落点</p>
           </div>
         </aside>
 
@@ -163,7 +163,7 @@
                     <input type="checkbox" id="hep-opt-teach">
                     <span>教学模式（全部常驻）</span>
                   </label>
-                  <p class="hep-opt-hint">默认：悬停看信息、点击展开单张；Esc 收起</p>
+                  <p aria-live="polite" class="hep-opt-hint">默认：悬停看信息、点击展开单张；Esc 收起</p>
                 </div>
               </div>
             </div>
@@ -171,7 +171,7 @@
           <div class="canvas-stack">
             <div class="canvas-area" id="canvas-area">
               <canvas id="breadboard-canvas" class="bench-canvas" aria-label="2.5D 电路实验台画布"></canvas>
-              <p class="canvas-hint" id="canvas-hint" hidden></p>
+              <p aria-live="polite" class="canvas-hint" id="canvas-hint" hidden></p>
               <div class="canvas-status" id="canvas-status" aria-live="polite"></div>
             </div>
             <div class="canvas-area canvas-area--schem" id="schematic-area" hidden>
@@ -298,12 +298,12 @@
         <div class="keys-row"><dt><kbd>Esc</kbd></dt><dd>取消连线 / 退出连续放置 / 退出导线工具 / 收起面板 / 清选中</dd></div>
         <div class="keys-row"><dt><kbd>F1</kbd></dt><dd>打开这个面板（<kbd>?</kbd> 同效）</dd></div>
       </dl>
-      <p class="keys-hint">滚轮 / 双指捏合可连续缩放；「水平」按钮把面板切成水平正视，再点「旋转」可整页转 90°。</p>
+      <p aria-live="polite" class="keys-hint">滚轮 / 双指捏合可连续缩放；「水平」按钮把面板切成水平正视，再点「旋转」可整页转 90°。</p>
     </div>
   </div>
 
   <!-- 首次进入的快捷键角标：显示 3 次后不再出现（localStorage 计数） -->
-  <div class="keys-tip" id="keys-tip" hidden>
+  <div aria-live="polite" class="keys-tip" id="keys-tip" hidden>
     <span>按 <kbd>F1</kbd> 看快捷键</span>
     <button class="keys-tip-close" type="button" id="keys-tip-close" aria-label="关闭提示">×</button>
   </div>

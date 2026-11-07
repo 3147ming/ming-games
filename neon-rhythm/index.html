@@ -58,7 +58,7 @@
     <div class="hud-top">
       <div class="hud-left">
         <div class="hud-label">SCORE</div>
-        <div class="hud-score" id="hud-score">0</div>
+        <div aria-live="polite" class="hud-score" id="hud-score">0</div>
       </div>
       <div class="hud-mid">
         <div class="hud-combo" id="hud-combo"></div>
@@ -100,10 +100,10 @@
 
 <!-- ============ 结算 ============ -->
 <section id="screen-result" class="screen">
-  <div class="result-card">
+  <div aria-live="polite" class="result-card">
     <div class="res-grade" id="res-grade">S</div>
     <div class="res-title" id="res-title"></div>
-    <div class="res-score" id="res-score">0</div>
+    <div aria-live="polite" class="res-score" id="res-score">0</div>
     <div class="res-badges" id="res-badges"></div>
     <div class="res-rows" id="res-rows"></div>
     <div class="res-new" id="res-new" hidden>★ 新纪录 ★</div>
@@ -115,7 +115,7 @@
 </section>
 
 <!-- ============ 设置 ============ -->
-<div class="overlay" id="overlay-settings" hidden>
+<div aria-busy="true" class="overlay" id="overlay-settings" hidden>
   <div class="panel wide">
     <h2>设置</h2>
 
@@ -124,7 +124,7 @@
       <input type="range" id="set-offset" min="-200" max="200" step="5" value="0">
       <b id="set-offset-val">0 ms</b>
     </label>
-    <p class="hint">按快了就往左拖，按慢了往右拖。±45ms 内算 PERFECT。</p>
+    <p aria-live="polite" class="hint">按快了就往左拖，按慢了往右拖。±45ms 内算 PERFECT。</p>
 
     <label class="row">
       <span>音乐音量</span>
@@ -152,7 +152,7 @@
 </div>
 
 <!-- ============ 操作说明 ============ -->
-<div class="overlay" id="overlay-help" hidden>
+<div aria-busy="true" class="overlay" id="overlay-help" hidden>
   <div class="panel wide">
     <h2>操作</h2>
     <ul class="help-list">

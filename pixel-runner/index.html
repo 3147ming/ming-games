@@ -26,7 +26,7 @@
 
   <div class="best-box">
     <div class="bb-label">最好成绩</div>
-    <div class="bb-score" id="menu-best">0</div>
+    <div aria-live="polite" class="bb-score" id="menu-best">0</div>
     <div class="bb-sub"><span id="menu-best-dist">0 米</span> · <span id="menu-best-coins">0 币</span></div>
   </div>
 
@@ -50,7 +50,7 @@
       <div class="hud-u">米</div>
     </div>
     <div class="hud-cell center">
-      <div class="hud-score" id="hud-score">0</div>
+      <div aria-live="polite" class="hud-score" id="hud-score">0</div>
       <div class="hud-combo" id="hud-combo"></div>
     </div>
     <div class="hud-cell right">
@@ -69,7 +69,7 @@
 </div>
 
 <!-- ============ 暂停 ============ -->
-<div class="overlay" id="overlay-pause" hidden>
+<div aria-busy="true" class="overlay" id="overlay-pause" hidden>
   <div class="panel">
     <h2>暂停</h2>
     <div class="pause-stats" id="pause-stats"></div>
@@ -80,10 +80,10 @@
 </div>
 
 <!-- ============ 结算 ============ -->
-<div class="overlay" id="overlay-result" hidden>
-  <div class="panel result">
+<div aria-busy="true" class="overlay" id="overlay-result" hidden>
+  <div aria-live="polite" class="panel result">
     <div class="res-title" id="res-title">撞上了</div>
-    <div class="res-score" id="res-score">0</div>
+    <div aria-live="polite" class="res-score" id="res-score">0</div>
     <div class="res-best" id="res-best" hidden>★ 新纪录 ★</div>
     <div class="res-grid">
       <div class="res-cell"><span>距离</span><b id="res-dist">0</b></div>
@@ -98,7 +98,7 @@
 </div>
 
 <!-- ============ 成就 ============ -->
-<div class="overlay" id="overlay-achv" hidden>
+<div aria-busy="true" class="overlay" id="overlay-achv" hidden>
   <div class="panel wide">
     <h2>成就 <b id="achv-head">0/12</b></h2>
     <div class="achv-list" id="achv-list"></div>
@@ -107,7 +107,7 @@
 </div>
 
 <!-- ============ 设置 ============ -->
-<div class="overlay" id="overlay-settings" hidden>
+<div aria-busy="true" class="overlay" id="overlay-settings" hidden>
   <div class="panel wide">
     <h2>设置</h2>
 
@@ -152,7 +152,7 @@
 </div>
 
 <!-- ============ 玩法 ============ -->
-<div class="overlay" id="overlay-help" hidden>
+<div aria-busy="true" class="overlay" id="overlay-help" hidden>
   <div class="panel wide">
     <h2>玩法</h2>
     <ul class="help">
