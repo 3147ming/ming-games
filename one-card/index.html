@@ -12,6 +12,7 @@
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="./shared/tokens.css">
 <link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.json">
 </head>
 <body>
 <div id="frame">
@@ -45,7 +46,7 @@
           <button aria-expanded="false" id="btn-sfx" class="sfx-toggle" type="button" aria-label="音效开关" aria-pressed="true">♪</button>
           <label class="sfx-vol-label" for="sfx-vol">音量</label>
           <input id="sfx-vol" class="sfx-range" type="range" min="0" max="100" step="1" value="100"
-                 aria-label="主音量" aria-valuetext="100%" /
+                 aria-label="主音量" aria-valuetext="100%" />
           <span id="sfx-vol-val" class="sfx-vol-val" aria-hidden="true" autocomplete="off">100%</span>
         </div>
         <div class="title-wrap">
@@ -161,6 +162,15 @@ window.addEventListener('unhandledrejection', function(e) {
   try { console.error('[Unhandled Rejection]', e.reason); } catch(err) {}
 });
 
+</script>
+
+<!-- PWA：Service Worker（离线可用 / 可安装到主屏） -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* 离线能力不可用不影响游戏 */ });
+  });
+}
 </script>
 </body>
 </html>

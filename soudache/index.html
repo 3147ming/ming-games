@@ -15,7 +15,8 @@
     <!-- 最大的文件先走：surge 的 keep-alive 只有 5s，若 three.js 排在 20+ 个模块请求之后，
          很可能复用一条已被服务端关掉的空闲连接而被 RST。modulepreload 让它在解析阶段就出发。 -->
     <link rel="modulepreload" href="./vendor/three.module.js" />
-  </head>
+  <link rel="manifest" href="manifest.json">
+</head>
   <body>
     <div id="app" role="main">
       <canvas id="game-canvas"></canvas>
@@ -147,5 +148,14 @@ window.addEventListener('unhandledrejection', function(e) {
 });
 
 </script>
-  </body>
+  
+<!-- PWA：Service Worker（离线可用 / 可安装到主屏） -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* 离线能力不可用不影响游戏 */ });
+  });
+}
+</script>
+</body>
 </html>

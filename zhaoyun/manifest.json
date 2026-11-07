@@ -1,0 +1,35 @@
+{
+  "name": "赵云与阿斗",
+  "short_name": "赵云",
+  "description": "三国塔防，无尽模式与波次排行榜。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "orientation": "portrait",
+  "background_color": "#2b1010",
+  "theme_color": "#6b2a2a",
+  "categories": [
+    "games",
+    "strategy"
+  ],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

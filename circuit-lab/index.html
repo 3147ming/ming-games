@@ -10,6 +10,7 @@
   <!-- 内联图标，避免浏览器额外请求 /favicon.ico 产生 404 噪音 -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e1e28'/%3E%3Crect x='10.5' y='10.5' width='11' height='11' rx='2' fill='none' stroke='%23f2a93b' stroke-width='2'/%3E%3Ccircle cx='14' cy='14' r='1.4' fill='%23f2a93b'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="css/main.css">
+<link rel="manifest" href="manifest.json">
 </head>
 <body>
   <!-- 顶部标题栏：应用名 + 配置导入导出入口 -->
@@ -38,7 +39,7 @@
       <button aria-label="导出" class="btn btn-primary" id="btn-export" type="button">导出配置模板</button>
       <button class="btn btn-ghost" id="btn-share" type="button" title="生成当前电路的分享链接">分享电路</button>
       <!-- 隐藏的文件选择器，由"导入实验配置"按钮触发 -->
-      <input type="file" id="file-input" accept=".json,application/json" hidden
+      <input type="file" id="file-input" accept=".json,application/json" hidden />
     </div>
   </header>
 
@@ -156,11 +157,11 @@
                         title="显示选项：机箱丝印 / 教学模式">显示</button>
                 <div class="hep-display-menu" id="hep-display-menu" hidden>
                   <label class="hep-opt">
-                    <input type="checkbox" id="hep-opt-silk" checked aria-label="丝绸材质"
+                    <input type="checkbox" id="hep-opt-silk" checked aria-label="丝绸材质" />
                     <span autocomplete="off">机箱丝印</span>
                   </label>
                   <label class="hep-opt">
-                    <input type="checkbox" id="hep-opt-teach" aria-label="教学模式"
+                    <input type="checkbox" id="hep-opt-teach" aria-label="教学模式" />
                     <span autocomplete="off">教学模式（全部常驻）</span>
                   </label>
                   <p aria-live="polite" class="hep-opt-hint">默认：悬停看信息、点击展开单张；Esc 收起</p>
@@ -367,6 +368,15 @@ window.addEventListener('unhandledrejection', function(e) {
   try { console.error('[Unhandled Rejection]', e.reason); } catch(err) {}
 });
 
+</script>
+
+<!-- PWA：Service Worker（离线可用 / 可安装到主屏） -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* 离线能力不可用不影响游戏 */ });
+  });
+}
 </script>
 </body>
 </html>

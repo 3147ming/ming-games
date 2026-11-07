@@ -10,6 +10,7 @@
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="./shared/tokens.css">
 <link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.json">
 </head>
 <body>
 <div id="frame">
@@ -20,7 +21,7 @@
         <div class="title-wrap">
           <!-- 阶段 4-3 目标感：左上角玩家名 + 称号（本地存档） -->
           <div id="acct-badge" class="acct-badge">
-            <input id="acct-name" class="acct-name" maxlength="16" placeholder="点此起名" aria-label="玩家名称" /
+            <input id="acct-name" class="acct-name" maxlength="16" placeholder="点此起名" aria-label="玩家名称" />
             <span id="acct-title" class="acct-title">初入荒野</span>
             <span class="acct-local">本地存档</span>
           </div>
@@ -53,7 +54,7 @@
             <div class="audio-row">
               <label class="audio-label" for="audio-vol">主音量</label>
               <input id="audio-vol" class="audio-range" type="range" min="0" max="100" step="1" value="100"
-                     aria-label="主音量" aria-valuetext="100%" /
+                     aria-label="主音量" aria-valuetext="100%" />
               <span id="audio-vol-val" class="audio-val" autocomplete="off">100%</span>
             </div>
             <button id="audio-mute" class="audio-mute" type="button" aria-pressed="false">
@@ -149,6 +150,15 @@ window.addEventListener('unhandledrejection', function(e) {
   try { console.error('[Unhandled Rejection]', e.reason); } catch(err) {}
 });
 
+</script>
+
+<!-- PWA：Service Worker（离线可用 / 可安装到主屏） -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* 离线能力不可用不影响游戏 */ });
+  });
+}
 </script>
 </body>
 </html>

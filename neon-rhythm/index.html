@@ -9,6 +9,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070310'/%3E%3Cpath d='M10 22V10l12 12V10' stroke='%2300e5ff' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="../shared/tokens.css">
 <link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.json">
 </head>
 <body>
 
@@ -121,14 +122,14 @@
 
     <label class="row">
       <span>判定偏移</span>
-      <input type="range" id="set-offset" min="-200" max="200" step="5" value="0" aria-label="音频偏移（毫秒）"
+      <input type="range" id="set-offset" min="-200" max="200" step="5" value="0" aria-label="音频偏移（毫秒）" />
       <b id="set-offset-val" autocomplete="off">0 ms</b>
     </label>
     <p aria-live="polite" class="hint">按快了就往左拖，按慢了往右拖。±45ms 内算 PERFECT。</p>
 
     <label class="row">
       <span>音乐音量</span>
-      <input type="range" id="set-volume" min="0" max="100" step="5" value="80" aria-label="音量"
+      <input type="range" id="set-volume" min="0" max="100" step="5" value="80" aria-label="音量" />
       <b id="set-volume-val" autocomplete="off">80%</b>
     </label>
 
@@ -201,6 +202,15 @@ window.addEventListener('unhandledrejection', function(e) {
   try { console.error('[Unhandled Rejection]', e.reason); } catch(err) {}
 });
 
+</script>
+
+<!-- PWA：Service Worker（离线可用 / 可安装到主屏） -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* 离线能力不可用不影响游戏 */ });
+  });
+}
 </script>
 </body>
 </html>

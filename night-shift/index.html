@@ -20,6 +20,7 @@
   }
 }
 </script>
+<link rel="manifest" href="manifest.json">
 </head>
 <body>
 <div id="app" role="main">
@@ -65,6 +66,15 @@ window.addEventListener('unhandledrejection', function(e) {
   try { console.error('[Unhandled Rejection]', e.reason); } catch(err) {}
 });
 
+</script>
+
+<!-- PWA：Service Worker（离线可用 / 可安装到主屏） -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* 离线能力不可用不影响游戏 */ });
+  });
+}
 </script>
 </body>
 </html>
