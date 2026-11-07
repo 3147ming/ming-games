@@ -34,8 +34,8 @@
               aria-pressed="false" title="切换浅色投影模式 / 深色工作模式">浅色</button>
       <button class="btn btn-ghost" id="btn-keys" type="button"
               aria-haspopup="dialog" title="快捷键一览 ( F1 / ? )">快捷键</button>
-      <button class="btn btn-ghost" id="btn-import" type="button">导入实验配置</button>
-      <button class="btn btn-primary" id="btn-export" type="button">导出配置模板</button>
+      <button aria-label="导入" class="btn btn-ghost" id="btn-import" type="button">导入实验配置</button>
+      <button aria-label="导出" class="btn btn-primary" id="btn-export" type="button">导出配置模板</button>
       <button class="btn btn-ghost" id="btn-share" type="button" title="生成当前电路的分享链接">分享电路</button>
       <!-- 隐藏的文件选择器，由"导入实验配置"按钮触发 -->
       <input type="file" id="file-input" accept=".json,application/json" hidden>
@@ -84,7 +84,7 @@
     <!-- 视图 B：实验工作区（三栏：元件库 / 2.5D 画布 / 信息面板） -->
     <section class="view view-workspace" id="view-workspace" aria-labelledby="workspace-title" hidden>
       <div class="ws-head">
-        <button class="btn btn-quiet btn-back" id="btn-back" type="button">← 实验列表</button>
+        <button aria-label="返回" class="btn btn-quiet btn-back" id="btn-back" type="button">← 实验列表</button>
         <div class="ws-head-main">
           <p class="eyebrow">WORKBENCH</p>
           <h2 class="view-title" id="workspace-title">未选择实验</h2>

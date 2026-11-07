@@ -53,8 +53,8 @@
           <p class="game-sub">ONE&nbsp;CARD&nbsp;PER&nbsp;LIFE</p>
           <p class="game-line">你是死在第九层的无名者。<br>每一世，你只带回一张牌。</p>
           <div class="title-actions">
-            <button id="btn-new-run" class="big">开始一世</button>
-            <button id="btn-codex">牌谱</button>
+            <button aria-label="开始新一局" id="btn-new-run" class="big">开始一世</button>
+            <button aria-label="查看图鉴" id="btn-codex">牌谱</button>
           </div>
           <p id="title-stats" class="title-stats"></p>
         </div>
@@ -73,7 +73,7 @@
           <div id="pile-draw" class="pile">抽牌<span class="pile-n">0</span></div>
           <div id="energy" class="energy"><span id="energy-now">3</span><i>/</i><span id="energy-max">3</span></div>
           <div id="block" class="block-badge"><span id="block-now">0</span><i>防</i></div>
-          <button id="btn-end-turn" class="end-turn">结束回合</button>
+          <button aria-label="结束回合" id="btn-end-turn" class="end-turn">结束回合</button>
           <div id="pile-discard" class="pile">弃牌<span class="pile-n">0</span></div>
         </div>
         <!-- 玩家剪影 zone（阶段 5 / T1）：与敌人对称，置于战斗区下半屏。

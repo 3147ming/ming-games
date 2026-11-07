@@ -31,7 +31,7 @@
                全排在按钮之前），第一次来的人找不到开始键。现在按钮区上移到标题正下方并吸顶，
                皮肤/装备两块默认折叠成一行摘要，点开才展开。 -->
           <div class="title-actions">
-            <button id="btn-start" class="big">进入荒野</button>
+            <button aria-label="开始游戏" id="btn-start" class="big">进入荒野</button>
             <!-- 游戏总入口 · 大厅（2026-10-01 用户裁决：主按钮区放显眼入口，
                  页脚的 .more-games 小字链接保留但不再是唯一入口） -->
             <a class="big hub-btn" href="https://ming-games.surge.sh" target="_blank" rel="noopener">游戏大厅</a>
@@ -39,10 +39,10 @@
           <!-- 阶段 4-5：英雄选择（流浪者默认；重壳守卫/疾风行者用灵魂解锁） -->
           <div id="hero-select" class="hero-select"></div>
           <!-- 阶段 6-2：皮肤选择（纯外观；摘要行常驻，点开才展开全部 8 套） -->
-          <button class="pick-h" type="button" data-target="skin-select"><span id="skin-sum">皮肤 · 默认</span><i>▾</i></button>
+          <button aria-label="选择皮肤" class="pick-h" type="button" data-target="skin-select"><span id="skin-sum">皮肤 · 默认</span><i>▾</i></button>
           <div id="skin-select" class="skin-select" hidden></div>
           <!-- 阶段 6-3：装备 / 局外配装（3 槽各选 1 件，纯数值加成） -->
-          <button class="pick-h" type="button" data-target="loadout-select"><span id="loadout-sum">装备 · 未配置</span><i>▾</i></button>
+          <button aria-label="选择装备" class="pick-h" type="button" data-target="loadout-select"><span id="loadout-sum">装备 · 未配置</span><i>▾</i></button>
           <div id="loadout-select" class="loadout-select" hidden></div>
           <!-- 音频设置（主音量 + 静音）。★ 复用皮肤/装备同一套折叠行（.pick-h + .prog-panel），
                不新开一屏：WILD 只有标题/局内/结算三屏，音量是"随时想拧一下"的东西，
