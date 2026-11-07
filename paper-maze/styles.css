@@ -558,3 +558,5 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: 0.04em; }
   }
   .boot-lamp::before, .boot-lamp > i, .ending-glyph { animation: none !important; }
 }
+
+body{touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;}

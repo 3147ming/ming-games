@@ -3666,3 +3666,5 @@ body[data-theme="light"] .keys-tip {
 .inst-la-sm-canvas { height: 180px; margin-bottom: 4px; }
 
 
+
+body{overscroll-behavior:none;-webkit-tap-highlight-color:transparent;}

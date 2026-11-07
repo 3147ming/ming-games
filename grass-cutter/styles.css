@@ -406,3 +406,5 @@ body.touch .audio-ui {
   .au-range { width: 84px; }
   .au-val { min-width: 3em; }
 }
+
+body{overscroll-behavior:none;}

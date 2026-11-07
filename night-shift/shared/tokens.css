@@ -141,3 +141,4 @@
   min-width: 100%;
   min-height: 100%;
 }
+body{touch-action:manipulation;user-select:none;-webkit-user-select:none;overscroll-behavior:none;-webkit-tap-highlight-color:transparent;}
