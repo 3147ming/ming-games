@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <link rel="stylesheet" href="shared/tokens.css">
@@ -5641,7 +5641,7 @@ function codeEditor(container,ta){
     replaceRange(st-cut,st,'',st-cut);
   }
   ta.addEventListener('input',paint);
-  ta.addEventListener('scroll',syncScroll);
+  ta.addEventListener('scroll',syncScroll,{passive:true});
   ta.addEventListener('keydown',function(e){
     if(!e)return;
     var st=ta.selectionStart,en=ta.selectionEnd;
