@@ -408,3 +408,13 @@ body.touch .audio-ui {
 }
 
 body{overscroll-behavior:none;}
+
+/* 尊重系统「减少动态」设置：关闭装饰性动画与过渡 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
