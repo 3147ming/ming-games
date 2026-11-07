@@ -13,7 +13,7 @@
 </head>
 <body>
   <div class="app" id="app">
-    <header class="masthead">
+    <header class="masthead" role="banner">
       <div class="brand">
         <span class="brand__seal" aria-hidden="true">山海</span>
         <div class="brand__text">
@@ -21,13 +21,13 @@
           <p id="stage-caption">残卷战棋 · 未择卷</p>
         </div>
       </div>
-      <nav class="masthead__actions" aria-label="对局操作">
+      <nav class="masthead__actions" aria-label="对局操作" role="navigation">
         <button aria-label="选择关卡" class="btn btn--ghost btn--small" id="pick-stage" type="button">择卷</button>
         <button aria-label="重开关卡" class="btn btn--ghost btn--small" id="restart-stage" type="button" disabled>重开</button>
       </nav>
     </header>
 
-    <main class="layout">
+    <main class="layout" role="main">
       <section class="battle" aria-label="战场">
         <div class="battle__meta">
           <div class="stage-meta">
@@ -96,7 +96,7 @@
       </aside>
     </main>
 
-    <footer class="footline">
+    <footer class="footline" role="contentinfo">
       <span>纯静态 · 零依赖</span>
       <span id="save-status">存档 v1 · 本地</span>
     </footer>

@@ -14,7 +14,7 @@
 <body>
 <div id="app" class="app">
 
-  <header class="hud">
+  <header class="hud" role="banner">
     <div class="hud-left">
       <span class="room-glyph" id="roomGlyph" aria-hidden="true">囚</span>
       <span class="room-name" id="roomName">折纸囚室</span>
@@ -34,7 +34,7 @@
 
   <div class="meter" role="img" aria-label="收集度"><i id="meterFill"></i></div>
 
-  <main class="stage" id="stage">
+  <main class="stage" id="stage" role="main">
     <p class="desc" id="desc"></p>
     <h2 class="sec-title">可查看</h2>
     <div class="hotspots" id="hotspots"></div>
@@ -42,7 +42,7 @@
     <div class="exits" id="exits"></div>
   </main>
 
-  <nav class="tabs" id="tabs" aria-label="面板">
+  <nav class="tabs" id="tabs" aria-label="面板" role="navigation">
     <button aria-label="背包" type="button" data-tab="bag">背包</button>
     <button aria-label="日志" type="button" data-tab="journal">日记</button>
     <button aria-label="图鉴" type="button" data-tab="codex">图鉴</button>
