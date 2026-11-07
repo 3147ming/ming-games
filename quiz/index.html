@@ -375,6 +375,16 @@ select:focus{outline:none;border-color:#c3b0ff;box-shadow:0 0 0 3px rgba(124,92,
   border-radius: 2px;
 }
 </style>
+
+<style>
+/* 触屏设备最小点击区域（无障碍 WCAG 2.5.5） */
+@media (pointer: coarse) {
+  button, [role="button"], a[href], input[type="submit"], input[type="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+</style>
 </head>
 <body>
 <header id="topbar" role="banner">

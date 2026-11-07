@@ -868,6 +868,16 @@ body.ingame .combo-pop{top:calc(var(--hdh,64px) + 30px)}
   border-radius: 2px;
 }
 </style>
+
+<style>
+/* 触屏设备最小点击区域（无障碍 WCAG 2.5.5） */
+@media (pointer: coarse) {
+  button, [role="button"], a[href], input[type="submit"], input[type="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+</style>
 </head>
 <body data-page-node-id="ylKBDl45wyZonEnmr1Awzz">
 <div id="hd" role="banner" data-page-node-id="2qgppdrFjbIp6I2v6wb9NA">
