@@ -49,6 +49,99 @@ export const MATCH = {
   platformCount: 3, // 每局架高平台数量上限（占高地：抬高视点 + 越过掩体观察）
 };
 
+/* ============================== 地图定义 ============================== */
+
+/**
+ * 地图定义表：两张图共用同一套网格尺寸与渲染管线，差异全部落在**生成参数**上。
+ *
+ * 为什么不做成两张不同尺寸的地图：
+ * 渲染（天花板 / 横梁 / 阴影范围）、小地图缩放、雾与光照都按 WORLD_W × WORLD_H 写死，
+ * 换尺寸要同时改 scene3d / level3d / ui 三处，收益只是"看起来不一样"，
+ * 却会把风险引到已经稳定的渲染链路上。这里选择"同尺寸、不同肠子"：
+ * 房间切分深度、房间填充率、走廊宽度、掩体/物资密度、平台与载具、撤离距离。
+ *
+ * 风险收益如何区分：
+ * - depot  ：开阔大房间 + 稀疏掩体 = 长视距、远程压制，暴露就挨枪；但撤离点近、有载具。
+ *             高风险（枪线多）换中等收益（物资正常、撤退快）。
+ * - conduit：小房间 + 1 格宽回廊 + 无载具 = 视野短、拐角多，交火距离被强行压缩；
+ *             物资密度显著更高，但出生点被刻意推到离出口很远的位置，
+ *             收益高、风险从"对枪"转成"装满之后怎么活着走回去"。
+ *
+ * ⚠ 硬约束：depot 的每一项参数都必须保持原 generateMap 的字面量原值，
+ * 否则旧地图同种子结果会变；tests/map2.test.mjs 用 golden 哈希锁死这一点。
+ */
+export const MAPS = {
+  depot: {
+    id: 'depot',
+    name: '灰港库区',
+    tagline: '开阔 · 远程压制 · 撤离近',
+    desc: '开阔库区：房间大、掩体稀、视距长，露头就要吃远程火力；好在出口不远，还有载具代步。适合枪法硬、敢抢高价值房区的人。',
+    cols: MAP_COLS,
+    rows: MAP_ROWS,
+    // --- 房间切分 ---
+    bspDepth: 4, // 4 层切分 ≈ 12~15 个房间，单间够大，形成长枪线
+    leafMin: 9, // 叶子最小 9 格：保证房间有 5 格以上的净宽
+    roomFillMin: 0.62, // 房间至少占叶子的 62%：大房间、墙少，视野通透
+    corridorWidth: 2, // 2 格宽走廊：双向都能绕，交火有回旋余地
+    loopCorridors: 0, // 开阔图不额外加环路：绕后靠房间本身的空间
+    // --- 掩体 / 植被 ---
+    crateCountMin: 1,
+    crateCountMax: 3,
+    crateAreaDiv: 12,
+    crateWideChance: 0.5, // 一半是 2 格宽的箱子：更耐打、能当半身掩体
+    crateTallChance: 0.7,
+    bushMax: 2, // 库区角落的杂草：贴边潜行的选择
+    // --- 物资 ---
+    containerAreaDiv: 13, // 每 13 格面积约 1 个容器（原值）
+    containerMax: 3,
+    // --- 撤离 / 出生 ---
+    extractSpread: 430, // 两个撤离点至少隔 430：别让"选哪个出口"失去意义
+    spawnMinExtractDist: 0, // 旧图不额外推远出生点
+    // --- 立体 / 机动 ---
+    platformCount: MATCH.platformCount, // 3 处架高平台：高地视野是本图的核心博弈
+    vehicles: true,
+    // --- 敌人（沿用既有数量区间，避免动战斗平衡）---
+    enemyCountMin: MATCH.enemyCountMin,
+    enemyCountMax: MATCH.enemyCountMax,
+  },
+  conduit: {
+    id: 'conduit',
+    name: '锈脉管廊',
+    tagline: '狭窄 · 物资密集 · 撤离远',
+    desc: '地下管廊：房间小、回廊窄、拐角多，交火被迫贴脸；物资密度全图最高，但出口远、没有载具，装满之后怎么走回去才是真难点。',
+    cols: MAP_COLS,
+    rows: MAP_ROWS,
+    // --- 房间切分 ---
+    bspDepth: 5, // 更深一层 → 房间数量约为旧图两倍，形成"蜂窝"式小隔间
+    leafMin: 7, // 叶子最小 7 格：房间 3~8 格，刚好够一场近身遭遇
+    roomFillMin: 0.72, // 小房间填得更满：把空间挤给走廊，逼出"门框对枪"
+    corridorWidth: 1, // 1 格宽：只能单列通过，无法并肩，烟/雷/卡点价值陡增
+    loopCorridors: 10, // 额外 10 条环路：窄图最怕死胡同，多出口才敢往里走
+    // --- 掩体 / 植被 ---
+    crateCountMin: 1,
+    crateCountMax: 4, // 小房间里也堆更多箱子：打断长视线，制造近距离绕角
+    crateAreaDiv: 8, // 每 8 格就尝试 1 个箱子（旧图是 12）
+    crateWideChance: 0.3, // 以 1×1 立柱为主：窄空间里大箱子会把路堵死
+    crateTallChance: 0.35,
+    bushMax: 0, // 地下管廊没有植被：隐蔽只靠墙角和箱子
+    // --- 物资 ---
+    containerAreaDiv: 11, // 每 11 格约 1 个容器（旧图 13），单间上限 3：总量约旧图 1.6 倍
+    containerMax: 3,
+    // --- 撤离 / 出生 ---
+    extractSpread: 560, // 两个出口拉得更开：不要出现"顺手就能撤"的局
+    spawnMinExtractDist: 850, // 出生点优先选离最近出口 ≥850（约 21 格）的房：收益要背回去
+    // --- 立体 / 机动 ---
+    platformCount: 1, // 只留一处检修高台：立体优势稀薄，主要博弈在地面拐角
+    vehicles: false, // 管廊开不进车：撤离只能靠腿，进一步放大"满载后长距离转移"的风险
+    // --- 敌人（与旧图同区间：不靠改数值做难度）---
+    enemyCountMin: MATCH.enemyCountMin,
+    enemyCountMax: MATCH.enemyCountMax,
+  },
+};
+
+/** 默认地图（旧图）。UI 与 startRaid 都以此为缺省，保证旧行为不变。 */
+export const DEFAULT_MAP_ID = 'depot';
+
 /* ============================== 玩家 ============================== */
 
 export const PLAYER = {
