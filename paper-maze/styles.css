@@ -559,4 +559,4 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: 0.04em; }
   .boot-lamp::before, .boot-lamp > i, .ending-glyph { animation: none !important; }
 }
 
-body{touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;}
+body{touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;}button:focus,input:focus,select:focus{outline:2px solid var(--mg-r-md,#46c8e6);outline-offset:2px;}

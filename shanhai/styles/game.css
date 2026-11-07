@@ -1580,3 +1580,4 @@ ul, ol {
     transition-duration: 1ms;
   }
 }
+body{user-select:none;-webkit-user-select:none;overscroll-behavior:none;}
