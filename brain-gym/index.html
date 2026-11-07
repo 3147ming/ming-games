@@ -4374,7 +4374,7 @@ var BGM=(function(){
     try{_setTimeout(function(){if(btn.__armed){btn.__armed=false;btn.textContent=btn.__txt}},3500)}catch(e){}}
   function openPanel(){var pp=overlayPanel('🎵 背景音乐');var p=pp.p,ov=pp.ov;btns=[];
     p.appendChild(h('div','hint','全站背景音乐：切页切游戏不中断，选择与音量自动记住'));
-    var row=h('div','tm-row');row.innerHTML='<span>🎵 背景音量<small style="opacity:.7">（受主音量控制）</small></span><input id="bgmVol" type="range" min="0" max="100" value="'+Math.round(getVol()*100)+'"';p.appendChild(row);
+    var row=h('div','tm-row');row.innerHTML='<span>🎵 背景音量<small style="opacity:.7">（受主音量控制）</small></span><input id="bgmVol" type="range" min="0" max="100" aria-label="背景音量" value="'+Math.round(getVol()*100)+'"';p.appendChild(row);
     p.appendChild(h('div','tm-label','内置白噪音 / 轻音乐（实时合成，无需联网）'));
     var g1=h('div','ambgrid');p.appendChild(g1);
     p.appendChild(h('div','tm-label','轻音乐曲（需把音频文件放进 audio/ 目录）'));
