@@ -23,6 +23,8 @@ const OUT = path.resolve(ROOT, arg('out', 'covers'));
 const W = 1280;
 const H = 800;
 const QUALITY = 0.88;
+/* 豆包/内置模型生成图底部会叠加水印带，默认裁 5%；若水印位置不同可用 --trim 调。 */
+const TRIM = (() => { const v = Number(arg('trim', '0.05')); return Number.isFinite(v) && v >= 0 && v < 0.3 ? v : 0.05; })();
 const CDP_PORT = 9334;
 const PROFILE = path.join(os.tmpdir(), 'mg-covers-cdp-' + Date.now());
 /* ID 顺序从封面提示词配置派生，保证 gen-seedream.mjs 与压缩链路始终成套；
@@ -52,10 +54,30 @@ async function waitHttp(url, tries = 80) {
 
 let edge = null;
 try {
-  const files = fs.readdirSync(RAW).filter((f) => /\.png$/i.test(f)).sort();
-  if (files.length !== IDS.length) {
-    console.error(`[covers] 期望 ${IDS.length} 张原图，实际 ${files.length} 张：${files.join(', ')}`);
-    process.exit(2);
+  /* 两种映射模式：
+     1) 文件名含游戏 id（推荐，豆包回传图按 id 命名）→ 精确对应，允许分批只处理几张；
+     2) 无 id 的内置模型产物 → 回退到按时间戳排序映射，数量必须齐全。 */
+  const all = fs.readdirSync(RAW).filter((f) => /\.(png|jpe?g|webp)$/i.test(f));
+  const norm = (s) => s.toLowerCase().replace(/\.(png|jpe?g|webp)$/i, '').replace(/[-_\s]/g, '');
+  const idKeys = IDS.map((id) => [norm(id), id]);
+  const matched = all.map((f) => {
+    const key = norm(f);
+    const hit = idKeys.find(([k]) => key === k || key.includes(k));
+    return { file: f, id: hit ? hit[1] : null };
+  });
+  let jobs;
+  if (all.length > 0 && matched.every((m) => m.id)) {
+    jobs = matched.sort((a, b) => IDS.indexOf(a.id) - IDS.indexOf(b.id));
+    console.log(`[covers] 按文件名匹配 id：${jobs.map((j) => j.id).join(', ')}（${jobs.length}/${IDS.length} 张）`);
+  } else {
+    const files = all.sort();
+    if (files.length !== IDS.length) {
+      console.error(`[covers] 期望 ${IDS.length} 张原图，实际 ${files.length} 张：${files.join(', ')}`);
+      console.error('[covers] 提示：把原图命名为 future-light.png / warehouse-strike.png / lab-sandbox.png / enlisten.png 可精确对应，且允许分批只处理其中几张。');
+      process.exit(2);
+    }
+    jobs = files.map((f, i) => ({ file: f, id: IDS[i] }));
+    console.log('[covers] 未识别到 id 文件名，按时间戳顺序映射（旧链路）');
   }
   fs.mkdirSync(OUT, { recursive: true });
 
@@ -90,13 +112,14 @@ try {
     setTimeout(() => { if (pend.has(i)) { pend.delete(i); reject(new Error('timeout ' + method)); } }, 60000);
   });
 
-  for (let i = 0; i < files.length; i++) {
-    const src = path.join(RAW, files[i]);
+  for (const job of jobs) {
+    const src = path.join(RAW, job.file);
     const rawBuf = fs.readFileSync(src);
     const b64 = rawBuf.toString('base64');
+    const mime = /\.jpe?g$/i.test(job.file) ? 'image/jpeg' : /\.webp$/i.test(job.file) ? 'image/webp' : 'image/png';
     const expr = `(async () => {
       const img = new Image();
-      img.src = 'data:image/png;base64,${b64}';
+      img.src = 'data:${mime};base64,${b64}';
       await img.decode();
       const c = document.createElement('canvas');
       c.width = ${W}; c.height = ${H};
@@ -105,7 +128,7 @@ try {
       x.imageSmoothingQuality = 'high';
       // 生成模型会在右下角强制叠加「AI生成」水印，源图底部裁掉 5% 可完整去除，
       // 且这一带只有地面/投影，不影响主体构图。
-      const trim = Math.round(img.height * 0.05);
+      const trim = Math.round(img.height * ${TRIM});
       const sh = img.height - trim;
       const s = Math.max(${W} / img.width, ${H} / sh);
       const w = img.width * s, h = sh * s;
@@ -113,17 +136,17 @@ try {
       return c.toDataURL('image/webp', ${QUALITY});
     })()`;
     const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
-    if (r.exceptionDetails) throw new Error(IDS[i] + ': ' + JSON.stringify(r.exceptionDetails).slice(0, 300));
+    if (r.exceptionDetails) throw new Error(job.id + ': ' + JSON.stringify(r.exceptionDetails).slice(0, 300));
     const url = r.result && r.result.value;
-    if (!url || !url.startsWith('data:image/webp')) throw new Error(IDS[i] + ': 浏览器未返回 webp');
+    if (!url || !url.startsWith('data:image/webp')) throw new Error(job.id + ': 浏览器未返回 webp');
     const outBuf = Buffer.from(url.slice(url.indexOf(',') + 1), 'base64');
-    const dest = path.join(OUT, IDS[i] + '.webp');
+    const dest = path.join(OUT, job.id + '.webp');
     fs.writeFileSync(dest, outBuf);
     const ratio = ((1 - outBuf.length / rawBuf.length) * 100).toFixed(1);
-    console.log(`${IDS[i].padEnd(20)} ${W}x${H}  ${(rawBuf.length / 1024).toFixed(0)}KB -> ${(outBuf.length / 1024).toFixed(0)}KB  (-${ratio}%)`);
+    console.log(`${job.id.padEnd(20)} ${W}x${H}  ${(rawBuf.length / 1024).toFixed(0)}KB -> ${(outBuf.length / 1024).toFixed(0)}KB  (-${ratio}%)`);
   }
   ws.close();
-  console.log(`\n=== 封面处理完成：${files.length} 张 WebP，输出 ${OUT} ===`);
+  console.log(`\n=== 封面处理完成：${jobs.length} 张 WebP，输出 ${OUT} ===`);
 } finally {
   if (edge) edge.kill();
   try { fs.rmSync(PROFILE, { recursive: true, force: true }); } catch { /* noop */ }
