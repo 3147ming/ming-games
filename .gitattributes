@@ -1,0 +1,22 @@
+# 统一换行：本仓库所有文本一律 LF。
+# 原因：Windows core.autocrlf=true 时，git 会把工作副本转成 CRLF，
+# 导致下一次编辑的 diff 从 20 行膨胀成整文件重写（历史上踩过）。
+# 二进制资源显式声明，避免被当文本处理。
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.mp3 binary
+*.ogg binary
+*.wav binary
+*.flac binary
+*.fbx binary
+*.glb binary
+*.gltf binary
+*.woff binary
+*.woff2 binary
+*.zip binary
