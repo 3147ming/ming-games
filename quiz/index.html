@@ -2078,14 +2078,17 @@ function renderShelf(){
     var T=QA_TYPES[bk];
     _orphanGrid.appendChild(makeBook(T.icon,T.name,bk,null,bestFor('b:'+bk),shelfCount(bk,null)));
   });
-  // 自定义
+  // 自定义 + 联网：统一放进「我的 / 联网」分组（无自定义题时只显示联网卡）
   var cks=Object.keys(custom);
+  var otherWrap=h('div','shelf-group');
+  otherWrap.appendChild(h('div','shelf-group-title','📚 我的 / 联网'));
+  var otherGrid=h('div','shelf');
   cks.forEach(function(name){
-    grid.appendChild(makeBook('📝',name,null,name,bestFor('c:'+name),shelfCount(null,name),true));
+    otherGrid.appendChild(makeBook('📝',name,null,name,bestFor('c:'+name),shelfCount(null,name),true));
   });
-  // 联网
-  grid.appendChild(makeBook('🌐','联网题库·英文','online',null,bestFor('b:online'),(ONLINE_BANK&&ONLINE_BANK.length?ONLINE_BANK.length:0)+' 题'));
-  shelfEl.appendChild(grid);
+  otherGrid.appendChild(makeBook('🌐','联网题库·英文','online',null,bestFor('b:online'),(ONLINE_BANK&&ONLINE_BANK.length?ONLINE_BANK.length:0)+' 题'));
+  otherWrap.appendChild(otherGrid);
+  shelfEl.appendChild(otherWrap);
   shelfEl.appendChild(ht('div','muted','💻 编程题量为「人工题 + 模板生成（理论组合数）」，参数空间有限，实际不重复体验以出题引擎去重为准；其余分类为人工题库，题量以卡片上的实际题数为准（不再自动扩充）。'));
 
   // 联网管理
