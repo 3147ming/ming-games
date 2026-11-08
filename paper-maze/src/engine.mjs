@@ -394,40 +394,52 @@ export function chooseEnding(state, hotspotId, choiceId, now) {
   };
 }
 
-/* ------------------------------------------------------------ 提示 */
+/* ------------------------------------------------------------ 提示
+ * ★ 改为「从第一步开始」的攻略式提示：
+ *   不再按"当前卡在哪"动态挑一条规则，而是给出一条固定的通关时序（WALKTHROUGH）。
+ *   每次提示都从第一步起展示进度，并指出"下一步 / 之后两步"，让玩家拿到一份可对照的
+ *   从头到尾的攻略，而不是被卡住时才给一句零碎的提示。 */
 
-const HINT_RULES = [
-  { when: (s) => !hasItem(s, 'flint') || !hasItem(s, 'note_torn'), text: '囚室里的东西还没摸全：草席下面硌人，墙缝里塞着纸。' },
-  { when: (s) => !hasItem(s, 'iron_rod'), text: '灶房的柴堆里插着一根铁钎——书房书架后面那扇翘起的纸板门需要它。' },
-  { when: (s) => !isSolved(s, 'cellar_weight') && !hasItem(s, 'rusty_key'), text: '地窖的天平要你把秤砣分成几等份；答案写在那本账本的最后一页。' },
-  { when: (s) => hasItem(s, 'rusty_key') && !hasItem(s, 'oiled_key'), text: '锈钥匙转不动。厨房拿到的油壶可以润开它——把两样东西合成一下。' },
-  { when: (s) => !hasItem(s, 'candle') && !hasItem(s, 'lit_candle'), text: '灯堂的四座灯台要按顺序点。顺序在纸庭石碑的拓片上：骨、烛、纸、心。' },
-  { when: (s) => hasItem(s, 'note_torn') && !hasItem(s, 'marked_note'), text: '残破纸条要用火燎才会显字。先想办法点起一根蜡烛。' },
-  { when: (s) => hasItem(s, 'marked_note') && !hasItem(s, 'diary_page3'), text: '显字纸条上写着藏东西的地方——去藏书阁推一推第三排的书。' },
-  { when: (s) => !hasItem(s, 'diary_page1'), text: '藏书阁那排歪斜的书脊连成一句缺字的话，缺的那个字写在显字纸条上。' },
-  { when: (s) => !hasItem(s, 'diary_page2'), text: '井栏刻痕是三位数，石碑拓片上拼得出「井深百八尺」。' },
-  { when: (s) => !hasItem(s, 'full_diary') && hasItem(s, 'diary_page1'), text: '三页日记可以两两拼起来，拼到最后会告诉你三个数字。' },
-  { when: (s) => hasItem(s, 'full_diary') && !hasItem(s, 'brass_dial'), text: '书房抽屉是三位数字锁，数字就在完整日记的最后一页：灯七、井三、阁九。' },
-  { when: (s) => !hasItem(s, 'grappling_hook') && (!hasItem(s, 'hook') || !hasItem(s, 'rope')), text: '想去阁楼得有绳钩：井绳在井台，铁钩在匠作间的纹样压板后面——纹样册说匠人只用心纹。' },
-  { when: (s) => !hasItem(s, 'lens_dial'), text: '铜刻度盘中央是空的，阁楼木箱里有枚凸透镜，两者嵌在一起才有用。' },
-  { when: (s) => !hasItem(s, 'curved_key'), text: '银币配钥匙模能压出钥匙胚，再用锉刀锉出弧度，就是复刻钥匙。' },
-  { when: (s) => !hasItem(s, 'secret_map'), text: '书房的空白宣纸上有折痕，用蘸墨的笔把折痕按出来，就是一张地图。' },
-  { when: (s) => !hasItem(s, 'fed_mouse'), text: '地窖的纸鼠闻到干粮就会带路——把干粮和它合成起来。' },
-  { when: (s) => hasItem(s, 'oiled_key') && hasItem(s, 'curved_key') && hasItem(s, 'lens_dial') && !s.endingId, text: '三门要件都齐了。去地窖北边那道纸门，门厅的三联锁在等你。' },
-  { when: (s) => s.clues.length < 8 && hasItem(s, 'lens_dial'), text: '地窖北墙的暗门要地图、刻盘和带路的纸鼠三样齐全，而且你得先看遍这座宅子。' },
+const WALKTHROUGH = [
+  { text: '折纸囚室：草席下拾取火石，从墙缝抽出残破纸条。', done: (s) => hasItem(s, 'flint') && hasItem(s, 'note_torn') },
+  { text: '经墨廊进书房：书案取空白宣纸、笔架下取半瓶墨，墨廊顺手取秃笔。', done: (s) => hasItem(s, 'paper_scrap') && hasItem(s, 'ink_bottle') && hasItem(s, 'brush') },
+  { text: '灶房柴堆里拔一根铁钎——它用来撬开书房书架后的纸板门。', done: (s) => hasItem(s, 'iron_rod') },
+  { text: '回书房用铁钎撬开纸板门下到地窖；地窖酒坛里取账本。', done: (s) => hasItem(s, 'ledger') },
+  { text: '灶房取油壶与干粮，留着后面用。', done: (s) => hasItem(s, 'oil_can') && hasItem(s, 'bread') },
+  { text: '地窖天平把秤砣分三等份（账本末页写「三等分之」），得到锈钥匙。', done: (s) => hasItem(s, 'rusty_key') },
+  { text: '油壶 + 锈钥匙合成，得到润过油的钥匙（可开地窖通往门厅的北锁）。', done: (s) => hasItem(s, 'oiled_key') },
+  { text: '纸庭拓下石碑的四组笔画（拓片）。', done: (s) => hasItem(s, 'stone_rubbing') },
+  { text: '灯堂按「骨、烛、纸、心」顺序点亮四座灯台，得到白蜡烛。', done: (s) => hasItem(s, 'candle') },
+  { text: '蜡烛 + 火石点起烛火，得到点燃的蜡烛。', done: (s) => hasItem(s, 'lit_candle') },
+  { text: '举残破纸条在烛火上燎一下，显出字迹（显字纸条）。', done: (s) => hasItem(s, 'marked_note') },
+  { text: '拿显字纸条去藏书阁，推开第三排的书，取得日记残页·三。', done: (s) => hasItem(s, 'diary_page3') },
+  { text: '藏书阁取走纹样册。', done: (s) => hasItem(s, 'book_emblems') },
+  { text: '井台取井绳，并解「井深百八尺」(108) 取得日记残页·二。', done: (s) => hasItem(s, 'rope') && hasItem(s, 'diary_page2') },
+  { text: '藏书阁书架空缺处填入「影」字，取得日记残页·一。', done: (s) => hasItem(s, 'diary_page1') },
+  { text: '三页日记两两拼合，得到完整日记（末页「灯七、井三、阁九」）。', done: (s) => hasItem(s, 'full_diary') },
+  { text: '书房用三位数字 7-3-9 打开抽屉锁，取得铜刻度盘。', done: (s) => hasItem(s, 'brass_dial') },
+  { text: '纸庭取银币；匠作间取钥匙模与锉刀，压出钥匙胚再锉出弧度，得到复刻钥匙。', done: (s) => hasItem(s, 'curved_key') },
+  { text: '阁楼木箱取凸透镜，与铜刻度盘嵌合，得到聚光刻盘。', done: (s) => hasItem(s, 'lens_dial') },
+  { text: '匠作间纹样压板只用心纹，取得铁钩；与井绳合成绳钩，可上高处。', done: (s) => hasItem(s, 'grappling_hook') },
+  { text: '空白宣纸 + 蘸墨的笔按出折痕，画出地窖北墙的手绘地图。', done: (s) => hasItem(s, 'secret_map') },
+  { text: '地窖用干粮喂饱纸鼠，它会带你找到北墙暗门。', done: (s) => hasItem(s, 'fed_mouse') },
+  { text: '集齐润油钥匙、复刻钥匙、聚光刻盘，去门厅对准三联锁（逃出 / 焚城）。', done: (s) => hasItem(s, 'oiled_key') && hasItem(s, 'curved_key') && hasItem(s, 'lens_dial') },
+  { text: '集齐手绘地图、聚光刻盘、吃饱的纸鼠，开地窖北墙暗门进入纸心（吹灭灯→隐藏结局）。', done: (s) => hasItem(s, 'secret_map') && hasItem(s, 'lens_dial') && hasItem(s, 'fed_mouse') },
 ];
 
 export function hint(state, now) {
-  const rule = HINT_RULES.find((r) => {
-    try {
-      return r.when(state);
-    } catch {
-      return false;
-    }
-  });
   state.hintsUsed += 1;
   bump(state, now);
-  const text = rule ? rule.text : '把还没点过的物件都点一遍；日记面板里记着你已知的所有线索。';
+  const total = WALKTHROUGH.length;
+  const idx = WALKTHROUGH.findIndex((step) => !step.done(state));
+  let text;
+  if (idx < 0) {
+    text = `攻略进度 ${total}/${total}（已全部完成）· 现在只需去门厅三联锁或地窖北墙暗门做结局选择。`;
+  } else {
+    const upcoming = WALKTHROUGH.slice(idx, idx + 3);
+    const lines = upcoming.map((s, k) => `${k === 0 ? '下一步' : '之后'}：${s.text}`).join(' ｜ ');
+    text = `通关攻略进度 ${idx}/${total}（前 ${idx} 步已完成）· ${lines}`;
+  }
   log(state, '使用提示');
   return { ok: true, kind: 'hint', text, hintsUsed: state.hintsUsed };
 }

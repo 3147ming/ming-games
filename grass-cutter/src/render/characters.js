@@ -169,6 +169,14 @@ class HeroAnimator {
     this.head = new Group(); this.head.position.y = 0.78; this.spine.add(this.head);
     const headMesh = new Mesh(new SphereGeometry(0.17, 16, 12), matSkin); this.head.add(headMesh);
     const helmet = new Mesh(new SphereGeometry(0.2, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.62), matArmor); helmet.position.y = 0.04; this.head.add(helmet);
+    // 面部：一双眼睛（朝 +Z 前方），让人一眼认出"脸"在哪
+    const eyeMat = new MeshStandardMaterial({ color: 0x141414, roughness: 0.35, metalness: 0 });
+    const browMat = new MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.8, metalness: 0 });
+    const eyeL = new Mesh(new SphereGeometry(0.026, 8, 8), eyeMat); eyeL.position.set(-0.06, 0.0, 0.155);
+    const eyeR = new Mesh(new SphereGeometry(0.026, 8, 8), eyeMat); eyeR.position.set(0.06, 0.0, 0.155);
+    const browL = new Mesh(new BoxGeometry(0.07, 0.018, 0.02), browMat); browL.position.set(-0.06, 0.04, 0.158);
+    const browR = new Mesh(new BoxGeometry(0.07, 0.018, 0.02), browMat); browR.position.set(0.06, 0.04, 0.158);
+    this.head.add(eyeL, eyeR, browL, browR);
     // ★SPEC(模块13) 盔缨：朱砂自发光（原为金色 trim 块，在灰调场景里是最扎眼的一个色）
     const plumeKit = createHeroPlume();
     plumeKit.group.position.set(0, 0.22, -0.02);
@@ -177,11 +185,19 @@ class HeroAnimator {
     this.plume = plumeKit.plume;
     this.plumeFlash = 0;
 
+    // 肩甲：圆润的护肩，强化"武将"轮廓，也遮住手臂与躯干的连接缝
+    const pauldronL = new Mesh(new SphereGeometry(0.17, 14, 10), matTrim); pauldronL.scale.set(1, 0.72, 1); pauldronL.position.set(-0.42, 0.6, 0); this.spine.add(pauldronL);
+    const pauldronR = new Mesh(new SphereGeometry(0.17, 14, 10), matTrim); pauldronR.scale.set(1, 0.72, 1); pauldronR.position.set(0.42, 0.6, 0); this.spine.add(pauldronR);
+
     // 手臂
     this.armL = new Group(); this.armL.position.set(-0.42, 0.5, 0); this.spine.add(this.armL);
     this.armR = new Group(); this.armR.position.set(0.42, 0.5, 0); this.spine.add(this.armR);
     const upperL = new Mesh(new CapsuleGeometry(0.1, 0.32, 4, 8), matArmor); upperL.position.y = -0.2; this.armL.add(upperL);
     const upperR = new Mesh(new CapsuleGeometry(0.1, 0.32, 4, 8), matArmor); upperR.position.y = -0.2; this.armR.add(upperR);
+    // 手掌：手臂末端的球，让"手"有交代（否则手臂像两根悬空的胶囊）
+    const handGeo = new SphereGeometry(0.075, 10, 8);
+    const handL = new Mesh(handGeo, matSkin); handL.position.y = -0.42; this.armL.add(handL);
+    const handR = new Mesh(handGeo, matSkin); handR.position.y = -0.42; this.armR.add(handR);
 
     // 武器（握在右手）。抽成 createKatana() 是为了让模块 12 的外部资产也能复用同一把刀 ——
     // 外部模型不一定自带武器网格，没有时要把这把挂到它的右手骨骼上（否则"武器挂点"就是空的）。
@@ -196,6 +212,10 @@ class HeroAnimator {
     this.legR = new Group(); this.legR.position.set(0.16, 0.0, 0); this.hips.add(this.legR);
     const thighL = new Mesh(new CapsuleGeometry(0.13, 0.42, 4, 8), matCloth); thighL.position.y = -0.26; this.legL.add(thighL);
     const thighR = new Mesh(new CapsuleGeometry(0.13, 0.42, 4, 8), matCloth); thighR.position.y = -0.26; this.legR.add(thighR);
+    // 脚：小腿末端的靴子，给下半身一个落地锚点
+    const footGeo = new BoxGeometry(0.15, 0.1, 0.28);
+    const footL = new Mesh(footGeo, matCloth); footL.position.set(0, -0.5, 0.06); this.legL.add(footL);
+    const footR = new Mesh(footGeo, matCloth); footR.position.set(0, -0.5, 0.06); this.legR.add(footR);
 
     // 披风（背后软片）
     this.cape = new Mesh(new PlaneGeometry(0.7, 1.1, 1, 6), matCloth.clone());
@@ -204,7 +224,7 @@ class HeroAnimator {
     this.cape.rotation.x = 0.2;
     this.spine.add(this.cape);
 
-    for (const part of [torso, skirt, chest, headMesh, helmet, plumeKit.plume, upperL, upperR, thighL, thighR]) {
+    for (const part of [torso, skirt, chest, headMesh, helmet, plumeKit.plume, upperL, upperR, thighL, thighR, pauldronL, pauldronR, handL, handR, footL, footR]) {
       part.castShadow = true; part.receiveShadow = true;
     }
 
@@ -247,6 +267,10 @@ class HeroAnimator {
     this.legL.rotation.x = this.cur.legLX;
     this.legR.rotation.x = this.cur.legRX;
     this.hips.position.y = this.cur.hipY;
+    // 待机微呼吸：站定不动时整体轻轻起伏、胸口缓张，消除"僵立方块"的观感
+    const idle = speed < 0.25 ? 1 : 0;
+    this.hips.position.y += Math.sin(this._t * 2.2) * 0.012 * idle;
+    this.spine.scale.y = 1 + Math.sin(this._t * 2.2 + 0.6) * 0.012 * idle;
     this.cape.rotation.x = this.cur.capeX;
     // 武器发光（蓄力渐亮）
     this.matBlade.emissiveIntensity += (this.cur.glow - this.matBlade.emissiveIntensity) * Math.min(1, dt * 6);

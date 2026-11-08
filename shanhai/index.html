@@ -33,6 +33,7 @@
         </div>
       </div>
       <nav class="masthead__actions" aria-label="对局操作" role="navigation">
+        <button aria-label="棋艺对局" class="btn btn--ghost btn--small" id="open-chess" type="button">棋艺</button>
         <button aria-label="选择关卡" class="btn btn--ghost btn--small" id="pick-stage" type="button">择卷</button>
         <button aria-label="重开关卡" class="btn btn--ghost btn--small" id="restart-stage" type="button" disabled>重开</button>
       </nav>
@@ -122,6 +123,7 @@
       <h2 id="stage-screen-title">山海拾遗</h2>
       <p class="hero-sub">八荒有遗，拾而为卷</p>
       <p class="hero-copy">墨色为野，石青为山，朱砂为火。三步之内见胜负，一纸之间藏山海。</p>
+      <button class="btn btn--ghost" id="open-chess-stage" type="button">另开 · 棋艺（象棋 / 五子棋 / 跳棋 / 暗棋 / 翻棋）</button>
       <div class="stage-list" id="stage-list" aria-label="选择关卡"></div>
       <div class="screen__foot">
         <span class="fineprint">进度只存在此设备 · 存档版本 v1</span>
@@ -152,6 +154,9 @@
       </div>
     </div>
   </section>
+
+  <!-- 棋艺：象棋 / 五子棋 / 跳棋 / 暗棋 / 翻棋。内容由 chess-ui.mjs 填充。 -->
+  <section class="screen" id="chess-screen" role="dialog" aria-modal="true" aria-labelledby="chess-title" hidden></section>
 
   <noscript>
     <p class="noscript">本卷需要启用 JavaScript 才能展开。</p>
@@ -199,6 +204,11 @@ window.addEventListener('unhandledrejection', function(e) {
 });
 
 </script>
+
+  <!-- 棋艺：纯逻辑 / 绘制 / 交互，三者解耦，皆为零依赖经典脚本 -->
+  <script defer src="./src/chess-core.mjs"></script>
+  <script defer src="./src/chess-render.mjs"></script>
+  <script defer src="./src/chess-ui.mjs"></script>
 
 <!-- PWA：Service Worker（离线可用 / 可安装到主屏） -->
 <script>

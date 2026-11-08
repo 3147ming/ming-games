@@ -4,12 +4,6 @@
   "note": "P1 受控导入。warehouse-strike 来自本地快照 commit 3cea92d；lab-sandbox 与 circuit-lab 同源共用逻辑。",
   "groups": [
     {
-      "id": "future-light",
-      "from": "D:/Projects/FUTURE-LIGHT",
-      "files": 17,
-      "bytes": 117305
-    },
-    {
       "id": "warehouse-strike",
       "from": "D:/Projects/WAREHOUSE-STRIKE",
       "files": 101,
@@ -23,91 +17,6 @@
     }
   ],
   "files": [
-    {
-      "file": "future-light/index.html",
-      "bytes": 445,
-      "sha256": "2c619ac19f29ce488c388b9ed2d096cc34932923a482b141a014845da2e93b18"
-    },
-    {
-      "file": "future-light/src/core/contract.js",
-      "bytes": 1665,
-      "sha256": "2fc88577506a616ffc47c5a465edcd3bf46d4e51f44636e85f94450cab52d6d1"
-    },
-    {
-      "file": "future-light/src/core/shell.js",
-      "bytes": 6021,
-      "sha256": "c755a49bb63dcc252f8d0fadf890c6f45e6dc0c09137e70bb2009d44cfbd9c5f"
-    },
-    {
-      "file": "future-light/src/core/store.js",
-      "bytes": 3458,
-      "sha256": "f8bcd295f20170905d7b069d4a1bb9ca58003984a548deb0f25bd29ec8868705"
-    },
-    {
-      "file": "future-light/src/core/ui.js",
-      "bytes": 3896,
-      "sha256": "7ad004624bfca3763a54deea4638e11359eeafc10ecbf331fa3852e6426b6d29"
-    },
-    {
-      "file": "future-light/src/games/connect.js",
-      "bytes": 8118,
-      "sha256": "04425c66b411305aee54f9c67985e0cae5e6920ef365687741debed514765415"
-    },
-    {
-      "file": "future-light/src/games/conveyor.js",
-      "bytes": 22774,
-      "sha256": "6ed96ddb859940ba55fe35be5c205558a6e15669f9d8013613283b73e098dafb"
-    },
-    {
-      "file": "future-light/src/games/dual.js",
-      "bytes": 12582,
-      "sha256": "72e2861d5644d39629c9618da5902b0b8b3befb84854d11b2884686262b8b2fb"
-    },
-    {
-      "file": "future-light/src/games/index.js",
-      "bytes": 378,
-      "sha256": "8d4f024676a040be17240db9dd116d9c8a91205cd57f8317562495e940d11c6d"
-    },
-    {
-      "file": "future-light/src/games/light.js",
-      "bytes": 11473,
-      "sha256": "2ab95ed3b77acd650abe86e3a8d94c772b98945c925d58cd0fe03f85a3af1734"
-    },
-    {
-      "file": "future-light/src/games/match3.js",
-      "bytes": 13947,
-      "sha256": "780db9991c4ce03858405738e214130ac649349cf99f654829142f0e1ffc8766"
-    },
-    {
-      "file": "future-light/src/games/nonogram.js",
-      "bytes": 5216,
-      "sha256": "64a45d6a500f52dd45ed471a1461a6e4e19361dc02cb0c0bce474dffe7e5b835"
-    },
-    {
-      "file": "future-light/src/games/octagram.js",
-      "bytes": 4923,
-      "sha256": "cd16d355963b6caa9428ac8857fa49623eb0af7cf0bfe4c664ba28114e9d20c8"
-    },
-    {
-      "file": "future-light/src/games/stroop.js",
-      "bytes": 3583,
-      "sha256": "d360654023c31ccee72d049688b88a7507c576836fbc2c2f40bb90b116c54855"
-    },
-    {
-      "file": "future-light/src/main.js",
-      "bytes": 96,
-      "sha256": "525cda57310e67caf275adab6940cf9162b518e519d74544c7144096e4c63fae"
-    },
-    {
-      "file": "future-light/src/styles/games.css",
-      "bytes": 7283,
-      "sha256": "9e03316da852d8fde32c3a3b00ff2aed37c17b60250ef4f9a1a76d02da2ac926"
-    },
-    {
-      "file": "future-light/src/styles/main.css",
-      "bytes": 11447,
-      "sha256": "87e6cfa5b005dcee39382aed23f74659224674de2b0c7c9ac6a89e95daca7ad4"
-    },
     {
       "file": "warehouse-strike/index.html",
       "bytes": 22650,

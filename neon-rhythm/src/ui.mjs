@@ -184,6 +184,17 @@ const ctx2d = canvas.getContext('2d');
 
 let view = { w: 0, h: 0, dpr: 1, laneW: 0, judgeY: 0, topY: 0 };
 
+/* 命中特效（canvas 内绘制：判定线处的扩散环 + 中心闪光 + 粒子；Perfect 轻微震屏）。
+   ★ 需求：点击反馈要更明显 —— 之前只有文字判定 + 泳道按压，落点处没有"打中了"的视觉爆点。 */
+const hitFx = [];
+let shake = 0;
+function spawnHit(lane, verdict) {
+  const col = laneColor(lane);
+  hitFx.push({ lane, verdict, born: engine.time() * 1000, life: verdict === 'perfect' ? 540 : 380, color: col });
+  if (verdict === 'perfect') shake = Math.min(7, shake + 6);
+  else if (verdict === 'great') shake = Math.min(4, shake + 2.5);
+}
+
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const w = canvas.clientWidth || window.innerWidth;
@@ -298,6 +309,7 @@ function beginPlay() {
 function frame() {
   if (!game.running || !game.g) return;
   const nowMs = engine.time() * 1000;   // 音频时钟（秒 → 毫秒）
+  shake *= 0.82;
   const missed = game.g.tick(nowMs);
 
   if (missed.length) {
@@ -353,6 +365,10 @@ function laneColor(i) {
 function draw(nowMs) {
   const { w, h, laneW, judgeY } = view;
   ctx2d.clearRect(0, 0, w, h);
+  ctx2d.save();
+  if (shake > 0.15) {
+    ctx2d.translate((Math.random() * 2 - 1) * shake, (Math.random() * 2 - 1) * shake * 0.6);
+  }
 
   // 四轨底
   for (let i = 0; i < LANES; i++) {
@@ -456,6 +472,45 @@ function draw(nowMs) {
     roundRect(ctx2d, nx, y - nh / 2, nw, nh, nh / 2);
     ctx2d.fill();
     ctx2d.shadowBlur = 0;
+  }
+  drawEffects(nowMs);
+  ctx2d.restore();
+}
+
+/** 命中特效渲染：扩散环 + 中心径向闪光 + 环形粒子；随 life 衰减。 */
+function drawEffects(nowMs) {
+  const { laneW, judgeY } = view;
+  for (let i = hitFx.length - 1; i >= 0; i--) {
+    const e = hitFx[i];
+    const t = (nowMs - e.born) / e.life;
+    if (t >= 1) { hitFx.splice(i, 1); continue; }
+    const cx = e.lane * laneW + laneW / 2;
+    const cy = judgeY + 30;
+    const c = e.color;
+    const ring = 10 + t * 48;
+    ctx2d.beginPath();
+    ctx2d.arc(cx, cy, ring, 0, Math.PI * 2);
+    ctx2d.strokeStyle = hexA(c, (1 - t) * 0.9);
+    ctx2d.lineWidth = 3 * (1 - t) + 1;
+    ctx2d.stroke();
+    const grd = ctx2d.createRadialGradient(cx, cy, 0, cx, cy, 28 * (1 - t * 0.5));
+    grd.addColorStop(0, hexA(c, (1 - t) * 0.5));
+    grd.addColorStop(1, hexA(c, 0));
+    ctx2d.fillStyle = grd;
+    ctx2d.beginPath();
+    ctx2d.arc(cx, cy, 28 * (1 - t * 0.5), 0, Math.PI * 2);
+    ctx2d.fill();
+    const n = 6;
+    for (let p = 0; p < n; p++) {
+      const ang = (p / n) * Math.PI * 2 + t * 2.2;
+      const rad = t * 32;
+      const px = cx + Math.cos(ang) * rad;
+      const py = cy + Math.sin(ang) * rad;
+      ctx2d.fillStyle = hexA(c, (1 - t) * 0.9);
+      ctx2d.beginPath();
+      ctx2d.arc(px, py, 2.4 * (1 - t) + 0.6, 0, Math.PI * 2);
+      ctx2d.fill();
+    }
   }
 }
 
@@ -619,8 +674,9 @@ function pressLane(lane) {
   const nowMs = engine.time() * 1000;
   const res = game.g.press(lane, nowMs);
   if (!res) return;
-  if (!res.pending) {
-    // 普通音符：判定已在 press 内提交，反馈由 frame 里的 lastVerdict 统一出
+  if (!res.pending && res.verdict && res.verdict !== 'miss') {
+    // 命中即就地迸发特效（带泳道坐标，精准落在判定线该轨位置）
+    spawnHit(lane, res.verdict);
   }
 }
 
