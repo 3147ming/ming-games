@@ -139,9 +139,17 @@ async function verifyForm(cdp, label, baseUrl) {
   for (const id of lobby.readyIds) {
     const tag = `${label} · ${id}`;
     cdp.events.length = 0;
+    /* 3D 项目同步解析 1~2MB bundle + WebGL 初始化可能远超 2.2s；
+       固定 sleep 会把「已完整启动」误判成失败。改为轮询等待三项齐备（最多 14s），
+       每次进游戏前主动清空上一局残留状态，避免旧 GAME_READY 造成假通过。 */
+    await evaluate(cdp, `window.__HUB_LAST_READY__ = null; window.__HUB_IFRAME_LOADED__ = false; 'ok'`);
     await cdp.send('Page.navigate', { url: baseUrl + '#/game/' + id });
-    await sleep(2200);
-    const game = await evaluate(cdp, GAME_STATE);
+    let game = null;
+    for (let i = 0; i < 35; i++) {
+      await sleep(400);
+      game = await evaluate(cdp, GAME_STATE);
+      if (game.iframes === 1 && game.iframeLoaded && game.loadingHidden && game.ready) break;
+    }
     check(`${tag} · 深链进入游戏（iframe 已创建）`, game.iframes === 1, `iframes=${game.iframes} hash=${game.hash}`);
     check(`${tag} · 大厅隐藏 / 返回按钮可见`, game.gridHidden && game.backVisible, `gridHidden=${game.gridHidden} back=${game.backVisible}`);
     check(`${tag} · 加载遮罩已收起`, game.loadingHidden === true, `loadingHidden=${game.loadingHidden}`);

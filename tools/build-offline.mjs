@@ -43,9 +43,29 @@ export function inlineStylesheets(html, gameDir, label) {
   return html;
 }
 
+/* P2b：产物里删掉 importmap，但构建器必须能读到它的映射，才能把裸 'three'
+   与 'three/xxx' 前缀解析成本地 vendor。只读不改源文件。 */
+export function readImportMap(html) {
+  const re = /<script[^>]*\btype=["']importmap["'][^>]*>([\s\S]*?)<\/script>/gi;
+  const imports = {};
+  for (const m of html.matchAll(re)) {
+    const raw = (m[1] || '').trim();
+    if (!raw) continue;
+    try {
+      const j = JSON.parse(raw);
+      if (j && j.imports && typeof j.imports === 'object') Object.assign(imports, j.imports);
+    } catch (e) {
+      throw new Error(`[build] importmap 不是合法 JSON: ${e.message}`);
+    }
+  }
+  return imports;
+}
+
 /* 产物不需要旧 SW 注册 / importmap / manifest（由统一 gen-sw 与构建器负责） */
 export function stripLegacyTags(html) {
-  html = html.replace(/<link[^>]*\brel=["']manifest["'][^>]*>\s*/gi, '');
+  /* modulepreload 在 file:// 下会以「跨源模块请求」被 CORS 拦下并报错；
+     产物已把依赖图内联成 classic bundle，这个预加载标签必须删掉。 */
+  html = html.replace(/<link[^>]*\brel=["'](?:manifest|modulepreload)["'][^>]*>\s*/gi, '');
   html = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, function (block) {
     if (/serviceWorker\.register/.test(block)) return '';
     if (/\btype=["']importmap["']/.test(block)) return '';
@@ -61,7 +81,8 @@ function safeInlineScript(code) {
 }
 
 export function renderGameHtml(opts) {
-  const { gameDir, gameId, entryRel, renderer, bundleCode, bridgeCode, label } = opts;
+  const { gameDir, gameId, entryRel, renderer, bundleCode, bridgeCode, label,
+    vendorScripts = [], preludeCode = '' } = opts;
   let html = fs.readFileSync(path.join(gameDir, 'index.html'), 'utf8');
   html = inlineStylesheets(html, gameDir, label || gameId);
   html = stripLegacyTags(html);
@@ -79,11 +100,19 @@ export function renderGameHtml(opts) {
     if (!src.replace(/^\.\//, '').endsWith(expected.split('/').pop())) {
       throw new Error(`[build] ${gameId}: 入口不一致，HTML=${src} games.json=${entryRel}`);
     }
-    html = replaceOnceText(
-      html, tag,
-      `<script>\n${safeInlineScript(bundleCode)}\n</script>`,
-      `${gameId}:module-script`
-    );
+    /* 源 HTML 的 module 标签体内常塞一段 classic JS（可见性暂停 / pagehide 清理 /
+       全局错误日志）。浏览器因 src 存在会忽略它，P2b 把它迁移成独立 script 保留下来。 */
+    const inner = (tag.match(/<script[^>]*>([\s\S]*?)<\/script>/i) || [])[1] || '';
+    const legacyInline = inner.trim();
+    let replacement = `<script>\n${safeInlineScript(bundleCode)}\n</script>`;
+    let prefix = vendorScripts.map((s) => `<script src="${s}"></script>`).join('\n');
+    /* 资源本地化 shim 必须在 three.classic.js 与资源表之后、游戏 bundle 之前执行 */
+    if (preludeCode) prefix += `${prefix ? '\n' : ''}<script>\n${safeInlineScript(preludeCode)}\n</script>`;
+    if (prefix) replacement = prefix + '\n' + replacement;
+    if (legacyInline) {
+      replacement += `\n<script>\n/* migrated from module tag body */\n${safeInlineScript(legacyInline)}\n</script>`;
+    }
+    html = replaceOnceText(html, tag, replacement, `${gameId}:module-script`);
   }
 
   const child = `${bridgeCode}\nHubBridge.createChild({ gameId: ${JSON.stringify(gameId)}, caps: [] });`;
