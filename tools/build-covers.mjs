@@ -116,7 +116,16 @@ try {
     const src = path.join(RAW, job.file);
     const rawBuf = fs.readFileSync(src);
     const b64 = rawBuf.toString('base64');
-    const mime = /\.jpe?g$/i.test(job.file) ? 'image/jpeg' : /\.webp$/i.test(job.file) ? 'image/webp' : 'image/png';
+    /* 按魔数认格式，不能信扩展名：豆包导出的图常是 JPEG 数据却叫 .png。
+       data: URI 的 mime 若与内容不符，部分浏览器会拒绝解码。 */
+    const mime = (() => {
+      const h = rawBuf.subarray(0, 12).toString('hex');
+      if (h.startsWith('ffd8ff')) return 'image/jpeg';
+      if (h.startsWith('89504e470d0a1a0a')) return 'image/png';
+      if (h.startsWith('52494646') && rawBuf.subarray(8, 12).toString() === 'WEBP') return 'image/webp';
+      if (h.startsWith('47494638')) return 'image/gif';
+      return 'image/png';
+    })();
     const expr = `(async () => {
       const img = new Image();
       img.src = 'data:${mime};base64,${b64}';
@@ -143,7 +152,7 @@ try {
     const dest = path.join(OUT, job.id + '.webp');
     fs.writeFileSync(dest, outBuf);
     const ratio = ((1 - outBuf.length / rawBuf.length) * 100).toFixed(1);
-    console.log(`${job.id.padEnd(20)} ${W}x${H}  ${(rawBuf.length / 1024).toFixed(0)}KB -> ${(outBuf.length / 1024).toFixed(0)}KB  (-${ratio}%)`);
+    console.log(`${job.id.padEnd(20)} ${W}x${H}  ${(rawBuf.length / 1024).toFixed(0)}KB -> ${(outBuf.length / 1024).toFixed(0)}KB  (-${ratio}%)  src=${mime.replace('image/', '')} trim=${(TRIM * 100).toFixed(0)}%`);
   }
   ws.close();
   console.log(`\n=== 封面处理完成：${jobs.length} 张 WebP，输出 ${OUT} ===`);
