@@ -13,6 +13,9 @@
   var stage = document.getElementById('hub-stage');
   var back = document.getElementById('hub-back');
   var loading = document.getElementById('hub-loading');
+  var bar = document.getElementById('hub-progress');
+  var pctEl = document.getElementById('hub-loading-pct');
+  var nameEl = document.getElementById('hub-loading-name');
   var sub = document.getElementById('hubSub');
   var foot = document.getElementById('hubFoot');
   var notice = document.getElementById('hub-notice');
@@ -33,6 +36,42 @@
       clearTimeout(say._t);
       say._t = setTimeout(function () { notice.className = 'hub-notice'; }, 6000);
     }
+  }
+
+  /* ---- 加载进度条子系统 ----
+   * 进度来源有两路：① 子页面经 GAME_PROGRESS 上报的阶段值（boot→dom→ready）；
+   * ② 本地平滑动画，9s 内缓坡爬到 0.9，避免没有真实上报时进度条卡死。
+   * 收到 GAME_READY 或（离线 opaque origin）iframe load 时置 1 并淡出。 */
+  var progRAF = null, progStart = 0, progCur = 0, progTarget = 0;
+  function progFrame(now) {
+    if (!progStart) progStart = now;
+    var elapsed = now - progStart;
+    var auto = Math.min(0.9, 0.06 + (elapsed / 9000) * 0.84);
+    var target = Math.max(progTarget, auto);
+    progCur += (target - progCur) * 0.14;
+    if (progCur > 0.999) progCur = 1;
+    if (bar) bar.style.width = (progCur * 100).toFixed(1) + '%';
+    if (pctEl) pctEl.textContent = Math.floor(progCur * 100) + '%';
+    if (progCur >= 1 && target >= 1) { progRAF = null; return; }
+    progRAF = requestAnimationFrame(progFrame);
+  }
+  function progStartRun(name) {
+    progStart = 0; progCur = 0; progTarget = 0.06;
+    if (nameEl) nameEl.textContent = name || '';
+    if (bar) bar.style.width = '0%';
+    if (pctEl) pctEl.textContent = '0%';
+    if (loading) loading.hidden = false;
+    if (!progRAF) progRAF = requestAnimationFrame(progFrame);
+  }
+  function progSet(v) { if (typeof v === 'number' && isFinite(v)) progTarget = Math.max(progTarget, Math.min(1, v)); }
+  function progFinish() {
+    progTarget = 1;
+    if (!progRAF) progRAF = requestAnimationFrame(progFrame);
+    setTimeout(function () { if (loading) loading.hidden = true; }, 360);
+  }
+  function progStop() {
+    if (progRAF) { cancelAnimationFrame(progRAF); progRAF = null; }
+    if (loading) loading.hidden = true;
   }
 
   function renderGrid() {
@@ -65,10 +104,12 @@
   });
   var currentId = null;
   var loadTimer = null;
+  var bridgeConnected = false;
 
   bridge.on('GAME_READY', function (d) {
     window.__HUB_LAST_READY__ = d.payload;
-    if (loading) loading.hidden = true;
+    bridgeConnected = true;
+    progFinish();
     clearTimeout(loadTimer);
     say((byId[currentId] ? byId[currentId].name : '游戏') + ' 已就绪');
   });
@@ -78,6 +119,10 @@
     say('游戏报错：' + (d.payload && d.payload.message ? d.payload.message : '未知错误'), true);
   });
   bridge.on('GAME_PROGRESS', function (d) {
+    bridgeConnected = true;
+    var p = d.payload || {};
+    var v = (typeof p.value === 'number') ? p.value : (typeof p.progress === 'number' ? p.progress : null);
+    if (v !== null) progSet(v);
     try {
       localStorage.setItem('hub:last-progress', JSON.stringify({
         gameId: d.gameId, t: Date.now(), payload: d.payload
@@ -100,7 +145,7 @@
     if (stage) { stage.hidden = true; stage.innerHTML = ''; }
     if (grid) grid.hidden = false;
     if (back) back.hidden = true;
-    if (loading) loading.hidden = true;
+    progStop();
     document.title = '游戏大厅 · GAME HUB';
     document.body.classList.remove('in-game');
   }
@@ -110,11 +155,13 @@
     if (!g || g.status !== 'ready') { globalThis.HubRouter.home(); return; }
     if (currentId === g.id) return;
     if (currentId) bridge.dispose();
+    clearTimeout(loadTimer);
+    bridgeConnected = false;
 
     if (grid) grid.hidden = true;
     if (back) back.hidden = false;
     if (stage) { stage.hidden = false; stage.innerHTML = ''; }
-    if (loading) loading.hidden = false;
+    progStartRun(g.name);
     document.body.classList.add('in-game');
     document.title = g.name + ' · 游戏大厅';
 
@@ -125,14 +172,14 @@
     iframe.className = 'game-frame';
     iframe.title = g.name;
     iframe.setAttribute('allow', 'autoplay; fullscreen; gamepad; pointer-lock');
-    /* file:// 下 iframe 是 opaque origin，postMessage 可能被浏览器拦；
-       load 事件作为兜底，保证玩家不会卡在加载遮罩上 */
+    /* 子页面会在 bridge 初始化时上报 GAME_PROGRESS(boot)。若 9s 内收到过任何桥消息，
+       说明通道正常，等 GAME_READY 收尾；否则是 file:// 的 opaque origin，postMessage 被拦，
+       此时以 iframe load 作为兜底直接拉满进度并提示离线形态。 */
     iframe.addEventListener('load', function () {
       window.__HUB_IFRAME_LOADED__ = true;
-      if (loading && !loading.hidden && !window.__HUB_LAST_READY__) {
-        loading.hidden = true;
-        say('已加载（离线形态，桥未连接）');
-      }
+      if (bridgeConnected) { progSet(0.8); return; }
+      progFinish();
+      say('已加载（离线形态，桥未连接）');
     });
     var sep = g.playUrl.indexOf('?') >= 0 ? '&' : '?';
     iframe.src = g.playUrl + sep + '__hub_session=' + encodeURIComponent(sessionId);
@@ -141,9 +188,15 @@
     bridge.attach(iframe, g.id, sessionId, { params: state.params, saveSnapshot: {} });
 
     loadTimer = setTimeout(function () {
-      if (loading && !loading.hidden) {
-        loading.hidden = true;
-        say('加载较慢，若画面空白可点「返回大厅」重试', true);
+      if (loading && !loading.hidden && !window.__HUB_LAST_READY__) {
+        progSet(0.95);
+        say('加载较慢，正在继续…若长时间空白可按 Esc 返回', true);
+        loadTimer = setTimeout(function () {
+          if (loading && !loading.hidden && !window.__HUB_LAST_READY__) {
+            progFinish();
+            say('加载超时，若画面空白可点「返回大厅」重试', true);
+          }
+        }, 9000);
       }
     }, 9000);
   }

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "updated": "2026-11-08",
-  "note": "P2b 清单。CARDS=17 / ENTRIES=17 / INDEPENDENT_LOGIC=16（lab 与 lab-sandbox 同源共用逻辑，经 logicFrom 别名）。ready=已接入构建链可离线试玩；pending=enlisten 待 P5 网页版。3D 项目由 makeVendorPlan 自动把 three classic 化为 globalThis.THREE。",
+  "note": "P2c 清单（已移除 future-light）。CARDS=16 / ENTRIES=16 / INDEPENDENT_LOGIC=16（lab 与 lab-sandbox 同源共用逻辑，经 logicFrom 别名）。ready=已接入构建链可离线试玩；pending=enlisten 待 P5 网页版。3D 项目由 makeVendorPlan 自动把 three classic 化为 globalThis.THREE。",
   "games": [
     { "id": "wild", "name": "荒野 WILD", "dir": "wild", "cover": "covers/wild.png", "tag": "动作", "status": "ready", "renderer": "esm", "entry": "src/main.js" },
     { "id": "raid", "name": "搜打撤", "dir": "soudache", "cover": "covers/raid.png", "tag": "射击", "status": "ready", "renderer": "esm", "entry": "src/main.js" },
@@ -16,7 +16,6 @@
     { "id": "pixel-runner", "name": "像素跑酷", "dir": "pixel-runner", "cover": "covers/pixel-runner.png", "tag": "跑酷", "status": "ready", "renderer": "esm", "entry": "src/ui.mjs" },
     { "id": "grass-cutter", "name": "传统割草", "dir": "grass-cutter", "cover": "covers/grass-cutter.png", "tag": "动作", "status": "ready", "renderer": "esm", "entry": "src/main.js" },
     { "id": "shanhai", "name": "山海拾遗", "dir": "shanhai", "cover": "covers/shanhai.png", "tag": "战棋", "status": "ready", "renderer": "classic" },
-    { "id": "future-light", "name": "未来之光 · 脑力合集", "dir": "future-light", "cover": "covers/future-light.webp", "tag": "益智", "status": "ready", "renderer": "esm", "entry": "src/main.js", "source": "D:/Projects/FUTURE-LIGHT", "addedIn": "P1" },
     { "id": "warehouse-strike", "name": "仓库行动", "dir": "warehouse-strike", "cover": "covers/warehouse-strike.webp", "tag": "射击", "status": "ready", "renderer": "esm", "entry": "src/main.js", "source": "D:/Projects/WAREHOUSE-STRIKE", "addedIn": "P1" },
     { "id": "lab-sandbox", "name": "电路实验 · 沙盒版", "dir": "lab-sandbox", "cover": "covers/lab-sandbox.webp", "tag": "沙盒", "status": "ready", "renderer": "esm", "logicFrom": "lab", "source": "D:/Projects/lab-simulator", "sharesSourceWith": "lab", "addedIn": "P1" },
     { "id": "enlisten", "name": "英语听力 · 网页版", "dir": "enlisten", "cover": "covers/enlisten.webp", "tag": "学习", "status": "pending", "renderer": "classic", "source": "D:/Projects/EN-LISTEN", "addedIn": "P5" }

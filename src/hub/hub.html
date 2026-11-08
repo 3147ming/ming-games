@@ -24,7 +24,17 @@
 
 <div class="hub-stage" id="hub-stage" hidden></div>
 <button class="hub-back" id="hub-back" type="button" hidden>← 返回大厅</button>
-<div class="hub-loading" id="hub-loading" hidden><div class="hub-spinner"></div><span>正在加载游戏…</span></div>
+<div class="hub-loading" id="hub-loading" hidden>
+  <div class="hub-loading-card">
+    <div class="hub-spinner"></div>
+    <div class="hub-loading-title">正在加载游戏…</div>
+    <div class="hub-bar"><div class="hub-bar-fill" id="hub-progress"></div></div>
+    <div class="hub-loading-foot">
+      <span class="hub-loading-name" id="hub-loading-name"></span>
+      <span class="hub-loading-pct" id="hub-loading-pct">0%</span>
+    </div>
+  </div>
+</div>
 <div class="hub-notice" id="hub-notice" role="status" aria-live="polite"></div>
 
 <script>

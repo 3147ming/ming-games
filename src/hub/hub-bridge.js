@@ -115,9 +115,16 @@
         dom.app = !!document.getElementById('app');
         dom.bodyText = String(document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 160);
       } catch (e) { /* noop */ }
+      send('GAME_PROGRESS', { phase: 'ready', value: 1 });
       send('GAME_READY', { caps: caps || [], version: V, href: String(location.href), t: Date.now(), dom: dom });
     }
     function progress(p) { send('GAME_PROGRESS', p || {}); }
+    /* 自动上报加载阶段，驱动大厅进度条：bridge 初始化(0.12) → DOM 就绪(0.4) → ready(1)。
+       游戏业务代码也可随时调用 HubBridge.progress({ value: x }) 上报更细的进度。 */
+    progress({ phase: 'boot', value: 0.12 });
+    function onDom() { progress({ phase: 'dom', value: 0.4 }); }
+    if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', onDom);
+    else onDom();
     function error(e) {
       send('GAME_ERROR', {
         message: e && e.message ? String(e.message) : String(e),

@@ -142,17 +142,6 @@
     "infiniteResources": false,
     "hiddenOptions": false
   },
-  "future-light": {
-    "level": { "min": 1, "max": 999, "step": 1, "default": 1 },
-    "difficulty": { "min": 0, "max": 10, "step": 0.5, "default": 2 },
-    "speed": { "min": 0.25, "max": 4, "step": 0.25, "default": 1 },
-    "lives": { "min": 1, "max": 99, "step": 1, "default": 3 },
-    "time": { "min": 30, "max": 3600, "step": 30, "default": 60 },
-    "enemyCount": { "min": 1, "max": 500, "step": 1, "default": 1 },
-    "dropRate": { "min": 0, "max": 1, "step": 0.05, "default": 0.1 },
-    "infiniteResources": false,
-    "hiddenOptions": false
-  },
   "warehouse-strike": {
     "level": { "min": 1, "max": 999, "step": 1, "default": 1 },
     "difficulty": { "min": 0, "max": 10, "step": 0.5, "default": 4 },
