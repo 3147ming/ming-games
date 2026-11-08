@@ -25,7 +25,11 @@ const H = 800;
 const QUALITY = 0.88;
 const CDP_PORT = 9334;
 const PROFILE = path.join(os.tmpdir(), 'mg-covers-cdp-' + Date.now());
-const IDS = ['future-light', 'warehouse-strike', 'lab-sandbox', 'enlisten'];
+/* ID 顺序从封面提示词配置派生，保证 gen-seedream.mjs 与压缩链路始终成套；
+   不要再在这里硬编码一份 id 列表。 */
+const IDS = JSON.parse(
+  fs.readFileSync(path.join(ROOT, 'src/art/cover-prompts.json'), 'utf8')
+).items.map((it) => it.id);
 
 const BROWSERS = [
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
