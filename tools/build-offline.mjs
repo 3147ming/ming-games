@@ -1,0 +1,144 @@
+/* build-offline.mjs — 产物渲染器（web 与 offline 共用）
+ *
+ * 产物由「模板 + 数据」全新生成，不做「读原文局部改写再写回」的半途写入。
+ * 对源 HTML 的每一处替换都经 anchor.mjs 的锚点唯一性校验。
+ */
+import fs from 'node:fs';
+import path from 'node:path';
+import { replaceOnceText } from './anchor.mjs';
+
+const SKIP_DIRS = new Set(['.git', 'node_modules', 'tests', 'tools', '.workbuddy', '.tmp']);
+const SKIP_FILES = new Set(['sw.js', 'manifest.json', 'package.json', 'server.mjs', 'README.md', 'index.html']);
+const SKIP_EXT = new Set(['.js', '.mjs', '.cjs', '.css', '.html', '.md', '.map', '.ts']);
+
+/* 同一标签在源 HTML 里可能出现多次（例：quiz 引了两遍 shared/tokens.css）。
+   逐个替换并每次校验剩余计数，既守住「不静默丢写」，又避免重复内联同一份 CSS。 */
+function replaceFirstVerified(text, anchor, replacement, label) {
+  const before = text.split(anchor).length - 1;
+  if (before < 1) throw new Error(`[build] ${label}: 锚点在替换前消失`);
+  const out = text.replace(anchor, () => replacement);
+  const after = out.split(anchor).length - 1;
+  if (after !== before - 1) throw new Error(`[build] ${label}: 替换后计数异常 ${before} -> ${after}`);
+  return out;
+}
+
+export function inlineStylesheets(html, gameDir, label) {
+  const re = /<link[^>]*\brel=["']stylesheet["'][^>]*>/gi;
+  const tags = [...html.matchAll(re)].map((m) => m[0]);
+  const seen = new Set();
+  for (const tag of tags) {
+    const href = (tag.match(/\bhref=["']([^"']+)["']/) || [])[1];
+    if (!href || href.startsWith('data:')) continue;
+    const abs = path.resolve(gameDir, href);
+    const dup = seen.has(abs);
+    seen.add(abs);
+    if (dup) {
+      html = replaceFirstVerified(html, tag, '', `${label}:css-dup:${href}`);
+      continue;
+    }
+    if (!fs.existsSync(abs)) throw new Error(`[build] ${label}: 样式表不存在 ${href} -> ${abs}`);
+    const css = fs.readFileSync(abs, 'utf8');
+    html = replaceFirstVerified(html, tag, `<style>\n/* inlined: ${href} */\n${css}\n</style>`, `${label}:css:${href}`);
+  }
+  return html;
+}
+
+/* 产物不需要旧 SW 注册 / importmap / manifest（由统一 gen-sw 与构建器负责） */
+export function stripLegacyTags(html) {
+  html = html.replace(/<link[^>]*\brel=["']manifest["'][^>]*>\s*/gi, '');
+  html = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, function (block) {
+    if (/serviceWorker\.register/.test(block)) return '';
+    if (/\btype=["']importmap["']/.test(block)) return '';
+    return block;
+  });
+  return html;
+}
+
+export function renderGameHtml(opts) {
+  const { gameDir, gameId, entryRel, renderer, bundleCode, bridgeCode, label } = opts;
+  let html = fs.readFileSync(path.join(gameDir, 'index.html'), 'utf8');
+  html = inlineStylesheets(html, gameDir, label || gameId);
+  html = stripLegacyTags(html);
+
+  if (renderer === 'esm') {
+    const re = /<script[^>]*\btype=["']module["'][^>]*>[\s\S]*?<\/script>/gi;
+    const matches = [...html.matchAll(re)];
+    if (matches.length !== 1) {
+      throw new Error(`[build] ${gameId}: 期望恰好 1 个 module script，实际 ${matches.length} 个（P2 需扩展多入口处理）`);
+    }
+    const tag = matches[0][0];
+    const src = (tag.match(/\bsrc=["']([^"']+)["']/) || [])[1];
+    if (!src) throw new Error(`[build] ${gameId}: module script 缺少 src`);
+    const expected = entryRel.replace(/^\.\//, '');
+    if (!src.replace(/^\.\//, '').endsWith(expected.split('/').pop())) {
+      throw new Error(`[build] ${gameId}: 入口不一致，HTML=${src} games.json=${entryRel}`);
+    }
+    html = replaceOnceText(
+      html, tag,
+      `<script>\n${bundleCode}\n</script>`,
+      `${gameId}:module-script`
+    );
+  }
+
+  const child = `${bridgeCode}\nHubBridge.createChild({ gameId: ${JSON.stringify(gameId)}, caps: [] });`;
+  html = replaceOnceText(html, '</body>', `<script>\n${child}\n</script>\n</body>`, `${gameId}:body-close`);
+  return html;
+}
+
+export function renderHubHtml(opts) {
+  const { root, games, meta } = opts;
+  let html = fs.readFileSync(path.join(root, 'src', 'hub', 'hub.html'), 'utf8');
+  const read = (f) => fs.readFileSync(path.join(root, 'src', 'hub', f), 'utf8');
+  const data =
+    `globalThis.__HUB_GAMES__ = ${JSON.stringify(games, null, 2)};\n` +
+    `globalThis.__HUB_META__ = ${JSON.stringify(meta, null, 2)};`;
+  const parts = {
+    '/*__HUB_CSS__*/': read('hub.css'),
+    '/*__HUB_DATA__*/': data,
+    '/*__HUB_BRIDGE__*/': read('hub-bridge.js'),
+    '/*__HUB_ROUTER__*/': read('router.js'),
+    '/*__HUB_UI__*/': read('hub-ui.js')
+  };
+  for (const [anchor, content] of Object.entries(parts)) {
+    html = replaceOnceText(html, anchor, content, `hub.html:${anchor}`);
+  }
+  return html;
+}
+
+export function copyAssets(srcDir, dstDir, opts = {}) {
+  if (!fs.existsSync(srcDir)) return 0;
+  const allow = new Set(opts.allowExt || []);
+  let count = 0;
+  for (const ent of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    if (SKIP_DIRS.has(ent.name) || ent.name.startsWith('.')) continue;
+    const from = path.join(srcDir, ent.name);
+    const to = path.join(dstDir, ent.name);
+    if (ent.isDirectory()) {
+      fs.mkdirSync(to, { recursive: true });
+      count += copyAssets(from, to, opts);
+    } else {
+      if (SKIP_FILES.has(ent.name)) continue;
+      const ext = path.extname(ent.name).toLowerCase();
+      // classic 游戏用 <script src="./src/*.js|mjs"> 加载，这些脚本必须随产物一起复制；
+      // esm 游戏已把依赖图内联成 bundle，源码脚本不进产物。
+      if (SKIP_EXT.has(ext) && !allow.has(ext)) continue;
+      fs.mkdirSync(path.dirname(to), { recursive: true });
+      fs.copyFileSync(from, to);
+      count++;
+    }
+  }
+  return count;
+}
+
+export function copyDir(srcDir, dstDir) {
+  if (!fs.existsSync(srcDir)) return 0;
+  let count = 0;
+  fs.mkdirSync(dstDir, { recursive: true });
+  for (const ent of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    const from = path.join(srcDir, ent.name);
+    const to = path.join(dstDir, ent.name);
+    if (ent.isDirectory()) count += copyDir(from, to);
+    else { fs.copyFileSync(from, to); count++; }
+  }
+  return count;
+}

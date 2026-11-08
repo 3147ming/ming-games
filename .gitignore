@@ -32,3 +32,15 @@ Thumbs.db
 # 主控脚本的临时目录（CDP 浏览器 profile / 一次性验证脚本 / 截图）
 # 这些不进版本库：profile 有几十 MB 且含本机路径，验证脚本是一次性的
 .tmp/
+
+# === 统一大厅构建链（2026-11-08 第二轮）===
+# 构建产物不入库：由 `node tools/build.mjs --target=all` 或 serve.bat 一键再生。
+# 三形态一致性由 dist.manifest.json / offline.manifest.json 的逐文件 SHA256 校验。
+/dist/
+/offline/
+/dist.manifest.json
+/offline.manifest.json
+/verify-report.json
+node_modules/
+# 归档目录只在仓库外（D:\Projects\_archive），不进本仓库
+/_archive/

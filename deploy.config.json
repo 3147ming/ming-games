@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "updated": "2026-11-08",
+  "canonical": "https://ming-games.pages.dev/",
+  "repository": "3147ming/ming-games.git",
+  "branch": "master",
+  "sourceRoot": ".",
+  "publishDir": "dist",
+  "build": {
+    "web": "node tools/build.mjs --target=web",
+    "offline": "node tools/build.mjs --target=offline",
+    "all": "node tools/build.mjs --target=all",
+    "verify": "node tools/verify-all.mjs --target=all --unit --report"
+  },
+  "targets": [
+    {
+      "host": "ming-games.pages.dev",
+      "role": "canonical",
+      "status": "active",
+      "writableBy": ["tools/build.mjs"],
+      "publishDir": "dist",
+      "note": "唯一线上入口。Cloudflare Pages 绑定 3147ming/ming-games master，构建命令见 build.web"
+    },
+    {
+      "host": "3147ming.github.io",
+      "role": "mirror",
+      "status": "readonly",
+      "writableBy": [],
+      "note": "只读同步镜像，禁止任何脚本写入"
+    },
+    {
+      "host": "ming-games.surge.sh",
+      "role": "frozen-redirect",
+      "status": "frozen",
+      "writableBy": [],
+      "note": "曾同时被 HUB/deploy 与 BRAIN-GYM/_deploy_gym 发布，后写覆盖先写。冻结为纯跳转页，禁止再发布"
+    },
+    {
+      "host": "ming-game-gym.surge.sh",
+      "role": "frozen",
+      "status": "frozen",
+      "writableBy": [],
+      "note": "在 FUTURE-LIGHT 与 BRAIN-GYM 之间反复切换/回滚。冻结。FUTURE-LIGHT/tools/sync-deploy.mjs 的写死域名须改为读取本文件"
+    },
+    {
+      "host": "ming-game-card.surge.sh",
+      "role": "legacy",
+      "status": "deprecated",
+      "writableBy": [],
+      "note": "ONE-CARD 旧独立域，已并入主站 /one-card/，保留存档兼容但不再发布"
+    },
+    {
+      "host": "ming-game-raid.surge.sh",
+      "role": "legacy",
+      "status": "deprecated",
+      "writableBy": [],
+      "note": "SOUDACHE 旧独立域"
+    },
+    {
+      "host": "ming-game-sim.surge.sh",
+      "role": "legacy",
+      "status": "deprecated",
+      "writableBy": [],
+      "note": "NIGHT-SHIFT 旧独立域"
+    },
+    {
+      "host": "ming-game-01.surge.sh",
+      "role": "legacy",
+      "status": "deprecated",
+      "writableBy": [],
+      "note": "传统割草游戏旧独立域"
+    },
+    {
+      "host": "ming-game-0714.surge.sh",
+      "role": "legacy",
+      "status": "deprecated",
+      "writableBy": [],
+      "note": "WILD 旧独立域，曾为保留玩家存档而沿用"
+    }
+  ],
+  "otherHosts": [
+    { "host": "zuoye-e0c.pages.dev", "role": "external", "note": "WorldHub/zuoye 课程作业站，不在本次统一范围" },
+    { "host": "xingdong.pages.dev", "role": "external", "note": "WAREHOUSE-STRIKE 独立仓库，源码并入主站后不再作为运行时入口" },
+    { "host": "warehouse-strike.pages.dev", "role": "external", "note": "同上" }
+  ],
+  "archivedLocal": [
+    "D:/Projects/HUB",
+    "D:/Projects/zuoye",
+    "D:/Projects/WorldHub"
+  ],
+  "rules": [
+    "任何部署脚本不得硬编码域名，一律读取本文件",
+    "状态为 frozen / deprecated / readonly 的目标禁止作为 surge/publish 写入目标",
+    "对外发布（pages.dev 推送）必须先经用户确认",
+    "tools/check-deploy.mjs 作为构建与 CI 门禁"
+  ]
+}

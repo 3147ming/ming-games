@@ -1,0 +1,105 @@
+/* hub.css — P0 大厅版式（P4 将替换为统一 Q 版成品视觉）
+   当前使用真实封面 PNG，不使用占位素材；纯 CSS 只负责版式与层级。 */
+:root {
+  --bg: #0d0c0b;
+  --bg2: #16120e;
+  --panel: #1c1813;
+  --line: #2c261d;
+  --paper: #ece6da;
+  --dim: #958a7c;
+  --gold: #d6ab58;
+  --good: #5cc08a;
+  --bad: #e0736b;
+  --r: 14px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .45);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  background: radial-gradient(120% 90% at 50% -10%, #221b14 0%, var(--bg) 62%);
+  color: var(--paper);
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 34px 14px 26px;
+  padding-left: calc(14px + env(safe-area-inset-left));
+  padding-right: calc(14px + env(safe-area-inset-right));
+  padding-bottom: calc(26px + env(safe-area-inset-bottom));
+}
+#hub-app { width: min(96%, 1080px); display: flex; flex-direction: column; gap: 20px; }
+.hub-head { text-align: center; }
+.hub-title { font-size: clamp(24px, 4vw, 34px); letter-spacing: .22em; margin: 0; font-weight: 600; }
+.hub-sub { font-size: 12px; letter-spacing: .18em; color: var(--gold); margin: 10px 0 0; line-height: 1.7; }
+
+.hub-grid {
+  display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+.card {
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--r); text-decoration: none; color: inherit;
+  box-shadow: var(--shadow); transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.card:not(.card-pending):hover { transform: translateY(-4px); border-color: var(--gold); box-shadow: 0 16px 38px rgba(0,0,0,.55); }
+.card:not(.card-pending):focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.card-pending { opacity: .58; cursor: default; }
+.card-cover { position: relative; aspect-ratio: 3 / 4; background: #0a0908; overflow: hidden; }
+.card-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.card-badge {
+  position: absolute; top: 10px; right: 10px; padding: 3px 9px; font-size: 11px;
+  background: rgba(10,9,8,.82); border: 1px solid var(--line); border-radius: 999px; color: var(--dim);
+}
+.card-body { padding: 12px 13px 14px; display: flex; flex-direction: column; gap: 7px; }
+.card-name { font-size: 15px; font-weight: 600; letter-spacing: .04em; }
+.card-tag { align-self: flex-start; font-size: 11px; color: var(--gold); border: 1px solid rgba(214,171,88,.35); border-radius: 999px; padding: 2px 8px; }
+.card-enter { font-size: 12px; color: var(--dim); margin-top: 2px; }
+
+.hub-foot { text-align: center; font-size: 11px; color: var(--dim); line-height: 1.8; letter-spacing: .04em; }
+
+.hub-stage { position: fixed; inset: 0; z-index: 20; background: #000; }
+.hub-stage[hidden] { display: none; }
+.game-frame { width: 100%; height: 100%; border: 0; display: block; background: #000; }
+body.in-game { padding: 0; overflow: hidden; }
+body.in-game > #hub-app { display: none; }
+
+.hub-back {
+  position: fixed; z-index: 40; top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left));
+  padding: 9px 15px; min-height: 44px; font-size: 13px; font-family: inherit;
+  color: var(--paper); background: rgba(20,17,13,.86); border: 1px solid rgba(214,171,88,.5);
+  border-radius: 999px; cursor: pointer; backdrop-filter: blur(8px); box-shadow: var(--shadow);
+}
+.hub-back:hover { border-color: var(--gold); background: rgba(30,24,17,.95); }
+.hub-back[hidden] { display: none; }
+
+.hub-loading {
+  position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
+  gap: 14px; background: rgba(8,7,6,.92); color: var(--dim); font-size: 13px; letter-spacing: .1em;
+}
+.hub-loading[hidden] { display: none; }
+.hub-spinner {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 2px solid rgba(214,171,88,.22); border-top-color: var(--gold);
+  animation: hub-spin .8s linear infinite;
+}
+@keyframes hub-spin { to { transform: rotate(360deg); } }
+
+.hub-notice {
+  position: fixed; z-index: 45; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom));
+  transform: translate(-50%, 12px); opacity: 0; pointer-events: none;
+  padding: 9px 18px; border-radius: 999px; font-size: 12px;
+  background: rgba(20,17,13,.94); border: 1px solid var(--line); color: var(--paper);
+  transition: opacity .2s ease, transform .2s ease; box-shadow: var(--shadow);
+}
+.hub-notice.show { opacity: 1; transform: translate(-50%, 0); }
+.hub-notice.err { border-color: rgba(224,115,107,.7); color: #ffd9d4; }
+
+@media (max-width: 600px) {
+  .hub-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .card-name { font-size: 13px; }
+  body { padding-top: 22px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card, .hub-notice { transition: none; }
+  .hub-spinner { animation-duration: 2s; }
+}

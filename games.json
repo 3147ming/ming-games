@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "updated": "2026-11-08",
+  "note": "P0 清单。ready=已接入构建链；pending=待 P1/P2 接入；listed:false=尚未并入大厅（等 P1 连同封面一起上）。13 个现有主站卡片先上，4 个本次新增收录在 P1 加入。",
+  "games": [
+    { "id": "wild", "name": "荒野 WILD", "dir": "wild", "cover": "covers/wild.png", "tag": "动作", "status": "pending", "renderer": "esm", "entry": "src/main.js" },
+    { "id": "raid", "name": "搜打撤", "dir": "soudache", "cover": "covers/raid.png", "tag": "射击", "status": "pending", "renderer": "esm", "entry": "src/main.js" },
+    { "id": "card", "name": "一世一牌", "dir": "one-card", "cover": "covers/card.png", "tag": "卡牌", "status": "ready", "renderer": "esm", "entry": "src/main.js" },
+    { "id": "gym", "name": "脑力训练场", "dir": "brain-gym", "cover": "covers/gym.png", "tag": "益智", "status": "ready", "renderer": "classic" },
+    { "id": "sim", "name": "夜班便利店", "dir": "night-shift", "cover": "covers/sim.png", "tag": "模拟", "status": "pending", "renderer": "esm", "entry": "src/main.mjs" },
+    { "id": "zhaoyun", "name": "赵云与阿斗", "dir": "zhaoyun", "cover": "covers/zhaoyun.png", "tag": "塔防", "status": "ready", "renderer": "classic" },
+    { "id": "quiz", "name": "知识问答", "dir": "quiz", "cover": "covers/quiz.png", "tag": "答题", "status": "ready", "renderer": "classic" },
+    { "id": "lab", "name": "电路实验模拟器", "dir": "circuit-lab", "cover": "covers/lab.png", "tag": "教学", "status": "pending", "renderer": "esm", "entry": "js/app.js" },
+    { "id": "paper-maze", "name": "纸上迷城", "dir": "paper-maze", "cover": "covers/paper-maze.png", "tag": "解谜", "status": "ready", "renderer": "esm", "entry": "src/ui.mjs" },
+    { "id": "neon-rhythm", "name": "霓虹律动", "dir": "neon-rhythm", "cover": "covers/neon-rhythm.png", "tag": "音游", "status": "pending", "renderer": "esm", "entry": "src/ui.mjs" },
+    { "id": "pixel-runner", "name": "像素跑酷", "dir": "pixel-runner", "cover": "covers/pixel-runner.png", "tag": "跑酷", "status": "pending", "renderer": "esm", "entry": "src/ui.mjs" },
+    { "id": "grass-cutter", "name": "传统割草", "dir": "grass-cutter", "cover": "covers/grass-cutter.png", "tag": "动作", "status": "pending", "renderer": "esm", "entry": "src/main.js" },
+    { "id": "shanhai", "name": "山海拾遗", "dir": "shanhai", "cover": "covers/shanhai.png", "tag": "战棋", "status": "ready", "renderer": "classic" },
+    { "id": "future-light", "name": "未来之光 · 脑力合集", "dir": "future-light", "cover": "covers/future-light.png", "tag": "益智", "status": "pending", "renderer": "esm", "entry": "src/main.js", "source": "D:/Projects/FUTURE-LIGHT", "addedIn": "P1", "listed": false },
+    { "id": "warehouse-strike", "name": "仓库行动", "dir": "warehouse-strike", "cover": "covers/warehouse-strike.png", "tag": "射击", "status": "pending", "renderer": "esm", "entry": "src/main.js", "source": "D:/Projects/WAREHOUSE-STRIKE", "addedIn": "P1", "listed": false },
+    { "id": "lab-sandbox", "name": "电路实验 · 沙盒版", "dir": "lab-simulator", "cover": "covers/lab-sandbox.png", "tag": "沙盒", "status": "pending", "renderer": "esm", "entry": "js/app.js", "source": "D:/Projects/lab-simulator", "sharesSourceWith": "lab", "addedIn": "P1", "listed": false },
+    { "id": "enlisten", "name": "英语听力 · 网页版", "dir": "enlisten", "cover": "covers/enlisten.png", "tag": "学习", "status": "pending", "renderer": "classic", "source": "D:/Projects/EN-LISTEN", "addedIn": "P5", "listed": false }
+  ]
+}
