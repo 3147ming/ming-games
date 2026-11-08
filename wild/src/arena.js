@@ -895,8 +895,8 @@ export const ARENA = {
   RAIN_JITTER: 0.30,        // 格内抖动比例（0 = 严格落在格心；太大则格子边界糊在一起，安全间隙就没意义了）
   // ★ 阶段10·P1-3：按 BOSS_TYPES.idx 取值，**加 Boss 必须同时给这两张表补一档** ——
   //   _beginRain 直接 RAIN_COUNT[idx]，undefined 不会抛错，只会让预警圈永远停在场上。
-  RAIN_COUNT: [30, 44, 52, 40], // 每波落点数：Boss1 30 / Boss2 44 / Boss3 52 / Boss4 40
-  RAIN_WARN: [0.8, 0.6, 0.55, 0.62], // 预警时长 s：Boss1 0.8 / Boss2 0.6 / Boss3 0.55 / Boss4 0.62
+  RAIN_COUNT: [30, 44, 52, 40, 46], // 每波落点数：Boss1 30 / Boss2 44 / Boss3 52 / Boss4 40 / Boss5 46
+  RAIN_WARN: [0.8, 0.6, 0.55, 0.62, 0.58], // 预警时长 s：Boss1 0.8 / Boss2 0.6 / Boss3 0.55 / Boss4 0.62 / Boss5 0.58
   RAIN_DMG: 12,             // 单发伤害（90 血挨 8 发死；使命是"可躲但不秒杀"，留出走位余地）
   RAIN_R: 46,               // 命中判定半径 px（与预警圈同 size，所见即所判）
   RAIN_COVER_MAX: 0.70,     // 覆盖率硬上限。实测：Boss1 21.6% / Boss2 31.7%（远低于上限，留足走位余地）
@@ -922,6 +922,48 @@ export const ARENA = {
   BOSS4_MARK_DMG: 16,       // 引爆伤害
   BOSS4_MARK_MAX: 4,        // 同屏印记硬上限
   BOSS4_RAGE_SWEEP_MUL: 1.25, // 狂暴时光束判定宽度 ×1.25
+
+  // ───────── 内容批：boss5「万象归墟」数值 ─────────
+  // ★ 四招随机轮转（用户拍板：四个都要，随机出招）。招式之间互斥，同一帧只走一条。
+  BOSS5_CYCLE: 4.2,          // 基础节拍 4.2s（比 boss4 略快 —— 终局就该更急）
+  BOSS5_RAGE_AT: 0.45,       // 狂暴阈值：血量 ≤45%
+  BOSS5_RAGE_CYCLE: 2.8,     // 狂暴节拍 4.2 → 2.8s
+  BOSS5_RAGE_MULTI: 1.35,    // 狂暴时伤害倍率 ×1.35
+
+  // 招式①：幻影分身
+  BOSS5_CLONE_N: 3,          // 每次召出的分身数
+  BOSS5_CLONE_R: 26,         // 分身碰撞半径
+  BOSS5_CLONE_SPEED: 78,     // 分身移动速度（比玩家慢，能被甩掉）
+  BOSS5_CLONE_WIND: 0.7,     // 分身出现前的成形前摇
+  BOSS5_CLONE_FUSE: 1.8,     // 成形后多久自爆
+  BOSS5_CLONE_DMG: 20,       // 自爆伤害
+  BOSS5_CLONE_BLAST_R: 52,   // 自爆半径
+  BOSS5_CLONE_MAX: 6,       // 同屏分身硬上限
+  BOSS5_CLONE_LIFE: 3.2,     // 分身总寿命（自爆后残留表现）
+
+  // 招式②：环形冲击波
+  BOSS5_SHOCK_WIND: 0.85,    // 冲击波前摇（画出扩张预警环）
+  BOSS5_SHOCK_R0: 40,        // 冲击波起始半径
+  BOSS5_SHOCK_R1: 460,       // 冲击波扩张到的最大半径
+  BOSS5_SHOCK_T: 1.15,       // 扩张总时长
+  BOSS5_SHOCK_BAND: 34,      // 环带半宽（判定与显示同宽，所见即所判）
+  BOSS5_SHOCK_DMG: 26,       // 命中伤害
+
+  // 招式③：狂暴连招
+  BOSS5_COMBO_N: 4,          // 一次连招打几段
+  BOSS5_COMBO_WIND: 0.42,    // 每段前摇
+  BOSS5_COMBO_STRIKE: 0.14,  // 每段突刺时长
+  BOSS5_COMBO_RANGE: 260,    // 突刺距离上限
+  BOSS5_COMBO_DMG: 18,       // 每段伤害
+  BOSS5_COMBO_GAP: 0.16,     // 段间间隔
+
+  // 招式④：镜像反转
+  BOSS5_MIRROR_WIND: 1.0,    // 镜像展开前摇
+  BOSS5_MIRROR_LIFE: 2.6,    // 镜像存活时长
+  BOSS5_MIRROR_R: 34,        // 镜像半径
+  BOSS5_MIRROR_DMG: 22,      // 镜像接触伤害
+  BOSS5_MIRROR_MAX: 3,       // 同屏镜像硬上限
+  BOSS5_MIRROR_SPEED: 96,    // 镜像移动速度
 
   // ── 阶段11·P1-12：终局压力 ──
   // ★ 为什么需要它：16 局 sim 实测 16/16 跑满、全程最低血量 86/90 ⟹ 玩家从不濒死，
@@ -1020,17 +1062,25 @@ export const BOSS_TYPES = {
     hpMul: 30, r: 32, speed: 50, shape: 77, spikes: true, color: '#7a1f18', summon: 4 },
   boss2: { id: 'boss2', idx: 1, label: '噬影之主', atSec: 330,
     hpMul: 50, r: 38, speed: 54, shape: 91, spikes: true, color: '#3a1f4a', summon: 6 },
-  // 阶段10·P1-3：终局 Boss —— 9:00 出场，留 60 秒收尾（终局感来自"最后一分钟还有东西压着"）。
+  // 阶段10·P1-3：第 3 只 Boss —— 原 9:00 出场，现改为 8:00（480s），
+  //   给 boss4（525s）与终局 boss5（570s）各腾出独立的出场窗口。
   //   shape 12 是没被任何实体用过的种子（现有 2/3/4/5/6/7/9/77/91）⟹ 轮廓天然独一份。
-  //   ★ bossSpawned/bossKills 由 BOSS_ORDER.map() 自动变成 3 项，不要手改长度。
-  boss3: { id: 'boss3', idx: 2, label: '荒野之喉', atSec: 540,
+  //   ★ bossSpawned/bossKills 由 BOSS_ORDER.map() 自动变成项数随 BOSS_TYPES 变，不要手改长度。
+  boss3: { id: 'boss3', idx: 2, label: '荒野之喉', atSec: 480,
     hpMul: 70, r: 44, speed: 46, shape: 12, spikes: true, color: '#2c3a2a', summon: 8 },
   // ───────── 内容批：第 4 只 Boss ─────────
-  // ★ 为什么放在 570s：本项目单局 600s（10 分钟），700s 的 Boss 在整局里永远不会出场。
-  //   570s 是"严格晚于 540s"里还能留出 30 秒收尾窗口的最大整十秒。
+  // ★ 出场时间改为 525s：终局 Boss（boss5）要独占最后 30s（570s 出场），
+  //   boss4 让到 525s —— 与 boss3（480s）拉开 45s，彼此不撞秒。
+  //   （"没死不刷下一个"：bossRef 非空时压着不刷下一个，所以出场秒数必须严格递增。）
   // ★ style: 'gaze' 是 stepBoss 的分流标记——有新招式就别往冲锋三态机里塞。
-  boss4: { id: 'boss4', idx: 3, label: '寂光之瞳', atSec: 570,
+  boss4: { id: 'boss4', idx: 3, label: '寂光之瞳', atSec: 525,
     hpMul: 110, r: 40, speed: 48, shape: 21, spikes: false, color: '#6fa8b8', summon: 0, style: 'gaze' },
+  // ───────── 内容批：第 5 只 Boss（终局）─────────
+  // ★ style: 'chaos' 是分流标记：boss5 有**四招随机轮转**，与前四只机制都不重叠。
+  //   shape 33 是没被任何实体用过的种子（现有 2/3/4/5/6/7/9/12/21/77/91）⟹ 轮廓天然独一份。
+  // ★ hpMul 150：终局 Boss 必须比 boss4（110）更厚，否则玩家在 30s 窗口里打不穿它。
+  boss5: { id: 'boss5', idx: 4, label: '万象归墟', atSec: 570,
+    hpMul: 150, r: 46, speed: 52, shape: 33, spikes: true, color: '#7a2f6b', summon: 0, style: 'chaos' },
 };
 /** Boss 的出场顺序（按 atSec 升序）："没死不刷下一个"靠这个顺序推进。 */
 export const BOSS_ORDER = Object.keys(BOSS_TYPES).sort((a, b) => BOSS_TYPES[a].atSec - BOSS_TYPES[b].atSec);
@@ -1468,6 +1518,8 @@ export class ArenaCore {
     this.rainHits = 0;       // 命中过玩家几次（sim 自证读数）
     this.nextFinalRainAt = ARENA.FINAL_RAIN_FROM;   // 阶段11·P1-12：终局弹雨时间表
     this.bossRain = 0;       // 由 Boss 发动的波数（= rainWaves，保留供 sim 分口径核对）
+    // boss5 专用 rng：招式选择走独立流，不污染主 rng（见 _stepChaos 的注释）。
+    this.chaosRng = new Rng('chaos:' + (this.rng && this.rng.seed ? this.rng.seed : 'seed'));
     this._nextShopIdx = 0;     // 下一个待触发的 SHOP_TIMES 下标
     this.shopOpen = false;     // 非 null/true 时游戏暂停，等待购买/跳过
     this.shopGoods = null;     // 当前 3 件货物（rollShop 的结果）
@@ -2873,6 +2925,17 @@ export class ArenaCore {
       rage: false,                     // 血量 ≤40% 后狂暴，只触发一次
       beamHitCd: 0,                    // 光束命中冷却，避免每帧扣血
       beamHit: false,                  // 本次光束是否命中过玩家（决定过载奖励）
+      // ── chaos 状态机（只有 boss5 style === 'chaos' 用）──
+      chaosPhase: 'idle',  // idle | cloneW | shockW | shockF | comboW | comboF | mirrorW | mirrorF
+      chaosT: ARENA.BOSS5_CYCLE,       // 下一拍距离剩余秒
+      chaosMove: 0,        // 本拍选中的招式 0=分身 1=冲击波 2=连招 3=镜像
+      chaosCombo: 0,       // 连招已打段数
+      chaosComboAng: 0,    // 连招突刺方向（每段重新锁定）
+      clones: [],           // 幻影分身 [{x,y,phase:'form'|'live',t,life}]
+      shockR: 0,           // 冲击波当前半径
+      shockHitCd: 0,       // 冲击波命中冷却，避免每帧扣血
+      mirrors: [],          // 镜像 [{x,y,t,life}]
+      rage5: false,         // 血量 ≤45% 后狂暴（与 boss4 的 rage 分开，互不干扰）
     };
     this.enemies.push(e);
     this.bossRef = e;
@@ -2895,6 +2958,9 @@ export class ArenaCore {
    * 攻击选择不消耗 rng（按 cycN 轮转）：Boss1 冲锋/召唤各半；Boss2 每 3 轮才召一次（更频繁地冲）。
    */
   stepBoss(e, ux, uy, d, dt) {
+    // ── chaos 分支：style === 'chaos' 的 Boss（boss5）走四招随机轮转 ──
+    if (BOSS_TYPES[e.kind].style === 'chaos') return this._stepChaos(e, ux, uy, d, dt);
+
     // ── gaze 分支：style === 'gaze' 的 Boss（boss4）完全不走冲锋三态机 ──
     if (BOSS_TYPES[e.kind].style === 'gaze') {
       // ── 狂暴：血量 ≤40% 触发一次，只缩节拍（不加伤，避免数值墙）──
@@ -2979,6 +3045,282 @@ export class ArenaCore {
       if (this.enemies.length >= ARENA.MAX_ENEMIES - ARENA.CLIMAX_SOFT_GAP) break;
       this.spawnEnemy(ARENA.BOSS_SUMMON_R * 0.5, ARENA.BOSS_SUMMON_R, at);
     }
+  }
+
+
+  // ───────── 内容批：boss5「万象归墟」chaos 状态机 ─────────
+  //
+  // ★ 四招随机轮转（用户拍板）：分身 / 冲击波 / 连招 / 镜像。
+  //   随机源走**独立的 chaosRng**，不碰主 rng —— 主 rng 决定刷怪节奏，
+  //   让 Boss 招式去搅它会把"这一局的节奏"变成不可复现的（同种子不同局）。
+  // ★ 招式互斥：同一时刻只有一个 chaosPhase 推进，绝不同帧叠加。
+  // ★ 追击：chaos 分支**不再走冲锋三态机**，所以 Boss 追不动玩家 ——
+  //   boss5 的威胁全部来自四招本身（范围压迫），而不是"贴上来"。
+
+  /** boss5 的一拍：推进当前招式；idle 时按节拍随机选下一招。 */
+  _stepChaos(e, ux, uy, d, dt) {
+    // ── 狂暴：血量 ≤45% 触发一次，缩节拍 + 加伤 ──
+    if (!e.rage5 && e.hp <= e.maxHp * ARENA.BOSS5_RAGE_AT) {
+      e.rage5 = true;
+      this.milestones.push({ text: `万象归墟·狂暴`, t: 0, life: ARENA.MILE_FADE });
+    }
+
+    // ── 分身 / 镜像的存在期与 Boss 主节拍无关 ──
+    // ★ 必须在「持续状态优先」之前调用：Boss 回到 idle 后，场上的分身/镜像
+    //   仍然要每帧推进（追踪、自爆、消失），否则它们会变成永久存在的无敌体。
+    this._stepChaosClones(e, dt);
+    this._stepChaosMirrors(e, dt);
+
+    // ── 持续状态优先（每帧推进，不受节拍打断）──
+    if (e.chaosPhase === 'cloneW') return this._stepChaosCloneW(e, dt);
+    if (e.chaosPhase === 'shockW') return this._stepChaosShockW(e, dt);
+    if (e.chaosPhase === 'shockF') return this._stepChaosShockF(e, dt);
+    if (e.chaosPhase === 'comboW') return this._stepChaosComboW(e, ux, uy, dt);
+    if (e.chaosPhase === 'comboF') return this._stepChaosComboF(e, dt);
+    if (e.chaosPhase === 'mirrorW') return this._stepChaosMirrorW(e, dt);
+    if (e.chaosPhase === 'mirrorF') return this._stepChaosMirrorF(e, dt);
+
+    // 分身 / 镜像的存在期由各自的 _step* 推进，不在这里处理。
+
+    // ── idle：按节拍选下一招 ──
+    const cycle = e.rage5 ? ARENA.BOSS5_RAGE_CYCLE : ARENA.BOSS5_CYCLE;
+    e.chaosT -= dt;
+    if (e.chaosT > 1e-9) {
+      // idle 时缓慢追踪（威胁来自招式，不来自贴身）
+      const bv = e.speed * dt;
+      e.x += ux * bv;
+      e.y += uy * bv;
+      return;
+    }
+    e.chaosT = cycle;
+    // 随机选招：4 选 1。★ 不用"上一招"做权重 —— 四招权重相同，
+    //   连续两招不同 ⟹ 玩家每拍都要换一种应对方式。
+    e.chaosMove = Math.floor(this.chaosRng.next() * 4) % 4;
+    if (e.chaosMove === 0) this._beginChaosClone(e);
+    else if (e.chaosMove === 1) this._beginChaosShock(e);
+    else if (e.chaosMove === 2) this._beginChaosCombo(e, ux, uy);
+    else this._beginChaosMirror(e);
+  }
+
+  // ── 招式①：幻影分身 ──
+  /** 召唤 N 个分身（成形前摇 → 追踪 → 自爆）。 */
+  _beginChaosClone(e) {
+    e.chaosPhase = 'cloneW';
+    e.chaosT = ARENA.BOSS5_CLONE_WIND;
+    // 上限守卫：超了就丢最旧的（与 sentry / mark 同口径）
+    while (e.clones.length + ARENA.BOSS5_CLONE_N > ARENA.BOSS5_CLONE_MAX) e.clones.shift();
+    for (let i = 0; i < ARENA.BOSS5_CLONE_N; i++) {
+      const a = this.chaosRng.next() * TAU;
+      e.clones.push({
+        x: e.x + Math.cos(a) * ARENA.BOSS5_CLONE_R * 2,
+        y: e.y + Math.sin(a) * ARENA.BOSS5_CLONE_R * 2,
+        phase: 'form',   // form = 成形前摇 / live = 追踪
+        t: ARENA.BOSS5_CLONE_WIND,
+        life: ARENA.BOSS5_CLONE_WIND + ARENA.BOSS5_CLONE_FUSE,
+      });
+    }
+    this.milestones.push({ text: `◈ 幻影分身 ×${ARENA.BOSS5_CLONE_N}·躲开会自爆◈`, kind: 'event', t: 0, life: ARENA.EVENT_BANNER_LIFE });
+  }
+
+  /** 分身成形前摇推进：前摇结束 → 转入 live（开始追踪玩家）。 */
+  _stepChaosCloneW(e, dt) {
+    e.chaosT -= dt;
+    if (e.chaosT > 0) return;
+    // 所有分身一起转入 live
+    for (const cl of e.clones) {
+      if (cl.phase === 'form') { cl.phase = 'live'; cl.t = ARENA.BOSS5_CLONE_FUSE; }
+    }
+    e.chaosPhase = 'idle';
+    e.chaosT = e.rage5 ? ARENA.BOSS5_RAGE_CYCLE : ARENA.BOSS5_CYCLE;
+  }
+
+  // ── 招式②：环形冲击波 ──
+  /** 冲击波前摇：画出扩张预警环。 */
+  _beginChaosShock(e) {
+    e.chaosPhase = 'shockW';
+    e.chaosT = ARENA.BOSS5_SHOCK_WIND;
+    e.shockR = ARENA.BOSS5_SHOCK_R0;
+    e.shockHitCd = 0;
+    this.milestones.push({ text: `◎ 冲击波·跑出内圈◎`, kind: 'event', t: 0, life: ARENA.EVENT_BANNER_LIFE });
+  }
+
+  /** 前摇结束 → 进入扩张（shockF）。 */
+  _stepChaosShockW(e, dt) {
+    e.chaosT -= dt;
+    if (e.chaosT > 0) return;
+    e.chaosPhase = 'shockF';
+    e.chaosT = ARENA.BOSS5_SHOCK_T;
+    e.shockR = ARENA.BOSS5_SHOCK_R0;
+  }
+
+  /** 冲击波扩张：半径随时间线性增长，环带命中判定。 */
+  _stepChaosShockF(e, dt) {
+    e.chaosT -= dt;
+    const k = 1 - Math.max(0, e.chaosT) / ARENA.BOSS5_SHOCK_T;
+    e.shockR = ARENA.BOSS5_SHOCK_R0 + (ARENA.BOSS5_SHOCK_R1 - ARENA.BOSS5_SHOCK_R0) * k;
+    if (e.shockHitCd > 0) e.shockHitCd = Math.max(0, e.shockHitCd - dt);
+    // 环带判定：|dist - R| ≤ 半宽 + 玩家半径
+    const dx = this.player.x - e.x, dy = this.player.y - e.y;
+    const dist = Math.hypot(dx, dy);
+    const band = ARENA.BOSS5_SHOCK_BAND + ARENA.PLAYER_RADIUS;
+    if (Math.abs(dist - e.shockR) <= band && e.shockHitCd <= 0) {
+      e.shockHitCd = 0.25;   // 每 0.25s 最多扣一次
+      this.damagePlayer(this._boss5Dmg(ARENA.BOSS5_SHOCK_DMG), { src: 'shock', kind: 'boss5' });
+    }
+    if (e.chaosT <= 0) {
+      e.chaosPhase = 'idle';
+      e.chaosT = e.rage5 ? ARENA.BOSS5_RAGE_CYCLE : ARENA.BOSS5_CYCLE;
+    }
+  }
+
+  // ── 招式③：狂暴连招 ──
+  /** 连招起手：进入第一段前摇。 */
+  _beginChaosCombo(e, ux, uy) {
+    e.chaosPhase = 'comboW';
+    e.chaosT = ARENA.BOSS5_COMBO_WIND;
+    e.chaosCombo = 0;
+    e.chaosComboAng = Math.atan2(uy, ux);
+    this.milestones.push({ text: `✦ 狂暴连招 ×${ARENA.BOSS5_COMBO_N}·别贴脸✦`, kind: 'event', t: 0, life: ARENA.EVENT_BANNER_LIFE });
+  }
+
+  /** 段前摇：短（0.42s），方向在最后 0.2s 仍跟踪玩家。 */
+  _stepChaosComboW(e, ux, uy, dt) {
+    e.chaosT -= dt;
+    // 前摇后半段仍可被"绕后"骗到 —— 方向在最后 0.2s 锁定
+    if (e.chaosT > 0.2) {
+      e.chaosComboAng = Math.atan2(this.player.y - e.y, this.player.x - e.x);
+    }
+    if (e.chaosT > 0) return;
+    e.chaosPhase = 'comboF';
+    e.chaosT = ARENA.BOSS5_COMBO_STRIKE;
+    e.comboHit = false;
+  }
+
+  /** 段突刺：Boss 朝锁定方向冲一小段，碰到玩家就伤害。 */
+  _stepChaosComboF(e, dt) {
+    e.chaosT -= dt;
+    // 突刺位移（不追踪，纯直线）
+    const sv = ARENA.BOSS5_COMBO_RANGE / ARENA.BOSS5_COMBO_STRIKE;
+    e.x += Math.cos(e.chaosComboAng) * sv * dt;
+    e.y += Math.sin(e.chaosComboAng) * sv * dt;
+    if (!e.comboHit) {
+      const dx = this.player.x - e.x, dy = this.player.y - e.y;
+      const rr = e.r + ARENA.PLAYER_RADIUS + 8;
+      if (dx * dx + dy * dy <= rr * rr) {
+        e.comboHit = true;
+        this.damagePlayer(this._boss5Dmg(ARENA.BOSS5_COMBO_DMG), { src: 'combo', kind: 'boss5' });
+      }
+    }
+    if (e.chaosT > 0) return;
+    // 本段结束 → 下一段或回到 idle
+    e.chaosCombo += 1;
+    if (e.chaosCombo < ARENA.BOSS5_COMBO_N) {
+      e.chaosPhase = 'comboW';
+      e.chaosT = ARENA.BOSS5_COMBO_WIND + ARENA.BOSS5_COMBO_GAP;
+      e.chaosComboAng = Math.atan2(this.player.y - e.y, this.player.x - e.x);
+    } else {
+      e.chaosPhase = 'idle';
+      e.chaosT = e.rage5 ? ARENA.BOSS5_RAGE_CYCLE : ARENA.BOSS5_CYCLE;
+    }
+  }
+
+  // ── 招式④：镜像反转 ──
+  /** 镜像展开：生成 N 个镜像，镜像会追向"玩家镜像位"。 */
+  _beginChaosMirror(e) {
+    e.chaosPhase = 'mirrorW';
+    e.chaosT = ARENA.BOSS5_MIRROR_WIND;
+    this.milestones.push({ text: `◇ 镜像反转·认错了目标◇`, kind: 'event', t: 0, life: ARENA.EVENT_BANNER_LIFE });
+  }
+
+  /** 镜像前摇结束 → 生成镜像并进入 mirrorF（存活期）。 */
+  _stepChaosMirrorW(e, dt) {
+    e.chaosT -= dt;
+    if (e.chaosT > 0) return;
+    while (e.mirrors.length + ARENA.BOSS5_MIRROR_MAX > ARENA.BOSS5_MIRROR_MAX) e.mirrors.shift();
+    for (let i = 0; i < ARENA.BOSS5_MIRROR_MAX; i++) {
+      const a = this.chaosRng.next() * TAU;
+      e.mirrors.push({
+        x: e.x + Math.cos(a) * 90,
+        y: e.y + Math.sin(a) * 90,
+        t: ARENA.BOSS5_MIRROR_LIFE,
+        life: ARENA.BOSS5_MIRROR_LIFE,
+      });
+    }
+    e.chaosPhase = 'mirrorF';
+    e.chaosT = ARENA.BOSS5_MIRROR_LIFE;
+  }
+
+  /** 镜像存活期计时：镜像本身的推进交给 _stepChaosMirrors（每帧调用）。 */
+  _stepChaosMirrorF(e, dt) {
+    e.chaosT -= dt;
+    if (e.chaosT <= 0) {
+      e.chaosPhase = 'idle';
+      e.chaosT = e.rage5 ? ARENA.BOSS5_RAGE_CYCLE : ARENA.BOSS5_CYCLE;
+    }
+  }
+
+  /**
+   * 分身存在期推进：成形 → 追踪 → 自爆。
+   * ★ 每帧调用（由 _stepChaos 无条件调用），与 Boss 主节拍无关 ——
+   *   Boss 回到 idle 后场上的分身仍要追玩家、到点自爆，否则它们会永远存在。
+   */
+  _stepChaosClones(e, dt) {
+    for (let i = e.clones.length - 1; i >= 0; i--) {
+      const cl = e.clones[i];
+      if (cl.phase === 'form') continue;   // 成形期：原地等待 cloneW 放行
+      // live：追踪玩家 + 倒计时
+      const dx = this.player.x - cl.x, dy = this.player.y - cl.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 0.5) {
+        const mv = ARENA.BOSS5_CLONE_SPEED * dt;
+        cl.x += (dx / d) * mv;
+        cl.y += (dy / d) * mv;
+      }
+      cl.t -= dt;
+      if (cl.t <= 0) {
+        // 自爆：半径内扣血 + 移除
+        const bdx = this.player.x - cl.x, bdy = this.player.y - cl.y;
+        const br = ARENA.BOSS5_CLONE_BLAST_R + ARENA.PLAYER_RADIUS;
+        if (bdx * bdx + bdy * bdy <= br * br) {
+          this.damagePlayer(this._boss5Dmg(ARENA.BOSS5_CLONE_DMG), { src: 'clone', kind: 'boss5' });
+        }
+        e.clones.splice(i, 1);
+      }
+    }
+  }
+
+  /**
+   * 镜像存在期推进：追踪玩家 → 接触伤害 → 到时消失。
+   * ★ 同样每帧调用，与 Boss 主节拍无关。
+   */
+  _stepChaosMirrors(e, dt) {
+    for (let i = e.mirrors.length - 1; i >= 0; i--) {
+      const m = e.mirrors[i];
+      const dx = this.player.x - m.x, dy = this.player.y - m.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 0.5) {
+        const mv = ARENA.BOSS5_MIRROR_SPEED * dt;
+        m.x += (dx / d) * mv;
+        m.y += (dy / d) * mv;
+      }
+      // 接触伤害（0.5s 冷却，避免每帧扣）
+      const rr = ARENA.BOSS5_MIRROR_R + ARENA.PLAYER_RADIUS;
+      const pdx = this.player.x - m.x, pdy = this.player.y - m.y;
+      if (pdx * pdx + pdy * pdy <= rr * rr) {
+        m.hitCd = (m.hitCd || 0) - dt;
+        if (m.hitCd <= 0) {
+          m.hitCd = 0.5;
+          this.damagePlayer(this._boss5Dmg(ARENA.BOSS5_MIRROR_DMG), { src: 'mirror', kind: 'boss5' });
+        }
+      }
+      m.t -= dt;
+      if (m.t <= 0) e.mirrors.splice(i, 1);
+    }
+  }
+
+  /** boss5 的伤害出口：狂暴时统一 ×倍率。 */
+  _boss5Dmg(base) {
+    return this.bossRef && this.bossRef.rage5 ? base * ARENA.BOSS5_RAGE_MULTI : base;
   }
 
   // ───────── 内容批：boss4「寂光之瞳」gaze 状态机 ─────────
@@ -5284,6 +5626,192 @@ export class Arena {
     }
 
     this._pdone('bossAim');
+
+    // ── 内容批：boss4「寂光之瞳」gaze 效果渲染 ──
+    // ★ 之前只写了机制没写渲染 —— 光束和印记都看不见，玩家等于被空气打。补上。
+    for (const e of c.enemies) {
+      if (!isBossKind(e.kind) || BOSS_TYPES[e.kind].style !== 'gaze') continue;
+
+      // ── 光束：前摇画一条指向玩家的细线；射出时画整条光带 ──
+      if (e.gazePhase === 'beamW') {
+        const len = 260;
+        const tx = e.x + Math.cos(e.gazeAngle) * len;
+        const ty = e.y + Math.sin(e.gazeAngle) * len;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(143,196,220,0.72)';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([12, 8]);
+        ctx.beginPath();
+        ctx.moveTo(e.x, e.y);
+        ctx.lineTo(tx, ty);
+        ctx.stroke();
+        ctx.restore();
+      } else if (e.gazePhase === 'beamF') {
+        const bx = e.beamDirX, by = e.beamDirY;
+        const len = ARENA.BOSS4_GAZE_RANGE;
+        const tx = e.x + bx * len, ty = e.y + by * len;
+        ctx.save();
+        // 外层光晕 + 内层亮芯，两层叠出"光带"的体积感
+        ctx.strokeStyle = 'rgba(143,196,220,0.28)';
+        ctx.lineWidth = ARENA.BOSS4_GAZE_HALF_W * 2;
+        ctx.beginPath();
+        ctx.moveTo(e.x, e.y);
+        ctx.lineTo(tx, ty);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(220,244,252,0.95)';
+        ctx.lineWidth = ARENA.BOSS4_GAZE_HALF_W;
+        ctx.beginPath();
+        ctx.moveTo(e.x, e.y);
+        ctx.lineTo(tx, ty);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // ── 追猎印记：跟踪期画追踪线，锁死期画即将引爆的圈 ──
+      for (const m of e.gazeMarks) {
+        ctx.save();
+        if (m.phase === 'track') {
+          // 跟踪中：半透明虚线连向玩家，让玩家知道"它盯着我"
+          ctx.strokeStyle = 'rgba(224,96,107,0.55)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 6]);
+          ctx.beginPath();
+          ctx.moveTo(m.x, m.y);
+          ctx.lineTo(c.player.x, c.player.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = 'rgba(224,96,107,0.9)';
+          ctx.beginPath();
+          ctx.arc(m.x, m.y, 7, 0, TAU);
+          ctx.fill();
+        } else {
+          // 锁死即将引爆：脉冲圈 + 倒计时
+          const k = clamp(m.t / ARENA.BOSS4_MARK_LOCK, 0, 1);
+          const pl = 0.5 + 0.5 * Math.sin(c.time / 70);
+          ctx.globalAlpha = 0.30 + 0.50 * pl;
+          ctx.strokeStyle = '#e0606b';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(m.x, m.y, ARENA.BOSS4_MARK_R * (0.85 + 0.15 * pl), 0, TAU);
+          ctx.stroke();
+          ctx.globalAlpha = 0.85;
+          ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(m.x, m.y, 14 * (0.55 + 0.45 * pl), 0, TAU);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
+    this._pdone('gazeFx');
+    // ── 内容批：boss5「万象归墟」chaos 效果渲染 ──
+    for (const e of c.enemies) {
+      if (!isBossKind(e.kind) || BOSS_TYPES[e.kind].style !== 'chaos') continue;
+
+      // ── 招式②：冲击波环带（扩张中）──
+      if (e.chaosPhase === 'shockW') {
+        // 前摇：画一圈即将扩张的预警环
+        const pl = 0.5 + 0.5 * Math.sin(c.time / 60);
+        ctx.save();
+        ctx.globalAlpha = 0.30 + 0.35 * pl;
+        ctx.strokeStyle = '#c45a8a';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, ARENA.BOSS5_SHOCK_R0, 0, TAU);
+        ctx.stroke();
+        ctx.restore();
+      } else if (e.chaosPhase === 'shockF') {
+        // 扩张中：环带从 R0 扩到 R1
+        const band = ARENA.BOSS5_SHOCK_BAND;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(196,90,138,0.85)';
+        ctx.lineWidth = band * 2;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, Math.max(1, e.shockR), 0, TAU);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,220,236,0.70)';
+        ctx.lineWidth = band;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, Math.max(1, e.shockR), 0, TAU);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // ── 招式①：幻影分身（成形中画轮廓，成形后画实体）──
+      for (const cl of e.clones) {
+        ctx.save();
+        if (cl.phase === 'form') {
+          // 成形前摇：闪烁轮廓 + 从 boss 位置拉出的虚线
+          const pl = 0.5 + 0.5 * Math.sin(c.time / 50);
+          ctx.globalAlpha = 0.25 + 0.35 * pl;
+          ctx.strokeStyle = '#e0606b';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(cl.x, cl.y, ARENA.BOSS5_CLONE_R * (0.6 + 0.4 * pl), 0, TAU);
+          ctx.stroke();
+          ctx.globalAlpha = 0.20;
+          ctx.strokeStyle = 'rgba(224,96,107,0.7)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 6]);
+          ctx.beginPath();
+          ctx.moveTo(e.x, e.y);
+          ctx.lineTo(cl.x, cl.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else {
+          // live：实体 + 剩余 fuse 倒计时环
+          ctx.fillStyle = 'rgba(224,96,107,0.85)';
+          ctx.beginPath();
+          ctx.arc(cl.x, cl.y, ARENA.BOSS5_CLONE_R, 0, TAU);
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+          ctx.lineWidth = 2;
+          const kf = clamp(cl.t / ARENA.BOSS5_CLONE_FUSE, 0, 1);
+          ctx.beginPath();
+          ctx.arc(cl.x, cl.y, ARENA.BOSS5_CLONE_R + 5, -Math.PI / 2, -Math.PI / 2 + TAU * kf);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // ── 招式③：连招残影（突刺方向画一条短线）──
+      if (e.chaosPhase === 'comboW' || e.chaosPhase === 'comboF') {
+        const len = e.chaosPhase === 'comboF' ? ARENA.BOSS5_COMBO_RANGE : 120;
+        ctx.save();
+        ctx.strokeStyle = e.chaosPhase === 'comboF'
+          ? 'rgba(224,140,40,0.90)'
+          : 'rgba(224,140,40,0.45)';
+        ctx.lineWidth = e.chaosPhase === 'comboF' ? 6 : 4;
+        ctx.beginPath();
+        ctx.moveTo(e.x, e.y);
+        ctx.lineTo(e.x + Math.cos(e.chaosComboAng) * len, e.y + Math.sin(e.chaosComboAng) * len);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // ── 招式④：镜像反转（镜像画成与 Boss 同形但半透明的镜像）──
+      for (const m of e.mirrors) {
+        ctx.save();
+        const k = clamp(m.t / ARENA.BOSS5_MIRROR_LIFE, 0, 1);
+        ctx.globalAlpha = 0.30 + 0.45 * k;
+        // 镜像底色：淡紫半透明
+        ctx.fillStyle = 'rgba(150,80,160,0.55)';
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, ARENA.BOSS5_MIRROR_R, 0, TAU);
+        ctx.fill();
+        // 镜像描边
+        ctx.strokeStyle = 'rgba(200,140,220,0.90)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, ARENA.BOSS5_MIRROR_R + 2, 0, TAU);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    this._pdone('chaosFx');
     // 敌人死亡动画：0.15s 爆裂缩小 + 闪白，不再瞬切
     for (const d of c.deaths) {
       const p = clamp(d.t / d.life, 0, 1);
