@@ -1,0 +1,14 @@
+[
+  {
+    "id": "L34",
+    "kind": "const",
+    "game": "shanhai",
+    "target": {
+      "file": "shanhai/src/core.mjs",
+      "symbol": "computeDamage"
+    },
+    "anchor": "return Math.max(1, Math.round(raw * splashMultiplier));",
+    "value": "伤害/防御/地形/克制系数可配，关卡星级不封顶",
+    "noOpenallValue": "伤害下限 1 / 防御 1.2~1.35"
+  }
+]

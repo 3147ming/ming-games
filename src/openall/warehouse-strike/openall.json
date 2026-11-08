@@ -1,0 +1,15 @@
+[
+  {
+    "id": "L35",
+    "kind": "guard",
+    "game": "warehouse-strike",
+    "target": {
+      "file": "warehouse-strike/src/config/flags.js",
+      "symbol": "experimental"
+    },
+    "anchor": null,
+    "value": "实验系统可视化开关（可显式启用）",
+    "noOpenallValue": "feature flag 默认 false（策略约定）",
+    "manual": true
+  }
+]

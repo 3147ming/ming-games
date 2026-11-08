@@ -1,0 +1,14 @@
+[
+  {
+    "id": "L30",
+    "kind": "const",
+    "game": "pixel-runner",
+    "target": {
+      "file": "pixel-runner/src/engine.mjs",
+      "symbol": "SPEED_MAX"
+    },
+    "anchor": "export const SPEED_MAX = 1180;",
+    "value": "起速/封顶/加速度可滑杆",
+    "noOpenallValue": "SPEED_MAX 1180"
+  }
+]

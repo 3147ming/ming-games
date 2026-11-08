@@ -1,0 +1,383 @@
+<!-- P1 同源入口：逻辑复用 ../circuit-lab/，构建期由 P2 重写为 ../lab/ -->
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<link rel="stylesheet" href="shared/tokens.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>电路实验模拟器</title>
+  <meta name="description" content="网页版数字电路与模拟电路实验模拟器：面包板搭电路、仿真、测量与实验报告。">
+    <meta name="theme-color" content="#0d1117">
+  <!-- 内联图标，避免浏览器额外请求 /favicon.ico 产生 404 噪音 -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e1e28'/%3E%3Crect x='10.5' y='10.5' width='11' height='11' rx='2' fill='none' stroke='%23f2a93b' stroke-width='2'/%3E%3Ccircle cx='14' cy='14' r='1.4' fill='%23f2a93b'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/main.css">
+<link rel="manifest" href="manifest.json">
+</head>
+<body>
+  <!-- 顶部标题栏：应用名 + 配置导入导出入口 -->
+  <header class="topbar" role="banner">
+<link rel="stylesheet" href="shared/tokens.css">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <rect x="9" y="9" width="14" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
+        <circle cx="13.2" cy="13.2" r="1.4" fill="currentColor"></circle>
+        <path d="M9 12H4M9 16H4M9 20H4M23 12h5M23 16h5M23 20h5"
+              stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"></path>
+      </svg>
+      <div class="brand-text">
+        <h1 class="brand-title">电路实验模拟器</h1>
+        <p class="brand-sub">CIRCUIT LAB SIMULATOR</p>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <!-- 明 / 暗开关（指令包 18）：白底深字，教室投影与强光下更可读 -->
+      <button class="btn btn-ghost" id="btn-theme" type="button"
+              aria-pressed="false" title="切换浅色投影模式 / 深色工作模式">浅色</button>
+      <button class="btn btn-ghost" id="btn-keys" type="button"
+              aria-haspopup="dialog" title="快捷键一览 ( F1 / ? )">快捷键</button>
+      <button aria-label="导入" class="btn btn-ghost" id="btn-import" type="button">导入实验配置</button>
+      <button aria-label="导出" class="btn btn-primary" id="btn-export" type="button">导出配置模板</button>
+      <button class="btn btn-ghost" id="btn-share" type="button" title="生成当前电路的分享链接">分享电路</button>
+      <!-- 隐藏的文件选择器，由"导入实验配置"按钮触发 -->
+      <input type="file" id="file-input" accept=".json,application/json" hidden />
+    </div>
+  </header>
+
+  <main class="app-main" role="main">
+    <!-- 视图 A：实验列表（默认显示） -->
+    <section class="view is-active" id="view-list" aria-labelledby="list-heading">
+      <div class="view-head">
+        <div class="view-head-main">
+          <p class="eyebrow">EXPERIMENTS</p>
+          <h2 class="view-title" id="list-heading">实验列表</h2>
+        </div>
+        <p class="view-note" id="list-count">—</p>
+      </div>
+      <!-- 30 秒上手（指令包 18）：首屏三步引导，不占实验列表的注意力 -->
+      <ol class="onboard" id="onboard" aria-label="30 秒上手">
+        <li class="onboard-item">
+          <span class="onboard-step">1</span>
+          <span class="onboard-body"><b>选实验</b><span>下面挑一个模板；D01–D12 是数字电路实验</span></span>
+        </li>
+        <li class="onboard-item">
+          <span class="onboard-step">2</span>
+          <span class="onboard-body"><b>拖元件</b><span>从左侧元件库拖到画布，或点选后在画布落点</span></span>
+        </li>
+        <li class="onboard-item">
+          <span class="onboard-step">3</span>
+          <span class="onboard-body"><b>连导线 / 读表</b><span>端子之间拖拽连线；右栏万用表、示波器实时读数</span></span>
+        </li>
+      </ol>
+      <div class="exp-grid" id="exp-grid">
+        <!-- 骨架卡片：模块加载完成前占位，避免「共 0 个实验」一闪而过 -->
+        <div class="exp-card exp-card--skeleton" aria-hidden="true">
+          <span class="skel skel-title"></span><span class="skel skel-line"></span><span class="skel skel-line skel-short"></span>
+        </div>
+        <div class="exp-card exp-card--skeleton" aria-hidden="true">
+          <span class="skel skel-title"></span><span class="skel skel-line"></span><span class="skel skel-line skel-short"></span>
+        </div>
+        <div class="exp-card exp-card--skeleton" aria-hidden="true">
+          <span class="skel skel-title"></span><span class="skel skel-line"></span><span class="skel skel-line skel-short"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 视图 B：实验工作区（三栏：元件库 / 2.5D 画布 / 信息面板） -->
+    <section class="view view-workspace" id="view-workspace" aria-labelledby="workspace-title" hidden>
+      <div class="ws-head">
+        <button aria-label="返回" class="btn btn-quiet btn-back" id="btn-back" type="button">← 实验列表</button>
+        <div class="ws-head-main">
+          <p class="eyebrow">WORKBENCH</p>
+          <h2 class="view-title" id="workspace-title">未选择实验</h2>
+        </div>
+        <div class="ws-head-tools">
+          <!-- 视图切换：实验台 / 原理图，两个画布同时存在，只切显隐 -->
+          <div class="view-switch" role="group" aria-label="视图切换">
+            <button class="view-switch-btn is-active" id="btn-view-bench" type="button"
+                    data-view="bench" aria-pressed="true">实验台</button>
+            <button class="view-switch-btn" id="btn-view-schematic" type="button"
+                    data-view="schematic" aria-pressed="false">原理图</button>
+          </div>
+          <span class="ws-platform" id="ws-platform">实验箱</span>
+          <button class="btn btn-ghost btn-switch" id="btn-switch-platform" type="button">切换平台</button>
+          <!-- 阶段 2 R5：与右栏「真值表」tab 同一个入口，窄屏隐藏避免工具栏溢出 -->
+          <button class="btn btn-ghost btn-truth" id="btn-truth" type="button"
+                  title="打开真值表 / 卡诺图">真值表</button>
+          <p class="ws-meta" id="workspace-meta"></p>
+        </div>
+      </div>
+
+      <div class="ws-grid">
+        <!-- 左栏：元件库 -->
+        <aside class="panel panel-library">
+          <div class="panel-head">
+            <span class="panel-label">元件库</span>
+            <span class="panel-tag">PARTS</span>
+          </div>
+          <div class="panel-body panel-fill panel-palette" id="parts-palette"></div>
+          <div class="panel-foot">
+            <p aria-live="polite" class="foot-hint">拖拽到画布，或点选后在画布上落点</p>
+          </div>
+        </aside>
+
+        <!-- 中栏：双视图画布（2.5D 实验台 / 原理图，互斥显示） -->
+        <section class="panel panel-canvas">
+          <div class="panel-head">
+            <span class="panel-label" id="canvas-label">实验台</span>
+            <span class="panel-tag" id="canvas-tag">BREADBOARD</span>
+            <!-- 包 7A：视图缩放 / 放大镜工具栏 -->
+            <div class="canvas-tools" id="canvas-tools">
+              <button class="tool-btn" id="btn-zoom-in" type="button" title="放大 ( 2 / + )">放大</button>
+              <button class="tool-btn" id="btn-zoom-reset" type="button" title="复位 1× ( 0 )">1×</button>
+              <button class="tool-btn" id="btn-zoom-out" type="button" title="缩小 ( 3 / - )">缩小</button>
+              <span class="zoom-level" id="zoom-level" aria-live="polite">1×</span>
+              <button class="tool-btn tool-btn--lens" id="btn-lens" type="button"
+                      aria-pressed="false" title="放大镜 ( 1 / M )">放大镜</button>
+              <!-- 视角：水平正视 / 2.5D 等轴测（指令包 16） -->
+              <button class="tool-btn tool-btn--proj" id="btn-projection" type="button"
+                      aria-pressed="false" title="视角：立体 / 水平（面板水平横着看）">水平</button>
+              <button class="tool-btn tool-btn--rotate" id="btn-rotate-view" type="button"
+                      title="整页旋转 90°（仅水平正视下可用）">旋转</button>
+              <button class="tool-btn tool-btn--grid" id="btn-grid" type="button"
+                      aria-pressed="true" title="显示 / 隐藏网格 ( G )">网格</button>
+              <!-- 电平着色（指令包 17）：仿真后导线按 net 逻辑电平上色 -->
+              <button class="tool-btn tool-btn--levels" id="btn-levels" type="button"
+                      aria-pressed="true" title="电平着色：高=绿 / 低=蓝灰 / X=琥珀 / 未驱动=灰">电平</button>
+              <button class="tool-btn" id="btn-continuous-place" type="button"
+                      aria-pressed="false" title="连续放置：连点同类元件，Esc 退出">连续</button>
+              <!-- HEP-DCTS-01 实物外观：只换平台层画法，几何 / 存档不变 -->
+              <button class="tool-btn tool-btn--skin" id="btn-skin" type="button"
+                      aria-pressed="true" title="切换 HEP-DCTS-01 实物外观 / 通用实验箱">实物外观</button>
+              <!-- HEP 显示分层：默认 0 张卡片；悬停出信息、点击展开单张 -->
+              <button class="tool-btn tool-btn--hep" id="btn-hep-panel" type="button"
+                      aria-pressed="false" title="模块面板总开关：一键展开 / 收起全部 6 块模块">模块面板</button>
+              <div class="hep-display-wrap" id="hep-display-wrap">
+                <button class="tool-btn tool-btn--hep" id="btn-hep-display" type="button"
+                        aria-expanded="false" aria-controls="hep-display-menu"
+                        title="显示选项：机箱丝印 / 教学模式">显示</button>
+                <div class="hep-display-menu" id="hep-display-menu" hidden>
+                  <label class="hep-opt">
+                    <input type="checkbox" id="hep-opt-silk" checked aria-label="丝绸材质" />
+                    <span autocomplete="off">机箱丝印</span>
+                  </label>
+                  <label class="hep-opt">
+                    <input type="checkbox" id="hep-opt-teach" aria-label="教学模式" />
+                    <span autocomplete="off">教学模式（全部常驻）</span>
+                  </label>
+                  <p aria-live="polite" class="hep-opt-hint">默认：悬停看信息、点击展开单张；Esc 收起</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="canvas-stack">
+            <div class="canvas-area" id="canvas-area">
+              <canvas id="breadboard-canvas" class="bench-canvas" aria-label="2.5D 电路实验台画布"></canvas>
+              <p aria-live="polite" class="canvas-hint" id="canvas-hint" hidden></p>
+              <div class="canvas-status" id="canvas-status" aria-live="polite"></div>
+            </div>
+            <div class="canvas-area canvas-area--schem" id="schematic-area" hidden>
+              <canvas id="schematic-canvas" class="schem-canvas" aria-label="电路原理图画布"></canvas>
+              <div class="canvas-status canvas-status--schem" id="schem-status" aria-live="polite"></div>
+            </div>
+            <!-- 电路体检（指令包 19 · R2）：红/黄告警 HUD 卡，由 board.js 用 DOM API 填充 -->
+            <div class="diagnostics-panel" id="diagnostics-panel" aria-live="polite" hidden></div>
+          </div>
+        </section>
+
+        <!-- 右栏：信息面板（三个标签页） -->
+        <aside class="panel panel-side">
+          <div class="tabs" role="tablist" aria-label="实验信息面板">
+            <button class="tab is-active" id="tab-info" type="button" role="tab"
+                    data-tab="info" aria-selected="true" aria-controls="panel-info">实验信息</button>
+            <button class="tab" id="tab-steps" type="button" role="tab"
+                    data-tab="steps" aria-selected="false" aria-controls="panel-steps" tabindex="-1">步骤</button>
+            <button class="tab" id="tab-data" type="button" role="tab"
+                    data-tab="data" aria-selected="false" aria-controls="panel-data" tabindex="-1">数据</button>
+            <button class="tab" id="tab-truth" type="button" role="tab"
+                    data-tab="truth" aria-selected="false" aria-controls="panel-truth" tabindex="-1">真值表</button>
+          </div>
+          <div class="panel-body panel-fill">
+            <div class="tab-panel is-active" id="panel-info" role="tabpanel" aria-labelledby="tab-info" data-panel="info">
+              <div class="info-block" id="exp-info-block"></div>
+              <div class="props-panel" id="props-panel"></div>
+              <!-- 直流工作点结果：由 board.js 用 DOM API 填充 -->
+              <div class="sim-panel" id="sim-panel" aria-live="polite"></div>
+              <!-- 数字逻辑状态 + 时钟/脉冲控制条：同样由 board.js 填充 -->
+              <div class="sim-panel" id="dig-panel" aria-live="polite"></div>
+              <!-- 暂态波形查看器（指令包 7）：由 waveview.js 渲染，app.js 接线 -->
+              <div class="sim-panel" id="wave-panel" aria-live="polite"></div>
+
+              <!-- 测量仪器（万用表/示波器/逻辑分析/函数发生）：由 instruments.js 填充 -->
+              <div class="sim-panel" id="instrument-panel" aria-live="polite"></div>
+
+              <!-- 示例实验指导书（步骤/预期值/报告）：由 app.js 填充 -->
+              <div class="sim-panel" id="guide-panel" hidden></div>
+
+              <!-- 数据面板（记录/对比/导出）：由 data-panel.js 填充 -->
+              <div class="sim-panel" id="data-panel" aria-live="polite"></div>
+            </div>
+            <div class="tab-panel" id="panel-steps" role="tabpanel" aria-labelledby="tab-steps" data-panel="steps">
+              <div class="tab-body" id="steps-body">
+                <p class="tab-empty">选一个实验后，这里会列出可直接照做的步骤与预期值。</p>
+              </div>
+            </div>
+            <div class="tab-panel" id="panel-data" role="tabpanel" aria-labelledby="tab-data" data-panel="data">
+              <div class="tab-body" id="data-body">
+                <p class="tab-empty">测量数据会在这里汇总；也可以生成实验报告导出全部记录。</p>
+              </div>
+            </div>
+            <!-- 阶段 2 R5：真值表 / 卡诺图工具，由 app.js 的 renderTruthTab 填充 -->
+            <div class="tab-panel" id="panel-truth" role="tabpanel" aria-labelledby="tab-truth" data-panel="truth">
+              <div class="tab-body" id="truth-body">
+                <p class="tab-empty">搭好组合逻辑电路后，这里会自动枚举输入并给出最简式与卡诺图。</p>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- 视图 C：报告页（初始隐藏） -->
+    <section class="view view-report" id="view-report" aria-labelledby="report-heading" hidden>
+      <div class="ws-head">
+        <button class="btn btn-quiet btn-back" id="btn-back-report" type="button">← 实验列表</button>
+        <div class="ws-head-main">
+          <p class="eyebrow">REPORT</p>
+          <h2 class="view-title" id="report-heading">实验报告</h2>
+        </div>
+        <p class="ws-meta" id="report-meta">在线生成</p>
+      </div>
+      <div class="panel">
+        <div class="panel-body">
+          <div class="report-actions" id="report-actions" hidden>
+            <button class="btn btn-ghost" id="btn-report-html" type="button">导出 HTML</button>
+            <button class="btn btn-ghost" id="btn-report-print" type="button">打印 / 存为 PDF</button>
+          </div>
+          <div class="report-body" id="report-body"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 轻提示容器（aria-live 保证读屏可感知） -->
+  <div class="toast-host" id="toast-host" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- 覆盖确认对话框（静态骨架，文本由脚本注入） -->
+  <div class="modal-host" id="modal-host" hidden>
+    <div class="modal-backdrop" data-modal-cancel></div>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-desc">
+      <p class="eyebrow modal-eyebrow">CONFIRM</p>
+      <h3 class="modal-title" id="modal-title">确认操作</h3>
+      <p class="modal-desc" id="modal-desc"></p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" type="button" data-modal-cancel>取消</button>
+        <button class="btn btn-primary" type="button" data-modal-ok>确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 快捷键面板（指令包 18/16）：按 F1（或 ?）或点顶部「快捷键」打开，Esc / 点遮罩关闭 -->
+  <div class="keys-host" id="keys-host" hidden>
+    <div class="keys-backdrop" data-keys-close></div>
+    <div class="keys-card" role="dialog" aria-modal="true" aria-labelledby="keys-title">
+      <div class="keys-head">
+        <h3 class="keys-title" id="keys-title">快捷键</h3>
+        <button class="btn btn-ghost keys-close" type="button" data-keys-close>关闭</button>
+      </div>
+      <dl class="keys-list">
+        <div class="keys-row"><dt><kbd>1</kbd> / <kbd>M</kbd></dt><dd>放大镜开关</dd></div>
+        <div class="keys-row"><dt><kbd>G</kbd></dt><dd>显示 / 隐藏网格</dd></div>
+        <div class="keys-row"><dt><kbd>N</kbd></dt><dd>导线工具（点两个端子即连一条，Esc 退出）</dd></div>
+        <div class="keys-row"><dt><kbd>2</kbd> / <kbd>3</kbd> / <kbd>0</kbd></dt><dd>放大 / 缩小 / 复位 1×</dd></div>
+        <div class="keys-row"><dt><kbd>Del</kbd> / <kbd>Backspace</kbd> / <kbd>D</kbd></dt><dd>删除选中元件或导线</dd></div>
+        <div class="keys-row"><dt><kbd>R</kbd></dt><dd>旋转选中元件（90°）</dd></div>
+        <div class="keys-row"><dt><kbd>Ctrl</kbd>+<kbd>Z</kbd></dt><dd>撤销</dd></div>
+        <div class="keys-row"><dt><kbd>Ctrl</kbd>+<kbd>Y</kbd></dt><dd>重做</dd></div>
+        <div class="keys-row"><dt><kbd>Ctrl</kbd>+<kbd>S</kbd></dt><dd>保存当前电路</dd></div>
+        <div class="keys-row"><dt><kbd>Ctrl</kbd>+<kbd>F</kbd></dt><dd>进入 / 退出全屏</dd></div>
+        <div class="keys-row"><dt><kbd>空格</kbd></dt><dd>时钟步进（单脉冲，打时序用）</dd></div>
+        <div class="keys-row"><dt><kbd>Esc</kbd></dt><dd>取消连线 / 退出连续放置 / 退出导线工具 / 收起面板 / 清选中</dd></div>
+        <div class="keys-row"><dt><kbd>F1</kbd></dt><dd>打开这个面板（<kbd>?</kbd> 同效）</dd></div>
+      </dl>
+      <p aria-live="polite" class="keys-hint">滚轮 / 双指捏合可连续缩放；「水平」按钮把面板切成水平正视，再点「旋转」可整页转 90°。</p>
+    </div>
+  </div>
+
+  <!-- 首次进入的快捷键角标：显示 3 次后不再出现（localStorage 计数） -->
+  <div aria-live="polite" class="keys-tip" id="keys-tip" hidden>
+    <span>按 <kbd>F1</kbd> 看快捷键</span>
+    <button class="keys-tip-close" type="button" id="keys-tip-close" aria-label="关闭提示" aria-live="polite">×</button>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+
+  <script>
+    // 经典脚本兜底：file:// 下 ES 模块会被 CORS 拦截，此时给出明确指引而不是白屏
+    window.addEventListener('load', function () {
+      window.setTimeout(function () {
+        if (window.__labSimReady || window.location.protocol !== 'file:') return;
+        var box = document.createElement('div');
+        box.className = 'boot-hint';
+        var card = document.createElement('div');
+        card.className = 'boot-card';
+        var title = document.createElement('h2');
+        title.textContent = '需要通过本地服务器打开';
+        var desc = document.createElement('p');
+        desc.textContent = '浏览器禁止 file:// 协议加载 ES 模块。请在项目目录执行 node server.mjs，然后访问 http://127.0.0.1:5360/';
+        var code = document.createElement('code');
+        code.textContent = 'cd D:\\Projects\\lab-simulator\nnode server.mjs';
+        card.appendChild(title);
+        card.appendChild(desc);
+        card.appendChild(code);
+        box.appendChild(card);
+        document.body.appendChild(box);
+      }, 500);
+    });
+  
+// 页面可见性变化时暂停/恢复游戏循环（避免后台继续消耗资源）
+document.addEventListener('visibilitychange', function() {
+  if (document.hidden) {
+    // 暂停逻辑：停止 requestAnimationFrame / setInterval
+    if (typeof pauseGame === 'function') pauseGame();
+  } else {
+    // 恢复逻辑：重新开始游戏循环
+    if (typeof resumeGame === 'function') resumeGame();
+  }
+});
+
+
+// 页面卸载时清理游戏循环（避免后台继续消耗资源）
+window.addEventListener('pagehide', function() {
+  try {
+    if (typeof cancelAnimationFrame === 'function' && window.__mgRAF) cancelAnimationFrame(window.__mgRAF);
+  } catch(e) {}
+  try {
+    if (typeof clearInterval === 'function' && window.__mgIntervals) {
+      for (var i = 0; i < window.__mgIntervals.length; i++) clearInterval(window.__mgIntervals[i]);
+      window.__mgIntervals = [];
+    }
+  } catch(e) {}
+});
+
+
+// 全局错误捕获（非破坏性：只记录，不阻断游戏）
+window.addEventListener('error', function(e) {
+  try { console.error('[Game Error]', e.message, e.filename, e.lineno); } catch(err) {}
+});
+window.addEventListener('unhandledrejection', function(e) {
+  try { console.error('[Unhandled Rejection]', e.reason); } catch(err) {}
+});
+
+</script>
+
+<!-- PWA：Service Worker（离线可用 / 可安装到主屏） -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* 离线能力不可用不影响游戏 */ });
+  });
+}
+</script>
+</body>
+</html>

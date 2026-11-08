@@ -1,0 +1,14 @@
+[
+  {
+    "id": "L26",
+    "kind": "const",
+    "game": "raid",
+    "target": {
+      "file": "soudache/src/config.js",
+      "symbol": "MATCH.duration/enemyCount"
+    },
+    "anchor": "duration: 480,",
+    "value": "时长/敌人数/精英率/掉落率可滑杆",
+    "noOpenallValue": "480s / 8~11 / 0.26 / 0.6"
+  }
+]

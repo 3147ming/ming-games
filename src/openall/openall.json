@@ -1,0 +1,319 @@
+[
+  {
+    "id": "L01",
+    "kind": "guard",
+    "game": "future-light",
+    "target": { "file": "future-light/src/core/shell.js", "symbol": "setUnlocked" },
+    "anchor": "store.setUnlocked(id, level + 1)",
+    "value": "全关卡可直接进入（unlocked=999，无 lv 门槛）",
+    "noOpenallValue": "默认从第 1 关起，通关仅解锁 level+1"
+  },
+  {
+    "id": "L02",
+    "kind": "guard",
+    "game": "future-light",
+    "target": { "file": "future-light/src/core/shell.js", "symbol": "renderLobby" },
+    "anchor": null,
+    "value": "提供选关 UI（1..maxLevel 任意关）",
+    "noOpenallValue": "无选关 UI",
+    "manual": true
+  },
+  {
+    "id": "L03",
+    "kind": "const",
+    "game": "future-light",
+    "target": { "file": "future-light/src/core/contract.js", "symbol": "maxLevel" },
+    "anchor": "Math.min(500, (this.coins || 0) * 10",
+    "value": "maxLevel=999，得分上限取消（∞）",
+    "noOpenallValue": "maxLevel 10~30，dual 得分上限 500"
+  },
+  {
+    "id": "L04",
+    "kind": "ui",
+    "game": "future-light",
+    "target": { "file": "future-light/src/games/conveyor.js", "symbol": "__cv" },
+    "anchor": "window.__cv = inst;",
+    "value": "隐藏选项可视化开关（显式暴露，默认关闭）",
+    "noOpenallValue": "仅隐藏全局钩子 window.__cv"
+  },
+  {
+    "id": "L05",
+    "kind": "const",
+    "game": "gym",
+    "target": { "file": "brain-gym/index.html", "symbol": "LEVELS_PER_GAME" },
+    "anchor": "var LEVELS_PER_GAME=12;",
+    "value": "12 关全开，每日款数不限（全池开放）",
+    "noOpenallValue": "12 关逐关解锁 / 每日 3 款"
+  },
+  {
+    "id": "L06",
+    "kind": "guard",
+    "game": "gym",
+    "target": { "file": "brain-gym/index.html", "symbol": "baseCanReTest" },
+    "anchor": "Math.round((c-a)/86400000)>=30",
+    "value": "定级可跳过/随时重定级，间隔 0",
+    "noOpenallValue": "首次 20 秒定级，重定级间隔 30 天"
+  },
+  {
+    "id": "L07",
+    "kind": "guard",
+    "game": "gym",
+    "target": { "file": "brain-gym/index.html", "symbol": "SKINS/SKIN_UNLOCK/bt_resume" },
+    "anchor": "price:120",
+    "value": "皮肤/道具免费且全解锁，条件解锁恒真，resume 无时限",
+    "noOpenallValue": "皮肤 120~200 金币，2 款条件解锁，bt_resume 24h"
+  },
+  {
+    "id": "L08",
+    "kind": "ui",
+    "game": "gym",
+    "target": { "file": "brain-gym/index.html", "symbol": "wantGame" },
+    "anchor": "?game=<id>",
+    "value": "隐藏选项可视化开关（入口显式可见）",
+    "noOpenallValue": "仅隐藏深链 ?game=<id>"
+  },
+  {
+    "id": "L09",
+    "kind": "ui",
+    "game": "gym",
+    "target": { "file": "brain-gym/index.html", "symbol": "LEVEL_EXEMPT" },
+    "anchor": "var LEVEL_EXEMPT={tomato:1};",
+    "value": "隐藏选项可视化开关（豁免表可编辑）",
+    "noOpenallValue": "硬编码 LEVEL_EXEMPT={tomato:1}"
+  },
+  {
+    "id": "L10",
+    "kind": "const",
+    "game": "card",
+    "target": { "file": "one-card/config/constants.js", "symbol": "HAND_SIZE/FLOORS/runs_to_full_unlock" },
+    "anchor": "HAND_SIZE: 5,",
+    "value": "全卡/全遗物开局解锁，手牌/能量/层数/节点数可滑杆",
+    "noOpenallValue": "23 局全解锁 / 手牌5 / 能量3 / 3层×4节点"
+  },
+  {
+    "id": "L11",
+    "kind": "guard",
+    "game": "card",
+    "target": { "file": "one-card/src/run.js", "symbol": "ascension/dailyInfo" },
+    "anchor": "Math.min(8, (this.meta.ascension || 0) + 1)",
+    "value": "ascension 不封顶且可手动指定，每日种子/流派可改",
+    "noOpenallValue": "ascension 0~8，每日固定 seed= daily-YYYY-MM-DD"
+  },
+  {
+    "id": "L12",
+    "kind": "guard",
+    "game": "card",
+    "target": { "file": "one-card/config/project.json", "symbol": "frozen_systems/meta.status" },
+    "anchor": "\"frozen_systems\": [",
+    "value": "6 类系统解冻可启用，status 转 playable",
+    "noOpenallValue": "F1~F6 frozen，status=pending_user_input"
+  },
+  {
+    "id": "L13",
+    "kind": "ui",
+    "game": "card",
+    "target": { "file": "one-card/src/main.js", "symbol": "params.seed" },
+    "anchor": "params.get('seed')",
+    "value": "隐藏选项可视化开关（种子输入框）",
+    "noOpenallValue": "仅隐藏 ?seed= 参数"
+  },
+  {
+    "id": "L14",
+    "kind": "ui",
+    "game": "card",
+    "target": { "file": "one-card/src/main.js", "symbol": "params.arch" },
+    "anchor": "params.get('arch')",
+    "value": "隐藏选项可视化开关（流派直选）",
+    "noOpenallValue": "仅隐藏 ?arch= 参数"
+  },
+  {
+    "id": "L15",
+    "kind": "ui",
+    "game": "card",
+    "target": { "file": "one-card/src/main.js", "symbol": "params.daily" },
+    "anchor": "params.get('daily')",
+    "value": "隐藏选项可视化开关（每日局入口显式）",
+    "noOpenallValue": "仅隐藏 ?daily=1 深链"
+  },
+  {
+    "id": "L16",
+    "kind": "ui",
+    "game": "card",
+    "target": { "file": "one-card/src/main.js", "symbol": "params.jump" },
+    "anchor": "params.get('jump') === 'wild'",
+    "value": "隐藏选项可视化开关（任意节点跳转）",
+    "noOpenallValue": "仅隐藏 ?jump=wild 参数"
+  },
+  {
+    "id": "L17",
+    "kind": "ui",
+    "game": "card",
+    "target": { "file": "one-card/src/main.js", "symbol": "params.asc" },
+    "anchor": "params.get('asc')",
+    "value": "隐藏选项可视化开关（ascension 滑杆）",
+    "noOpenallValue": "仅隐藏 ?asc= 参数"
+  },
+  {
+    "id": "L18",
+    "kind": "ui",
+    "game": "card",
+    "target": { "file": "one-card/src/arena.js", "symbol": "DBG" },
+    "anchor": "dbg=1",
+    "value": "隐藏选项可视化开关（诊断面板）",
+    "noOpenallValue": "仅隐藏 ?dbg=1 参数"
+  },
+  {
+    "id": "L19",
+    "kind": "ui",
+    "game": "card",
+    "target": { "file": "one-card/src/logger.js", "symbol": "resolveLogEnv" },
+    "anchor": "?log=1",
+    "value": "隐藏选项可视化开关（埋点面板）",
+    "noOpenallValue": "仅隐藏 ?log=1 参数"
+  },
+  {
+    "id": "L20",
+    "kind": "ui",
+    "game": "card",
+    "target": { "file": "one-card/src/main.js", "symbol": "__ONECARD" },
+    "anchor": "window.__ONECARD = {",
+    "value": "隐藏选项可视化开关（调试面板）",
+    "noOpenallValue": "仅隐藏全局 window.__ONECARD"
+  },
+  {
+    "id": "L21",
+    "kind": "guard",
+    "game": "wild",
+    "target": { "file": "wild/src/content.js", "symbol": "TIERS/GROWTH_LVL_CAP" },
+    "anchor": "export const TIERS = [",
+    "value": "四阶/12 类内容全解锁，属性树等级不封顶",
+    "noOpenallValue": "0/10/25/50 四阶门槛，属性树封顶 50"
+  },
+  {
+    "id": "L22",
+    "kind": "const",
+    "game": "wild",
+    "target": { "file": "wild/src/arena.js", "symbol": "ARENA.DURATION_MS/MAX_ENEMIES" },
+    "anchor": "DURATION_MS: 600_000,",
+    "value": "单局时长与三上限可滑杆（默认不封顶）",
+    "noOpenallValue": "600s / 220 / 7 / 600"
+  },
+  {
+    "id": "L23",
+    "kind": "const",
+    "game": "wild",
+    "target": { "file": "wild/src/shop.js", "symbol": "SHOP_TIMES" },
+    "anchor": "export const SHOP_TIMES = [120, 300, 480];",
+    "value": "商店常驻/随时可开，时间点可配",
+    "noOpenallValue": "仅 120/300/480 秒三次"
+  },
+  {
+    "id": "L24",
+    "kind": "ui",
+    "game": "wild",
+    "target": { "file": "wild/src/main.js", "symbol": "WILD" },
+    "anchor": "window.WILD = { arena, ARENA, pilot: pilotDriver, seed, bgm };",
+    "value": "隐藏选项可视化开关（调试面板）",
+    "noOpenallValue": "仅隐藏全局 window.WILD"
+  },
+  {
+    "id": "L25",
+    "kind": "const",
+    "game": "grass-cutter",
+    "target": { "file": "grass-cutter/src/core/config.js", "symbol": "STAGE.MAX_ACTIVE" },
+    "anchor": "MAX_ACTIVE: 45,",
+    "value": "敌人数上限可滑杆（默认不封顶）",
+    "noOpenallValue": "45"
+  },
+  {
+    "id": "L26",
+    "kind": "const",
+    "game": "raid",
+    "target": { "file": "soudache/src/config.js", "symbol": "MATCH.duration/enemyCount" },
+    "anchor": "duration: 480,",
+    "value": "时长/敌人数/精英率/掉落率可滑杆",
+    "noOpenallValue": "480s / 8~11 / 0.26 / 0.6"
+  },
+  {
+    "id": "L27",
+    "kind": "const",
+    "game": "sim",
+    "target": { "file": "night-shift/src/config.mjs", "symbol": "SLOT_CAP/WALK_SPEED" },
+    "anchor": "export const SLOT_CAP = 24;",
+    "value": "货架/速度/时长可滑杆，上限解除",
+    "noOpenallValue": "SLOT_CAP 24 / WALK_SPEED 3.2 / 30s"
+  },
+  {
+    "id": "L28",
+    "kind": "const",
+    "game": "paper-maze",
+    "target": { "file": "paper-maze/src/engine.mjs", "symbol": "HINT_STALL_MS" },
+    "anchor": "export const HINT_STALL_MS = 90000;",
+    "value": "提示冷却可配（默认 0）",
+    "noOpenallValue": "90000ms"
+  },
+  {
+    "id": "L29",
+    "kind": "const",
+    "game": "neon-rhythm",
+    "target": { "file": "neon-rhythm/src/judge.mjs", "symbol": "WINDOW_MS" },
+    "anchor": "export const WINDOW_MS = { perfect: 45, great: 90, good: 140 };",
+    "value": "判定窗/接近速度/评级阈值可滑杆",
+    "noOpenallValue": "45/90/140ms"
+  },
+  {
+    "id": "L30",
+    "kind": "const",
+    "game": "pixel-runner",
+    "target": { "file": "pixel-runner/src/engine.mjs", "symbol": "SPEED_MAX" },
+    "anchor": "export const SPEED_MAX = 1180;",
+    "value": "起速/封顶/加速度可滑杆",
+    "noOpenallValue": "SPEED_MAX 1180"
+  },
+  {
+    "id": "L31",
+    "kind": "const",
+    "game": "lab",
+    "target": { "file": "circuit-lab/js/experiment-config.js", "symbol": "tolerance" },
+    "anchor": "tolerance: 0.001",
+    "value": "容差/评分阈值可配，实验数不封顶",
+    "noOpenallValue": "tolerance 0.001"
+  },
+  {
+    "id": "L32",
+    "kind": "const",
+    "game": "quiz",
+    "target": { "file": "quiz/.build/engine_core.js", "symbol": "WEAK_CAP" },
+    "anchor": "var WEAK_CAP=150;",
+    "value": "薄弱题/题量/超时可配，上限解除",
+    "noOpenallValue": "WEAK_CAP 150 / amount 20"
+  },
+  {
+    "id": "L33",
+    "kind": "const",
+    "game": "zhaoyun",
+    "target": { "file": "zhaoyun/src/units.js", "symbol": "MAX_LEVEL/LEVEL_WAVES" },
+    "anchor": "const MAX_LEVEL = 5;",
+    "value": "等级/波数/手牌/生命/资源可滑杆",
+    "noOpenallValue": "MAX_LEVEL 5 / LEVEL_WAVES 6 / ADOU_HP 3"
+  },
+  {
+    "id": "L34",
+    "kind": "const",
+    "game": "shanhai",
+    "target": { "file": "shanhai/src/core.mjs", "symbol": "computeDamage" },
+    "anchor": "return Math.max(1, Math.round(raw * splashMultiplier));",
+    "value": "伤害/防御/地形/克制系数可配，关卡星级不封顶",
+    "noOpenallValue": "伤害下限 1 / 防御 1.2~1.35"
+  },
+  {
+    "id": "L35",
+    "kind": "guard",
+    "game": "warehouse-strike",
+    "target": { "file": "warehouse-strike/src/config/flags.js", "symbol": "experimental" },
+    "anchor": null,
+    "value": "实验系统可视化开关（可显式启用）",
+    "noOpenallValue": "feature flag 默认 false（策略约定）",
+    "manual": true
+  }
+]

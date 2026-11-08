@@ -1,0 +1,62 @@
+[
+  {
+    "id": "L05",
+    "kind": "const",
+    "game": "gym",
+    "target": {
+      "file": "brain-gym/index.html",
+      "symbol": "LEVELS_PER_GAME"
+    },
+    "anchor": "var LEVELS_PER_GAME=12;",
+    "value": "12 关全开，每日款数不限（全池开放）",
+    "noOpenallValue": "12 关逐关解锁 / 每日 3 款"
+  },
+  {
+    "id": "L06",
+    "kind": "guard",
+    "game": "gym",
+    "target": {
+      "file": "brain-gym/index.html",
+      "symbol": "baseCanReTest"
+    },
+    "anchor": "Math.round((c-a)/86400000)>=30",
+    "value": "定级可跳过/随时重定级，间隔 0",
+    "noOpenallValue": "首次 20 秒定级，重定级间隔 30 天"
+  },
+  {
+    "id": "L07",
+    "kind": "guard",
+    "game": "gym",
+    "target": {
+      "file": "brain-gym/index.html",
+      "symbol": "SKINS/SKIN_UNLOCK/bt_resume"
+    },
+    "anchor": "price:120",
+    "value": "皮肤/道具免费且全解锁，条件解锁恒真，resume 无时限",
+    "noOpenallValue": "皮肤 120~200 金币，2 款条件解锁，bt_resume 24h"
+  },
+  {
+    "id": "L08",
+    "kind": "ui",
+    "game": "gym",
+    "target": {
+      "file": "brain-gym/index.html",
+      "symbol": "wantGame"
+    },
+    "anchor": "?game=<id>",
+    "value": "隐藏选项可视化开关（入口显式可见）",
+    "noOpenallValue": "仅隐藏深链 ?game=<id>"
+  },
+  {
+    "id": "L09",
+    "kind": "ui",
+    "game": "gym",
+    "target": {
+      "file": "brain-gym/index.html",
+      "symbol": "LEVEL_EXEMPT"
+    },
+    "anchor": "var LEVEL_EXEMPT={tomato:1};",
+    "value": "隐藏选项可视化开关（豁免表可编辑）",
+    "noOpenallValue": "硬编码 LEVEL_EXEMPT={tomato:1}"
+  }
+]

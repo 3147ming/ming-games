@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ming-games.local/schemas/openall.schema.json",
+  "title": "openall 条目配置（L01–L35）",
+  "description": "顶层为数组，或单条条目；每条描述一处体验限制及其解除后目标值。group 文件为数组，lab-sandbox 为 {sharesWith} 指针（不受本 schema 约束）。",
+  "definitions": {
+    "entry": {
+      "type": "object",
+      "required": ["id", "kind", "game", "target", "anchor", "value", "noOpenallValue"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^L(0[1-9]|[12][0-9]|3[0-5])$",
+          "description": "L01–L35"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["const", "guard", "ui"],
+          "description": "const=数值/结构常量上限；guard=运行时门禁/解锁判定；ui=隐藏/调试入口"
+        },
+        "game": {
+          "type": "string",
+          "minLength": 1,
+          "description": "games.json 中的 id"
+        },
+        "target": {
+          "type": "object",
+          "required": ["file", "symbol"],
+          "additionalProperties": false,
+          "properties": {
+            "file": { "type": "string", "minLength": 1 },
+            "symbol": { "type": "string", "minLength": 1 }
+          }
+        },
+        "anchor": {
+          "type": ["string", "null"],
+          "description": "源码里的确切字符串片段；找不到确切锚点时为 null 且 manual=true，并在 LIMITS.md 写明原因"
+        },
+        "value": {
+          "description": "解除后的目标值（--openall 生效）"
+        },
+        "noOpenallValue": {
+          "description": "原版值（--no-openall 回退对照）"
+        },
+        "manual": {
+          "type": "boolean",
+          "description": "anchor 为 null 时置 true，表示需 P3 人工补锚点"
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "type": "array",
+      "items": { "$ref": "#/definitions/entry" },
+      "uniqueItems": true
+    },
+    { "$ref": "#/definitions/entry" }
+  ]
+}

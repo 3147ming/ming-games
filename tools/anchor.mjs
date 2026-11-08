@@ -39,6 +39,19 @@ export function replaceMany(file, edits, opts = {}) {
   return text;
 }
 
+/* 末次命中锚点：用于「注入的内联脚本里也含有同样的字面量」的场景。
+   例如把打包后的游戏 JS 内联进 <script> 后，代码里的 '</body>' 字符串会让
+   replaceOnceText 误判为重复锚点；而文档真正的 </body> 一定是最后一次命中。
+   要求至少命中 1 次，未命中同样中止，不做静默降级。 */
+export function replaceLastText(text, anchor, replacement, label = 'anchor') {
+  if (typeof text !== 'string') throw new Error('[anchor] text 必须是字符串');
+  if (typeof anchor !== 'string' || anchor.length === 0) throw new Error('[anchor] 锚点不能为空');
+  const count = text.split(anchor).length - 1;
+  if (count < 1) throw new Error(`[anchor] ${label}: 锚点未命中，已中止，未写入任何内容。`);
+  const i = text.lastIndexOf(anchor);
+  return text.slice(0, i) + replacement + text.slice(i + anchor.length);
+}
+
 /* 正则型锚点：同样要求恰好命中 1 次 */
 export function replaceOnceRe(text, re, replacement, label = 'regex') {
   if (!(re instanceof RegExp)) throw new Error('[anchor] 需要 RegExp');
@@ -75,6 +88,15 @@ export function selftest() {
   ok('replacement 中的 $& 不被当特殊模式', () => {
     const out = replaceOnceText('a-T-b', 'T', '$&$$');
     if (out !== 'a-$&$$-b') throw new Error('特殊字符被误解析: ' + out);
+  });
+  ok('末次锚点跳过内联脚本里的同名字面量', () => {
+    const out = replaceLastText('a</body>b</body>c</html>', '</body>', '<X></body>');
+    if (out !== 'a</body>b<X></body>c</html>') throw new Error('末次替换不对: ' + out);
+  });
+  ok('末次锚点未命中抛错', () => {
+    let threw = false;
+    try { replaceLastText('abc', '</body>', 'X'); } catch { threw = true; }
+    if (!threw) throw new Error('未命中未抛错');
   });
   ok('正则锚点唯一命中', () => {
     const out = replaceOnceRe('<script type="module" src="x"></script>', /<script[^>]*type="module"[\s\S]*?<\/script>/, 'OK');

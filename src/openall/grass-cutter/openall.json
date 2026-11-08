@@ -1,0 +1,14 @@
+[
+  {
+    "id": "L25",
+    "kind": "const",
+    "game": "grass-cutter",
+    "target": {
+      "file": "grass-cutter/src/core/config.js",
+      "symbol": "STAGE.MAX_ACTIVE"
+    },
+    "anchor": "MAX_ACTIVE: 45,",
+    "value": "敌人数上限可滑杆（默认不封顶）",
+    "noOpenallValue": "45"
+  }
+]

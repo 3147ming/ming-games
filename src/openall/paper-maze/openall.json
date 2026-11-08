@@ -1,0 +1,14 @@
+[
+  {
+    "id": "L28",
+    "kind": "const",
+    "game": "paper-maze",
+    "target": {
+      "file": "paper-maze/src/engine.mjs",
+      "symbol": "HINT_STALL_MS"
+    },
+    "anchor": "export const HINT_STALL_MS = 90000;",
+    "value": "提示冷却可配（默认 0）",
+    "noOpenallValue": "90000ms"
+  }
+]

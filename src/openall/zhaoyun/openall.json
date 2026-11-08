@@ -1,0 +1,14 @@
+[
+  {
+    "id": "L33",
+    "kind": "const",
+    "game": "zhaoyun",
+    "target": {
+      "file": "zhaoyun/src/units.js",
+      "symbol": "MAX_LEVEL/LEVEL_WAVES"
+    },
+    "anchor": "const MAX_LEVEL = 5;",
+    "value": "等级/波数/手牌/生命/资源可滑杆",
+    "noOpenallValue": "MAX_LEVEL 5 / LEVEL_WAVES 6 / ADOU_HP 3"
+  }
+]

@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ming-games.local/schemas/tuning.schema.json",
+  "title": "openall 调参面板（7 类滑杆 + 无限资源 + 隐藏选项）",
+  "description": "顶层以 games.json 的 17 个 id 为键；每个游戏包含 7 类滑杆（各有 min/max/step/default）与两个开关。",
+  "type": "object",
+  "minProperties": 17,
+  "maxProperties": 17,
+  "additionalProperties": false,
+  "patternProperties": {
+    "^[a-z0-9][a-z0-9-]*$": { "$ref": "#/definitions/gameTuning" }
+  },
+  "definitions": {
+    "range": {
+      "type": "object",
+      "required": ["min", "max", "step", "default"],
+      "additionalProperties": false,
+      "properties": {
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "step": { "type": "number", "exclusiveMinimum": 0 },
+        "default": { "type": "number" }
+      }
+    },
+    "gameTuning": {
+      "type": "object",
+      "required": [
+        "level",
+        "difficulty",
+        "speed",
+        "lives",
+        "time",
+        "enemyCount",
+        "dropRate",
+        "infiniteResources",
+        "hiddenOptions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "level": { "$ref": "#/definitions/range" },
+        "difficulty": { "$ref": "#/definitions/range" },
+        "speed": { "$ref": "#/definitions/range" },
+        "lives": { "$ref": "#/definitions/range" },
+        "time": { "$ref": "#/definitions/range" },
+        "enemyCount": { "$ref": "#/definitions/range" },
+        "dropRate": { "$ref": "#/definitions/range" },
+        "infiniteResources": { "type": "boolean" },
+        "hiddenOptions": { "type": "boolean" }
+      }
+    }
+  }
+}

@@ -5,7 +5,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { replaceOnceText } from './anchor.mjs';
+import { replaceOnceText, replaceLastText } from './anchor.mjs';
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'tests', 'tools', '.workbuddy', '.tmp']);
 const SKIP_FILES = new Set(['sw.js', 'manifest.json', 'package.json', 'server.mjs', 'README.md', 'index.html']);
@@ -54,6 +54,12 @@ export function stripLegacyTags(html) {
   return html;
 }
 
+/* HTML 解析器见到 </script 就会结束内联脚本，哪怕它出现在 JS 字符串或注释里。
+   打包后的游戏代码常含这类字面量，统一转义成 <\/script（JS 语义完全等价）。 */
+function safeInlineScript(code) {
+  return String(code).replace(/<\/script/gi, '<\\/script');
+}
+
 export function renderGameHtml(opts) {
   const { gameDir, gameId, entryRel, renderer, bundleCode, bridgeCode, label } = opts;
   let html = fs.readFileSync(path.join(gameDir, 'index.html'), 'utf8');
@@ -75,13 +81,14 @@ export function renderGameHtml(opts) {
     }
     html = replaceOnceText(
       html, tag,
-      `<script>\n${bundleCode}\n</script>`,
+      `<script>\n${safeInlineScript(bundleCode)}\n</script>`,
       `${gameId}:module-script`
     );
   }
 
   const child = `${bridgeCode}\nHubBridge.createChild({ gameId: ${JSON.stringify(gameId)}, caps: [] });`;
-  html = replaceOnceText(html, '</body>', `<script>\n${child}\n</script>\n</body>`, `${gameId}:body-close`);
+  // 用末次命中：内联 bundle 里可能含 '</body>' 字面量，文档真正的闭合标签在最后。
+  html = replaceLastText(html, '</body>', `<script>\n${safeInlineScript(child)}\n</script>\n</body>`, `${gameId}:body-close`);
   return html;
 }
 

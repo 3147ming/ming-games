@@ -1,0 +1,134 @@
+[
+  {
+    "id": "L10",
+    "kind": "const",
+    "game": "card",
+    "target": {
+      "file": "one-card/config/constants.js",
+      "symbol": "HAND_SIZE/FLOORS/runs_to_full_unlock"
+    },
+    "anchor": "HAND_SIZE: 5,",
+    "value": "全卡/全遗物开局解锁，手牌/能量/层数/节点数可滑杆",
+    "noOpenallValue": "23 局全解锁 / 手牌5 / 能量3 / 3层×4节点"
+  },
+  {
+    "id": "L11",
+    "kind": "guard",
+    "game": "card",
+    "target": {
+      "file": "one-card/src/run.js",
+      "symbol": "ascension/dailyInfo"
+    },
+    "anchor": "Math.min(8, (this.meta.ascension || 0) + 1)",
+    "value": "ascension 不封顶且可手动指定，每日种子/流派可改",
+    "noOpenallValue": "ascension 0~8，每日固定 seed= daily-YYYY-MM-DD"
+  },
+  {
+    "id": "L12",
+    "kind": "guard",
+    "game": "card",
+    "target": {
+      "file": "one-card/config/project.json",
+      "symbol": "frozen_systems/meta.status"
+    },
+    "anchor": "\"frozen_systems\": [",
+    "value": "6 类系统解冻可启用，status 转 playable",
+    "noOpenallValue": "F1~F6 frozen，status=pending_user_input"
+  },
+  {
+    "id": "L13",
+    "kind": "ui",
+    "game": "card",
+    "target": {
+      "file": "one-card/src/main.js",
+      "symbol": "params.seed"
+    },
+    "anchor": "params.get('seed')",
+    "value": "隐藏选项可视化开关（种子输入框）",
+    "noOpenallValue": "仅隐藏 ?seed= 参数"
+  },
+  {
+    "id": "L14",
+    "kind": "ui",
+    "game": "card",
+    "target": {
+      "file": "one-card/src/main.js",
+      "symbol": "params.arch"
+    },
+    "anchor": "params.get('arch')",
+    "value": "隐藏选项可视化开关（流派直选）",
+    "noOpenallValue": "仅隐藏 ?arch= 参数"
+  },
+  {
+    "id": "L15",
+    "kind": "ui",
+    "game": "card",
+    "target": {
+      "file": "one-card/src/main.js",
+      "symbol": "params.daily"
+    },
+    "anchor": "params.get('daily')",
+    "value": "隐藏选项可视化开关（每日局入口显式）",
+    "noOpenallValue": "仅隐藏 ?daily=1 深链"
+  },
+  {
+    "id": "L16",
+    "kind": "ui",
+    "game": "card",
+    "target": {
+      "file": "one-card/src/main.js",
+      "symbol": "params.jump"
+    },
+    "anchor": "params.get('jump') === 'wild'",
+    "value": "隐藏选项可视化开关（任意节点跳转）",
+    "noOpenallValue": "仅隐藏 ?jump=wild 参数"
+  },
+  {
+    "id": "L17",
+    "kind": "ui",
+    "game": "card",
+    "target": {
+      "file": "one-card/src/main.js",
+      "symbol": "params.asc"
+    },
+    "anchor": "params.get('asc')",
+    "value": "隐藏选项可视化开关（ascension 滑杆）",
+    "noOpenallValue": "仅隐藏 ?asc= 参数"
+  },
+  {
+    "id": "L18",
+    "kind": "ui",
+    "game": "card",
+    "target": {
+      "file": "one-card/src/arena.js",
+      "symbol": "DBG"
+    },
+    "anchor": "dbg=1",
+    "value": "隐藏选项可视化开关（诊断面板）",
+    "noOpenallValue": "仅隐藏 ?dbg=1 参数"
+  },
+  {
+    "id": "L19",
+    "kind": "ui",
+    "game": "card",
+    "target": {
+      "file": "one-card/src/logger.js",
+      "symbol": "resolveLogEnv"
+    },
+    "anchor": "?log=1",
+    "value": "隐藏选项可视化开关（埋点面板）",
+    "noOpenallValue": "仅隐藏 ?log=1 参数"
+  },
+  {
+    "id": "L20",
+    "kind": "ui",
+    "game": "card",
+    "target": {
+      "file": "one-card/src/main.js",
+      "symbol": "__ONECARD"
+    },
+    "anchor": "window.__ONECARD = {",
+    "value": "隐藏选项可视化开关（调试面板）",
+    "noOpenallValue": "仅隐藏全局 window.__ONECARD"
+  }
+]

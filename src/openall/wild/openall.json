@@ -1,0 +1,50 @@
+[
+  {
+    "id": "L21",
+    "kind": "guard",
+    "game": "wild",
+    "target": {
+      "file": "wild/src/content.js",
+      "symbol": "TIERS/GROWTH_LVL_CAP"
+    },
+    "anchor": "export const TIERS = [",
+    "value": "四阶/12 类内容全解锁，属性树等级不封顶",
+    "noOpenallValue": "0/10/25/50 四阶门槛，属性树封顶 50"
+  },
+  {
+    "id": "L22",
+    "kind": "const",
+    "game": "wild",
+    "target": {
+      "file": "wild/src/arena.js",
+      "symbol": "ARENA.DURATION_MS/MAX_ENEMIES"
+    },
+    "anchor": "DURATION_MS: 600_000,",
+    "value": "单局时长与三上限可滑杆（默认不封顶）",
+    "noOpenallValue": "600s / 220 / 7 / 600"
+  },
+  {
+    "id": "L23",
+    "kind": "const",
+    "game": "wild",
+    "target": {
+      "file": "wild/src/shop.js",
+      "symbol": "SHOP_TIMES"
+    },
+    "anchor": "export const SHOP_TIMES = [120, 300, 480];",
+    "value": "商店常驻/随时可开，时间点可配",
+    "noOpenallValue": "仅 120/300/480 秒三次"
+  },
+  {
+    "id": "L24",
+    "kind": "ui",
+    "game": "wild",
+    "target": {
+      "file": "wild/src/main.js",
+      "symbol": "WILD"
+    },
+    "anchor": "window.WILD = { arena, ARENA, pilot: pilotDriver, seed, bgm };",
+    "value": "隐藏选项可视化开关（调试面板）",
+    "noOpenallValue": "仅隐藏全局 window.WILD"
+  }
+]

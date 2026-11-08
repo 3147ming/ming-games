@@ -1,0 +1,14 @@
+[
+  {
+    "id": "L31",
+    "kind": "const",
+    "game": "lab",
+    "target": {
+      "file": "circuit-lab/js/experiment-config.js",
+      "symbol": "tolerance"
+    },
+    "anchor": "tolerance: 0.001",
+    "value": "容差/评分阈值可配，实验数不封顶",
+    "noOpenallValue": "tolerance 0.001"
+  }
+]

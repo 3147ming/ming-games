@@ -1,0 +1,230 @@
+:root {
+  --bg: #060a14;
+  --bg2: #0c1426;
+  --panel: rgba(18, 26, 48, 0.72);
+  --panel2: rgba(28, 38, 66, 0.85);
+  --line: rgba(120, 160, 255, 0.18);
+  --txt: #e8eeff;
+  --sub: #8ea0c8;
+  --cyan: #38f9d7;
+  --purple: #7b5cff;
+  --gold: #ffd54a;
+  --red: #ff5d73;
+  --green: #5dffa0;
+  --blue: #4ea8ff;
+  --pink: #ff7bd5;
+  --r: 14px;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; }
+body {
+  background:
+    radial-gradient(1100px 700px at 78% -12%, #16234a 0%, transparent 55%),
+    radial-gradient(900px 600px at 10% 110%, #1a1640 0%, transparent 55%),
+    var(--bg);
+  color: var(--txt);
+  font-family: -apple-system, system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+#app { height: 100%; display: flex; flex-direction: column; }
+button { font-family: inherit; cursor: pointer; color: inherit; border: none; background: none; }
+h1, h2, h3, p { margin: 0; }
+
+/* ---------- 顶栏 ---------- */
+.topbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px;
+  background: linear-gradient(180deg, rgba(20, 30, 56, 0.95), rgba(12, 20, 38, 0.7));
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(8px);
+  flex: 0 0 auto;
+}
+.brand { font-weight: 800; font-size: 18px; letter-spacing: 1px; display: flex; align-items: baseline; gap: 8px; }
+.brand-glow {
+  background: linear-gradient(90deg, var(--cyan), var(--purple));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: 0 0 18px rgba(56, 249, 215, 0.35);
+}
+.brand small { color: var(--sub); font-weight: 600; font-size: 12px; }
+.wallet { margin-left: auto; display: flex; gap: 8px; }
+.chip {
+  padding: 6px 12px; border-radius: 999px; font-weight: 700; font-size: 14px;
+  background: var(--panel2); border: 1px solid var(--line);
+}
+.chip.gold { color: var(--gold); }
+.chip.star { color: var(--gold); }
+
+.icon-btn {
+  padding: 8px 12px; border-radius: 10px; background: var(--panel2);
+  border: 1px solid var(--line); font-size: 15px; font-weight: 700; color: var(--txt);
+}
+.icon-btn:active { transform: scale(0.95); }
+
+/* ---------- 大厅 ---------- */
+.lobby { flex: 1; display: flex; flex-direction: column; overflow-y: auto; }
+.lobby-top { position: sticky; top: 0; z-index: 5; }
+.lobby-sub { padding: 14px 18px 4px; color: var(--sub); font-size: 13px; }
+.lobby-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px; padding: 14px 18px 28px;
+}
+.game-card {
+  position: relative; text-align: left; border-radius: var(--r);
+  padding: 16px 14px 12px; color: var(--txt);
+  background: linear-gradient(160deg, var(--panel2), rgba(12, 20, 38, 0.6));
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  transition: transform .12s ease, border-color .12s ease;
+  overflow: hidden;
+}
+.game-card::before {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(140px 80px at 80% 0%, rgba(56, 249, 215, 0.12), transparent 70%);
+  pointer-events: none;
+}
+.game-card:hover { transform: translateY(-3px); border-color: var(--cyan); }
+.game-card:active { transform: scale(0.98); }
+.gc-icon { font-size: 34px; line-height: 1; margin-bottom: 8px; }
+.gc-name { font-size: 16px; font-weight: 800; }
+.gc-tag {
+  display: inline-block; margin-top: 6px; font-size: 11px; color: var(--cyan);
+  background: rgba(56, 249, 215, 0.1); border: 1px solid rgba(56, 249, 215, 0.3);
+  padding: 2px 8px; border-radius: 999px;
+}
+.gc-desc { margin-top: 8px; font-size: 12px; color: var(--sub); line-height: 1.5; min-height: 36px; }
+.gc-foot { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+.gc-lv { color: var(--gold); font-weight: 700; }
+.gc-go { color: var(--cyan); font-weight: 700; }
+
+/* ---------- 游戏外壳 ---------- */
+.game-shell { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.game-title { font-weight: 800; font-size: 16px; }
+.hud {
+  flex: 0 0 auto; padding: 10px 16px; display: flex; gap: 10px; flex-wrap: wrap;
+  align-items: center; border-bottom: 1px solid var(--line);
+  background: rgba(10, 16, 32, 0.5);
+}
+.hud .stat {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 6px 12px; font-weight: 700; font-size: 14px; display: flex; gap: 6px; align-items: center;
+}
+.hud .stat .k { color: var(--sub); font-size: 12px; font-weight: 600; }
+.hud .stat.warn { color: var(--red); border-color: rgba(255, 93, 115, 0.5); }
+.hud .goal { margin-left: auto; color: var(--cyan); font-size: 13px; }
+.stage { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; padding: 14px; overflow: auto; }
+
+/* ---------- 弹窗 ---------- */
+.overlay {
+  position: fixed; inset: 0; z-index: 50; display: none;
+  align-items: center; justify-content: center;
+  background: rgba(4, 8, 18, 0.72); backdrop-filter: blur(4px);
+}
+.modal {
+  width: min(86vw, 340px); padding: 26px 22px 22px; border-radius: 20px; text-align: center;
+  background: linear-gradient(160deg, var(--panel2), rgba(10, 16, 32, 0.95));
+  border: 1px solid var(--line); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  animation: pop .25s ease;
+}
+@keyframes pop { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.medal { font-size: 52px; line-height: 1; margin-bottom: 6px; }
+.modal-title { font-size: 22px; font-weight: 800; }
+.modal-title.win { color: var(--gold); }
+.modal-title.lose { color: var(--red); }
+.modal-sub { color: var(--sub); margin: 8px 0 4px; font-size: 13px; }
+.stars-row { display: flex; justify-content: center; gap: 8px; margin: 14px 0; }
+.star { font-size: 38px; color: rgba(255, 255, 255, 0.18); transition: color .2s; }
+.star.on { color: var(--gold); text-shadow: 0 0 16px rgba(255, 213, 74, 0.6); }
+.reward { color: var(--gold); font-weight: 800; font-size: 18px; margin-bottom: 6px; }
+.modal-btns { display: flex; gap: 10px; justify-content: center; margin-top: 18px; }
+.modal-btns.col { flex-direction: column; }
+.btn {
+  padding: 12px 18px; border-radius: 12px; font-size: 15px; font-weight: 800;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--txt);
+  transition: transform .1s, filter .1s;
+}
+.btn:active { transform: scale(0.96); }
+.btn.primary {
+  background: linear-gradient(90deg, var(--cyan), var(--purple));
+  color: #06121f; border: none; box-shadow: 0 0 18px rgba(56, 249, 215, 0.3);
+}
+.btn.ghost { color: var(--sub); }
+.btn:hover { filter: brightness(1.08); }
+
+/* ---------- toast ---------- */
+.toast {
+  position: fixed; left: 50%; bottom: 80px; transform: translate(-50%, 16px);
+  background: rgba(10, 16, 32, 0.92); color: var(--txt); padding: 10px 18px;
+  border-radius: 999px; border: 1px solid var(--line); font-size: 14px; font-weight: 600;
+  opacity: 0; transition: opacity .25s, transform .25s; z-index: 60; pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---------- 通用网格 ---------- */
+.grid-wrap { display: flex; flex-direction: column; gap: 10px; align-items: center; width: 100%; max-width: 560px; }
+.gbtn {
+  padding: 9px 14px; border-radius: 10px; font-weight: 700; font-size: 13px;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--txt);
+}
+.gbtn:active { transform: scale(0.96); }
+.gbtn.on { background: linear-gradient(90deg, var(--cyan), var(--purple)); color: #06121f; border: none; }
+.gbtn.primary { background: linear-gradient(90deg, var(--cyan), var(--purple)); color: #06121f; border: none; }
+.hint { color: var(--sub); font-size: 12px; text-align: center; }
+
+@media (max-width: 420px) {
+  .lobby-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .gc-desc { display: none; }
+}
+
+/* ===== 桌面端收敛（避免大屏主体过空） ===== */
+@media (min-width: 700px) {
+  #app { max-width: 480px; margin: 0 auto; box-shadow: 0 0 70px rgba(0, 0, 0, 0.55); border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+}
+
+/* ===== 触摸区 / 间距规范（≥48px / ≥8px） ===== */
+.btn, .icon-btn, .gbtn, .game-card, .rec-btn { min-height: 48px; }
+.modal-btns { gap: 10px; }
+.game-card { gap: 8px; }
+
+/* ===== 统一顶栏（左菜单 + 中游戏名 + 右倒计时/重开） ===== */
+.game-top .top-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.clock { font-weight: 800; font-size: 15px; padding: 6px 10px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); }
+.clock.warn { color: var(--red); border-color: rgba(255, 93, 115, 0.6); animation: pulseRed .6s infinite; }
+@keyframes pulseRed { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+/* ===== 统一结算弹窗（橙渐变标题栏 + 大号得分 + 最佳对比） ===== */
+.modal.result-wrap { padding: 0; overflow: hidden; }
+.result-head { padding: 22px 18px 16px; }
+.result-head.win { background: linear-gradient(120deg, #ff9a3c, #ff5d3d); }
+.result-head.loss, .result-head.lose { background: linear-gradient(120deg, #6b7088, #43485f); }
+.result-head .medal { font-size: 46px; line-height: 1; margin-bottom: 4px; }
+.result-head .modal-title { color: #fff; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
+.result-stars { display: flex; justify-content: center; gap: 8px; margin: 16px 0 6px; }
+.result-score { font-size: 52px; font-weight: 900; line-height: 1; background: linear-gradient(90deg, var(--cyan), var(--purple)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.result-score-label { color: var(--sub); font-size: 12px; margin-bottom: 6px; }
+.result-best { color: var(--sub); font-size: 13px; margin: 4px 0; }
+.result-best.rec { color: var(--gold); font-weight: 800; }
+.reward { color: var(--gold); font-weight: 800; font-size: 18px; margin: 8px 0 4px; }
+.btn.next { background: linear-gradient(90deg, #ffb24a, #ff7a3c); color: #2a1402; border: none; }
+
+/* ===== 战绩总览 ===== */
+.rec-page { flex: 1; display: flex; flex-direction: column; overflow-y: auto; }
+.rec-page .topbar { position: sticky; top: 0; z-index: 5; }
+.rec-list { padding: 14px 16px 30px; display: flex; flex-direction: column; gap: 14px; }
+.rec-game { display: flex; flex-direction: column; gap: 8px; }
+.rec-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--line); font-size: 13px; }
+.rec-lv { font-weight: 700; flex: 1; }
+.rec-best { color: var(--gold); font-weight: 700; }
+.rec-plays { color: var(--sub); }
+.rec-btn { margin: 4px 16px 20px; padding: 12px; border-radius: 12px; font-weight: 800; background: var(--panel2); border: 1px solid var(--line); color: var(--txt); }
+
+/* ===== 双雄争霸 ===== */
+.dl-wrap .dl-tip, .lt-tip, .cv-tip { color: var(--sub); font-size: 12px; text-align: center; line-height: 1.5; }
+.dl-cv, .lt-cv, .cv-cv { width: 100%; max-width: 380px; height: auto; border-radius: 14px; background: #0a1226; border: 1px solid var(--line); touch-action: none; }
+.dl-legend, .lt-legend { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; font-size: 11px; color: var(--sub); }
+.dl-legend span, .lt-legend span { background: var(--panel2); border: 1px solid var(--line); padding: 4px 8px; border-radius: 999px; }
+.cv-bar { display: flex; gap: 10px; justify-content: center; }
+

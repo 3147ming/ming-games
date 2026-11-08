@@ -1,0 +1,14 @@
+[
+  {
+    "id": "L27",
+    "kind": "const",
+    "game": "sim",
+    "target": {
+      "file": "night-shift/src/config.mjs",
+      "symbol": "SLOT_CAP/WALK_SPEED"
+    },
+    "anchor": "export const SLOT_CAP = 24;",
+    "value": "货架/速度/时长可滑杆，上限解除",
+    "noOpenallValue": "SLOT_CAP 24 / WALK_SPEED 3.2 / 30s"
+  }
+]

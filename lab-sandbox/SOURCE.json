@@ -1,0 +1,6 @@
+{
+  "sharesLogicWith": "circuit-lab",
+  "reason": "lab-simulator/dist/js 与主站 circuit-lab/js 36/36 文件 SHA256 全量一致",
+  "source": "D:/Projects/lab-simulator/dist",
+  "entryRewriteInBuild": "../lab/"
+}

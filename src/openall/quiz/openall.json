@@ -1,0 +1,14 @@
+[
+  {
+    "id": "L32",
+    "kind": "const",
+    "game": "quiz",
+    "target": {
+      "file": "quiz/.build/engine_core.js",
+      "symbol": "WEAK_CAP"
+    },
+    "anchor": "var WEAK_CAP=150;",
+    "value": "薄弱题/题量/超时可配，上限解除",
+    "noOpenallValue": "WEAK_CAP 150 / amount 20"
+  }
+]

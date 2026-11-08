@@ -1,0 +1,627 @@
+{
+  "version": 1,
+  "generatedAt": "2026-11-08T13:07:58.442Z",
+  "note": "P1 受控导入。warehouse-strike 来自本地快照 commit 3cea92d；lab-sandbox 与 circuit-lab 同源共用逻辑。",
+  "groups": [
+    {
+      "id": "future-light",
+      "from": "D:/Projects/FUTURE-LIGHT",
+      "files": 17,
+      "bytes": 117305
+    },
+    {
+      "id": "warehouse-strike",
+      "from": "D:/Projects/WAREHOUSE-STRIKE",
+      "files": 101,
+      "bytes": 11759662
+    },
+    {
+      "id": "lab-sandbox",
+      "from": "D:/Projects/lab-simulator/dist (同源复用 circuit-lab)",
+      "files": 2,
+      "bytes": 22753
+    }
+  ],
+  "files": [
+    {
+      "file": "future-light/index.html",
+      "bytes": 445,
+      "sha256": "2c619ac19f29ce488c388b9ed2d096cc34932923a482b141a014845da2e93b18"
+    },
+    {
+      "file": "future-light/src/core/contract.js",
+      "bytes": 1665,
+      "sha256": "2fc88577506a616ffc47c5a465edcd3bf46d4e51f44636e85f94450cab52d6d1"
+    },
+    {
+      "file": "future-light/src/core/shell.js",
+      "bytes": 6021,
+      "sha256": "c755a49bb63dcc252f8d0fadf890c6f45e6dc0c09137e70bb2009d44cfbd9c5f"
+    },
+    {
+      "file": "future-light/src/core/store.js",
+      "bytes": 3458,
+      "sha256": "f8bcd295f20170905d7b069d4a1bb9ca58003984a548deb0f25bd29ec8868705"
+    },
+    {
+      "file": "future-light/src/core/ui.js",
+      "bytes": 3896,
+      "sha256": "7ad004624bfca3763a54deea4638e11359eeafc10ecbf331fa3852e6426b6d29"
+    },
+    {
+      "file": "future-light/src/games/connect.js",
+      "bytes": 8118,
+      "sha256": "04425c66b411305aee54f9c67985e0cae5e6920ef365687741debed514765415"
+    },
+    {
+      "file": "future-light/src/games/conveyor.js",
+      "bytes": 22774,
+      "sha256": "6ed96ddb859940ba55fe35be5c205558a6e15669f9d8013613283b73e098dafb"
+    },
+    {
+      "file": "future-light/src/games/dual.js",
+      "bytes": 12582,
+      "sha256": "72e2861d5644d39629c9618da5902b0b8b3befb84854d11b2884686262b8b2fb"
+    },
+    {
+      "file": "future-light/src/games/index.js",
+      "bytes": 378,
+      "sha256": "8d4f024676a040be17240db9dd116d9c8a91205cd57f8317562495e940d11c6d"
+    },
+    {
+      "file": "future-light/src/games/light.js",
+      "bytes": 11473,
+      "sha256": "2ab95ed3b77acd650abe86e3a8d94c772b98945c925d58cd0fe03f85a3af1734"
+    },
+    {
+      "file": "future-light/src/games/match3.js",
+      "bytes": 13947,
+      "sha256": "780db9991c4ce03858405738e214130ac649349cf99f654829142f0e1ffc8766"
+    },
+    {
+      "file": "future-light/src/games/nonogram.js",
+      "bytes": 5216,
+      "sha256": "64a45d6a500f52dd45ed471a1461a6e4e19361dc02cb0c0bce474dffe7e5b835"
+    },
+    {
+      "file": "future-light/src/games/octagram.js",
+      "bytes": 4923,
+      "sha256": "cd16d355963b6caa9428ac8857fa49623eb0af7cf0bfe4c664ba28114e9d20c8"
+    },
+    {
+      "file": "future-light/src/games/stroop.js",
+      "bytes": 3583,
+      "sha256": "d360654023c31ccee72d049688b88a7507c576836fbc2c2f40bb90b116c54855"
+    },
+    {
+      "file": "future-light/src/main.js",
+      "bytes": 96,
+      "sha256": "525cda57310e67caf275adab6940cf9162b518e519d74544c7144096e4c63fae"
+    },
+    {
+      "file": "future-light/src/styles/games.css",
+      "bytes": 7283,
+      "sha256": "9e03316da852d8fde32c3a3b00ff2aed37c17b60250ef4f9a1a76d02da2ac926"
+    },
+    {
+      "file": "future-light/src/styles/main.css",
+      "bytes": 11447,
+      "sha256": "87e6cfa5b005dcee39382aed23f74659224674de2b0c7c9ac6a89e95daca7ad4"
+    },
+    {
+      "file": "warehouse-strike/index.html",
+      "bytes": 22650,
+      "sha256": "fd2e54eedd9120b67c75abe6092aa2c80524d8b103f731de0f6ebdb59435c531"
+    },
+    {
+      "file": "warehouse-strike/src/config/awakening.js",
+      "bytes": 7301,
+      "sha256": "84d77daec41224f40d3e57b487ad34f0e8e89a4eacfa6aa647b05506dbaa5ef1"
+    },
+    {
+      "file": "warehouse-strike/src/config/economy.js",
+      "bytes": 4459,
+      "sha256": "7f4dc943ebace8ab7dffa0cd203d07a5a7e9147e045c2ef7d476589bb4b219a0"
+    },
+    {
+      "file": "warehouse-strike/src/config/growth.js",
+      "bytes": 5801,
+      "sha256": "789d53728a3c5c947aa9b9ff3f891bc048c392354627a250e723cdab1e50553c"
+    },
+    {
+      "file": "warehouse-strike/src/config/keybinds.js",
+      "bytes": 4652,
+      "sha256": "95273168e784a500d0295960224f11e46777b286f2947d4d8a9c90859e9900ad"
+    },
+    {
+      "file": "warehouse-strike/src/config/modes.js",
+      "bytes": 7673,
+      "sha256": "5543c369e2c83bec1c444f80bf8063056c6b63215386b677a3b6157ed3839445"
+    },
+    {
+      "file": "warehouse-strike/src/config/mods.js",
+      "bytes": 7501,
+      "sha256": "26428f896c8e8bee679fe5ddee335fb669dda8cbe278ec402ceea912373808c6"
+    },
+    {
+      "file": "warehouse-strike/src/config/perks.js",
+      "bytes": 4318,
+      "sha256": "9c68878b94e25a4e1078d15d130073f1eda01da4fda8dac9ff4168cd1839b5e4"
+    },
+    {
+      "file": "warehouse-strike/src/config/progression.js",
+      "bytes": 10021,
+      "sha256": "bbeb8918e56c8ef7a3d4d3fc61b06879b3cb36e3f6292ce311da51417d48fa4d"
+    },
+    {
+      "file": "warehouse-strike/src/config/traps.js",
+      "bytes": 1409,
+      "sha256": "675a37b7a5fe0578d72f3c46c24ef88fe2f6c05c81b3fdf40afea40a4d30e347"
+    },
+    {
+      "file": "warehouse-strike/src/config/weapon.js",
+      "bytes": 18128,
+      "sha256": "fef10adf6871b43f1a1f12891053a8dffbf57cddd5ccfae8aa4b13e86d3c887b"
+    },
+    {
+      "file": "warehouse-strike/src/core/AssetManager.js",
+      "bytes": 7875,
+      "sha256": "268da551bf771f30bae3ecd1a5b31d7a171b5e2cac1fd214a010afa2883ef3df"
+    },
+    {
+      "file": "warehouse-strike/src/core/AudioManager.js",
+      "bytes": 13131,
+      "sha256": "2843fe595a683007a927a3fa88febadf8c814473ca1c027069da9be256a5052f"
+    },
+    {
+      "file": "warehouse-strike/src/core/AwakeningSystem.js",
+      "bytes": 4902,
+      "sha256": "8f29f98f869a0fa9573836525dae8161bda26aad5c7c3059e26cef2c0b1a1cb3"
+    },
+    {
+      "file": "warehouse-strike/src/core/CollisionWorld.js",
+      "bytes": 6671,
+      "sha256": "540139b0ab2653699cecf3e0ea546f3f138e54f2d8c5c6ed09144226ef264671"
+    },
+    {
+      "file": "warehouse-strike/src/core/DayNightSystem.js",
+      "bytes": 5081,
+      "sha256": "989dca80c1a209e1a99fb08e47084cd5f1c9eac7bdcef6b8d4b8261581688cf1"
+    },
+    {
+      "file": "warehouse-strike/src/core/Game.js",
+      "bytes": 74057,
+      "sha256": "a2d67d862c1c4174e87d543da3f1f1081b632f1ad434af21e29e0af39a5bbe85"
+    },
+    {
+      "file": "warehouse-strike/src/core/Input.js",
+      "bytes": 6782,
+      "sha256": "1a4e882b1c331633471e35af12cc1a59280d9cd09eab43bacfae62d7c3119a49"
+    },
+    {
+      "file": "warehouse-strike/src/core/PerkSystem.js",
+      "bytes": 2135,
+      "sha256": "e4c8de630053e3a8ca701a9262acf8e6d3cc5d6560d9bccf9660562cf4843643"
+    },
+    {
+      "file": "warehouse-strike/src/core/PostFX.js",
+      "bytes": 7179,
+      "sha256": "cd857af1e1b51f2e3b30cd2407ec9a49d5bcb2bef0c213742b1045378f1b43a5"
+    },
+    {
+      "file": "warehouse-strike/src/core/SaveManager.js",
+      "bytes": 22702,
+      "sha256": "46f2722cf3d917c47ba65ae3e8ed27a92e71a5ac06acefcf3a29bc4a2d80056b"
+    },
+    {
+      "file": "warehouse-strike/src/core/scoring.js",
+      "bytes": 1425,
+      "sha256": "b3eeacbce7b9159f075562d094f544ee05b64f0b0250c2b86300e0acbb2c139a"
+    },
+    {
+      "file": "warehouse-strike/src/enemies/EnemyAI.js",
+      "bytes": 38128,
+      "sha256": "1894e8520d0f5a8819cf2718e0af480c7f1470fcf0de4f592115056c0283d258"
+    },
+    {
+      "file": "warehouse-strike/src/enemies/EnemyManager.js",
+      "bytes": 14608,
+      "sha256": "3e0de1ce573f24d668dff1fe4cd8e041f23a05e9ec9737288a5e7d3021e87719"
+    },
+    {
+      "file": "warehouse-strike/src/main.js",
+      "bytes": 640,
+      "sha256": "063c3f69299745962b6996c3c0723f192ccd32636df1b1778d16fdb0f54106da"
+    },
+    {
+      "file": "warehouse-strike/src/player/MechSystem.js",
+      "bytes": 8056,
+      "sha256": "4380e73003762e59ebba78422b0599da1b0b0b5df611dcec64d34b5334ca88d7"
+    },
+    {
+      "file": "warehouse-strike/src/player/MouseLook.js",
+      "bytes": 2482,
+      "sha256": "25199f419727699ff78b7453eb3125d84bcb24d595d20d199ee0c7cdf71eb611"
+    },
+    {
+      "file": "warehouse-strike/src/player/PlayerController.js",
+      "bytes": 9523,
+      "sha256": "b31e2566ff4414c53d108386f0f057b44c02faceb20178d3f132991b7b06e043"
+    },
+    {
+      "file": "warehouse-strike/src/player/PlayerHealth.js",
+      "bytes": 2328,
+      "sha256": "3d50e3bf7ccfc2c16fb5891db3f414fa49afed54265c9474243860c1633ca29f"
+    },
+    {
+      "file": "warehouse-strike/src/ui/ArmoryUI.js",
+      "bytes": 6778,
+      "sha256": "94cb9af3d402253e98125afecdc3dd8a7f54736ad4e285d755ed398e1ee67c2f"
+    },
+    {
+      "file": "warehouse-strike/src/ui/AwakenUI.js",
+      "bytes": 4840,
+      "sha256": "502e0f44e1fa9179c6034afb1d8562105cb954c6d62c0af6568dbc80153bc7a2"
+    },
+    {
+      "file": "warehouse-strike/src/ui/DefenseUI.js",
+      "bytes": 7631,
+      "sha256": "fc398aaf71604ad1153c4571527fe91487a330c30f4faf8be21a0f6e3d14551a"
+    },
+    {
+      "file": "warehouse-strike/src/ui/ExchangeUI.js",
+      "bytes": 5047,
+      "sha256": "cd5ee723373694ec97c4b27ab05f496e2cb2b4c08a9c95716d76899a7c322a22"
+    },
+    {
+      "file": "warehouse-strike/src/ui/GrowthUI.js",
+      "bytes": 6770,
+      "sha256": "64f048486e8ed411e77500dc733a3d07b04b20f4ee9ae989d6e7bdb590c06149"
+    },
+    {
+      "file": "warehouse-strike/src/ui/HUD.js",
+      "bytes": 11333,
+      "sha256": "ac34a4c7d9ff26ea925d31692b646d4b34dc3c3d770f70703b8d1bb3b4a7645c"
+    },
+    {
+      "file": "warehouse-strike/src/ui/LobbyUI.js",
+      "bytes": 8109,
+      "sha256": "41530a50a40527eb321f30bbe265819632a9e4812561493c84abc816659233bb"
+    },
+    {
+      "file": "warehouse-strike/src/ui/Menu.js",
+      "bytes": 7049,
+      "sha256": "46e0a0d59470b0c22314d140d40849a178a8e274cdbbe4280c7b2eec3dc642cb"
+    },
+    {
+      "file": "warehouse-strike/src/ui/Minimap.js",
+      "bytes": 5723,
+      "sha256": "1cf55a6c123fbd2ffe1bb4c07d7177d1b18fc8d2fbca7a066adf4f5f74ebeec6"
+    },
+    {
+      "file": "warehouse-strike/src/ui/MissionsUI.js",
+      "bytes": 3715,
+      "sha256": "eb44f11f1e29776ed547e995d36f3c2a2556d88285695130a4b575d87009106c"
+    },
+    {
+      "file": "warehouse-strike/src/ui/PerkUI.js",
+      "bytes": 2911,
+      "sha256": "bbf625ac54df36955657954f9300d206dcdc49721d190106f7a539d1b2ab658e"
+    },
+    {
+      "file": "warehouse-strike/src/ui/ResearchUI.js",
+      "bytes": 3258,
+      "sha256": "e7901259aa8c1061575e65e14c4645d99e1a83bb7237aca3df8a72b6f77686bf"
+    },
+    {
+      "file": "warehouse-strike/src/ui/SettingsUI.js",
+      "bytes": 6404,
+      "sha256": "d51d4f295621f2502237c07eb9261f7a0175226b6f7fd355695eb9244944ddfa"
+    },
+    {
+      "file": "warehouse-strike/src/ui/ThrowUI.js",
+      "bytes": 2106,
+      "sha256": "8033dc27748f8f6d07d2cac961d02e50712f66b9fff4fac22ea87efa7c928b5a"
+    },
+    {
+      "file": "warehouse-strike/src/weapons/CasingSystem.js",
+      "bytes": 2101,
+      "sha256": "aff32ffe9ed6acee46feab6b7d84837f2dc372a8da84d11c9cead6343bf0acef"
+    },
+    {
+      "file": "warehouse-strike/src/weapons/Effects.js",
+      "bytes": 15099,
+      "sha256": "df446b182e220533c3290a67667b50221a1c993ac083f2a66e8f648c63c4ab4b"
+    },
+    {
+      "file": "warehouse-strike/src/weapons/GunSystem.js",
+      "bytes": 26830,
+      "sha256": "719fdf4950257ee9c51d8d7b288bf11708b38255d6e7d7584faf40b5617da67e"
+    },
+    {
+      "file": "warehouse-strike/src/weapons/WeaponView.js",
+      "bytes": 20778,
+      "sha256": "c28db6269f15336102a17c267d333580be593ca44ec2901fa5588f552df822a3"
+    },
+    {
+      "file": "warehouse-strike/src/world/DefenseManager.js",
+      "bytes": 31922,
+      "sha256": "d6fd916bf568640be2973e78edfb485b362e1c3e06dffc419ac579dc5abe29f3"
+    },
+    {
+      "file": "warehouse-strike/src/world/ExplosionSystem.js",
+      "bytes": 5835,
+      "sha256": "8366b9aa4595dfe2a7ce9f56588c76660fc0312e3b3d36260a2e47ebe1ab2dda"
+    },
+    {
+      "file": "warehouse-strike/src/world/LobbyScene.js",
+      "bytes": 27066,
+      "sha256": "3189531363bf1f5cb4c0f7097cd841604123e78c5bf54428ca2a909a8687548c"
+    },
+    {
+      "file": "warehouse-strike/src/world/MapBuilder.js",
+      "bytes": 33954,
+      "sha256": "0db1804ad8a7102974a77425ad95407b57191a4dd6f7d372e6d1218031e07488"
+    },
+    {
+      "file": "warehouse-strike/src/world/OutdoorMap.js",
+      "bytes": 1205,
+      "sha256": "cbeb81d75eb4dc29bdaf2593ea0a79833ab21c719d0c86231b6833e5109be9a2"
+    },
+    {
+      "file": "warehouse-strike/src/world/SupplyManager.js",
+      "bytes": 11746,
+      "sha256": "393c53fd8cc3c0c4903b14d78355e73198189cc413f1bf884d8b8d1bd56f12df"
+    },
+    {
+      "file": "warehouse-strike/src/world/ThrowSystem.js",
+      "bytes": 12961,
+      "sha256": "b0bb3699acbcc8b9552c53f5e6a1517a66921d2623ed5a43a188a40f5a5b125a"
+    },
+    {
+      "file": "warehouse-strike/src/world/TrapSystem.js",
+      "bytes": 12894,
+      "sha256": "a2526aa1d37e97bd656c56962a1b621a1b9c4a3beab8da0d1068c4f98c541b5c"
+    },
+    {
+      "file": "warehouse-strike/src/world/levels.js",
+      "bytes": 19112,
+      "sha256": "6f3a11e4ecfc16e0b0df03dd3546f023d7c277e239c19c538c5f9ab8488f4346"
+    },
+    {
+      "file": "warehouse-strike/styles/hud.css",
+      "bytes": 69593,
+      "sha256": "8f831d51fc967a31fb7e804f28e49bc9b240928302475125c3ed52eb1cdb91f7"
+    },
+    {
+      "file": "warehouse-strike/vendor/three/curves/NURBSCurve.js",
+      "bytes": 1878,
+      "sha256": "34dee297704432358680934a8d5acae35f05c71aa59ce7a8e97decb0ac38e452"
+    },
+    {
+      "file": "warehouse-strike/vendor/three/curves/NURBSUtils.js",
+      "bytes": 7861,
+      "sha256": "86bcf4002721854739f6dc7fd185b5eb0540d6b8676feaae6979bb605baac85e"
+    },
+    {
+      "file": "warehouse-strike/vendor/three/libs/fflate.module.js",
+      "bytes": 83291,
+      "sha256": "5686c3d02432a47d8e31f16cabc2d725bbf4531a3abb37cc6fd00142256e3730"
+    },
+    {
+      "file": "warehouse-strike/vendor/three/loaders/FBXLoader.js",
+      "bytes": 101606,
+      "sha256": "361d7e635e57f5d5ff358359476840a0b1a79881c12a0355fe420af9c4743926"
+    },
+    {
+      "file": "warehouse-strike/vendor/three/loaders/GLTFLoader.js",
+      "bytes": 108522,
+      "sha256": "d073b438e6a07e1359741dd5d6c76c953420cc0d4fd84eb1bdde94315540e6a3"
+    },
+    {
+      "file": "warehouse-strike/vendor/three/loaders/TGALoader.js",
+      "bytes": 11150,
+      "sha256": "ce938459ed99d5234f9665270cca8552464d0d1703a094e49760631e6b14c7a3"
+    },
+    {
+      "file": "warehouse-strike/vendor/three/three.module.js",
+      "bytes": 1272972,
+      "sha256": "76dea8151bc9352aef3528b4262e249b2604f62543828328db978d060d61a495"
+    },
+    {
+      "file": "warehouse-strike/vendor/three/utils/BufferGeometryUtils.js",
+      "bytes": 31906,
+      "sha256": "9be041e96308775d00e2695cc607645b9a9b64fd7c0e759dd8f7c00a8d92becb"
+    },
+    {
+      "file": "warehouse-strike/vendor/three/utils/SkeletonUtils.js",
+      "bytes": 8007,
+      "sha256": "83748c5072a5ce96e9d68d8efda908a1f1a06c0b5fd2618edc3e54a361a8fd5b"
+    },
+    {
+      "file": "warehouse-strike/public/assets/audio/casing_1.mp3",
+      "bytes": 1536,
+      "sha256": "01d22b0ded21c5beadb493a69a0eb5d22c0e2cd86944a03a9bf01f8e01fc3e39"
+    },
+    {
+      "file": "warehouse-strike/public/assets/audio/casing_2.mp3",
+      "bytes": 1536,
+      "sha256": "a32fe76aab6fcbeef7c624107c36762cc433030b1b87c813975b04b6a3552bd6"
+    },
+    {
+      "file": "warehouse-strike/public/assets/audio/casing_3.mp3",
+      "bytes": 960,
+      "sha256": "c9d04362116b2c4bc1bfdacc2046fa90fcb2f1b34b9eb7c35443caf7925d5c30"
+    },
+    {
+      "file": "warehouse-strike/public/assets/audio/casing_4.mp3",
+      "bytes": 1728,
+      "sha256": "dcc2c0d3789b0dbc8521e59fe3b0b807c9975851ece3b92f92e39eeff1c1a743"
+    },
+    {
+      "file": "warehouse-strike/public/assets/audio/casing_5.mp3",
+      "bytes": 3648,
+      "sha256": "9515396a08af454d24b9e396f4ca1f511baa9adbd9c73f03ed35b7245af1f12e"
+    },
+    {
+      "file": "warehouse-strike/public/assets/audio/fire_01.mp3",
+      "bytes": 23232,
+      "sha256": "c32756a2a7d9dcafb8c02beb50732a229c1f59729de9ea684cd7b7c9e5497167"
+    },
+    {
+      "file": "warehouse-strike/public/assets/audio/fire_02.mp3",
+      "bytes": 33408,
+      "sha256": "58d61809782096f1f704e421532d851be4747cef3783923d5b94ed1da9e300fc"
+    },
+    {
+      "file": "warehouse-strike/public/assets/audio/fire_empty.mp3",
+      "bytes": 2688,
+      "sha256": "355f3cfc49cb0e7294a68c2e0d182e50c321456cd5106f4c1d1f51b0965fa3f8"
+    },
+    {
+      "file": "warehouse-strike/public/assets/audio/hit.mp3",
+      "bytes": 1044,
+      "sha256": "905f14ea4a93013ef661898515b8183fcee8713d24c46ad68f375d7294bff8ef"
+    },
+    {
+      "file": "warehouse-strike/public/assets/audio/hurt.mp3",
+      "bytes": 2507,
+      "sha256": "a50e87965034245dc8d3c463fec54813612196eca4aacdeb57a63ce7d1535e0e"
+    },
+    {
+      "file": "warehouse-strike/public/assets/audio/kill.mp3",
+      "bytes": 2298,
+      "sha256": "80a363d9fe4b3bc0b1332a07f4d8f16c3b084beda9352fe5219450a5be7310c4"
+    },
+    {
+      "file": "warehouse-strike/public/assets/audio/land.mp3",
+      "bytes": 1880,
+      "sha256": "e05207176cdc9c0d4fbc9c1a5cf5825b7b85208db566e0fa18c7805f091aa15b"
+    },
+    {
+      "file": "warehouse-strike/public/assets/audio/reload.mp3",
+      "bytes": 19584,
+      "sha256": "fe9af8c7036d12df5c4cbec74631ca2dfeec95b01e6bb7a5e97133a6147d8e96"
+    },
+    {
+      "file": "warehouse-strike/public/assets/audio/reload_empty.mp3",
+      "bytes": 27072,
+      "sha256": "72cf87cbcaf4234235640c5af4307fb52e625d499065da93abb073d2f1e025f1"
+    },
+    {
+      "file": "warehouse-strike/public/assets/audio/run_loop.mp3",
+      "bytes": 26112,
+      "sha256": "de7addc20c0f0b476e95ba62a4826826e8bf287b74b64cf9045384d79f4a8545"
+    },
+    {
+      "file": "warehouse-strike/public/assets/audio/walk_loop.mp3",
+      "bytes": 38976,
+      "sha256": "3629723a4b41b5c8c7bdb602b3d4c4daf4856b406b1d290207833a759f6b9ca2"
+    },
+    {
+      "file": "warehouse-strike/public/assets/models/anim/z_attack.fbx",
+      "bytes": 1110288,
+      "sha256": "8b3eb8abff736b100e9c3f4a7897c280483ab6a80c11cdfee2473dfa32684bc6"
+    },
+    {
+      "file": "warehouse-strike/public/assets/models/anim/z_death.fbx",
+      "bytes": 836960,
+      "sha256": "5ce40b223538630de58459d20047f77f85d08a9d0f72b237b751a24b83674623"
+    },
+    {
+      "file": "warehouse-strike/public/assets/models/anim/z_idle.fbx",
+      "bytes": 1406976,
+      "sha256": "d5befe6b815c8302cc52d9f861f63c42311e6fa986fb801228f52ba08d0c7b11"
+    },
+    {
+      "file": "warehouse-strike/public/assets/models/anim/z_run.fbx",
+      "bytes": 1213936,
+      "sha256": "9efd150b11ec583fd4bef6954fba1229c1067be96226a23403839194549eeb86"
+    },
+    {
+      "file": "warehouse-strike/public/assets/models/anim/z_walk.fbx",
+      "bytes": 1273760,
+      "sha256": "324ea0b6d26d7bb116f6c7e52fb22a2339f3d9796ec30c123678bb0148d240a3"
+    },
+    {
+      "file": "warehouse-strike/public/assets/models/box_1.fbx",
+      "bytes": 24380,
+      "sha256": "65cb0fda20c42b0abe878640f3d2b46654ea8e90a13dd980007180c6cf00b8a9"
+    },
+    {
+      "file": "warehouse-strike/public/assets/models/box_2.fbx",
+      "bytes": 24236,
+      "sha256": "27f565d55e0bc5011956cda795096a0bc9965deb68e17fd2f3ba458a92ef0c66"
+    },
+    {
+      "file": "warehouse-strike/public/assets/models/box_3.fbx",
+      "bytes": 24348,
+      "sha256": "39ec6a65c41cfb310380dca9a6cbaa4fbd376b30d66090281512736fbc83f6d2"
+    },
+    {
+      "file": "warehouse-strike/public/assets/models/box_4.fbx",
+      "bytes": 24396,
+      "sha256": "6cb2b5951dbf5019e78bf5034f884244c16a766013412a8caccd2fce672682f7"
+    },
+    {
+      "file": "warehouse-strike/public/assets/models/fps_weapon.fbx",
+      "bytes": 96304,
+      "sha256": "16fcb712cd69695436ed516795f79d99f124cb7573e1e68026ef54c05da8c646"
+    },
+    {
+      "file": "warehouse-strike/public/assets/models/weapon_arms.fbx",
+      "bytes": 1423088,
+      "sha256": "20e07300f77cc832c301a1d6abb0abb394d08240aaa3755aad641a8293efa6cc"
+    },
+    {
+      "file": "warehouse-strike/public/assets/models/weapons/pistol.glb",
+      "bytes": 60144,
+      "sha256": "267c2dc0652798aeac335e89c739111ace0ba1090a361c1de16d7bf09ab1b472"
+    },
+    {
+      "file": "warehouse-strike/public/assets/models/weapons/shotgun.glb",
+      "bytes": 55352,
+      "sha256": "128a0075192f82582e2e2acc363108cabcb32335086f16b1fa2f5e1186b2ff43"
+    },
+    {
+      "file": "warehouse-strike/public/assets/models/weapons/smg.glb",
+      "bytes": 177292,
+      "sha256": "0a62983ec30a0cde16aa541136b5a2d6e59f3afc448890d0cfeb563db578eb4f"
+    },
+    {
+      "file": "warehouse-strike/public/assets/models/weapons/sniper.glb",
+      "bytes": 72968,
+      "sha256": "f8a0cdbf88931bdd47b7b3f091baec4f8f29dd3f249fb70e880ae74448d220e7"
+    },
+    {
+      "file": "warehouse-strike/public/assets/models/zombie.fbx",
+      "bytes": 1276736,
+      "sha256": "cab9a9d2ed5061202aa9b98448d57eaa4b08b4a22505d80614e996aa4e10389e"
+    },
+    {
+      "file": "warehouse-strike/public/assets/textures/ak74_color.webp",
+      "bytes": 57762,
+      "sha256": "a9f172db5d3602771ae0942a8df73915ca2b347b1ee9d28ca13442bb08fb0df2"
+    },
+    {
+      "file": "warehouse-strike/public/assets/textures/arm_color.webp",
+      "bytes": 8906,
+      "sha256": "7e2b6d0ea0470d1075235d80bdcf6c072cd80bdf470b765cd1fbd74e9ce077f7"
+    },
+    {
+      "file": "warehouse-strike/public/assets/textures/zombie.webp",
+      "bytes": 82040,
+      "sha256": "e3cd9b18ba61658dad11441ba919c6a2b95ee23e7858fb77abb3c4457ebd9f78"
+    },
+    {
+      "file": "lab-sandbox/index.html",
+      "bytes": 22537,
+      "sha256": "319b2d13cb17d8293f5bf7be93f7e70375cbebcfddda0095dd3cf7e415f0abe2"
+    },
+    {
+      "file": "lab-sandbox/SOURCE.json",
+      "bytes": 216,
+      "sha256": "ea3da995558d413fe25719e5eacebab9819a1c5b769e4ba0343e8eb20da58116"
+    }
+  ]
+}

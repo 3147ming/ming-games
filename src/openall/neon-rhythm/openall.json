@@ -1,0 +1,14 @@
+[
+  {
+    "id": "L29",
+    "kind": "const",
+    "game": "neon-rhythm",
+    "target": {
+      "file": "neon-rhythm/src/judge.mjs",
+      "symbol": "WINDOW_MS"
+    },
+    "anchor": "export const WINDOW_MS = { perfect: 45, great: 90, good: 140 };",
+    "value": "判定窗/接近速度/评级阈值可滑杆",
+    "noOpenallValue": "45/90/140ms"
+  }
+]
