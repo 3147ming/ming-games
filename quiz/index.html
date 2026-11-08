@@ -73,6 +73,11 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,s
 
 /* ---------- 书架 ---------- */
 .shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:11px}
+.shelf-group{margin:14px 0 4px}
+.shelf-group-title{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:800;
+  color:var(--sub);margin:0 0 9px;letter-spacing:.3px}
+.shelf-group-title::after{content:"";flex:1;height:1px;
+  background:linear-gradient(90deg,var(--line),transparent)}
 .book{background:var(--card);border-radius:18px;padding:13px;box-shadow:var(--shadow-sm);
   cursor:pointer;border:1px solid var(--line);transition:transform .1s,box-shadow .15s;
   display:flex;flex-direction:column;gap:8px;position:relative;overflow:hidden}
@@ -1232,6 +1237,13 @@ var QA_TYPES={
  food:{name:'美食',icon:'🍜',alias:['food','meishi','美食','食物'],gen:genStdPool('food'),diffs:QA_DIFFS_STD,pen:1},
  online:{name:'🌐 联网',icon:'🌐',alias:['online','wanglian','联网','实时','internet'],gen:function(n){return []}}
 };
+/* ===== 科目分类：把 12 门平铺科目归成 4 组（用户拍板：四组分类） ===== */
+var SUBJECT_GROUPS=[
+  {k:'nature',  n:'🔬 自然科学',   sub:['math','science','animals','astronomy']},
+  {k:'humanity',n:'📜 人文社科',   sub:['history','literature','english','geo']},
+  {k:'life',    n:'🧠 生活百科',   sub:['common','food','sports']},
+  {k:'tech',    n:'💻 信息技术',   sub:['code']}
+];
 // ===== 薄弱题 / 实力自适应 辅助 =====
 var WEAK_CAP=150;
 /* B 批：SRS 间隔复习（SM-2 简化，6 级阶梯 1/2/4/7/15/30 天） */
@@ -2043,12 +2055,28 @@ function renderShelf(){
   acts.appendChild(bWeak);acts.appendChild(bSrs);acts.appendChild(bNew);sec1.appendChild(acts);
   shelfEl.appendChild(sec1);
 
-  var grid=h('div','shelf');
-  // 内置分类
+  // 内置分类：按 SUBJECT_GROUPS 分 4 组渲染（每组标题 + 自己的 grid）
+  SUBJECT_GROUPS.forEach(function(grp){
+    var wrap=h('div','shelf-group');
+    var head=h('div','shelf-group-title',grp.n);
+    wrap.appendChild(head);
+    var grid=h('div','shelf');
+    grp.sub.forEach(function(bk){
+      var T=QA_TYPES[bk];
+      if(!T)return;
+      grid.appendChild(makeBook(T.icon,T.name,bk,null,bestFor('b:'+bk),shelfCount(bk,null)));
+    });
+    wrap.appendChild(grid);
+    shelfEl.appendChild(wrap);
+  });
+  // 未分组的（防漏：新增科目没进组也能显示，不消失）
+  var _seen={};SUBJECT_GROUPS.forEach(function(g){g.sub.forEach(function(k){_seen[k]=1})});
+  var _orphanGrid=null;
   Object.keys(QA_TYPES).forEach(function(bk){
-    if(bk==='online')return;
+    if(bk==='online'||_seen[bk])return;
+    if(!_orphanGrid){_orphanGrid=h('div','shelf');shelfEl.appendChild(_orphanGrid);}
     var T=QA_TYPES[bk];
-    grid.appendChild(makeBook(T.icon,T.name,bk,null,bestFor('b:'+bk),shelfCount(bk,null)));
+    _orphanGrid.appendChild(makeBook(T.icon,T.name,bk,null,bestFor('b:'+bk),shelfCount(bk,null)));
   });
   // 自定义
   var cks=Object.keys(custom);
