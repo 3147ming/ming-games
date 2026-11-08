@@ -86,6 +86,85 @@ const SFX = {
   near: () => beep({ freq: 1400, freq2: 1800, dur: 0.05, type: 'square', gain: 0.025 }),
 };
 
+/* ============================ 背景音乐 ============================ */
+/* 用 Web Audio API 合成：低音线 + 琶音，循环播放。无外部文件。 */
+/* 只在 settings.music !== false 且游戏运行时播放。 */
+
+let musicNodes = null;   // 当前活跃的音乐节点
+let musicTimer = null;   // setInterval handle
+
+/** 音符频率（A 小调五声音阶：A2=110, C4=261.63, D4=293.66, E4=329.63, G4=392） */
+const MUSIC_NOTES = [110, 146.83, 196, 261.63, 293.66, 329.63, 392, 440];
+const MUSIC_BASS = [55, 55, 73.42, 65.41];  // 低音线：A1, A1, D2, C2
+const MUSIC_BEAT = 0.5;   // 每拍 0.5s（120 BPM）
+const MUSIC_STEP = MUSIC_BEAT / 4;  // 每个十六分音符
+
+/** 启动背景音乐。 */
+function startMusic() {
+  if (settings.music === false) return;
+  stopMusic();
+  const ac = ctx();
+  if (!ac || ac.state !== 'running') return;
+
+  const master = ac.createGain();
+  master.gain.value = (settings.volume ?? 0.7) * 0.18;  // 背景音乐音量比 SFX 低
+  master.connect(ac.destination);
+
+  // 低音线：每拍一个音符，音量较低
+  let bassIdx = 0;
+  const bassTimer = setInterval(() => {
+    if (settings.music === false) { stopMusic(); return; }
+    const ac2 = ctx();
+    if (!ac2 || ac2.state !== 'running') return;
+    try {
+      const t0 = ac2.currentTime;
+      const o = ac2.createOscillator();
+      const g = ac2.createGain();
+      o.type = 'triangle';
+      o.frequency.value = MUSIC_BASS[bassIdx % MUSIC_BASS.length];
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.5, t0 + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + MUSIC_BEAT * 0.9);
+      o.connect(g); g.connect(master);
+      o.start(t0); o.stop(t0 + MUSIC_BEAT);
+      bassIdx++;
+    } catch { /* 忽略 */ }
+  }, MUSIC_BEAT * 1000);
+
+  // 琶音：每拍 4 个十六分音符，音量更低
+  let arpIdx = 0;
+  const arpTimer = setInterval(() => {
+    if (settings.music === false) { stopMusic(); return; }
+    const ac2 = ctx();
+    if (!ac2 || ac2.state !== 'running') return;
+    try {
+      const t0 = ac2.currentTime;
+      const note = MUSIC_NOTES[arpIdx % MUSIC_NOTES.length];
+      const o = ac2.createOscillator();
+      const g = ac2.createGain();
+      o.type = 'sine';
+      o.frequency.value = note;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + MUSIC_STEP * 0.9);
+      o.connect(g); g.connect(master);
+      o.start(t0); o.stop(t0 + MUSIC_STEP);
+      arpIdx++;
+    } catch { /* 忽略 */ }
+  }, MUSIC_STEP * 1000);
+
+  musicNodes = { master, bassTimer, arpTimer };
+}
+
+/** 停止背景音乐并清理节点。 */
+function stopMusic() {
+  if (!musicNodes) return;
+  try { clearInterval(musicNodes.bassTimer); } catch { /* 忽略 */ }
+  try { clearInterval(musicNodes.arpTimer); } catch { /* 忽略 */ }
+  try { musicNodes.master.disconnect(); } catch { /* 忽略 */ }
+  musicNodes = null;
+}
+
 function haptic(ms) {
   if (!settings.vibrate || prefersReduced) return;
   try { navigator.vibrate && navigator.vibrate(ms); } catch { /* 忽略 */ }
@@ -563,6 +642,7 @@ function loop(now) {
 
 function startRun() {
   unlockAudio();
+  startMusic();
   showScreen('game');
   resize();
   $('overlay-result').hidden = true;
@@ -585,6 +665,7 @@ function startRun() {
 
 function finishRun() {
   G.running = false;
+  stopMusic();
   cancelAnimationFrame(G.raf);
   const run = G.run;
   const summary = summarize(run);
@@ -724,6 +805,7 @@ function releaseSlideIfNeeded() {
 function pauseGame() {
   if (!G.running || G.paused) return;
   G.paused = true;
+  stopMusic();
   const run = G.run;
   $('pause-stats').innerHTML =
     `<span>距离 <b>${distanceOf(run)}</b></span>` +
@@ -737,11 +819,14 @@ function resumeGame() {
   G.paused = false;
   G.lastT = 0;
   $('overlay-pause').hidden = true;
+  unlockAudio();
+  startMusic();
 }
 
 function quitToMenu() {
   G.running = false;
   G.paused = false;
+  stopMusic();
   cancelAnimationFrame(G.raf);
   $('overlay-pause').hidden = true;
   $('overlay-result').hidden = true;
@@ -852,6 +937,15 @@ for (const [id, key] of [['set-music', 'music'], ['set-sfx', 'sfx'], ['set-fx', 
   $(id).addEventListener('click', () => {
     settings[key] = settings[key] === false;
     persist();
+    // 音乐开关：切到开则播放，切到关则停止
+    if (key === 'music') {
+      if (settings.music !== false && G.running && !G.paused) {
+        unlockAudio();
+        startMusic();
+      } else {
+        stopMusic();
+      }
+    }
   });
 }
 
