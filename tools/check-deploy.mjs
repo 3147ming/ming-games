@@ -54,7 +54,6 @@ for (const file of activeFiles) {
 
 /* 仓库外的历史发布脚本：只报告，不阻断（P1 归档/停用） */
 const legacy = [
-  'D:/Projects/FUTURE-LIGHT/tools/sync-deploy.mjs',
   'D:/Projects/deploy-hub.bat',
   'D:/Projects/HUB/tools/sync-deploy.mjs',
   'D:/Projects/HUB/MAINTENANCE.md',
@@ -86,7 +85,7 @@ if (warnings.length) {
   for (const w of warnings.slice(0, 20)) console.log(`  ${w.file}:${w.line}  ${w.text}`);
 }
 if (legacyHits.length) {
-  console.log('\n[LEGACY] 仓库外历史脚本仍提及冻结域名（P0 已改 FUTURE-LIGHT 一处，其余 P1 归档时停用）：');
+  console.log('\n[LEGACY] 仓库外历史脚本仍提及冻结域名（P1 归档/停用时已处理）：');
   for (const h of legacyHits.slice(0, 20)) console.log(`  ${h.file}:${h.line}  ${h.host}`);
 }
 console.log(errors.length ? '\n=== 门禁：未通过 ===' : '\n=== 门禁：通过（活跃构建链 0 违规） ===');

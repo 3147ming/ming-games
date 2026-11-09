@@ -19,11 +19,6 @@ const EXTERNAL = 'D:/Projects';
 
 const JOBS = [
   {
-    id: 'future-light',
-    from: path.join(EXTERNAL, 'FUTURE-LIGHT'),
-    include: ['index.html', 'src']
-  },
-  {
     id: 'warehouse-strike',
     from: path.join(EXTERNAL, 'WAREHOUSE-STRIKE'),
     include: ['index.html', 'src', 'styles', 'vendor', 'public']

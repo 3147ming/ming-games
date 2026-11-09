@@ -29,7 +29,6 @@ add('');
 add('## 二、四段指令（逐段复制，代码块内全部复制）');
 add('');
 const names = {
-  'future-light': '未来之光 · 脑力合集',
   'warehouse-strike': '仓库行动',
   'lab-sandbox': '电路实验 · 沙盒版',
   enlisten: '英语听力 · 网页版'
@@ -45,7 +44,7 @@ cfg.items.forEach((it, i) => {
 add('## 三、发回给我时');
 add('');
 add('- 发**原图**（PNG / JPG / WebP 都行），不要压缩、不要裁剪、不要拼成一张长图');
-add('- 每张告诉我对应哪个主题，或把文件命名成 `future-light` / `warehouse-strike` / `lab-sandbox` / `enlisten`');
+add('- 每张告诉我对应哪个主题，或把文件命名成 `warehouse-strike` / `lab-sandbox` / `enlisten`');
 add('- **可以分批发**，几张都行，我按文件名精确对应，不用凑齐 4 张');
 add('- **水印不用管**：豆包叠加的「AI生成」标识我这边会裁掉；若水印压在主体上，跟我说，我让你重生成或单独修');
 add('- 若画面里出现中文标题、字母或数字，也告诉我一道——成品封面要求画面内零文字');

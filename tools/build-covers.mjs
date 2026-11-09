@@ -73,7 +73,7 @@ try {
     const files = all.sort();
     if (files.length !== IDS.length) {
       console.error(`[covers] 期望 ${IDS.length} 张原图，实际 ${files.length} 张：${files.join(', ')}`);
-      console.error('[covers] 提示：把原图命名为 future-light.png / warehouse-strike.png / lab-sandbox.png / enlisten.png 可精确对应，且允许分批只处理其中几张。');
+      console.error('[covers] 提示：把原图命名为 warehouse-strike.png / lab-sandbox.png / enlisten.png 可精确对应，且允许分批只处理其中几张。');
       process.exit(2);
     }
     jobs = files.map((f, i) => ({ file: f, id: IDS[i] }));
