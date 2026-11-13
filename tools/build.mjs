@@ -172,7 +172,8 @@ for (const target of targets) {
     }
     fs.writeFileSync(path.join(dstDir, 'index.html'), html, 'utf8');
     let assets = copyAssets(srcDir, dstDir, {
-      allowExt: renderer === 'classic' ? ['.js', '.mjs'] : []
+      allowExt: renderer === 'classic' ? ['.js', '.mjs'] : [],
+      exclude: g.copyIgnore || []
     });
     if (g.logicFrom) assets += copyAssets(path.join(ROOT, g.dir), dstDir, { allowExt: [] });
     totalBytes += Buffer.byteLength(html, 'utf8');

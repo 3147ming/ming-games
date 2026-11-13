@@ -153,9 +153,11 @@ export function renderHubHtml(opts) {
 export function copyAssets(srcDir, dstDir, opts = {}) {
   if (!fs.existsSync(srcDir)) return 0;
   const allow = new Set(opts.allowExt || []);
+  /* 每款游戏可用 copyIgnore 排除自己的源码/素材目录（如 quiz/src 已内联进产物） */
+  const exclude = new Set(opts.exclude || []);
   let count = 0;
   for (const ent of fs.readdirSync(srcDir, { withFileTypes: true })) {
-    if (SKIP_DIRS.has(ent.name) || ent.name.startsWith('.')) continue;
+    if (SKIP_DIRS.has(ent.name) || ent.name.startsWith('.') || exclude.has(ent.name)) continue;
     const from = path.join(srcDir, ent.name);
     const to = path.join(dstDir, ent.name);
     if (ent.isDirectory()) {

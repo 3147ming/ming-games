@@ -9,7 +9,7 @@
     { "id": "gym", "name": "脑力训练场", "dir": "brain-gym", "cover": "covers/gym.png", "tag": "益智", "status": "ready", "renderer": "classic" },
     { "id": "sim", "name": "夜班便利店", "dir": "night-shift", "cover": "covers/sim.png", "tag": "模拟", "status": "ready", "renderer": "esm", "entry": "src/main.mjs" },
     { "id": "zhaoyun", "name": "赵云与阿斗", "dir": "zhaoyun", "cover": "covers/zhaoyun.png", "tag": "塔防", "status": "ready", "renderer": "classic" },
-    { "id": "quiz", "name": "知识问答", "dir": "quiz", "cover": "covers/quiz.png", "tag": "答题", "status": "ready", "renderer": "classic" },
+    { "id": "quiz", "name": "知识问答", "dir": "quiz", "cover": "covers/quiz.png", "tag": "答题", "status": "ready", "renderer": "classic", "copyIgnore": ["src"] },
     { "id": "lab", "name": "电路实验模拟器", "dir": "circuit-lab", "cover": "covers/lab.png", "tag": "教学", "status": "ready", "renderer": "esm", "entry": "js/app.js" },
     { "id": "paper-maze", "name": "纸上迷城", "dir": "paper-maze", "cover": "covers/paper-maze.png", "tag": "解谜", "status": "ready", "renderer": "esm", "entry": "src/ui.mjs" },
     { "id": "neon-rhythm", "name": "霓虹律动", "dir": "neon-rhythm", "cover": "covers/neon-rhythm.png", "tag": "音游", "status": "ready", "renderer": "esm", "entry": "src/ui.mjs" },
