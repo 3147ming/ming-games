@@ -163,6 +163,13 @@ for (const target of targets) {
       gameDir: srcDir, gameId: g.id, entryRel: entry || '', renderer,
       bundleCode, bridgeCode, label: `${target}:${g.id}`, vendorScripts, preludeCode
     });
+    /* 体积护栏：classic 游戏的内联应用脚本若被剥离，产物会缩成只剩外壳的几十 KB。
+       低于源 HTML 的 80% 直接失败，宁可拒绝出包也不发布空页。 */
+    const srcBytes = fs.statSync(path.join(srcDir, 'index.html')).size;
+    const outBytes = Buffer.byteLength(html, 'utf8');
+    if (renderer === 'classic' && outBytes < srcBytes * 0.8) {
+      throw new Error('[build] ' + g.id + ': 产物 ' + outBytes + ' B 远小于源 ' + srcBytes + ' B，疑似内联应用脚本被剥离');
+    }
     fs.writeFileSync(path.join(dstDir, 'index.html'), html, 'utf8');
     let assets = copyAssets(srcDir, dstDir, {
       allowExt: renderer === 'classic' ? ['.js', '.mjs'] : []

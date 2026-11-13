@@ -8,6 +8,7 @@ quiz/.build/shots10/
 !quiz/.build/*.cjs
 !quiz/.build/*.mjs
 !quiz/.build/*.html
+!quiz/.build/*.md
 # 排除规则必须放在白名单否定之后，否则会被 !*.cjs 重新纳入
 quiz/.build/*.bak*
 quiz/.build/*.log

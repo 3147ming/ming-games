@@ -14,6 +14,7 @@
 | 脑力训练场 | 53 款脑力小游戏：记忆 / 反应 / 视觉 / 数学 / 益智，九大类每日开练 | https://3147ming.github.io/ming-games/brain-gym/ |
 | 夜班便利店 | 深夜营业的 3D 模拟经营：补货、收银、应付夜客，撑过七个夜班 | https://3147ming.github.io/ming-games/night-shift/ |
 | 传统割草游戏 | 3D 战场原型：地形、光照、摄像机、战斗系统与敌人分层 AI | https://3147ming.github.io/ming-games/grass-cutter/ |
+| 知识问答 | 书架式分类刷题：719 道人工题 + 8 个生成器，选择题 / 补全 / 手写三板块，支持离线与 AI 建题 | https://ming-games.pages.dev/games/quiz/index.html |
 | 电路实验模拟器 | 面包板 / 数字实验箱上搭电路，实时仿真直流·数字·暂态，配万用表与示波器 | https://3147ming.github.io/ming-games/circuit-lab/ |
 
 ## 📁 目录结构
@@ -28,7 +29,8 @@ ming-games/
 ├── brain-gym/        # 脑力训练场
 ├── night-shift/      # 夜班便利店
 ├── grass-cutter/     # 传统割草游戏（原型）
-└── circuit-lab/      # 电路实验模拟器
+├── circuit-lab/      # 电路实验模拟器
+└── quiz/             # 知识问答（源码在 quiz/.build 与 quiz/src，index.html 是拼接产物）
 ```
 
 ## 🚀 更新部署
@@ -43,6 +45,20 @@ git push
 ```
 
 推送后约 1-3 分钟线上自动生效，无需其他操作。
+
+## 🧪 构建与验证
+
+```bash
+node tools/build.mjs --target=all   # 生成 dist/ 与 offline/
+node tools/verify-all.mjs --unit    # 部署门禁 + 三形态产物完整性 + 单元测试
+```
+
+单文件游戏（如知识问答）的产物由自己的构建脚本生成，再进入统一构建：
+
+```bash
+node quiz/.build/build.js           # 四片源码 → quiz/index.html + SW 版本
+node quiz/.build/build.js --check   # 校验产物 / 部署包 / SW / dist 是否一致
+```
 
 ## 🛠 技术栈
 

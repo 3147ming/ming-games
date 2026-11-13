@@ -61,14 +61,23 @@ export function readImportMap(html) {
   return imports;
 }
 
-/* 产物不需要旧 SW 注册 / importmap / manifest（由统一 gen-sw 与构建器负责） */
+/* 产物不需要旧 SW 注册 / importmap / manifest（由统一 gen-sw 与构建器负责）。
+   ⚠ 旧 SW 注册只能「中和」不能「整块删除」：quiz 这类单文件经典游戏的全部应用代码
+   就在同一个 <script> 里，整块删掉等于把游戏删掉（dist/games/quiz 曾只剩 39KB 外壳，题库 0 题）。 */
+/* 中和旧 SW 注册：保留原脚本内容，只让 register() 变成空操作。
+   页面级的 ./sw.js 在 dist 下不存在，真去注册会 404 并抛未捕获 rejection。 */
+const SW_NEUTRALIZE = ['<script>',
+  '/* offline build: 中和旧版 Service Worker 注册（缓存由 gen-sw 统一管理） */',
+  '(function(){try{if(navigator.serviceWorker&&navigator.serviceWorker.register){navigator.serviceWorker.register=function(){return Promise.resolve(null);};}}catch(e){}})();',
+  '</script>'].join('\n');
+
 export function stripLegacyTags(html) {
   /* modulepreload 在 file:// 下会以「跨源模块请求」被 CORS 拦下并报错；
      产物已把依赖图内联成 classic bundle，这个预加载标签必须删掉。 */
   html = html.replace(/<link[^>]*\brel=["'](?:manifest|modulepreload)["'][^>]*>\s*/gi, '');
   html = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, function (block) {
-    if (/serviceWorker\.register/.test(block)) return '';
     if (/\btype=["']importmap["']/.test(block)) return '';
+    if (/serviceWorker\.register/.test(block)) return SW_NEUTRALIZE + '\n' + block;
     return block;
   });
   return html;
