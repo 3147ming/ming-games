@@ -4,7 +4,7 @@
    brace-match 取整块 → vm 求值 → 按分类重建文本 → 整块替换（锚点唯一性校验）。 */
 const fs = require('fs');
 const vm = require('vm');
-const F = '.build/engine_core.js';
+const F = 'src/engine_core.js';
 let src = fs.readFileSync(F, 'utf8');
 
 // 1) 取出 POOLS 整块

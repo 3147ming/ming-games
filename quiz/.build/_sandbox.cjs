@@ -1,4 +1,4 @@
-/* 共用 Node 沙箱：按 build.js 的顺序装配 engine_core.js + quiz-ui.js，
+/* 共用 Node 沙箱：按 build.js 的顺序装配 src/engine_core.js + src/quiz-ui.js，
    并把 IIFE 内的待测函数暴露出来。供 _probe_p1.cjs 等定向验证复用。 */
 const fs = require('fs');
 const vm = require('vm');
@@ -59,8 +59,8 @@ const FRAMEWORK = [
   'function qaDiffDefault(bk){var ds=qaDiffs(bk);if(!ds)return -1;var sv=parseInt(S.getItem("bd_qa_diff_"+bk),10);return (sv>=0&&sv<ds.length)?sv:0;}',
 ].join('\n');
 
-const core = fs.readFileSync(DIR + '/engine_core.js', 'utf8');
-let ui = fs.readFileSync(DIR + '/quiz-ui.js', 'utf8');
+const core = fs.readFileSync(DIR + '/../src/engine_core.js', 'utf8');
+let ui = fs.readFileSync(DIR + '/../src/quiz-ui.js', 'utf8');
 const iEnd = ui.lastIndexOf('})();');
 const exportLine = ';globalThis.__exp={POOLS:POOLS,mkFromPool:mkFromPool,validItem:validItem,'
   + 'fillEqual:fillEqual,parseJudge:parseJudge,windowAcc:windowAcc,finish:finish,selfWindow:selfWindow,'

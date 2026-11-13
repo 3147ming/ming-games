@@ -23,9 +23,9 @@ function ck(n, c, e) { (c ? pass : fail).push(n + (e ? ' :: ' + e : '')); }
 
 /* ================= A/B：Node 侧静态校验 ================= */
 function nodeChecks() {
-  const core = fs.readFileSync(path.join(BUILD, 'engine_core.js'), 'utf8');
+  const core = fs.readFileSync(path.join(BUILD, '..', 'src', 'engine_core.js'), 'utf8');
   const ce = fs.readFileSync(path.join(BUILD, 'code_engine.js'), 'utf8');
-  const ui = fs.readFileSync(path.join(BUILD, 'quiz-ui.js'), 'utf8');
+  const ui = fs.readFileSync(path.join(BUILD, '..', 'src', 'quiz-ui.js'), 'utf8');
   const ctx = { console, JSON, Math, Date, parseInt, parseFloat, String, Number, Array, Object, RegExp, isFinite, isNaN };
   vm.createContext(ctx);
   vm.runInContext('var __s={};var S={getItem:function(k){return __s[k]||null},setItem:function(k,v){__s[k]=v},removeItem:function(k){delete __s[k]}};'

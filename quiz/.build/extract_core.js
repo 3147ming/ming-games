@@ -1,7 +1,7 @@
 // 从 brain-gym 源抽取 qa 引擎数据与逻辑（纯数据 + 纯逻辑 + 联网抓取），不含 UI 层
 const fs = require('fs');
 const SRC = 'D:/Projects/_github_pages/ming-games/brain-gym/index.html';
-const OUT = 'D:/Projects/_github_pages/ming-games/quiz/.build/engine_core.js';
+const OUT = 'D:/Projects/_github_pages/ming-games/quiz/src/engine_core.js';
 
 const text = fs.readFileSync(SRC, 'utf8');
 const lines = text.split(/\r?\n/);

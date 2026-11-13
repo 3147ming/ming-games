@@ -1,6 +1,6 @@
 /* 4.0.1-4 +B：autoRefill 的 fresh 过滤从「严格 examLike」改为「refillOk 降级收下」 */
 const fs = require('fs');
-const F = 'D:/Projects/_github_pages/ming-games/quiz/.build/quiz-ui.js';
+const F = 'D:/Projects/_github_pages/ming-games/quiz/src/quiz-ui.js';
 let s = fs.readFileSync(F, 'utf8');
 function rep(o, n, t) {
   const c = s.split(o).length - 1;

@@ -1,7 +1,7 @@
 /* 一次性施工脚本：C7 自动升档挑战（主指令 4.2.1 + 审查方 7 个边界点）。用完即删。 */
 const fs = require('fs');
-const UI = 'D:/Projects/_github_pages/ming-games/quiz/.build/quiz-ui.js';
-const HEAD = 'D:/Projects/_github_pages/ming-games/quiz/.build/head.html';
+const UI = 'D:/Projects/_github_pages/ming-games/quiz/src/quiz-ui.js';
+const HEAD = 'D:/Projects/_github_pages/ming-games/quiz/src/head.html';
 let s = fs.readFileSync(UI, 'utf8');
 function rep(old, neu, tag, exp) {
   const n = s.split(old).length - 1;

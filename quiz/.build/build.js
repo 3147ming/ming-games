@@ -5,7 +5,7 @@
 //   node quiz/.build/build.js --check    只校验不写入：产物 / 部署包 / SW 版本是否与源片一致
 //
 // index.html 是「生成文件」，不要直接改 —— 否则下次构建会把它改回去（历史上的四组书架
-// 与 grid 修复就这样丢过一次）。改 head.html / engine_core.js / quiz-ui.js / src/wrongbook.js。
+// 与 grid 修复就这样丢过一次）。改 src/head.html / src/engine_core.js / src/quiz-ui.js / src/wrongbook.js。
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -23,12 +23,12 @@ const SW_PATHS = [
 const DIST_OUT = path.resolve(ROOT, '..', 'dist', 'games', 'quiz', 'index.html');
 const CHECK = process.argv.indexOf('--check') >= 0;
 
-const head = fs.readFileSync(path.join(DIR, 'head.html'), 'utf8');           // 末尾含 <script>
-const core = fs.readFileSync(path.join(DIR, 'engine_core.js'), 'utf8');
+const head = fs.readFileSync(path.join(SRC, 'head.html'), 'utf8');           // 末尾含 <script>
+const core = fs.readFileSync(path.join(SRC, 'engine_core.js'), 'utf8');
 /* 错题本导出/导入的纯函数（UMD：浏览器挂 window.WrongBook，Node 里可 require 做单测）。
    内联进产物的原因：index.html 是单文件离线 PWA，多一个外部脚本就多一个缓存失败点。 */
 const wb = fs.readFileSync(path.join(SRC, 'wrongbook.js'), 'utf8');
-const ui = fs.readFileSync(path.join(DIR, 'quiz-ui.js'), 'utf8');
+const ui = fs.readFileSync(path.join(SRC, 'quiz-ui.js'), 'utf8');
 
 // 全局框架：引擎核心(全局作用域)依赖这些符号，必须在引擎之前定义
 const FRAMEWORK = [

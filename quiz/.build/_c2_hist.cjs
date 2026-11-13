@@ -3,7 +3,7 @@
    - 先用 --dry 只看校验结果，确认无误后再写盘                        */
 const fs = require('fs');
 const F = 'C:/Users/31474/OneDrive/Desktop/指令/知识问答-第三批C2历史扩容-WorkBuddy指令.md';
-const TARGET = '.build/engine_core.js';
+const TARGET = 'src/engine_core.js';
 const DRY = process.argv.indexOf('--dry') >= 0;
 
 /* ---------- 0. 从指令提取 ADD ---------- */

@@ -18,8 +18,8 @@ function slice(src, from, to) {
   if (i < 0 || j < 0) throw new Error('切片失败：' + from);
   return src.slice(i, j);
 }
-const _core = fs.readFileSync(path.join(__dirname, 'engine_core.js'), 'utf8');
-const _ui = fs.readFileSync(path.join(__dirname, 'quiz-ui.js'), 'utf8');
+const _core = fs.readFileSync(path.join(__dirname, '..', 'src', 'engine_core.js'), 'utf8');
+const _ui = fs.readFileSync(path.join(__dirname, '..', 'src', 'quiz-ui.js'), 'utf8');
 const P = new Function(
   slice(_core, 'function validItem(it){', 'function genMathPrimary(') + '\n' +
   slice(_ui, '/* ---------- 4.0 自定义题库生成质量', '/* ---------- AI 出题 prompt') + '\n' +

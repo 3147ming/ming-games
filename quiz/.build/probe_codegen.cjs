@@ -17,8 +17,8 @@ function ck(n, c, e) { (c ? pass : fail).push(n + (e ? ' :: ' + e : '')); }
 
 /* ---------- 组装沙箱：框架 + 引擎核心 + 代码引擎块 ---------- */
 function boot() {
-  const core = fs.readFileSync(path.join(DIR, 'engine_core.js'), 'utf8');
-  const ui = fs.readFileSync(path.join(DIR, 'quiz-ui.js'), 'utf8');
+  const core = fs.readFileSync(path.join(DIR, '..', 'src', 'engine_core.js'), 'utf8');
+  const ui = fs.readFileSync(path.join(DIR, '..', 'src', 'quiz-ui.js'), 'utf8');
   const i0 = ui.indexOf('/*=== CODE_ENGINE_START ===*/');
   const i1 = ui.indexOf('/*=== CODE_ENGINE_END ===*/');
   if (i0 < 0 || i1 < 0) throw new Error('找不到代码引擎区块标记');

@@ -1,7 +1,7 @@
 /* C0 离线逻辑单测：从真实源码抽取 4.0 段（含 isAcademic/examLike/makeQuizPrompt）在 Node 沙箱执行
    不依赖网络/AI，只验证「学科判定 / 元信息硬过滤 / 命题老师 prompt」的真实代码行为。*/
 const fs=require('fs');
-const p='D:/Projects/_github_pages/ming-games/quiz/.build/quiz-ui.js';
+const p='D:/Projects/_github_pages/ming-games/quiz/src/quiz-ui.js';
 const src=fs.readFileSync(p,'utf8');
 
 // 截取 4.0 段：从「4.0 自定义题库生成质量」注释到 function aiBuild 之前

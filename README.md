@@ -30,7 +30,7 @@ ming-games/
 ├── night-shift/      # 夜班便利店
 ├── grass-cutter/     # 传统割草游戏（原型）
 ├── circuit-lab/      # 电路实验模拟器
-└── quiz/             # 知识问答（源码在 quiz/.build 与 quiz/src，index.html 是拼接产物）
+└── quiz/             # 知识问答（源码在 quiz/src，index.html 是拼接产物）
 ```
 
 ## 🚀 更新部署

@@ -8,15 +8,15 @@
 
 ## 一、源码与产物
 
-**`index.html` 是生成文件，不要直接改。** 它由四片源码按固定顺序拼装：
+**`index.html` 是生成文件，不要直接改。** 它由 `quiz/src/` 下的四片源码，加上 `build.js` 里的两段内联片段，按固定顺序拼装：
 
 | 顺序 | 文件 | 作用 |
 |---|---|---|
-| 1 | `.build/head.html` | `<!DOCTYPE>` 到 `<script>`：CSS、静态骨架、无障碍标记 |
+| 1 | `src/head.html` | `<!DOCTYPE>` 到 `<script>`：CSS、静态骨架、无障碍标记 |
 | 2 | `.build/build.js` 内的 `FRAMEWORK` | 全局框架：`S`（存储）、`shuffle`、`h`、`clearNode`、共享答题状态 |
-| 3 | `.build/engine_core.js` | 引擎：题库 `POOLS`、`QA_TYPES`、`SUBJECT_GROUPS`、出题/判分/SRS |
+| 3 | `src/engine_core.js` | 引擎：题库 `POOLS`、`QA_TYPES`、`SUBJECT_GROUPS`、出题/判分/SRS |
 | 4 | `src/wrongbook.js` | 错题本导出导入的纯函数（UMD，可在 Node 里单测） |
-| 5 | `.build/quiz-ui.js` | UI：书架、答题、统计、AI 建题、音乐、设置 |
+| 5 | `src/quiz-ui.js` | UI：书架、答题、统计、AI 建题、音乐、设置 |
 | 6 | `.build/build.js` 内的 `IDB` | IndexedDB 辅助（导入本地音乐） |
 
 拼装顺序有依赖：`engine_core.js` 用到的全局符号必须在 `FRAMEWORK` 里先声明，`quiz-ui.js` 依赖引擎的函数。

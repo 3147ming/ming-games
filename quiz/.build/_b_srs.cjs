@@ -1,8 +1,8 @@
 /* B 批：知识卡先学后练 + SRS 间隔复习 —— 源码改造（engine_core.js + quiz-ui.js）
    全部用锚点唯一性校验（rep：旧串在原文件必须恰好出现 1 次），避免静默错位。 */
 const fs = require('fs');
-const CORE = 'D:/Projects/_github_pages/ming-games/quiz/.build/engine_core.js';
-const UI   = 'D:/Projects/_github_pages/ming-games/quiz/.build/quiz-ui.js';
+const CORE = 'D:/Projects/_github_pages/ming-games/quiz/src/engine_core.js';
+const UI   = 'D:/Projects/_github_pages/ming-games/quiz/src/quiz-ui.js';
 
 const DRY = process.argv.indexOf('--dry') >= 0;
 const files = { [CORE]: fs.readFileSync(CORE, 'utf8'), [UI]: fs.readFileSync(UI, 'utf8') };

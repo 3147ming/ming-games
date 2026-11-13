@@ -95,7 +95,7 @@ try {
   /* 旧格式 {done:true,langs:[]} 也必须落回 unset，不能误判成「只出 c」 */
   setProfile({ done: true, skipped: true, langs: [], level: 0, rank: 0 });
   ck('旧档案 {done:true,langs:[]} 兼容为 unset', E.codeLangState().mode === 'unset', E.codeLangState().mode);
-  const ui = fs.readFileSync(path.join(__dirname, 'quiz-ui.js'), 'utf8');
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'src', 'quiz-ui.js'), 'utf8');
   ck('难度面板 unset 红字警示文案存在', ui.indexOf('⚠️ 尚未设置语言：当前会出全部语言题（含 Java / Python / JS）。点这里只出 C / C++') >= 0);
   ck('难度面板 all 灰字文案存在', ui.indexOf('当前出全部语言题（你选择过「跳过」）· 点这里指定语言') >= 0);
   ck('书架卡副标题「全部语言」存在', ui.indexOf("_st2.mode==='only'?") >= 0 && ui.indexOf("'全部语言'") >= 0);

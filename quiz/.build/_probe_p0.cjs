@@ -51,8 +51,8 @@ const FRAMEWORK = [
 'function qaDiffDefault(bk){var ds=qaDiffs(bk);if(!ds)return -1;var sv=parseInt(S.getItem("bd_qa_diff_"+bk),10);return (sv>=0&&sv<ds.length)?sv:0;}',
 ].join('\n');
 
-const core = fs.readFileSync(DIR + '/engine_core.js', 'utf8');
-let ui = fs.readFileSync(DIR + '/quiz-ui.js', 'utf8');
+const core = fs.readFileSync(DIR + '/../src/engine_core.js', 'utf8');
+let ui = fs.readFileSync(DIR + '/../src/quiz-ui.js', 'utf8');
 // 在 quiz-ui.js 的 IIFE 收尾前，把需要测的函数/状态暴露到 globalThis
 const iEnd = ui.lastIndexOf('})();');
 const exportLine = ';globalThis.__exp={parseJudge:parseJudge,windowAcc:windowAcc,finish:finish,selfWindow:selfWindow,'
