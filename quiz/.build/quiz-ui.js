@@ -190,21 +190,39 @@ function renderShelf(){
   acts.appendChild(bWeak);acts.appendChild(bSrs);acts.appendChild(bNew);sec1.appendChild(acts);
   shelfEl.appendChild(sec1);
 
-  var grid=h('div','shelf');
-  // 内置分类
+  // 内置分类：按 SUBJECT_GROUPS 分 4 组渲染（每组一个标题 + 自己的 grid）
+  SUBJECT_GROUPS.forEach(function(grp){
+    var wrap=h('div','shelf-group');
+    wrap.appendChild(h('div','shelf-group-title',grp.n));
+    var grid=h('div','shelf');
+    grp.sub.forEach(function(bk){
+      var T=QA_TYPES[bk];
+      if(!T)return;
+      grid.appendChild(makeBook(T.icon,T.name,bk,null,bestFor('b:'+bk),shelfCount(bk,null)));
+    });
+    wrap.appendChild(grid);
+    shelfEl.appendChild(wrap);
+  });
+  // 没进组的科目兜底：新增科目忘了登记也不会从书架上消失
+  var grouped={};SUBJECT_GROUPS.forEach(function(g){g.sub.forEach(function(k){grouped[k]=1;});});
+  var orphanGrid=null;
   Object.keys(QA_TYPES).forEach(function(bk){
-    if(bk==='online')return;
+    if(bk==='online'||grouped[bk])return;
+    if(!orphanGrid){orphanGrid=h('div','shelf');shelfEl.appendChild(orphanGrid);}
     var T=QA_TYPES[bk];
-    grid.appendChild(makeBook(T.icon,T.name,bk,null,bestFor('b:'+bk),shelfCount(bk,null)));
+    orphanGrid.appendChild(makeBook(T.icon,T.name,bk,null,bestFor('b:'+bk),shelfCount(bk,null)));
   });
-  // 自定义
+  // 自定义 + 联网：统一放进「我的 / 联网」组（无自定义题时只显示联网卡）
   var cks=Object.keys(custom);
+  var otherWrap=h('div','shelf-group');
+  otherWrap.appendChild(h('div','shelf-group-title','📚 我的 / 联网'));
+  var otherGrid=h('div','shelf');
   cks.forEach(function(name){
-    grid.appendChild(makeBook('📝',name,null,name,bestFor('c:'+name),shelfCount(null,name),true));
+    otherGrid.appendChild(makeBook('📝',name,null,name,bestFor('c:'+name),shelfCount(null,name),true));
   });
-  // 联网
-  grid.appendChild(makeBook('🌐','联网题库·英文','online',null,bestFor('b:online'),(ONLINE_BANK&&ONLINE_BANK.length?ONLINE_BANK.length:0)+' 题'));
-  shelfEl.appendChild(grid);
+  otherGrid.appendChild(makeBook('🌐','联网题库·英文','online',null,bestFor('b:online'),(ONLINE_BANK&&ONLINE_BANK.length?ONLINE_BANK.length:0)+' 题'));
+  otherWrap.appendChild(otherGrid);
+  shelfEl.appendChild(otherWrap);
   shelfEl.appendChild(ht('div','muted','💻 编程题量为「人工题 + 模板生成（理论组合数）」，参数空间有限，实际不重复体验以出题引擎去重为准；其余分类为人工题库，题量以卡片上的实际题数为准（不再自动扩充）。'));
 
   // 联网管理
@@ -3817,7 +3835,7 @@ function codeEditor(container,ta){
     replaceRange(st-cut,st,'',st-cut);
   }
   ta.addEventListener('input',paint);
-  ta.addEventListener('scroll',syncScroll);
+  ta.addEventListener('scroll',syncScroll,{passive:true});
   ta.addEventListener('keydown',function(e){
     if(!e)return;
     var st=ta.selectionStart,en=ta.selectionEnd;
@@ -4134,7 +4152,7 @@ function openMusic(){
   var ov=overlayPanel('🎵 背景音乐');
   ov.p.id='musicPanel';
   musicOv=ov;
-  ov.p.appendChild(ht('div','hint','「🎹 内置轻音乐」免文件即可播放。其它曲目支持 mp3 / flac / wav / m4a / ogg / aac：把文件放进 quiz/audio/，命名成 flower-dance.flac、windy-hill.wav 这种「小写 + 连字符」即可自动识别（扩展名会自动探测）；文件名不规范就用「➕ 添加」导入（存本机，无命名限制，离线也能播）。默认关闭，状态会被记住。　新增「📁 从 audio/ 添加」：把任意命名的文件放进 quiz/audio/ 后填文件名即可自动探测扩展名；注意音频文件不随代码发布，线上播放需同时把文件放进部署目录 _deploy_gym/quiz/audio/（或本机部署位置）。'));
+  ov.p.appendChild(ht('div','hint','「🎹 内置轻音乐」免文件即可播放。其它曲目支持 mp3 / flac / wav / m4a / ogg / aac：把文件放进 quiz/audio/，命名成 flower-dance.mp3、windy-hill.mp3 这种「小写 + 连字符」即可自动识别（扩展名会自动探测）；文件名不规范就用「➕ 添加」导入（存本机，无命名限制，离线也能播）。默认关闭，状态会被记住。　新增「📁 从 audio/ 添加」：把任意命名的文件放进 quiz/audio/ 后填文件名即可自动探测扩展名；注意音频文件不随代码发布，线上播放需同时把文件放进部署目录 _deploy_gym/quiz/audio/（或本机部署位置）。'));
   var now=h('div');now.style.textAlign='center';now.style.margin='10px 0 4px';
   var nameEl=ht('div',null,(musicList[musicIdx]||{}).name||'—');nameEl.id='mpName';
   nameEl.style.cssText='font-size:17px;font-weight:800;color:var(--purple-d)';
@@ -4395,11 +4413,58 @@ function openSettings(){
 }
 
 /* ---------- P2-A2：数据导出 / 导入 ---------- */
-var BACKUP_KEYS=['bt_qa_stats','bt_qa_best','bt_qa_weak','bt_qa_custom','bt_qa_ai','bt_qa_extra','bt_qa_daily','bt_qa_profile_code'];
+/* 存储注册表：一处登记 = 同时进「备份清单」与「迁移校验」。
+   以前 BACKUP_KEYS 是手写 8 项，新增键必漏，导出的备份悄悄少一项。 */
+var STORE_SCHEMA=2;
+var STORE_REG={
+  stats:      {k:'bt_qa_stats',       t:'obj', d:{},  b:1},
+  best:       {k:'bt_qa_best',        t:'obj', d:{},  b:1},
+  weak:       {k:'bt_qa_weak',        t:'arr', d:[],  b:1},
+  custom:     {k:'bt_qa_custom',      t:'obj', d:{},  b:1},
+  ai:         {k:'bt_qa_ai',          t:'any', d:null,b:1},
+  extra:      {k:'bt_qa_extra',       t:'obj', d:{},  b:1},
+  daily:      {k:'bt_qa_daily',       t:'obj', d:{},  b:1},
+  profileCode:{k:'bt_qa_profile_code',t:'any', d:null,b:1},
+  music:      {k:'bt_qa_music',       t:'obj', d:{},  b:0},
+  autorefill: {k:'bt_qa_autorefill',  t:'any', d:false,b:0},
+  learnBefore:{k:'bt_qa_learn_before',t:'any', d:null,b:0},
+  quickjump:  {k:'bt_qa_quickjump',   t:'any', d:null,b:0},
+  online:     {k:'bt_qa_online',      t:'any', d:null,b:0}   /* 联网题库缓存：可重新拉取，不进备份 */
+};
+/* 带前缀的动态键（每个科目 / 自定义分类各一条），备份时整族收进去 */
+var STORE_PREFIX_BACKUP=['bt_qa_rank_','bt_qa_recent_','bt_qa_recent_auto_','bt_qa_recent_code_'];
+var BACKUP_KEYS=Object.keys(STORE_REG).filter(function(n){return STORE_REG[n].b;})
+  .map(function(n){return STORE_REG[n].k;}).concat(['bt_qa_schema']);
+/* 幂等迁移：只在「结构真的坏了」时重置成默认值，合法数据一律不动。
+   只校验已知 JSON 形状的键；格式不确定的（profile_code / learn_before / quickjump）完全跳过。 */
+function migrateStore(){
+  var from=0;
+  try{from=parseInt(S.getItem('bt_qa_schema'),10)||0;}catch(e){from=0;}
+  if(from>=STORE_SCHEMA)return from;
+  Object.keys(STORE_REG).forEach(function(name){
+    var r=STORE_REG[name];
+    if(r.t==='any')return;
+    var raw=null;
+    try{raw=S.getItem(r.k);}catch(e){return;}
+    if(raw==null)return;
+    var v=null,broken=false;
+    try{v=JSON.parse(raw);}catch(e){broken=true;}
+    var ok=(r.t==='obj')?(v!==null&&typeof v==='object'&&!Array.isArray(v))
+          :(r.t==='arr')?Array.isArray(v)
+          :(r.t==='str')?(typeof v==='string')
+          :true;
+    if(broken||!ok){
+      safeSet(r.k,JSON.stringify(r.d));
+      try{console.warn('[存储迁移] 结构异常已重置：'+r.k);}catch(e){}
+    }
+  });
+  safeSet('bt_qa_schema',String(STORE_SCHEMA));
+  return STORE_SCHEMA;
+}
 function dayKey(d){return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
 function backupKeys(){
   var ks=BACKUP_KEYS.slice();
-  try{for(var i=0;i<S.length;i++){var k=S.key(i);if(k&&k.indexOf('bt_qa_rank_')===0&&ks.indexOf(k)<0)ks.push(k);}}catch(e){}
+  try{for(var i=0;i<S.length;i++){var k=S.key(i);if(!k)continue;for(var j=0;j<STORE_PREFIX_BACKUP.length;j++){if(k.indexOf(STORE_PREFIX_BACKUP[j])===0&&ks.indexOf(k)<0){ks.push(k);break;}}}}catch(e){}
   return ks;
 }
 function buildBackup(){
@@ -4560,6 +4625,7 @@ function setVH(){
   }catch(e){}
 }
 function init(){
+  migrateStore();   /* 先迁移 / 修复存储结构，再读数据 */
   shelfEl=$('shelf');stageEl=$('stage');overlayRoot=$('overlayRoot');
   /* P2-A2：存储写满时由引擎的 safeSet 调这里（只提示一次，不弹窗） */
   window.__quotaWarn=function(){toast('⚠️ 本地存储已满：请到「📊 统计」→「💾 导出数据」备份后清理旧数据');};

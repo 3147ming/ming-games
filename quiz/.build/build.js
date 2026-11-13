@@ -1,17 +1,34 @@
 // 组装 quiz/index.html：head + 全局框架 + 引擎核心(抽取) + UI + 收尾
+//
+// 用法：
+//   node quiz/.build/build.js            生成产物 + 同步部署包 + 重算 SW 版本
+//   node quiz/.build/build.js --check    只校验不写入：产物 / 部署包 / SW 版本是否与源片一致
+//
+// index.html 是「生成文件」，不要直接改 —— 否则下次构建会把它改回去（历史上的四组书架
+// 与 grid 修复就这样丢过一次）。改 head.html / engine_core.js / quiz-ui.js / src/wrongbook.js。
 const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
-const DIR = 'D:/Projects/_github_pages/ming-games/quiz/.build';
-const SRC = 'D:/Projects/_github_pages/ming-games/quiz/src';
-const OUT = 'D:/Projects/_github_pages/ming-games/quiz/index.html';
-const DEPLOY_OUT = 'D:/Projects/_github_pages/ming-games/_deploy_gym/quiz/index.html';
 
-const head = fs.readFileSync(DIR + '/head.html', 'utf8');           // 末尾含 <script>
-const core = fs.readFileSync(DIR + '/engine_core.js', 'utf8');
+const DIR = __dirname;                       // quiz/.build：本脚本与探针
+const ROOT = path.resolve(DIR, '..');        // quiz
+const SRC = path.join(ROOT, 'src');
+const OUT = path.join(ROOT, 'index.html');
+const DEPLOY_OUT = path.resolve(ROOT, '..', '_deploy_gym', 'quiz', 'index.html');
+const SW_PATHS = [
+  path.join(ROOT, 'sw.js'),
+  path.resolve(ROOT, '..', '_deploy_gym', 'quiz', 'sw.js')
+];
+/* 统一构建链的产物（deploy.config.json 的 publishDir 就是 dist） */
+const DIST_OUT = path.resolve(ROOT, '..', 'dist', 'games', 'quiz', 'index.html');
+const CHECK = process.argv.indexOf('--check') >= 0;
+
+const head = fs.readFileSync(path.join(DIR, 'head.html'), 'utf8');           // 末尾含 <script>
+const core = fs.readFileSync(path.join(DIR, 'engine_core.js'), 'utf8');
 /* 错题本导出/导入的纯函数（UMD：浏览器挂 window.WrongBook，Node 里可 require 做单测）。
    内联进产物的原因：index.html 是单文件离线 PWA，多一个外部脚本就多一个缓存失败点。 */
-const wb   = fs.readFileSync(SRC + '/wrongbook.js', 'utf8');
-const ui   = fs.readFileSync(DIR + '/quiz-ui.js', 'utf8');
+const wb = fs.readFileSync(path.join(SRC, 'wrongbook.js'), 'utf8');
+const ui = fs.readFileSync(path.join(DIR, 'quiz-ui.js'), 'utf8');
 
 // 全局框架：引擎核心(全局作用域)依赖这些符号，必须在引擎之前定义
 const FRAMEWORK = [
@@ -45,19 +62,70 @@ const IDB = [
 require('./_guard_tags.cjs');
 
 const html = head + '\n' + FRAMEWORK + '\n' + core + '\n' + IDB + '\n;\n' + wb + '\n;\n' + ui + '\n</script>\n</body>\n</html>\n';
-
-fs.writeFileSync(OUT, html, 'utf8');
-/* 部署包同源同值：构建时一次写齐，避免发布前漏 cp 导致线上与源码不一致 */
-if (fs.existsSync(DEPLOY_OUT)) fs.writeFileSync(DEPLOY_OUT, html, 'utf8');
-console.log('OK: index.html 已生成，字节=' + Buffer.byteLength(html, 'utf8'));
-
+const buf = Buffer.from(html, 'utf8');
+const md5 = crypto.createHash('md5').update(buf).digest('hex');
 /* Service Worker 版本号由产物内容自动生成，避免手工递增漏改让用户拿到旧缓存。
    quiz- 前缀必须保留（activate 里按该前缀清理旧缓存），两处 sw.js 同源同值。 */
-const ver = 'quiz-' + crypto.createHash('md5').update(html, 'utf8').digest('hex').slice(0, 10);
-const SW_PATHS = [
-  'D:/Projects/_github_pages/ming-games/quiz/sw.js',
-  'D:/Projects/_github_pages/ming-games/_deploy_gym/quiz/sw.js'
-];
+const ver = 'quiz-' + md5.slice(0, 10);
+
+function fileInfo(p) {
+  if (!fs.existsSync(p)) return { exists: false, bytes: 0, md5: '' };
+  const b = fs.readFileSync(p);
+  return { exists: true, bytes: b.length, md5: crypto.createHash('md5').update(b).digest('hex') };
+}
+function swVersionOf(p) {
+  if (!fs.existsSync(p)) return '';
+  const m = fs.readFileSync(p, 'utf8').match(/var VERSION = '(quiz-[^']*)';/);
+  return m ? m[1] : '';
+}
+
+/* ---------------- --check：只比对，不写任何文件 ---------------- */
+if (CHECK) {
+  const out = fileInfo(OUT);
+  const dep = fileInfo(DEPLOY_OUT);
+  /* rows: [标签, 通过, 实际值, 期望值] */
+  const rows = [
+    ['产物   quiz/index.html', out.exists && out.md5 === md5, (out.md5 || '(缺失)') + ' · ' + out.bytes + ' B', md5 + ' · ' + buf.length + ' B'],
+    ['部署包 _deploy_gym/quiz/index.html', dep.exists && dep.md5 === md5, (dep.md5 || '(缺失)') + ' · ' + dep.bytes + ' B', md5 + ' · ' + buf.length + ' B']
+  ];
+  SW_PATHS.forEach(function (p) {
+    const v = swVersionOf(p);
+    rows.push(['SW ' + path.relative(path.resolve(ROOT, '..'), p), v === ver, v || '(缺失)', ver]);
+  });
+  /* dist 是另一条构建链（大厅外壳 + 通信桥 + SW 中和脚本），内容必然不同：
+     不比对 md5，只校验「没被削成空壳」——历史上它曾只剩 39KB 且题库 0 题。 */
+  if (fs.existsSync(DIST_OUT)) {
+    const d = fileInfo(DIST_OUT);
+    const text = fs.readFileSync(DIST_OUT, 'utf8');
+    const hasApp = text.indexOf('id="shelf"') >= 0 && text.indexOf('SUBJECT_GROUPS') >= 0;
+    const bigEnough = d.bytes >= buf.length * 0.8;
+    rows.push(['dist 产物（体量 + 应用符号）', hasApp && bigEnough,
+      d.bytes + ' B · 应用符号' + (hasApp ? '在' : '缺失'), '≥ ' + Math.floor(buf.length * 0.8) + ' B · 应用符号在']);
+  } else {
+    rows.push(['dist 产物', false, '(未构建)', '执行 node tools/build.mjs --target=web']);
+  }
+  let bad = 0;
+  rows.forEach(function (r) {
+    if (!r[1]) bad++;
+    console.log((r[1] ? '✓ ' : '✗ ') + r[0] + '  实际=' + r[2] + '  期望=' + r[3]);
+  });
+  console.log(bad ? '\n不一致 ' + bad + ' 处：产物请执行 node quiz/.build/build.js 重新生成（不要手改产物）；dist 请跑统一构建'
+                  : '\n一致：产物 / 部署包 / SW / dist 四者与源片匹配（md5 ' + md5 + '）');
+  process.exit(bad ? 1 : 0);
+}
+
+/* ---------------- 正常构建 ---------------- */
+fs.writeFileSync(OUT, buf);
+/* 部署包同源同值：构建时一次写齐，避免发布前漏 cp 导致线上与源码不一致 */
+if (fs.existsSync(DEPLOY_OUT)) fs.writeFileSync(DEPLOY_OUT, buf);
+console.log('OK: index.html 已生成，字节=' + buf.length + ' md5=' + md5);
+
+/* 落盘后复读校验：写失败 / 编码异常当场暴露，不留「以为写了」的假成功 */
+[[OUT, '产物'], [DEPLOY_OUT, '部署包']].forEach(function (pair) {
+  if (!fs.existsSync(pair[0])) { console.log('跳过（文件不存在）：' + pair[0]); return; }
+  if (fileInfo(pair[0]).md5 !== md5) throw new Error(pair[1] + ' 落盘后 md5 与内存不一致：' + pair[0]);
+});
+
 SW_PATHS.forEach(function (swPath) {
   if (!fs.existsSync(swPath)) { console.log('跳过（文件不存在）：' + swPath); return; }
   const sw = fs.readFileSync(swPath, 'utf8');

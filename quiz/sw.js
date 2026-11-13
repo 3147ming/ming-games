@@ -15,7 +15,7 @@
      不要手工改；产物一变缓存名就变，旧缓存会在 activate 里被清掉。
    ============================================================= */
 
-var VERSION = 'quiz-d4b64b3325';
+var VERSION = 'quiz-2d903460df';
 var CACHE = VERSION;
 var BASE = self.registration ? self.registration.scope : self.location.href.replace(/sw\.js.*$/, '');
 
@@ -26,9 +26,9 @@ var CORE = ['./', './index.html', './manifest.json', './icons/icon-192.png', './
 var AUDIO_BASES = ['./audio/flower-dance', './audio/windy-hill', './audio/summer', './audio/luv-letter', './audio/canon'];
 var AUDIO_EXTS = ['mp3', 'flac', 'wav', 'm4a', 'ogg', 'aac'];
 var AUDIO_MAX_BYTES = 60 * 1024 * 1024;
-/* 安装阶段只预热「小文件」：26MB flac / 54MB wav 这类大曲子等用户真的点了播放再缓存
-   （audioFirst 会把 ≤60MB 的都存下来），避免首次打开就偷跑几十 MB 流量。 */
-var AUDIO_WARM_MAX = 10 * 1024 * 1024;
+/* 安装阶段只预热「小文件」：4~5MB 的整首 BGM 也等用户真的点了播放再缓存
+   （audioFirst 会把 ≤60MB 的都存下来），避免首次打开就偷跑十几 MB 流量。 */
+var AUDIO_WARM_MAX = 2 * 1024 * 1024;
 var AUDIO_RE = /\.(mp3|m4a|aac|ogg|oga|wav|flac|opus)$/i;
 
 function abs(p) {

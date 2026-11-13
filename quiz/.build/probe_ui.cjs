@@ -106,12 +106,17 @@ function ck(n, c, e) { (c ? pass : fail).push(n + (e ? ' :: ' + e : '')); }
     const namesRaw = await s.eval(`JSON.stringify([].slice.call(document.querySelectorAll('#musicPanel .mtrack .mn')).map(function(x){return x.textContent;}))`);
     const namesArr = JSON.parse(namesRaw);
     ck('缺失默认曲目 Summer/Luv Letter/卡农 已从列表消失', !/Summer|Luv Letter|卡农/.test(JSON.stringify(namesArr)), JSON.stringify(namesArr));
-    // 播放 Flower Dance（本地已有 flower-dance.flac），面板探测命中后应直接用 .flac
+    /* 播放 Flower Dance：本地文件可能是 mp3 / flac / wav，探针按磁盘实际情况取扩展名链的首个存在项，
+       断言「命中的就是链上最早的那个」，不再写死 .flac。 */
+    const EXT_CHAIN = ['mp3', 'flac', 'wav', 'm4a', 'ogg', 'aac'];
+    const haveExt = EXT_CHAIN.filter(function (e) { return fs.existsSync(require('path').join(__dirname, '..', 'audio', 'flower-dance.' + e)); });
+    if (!haveExt.length) throw new Error('本地没有 flower-dance.<ext>，无法验证探测链');
+    const wantExt = haveExt[0];
     await s.eval(`(function(){var rows=[].slice.call(document.querySelectorAll('#musicPanel .mtrack'));var r=rows.filter(function(x){return x.textContent.indexOf('Flower Dance')>=0;})[0];if(r)r.click();return 1;})()`);
     let fd = null;
     for (let i = 0; i < 16; i++) {
       await sleep(500);
-      if (netAudio.indexOf('flower-dance.flac') >= 0) break;
+      if (netAudio.indexOf('flower-dance.' + wantExt) >= 0) break;
       fd = JSON.parse(await s.eval(`(function(){
         var err=document.getElementById('mpErr');
         return JSON.stringify({err:(err||{}).textContent||'',errShown:err?getComputedStyle(err).display!=='none':false,name:(document.getElementById('mpName')||{}).textContent||'',play:(document.getElementById('mpPlay')||{}).textContent||''});
@@ -123,8 +128,8 @@ function ck(n, c, e) { (c ? pass : fail).push(n + (e ? ' :: ' + e : '')); }
     })()`));
     const fdAudio = netAudio.filter((n) => /^flower-dance\./.test(n));
     fd.res = netAudio.slice();
-    ck('Flower Dance 探测到 .flac 并请求成功', fd.res.indexOf('flower-dance.flac') >= 0, JSON.stringify(fd.res));
-    ck('面板探测命中后直接用 .flac（不再请求 .mp3）', fdAudio.indexOf('flower-dance.mp3') < 0 && fdAudio.indexOf('flower-dance.flac') >= 0, JSON.stringify(fdAudio));
+    ck('Flower Dance 探测到 .' + wantExt + ' 并请求成功', fd.res.indexOf('flower-dance.' + wantExt) >= 0, JSON.stringify(fd.res));
+    ck('面板探测命中链上首个存在的扩展名（不请求更早的候选）', fdAudio.indexOf('flower-dance.' + wantExt) >= 0 && haveExt.slice(0, haveExt.indexOf(wantExt)).every(function (e) { return fdAudio.indexOf('flower-dance.' + e) < 0; }), JSON.stringify(fdAudio));
     ck('Flower Dance 播放无报错提示', !fd.errShown && fd.err === '', 'err=' + fd.err);
     // 「📁 从 audio/ 添加」一个不存在的曲目，应被过滤隐藏（自定义 base 曲目同样探测）
     await s.eval(`(function(){

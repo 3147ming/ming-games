@@ -32,6 +32,9 @@ const window = {
     getItem: k => (k in store ? store[k] : null),
     setItem: (k, v) => { store[k] = String(v); },
     removeItem: k => { delete store[k]; },
+    get length() { return Object.keys(store).length; },
+    key: (i) => (Object.keys(store)[i] == null ? null : Object.keys(store)[i]),
+    clear: () => { Object.keys(store).forEach((k) => { delete store[k]; }); },
   },
   visualViewport: { height: 800 }, innerHeight: 800, addEventListener() {},
   location: { protocol: 'https:', hostname: 'localhost' },
@@ -83,6 +86,8 @@ const exportLine = ';globalThis.__exp={POOLS:POOLS,mkFromPool:mkFromPool,validIt
   + 'setSection:function(k){qaSection=k;},getSection:function(){return qaSection;},'
   + 'setAutoMode:function(v){autoMode=!!v;},setSelfRank:function(r){selfRank=r;}};';
 ui = ui.slice(0, iEnd) + exportLine + ui.slice(iEnd);
+/* 追加导出：书架分组 / 存储迁移 / 备份清单（A1 回灌后的新增能力） */
+ui = ui.replace("getSection:function(){return qaSection;}", "getSection:function(){return qaSection;},SUBJECT_GROUPS:SUBJECT_GROUPS,migrateStore:migrateStore,STORE_REG:STORE_REG,BACKUP_KEYS:BACKUP_KEYS,backupKeys:backupKeys,renderShelf:renderShelf,STORE_SCHEMA:STORE_SCHEMA");
 
 const ctx = {
   console, Math, Date, JSON, parseInt, parseFloat, String, Number, Array, Object, RegExp,

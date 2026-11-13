@@ -810,6 +810,13 @@ var QA_TYPES={
  food:{name:'美食',icon:'🍜',alias:['food','meishi','美食','食物'],gen:genStdPool('food'),diffs:QA_DIFFS_STD,pen:1},
  online:{name:'🌐 联网',icon:'🌐',alias:['online','wanglian','联网','实时','internet'],gen:function(n){return []}}
 };
+/* ===== 科目分类：把 12 门平铺科目归成 4 组（书架按组渲染） ===== */
+var SUBJECT_GROUPS=[
+  {k:'nature',  n:'🔬 自然科学',   sub:['math','science','animals','astronomy']},
+  {k:'humanity',n:'📜 人文社科',   sub:['history','literature','english','geo']},
+  {k:'life',    n:'🧠 生活百科',   sub:['common','food','sports']},
+  {k:'tech',    n:'💻 信息技术',   sub:['code']}
+];
 // ===== 薄弱题 / 实力自适应 辅助 =====
 var WEAK_CAP=150;
 /* B 批：SRS 间隔复习（SM-2 简化，6 级阶梯 1/2/4/7/15/30 天） */

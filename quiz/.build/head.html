@@ -1,8 +1,10 @@
 <!DOCTYPE html>
+<!-- ⚠ 生成文件：由 quiz/.build/build.js 拼装 head.html + engine_core.js + src/wrongbook.js + quiz-ui.js。
+     勿直接编辑本文件；改源码后执行 node quiz/.build/build.js 重新生成（--check 可校验是否漂移）。 -->
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#7c5cff">
 <meta name="description" content="知识问答 · 百词斩式分类刷题，支持离线使用与添加到主屏幕。">
 <title>知识问答 · 百词斩式刷题</title>
@@ -72,6 +74,11 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,s
 
 /* ---------- 书架 ---------- */
 .shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:11px}
+.shelf-group{margin:14px 0 4px}
+.shelf-group-title{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:800;
+  color:var(--sub);margin:0 0 9px;letter-spacing:.3px}
+.shelf-group-title::after{content:"";flex:1;height:1px;
+  background:linear-gradient(90deg,var(--line),transparent)}
 .book{background:var(--card);border-radius:18px;padding:13px;box-shadow:var(--shadow-sm);
   cursor:pointer;border:1px solid var(--line);transition:transform .1s,box-shadow .15s;
   display:flex;flex-direction:column;gap:8px;position:relative;overflow:hidden}
@@ -354,18 +361,29 @@ select:focus{outline:none;border-color:#c3b0ff;box-shadow:0 0 0 3px rgba(124,92,
 .spcv{display:block;width:100%;height:220px;background:#fff;border:1px dashed #d9d2f0;
   border-radius:12px;touch-action:none;cursor:crosshair}
 @media(max-height:720px){.spcv{height:180px}}
+/* 无障碍：键盘焦点可见 */
+:focus-visible{outline:2px solid #4a9eff;outline-offset:2px;border-radius:2px}
+/* 无障碍：尊重系统「减少动态」设置，关闭装饰性动画与过渡 */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;scroll-behavior:auto !important}
+}
+/* 无障碍：触屏设备最小点击区域 44×44 */
+@media (pointer:coarse){
+  button,[role="button"],a[href],input[type="submit"],input[type="button"]{min-height:44px;min-width:44px}
+}
 </style>
 </head>
 <body>
-<header id="topbar">
-  <button class="icobtn" id="backBtn" title="返回大厅">🏠</button>
+<header id="topbar" role="banner">
+  <button class="icobtn" id="backBtn" title="返回大厅" aria-label="返回大厅">🏠</button>
   <div class="title">知识问答<small>百词斩式刷题</small></div>
   <div class="spacer"></div>
-  <button class="icobtn" id="statsBtn" title="统计">📊</button>
-  <button class="icobtn" id="musicBtn" title="背景音乐">🎵</button>
-  <button class="icobtn" id="settingsBtn" title="设置">⚙️</button>
+  <button class="icobtn" id="statsBtn" title="统计" aria-label="统计">📊</button>
+  <button class="icobtn" id="musicBtn" title="背景音乐" aria-label="背景音乐">🎵</button>
+  <button class="icobtn" id="settingsBtn" title="设置" aria-label="设置">⚙️</button>
 </header>
-<main id="app">
+<main id="app" role="main">
   <section id="shelf" class="view"></section>
   <section id="stage" class="view" hidden></section>
 </main>
