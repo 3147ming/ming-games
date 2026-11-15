@@ -49,6 +49,24 @@ import { scheduleThumbs } from './thumb.js';
 import {
   circuitToSvg, svgDataUrl, svgToPngDataUrl, downloadDataUrl,
 } from './circuit-export.js';
+import { track, readEvents, clearEvents, summarize, exportJson } from './analytics.js';
+import {
+  publishShare, resolveShare, submitWork, listSubmissions,
+  normalizeCode, isValidCode,
+} from './share-code.js';
+import {
+  openQuestionBank, openVersions, renderDailyQuestion,
+  startAutoVersion, resetAutoSnapshot,
+} from './stage5-panels.js';
+import { openRecorder, openAchievements } from './stage6-panels.js';
+import {
+  createRecorder, saveRecord, loadRecord,
+} from './recorder.js';
+import {
+  ACHIEVEMENTS, loadAchievements, saveAchievements, loadGamifyState, saveGamifyState,
+  evaluateAchievements, recordEvent,
+} from './gamify.js';
+import { createView3d } from './view3d.js';
 
 /** 允许切换的视图 id 白名单 */
 const VIEW_IDS = ['view-list', 'view-workspace', 'view-report'];
@@ -64,6 +82,15 @@ let boardViewMode = 'bench';
 
 /** 波形查看器句柄（指令包 7）：进实验创建、离开实验销毁 */
 let waveView = null;
+
+/** R12 录像器：进实验创建、离开实验落盘 */
+let recorder = null;
+
+/** R13 3D 视图句柄：首次打开时创建，切实验复用 */
+let view3d = null;
+
+/** 「体检医生」成就：每次进实验只记一次，避免每帧刷新都加分 */
+let diagnoseRecorded = false;
 
 /** 仪器面板句柄（指令包 10） */
 let instruments = null;
@@ -117,6 +144,19 @@ const dom = {
   btnExportDiagram: document.getElementById('btn-export-diagram'),
   exportMenu: document.getElementById('export-menu'),
   exportWrap: document.getElementById('export-wrap'),
+  btnShortlink: document.getElementById('btn-shortlink'),
+  btnStats: document.getElementById('btn-stats'),
+  btnTeacher: document.getElementById('btn-teacher'),
+  btnSubmit: document.getElementById('btn-submit'),
+  btnQuestionBank: document.getElementById('btn-question-bank'),
+  btnVersions: document.getElementById('btn-versions'),
+  btnAchievements: document.getElementById('btn-achievements'),
+  skinSelect: document.getElementById('skin-select'),
+  optHeatMap: document.getElementById('opt-heat-map'),
+  optView3d: document.getElementById('opt-view-3d'),
+  view3dCanvas: document.getElementById('view3d-canvas'),
+  view3dArea: document.getElementById('view3d-area'),
+  dailyQuestion: document.getElementById('daily-question'),
   expInfoBlock: document.getElementById('exp-info-block'),
   propsPanel: document.getElementById('props-panel'),
   wsPlatform: document.getElementById('ws-platform'),
@@ -196,7 +236,11 @@ function parseHash() {
   const h = (location.hash || '').replace(/^#\/?/, '');
   if (!h) return { view: 'list', expId: null, share: null };
   const parts = h.split('/').filter(Boolean);
-  if (parts.length === 0 || parts[0] === 'list') return { view: 'list', expId: null, share: null };
+  if (parts.length === 0 || parts[0] === 'list') return { view: 'list', expId: null, share: null, shortCode: null };
+  // R9：6 位短码深链（云端 D1 或本机 localStorage 还原）
+  if (parts[0] === 'share' && parts[1]) {
+    return { view: 'workspace', expId: null, share: null, shortCode: parts[1] };
+  }
   if (parts[0] === 'lab') {
     const expId = parts[1] || null;
     if (parts[2] === 'share' && parts[3]) return { view: 'workspace', expId, share: parts[3] };
@@ -208,12 +252,17 @@ function parseHash() {
 
 /** hash 变化（浏览器前进/后退或初始深链）→ 恢复视图/实验，必要时还原分享电路 */
 function onHashChange() {
-  const { view, expId, share } = parseHash();
+  const parsed = parseHash();
+  if (parsed.shortCode) {
+    openShortShare(parsed.shortCode).catch(() => showToast('短链还原失败', 'error'));
+    return;
+  }
+  const { view, expId, share } = parsed;
   if (view === 'list' || !expId) {
-    if (currentExperimentId) {
-      switchView('view-list', { fromHash: true });
-      currentExperimentId = null;
-      currentExample = null;
+    // 必须走 leaveWorkspace：它会落盘录像、销毁实验台、复位 3D/仪器；
+    // 直接 switchView 会让实验台与录像器悬挂（阶段 6 探针抓到的真问题）。
+    if (currentExperimentId || isBoardActive()) {
+      leaveWorkspace({ fromHash: true });
     }
     return;
   }
@@ -261,6 +310,7 @@ function shareCurrentCircuit() {
   }
   const encoded = b64urlEncode(JSON.stringify(data));
   const url = `${location.origin}${location.pathname}#/lab/${currentExperimentId}/share/${encoded}`;
+  track('share', { expId: currentExperimentId, kind: 'full' });
   copyToClipboard(url).then(() => {
     showToast('分享链接已复制到剪贴板', 'success');
   }).catch(() => {
@@ -294,6 +344,507 @@ function applySharedCircuit(encoded) {
   if (board.requestRender) board.requestRender();
   refreshTabPanels();
   showToast('这是他人分享的电路', 'info');
+}
+
+/* ==========================================================================
+   阶段 4 · R9 短链 / 提交码 + R10 本地埋点
+   ========================================================================== */
+
+/** 通用信息弹层：复用既有 .modal-host / .modal 样式，内容全部用 DOM API 构建 */
+function openInfoModal(title, build) {
+  const host = document.createElement('div');
+  host.className = 'modal-host info-modal-host';
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  const modal = document.createElement('div');
+  modal.className = 'modal modal--wide';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+
+  const eyebrow = document.createElement('p');
+  eyebrow.className = 'modal-eyebrow';
+  eyebrow.textContent = 'CIRCUIT LAB';
+  const heading = document.createElement('h2');
+  heading.className = 'modal-title';
+  heading.textContent = title;
+  const content = document.createElement('div');
+  content.className = 'info-modal-body';
+  const actions = document.createElement('div');
+  actions.className = 'modal-actions';
+  const close = document.createElement('button');
+  close.className = 'btn btn-ghost';
+  close.type = 'button';
+  close.textContent = '关闭';
+  actions.append(close);
+  modal.append(eyebrow, heading, content, actions);
+  host.append(backdrop, modal);
+  document.body.append(host);
+
+  let closed = false;
+  function dismiss() {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener('keydown', onKey);
+    host.classList.remove('is-open');
+    host.remove();
+  }
+  function onKey(event) {
+    if (event.key === 'Escape') { event.preventDefault(); dismiss(); }
+  }
+  close.addEventListener('click', dismiss);
+  backdrop.addEventListener('click', dismiss);
+  document.addEventListener('keydown', onKey);
+  host.hidden = false;
+  requestAnimationFrame(() => host.classList.add('is-open'));
+  build(content, actions, dismiss, close);
+  return { host, content, dismiss };
+}
+
+/** 阶段 5 面板 ctx：把 app 层能力注入独立 DOM 模块，避免循环依赖 */
+/* ==========================================================================
+   阶段 6（指令包 19）：R12 录像 / 成就 / 排行榜 · R13 皮肤 / 热力图 / 3D
+   ========================================================================== */
+
+/** 当前电路的纯数据快照（录像差分基线用） */
+function circuitSnapshot() {
+  const board = window.__labBoard;
+  if (!board || !board.model) return null;
+  const st = board.model.getState();
+  return st ? JSON.parse(JSON.stringify(st)) : null;
+}
+
+/** 进入实验：开一段新录像（内存），离开时落盘 */
+function startRecording(expId) {
+  recorder = createRecorder(expId);
+  recorder.start(circuitSnapshot(), Date.now());
+  return recorder;
+}
+
+/** 离开实验：落盘并清掉句柄（超过上限由 recorder 内部截断） */
+function stopRecording() {
+  if (!recorder) return 0;
+  const count = recorder.flush();
+  recorder = null;
+  return count;
+}
+
+/**
+ * 带「完成」判定的进度表：store 只存打开次数，这里用「步骤全勾」作为完成口径，
+ * 供排行榜与成就共用（不改 store 的存量结构，避免老存档迁移）。
+ */
+function progressWithDone() {
+  const progress = getProgress();
+  const out = {};
+  Object.keys(progress).forEach((id) => {
+    const steps = getSteps(id);
+    const values = Object.values(steps || {});
+    const done = values.length > 0 && values.every(Boolean);
+    out[id] = Object.assign({}, progress[id], { done });
+  });
+  return out;
+}
+
+/** 成就判定上下文 */
+function gamifyContext() {
+  const progress = progressWithDone();
+  const openedExps = Object.keys(progress);
+  const completedExps = openedExps.filter((id) => progress[id].done);
+  const state = loadGamifyState();
+  return {
+    openedExps,
+    completedExps,
+    reports: state.reports || 0,
+    diagnoses: state.diagnoses || 0,
+    dailyDone: Object.keys(state.daily || {}).length,
+  };
+}
+
+/** 评估成就并弹提示；返回新解锁的 id 列表 */
+function evaluateGamify() {
+  const res = evaluateAchievements(gamifyContext(), loadAchievements(), loadGamifyState());
+  saveAchievements(res.achievements);
+  saveGamifyState(res.state);
+  res.unlocked.forEach((id) => {
+    const ach = ACHIEVEMENTS.find((a) => a.id === id);
+    if (ach) showToast("成就解锁 " + ach.icon + " " + ach.title, "success");
+    track("achievement", { id });
+  });
+  return res.unlocked;
+}
+
+/** 选一个本地 JSON 文本（录像导入用），取消返回 null */
+function pickTextFile() {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json,.json";
+    input.addEventListener("change", () => {
+      const file = input.files && input.files[0];
+      if (!file) { resolve(null); return; }
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => resolve(null);
+      reader.readAsText(file, "utf-8");
+    });
+    input.click();
+  });
+}
+
+/** R13 3D 视图：首次使用时创建，复用同一个实例 */
+function ensureView3d() {
+  if (view3d || !dom.view3dCanvas) return view3d;
+  const board = window.__labBoard;
+  if (!board) return null;
+  view3d = createView3d({
+    canvas: dom.view3dCanvas,
+    getState: () => board.model.getState(),
+    getPlatformId: () => board.platformId,
+    getPlatform: (id) => board.platforms.getPlatform(id),
+  });
+  return view3d;
+}
+
+/** 皮肤生效：canvas 调色板 + CSS 变量 + 仪器面板 + 下拉/按钮同步 */
+function applySkinEverywhere(id) {
+  const board = window.__labBoard;
+  if (!board) return null;
+  const next = board.setSkin(id);
+  document.documentElement.dataset.skin = next;
+  if (instruments && typeof instruments.setSkin === "function") instruments.setSkin(next === "hep");
+  if (dom.skinSelect && dom.skinSelect.value !== next) dom.skinSelect.value = next;
+  setSkinPressed(next === "hep");
+  return next;
+}
+
+/** 清空当前实验的录像（内存 + localStorage） */
+function recordClear() {
+  if (recorder && typeof recorder.replaceOps === "function") recorder.replaceOps([]);
+  if (currentExperimentId) {
+    try { window.localStorage.removeItem("lab-sim-record:" + currentExperimentId); } catch (_) { /* ignore */ }
+  }
+  return true;
+}
+
+const stage6Ctx = {
+  openModal: (title, build) => openInfoModal(title, build),
+  toast: (msg, kind) => showToast(msg, kind),
+  model: () => (window.__labBoard ? window.__labBoard.model : null),
+  expId: () => currentExperimentId,
+  platform: () => (window.__labBoard ? window.__labBoard.platformId : "exp-box"),
+  applyCircuit: (circuit, label) => applyCircuitData(circuit, label),
+  recorder: () => recorder,
+  recordOps: () => (recorder ? recorder.ops : []),
+  loadOps: (ops) => {
+    if (recorder && typeof recorder.replaceOps === "function") recorder.replaceOps(ops);
+    else if (currentExperimentId) saveRecord(currentExperimentId, ops);
+    return ops;
+  },
+  clearOps: () => recordClear(),
+  flushRecord: () => { if (recorder) recorder.flush(); },
+  download: (name, text) => downloadText(text, name),
+  pickText: () => pickTextFile(),
+  exps: () => getExperiments(),
+  progress: () => progressWithDone(),
+  achievements: () => loadAchievements(),
+  gamifyState: () => loadGamifyState(),
+  track,
+};
+
+const stage5Ctx = {
+  openModal: (title, build) => openInfoModal(title, build),
+  toast: (msg, kind) => showToast(msg, kind),
+  model: () => (window.__labBoard ? window.__labBoard.model : null),
+  expId: () => currentExperimentId,
+  applyCircuit: (circuit, label) => applyCircuitData(circuit, label),
+  openExperiment: (id) => openExperiment(id),
+  getExample,
+  measure: measureExample,
+  track,
+  // R12：答题得分记一次事件；答对当日每日一题即算完成（成就 +10 分）
+  onQuestionGraded: (question, grade) => {
+    if (!grade || !grade.total || grade.score <= 0) return;
+    recordEvent("daily", { questionId: question && question.id });
+    evaluateGamify();
+  },
+};
+
+/** 往弹层操作条「关闭」按钮之前插一个按钮 */
+function modalAction(actions, closeBtn, label, handler) {
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-primary';
+  btn.type = 'button';
+  btn.textContent = label;
+  btn.addEventListener('click', handler);
+  actions.insertBefore(btn, closeBtn);
+  return btn;
+}
+
+function downloadText(text, filename, mime = 'application/json;charset=utf-8') {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/** R10：统计面板 —— 每个实验的打开 / 报告 / 元件 / 导线 / 仿真次数 */
+function showStatsPanel() {
+  const events = readEvents();
+  const stepsByExp = {};
+  getExperiments().forEach((exp) => {
+    const steps = getSteps(exp.id) || {};
+    stepsByExp[exp.id] = Object.values(steps).filter(Boolean).length;
+  });
+  const sum = summarize(events, stepsByExp);
+  openInfoModal('本机操作统计', (body, actions, dismiss, closeBtn) => {
+    const lead = document.createElement('p');
+    lead.className = 'info-modal-lead';
+    lead.textContent = `共 ${sum.total} 条事件 · 平均完成步骤 ${sum.avgSteps} · 平均报告数 ${sum.avgReports}（数据只保存在这台设备）`;
+    body.append(lead);
+
+    const table = document.createElement('table');
+    table.className = 'info-table';
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    ['实验', '打开', '报告', '放元件', '连导线', '拨开关', '仿真'].forEach((t) => {
+      const th = document.createElement('th');
+      th.textContent = t;
+      hr.append(th);
+    });
+    thead.append(hr);
+    table.append(thead);
+    const tbody = document.createElement('tbody');
+    const rows = Object.values(sum.perExp).sort((a, b) => b.opens - a.opens);
+    if (rows.length === 0) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 7;
+      td.textContent = '还没有记录，去打开一个实验试试';
+      tr.append(td);
+      tbody.append(tr);
+    } else {
+      rows.forEach((r) => {
+        const exp = getExperimentById(r.expId);
+        const tr = document.createElement('tr');
+        [exp ? exp.title : r.expId, r.opens, r.reports, r.parts, r.wires, r.toggles, r.simulations]
+          .forEach((v) => {
+            const td = document.createElement('td');
+            td.textContent = String(v);
+            tr.append(td);
+          });
+        tbody.append(tr);
+      });
+    }
+    table.append(tbody);
+    body.append(table);
+
+    modalAction(actions, closeBtn, '导出统计 JSON', () => {
+      downloadText(exportJson(events, stepsByExp), 'circuit-lab-analytics.json');
+      showToast('统计已导出', 'success');
+    });
+    modalAction(actions, closeBtn, '清空记录', () => {
+      clearEvents();
+      showToast('本机统计已清空', 'info');
+      dismiss();
+    });
+  });
+}
+
+/** R9：教师看板 —— 输入班级码，列出提交（云端优先，失败用本机） */
+function showTeacherPanel() {
+  openInfoModal('教师看板', (body, actions, dismiss, closeBtn) => {
+    const bar = document.createElement('div');
+    bar.className = 'info-form-row';
+    const label = document.createElement('label');
+    label.textContent = '班级码 ';
+    const input = document.createElement('input');
+    input.className = 'info-input';
+    input.type = 'text';
+    input.maxLength = 6;
+    input.placeholder = 'CLASS1';
+    input.value = 'CLASS1';
+    label.append(input);
+    const query = document.createElement('button');
+    query.className = 'btn btn-ghost';
+    query.type = 'button';
+    query.textContent = '查询';
+    bar.append(label, query);
+    const result = document.createElement('div');
+    result.className = 'info-result';
+    result.textContent = '点击「查询」加载提交列表。';
+    body.append(bar, result);
+
+    async function load() {
+      const cc = normalizeCode(input.value) || 'CLASS1';
+      const { rows, backend } = await listSubmissions(cc);
+      result.replaceChildren();
+      const meta = document.createElement('p');
+      meta.className = 'info-modal-lead';
+      meta.textContent = `班级 ${cc} · ${rows.length} 份提交 · ${backend ? '云端' : '本机（无后端）'}`;
+      result.append(meta);
+      if (rows.length === 0) return;
+      const table = document.createElement('table');
+      table.className = 'info-table';
+      const tbody = document.createElement('tbody');
+      rows.forEach((row) => {
+        const tr = document.createElement('tr');
+        const cells = [
+          row.studentCode || '—',
+          row.expId || '—',
+          new Date(row.time || Date.now()).toLocaleString('zh-CN'),
+          `${(row.circuit && row.circuit.components || []).length} 个元件`,
+        ];
+        cells.forEach((v) => {
+          const td = document.createElement('td');
+          td.textContent = String(v);
+          tr.append(td);
+        });
+        const td = document.createElement('td');
+        const loadBtn = document.createElement('button');
+        loadBtn.className = 'btn btn-ghost';
+        loadBtn.type = 'button';
+        loadBtn.textContent = '载入电路';
+        loadBtn.addEventListener('click', () => {
+          if (!row.circuit) return;
+          dismiss();
+          applyCircuitData(row.circuit, `提交 ${row.studentCode}`);
+        });
+        td.append(loadBtn);
+        tr.append(td);
+        tbody.append(tr);
+      });
+      table.append(tbody);
+      result.append(table);
+    }
+    query.addEventListener('click', () => { load().catch(() => { result.textContent = '查询失败'; }); });
+    load().catch(() => { result.textContent = '查询失败'; });
+  });
+}
+
+/** R9：生成 6 位短码（有后端走云端，无后端本机可还原） */
+async function publishShortLink() {
+  const board = window.__labBoard;
+  if (!board || !currentExperimentId) { showToast('请先进入一个实验再生成短链', 'error'); return; }
+  const data = board.model.serializeCircuit();
+  if (!data) { showToast('没有可分享的电路', 'error'); return; }
+  const { code, url, backend } = await publishShare(data, currentExperimentId);
+  track('share', { expId: currentExperimentId, kind: 'short' });
+  try {
+    await copyToClipboard(url);
+    showToast(`短码 ${code} 已复制${backend ? '（云端，可跨设备）' : '（本机可用；跨设备请用「分享电路」按钮）'}`, 'success');
+  } catch (_) {
+    window.prompt('复制这条短链：', url);
+  }
+}
+
+/** R9：提交实验 → 6 位学生码（云端失败也必须本机留痕） */
+async function submitCurrentExperiment() {
+  const board = window.__labBoard;
+  if (!board || !currentExperimentId) { showToast('请先进入一个实验再提交', 'error'); return; }
+  const circuit = board.model.serializeCircuit();
+  if (!circuit) { showToast('没有可提交的电路', 'error'); return; }
+  const res = await submitWork({
+    circuit,
+    expId: currentExperimentId,
+    classCode: 'CLASS1',
+    scores: {
+      components: (circuit.components || []).length,
+      wires: (circuit.wires || []).length,
+    },
+  });
+  track('submit', { expId: currentExperimentId });
+  showToast(`提交码 ${res.studentCode}${res.backend ? '（已上传）' : '（本机保存）'}`, 'success');
+}
+
+/** 把一份电路数据载入当前实验（分享短链 / 教师看板共用） */
+function applyCircuitData(data, label) {
+  const board = window.__labBoard;
+  if (!board || !data || typeof data !== 'object') {
+    showToast('电路数据不完整', 'error');
+    return false;
+  }
+  const platform = data.platform && typeof data.platform === 'string'
+    ? data.platform : (board.model.platformId || 'exp-box');
+  try {
+    board.model.loadCircuit(data, platform);
+  } catch (_) {
+    showToast('电路还原失败', 'error');
+    return false;
+  }
+  if (typeof simulateNow === 'function') simulateNow('share-load');
+  if (board.requestRender) board.requestRender();
+  refreshTabPanels();
+  showToast(label || '电路已载入', 'info');
+  return true;
+}
+
+/** R9：打开 #/share/<CODE> 深链 */
+async function openShortShare(rawCode) {
+  const code = normalizeCode(rawCode);
+  if (!isValidCode(code)) { showToast('短码格式不正确', 'error'); return; }
+  const hit = await resolveShare(code);
+  if (!hit) { showToast('短码不存在或已过期', 'error'); return; }
+  const expId = hit.expId || currentExperimentId || (getExperiments()[0] && getExperiments()[0].id);
+  if (!expId) { showToast('没有可载入的实验', 'error'); return; }
+  if (currentExperimentId !== expId) openExperiment(expId, { fromHash: true });
+  applyCircuitData(hit.circuit, `已还原短链 ${code}`);
+}
+
+/** R10：订阅模型变更，用状态差分推断 place / wire / toggle 三类事件。
+ *  board.js 的 destroyBoard() 会清空 changeListeners，所以每次 openExperiment
+ *  结束都要重新订阅；重复调用时先退订旧的，避免监听器越积越多。 */
+function analyticsSnapshot() {
+  const board = window.__labBoard;
+  if (!board || !board.model) return null;
+  let st;
+  try { st = board.model.getState(); } catch (_) { return null; }
+  const comps = new Map();
+  (st.components || []).forEach((c) => comps.set(c.id, {
+    type: c.type,
+    params: JSON.stringify(c.params || {}),
+  }));
+  const wires = new Set((st.wires || []).map((w) => w.id));
+  return { comps, wires };
+}
+
+let analyticsUnsubscribe = null;
+function installAnalyticsHooks() {
+  if (analyticsUnsubscribe) {
+    try { analyticsUnsubscribe(); } catch (_) { /* ignore */ }
+    analyticsUnsubscribe = null;
+  }
+  // 订阅时立刻建立基线：否则订阅后的第一次真实操作会被当成"基线"吞掉。
+  // openExperiment 在模板载入完成后才调用本函数，此时快照就是模板电路。
+  let prev = analyticsSnapshot();
+  analyticsUnsubscribe = onModelChange(() => {
+    const cur = analyticsSnapshot();
+    if (!cur) return;
+    const expId = currentExperimentId || '_unknown';
+    if (prev) {
+      const added = [...cur.comps.keys()].filter((id) => !prev.comps.has(id));
+      if (added.length) {
+        track('part_place', { expId, type: cur.comps.get(added[0]).type, count: added.length });
+      }
+      const newWires = [...cur.wires].filter((id) => !prev.wires.has(id));
+      if (newWires.length) track('wire_connect', { expId, count: newWires.length });
+      const changed = [...cur.comps.keys()].filter((id) => prev.comps.has(id)
+        && prev.comps.get(id).params !== cur.comps.get(id).params);
+      if (changed.length) {
+        const switches = changed.filter((id) => /switch|dip|logic/i.test(cur.comps.get(id).type));
+        track('switch_toggle', { expId, componentId: changed[0], count: changed.length, switches: switches.length });
+      }
+    }
+    // R12 录像：同一份差分结果，另存为可回放的操作序列
+    if (recorder) {
+      try {
+        const board = window.__labBoard;
+        recorder.capture(board && board.model ? board.model.getState() : null, Date.now());
+      } catch (_) { /* 录制失败绝不能影响编辑 */ }
+    }
+    prev = cur;
+  });
 }
 
 /** 复制文本到剪贴板，失败时用 execCommand 兜底 */
@@ -868,6 +1419,7 @@ async function exportDiagram(kind) {
  * 阶段 3 R16：电路图从 2.5D 画布截图换成干净的原理图 SVG 矢量图。
  */
 function generateExampleReport(example, observations) {
+  track('report_gen', { expId: currentExperimentId || (example && example.id) || null });
   const board = window.__labBoard;
   if (!board) return;
   const measured = measureExample(board.model, example);
@@ -875,6 +1427,9 @@ function generateExampleReport(example, observations) {
     showToast(`报告生成失败：${measured.error}`, 'error');
     return;
   }
+  // R12 成就：报告真正生成成功才计数（失败的那次不算「报告完成」）
+  recordEvent('report');
+  evaluateGamify();
   const circuitCanvas = document.getElementById('breadboard-canvas');
   const circuitState = currentCircuitState();
   const diagram = circuitState ? circuitToSvg(circuitState) : null;
@@ -1393,10 +1948,26 @@ function renderExperimentInfo(exp) {
     list.append(dt, dd);
   });
   dom.expInfoBlock.append(list);
+
+  // R17：实验内也放一个版本入口（列表页工具条里的是全局入口）
+  const verBtn = document.createElement('button');
+  verBtn.className = 'btn btn-ghost info-version-btn';
+  verBtn.type = 'button';
+  verBtn.textContent = '版本（保存 / 恢复 / 对比）';
+  verBtn.addEventListener('click', () => openVersions(stage5Ctx));
+  // R12：录像回放入口，与版本入口并排
+  const recBtn = document.createElement('button');
+  recBtn.className = 'btn btn-ghost info-version-btn info-record-btn';
+  recBtn.type = 'button';
+  recBtn.textContent = '录像回放（录制 / 导出 / 导入）';
+  recBtn.addEventListener('click', () => openRecorder(stage6Ctx));
+  dom.expInfoBlock.append(verBtn, recBtn);
 }
 
 /** 进入实验工作区：记录进度、刷新列表、切换视图、写入标题、初始化实验台 */
 function openExperiment(expId, options = {}) {
+  // 上一段录像先落盘（hash 直接切实验时不会经过 leaveWorkspace）
+  stopRecording();
   const exp = getExperimentById(expId);
   if (!exp) {
     showToast('实验不存在或已被移除', 'error');
@@ -1405,6 +1976,7 @@ function openExperiment(expId, options = {}) {
 
   setProgress(exp.id);
   currentExperimentId = exp.id;
+  track('exp_open', { expId: exp.id, durationMin: exp.durationMin || 0 });
 
   dom.workspaceTitle.textContent = exp.title;
   dom.workspaceMeta.textContent = exp.durationMin > 0
@@ -1414,6 +1986,26 @@ function openExperiment(expId, options = {}) {
   renderExperimentInfo(exp);
   renderList();
   activateTab('info');
+  // 阶段 6 R13：把持久化的外观偏好同步到界面（皮肤变量、热力图开关、3D 开关）
+  {
+    const board = window.__labBoard;
+    const skin = board ? board.skin : 'hep';
+    document.documentElement.dataset.skin = skin;
+    if (dom.skinSelect) dom.skinSelect.value = skin;
+    if (dom.optHeatMap && board && board.heat) dom.optHeatMap.checked = board.heat.on();
+    try {
+      if (dom.optView3d) dom.optView3d.checked = window.localStorage.getItem('lab-sim:view3d') === '1';
+    } catch (_) { /* ignore */ }
+  }
+  // 体检事件（R12「体检医生」）：board 每次渲染诊断都会广播一条，去重后只记一次
+  window.addEventListener('labdiag', (event) => {
+    if (diagnoseRecorded) return;
+    const detail = event.detail || {};
+    if (!(detail.red > 0 || detail.yellow > 0)) return;
+    diagnoseRecorded = true;
+    recordEvent('diagnose');
+    evaluateGamify();
+  });
   switchView('view-workspace', options);
 
   // 仪器段随存档走（包 10）：model 不认识 UI，用注入的 provider/restorer
@@ -1508,10 +2100,28 @@ function openExperiment(expId, options = {}) {
 
   // 数据面板（指令包 11）：记录/对比/导出/项目存档
   wireDataPanel();
+
+  // R10：initBoard/destroyBoard 会重建模型变更订阅，这里补挂埋点差分钩子
+  installAnalyticsHooks();
+  // R12：同一处开始录像（模板电路即基线），离开实验时落盘
+  startRecording(exp.id);
+  diagnoseRecorded = false;
+  evaluateGamify();
+  // R12：本实验上次的录像还在 → 提示可回放（不打断操作，只给一条入口提示）
+  try {
+    const prevOps = loadRecord(exp.id);
+    if (prevOps.length >= 3) {
+      showToast("检测到上次的 " + prevOps.length + " 条操作录像，可在「实验信息 → 录像回放」查看", "info");
+    }
+  } catch (_) { /* ignore */ }
 }
 
 /** 离开工作区：先清理实验台（含落盘与原理图），再切回列表 */
-function leaveWorkspace() {
+function leaveWorkspace(options = {}) {
+  stopRecording();
+  if (dom.optView3d) dom.optView3d.checked = false;
+  if (view3d) view3d.toggle(false);
+  if (dom.view3dArea) dom.view3dArea.hidden = true;
   renderGuide(null);
   destroyDataPanel();
   destroyInstruments();
@@ -1520,7 +2130,7 @@ function leaveWorkspace() {
   currentExperimentId = null;
   setContPlacePressed(false);
   switchBoardView('bench');
-  switchView('view-list');
+  switchView('view-list', options);
 }
 
 /* ==========================================================================
@@ -1993,6 +2603,54 @@ function bindEvents() {
   dom.btnExport.addEventListener('click', handleExport);
   if (dom.btnShare) dom.btnShare.addEventListener('click', shareCurrentCircuit);
   if (dom.btnTruth) dom.btnTruth.addEventListener('click', () => activateTab('truth'));
+  // 阶段 4 R9/R10：短链 / 统计 / 教师看板 / 提交实验
+  if (dom.btnShortlink) dom.btnShortlink.addEventListener('click', () => {
+    publishShortLink().catch(() => showToast('短链生成失败', 'error'));
+  });
+  if (dom.btnStats) dom.btnStats.addEventListener('click', showStatsPanel);
+  if (dom.btnTeacher) dom.btnTeacher.addEventListener('click', showTeacherPanel);
+  if (dom.btnSubmit) dom.btnSubmit.addEventListener('click', () => {
+    submitCurrentExperiment().catch(() => showToast('提交失败', 'error'));
+  });
+  // 阶段 5 R14 / R17
+  if (dom.btnQuestionBank) {
+    dom.btnQuestionBank.addEventListener('click', () => openQuestionBank(stage5Ctx));
+  }
+  if (dom.btnVersions) dom.btnVersions.addEventListener('click', () => openVersions(stage5Ctx));
+  // 阶段 6 R12 / R13
+  if (dom.btnAchievements) {
+    dom.btnAchievements.addEventListener('click', () => openAchievements(stage6Ctx));
+  }
+  if (dom.skinSelect) {
+    dom.skinSelect.addEventListener('change', () => {
+      const next = applySkinEverywhere(dom.skinSelect.value);
+      if (!next) return;
+      const LABELS = { hep: 'HEP 实物外观', classic: '通用实验箱', light: '浅色投影', neon: '霓虹', wood: '木纹' };
+      showToast('外观：' + (LABELS[next] || next), 'info');
+      track('skin', { skin: next });
+    });
+  }
+  if (dom.optHeatMap) {
+    dom.optHeatMap.addEventListener('change', () => {
+      const board = window.__labBoard;
+      if (!board || !board.heat) return;
+      const on = board.heat.set(dom.optHeatMap.checked);
+      showToast(on ? '功耗热力图：已开启（蓝冷 → 红热）' : '功耗热力图：已关闭', 'info');
+      if (on && board.heat.max() === 0) showToast('先跑一次仿真才有功耗数据', 'info');
+    });
+  }
+  if (dom.optView3d) {
+    dom.optView3d.addEventListener('change', () => {
+      const on = dom.optView3d.checked;
+      const v = ensureView3d();
+      if (!v) { dom.optView3d.checked = false; return; }
+      v.toggle(on);
+      if (dom.view3dArea) dom.view3dArea.hidden = !on;
+      if (on) v.renderOnce();
+      try { window.localStorage.setItem('lab-sim:view3d', on ? '1' : '0'); } catch (_) { /* ignore */ }
+      showToast(on ? '3D 视图已开启（只读演示，可继续在画布上操作）' : '已回到 2.5D 视图', 'info');
+    });
+  }
   dom.fileInput.addEventListener('change', handleFileChange);
 
   // 阶段 3 R15：搜索 debounce 200ms + chips 事件委托
@@ -2694,6 +3352,7 @@ function recordCurrentReadings() {
     });
   }
   if (pushed > 0) {
+    track('data_record', { expId: currentExperimentId, channel: 'instruments', count: pushed });
     showToast(`已记录 ${pushed} 条读数`, 'success');
     renderDataTab();
   } else {
@@ -2740,6 +3399,9 @@ function init() {
   });
 
   bindEvents();
+  installAnalyticsHooks();
+  renderDailyQuestion(dom.dailyQuestion, stage5Ctx);
+  startAutoVersion(stage5Ctx);
   initTheme();
   maybeShowKeysTip();
   activateTab('info');
@@ -2750,7 +3412,7 @@ function init() {
   // 路由（R3a）：监听 hash 变化（浏览器前进/后退），并支持初始深链
   window.addEventListener('hashchange', onHashChange);
   const initial = parseHash();
-  if (initial.expId && initial.view !== 'list') {
+  if (initial.shortCode || (initial.expId && initial.view !== 'list')) {
     // 深链直达某个实验（或分享链接）：交由 onHashChange 统一恢复
     onHashChange();
   } else {
@@ -2760,6 +3422,22 @@ function init() {
 }
 
 init();
+
+/* R8 · PWA：只在 dist 单文件 bundle 模式注册 Service Worker。
+   dev 模式（源码 39 个 ESM 模块）不注册，否则 SW 会缓存旧模块、干扰源码调试。
+   延迟到 load 之后，避免占用首屏关键路径（首屏只有 HTML + app.js + main.css）。 */
+function registerServiceWorker() {
+  if (document.documentElement.dataset.bundle !== '1') return;
+  if (!('serviceWorker' in navigator) || !/^https?:/.test(window.location.protocol)) return;
+  const start = () => {
+    window.setTimeout(() => {
+      navigator.serviceWorker.register('sw.js').catch(() => { /* 离线/权限受限时静默降级 */ });
+    }, 400);
+  };
+  if (document.readyState === 'complete') start();
+  else window.addEventListener('load', start, { once: true });
+}
+registerServiceWorker();
 
 // 挂到 window 上，方便控制台调试
 window.switchView = switchView;

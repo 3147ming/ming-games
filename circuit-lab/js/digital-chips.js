@@ -549,3 +549,77 @@ export const NEW_LEGACY_TYPES = {
 };
 
 export const NEW_ORDER = ['74LS138', '74LS148', '74LS151', '74LS283', '74LS85', '74LS112', '74LS160', '74LS194'];
+
+/* ==========================================================================
+   R11 · CMOS 4000 系列：4017 十进制计数 / 分配器（DIP-16，Q0..Q9 独热）
+   --------------------------------------------------------------------------
+   4011 / 4069 / 4013 的逻辑与引脚都能复用 74LS00 / 74LS04 / 74LS74，
+   别名在 digmodels.js 里生成（那里才有基础门模型）。4017 的输出形态
+   （十个独热输出 + 进位 CO）与 74LS160 的 BCD 输出不同，必须单独建模。
+   ========================================================================== */
+
+const CD4017_LABELS = [
+  'Q5', 'Q1', 'Q0', 'Q2', 'Q6', 'Q7', 'Q3', 'GND',
+  'Q8', 'Q4', 'Q9', 'CO', 'CE', 'CLK', 'CLR', 'VCC',
+];
+// 下标 = 计数值，元素 = 对应输出引脚号
+const CD4017_Q = ['3', '2', '4', '7', '10', '1', '5', '6', '9', '11'];
+
+function buildCd4017() {
+  const inputs = ['13', '14', '15'];
+  const outputs = [...CD4017_Q, '12'];
+  const unit = {
+    id: 'U1',
+    kind: 'ff',
+    label: 'CLK↑ / CE(低有效) / CLR → Q0..Q9 独热 + CO',
+    inputs,
+    outputs,
+    fn: (v, prevState) => {
+      const prev = prevState && typeof prevState === 'object' ? prevState : { count: 0, clk: 0 };
+      const clr = norm(v['15']);
+      const ce = norm(v['13']);
+      const clk = norm(v['14']);
+      let count = prev.count === X ? 0 : prev.count;
+      let edge = false;
+      let mode = 'hold';
+
+      if (clr === 1) {
+        count = 0;
+        mode = 'clear';
+      } else if (prev.clk === 0 && clk === 1) {
+        edge = true;
+        if (ce === 0) {
+          count = (count >= 9 || count === X) ? 0 : count + 1;
+          mode = 'count';
+        }
+      }
+
+      const outs = {};
+      CD4017_Q.forEach((pin, index) => {
+        outs[pin] = count === X ? X : (index === count ? 1 : 0);
+      });
+      // CO：计到 0~4 时为高、5~9 时为低，可作为十分频级联时钟
+      outs['12'] = count === X ? X : (count < 5 ? 1 : 0);
+      return { outputs: outs, state: { count, clk: clk === X ? prev.clk : clk }, edge, mode };
+    },
+  };
+  return {
+    id: '4017',
+    label: '4017 十进制计数/分配器',
+    kind: 'counter',
+    tpd: TPD_FF,
+    thresholds: TTL,
+    pins: buildPins(CD4017_LABELS, outputs),
+    power: { vcc: '16', gnd: '8' },
+    units: [unit],
+    fn: (values, state) => {
+      const e = unit.fn(values, state ? state[unit.id] : undefined);
+      return { outputs: e.outputs, state: { [unit.id]: e.state } };
+    },
+  };
+}
+
+export const CMOS_DIG_MODELS = { '4017': buildCd4017() };
+export const CMOS_PIN_LABELS = { '4017': CD4017_LABELS };
+export const CMOS_LEGACY_TYPES = { CD4017: '4017' };
+export const CMOS_ORDER = ['4017'];

@@ -52,9 +52,38 @@ const PLATFORM_THEME = {
   },
 };
 
-/** 取平台配色 */
-export function themeOf(platformId) {
-  return PLATFORM_THEME[platformId] || PLATFORM_THEME['exp-box'];
+/** 全部皮肤 id（R13）：hep 走 hep-skin.js 的实物画法，其余只换调色板 */
+export const SKIN_IDS = ['classic', 'hep', 'light', 'neon', 'wood'];
+
+/**
+ * 皮肤调色板（只覆盖颜色，不动几何 / 孔位 / 拾取）：
+ *   light  浅色投影——实验箱也走亮色，适合投屏与打印
+ *   neon   霓虹——深底 + 高饱和描边
+ *   wood   木纹——暖棕底 + 黄铜走线
+ */
+const SKIN_PALETTE = {
+  light: {
+    board: '#f2efe6', boardEdge: '#d9d3c4', body: '#f7f5ee', groove: '#e3ddd0',
+    railPos: '#f6dedb', railNeg: '#dfe6f0', railPosInk: '#b6504a', railNegInk: '#3f5f8c',
+    hole: '#8b8f9c', holeRim: '#fffdf7', wire: '#2c6b82', wireGlow: 'rgba(44, 107, 130, 0.14)',
+  },
+  neon: {
+    board: '#10131c', boardEdge: '#05070d', body: '#151a26', groove: '#0b0e15',
+    railPos: '#2a1220', railNeg: '#0e2130', railPosInk: '#ff5f8d', railNegInk: '#4fd8ff',
+    hole: '#070a11', holeRim: '#3a4a63', wire: '#54f2c8', wireGlow: 'rgba(84, 242, 200, 0.30)',
+  },
+  wood: {
+    board: '#6b4a2f', boardEdge: '#4a3220', body: '#7a5638', groove: '#553a25',
+    railPos: '#5d3a2c', railNeg: '#41372c', railPosInk: '#e8b06a', railNegInk: '#c9a06a',
+    hole: '#2c1d12', holeRim: '#a8886a', wire: '#e0b25f', wireGlow: 'rgba(224, 178, 95, 0.22)',
+  },
+};
+
+/** 取平台配色；skin 只覆盖颜色，缺省走原主题 */
+export function themeOf(platformId, skin = 'classic') {
+  const base = PLATFORM_THEME[platformId] || PLATFORM_THEME['exp-box'];
+  const palette = SKIN_PALETTE[skin];
+  return palette ? { ...base, ...palette } : base;
 }
 
 /* ==========================================================================
@@ -536,12 +565,13 @@ function drawPlatform(ctx, view, platform) {
   // 正投影下所有「立起来」的棱柱只画顶面（无斜边厚度），否则零件会互相错位
   setFlatShading(view.projection === 'flat');
   // HEP-DCTS-01 实物外观：只替换「实验箱」的画法，几何 / 节点 / 拾取一律不变
+  // light / neon / wood 只换调色板，仍旧走通用画法（R13）
   if (view.skin === HEP_SKIN_ID && platform.id === 'exp-box') {
     drawHepPlatform(ctx, view, platform, { project });
     setFlatShading(false);
     return;
   }
-  const theme = themeOf(platform.id);
+  const theme = themeOf(platform.id, view.skin);
   if (platform.id === 'breadboard') drawBreadboard(ctx, view, platform, theme);
   else drawExpBox(ctx, view, platform, theme);
   setFlatShading(false);
@@ -978,7 +1008,7 @@ export function renderScene(view, scene) {
     );
   }
 
-  const theme = themeOf(platform ? platform.id : 'exp-box');
+  const theme = themeOf(platform ? platform.id : 'exp-box', view.skin);
 
   // 动态层与平台层用同一套「正投影无厚度」开关，元件才不会被画成带斜边的盒子
   setFlatShading(view.projection === 'flat');
@@ -1071,11 +1101,38 @@ function pointAlongPath(points, t) {
 }
 
 /** 导线 */
+/**
+ * 功耗热力色（R13）：ratio 0 → 蓝（冷），0.5 → 青黄，1 → 红（热）。
+ * 纯函数，探针与自测直接断言色带顺序，不依赖 canvas。
+ */
+export function heatColor(ratio) {
+  const r = Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : 0;
+  // 4 段线性插值：#2f6fd0 → #2fc7d8 → #f2c74a → #e2492f
+  const stops = [
+    { t: 0, c: [47, 111, 208] },
+    { t: 0.45, c: [47, 199, 216] },
+    { t: 0.75, c: [242, 199, 74] },
+    { t: 1, c: [226, 73, 47] },
+  ];
+  let a = stops[0];
+  let b = stops[stops.length - 1];
+  for (let i = 0; i < stops.length - 1; i += 1) {
+    if (r >= stops[i].t && r <= stops[i + 1].t) { a = stops[i]; b = stops[i + 1]; break; }
+  }
+  const span = b.t - a.t || 1;
+  const k = (r - a.t) / span;
+  const mix = a.c.map((v, i) => Math.round(v + (b.c[i] - v) * k));
+  return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
+}
+
 function drawWires(ctx, view, scene, theme) {
   const dangling = scene.dangling || new Set();
   // 电平着色：仿真结果按 net 上色；悬停某条导线时其余 net 压暗到 30%
   const lv = scene.levelView;
   const lvOn = Boolean(lv && lv.on && lv.byWire instanceof Map);
+  // 功耗热力图（R13）：与电平着色并存，同时开启时热力图优先（配色本身即结论）
+  const heat = scene.heatView;
+  const heatOn = Boolean(heat && heat.on && heat.byWire instanceof Map);
   const hoverWireId = scene.hover && scene.hover.type === 'wire' ? scene.hover.wireId : null;
   const hoverNet = lvOn && hoverWireId && lv.byWire.has(hoverWireId)
     ? lv.byWire.get(hoverWireId).net : null;
@@ -1093,6 +1150,7 @@ function drawWires(ctx, view, scene, theme) {
     const isSelected = scene.selection && scene.selection.type === 'wire' && scene.selection.id === wire.id;
     const isHover = scene.hover && scene.hover.type === 'wire' && scene.hover.wireId === wire.id;
     const info = lvOn ? lv.byWire.get(wire.id) : null;
+    const hot = heatOn ? heat.byWire.get(wire.id) : null;
     const dimmed = Boolean(hoverNet && info && info.net !== hoverNet);
 
     // 不 save/restore：逐帧每条导线都 save 一次是纯开销，直接管好 alpha 即可
@@ -1114,6 +1172,11 @@ function drawWires(ctx, view, scene, theme) {
       ctx.setLineDash([]);
     } else if (isHover) {
       ctx.strokeStyle = '#8fd8ea';
+      ctx.setLineDash([]);
+    } else if (hot) {
+      // 功耗热力图优先于电平着色：冷蓝 → 热红，越粗越烫
+      ctx.strokeStyle = heatColor(hot.ratio);
+      ctx.lineWidth = Math.max(ctx.lineWidth, Math.max(1.8, view.tileW * (0.085 + 0.10 * hot.ratio)));
       ctx.setLineDash([]);
     } else if (info) {
       // 电平着色优先于主题色：整块板子因此变成一张"真值表热力图"
@@ -1138,7 +1201,9 @@ function drawWires(ctx, view, scene, theme) {
       ctx.arc(point.x, point.y, Math.max(2, view.tileW * 0.1), 0, Math.PI * 2);
       ctx.fillStyle = isDangling
         ? '#e2685f'
-        : (isSelected ? '#f2a93b' : (info ? (LEVEL_STYLE[info.level] || LEVEL_STYLE.F).color : theme.wire));
+        : (isSelected ? '#f2a93b'
+          : (hot ? heatColor(hot.ratio)
+            : (info ? (LEVEL_STYLE[info.level] || LEVEL_STYLE.F).color : theme.wire)));
       ctx.fill();
     });
 

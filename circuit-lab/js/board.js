@@ -10,8 +10,10 @@
 
 import * as model from './model.js';
 import * as platforms from './platforms.js';
+import { track } from './analytics.js';
 import { getPart, terminalPos } from './parts.js';
 import { HEP_SKIN_ID } from './hep-skin.js';
+import { SKIN_IDS } from './render.js';
 import {
   createView,
   layoutView,
@@ -153,7 +155,8 @@ const SKIN_KEY = 'lab-sim:skin';
 
 function readSkin() {
   try {
-    return window.localStorage.getItem(SKIN_KEY) === 'classic' ? 'classic' : HEP_SKIN_ID;
+    const raw = window.localStorage.getItem(SKIN_KEY);
+    return SKIN_IDS.includes(raw) ? raw : HEP_SKIN_ID;
   } catch (_) {
     return HEP_SKIN_ID;
   }
@@ -169,7 +172,7 @@ function writeSkin(id) {
  */
 function setSkin(id) {
   if (!board) return null;
-  const next = id === HEP_SKIN_ID ? HEP_SKIN_ID : 'classic';
+  const next = SKIN_IDS.includes(id) ? id : 'classic';
   board.view.skin = next;
   writeSkin(next);
   invalidatePlatformLayer();
@@ -581,6 +584,13 @@ function renderDiagnostics(report) {
     });
   }
 
+  // R12：广播体检结论（app.js 据此点亮「体检医生」成就，去重由订阅方负责）
+  try {
+    window.dispatchEvent(new CustomEvent('labdiag', {
+      detail: { red: red.length, yellow: yellow.length, compCount },
+    }));
+  } catch (_) { /* 老浏览器无 CustomEvent 构造器时忽略 */ }
+
   const sortKey = (x) => x.text;
   red.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
   yellow.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
@@ -933,6 +943,8 @@ function handlePropsClick(event) {
    ========================================================================== */
 
 const LEVEL_KEY = 'lab-sim:level-color';
+/** R13 功耗热力图开关（纯渲染层偏好，不进存档） */
+const HEAT_KEY = 'lab-sim:heat-map';
 let flowRaf = 0;
 
 /** 电平着色偏好（默认开） */
@@ -969,6 +981,65 @@ function updateLevelView() {
     const raw = dig.netLevels[net];
     view.byWire.set(wire.id, { net, level: raw === undefined || raw === null ? 'F' : raw });
   });
+}
+
+/** 读热力图开关；默认关闭（避免一开实验就满屏红蓝，盖住真实走线颜色） */
+function readHeatMap() {
+  try {
+    return window.localStorage.getItem(HEAT_KEY) === '1';
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * 用最近一次直流仿真结果刷新功耗热力图映射（R13）。
+ * 口径：以「元件功耗绝对值 / 本次最大功耗」归一化成 0–1 的 ratio，
+ * 再把该元件的元件级功率摊到与它相连的每条导线上（教学上足够直观：
+ * 大电流支路就是热的那一段）。没有功耗数据的导线不进映射，保持主题色。
+ */
+function updateHeatView() {
+  if (!board) return;
+  const view = board.scene.heatView;
+  view.byWire = new Map();
+  view.byComponent = new Map();
+  view.maxPower = 0;
+  if (!view.on) return;
+  const sim = board.sim;
+  const result = sim && sim.result;
+  const items = result && Array.isArray(result.elementResults) ? result.elementResults : [];
+  let max = 0;
+  items.forEach((item) => {
+    const p = Math.abs(Number(item.power));
+    if (Number.isFinite(p) && p > max) max = p;
+  });
+  view.maxPower = max;
+  if (!(max > 0)) return;
+  const byComp = new Map();
+  items.forEach((item) => {
+    const p = Math.abs(Number(item.power));
+    if (!Number.isFinite(p)) return;
+    byComp.set(item.componentId, { power: Number(item.power), ratio: Math.max(0, Math.min(1, p / max)) });
+  });
+  view.byComponent = byComp;
+  (model.getState().wires || []).forEach((wire) => {
+    const a = byComp.get(wire.a && wire.a.componentId);
+    const b = byComp.get(wire.b && wire.b.componentId);
+    const pick = (a && b) ? (a.ratio >= b.ratio ? a : b) : (a || b);
+    if (!pick) return;
+    view.byWire.set(wire.id, { ratio: pick.ratio, power: pick.power });
+  });
+}
+
+/** 工具栏「功耗热力图」开关 */
+function setHeatMap(on) {
+  if (!board) return null;
+  const next = Boolean(on);
+  board.scene.heatView.on = next;
+  try { window.localStorage.setItem(HEAT_KEY, next ? '1' : '0'); } catch (_) { /* ignore */ }
+  updateHeatView();
+  requestRender();
+  return next;
 }
 
 /** 工具栏「电平着色」开关 */
@@ -1027,6 +1098,13 @@ function stopFlowLoop() {
  */
 export function simulateNow(reason = 'manual') {
   if (!board) return null;
+  // R10 埋点：仿真是「学习行为」最核心的信号。埋点失败绝不能影响求解。
+  try {
+    track('sim_run', {
+      expId: board.expId || null,
+      type: /transient|wave/i.test(reason) ? 'transient' : (/dig/i.test(reason) ? 'dig' : 'dc'),
+    });
+  } catch (_) { /* ignore */ }
   if (simTimer) {
     window.clearTimeout(simTimer);
     simTimer = 0;
@@ -1082,6 +1160,8 @@ export function simulateNow(reason = 'manual') {
   renderDigPanel();
   // 电平着色：把每条导线的 net 电平映射好，render 层据此上色
   updateLevelView();
+  // 功耗热力图：同一份结果里的 elementResults[].power
+  updateHeatView();
   // 计算完成：清除 pending 标志，状态行恢复结果摘要（2.11）
   board.scene.simPending = false;
   refreshHealth();
@@ -1759,6 +1839,10 @@ export function initBoard(options) {
     pendingFlash: null,
     // 电平着色（指令包 17）：byWire: wireId → { net, level }；level ∈ 1/0/'X'/'F'
     levelView: { on: readLevelColor(), byWire: new Map() },
+    // R13 功耗热力图：与电平着色并存，同时开启时热力图优先
+    heatView: {
+      on: readHeatMap(), byWire: new Map(), byComponent: new Map(), maxPower: 0,
+    },
     // 数字信号流动点：只在暂态运行中打开，phase 由 rAF 推进
     flow: { on: false, phase: 0 },
     // 仿真计算"进行中"标志（防抖等待期即置位，供状态行显示"计算中…"）
@@ -2011,6 +2095,22 @@ export function initBoard(options) {
         return info ? { net: info.net, level: info.level } : null;
       },
       flow: () => (board ? { on: board.scene.flow.on, phase: board.scene.flow.phase } : null),
+    },
+    // R13 功耗热力图：开关 / 每条导线的热度 / 元件级功率
+    heat: {
+      on: () => (board ? board.scene.heatView.on : false),
+      set: (on) => setHeatMap(on),
+      max: () => (board ? board.scene.heatView.maxPower : 0),
+      map: () => {
+        if (!board) return [];
+        return [...board.scene.heatView.byWire.entries()]
+          .map(([wireId, info]) => ({ wireId, ratio: info.ratio, power: info.power }));
+      },
+      components: () => {
+        if (!board) return [];
+        return [...board.scene.heatView.byComponent.entries()]
+          .map(([componentId, info]) => ({ componentId, ratio: info.ratio, power: info.power }));
+      },
     },
     // 数字域：稳态结果 / 时钟步进 / 脉冲触发 / LED 亮灭
     simdig: {

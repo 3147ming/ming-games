@@ -19,6 +19,7 @@ import {
 } from './digprims.js';
 import {
   NEW_DIG_MODELS, NEW_PIN_LABELS, NEW_LEGACY_TYPES, NEW_ORDER,
+  CMOS_DIG_MODELS, CMOS_PIN_LABELS, CMOS_LEGACY_TYPES, CMOS_ORDER,
 } from './digital-chips.js';
 
 /**
@@ -205,7 +206,9 @@ export function normalizeType(type) {
   if (DIG_MODELS[raw]) return raw;
   if (LEGACY_TYPES[raw]) return LEGACY_TYPES[raw];
   // 74HC00 / 74F00 之类的工艺差异对逻辑功能无影响，统一当 LS 处理
-  const swapped = raw.replace(/^74[A-Z]{0,2}(?=\d{2}$)/, '74LS');
+  // 工艺前缀最多 3 个字母（F / S / LS / ALS / HCT …），但 HC 已在上面登记为
+  // 独立型号，会先命中 DIG_MODELS，不会被这里吞回 LS。
+  const swapped = raw.replace(/^74[A-Z]{0,3}(?=\d{2}$)/, '74LS');
   if (DIG_MODELS[swapped]) return swapped;
   return raw;
 }
@@ -393,10 +396,60 @@ export const DIG_MODEL_ORDER = ['74LS00', '74LS02', '74LS04', '74LS08', '74LS32'
    最后 push 下拉顺序 —— `normalizeType()` 是函数，调用时才查表，位置无所谓。
    ========================================================================== */
 
-Object.assign(DIG_MODELS, NEW_DIG_MODELS);
-Object.assign(PIN_LABELS, NEW_PIN_LABELS);
-Object.assign(LEGACY_TYPES, NEW_LEGACY_TYPES);
-DIG_MODEL_ORDER.push(...NEW_ORDER);
+Object.assign(DIG_MODELS, NEW_DIG_MODELS, CMOS_DIG_MODELS);
+Object.assign(PIN_LABELS, NEW_PIN_LABELS, CMOS_PIN_LABELS);
+Object.assign(LEGACY_TYPES, NEW_LEGACY_TYPES, CMOS_LEGACY_TYPES);
+DIG_MODEL_ORDER.push(...NEW_ORDER, ...CMOS_ORDER);
+
+/* ==========================================================================
+   R11 · 74HC / CMOS 4000 型号扩张
+   --------------------------------------------------------------------------
+   74HC 的逻辑函数与 74LS 完全相同（TTL/CMOS 只影响电平阈值与速度，教学
+   仿真里统一用三值逻辑），所以别名模型直接浅拷贝 LS 模型，只换 id/label；
+   units / pins / fn 共享同一份只读对象，真值表天然一致。
+   4011 / 4069 / 4013 同理复用 74LS00 / 74LS04 / 74LS74，但按规格给单独的
+   引脚功能名（VDD/VSS 位置与 LS 相同：14=VDD / 7=VSS）。
+   4017 是独热十进制分配器，模型在 digital-chips.js 里单独构造。
+   ========================================================================== */
+const HC_ALIAS = {
+  '74HC00': '74LS00', '74HC02': '74LS02', '74HC04': '74LS04',
+  '74HC08': '74LS08', '74HC32': '74LS32', '74HC86': '74LS86',
+  '74HC74': '74LS74',
+  '74HC138': '74LS138', '74HC148': '74LS148', '74HC151': '74LS151',
+  '74HC283': '74LS283', '74HC85': '74LS85', '74HC112': '74LS112',
+  '74HC160': '74LS160', '74HC194': '74LS194',
+};
+const CMOS_ALIAS = {
+  '4011': '74LS00',
+  '4069': '74LS04',
+  '4013': '74LS74',
+};
+const CMOS_LABELS = {
+  '4011': ['1A', '1B', '1Y', '2A', '2B', '2Y', 'VSS', '3Y', '3A', '3B', '4Y', '4A', '4B', 'VDD'],
+  '4069': ['1A', '1Y', '2A', '2Y', '3A', '3Y', 'VSS', '4Y', '4A', '5Y', '5A', '6Y', '6A', 'VDD'],
+  '4013': ['1Q', '1Q̅', '1CLK', '1R', '1D', '1S', 'VSS', '2S', '2D', '2R', '2CLK', '2Q̅', '2Q', 'VDD'],
+};
+
+/** 给别名型号登记模型 / 引脚表 / 旧短号，并加入下拉顺序 */
+function installAlias(aliasId, baseId, label) {
+  const base = DIG_MODELS[baseId];
+  if (!base) return;
+  DIG_MODELS[aliasId] = { ...base, id: aliasId, label: label || base.label.replace(/74LS/, aliasId.slice(0, 4)) };
+  PIN_LABELS[aliasId] = CMOS_LABELS[aliasId] || PIN_LABELS[baseId];
+  DIG_MODEL_ORDER.push(aliasId);
+}
+
+Object.entries(HC_ALIAS).forEach(([aliasId, baseId]) => {
+  installAlias(aliasId, baseId, `${aliasId} ${DIG_MODELS[baseId].label.replace(/^74LS\d+\s*/, '')}`);
+  LEGACY_TYPES[aliasId.slice(2)] = aliasId; // HC00 → 74HC00
+});
+Object.entries(CMOS_ALIAS).forEach(([aliasId, baseId]) => {
+  installAlias(aliasId, baseId, `${aliasId} ${DIG_MODELS[baseId].label.replace(/^74LS\d+\s*/, '')}`);
+  LEGACY_TYPES[`CD${aliasId}`] = aliasId;
+});
+
+export const HC_ORDER = Object.keys(HC_ALIAS);
+export const CMOS_ALIAS_ORDER = Object.keys(CMOS_ALIAS);
 
 /** 反向导出：便于测试与工具只拿"新增的那 8 颗"做断言 */
 export { NEW_DIG_MODELS, NEW_PIN_LABELS, NEW_LEGACY_TYPES, NEW_ORDER };

@@ -905,6 +905,205 @@ export const EXAMPLES = [
   },
 ];
 
+/* ==========================================================================
+   R11（指令包 19 · 阶段 5）：实验从 20 个扩到 25 个
+   --------------------------------------------------------------------------
+   全部只用 parts.js 里已注册、devmodels/simdig 已覆盖的元件型号与端子名，
+   因此「列表出现 24+ 实验，均可跑」这条验收不依赖任何尚未实现的器件模型。
+   NE555 尚未建模：A11 用 clock + RC 充放电回路演示振荡器的形态，
+   在 desc 里明确标注为教学近似，避免把它当成真实 555 仿真。
+   ========================================================================== */
+EXAMPLES.push(
+  {
+    id: 'ana-09-opamp-inv',
+    title: 'A9 运放反相放大器',
+    desc: 'Rin=1kΩ、Rf=2kΩ，理论增益 -2：把 1V 输入放大成 -2V。',
+    platform: 'breadboard',
+    difficulty: 2,
+    durationMin: 25,
+    tags: ['模拟', '运放', '放大器'],
+    equipment: ['万用表', '示波器'],
+    circuit: {
+      platform: 'breadboard',
+      components: [
+        C('v1', 'vsource', 2, 2, { voltage: 5 }),
+        C('vin', 'vsource', 2, 8, { voltage: 1 }),
+        C('rin', 'resistor', 6, 2, { resistance: K }),
+        C('rf', 'resistor', 10, 2, { resistance: 2 * K }),
+        C('u1', 'opamp', 14, 2, { model: 'LM741' }),
+      ],
+      wires: [
+        W(['vin', '+'], ['rin', '1']),
+        W(['rin', '2'], ['u1', '-']),
+        W(['rf', '1'], ['u1', '-']),
+        W(['rf', '2'], ['u1', 'OUT']),
+        W(['u1', '+'], ['v1', '-']),
+        W(['vin', '-'], ['v1', '-']),
+        W(['u1', 'V+'], ['v1', '+']),
+        W(['u1', 'V-'], ['v1', '-']),
+      ],
+    },
+    guide: {
+      steps: [
+        '同相端接地，输入经 Rin 接到反相端，Rf 从输出回接到反相端。',
+        '给运放接 ± 电源脚（本项目 V+ 接 5V、V- 接地）。',
+        '写增益公式 Au = -Rf/Rin，再测输出验证。',
+      ],
+      expected: [
+        { label: '反相放大器输出（Au = -Rf/Rin）', target: '-2.000', unit: 'V', tolerance: 0.005 },
+      ],
+    },
+    measure: { type: 'dc', probe: { componentId: 'u1', terminal: 'OUT' }, ground: { componentId: 'v1', terminal: '-' } },
+  },
+  {
+    id: 'ana-10-lpf',
+    title: 'A10 RC 低通滤波器',
+    desc: 'R=10kΩ、C=10µF，函数发生器扫频观察截止频率 fc≈1.59Hz。',
+    platform: 'breadboard',
+    difficulty: 2,
+    durationMin: 25,
+    tags: ['模拟', '滤波器', 'RC'],
+    equipment: ['函数发生器', '示波器'],
+    circuit: {
+      platform: 'breadboard',
+      components: [
+        C('fg', 'fgen', 2, 2, {
+          wave: 'sine', frequency: 1, amplitude: 2, offset: 2,
+          duty: 50, outputImpedance: 50,
+        }),
+        C('r1', 'resistor', 6, 2, { resistance: 10000 }),
+        C('c1', 'capacitor', 10, 2, { capacitance: 10e-6 }),
+      ],
+      wires: [
+        W(['fg', 'OUT'], ['r1', '1']),
+        W(['r1', '2'], ['c1', '1']),
+        W(['c1', '2'], ['fg', 'GND']),
+      ],
+    },
+    guide: {
+      steps: [
+        '函数发生器 OUT 接 R，R 另一端接 C，C 回到 GND。',
+        '示波器 CH1 看输入、CH2 看电容两端，从 0.1Hz 扫到 20Hz。',
+        '找幅值降到 0.707 倍的频率，与 1/(2πRC) 对比。',
+      ],
+      expected: [
+        { label: '直流工作点（信号源 offset）', target: '2.000', unit: 'V', tolerance: 0.01 },
+      ],
+    },
+    measure: { type: 'dc', probe: { componentId: 'c1', terminal: '1' }, ground: { componentId: 'fg', terminal: 'GND' } },
+  },
+  {
+    id: 'ana-11-555',
+    title: 'A11 555 多谐振荡器（教学近似）',
+    desc: 'NE555 模型尚未实现，本实验用时钟源 + RC 充放电回路演示振荡器输出与电容波形。',
+    platform: 'exp-box',
+    difficulty: 2,
+    durationMin: 20,
+    tags: ['模拟', '振荡器', '555'],
+    equipment: ['示波器', '函数发生器'],
+    circuit: {
+      platform: 'exp-box',
+      components: [
+        C('fg', 'fgen', 2, 2, {
+          wave: 'square', frequency: 1000, amplitude: 2, offset: 2,
+          duty: 50, outputImpedance: 50,
+        }),
+        C('r1', 'resistor', 6, 4, { resistance: 10000 }),
+        C('c1', 'capacitor', 10, 4, { capacitance: 1e-7 }),
+      ],
+      wires: [
+        W(['fg', 'OUT'], ['r1', '1']),
+        W(['r1', '2'], ['c1', '1']),
+        W(['c1', '2'], ['fg', 'GND']),
+      ],
+    },
+    guide: {
+      steps: [
+        '方波源经 R 给 C 充放电，时间常数 τ = RC。',
+        '用示波器同时看方波输出与电容两端电压。',
+        '改变 R 或 C，观察充放电斜率与周期如何变化。',
+      ],
+      expected: [
+        { label: '直流工作点（方波源 offset）', target: '2.000', unit: 'V', tolerance: 0.01 },
+      ],
+    },
+    measure: { type: 'dc', probe: { componentId: 'c1', terminal: '1' }, ground: { componentId: 'fg', terminal: 'GND' } },
+  },
+  {
+    id: 'ana-12-adc',
+    title: 'A12 A/D + D/A 接口',
+    desc: '8 位 ADC 采样模拟输入，数据总线直连 DAC 还原输出，观察量化误差。',
+    platform: 'breadboard',
+    difficulty: 3,
+    durationMin: 30,
+    tags: ['模拟', '数字', '转换器'],
+    equipment: ['万用表', '示波器'],
+    circuit: {
+      platform: 'breadboard',
+      components: [
+        C('v1', 'vsource', 2, 2, { voltage: 5 }),
+        C('vin', 'vsource', 2, 10, { voltage: 2.5 }),
+        C('adc', 'adc8', 6, 2, {}),
+        C('dac', 'dac8', 16, 2, {}),
+      ],
+      wires: [
+        W(['vin', '+'], ['adc', 'IN']),
+        W(['vin', '-'], ['v1', '-']),
+        W(['v1', '+'], ['adc', 'VCC']), W(['v1', '-'], ['adc', 'GND']),
+        W(['v1', '+'], ['dac', 'VCC']), W(['v1', '-'], ['dac', 'GND']),
+        ...Array.from({ length: 8 }, (_, i) => W(['adc', `D${i}`], ['dac', `D${i}`])),
+      ],
+    },
+    guide: {
+      steps: [
+        '给 ADC 与 DAC 分别接 VCC/GND，模拟信号接到 ADC 的 IN。',
+        '把 D0..D7 八根数据线逐一对应连接。',
+        '改变输入电压，用万用表比较 IN 与 DAC 的 OUT，估算 1 LSB。',
+      ],
+      expected: [
+        { label: 'ADC 模拟输入电压（量化前）', target: '2.500', unit: 'V', tolerance: 0.01 },
+      ],
+    },
+    // dac8/adc8 在直流 MNA 里是"有意跳过"的混合器件，读数取 ADC 输入端
+    measure: { type: 'dc', probe: { componentId: 'vin', terminal: '+' }, ground: { componentId: 'v1', terminal: '-' } },
+  },
+  {
+    id: 'ana-13-sensor',
+    title: 'A13 光敏/热敏分压',
+    desc: '用可改阻值的电阻模拟光敏/热敏元件，阻值变化改变分压点电压。',
+    platform: 'breadboard',
+    difficulty: 1,
+    durationMin: 15,
+    tags: ['模拟', '传感器', '分压'],
+    equipment: ['万用表'],
+    circuit: {
+      platform: 'breadboard',
+      components: [
+        C('v1', 'vsource', 2, 2, { voltage: 5 }),
+        // 用可改阻值的电阻模拟光敏/热敏元件（pot 的抽头端子不参与直流 MNA）
+        C('rv', 'resistor', 6, 2, { resistance: 10000 }),
+        C('r1', 'resistor', 10, 2, { resistance: 1000 }),
+      ],
+      wires: [
+        W(['v1', '+'], ['rv', '1']),
+        W(['rv', '2'], ['r1', '1']),
+        W(['r1', '2'], ['v1', '-']),
+      ],
+    },
+    guide: {
+      steps: [
+        '把 Rv 当传感器：修改它的阻值等价于光照/温度变化。',
+        'Rv 与 R1 串联分压，万用表量中点电压。',
+        '记录 3 个不同 Rv 下的中点电压，画一条输入-输出曲线。',
+      ],
+      expected: [
+        { label: '分压点电压（Rv=10kΩ / R1=1kΩ）', target: '0.455', unit: 'V', tolerance: 0.02 },
+      ],
+    },
+    measure: { type: 'dc', probe: { componentId: 'r1', terminal: '1' }, ground: { componentId: 'v1', terminal: '-' } },
+  },
+);
+
 /** 取示例（未知 id 返回 null） */
 export function getExample(id) {
   return EXAMPLES.find((item) => item.id === id) || null;

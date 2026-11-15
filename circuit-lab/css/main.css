@@ -3715,7 +3715,16 @@ body[data-theme="light"] .keys-tip {
   gap: 8px 16px;
 }
 
-.filter-group { display: inline-flex; align-items: center; gap: 5px; }
+/* 组内也要能换行：窄屏（375）下单组「难度 1/2/3…」就有 500+ px，
+   只给 .filter-groups 加 flex-wrap 仍会把文档撑宽。 */
+.filter-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
+}
 .filter-group-label {
   margin-right: 2px;
   font-size: 10.5px;
@@ -3814,4 +3823,352 @@ body[data-theme="light"] .keys-tip {
   .ws-meta { margin-left: auto; }
 }
 
+/* ==========================================================================
+   阶段 4 · R9 短链 / 教师看板 + R10 统计面板
+   ========================================================================== */
+.exp-tool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.exp-tool-actions .btn { padding: 6px 10px; font-size: 12px; }
 
+.info-modal-host .modal { width: min(720px, 100%); }
+.info-modal-body { margin-top: 14px; }
+.info-modal-lead {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted, #9aa6bd);
+}
+.info-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: var(--muted, #9aa6bd);
+}
+.info-input {
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text, #e8ecf5);
+  font: inherit;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.info-result { max-height: 46vh; overflow: auto; }
+.info-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.info-table th,
+.info-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line-soft);
+  text-align: left;
+  white-space: nowrap;
+}
+.info-table th { color: var(--text-faint); font-weight: 600; }
+.info-table td:first-child { max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
+.info-table .btn { padding: 3px 8px; font-size: 11px; }
+
+@media (max-width: 767px) {
+  .exp-tool-actions { flex: 1 1 100%; margin-left: 0; }
+  .info-modal-host .modal { padding: 16px 14px 12px; }
+  .info-table { font-size: 11px; }
+  .info-table th, .info-table td { padding: 5px 4px; }
+}
+
+/* ==========================================================================
+   阶段 5 · R14 题库 / 每日一题 + R17 版本管理
+   ========================================================================== */
+.daily-question {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: -6px 0 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--line-soft);
+  border-left: 3px solid #f2a93b;
+  border-radius: var(--radius-md);
+  background: rgba(242, 169, 59, 0.055);
+  font-size: 12px;
+}
+.daily-badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(242, 169, 59, 0.16);
+  color: #f2c274;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.daily-title { font-weight: 600; color: var(--text, #e8ecf5); }
+.daily-meta { color: var(--muted, #9aa6bd); }
+.daily-question .btn { margin-left: auto; padding: 4px 10px; font-size: 11px; }
+
+.info-version-btn { margin-top: 12px; width: 100%; font-size: 12px; }
+
+.qb-search { flex: 1 1 180px; min-width: 140px; text-transform: none; letter-spacing: 0; }
+.qb-chip {
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted, #9aa6bd);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.qb-chip.is-on { border-color: #f2a93b; color: #f2c274; background: rgba(242, 169, 59, 0.1); }
+.qb-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.qb-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.qb-card {
+  padding: 9px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.qb-card:hover, .qb-card.is-active {
+  border-color: #f2a93b;
+  background: rgba(242, 169, 59, 0.07);
+}
+.qb-card-title { font-size: 12px; font-weight: 600; line-height: 1.4; }
+.qb-card-meta { margin-top: 4px; font-size: 10.5px; color: var(--muted, #9aa6bd); }
+.qb-detail {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line-soft);
+  font-size: 12px;
+}
+.qb-detail-head { display: flex; align-items: center; gap: 10px; }
+.qb-detail-title { margin: 0; font-size: 14px; }
+.qb-badge {
+  padding: 2px 7px; border-radius: 999px; font-size: 10.5px;
+  background: rgba(120, 150, 220, 0.14); color: #9ab4f5;
+}
+.qb-desc, .qb-expected, .qb-hint { margin: 8px 0 0; line-height: 1.6; }
+.qb-expected { color: #8fd5a6; }
+.qb-hint { color: var(--muted, #9aa6bd); }
+.qb-checkpoints { margin-top: 12px; }
+.qb-check-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 0; border-bottom: 1px solid var(--line-soft);
+  cursor: pointer;
+}
+.qb-check-label { flex: 1; }
+.qb-weight { color: var(--muted, #9aa6bd); font-variant-numeric: tabular-nums; }
+.qb-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.qb-actions .btn { padding: 5px 10px; font-size: 11px; }
+.qb-result { margin-top: 12px; font-size: 11.5px; line-height: 1.7; }
+.qb-score { display: block; margin-bottom: 6px; font-size: 14px; color: #f2c274; }
+.qb-score-row { color: var(--muted, #9aa6bd); }
+
+.ver-name { flex: 1 1 180px; text-transform: none; letter-spacing: 0; }
+.ver-list { max-height: 40vh; overflow: auto; }
+.ver-list .btn { padding: 2px 7px; margin-right: 4px; font-size: 10.5px; }
+.ver-result { margin-top: 12px; font-size: 11.5px; line-height: 1.7; }
+.ver-add { color: #8fd5a6; }
+.ver-del { color: #e2867d; }
+.ver-chg { color: #f2c274; }
+
+@media (max-width: 767px) {
+  .daily-question { padding: 8px 10px; }
+  .daily-question .btn { margin-left: 0; }
+  .qb-list { grid-template-columns: 1fr; }
+}
+
+
+
+/* ==========================================================================
+   阶段 6（指令包 19 · R12 / R13）：录像回放 / 成就墙 / 多皮肤 / 热力图 / 3D
+   ========================================================================== */
+
+/* ---- R13 皮肤：只覆盖 CSS 变量，几何与画布尺寸一律不动 ---- */
+html[data-skin="light"] {
+  color-scheme: light;
+  --bg: #f2f4f8;
+  --bg-deep: #e7ebf2;
+  --panel: #ffffff;
+  --panel-soft: #f6f8fb;
+  --line: #d8dfe9;
+  --line-soft: #e4e9f1;
+  --text: #1d2330;
+  --text-dim: #55607a;
+  --text-faint: #8a95a8;
+  --canvas: #fbfcfe;
+  --canvas-ink: #3f4a5f;
+  --canvas-line: #a9b8cc;
+}
+html[data-skin="neon"] {
+  --bg: #070a12;
+  --bg-deep: #04060b;
+  --panel: #0d1320;
+  --panel-soft: #111a2a;
+  --line: #1d3a4f;
+  --line-soft: #16293a;
+  --text: #d8fbff;
+  --text-dim: #7fd7ef;
+  --text-faint: #4d7f94;
+  --amber: #54f2c8;
+  --amber-soft: rgba(84, 242, 200, 0.14);
+  --canvas: #0a0f18;
+  --canvas-ink: #9fe9ff;
+  --canvas-line: #2d5f78;
+}
+html[data-skin="wood"] {
+  --bg: #241a12;
+  --bg-deep: #1a120c;
+  --panel: #2e2218;
+  --panel-soft: #362a1d;
+  --line: #4a3826;
+  --line-soft: #3d2f21;
+  --text: #f2e6d4;
+  --text-dim: #c2ab8c;
+  --text-faint: #8d785c;
+  --amber: #e0b25f;
+  --amber-soft: rgba(224, 178, 95, 0.16);
+  --canvas: #f4ecdd;
+  --canvas-ink: #5b4530;
+  --canvas-line: #a8896a;
+}
+
+/* ---- R13 3D 视图：独立画布，铺满 canvas-stack，不吃任何指针事件 ---- */
+.canvas-area--v3d {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background-color: #0b0e15;
+  background-image: none;
+}
+.v3d-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* 3D 视图是只读演示层：永远不拦画布交互 */
+  pointer-events: none;
+}
+
+/* ---- 显示选项菜单里的分组与分隔线 ---- */
+.hep-opt-sep {
+  margin: 6px 0;
+  border: 0;
+  border-top: 1px dashed rgba(120, 140, 175, 0.28);
+}
+.hep-opt--col {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  white-space: normal;
+}
+.rec-select {
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+/* ---- R12 录像面板 ---- */
+.rec-hint {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+.rec-list {
+  max-height: 220px;
+  overflow: auto;
+  padding: 6px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+}
+.rec-row {
+  display: grid;
+  grid-template-columns: 48px 64px 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 2px;
+  font-size: 11.5px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.rec-row:last-child { border-bottom: 0; }
+.rec-t { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.rec-type { color: var(--amber); }
+.rec-detail { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-empty { margin: 8px 2px; font-size: 12px; color: var(--text-faint); }
+.rec-ctl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 6px;
+}
+.rec-progress {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.rec-status { margin: 4px 0 0; font-size: 11.5px; color: var(--text-faint); }
+
+/* ---- R12 成就墙 ---- */
+.ach-head { display: grid; gap: 6px; margin-bottom: 10px; }
+.ach-points { font-size: 15px; color: var(--amber); }
+.ach-progress { font-size: 11.5px; color: var(--text-dim); }
+.ach-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  overflow: hidden;
+}
+.ach-bar-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--amber), var(--green));
+  transition: width 0.25s ease;
+}
+.ach-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.ach-card {
+  display: grid;
+  gap: 2px;
+  padding: 9px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+  opacity: 0.55;
+}
+.ach-card.is-on {
+  opacity: 1;
+  border-color: var(--amber);
+  box-shadow: 0 0 0 1px var(--amber-soft) inset;
+}
+.ach-icon { font-size: 18px; }
+.ach-title { font-size: 12.5px; color: var(--text); }
+.ach-desc { font-size: 10.5px; color: var(--text-faint); line-height: 1.4; }
+.ach-subtitle { margin: 6px 0 8px; font-size: 13px; color: var(--text); }
+.ach-table tr.is-done td { color: var(--green); }
+
+@media (max-width: 767px) {
+  .ach-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+  .rec-row { grid-template-columns: 40px 56px 1fr; }
+}

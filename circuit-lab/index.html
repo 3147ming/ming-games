@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-bundle="1">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -7,7 +7,8 @@
   <meta name="description" content="网页版数字电路与模拟电路实验模拟器：面包板搭电路、仿真、测量与实验报告。">
   <!-- 内联图标，避免浏览器额外请求 /favicon.ico 产生 404 噪音 -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e1e28'/%3E%3Crect x='10.5' y='10.5' width='11' height='11' rx='2' fill='none' stroke='%23f2a93b' stroke-width='2'/%3E%3Ccircle cx='14' cy='14' r='1.4' fill='%23f2a93b'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/main.css">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="main.css">
 </head>
 <body>
   <!-- 顶部标题栏：应用名 + 配置导入导出入口 -->
@@ -58,7 +59,27 @@
         </label>
         <div class="filter-groups" id="exp-filters"></div>
         <p class="filter-result" id="exp-filter-result" aria-live="polite"></p>
+        <!-- 阶段 4 R9/R10：短链分享、统计、教师看板。放列表页而非工作区工具栏，
+             避免再撑宽 ws-head-tools（768px 断点曾因此溢出 34px）。 -->
+        <div class="exp-tool-actions" id="exp-tool-actions">
+          <button class="btn btn-ghost" id="btn-shortlink" type="button"
+                  title="生成 6 位短码；无后端时本机可还原">短链分享</button>
+          <button class="btn btn-ghost" id="btn-stats" type="button"
+                  title="查看本机操作统计并导出 JSON">统计</button>
+          <button class="btn btn-ghost" id="btn-teacher" type="button"
+                  title="输入班级码查看学生提交">教师看板</button>
+          <!-- 阶段 5 R14 / R17 -->
+          <button class="btn btn-ghost" id="btn-question-bank" type="button"
+                  title="电路题库 / 每日一题 / 自动评分">题库</button>
+          <button class="btn btn-ghost" id="btn-versions" type="button"
+                  title="保存 / 恢复 / 对比电路版本">版本</button>
+          <!-- 阶段 6 R12：成就墙 + 本地排行榜 -->
+          <button class="btn btn-ghost" id="btn-achievements" type="button"
+                  title="成就徽章 / 本地排行榜">成就</button>
+        </div>
       </div>
+      <!-- 阶段 5 R14：每日一题（按天轮换，与 R12 成就联动） -->
+      <div class="daily-question" id="daily-question" aria-label="每日一题"></div>
       <!-- 30 秒上手（指令包 18）：首屏三步引导，不占实验列表的注意力 -->
       <ol class="onboard" id="onboard" aria-label="30 秒上手">
         <li class="onboard-item">
@@ -181,6 +202,26 @@
                     <span>教学模式（全部常驻）</span>
                   </label>
                   <p class="hep-opt-hint">默认：悬停看信息、点击展开单张；Esc 收起</p>
+                  <hr class="hep-opt-sep">
+                  <!-- 阶段 6 R13：多皮肤 / 功耗热力图 / 3D 视图（都只影响渲染层） -->
+                  <label class="hep-opt hep-opt--col">
+                    <span>外观皮肤</span>
+                    <select id="skin-select" class="rec-select" aria-label="外观皮肤">
+                      <option value="hep">HEP 实物（默认）</option>
+                      <option value="classic">通用实验箱</option>
+                      <option value="light">浅色投影</option>
+                      <option value="neon">霓虹</option>
+                      <option value="wood">木纹</option>
+                    </select>
+                  </label>
+                  <label class="hep-opt">
+                    <input type="checkbox" id="opt-heat-map">
+                    <span>功耗热力图（蓝冷红热）</span>
+                  </label>
+                  <label class="hep-opt">
+                    <input type="checkbox" id="opt-view-3d">
+                    <span>3D 视图（零依赖伪 3D）</span>
+                  </label>
                 </div>
               </div>
             </div>
@@ -194,6 +235,10 @@
             <div class="canvas-area canvas-area--schem" id="schematic-area" hidden>
               <canvas id="schematic-canvas" class="schem-canvas" aria-label="电路原理图画布"></canvas>
               <div class="canvas-status canvas-status--schem" id="schem-status" aria-live="polite"></div>
+            </div>
+            <!-- 阶段 6 R13：3D 视图（默认关闭；独立画布，不干扰主画布的像素断言） -->
+            <div class="canvas-area canvas-area--v3d" id="view3d-area" hidden>
+              <canvas id="view3d-canvas" class="v3d-canvas" aria-label="3D 电路视图"></canvas>
             </div>
             <!-- 电路体检（指令包 19 · R2）：红/黄告警 HUD 卡，由 board.js 用 DOM API 填充 -->
             <div class="diagnostics-panel" id="diagnostics-panel" aria-live="polite" hidden></div>
@@ -268,6 +313,8 @@
           <div class="report-actions" id="report-actions" hidden>
             <button class="btn btn-ghost" id="btn-report-html" type="button">导出 HTML</button>
             <button class="btn btn-ghost" id="btn-report-print" type="button">打印 / 存为 PDF</button>
+            <button class="btn btn-ghost" id="btn-submit" type="button"
+                    title="提交当前电路并生成 6 位学生码">提交实验</button>
           </div>
           <div class="report-body" id="report-body"></div>
         </div>
@@ -325,7 +372,7 @@
     <button class="keys-tip-close" type="button" id="keys-tip-close" aria-label="关闭提示">×</button>
   </div>
 
-  <script type="module" src="js/app.js"></script>
+  <script defer src="app.js"></script>
 
   <script>
     // 经典脚本兜底：file:// 下 ES 模块会被 CORS 拦截，此时给出明确指引而不是白屏
