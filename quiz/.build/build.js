@@ -1,8 +1,10 @@
-// 组装 quiz/index.html：head + 全局框架 + 引擎核心(抽取) + UI + 收尾
+// 组装 quiz/index.html：head + 全局框架 + 纯逻辑 + 题库(JSON) + 引擎核心 + UI + 收尾
 //
 // 用法：
 //   node quiz/.build/build.js            生成产物 + 同步部署包 + 重算 SW 版本
 //   node quiz/.build/build.js --check    只校验不写入：产物 / 部署包 / SW 版本是否与源片一致
+//   node quiz/.build/_pools.cjs --check  只校验题库：字段/选项/去重/标签 + core 镜像一致性
+//   node quiz/.build/_pools.cjs --sync   改完 data/pools.json 后回写 core 镜像（再构建）
 //
 // index.html 是「生成文件」，不要直接改 —— 否则下次构建会把它改回去（历史上的四组书架
 // 与 grid 修复就这样丢过一次）。改 src/head.html / src/engine_core.js / src/quiz-ui.js / src/wrongbook.js。
@@ -25,6 +27,18 @@ const CHECK = process.argv.indexOf('--check') >= 0;
 
 const head = fs.readFileSync(path.join(SRC, 'head.html'), 'utf8');           // 末尾含 <script>
 const core = fs.readFileSync(path.join(SRC, 'engine_core.js'), 'utf8');
+/* M3：题库权威数据在 data/pools.json。core 里的字面量只是「探针可离线直跑」的镜像，
+   由 _pools.cjs --sync 生成、构建前强制比对；产物里的 POOLS 一律由 JSON 序列化注入。 */
+const POOLS = require('./_pools.cjs');
+const poolsData = POOLS.load();
+const poolReport = POOLS.validate(poolsData);
+if (poolReport.errs.length) {
+  throw new Error('题库校验失败（' + poolReport.errs.length + ' 项）：\n  ' + poolReport.errs.slice(0, 10).join('\n  '));
+}
+POOLS.assertMatchesCore(core);
+const poolBlock = POOLS.coreBlock(core);
+const coreOut = core.slice(0, poolBlock.start) + POOLS.js(poolsData) + core.slice(poolBlock.end);
+console.log('题库校验通过：' + poolReport.stats.questions + ' 题由 data/pools.json 序列化注入');
 /* 错题本导出/导入的纯函数（UMD：浏览器挂 window.WrongBook，Node 里可 require 做单测）。
    内联进产物的原因：index.html 是单文件离线 PWA，多一个外部脚本就多一个缓存失败点。 */
 const logic = fs.readFileSync(path.join(SRC, 'logic.js'), 'utf8');
@@ -62,7 +76,7 @@ const IDB = [
 /* 写产物之前先跑语言标签断言：不合规直接阻断，绝不产出会让语言闸漏题的 index.html */
 require('./_guard_tags.cjs');
 
-const html = head + '\n' + FRAMEWORK + '\n' + logic + '\n;\n' + core + '\n' + IDB + '\n;\n' + wb + '\n;\n' + ui + '\n</script>\n</body>\n</html>\n';
+const html = head + '\n' + FRAMEWORK + '\n' + logic + '\n;\n' + coreOut + '\n' + IDB + '\n;\n' + wb + '\n;\n' + ui + '\n</script>\n</body>\n</html>\n';
 const buf = Buffer.from(html, 'utf8');
 const md5 = crypto.createHash('md5').update(buf).digest('hex');
 /* Service Worker 版本号由产物内容自动生成，避免手工递增漏改让用户拿到旧缓存。

@@ -8,6 +8,8 @@ function safeSet(k,v){
     return false;
   }
 }
+/* ⚠ 题库镜像：权威数据在 quiz/data/pools.json。改题请改 JSON 后跑
+   node quiz/.build/_pools.cjs --sync；直接改这里会被构建期一致性断言拦下。 */
 var POOLS={
 geo:[
   ["法国的首都是？","巴黎","geo","里昂|马赛|尼斯",{"exp":"法国首都是巴黎，跨塞纳河两岸，是政治与文化中心。","src":"世界地理常识"}],
