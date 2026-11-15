@@ -10,11 +10,12 @@
 
 import { Rng } from './rng.js';
 import {
-  WAVE_COUNT, WAVE_BOSS, WAVE_SECS, ENDLESS_WAVE_SEC, waveSec, waveWeights,
-  waveSpawnInterval, waveEndMaterials, WAVE_STATS, statById, RARITIES, rarityOf,
+  WAVE_COUNT, WAVE_BOSS, WAVE_BOSS_D5, ENDLESS_WAVE_SEC, waveSec, waveWeights,
+  waveSpawnInterval, waveEnemyCap, waveHpScale, waveDmgScale,
+  waveEndMaterials, WAVE_STATS, statById, RARITIES, rarityOf,
   rollRarity, WAVE_WEAPONS, weaponGoodById, WAVE_ITEMS, itemGoodById,
-  charById, dangerOf, SHOP_SLOTS, SHOP_REROLL_BASE, SHOP_REROLL_GROWTH,
-  SHOP_SELL_RATE, SHOP_PRICE_GROWTH, CARRY_KEEP,
+  charById, dangerOf, SHOP_SLOTS, SHOP_SELL_RATE, SHOP_WEAPON_CHANCE,
+  SHOP_GUARANTEED_WEAPONS, shopPrice, rerollPrice, eliteWavesOf, CARRY_KEEP,
 } from './wave-config.js';
 
 const rarityIndex = (key) => Math.max(0, RARITIES.findIndex((r) => r.key === key));
@@ -76,10 +77,12 @@ export class WaveDirector {
   spawnWave() {
     return { spawn: waveSpawnInterval(this.wave, this.danger), w: waveWeights(this.wave) };
   }
-  /** 按波数标定难度，避免整局 1100+ 秒把旧的时间幂曲线拉爆。 */
-  // 波数无上限（无尽模式继续爬），不按 WAVE_COUNT 夹住。
-  hpScale() { return this.danger.hpMul * (1 + (this.wave - 1) * 0.09); }
-  contactScale() { return this.danger.dmgMul * (1 + (this.wave - 1) * 0.05); }
+  /** 按波数标定难度 —— **Brotato 指数曲线**：wave1 ×1、wave20 约 ×300（HP）/ ×32（伤害）。
+   *  ★ 旧实现是线性 `1 + 0.09×(w-1)`（wave20 仅 ×2.7），而玩家武器与属性是指数成长，
+   *    后期必然碾压 —— 这就是「难度与自身强度失衡」的根因。
+   *  波数无上限（无尽继续爬），不按 WAVE_COUNT 夹住。 */
+  hpScale() { return this.danger.hpMul * waveHpScale(this.wave); }
+  contactScale() { return this.danger.dmgMul * waveDmgScale(this.wave); }
 
   /** 波内步进：由 core.stepWorld 在 waveMode 下调用（dt 为游戏时间秒）。 */
   step(dt) {
@@ -87,20 +90,31 @@ export class WaveDirector {
     this.waveElapsed += dt;
     this.timeLeft -= dt;
 
-    const bossId = WAVE_BOSS[this.wave];
-    if (bossId && !this.bossSpawnedThisWave && this.waveElapsed >= 2) {
-      this.bossSpawnedThisWave = true;
-      this.core.spawnBoss(bossId);
-      this.bossWaves.push(this.wave);
+    // Boss 波：Brotato **只有第 20 波**；Danger 5 双 Boss（各 -25% 血）。
+    if (!this.bossSpawnedThisWave && this.waveElapsed >= 3) {
+      const ids = this.wave === 20 && this.danger.level >= 5
+        ? WAVE_BOSS_D5
+        : (WAVE_BOSS[this.wave] ? [WAVE_BOSS[this.wave]] : null);
+      if (ids) {
+        this.bossSpawnedThisWave = true;
+        for (const id of ids) this.core.spawnBoss(id);
+        this.bossWaves.push(this.wave);
+      }
     }
 
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-      // 每拍批量刷：波数越高一次涌进来的越多（Brotato 的满屏感）。
-      // 上限由 ArenaCore.spawnEnemy() 门口的 MAX_ENEMIES 守卫兜住，这里不额外夹。
-      const batch = 1 + Math.floor((this.wave - 1) / 3);
-      for (let i = 0; i < batch; i++) this.core.spawnEnemy();
-      this.spawnTimer = waveSpawnInterval(this.wave, this.danger);
+      // ★ Brotato 同屏 30-60 只，到上限就停刷、等玩家清场后再补。
+      //   旧实现沿用旧模式的 MAX_ENEMIES=220 ⟹ 同屏密度是原版约 4 倍，
+      //   配合「击杀掉材料」还会同时冲垮经济。
+      const cap = waveEnemyCap(this.wave);
+      const elite = eliteWavesOf(this.danger.level).includes(this.wave);
+      // 精英/部落波：同一拍多刷一倍（引擎暂无独立精英单位，先用密度近似）。
+      const batch = (1 + Math.floor((this.wave - 1) / 4)) * (elite ? 2 : 1);
+      for (let i = 0; i < batch && this.core.enemies.length < cap; i++) {
+        this.core.spawnEnemy();
+      }
+      this.spawnTimer = waveSpawnInterval(this.wave) / (elite ? 1.5 : 1);
     }
     if (this.timeLeft <= 0) this.endWave();
   }
@@ -164,11 +178,22 @@ export class WaveDirector {
       ...WAVE_WEAPONS.filter((w) => this.char.shopFilter(w)).map((w) => ({ kind: 'weapon', good: w })),
       ...WAVE_ITEMS.map((i) => ({ kind: 'item', good: i })),
     ];
+    // Brotato 保底：前两个商店各 2 把武器，接下来三个各 1 把。
+    let forced = Math.max(0, (SHOP_GUARANTEED_WEAPONS[this.wave - 1] || 0)
+      - goods.filter((g) => g.kind === 'weapon').length);
     while (goods.length < SHOP_SLOTS && pool.length) {
-      const p = pool.splice(this.rng.int(pool.length), 1)[0];
+      // 35% 出武器 / 65% 出道具；保底名额没用完时优先武器。
+      const wantWeapon = forced > 0 || this.rng.next() < SHOP_WEAPON_CHANCE;
+      let idx = pool.findIndex((p) => p.kind === (wantWeapon ? 'weapon' : 'item'));
+      if (idx < 0) idx = this.rng.int(pool.length);
+      const p = pool.splice(idx, 1)[0];
       const key = p.kind === 'weapon' ? rollRarity(this.rng, this.wave, this.luck) : 'common';
-      const r = rarityOf(rarityIndex(key));
-      const cost = Math.max(1, Math.round(p.good.cost * r.cost * (1 + this.wave * SHOP_PRICE_GROWTH)));
+      const ri = rarityIndex(key);
+      const r = rarityOf(ri);
+      // Brotato：Tier 只抬基础价（Tier1 便宜 / Tier4 贵），通胀统一由 shopPrice 处理。
+      const base = Math.round(p.good.cost * (1 + ri * 0.45));
+      const cost = shopPrice(base, this.wave);
+      if (p.kind === 'weapon' && forced > 0) forced -= 1;
       goods.push({
         kind: p.kind, id: p.good.id, label: p.good.label, desc: p.good.desc,
         tag: p.good.tag || '', rarity: key, rarityLabel: r.label, rarityColor: r.color,
@@ -180,9 +205,8 @@ export class WaveDirector {
 
   rerollCost() {
     if (this.freeRerolls > 0) return 0;
-    return Math.max(1, Math.round(SHOP_REROLL_BASE
-      * Math.pow(SHOP_REROLL_GROWTH, this.rerollCount)
-      * this.char.rerollMul * (1 + this.wave * 0.04)));
+    // Brotato：基数 = 当前波，增量 = 次数 × floor(max(0.5×波, 1))。
+    return rerollPrice(this.wave, this.rerollCount, this.char.rerollMul);
   }
   reroll() {
     if (this.phase !== 'shop') return false;
@@ -236,8 +260,9 @@ export class WaveDirector {
     const s = this.slots[i];
     if (!s) return 0;
     const base = weaponGoodById(s.id);
-    const value = Math.max(1, Math.round((base ? base.cost : 14)
-      * rarityOf(s.rarity).cost * SHOP_SELL_RATE));
+    // 卖出价 = 当前商店口径的价格 × 60%（与买入同一套通胀公式，避免"低波买高波卖"套利）。
+    const baseCost = (base ? base.cost : 14) * (1 + (s.rarity || 0) * 0.45);
+    const value = Math.max(1, Math.round(shopPrice(Math.round(baseCost), this.wave) * SHOP_SELL_RATE));
     this.materials += value;
     this.slots.splice(i, 1);
     if (!this.slots.some((x) => x.id === s.id)) this.core.weapons[s.id] = false;
@@ -251,8 +276,12 @@ export class WaveDirector {
    *  ★ 简化模型：Brotato 是「每把武器各自的伤害」；这里统一进全局乘区，
    *    避免改动 applyHit 的伤害入口（旧模式护栏）。系数封顶 +60% 防失衡。 */
   _applyWeaponRarity() {
+    // ★ Brotato 的武器 Tier 是「直接乘伤害」：Tier1 ×1 / Tier2 ×1.5 / Tier3 ×2.2 / Tier4 ×3.2。
+    //   旧实现是 `1 + min(0.6, 稀有度和×0.05)` —— 六把传说也只有 +60%，
+    //   而敌人 HP 是指数增长 ⟹ 玩家强度永远追不上，后期必然打不动。
+    //   这里按「每把武器的稀有度加成累加」重建：6 把普通 ×2.8、6 把传说 ×8.2。
     const sum = this.slots.reduce((a, s) => a + s.rarity, 0);
-    this.core.gUpMul = 1 + Math.min(0.6, sum * 0.05);
+    this.core.gUpMul = 1 + sum * 0.30;
   }
 
   nextWave() {
@@ -288,7 +317,9 @@ export class WaveDirector {
     //   等于每颗宝石固定给 1 材料。实测一局拾取 33,579 次 ⟹ 下限就是 33,579 材料，
     //   折算率怎么调都没用（余额永远 3 万+，商店只花掉一千多）。
     //   改成浮点累加器：每次只加 `amount * rate` 的小数，攒够 1 才入账，零头保留。
-    const rate = this.wave <= 5 ? 0.12 : this.wave <= 14 ? 0.06 : 0.04;
+    // ★ Brotato 口径：材料 **1:1** 掉落（击杀数≈材料数），不再按比例折算。
+    //   之前每波收入靠"波末补贴 + 0.06 折算"硬凑，与击杀脱钩，玩家打得再好也就那么多。
+    const rate = 1;
     this.matFrac += amount * rate;
     // +1e-9：0.12 这类十进制小数在二进制里累加会出现 0.2+1.8=1.9999999999999998，
     // 直接 floor 会无缘无故少给 1 材料（测试②就抓到过）。

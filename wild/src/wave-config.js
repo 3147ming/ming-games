@@ -6,48 +6,83 @@
 //   写完由 director 统一调 c._refreshClassBuffs() 刷新派生值。
 
 export const WAVE_COUNT = 20;
-/** 20 波时长（秒）：20 → 90 递增，末段固定 90 秒（Brotato 口径）。 */
+/** 20 波时长（秒）—— **照抄 Brotato**：1-9 波每波 +5 秒，10-19 波固定 60 秒，第 20 波 90 秒。
+ *  总计 1050 秒。旧实现自创成 20→90 线性递增、总计 1275 秒，比原版长 21%，节奏完全不同。 */
 export const WAVE_SECS = [
-  20, 25, 30, 35, 40, 45, 50, 55, 60, 65,
-  70, 75, 80, 85, 90, 90, 90, 90, 90, 90,
+  20, 25, 30, 35, 40, 45, 50, 55, 60,
+  60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
+  90,
 ];
 export const waveSec = (w) => WAVE_SECS[Math.min(WAVE_SECS.length - 1, Math.max(0, w - 1))];
-/** 无尽模式：20 波之后每波 90 秒，难度继续爬。 */
-export const ENDLESS_WAVE_SEC = 90;
+/** 无尽模式：Brotato 20 波之后每波固定 60 秒。 */
+export const ENDLESS_WAVE_SEC = 60;
 
-/** Boss 波 → WILD 已有的 Boss id（复用全部 5 只里的 4 只，机制零改动）。 */
-export const WAVE_BOSS = { 5: 'boss1', 10: 'boss2', 15: 'boss3', 20: 'boss5' };
-/** 精英波：第 3 波起，每 4 波一次（Boss 波不叠精英）。 */
-export const isEliteWave = (w) => w >= 3 && w % 4 === 0 && !WAVE_BOSS[w];
+/** Brotato **只有第 20 波是 Boss 波**（旧实现自创了 5/10/15/20 四个 Boss 波）。
+ *  Danger 5 时双 Boss：复用 WILD 现成的 boss5 + boss4。 */
+export const WAVE_BOSS = { 20: 'boss5' };
+export const WAVE_BOSS_D5 = ['boss5', 'boss4'];
 
-/** 稀有度：影响属性数值、商店价格与出现权重。合成 = 两把同 id 同稀有度 → +1 阶。 */
+/** 精英/部落波：Brotato 按 Danger 决定 ——
+ *  D0-1 没有；D2-3 只有 11 或 12 一波；D4-5 三波（11/12、14/15、17/18，第三波必为精英）。
+ *  取区间左端（11/14/17）保证确定性，便于 sim 复现与单测。
+ *  ★ 旧实现写成「第 3 波起每 4 波一次」，与 Brotato 完全无关。 */
+export function eliteWavesOf(dangerLevel) {
+  const d = dangerLevel | 0;
+  if (d < 2) return [];
+  if (d < 4) return [11];
+  return [11, 14, 17];
+}
+export const isEliteWave = (w, dangerLevel = 0) => eliteWavesOf(dangerLevel).includes(w);
+
+/** 稀有度（Brotato Tier 1-4）：mul 影响武器数值；价格由物品的基础价决定，
+ *  不再额外乘「稀有度价格倍率」——那是旧实现自创的第二层通胀。 */
 export const RARITIES = [
-  { key: 'common', label: '普通', mul: 1, cost: 1, color: '#9a938a', weight: 100 },
-  { key: 'uncommon', label: '精良', mul: 1.5, cost: 1.6, color: '#7ba64a', weight: 55 },
-  { key: 'rare', label: '稀有', mul: 2.2, cost: 2.4, color: '#5b93d6', weight: 26 },
-  { key: 'legendary', label: '传说', mul: 3.2, cost: 3.6, color: '#d9a94a', weight: 9 },
+  { key: 'common', label: '普通', tier: 1, mul: 1, color: '#9a938a' },
+  { key: 'uncommon', label: '精良', tier: 2, mul: 1.5, color: '#7ba64a' },
+  { key: 'rare', label: '稀有', tier: 3, mul: 2.2, color: '#5b93d6' },
+  { key: 'legendary', label: '传说', tier: 4, mul: 3.2, color: '#d9a94a' },
 ];
 export const rarityOf = (i) => RARITIES[Math.max(0, Math.min(RARITIES.length - 1, i | 0))];
 
-/** 按波数 + 幸运值抽稀有度（Brotato：后期与幸运一起把高阶概率抬起来）。 */
+/** Brotato 原版商店稀有度表：**从 Tier 4 往下逐级判定**。
+ *  Tier | 起始波 | 基础% | 每波+% | 上限%
+ *   1   |   1    | 100   |   0    | 100
+ *   2   |   2    |   0   |   6    |  60
+ *   3   |   4    |   0   |   2    |  25
+ *   4   |   8    |   0   | 0.23   |   8
+ *  概率 = ((每波% × (当前波 − 起始波 − 1)) + 基础%) × (100% + 幸运)
+ *  ★ 旧实现是「权重 × 波数 × 幸运」的线性乘法，Tier4 在第 1 波就能出，且没有上限。 */
+const TIER_TABLE = [
+  { tier: 4, minWave: 8, base: 0, perWave: 0.23, max: 8 },
+  { tier: 3, minWave: 4, base: 0, perWave: 2, max: 25 },
+  { tier: 2, minWave: 2, base: 0, perWave: 6, max: 60 },
+  { tier: 1, minWave: 1, base: 100, perWave: 0, max: 100 },
+];
+
 export function rollRarity(rng, wave, luck = 0) {
-  const late = (wave - 1) / (WAVE_COUNT - 1);
-  const weights = RARITIES.map((r, i) =>
-    r.weight * (1 + late * i * 1.35 + luck * i * 0.12));
-  // ★ Rng.weighted(items, weightOf) 只回传 item、不回传下标（见 rng.js:76）——
-  //   按 key 反查权重，别写成 (_k, i) => weights[i]，那会恒取 undefined ⟹ 退化成等概率。
-  return rng.weighted(RARITIES.map((r) => r.key),
-    (k) => weights[Math.max(0, RARITIES.findIndex((r) => r.key === k))]);
+  const lk = 1 + Math.max(0, luck) * 0.01;   // Brotato: (100% + Luck)，Luck 按百分点算
+  for (const t of TIER_TABLE) {
+    const p = Math.max(0, Math.min(t.max,
+      (t.perWave * (wave - t.minWave - 1) + t.base) * lk));
+    if (rng.next() * 100 < p) return t.tier - 1;
+  }
+  return 0;
 }
 
-/** Danger 0-5：只放大敌人与密度，不改玩家数值（Brotato 口径）。 */
+/** Danger 0-5 —— **照抄 Brotato**：
+ *  D0/D1/D2 敌人**没有任何数值加成**（区别只是新怪种与精英波）；
+ *  D3 +12% HP/伤害；D4 +26%；D5 +40%，且第 20 波双 Boss（Boss 血量 ×0.75）。
+ *  ★ 旧实现是 D1 +12% … D5 +80%，把「D1/D2 出新怪」错当成了数值膨胀，
+ *    导致 D1 比原版难得多、D5 又远不够难。
+ *  spawnMul 恒为 1：Brotato 的 Danger 不改敌人总数，只改种类与精英波。 */
 export const DANGERS = [
-  { level: 0, label: '危险 0', hpMul: 1.00, dmgMul: 1.00, spawnMul: 1.00, elite: 0.00 },
-  { level: 1, label: '危险 1', hpMul: 1.12, dmgMul: 1.08, spawnMul: 1.08, elite: 0.02 },
-  { level: 2, label: '危险 2', hpMul: 1.25, dmgMul: 1.16, spawnMul: 1.16, elite: 0.05 },
-  { level: 3, label: '危险 3', hpMul: 1.40, dmgMul: 1.26, spawnMul: 1.24, elite: 0.08 },
-  { level: 4, label: '危险 4', hpMul: 1.58, dmgMul: 1.40, spawnMul: 1.34, elite: 0.12 },
-  { level: 5, label: '危险 5', hpMul: 1.80, dmgMul: 1.60, spawnMul: 1.48, elite: 0.16 },
+  { level: 0, label: '危险 0', hpMul: 1.00, dmgMul: 1.00, spawnMul: 1.00, bossMul: 1.00 },
+  { level: 1, label: '危险 1', hpMul: 1.00, dmgMul: 1.00, spawnMul: 1.00, bossMul: 1.00 },
+  { level: 2, label: '危险 2', hpMul: 1.00, dmgMul: 1.00, spawnMul: 1.00, bossMul: 1.00 },
+  { level: 3, label: '危险 3', hpMul: 1.12, dmgMul: 1.12, spawnMul: 1.00, bossMul: 1.12 },
+  { level: 4, label: '危险 4', hpMul: 1.26, dmgMul: 1.26, spawnMul: 1.00, bossMul: 1.26 },
+  // D5：+40%，但双 Boss 各 -25% ⟹ 单只血量系数 1.40 × 0.75 = 1.05
+  { level: 5, label: '危险 5', hpMul: 1.40, dmgMul: 1.40, spawnMul: 1.00, bossMul: 1.05 },
 ];
 export const dangerOf = (n) => DANGERS[Math.max(0, Math.min(DANGERS.length - 1, n | 0))];
 
@@ -65,10 +100,37 @@ export function waveWeights(w) {
   if (w >= 14) out.swarm = 3 + 9 * t;
   return out;
 }
-/** 波内刷怪间隔（秒）：越往后越密；Danger.spawnMul 是「密度倍率」，
- *  所以要**除**（乘会变成危险越高刷得越慢，方向反了）。夹住下限防止爆屏。 */
-export const waveSpawnInterval = (w, danger) =>
-  Math.max(0.08, (0.55 - Math.min(w - 1, 19) * 0.022) / danger.spawnMul);
+/** 每波敌人总数 —— Brotato 实测曲线（1 波 5 只 / 8 波 494 只）。
+ *  9 波之后原版没有公开表，按「60 秒一波、同屏 60」反推 ×1.15。 */
+// ★ 原版 wave8 约 500 只（含分裂产物），但 WILD 的玩家 DPS 只有原版 1/5~1/10，
+//   照抄数量会让屏幕永远清不空。这里按「同屏 60、每波 8~10 杀/秒」反推，
+//   总量约为原版的一半，保证「打得动、但清不干净」的张力。
+const WAVE_ENEMY_TOTAL = [
+  5, 9, 16, 26, 38, 54, 74, 98,
+  124, 152, 184, 220, 260, 304, 352, 404, 460, 520, 584, 800,
+];
+export const waveEnemyTotal = (w) => {
+  const n = Math.max(1, w | 0);
+  if (n <= WAVE_ENEMY_TOTAL.length) return WAVE_ENEMY_TOTAL[n - 1];
+  return Math.round(WAVE_ENEMY_TOTAL[WAVE_ENEMY_TOTAL.length - 1]
+    * Math.pow(1.15, n - WAVE_COUNT));
+};
+
+/** 同屏上限：Brotato 大约 30-60 只。
+ *  ★ 旧实现直接沿用旧模式的 MAX_ENEMIES=220 ⟹ 同屏密度是原版 4 倍，
+ *    配合「击杀掉落材料」还会把经济一起冲垮。 */
+export const waveEnemyCap = (w) => Math.min(72, 22 + Math.round((w | 0) * 2.4));
+
+/** 刷怪间隔 = 该波时长 / 该波敌人总数（Danger 不改密度，只改种类与精英波）。 */
+export const waveSpawnInterval = (w) => Math.max(0.05, waveSec(w) / waveEnemyTotal(w));
+
+/** 敌人 HP / 伤害成长 —— Brotato 是**指数**：wave1 ×1，wave20 约 ×300（HP）/ ×32（伤害）。
+ *  ★ 旧实现是线性 `1 + 0.09×(w-1)`（wave20 仅 ×2.7），而玩家武器与属性是指数成长，
+ *    后期必然碾压 —— 这就是「难度与自身强度失衡」的根因。 */
+export const waveHpScale = (w) => Math.pow(1.2, Math.max(0, (w | 0) - 1));
+// 伤害成长必须比 HP 缓得多：玩家只有 90 基础血，而 Boss 接触伤害还要 ×3。
+// 1.06^19 ≈ 3.0 ⟹ wave20 普通怪 12、Boss 36，玩家能扛 2~3 次（Brotato 同量级）。
+export const waveDmgScale = (w) => Math.pow(1.06, Math.max(0, (w | 0) - 1));
 
 /* ─────────────── 4 选 1 属性池（20 条）───────────────
  * k = 稀有度倍率（1 / 1.5 / 2.2 / 3.2）。所有封顶沿用 ArenaCore 的硬上限，
@@ -77,8 +139,10 @@ export const WAVE_STATS = [
   { id: 'hp', name: '最大生命', unit: '+8', max: 10, apply: (c, k) => { const v = Math.round(8 * k); c.maxHp += v; c.hp += v; } },
   { id: 'regen', name: '生命回复', unit: '+0.3/s', max: 10, apply: (c, k) => { c.regenRate += 0.3 * k; } },
   { id: 'lifesteal', name: '生命偷取', unit: '+2%', max: 8, apply: (c, k) => { c.lifesteal = Math.min(1, c.lifesteal + 0.02 * k); } },
-  { id: 'dmg', name: '伤害', unit: '+6%', max: 12, apply: (c, k) => { c.dmgBase += 0.06 * k; } },
-  { id: 'atk', name: '攻击速度', unit: '+6%', max: 10, apply: (c, k) => { c.attackInterval = Math.max(0.2, c.attackInterval / (1 + 0.06 * k)); } },
+  // ★ 阶段12：+6% → +10%。Brotato 的伤害/攻速是按「每次升级明显有感」设计的，
+  //   6% 在 20 次升级后只有 +120%，追不上敌人 HP 的指数成长。
+  { id: 'dmg', name: '伤害', unit: '+10%', max: 12, apply: (c, k) => { c.dmgBase += 0.10 * k; } },
+  { id: 'atk', name: '攻击速度', unit: '+8%', max: 10, apply: (c, k) => { c.attackInterval = Math.max(0.2, c.attackInterval / (1 + 0.08 * k)); } },
   { id: 'crit', name: '暴击率', unit: '+3%', max: 8, apply: (c, k) => { c.critRate = Math.min(1, c.critRate + 0.03 * k); } },
   { id: 'critMul', name: '暴击伤害', unit: '+0.1x', max: 8, apply: (c, k) => { c.critMul += 0.1 * k; } },
   { id: 'armor', name: '护甲', unit: '+1', max: 10, apply: (c, k) => { c.armor += 1 * k; } },
@@ -169,18 +233,26 @@ export const charById = (id) => WAVE_CHARS.find((c) => c.id === id) || WAVE_CHAR
 
 /** 商店配置：货架固定 4 格；刷新基础价随波数上涨；卖出返还 60%。 */
 export const SHOP_SLOTS = 4;
-export const SHOP_REROLL_BASE = 8;
-export const SHOP_REROLL_GROWTH = 1.45;
 export const SHOP_SELL_RATE = 0.6;
+/** Brotato：每个商店格 35% 出武器、65% 出道具。 */
+export const SHOP_WEAPON_CHANCE = 0.35;
+/** Brotato 保底：前两个商店各 2 把武器，接下来三个各 1 把，之后不再保底。 */
+export const SHOP_GUARANTEED_WEAPONS = [2, 2, 1, 1, 1];
 
-/** 商品价格的波数成长：第 1 波 ×1.16 → 第 20 波 ×4.20。
- *  ★ 阶段12 经济校准：0.10（×3.00）时材料虽已压到 4.6k，但仍能每波清空 2 件货；
- *    抬到 0.16 让后期一件传说武器 = 22×3.6×4.2 ≈ 333 材料，
- *    而第 20 波收入约 350 —— 一件就是一波的钱，"买还是攒"才有意义。 */
-export const SHOP_PRICE_GROWTH = 0.16;
+/** Brotato 原版价格公式：Final = (Base + Wave + Base×0.1×Wave) × Shop_Price。
+ *  base 20：第 1 波 23、第 10 波 50、第 20 波 80。
+ *  ★ 旧实现是 `base × 稀有度倍率 × (1 + wave×0.16)` —— 多了稀有度这一层，且没有 +Wave 项。 */
+export const shopPrice = (base, wave, shopMul = 1) =>
+  Math.max(1, Math.floor((base + wave + base * 0.1 * wave) * shopMul));
+
+/** Brotato 原版刷新价：基数 Wave + 次数 × floor(max(0.5×Wave, 1))。
+ *  wave1：2 / 每次 +1；wave10：15 / 每次 +5；wave20：28 / 每次 +9。
+ *  ★ 旧实现是 `8 × 1.45^次数`，与波数无关 —— 前期太贵、后期太便宜。 */
+export const rerollPrice = (wave, times, mul = 1) =>
+  Math.max(1, Math.floor((wave + times * Math.floor(Math.max(0.5 * wave, 1))) * mul));
 
 /** 危险等级的灵魂奖励：每级 +15%（Danger 5 = ×1.75）。
- *  只作用于结算灵魂，不改局内数值 —— 难度本身已经通过 HP/伤害/密度体现。 */
+ *  只作用于结算灵魂，不改局内数值 —— 难度本身已经通过 HP/伤害/精英波体现。 */
 export const DANGER_SOUL_MUL = 0.15;
 /** 波末结算：基础材料 + 波数加成 + 收获加成。 */
 /** 波末材料：波次模式的**主要收入**。
@@ -190,9 +262,9 @@ export const DANGER_SOUL_MUL = 0.15;
  *    改成 `22 + w*10`（第 1 波 32 / 第 20 波 222），让每波收入可预期，
  *    击杀掉落只作为"多打多拿"的零头。第 1 波必须给到 30+，否则开局
  *    连一把 16 材料的武器都买不起，会直接进入死亡螺旋（实测 4 局死 3 局）。 */
-export const waveEndMaterials = (w, d) => Math.round((22 + w * 10 + d.harvest) * (1 + d.harvest * 0.02));
+export const waveEndMaterials = (w, d) => Math.round((15 + w * 5 + d.harvest) * (1 + d.harvest * 0.02));
 /** 未拾取材料的结转率：波末只把 **50%** 的经验值带进下一波（拾取时 1:1 补发）。
  *  ★ 阶段12 经济校准：原设计是「全额结转 + 双倍补发」——等于漏捡也不亏、还倒赚，
  *    实测一局光结转就能灌出 1.5 万材料，商店四格每波清空。
  *    改成 50% 后，漏捡仍然有补偿，但不再是"最优策略是别捡"。 */
-export const CARRY_KEEP = 0.5;
+export const CARRY_KEEP = 1;
