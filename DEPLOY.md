@@ -55,3 +55,12 @@ dist.manifest.json / offline.manifest.json   逐文件 sha256 + 体积
 ## 三形态一致性
 
 `dist/` 与 `offline/` 的游戏逻辑 JS 由同一份 `tools/esm-to-classic.mjs` 产物生成，SHA256 必须一致；差异仅限 `file://` 所需的资源内联、fetch shim、Worker blob 与存储降级。`verify-all.mjs` 会对此做静态断言。
+
+## 线上发布目录实测（2026-11-15）
+
+`deploy.config.json` 登记的 `publishDir` 是 `dist`，但按线上响应实测，当前 Cloudflare Pages **实际以仓库根为发布目录**：
+
+- `GET /quiz/` 返回带「生成文件」注释的 500KB+ 单文件产物，即仓库 `quiz/index.html`；`dist/` 下并没有 `quiz/` 目录。
+- `GET /games/quiz/index.html` 返回的是大厅首页（SPA 回退），不是 `dist/games/quiz/index.html`；`GET /` 同样是仓库根 `index.html` 形态的大厅页（字节与本机略有差异，属提交版本差）。
+
+因此涉及 HTTP 响应头的配置要覆盖两种可能：仓库根 `_headers` 是唯一真源，`tools/build.mjs` 在 `--target=web` 时把它复制成 `dist/_headers`；`offline/` 不带。调整 Cloudflare 面板的发布目录前，先用上面两条路径复测，不要只改本仓库配置就假定生效。

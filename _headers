@@ -1,0 +1,19 @@
+# Cloudflare Pages 自定义响应头：只放宽「知识问答」的静态资源缓存。
+#
+# 主文档 quiz/index.html 必须继续用平台默认的 max-age=0, must-revalidate：
+# Service Worker 版本号由产物 md5 派生，HTML 一旦被强缓存，用户会停在旧 SW / 旧题库。
+# 图标与音频的文件名不带内容哈希，所以只给 7 天，且不加 immutable，
+# 避免以后换素材时用户长期拿到旧文件。SW 的 audioFirst / cacheFirst 仍负责回源与按版本失效。
+# 两套路径都要写：线上实测 /quiz/ 是独立站形态，dist 构建产物在 /games/quiz/。
+
+/quiz/icons/*
+  Cache-Control: public, max-age=604800
+
+/quiz/audio/*
+  Cache-Control: public, max-age=604800
+
+/games/quiz/icons/*
+  Cache-Control: public, max-age=604800
+
+/games/quiz/audio/*
+  Cache-Control: public, max-age=604800

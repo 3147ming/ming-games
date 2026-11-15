@@ -19,6 +19,7 @@ function boot() {
   const core = fs.readFileSync(path.join(DIR, '..', 'src', 'engine_core.js'), 'utf8');
   const logic = fs.readFileSync(path.join(DIR, '..', 'src', 'logic.js'), 'utf8');
   const net = fs.readFileSync(path.join(DIR, '..', 'src', 'net.js'), 'utf8');
+  const state = fs.readFileSync(path.join(DIR, '..', 'src', 'state.js'), 'utf8');
   const ui = fs.readFileSync(path.join(DIR, '..', 'src', 'quiz-ui.js'), 'utf8');
   const i0 = ui.indexOf('/*=== CODE_ENGINE_START ===*/');
   const i1 = ui.indexOf('/*=== CODE_ENGINE_END ===*/');
@@ -34,6 +35,14 @@ var score=0,total=0,ok=0,qidx=0,qlist=[],typeLabel="",typeKey="",locked=false,au
 var curDiff=-1,curDiffLabel="",netStat=null;
 var PROMO_STREAK=3,PROMO_SIZE=2,promoState='idle',promoStreak=0,promoKey='',promoRank=0,promoAsked=0,promoCorrect=0;
 var selfWindow=[];
+/* Q1 之后 state.js 会在变量未声明时补 qaSection='choice'（与真实产品 quiz-ui.js 旧默认值一致）。
+   本探针的 A 段故意只装配代码引擎区块、不带板块上下文，用来测「调用方不传 sec」的兜底路径；
+   若不显式声明空的 qaSection，genSection 会误以为在「选择题」板块，按设计排除 opts=null 的
+   补全题并跳过通用题兜底，导致「输出预测/代码补全都存在」「只勾 SQL 不空题」两条假失败。
+   真实产品里 genSection(n,diff,qaSection) 始终显式传板块，不受此默认值影响。
+   注意：QALogic.validateState 只接受 choice/code/fill，所以 A 段夹具不能调用
+   setQAState()/assertQAState()；这里只跑不涉及状态写入口的引擎纯函数。 */
+var qaSection='';
 function qaDiffs(bk){var T=QA_TYPES[bk];return (T&&T.diffs&&T.diffs.length)?T.diffs:null;}
 function qaDiffDefault(bk){return 0;}
 function getCodeProfile(){try{return JSON.parse(S.getItem('bt_qa_profile_code')||'null');}catch(e){return null;}}
@@ -42,7 +51,7 @@ var CODE_PROFILE_KEY='bt_qa_profile_code';
   const ctx = { console, JSON, Math, Date, parseInt, parseFloat, String, Number, Array, Object, RegExp, isFinite, isNaN, setTimeout, clearTimeout };
   ctx.globalThis = ctx;
   vm.createContext(ctx);
-  vm.runInContext(prelude + '\n' + logic + '\n;\n' + net + '\n;\n' + core + '\n' + block + '\n', ctx, { filename: 'engine.js' });
+  vm.runInContext(prelude + '\n' + logic + '\n;\n' + net + '\n;\n' + state + '\n;\n' + core + '\n' + block + '\n', ctx, { filename: 'engine.js' });
   return ctx;
 }
 

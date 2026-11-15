@@ -13,9 +13,10 @@ function ck(n, c, e) { (c ? pass : fail).push(n + (e ? ' :: ' + e : '')); }
 const core = fs.readFileSync(path.join(__dirname, '..', 'src', 'engine_core.js'), 'utf8');
 const logic = fs.readFileSync(path.join(__dirname, '..', 'src', 'logic.js'), 'utf8');
 const net = fs.readFileSync(path.join(__dirname, '..', 'src', 'net.js'), 'utf8');
+const state = fs.readFileSync(path.join(__dirname, '..', 'src', 'state.js'), 'utf8');
 const ctx = { console, JSON, Math, Date, parseInt, parseFloat, String, Number, Array, Object, RegExp, isFinite, isNaN };
 vm.createContext(ctx);
-vm.runInContext("var __s={};var S={getItem:function(k){return __s[k]||null},setItem:function(k,v){__s[k]=v},removeItem:function(k){delete __s[k]}};function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),t=a[i];a[i]=a[j];a[j]=t;}return a;}function ri(n){return Math.floor(Math.random()*n);}" + logic + '\n;\n' + net + '\n;\n' + core, ctx);
+vm.runInContext("var __s={};var S={getItem:function(k){return __s[k]||null},setItem:function(k,v){__s[k]=v},removeItem:function(k){delete __s[k]}};function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),t=a[i];a[i]=a[j];a[j]=t;}return a;}function ri(n){return Math.floor(Math.random()*n);}" + logic + '\n;\n' + net + '\n;\n' + state + '\n;\n' + core, ctx);
 const run = (code) => vm.runInContext(code, ctx);
 
 /* 题干 → 分类 */

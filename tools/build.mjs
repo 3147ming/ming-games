@@ -185,6 +185,14 @@ for (const target of targets) {
 
   const hubHtml = renderHubHtml({ root: ROOT, games: hubGames, meta });
   fs.writeFileSync(path.join(outDir, 'index.html'), hubHtml, 'utf8');
+  /* P2：Cloudflare Pages 的 _headers 必须在发布目录根部才生效。仓库根那份是唯一真源；
+     web 形态复制到 dist（Cloudflare 无论以仓库根还是 dist 作为 publishDir 都能生效），
+     offline 是 file:// 双击形态，不需要也不该带 HTTP 头配置。放在 manifest 之前以便纳入哈希。 */
+  if (target === 'web') {
+    const headersSrc = path.join(ROOT, '_headers');
+    if (!fs.existsSync(headersSrc)) throw new Error('[build] 缺少仓库根 _headers');
+    fs.copyFileSync(headersSrc, path.join(outDir, '_headers'));
+  }
   const manifest = writeManifest(outDir, target === 'web' ? 'dist' : 'offline', target, { built, covers });
 
   console.log(`=== ${target} 构建完成 -> ${outDir} ===`);

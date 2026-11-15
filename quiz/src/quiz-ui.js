@@ -23,9 +23,8 @@ var lastRun=null; // 记录本局参数，供「再来一局」精确重放（�
 var SECTIONS=[{k:'choice',n:'🎯 选择题',d:'四个选项，选中即答'},
               {k:'code',n:'⌨️ 程序编写',d:'读代码 / 补全 / 手写，考真本事'},
               {k:'fill',n:'✍️ 填空题',d:'不给选项，自己写答案'}];
-var qaSection='choice';
+/* Q1：qaSection / handMode 由 src/state.js 全局声明（单一状态源） */
 var lastSectionBk='';
-var handMode=false;
 /* selfWindow 与 selfRank 同层：声明在 build.js 的全局框架里（C7 探针要验证「挑战期间窗口冻结」） */
 var WIN_CAP=12,WIN_MIN=6,DN_ACC=0.4,LEVEL_COOL=2,lvlCool=0;  /* C7：UP_ACC 随窗口升档一起删除 —— 升档只走挑战机制 */
 /* ---------- C7：自动升档挑战（连续答对 3 题 → 连出 2 道「升两档题」） ----------
@@ -37,8 +36,7 @@ var reviewOne=false;                            // 薄弱题本里的「单题�
 var roundWrong=[];                              // P2-A1：本局首次结算的错题（重试答对不追加、不重复）
 var roundShortMsg='';                           // C4：本局实际题量少于所选档位时的常驻提示
 var answeredCount=0;                            // 4.0.1-2：本局「真正作答过」的题数（自动模式的结算分母）
-var customMixed=false;                          // 4.0.1-1：自定义题库本局含非选择题 → HUD 显示「混合试卷」
-var quizOver=false;                             // 本局是否已收尾（挡住答题后的延时切题把结算页顶掉）
+/* Q1：customMixed / quizOver 由 src/state.js 全局声明；写点统一走 setQAState() */
 function sectionName(k){for(var i=0;i<SECTIONS.length;i++){if(SECTIONS[i].k===k)return SECTIONS[i].n;}return '🎯 选择题';}
 function windowAcc(){var a=selfWindow,i,n=0;if(!a.length)return 0;for(i=0;i<a.length;i++){if(a[i])n++;}return n/a.length;}
 /* ---------- C7：升档挑战状态机 ----------
@@ -56,7 +54,7 @@ function promoMax(bk){var T=bk&&QA_TYPES[bk];return (T&&T.diffs)?T.diffs.length-
    与难度面板一致；levelName() 是编程那套 5 档通用名，套到数学上会驴唇不对马嘴。 */
 function rankName(bk,r){var T=bk&&QA_TYPES[bk];return (T&&T.diffs&&T.diffs[r])?T.diffs[r].n:levelName(r);}
 /* 清空挑战（换局/退出/切板块）。promoRank 保留，只清过程量。 */
-function promoReset(){promoState='idle';promoStreak=0;promoKey='';promoAsked=0;promoCorrect=0;}
+function promoReset(){setQAState({promoState:'idle'});promoStreak=0;promoKey='';promoAsked=0;promoCorrect=0;}
 /* idle 下的连对计数（边界 2）。达标即开挑战，下一题起用 promoRank 出题。 */
 function promoStreakHit(correct,bk){
   var _pk=typeKey+'|'+qaSection;
@@ -69,7 +67,7 @@ function promoStreakHit(correct,bk){
   if(!bk||!QA_TYPES[bk]||!QA_TYPES[bk].diffs)return;
   if(selfRank>=promoMax(bk)){promoStreak=0;return;}             /* 最高档不触发 */
   promoRank=Math.min(selfRank+2,promoMax(bk));
-  promoState='challenge';promoAsked=0;promoCorrect=0;promoStreak=0;
+  setQAState({promoState:'challenge'});promoAsked=0;promoCorrect=0;promoStreak=0;
   toast('🔥 升档挑战 · 连出 2 道「'+rankName(bk,promoRank)+'」题，答对 2 道升两档');
 }
 /* 挑战题作答（只在 first===true 时调用）。返回反馈条那一行文案。 */
@@ -85,7 +83,7 @@ function promoSettle(){
   var pc=promoCorrect;                                    /* 先取：下面要清零 */
   var old=selfRank,bump=(pc>=2)?2:((pc>=1)?1:0);
   var mx=promoMax(bk),neu=Math.min(old+bump,mx),delta=neu-old;
-  promoState='idle';promoStreak=0;promoAsked=0;promoCorrect=0;
+  setQAState({promoState:'idle'});promoStreak=0;promoAsked=0;promoCorrect=0;
   if(delta){selfRank=neu;setRank(bk,selfRank);}
   if(T&&T.diffs)curDiffLabel=T.diffs[selfRank].n;
   syncHudLevel();
@@ -175,7 +173,7 @@ function shelfCount(bk,cn){
   var p=custom[cn]||[];return p.length+' 题';
 }
 function renderShelf(){
-  quizOver=true;reviewMode=false;reviewOne=false;cancelPending();navReset();
+  setQAState({quizOver:true,reviewMode:false});reviewOne=false;cancelPending();navReset();
   promoReset();   /* C7：回书架 = 放弃挑战，不补发升档 */
   showView('shelf');
   clearNode(shelfEl);
@@ -413,7 +411,7 @@ function switchSection(){
   var back=(lastRun&&lastRun.d!=null)?lastRun.d:(autoMode?'auto':curDiff);
   pickSection(bk,function(k){
     if(k===qaSection)return;
-    qaSection=k;handMode=false;lastSectionBk=bk;
+    setQAState({qaSection:k,handMode:false});lastSectionBk=bk;
     doStartType(bk,null,back);
   });
 }
@@ -440,11 +438,11 @@ function setHandMode(on){
   if(on&&!_hi.ok){toast(_hi.why);return;}
   if(locked)return;
   if(typeKey!=='b:code'||qaSection!=='code'){toast('手写代码只在「⌨️ 程序编写」板块可用');return;}
-  handMode=!!on;
+  setQAState({handMode:!!on});
   if(handMode){
     var _ht=genHandTask(autoMode?autoQDiff():Math.max(0,curDiff));
     if(_ht){qlist[qidx]=_ht;}
-    else{toast('当前语言暂无手写题，已切回普通题（仅 C / C++ 与 JavaScript 有手写题）');handMode=false;qlist[qidx]=sectionGen('code',1,Math.max(0,curDiff))[0];}
+    else{toast('当前语言暂无手写题，已切回普通题（仅 C / C++ 与 JavaScript 有手写题）');setQAState({handMode:false});qlist[qidx]=sectionGen('code',1,Math.max(0,curDiff))[0];}
   }
   else{qlist[qidx]=sectionGen('code',1,Math.max(0,curDiff))[0];}
   showQuestion();
@@ -456,7 +454,7 @@ function startType(bk,cn,forceDiff){
   if(!bk&&!cn)return;
   /* 三板块：同一分类首次进入先选板块（自定义题库固定选择题，不打扰） */
   if(bk&&lastSectionBk!==bk){
-    pickSection(bk,function(k){qaSection=k;lastSectionBk=bk;startType(bk,cn,forceDiff);});
+    pickSection(bk,function(k){setQAState({qaSection:k});lastSectionBk=bk;startType(bk,cn,forceDiff);});
     return;
   }
   if(forceDiff==='auto'){doStartType(bk,cn,'auto');return;}
@@ -481,14 +479,12 @@ function makeCustomRound(tk,pairs){
 }
 function doStartType(bk,cn,d){
   var ds=bk?qaDiffs(bk):null;
-  quizOver=false;reviewMode=false;cancelPending();navPush('quiz');
-  customMixed=false;   /* 4.0.1-1：本局是否为「混合试卷」（自定义题库里含非选择题） */
-  autoMode=(d==='auto');
+  setQAState({quizOver:false,reviewMode:false,customMixed:false,autoMode:(d==='auto')});cancelPending();navPush('quiz');
   if(autoMode){selfRank=getRank(bk);curDiff=selfRank;}else{curDiff=(ds&&d>=0&&d<ds.length)?d:-1;}
   curDiffLabel=(curDiff>=0)?ds[curDiff].n:'';
   typeKey=bk?('b:'+bk):('c:'+cn);typeLabel=bk?QA_TYPES[bk].name:cn;
-  combo=0;wrongCombo=0;selfWindow=[];lvlCool=0;handMode=false;lastAuto=null;_handUsed.length=0;roundShortMsg='';
-  if(!bk)qaSection='choice';   // 自定义题库固定选择题，不弹板块面板
+  combo=0;wrongCombo=0;selfWindow=[];lvlCool=0;setQAState({handMode:false});lastAuto=null;_handUsed.length=0;roundShortMsg='';
+  if(!bk)setQAState({qaSection:'choice'});   // 自定义题库固定选择题，不弹板块面板
   if(bk){
     if(autoMode){qlist=[];total=Infinity;}
     else{var cnt=(curDiff>=0&&ds[curDiff].cnt)?ds[curDiff].cnt:10;qlist=sectionGen(bk,cnt,Math.max(0,curDiff));total=qlist.length;
@@ -508,7 +504,7 @@ function doStartType(bk,cn,d){
       var o=(_nt==='choice'&&p.opts&&p.opts.length>=2)?shuffle(p.opts.slice()):null;
       return {q:p.q,a:p.a,opts:o,custom:true,type:_nt,exp:p.exp||'',src:p.src||''};
     });total=qlist.length;
-    customMixed=qlist.some(isNonChoiceQ);
+    setQAState({customMixed:qlist.some(isNonChoiceQ)});
   }
   ok=0;qidx=0;score=0;answeredCount=0;roundWrong=[];scratchMap.clear();  /* 批次 B：开新局草稿不串题 */
   promoReset();   /* C7：开局一律回 idle（换分类/换板块/重开都走这里） */
@@ -605,10 +601,11 @@ function clearScratch() {
 document.addEventListener('keydown', function (e) { if (scratchOpen && e && e.key === 'Escape') { closeScratch(true); } });
 /* ---------- 答题页 ---------- */
 function showQuestion(){
+  assertQAState('showQuestion');
   if(quizOver)return;
   curAnsCorrect=false;   /* C1 二批：新题 = 未答对，草稿板「收起」不会误触发自动跳 */
   closeScratch();   /* 批次 B：切题前先收起并保存上一题草稿 */
-  showView('stage');clearNode(stageEl);locked=false;
+  showView('stage');clearNode(stageEl);setQAState({locked:false});
   if(qidx>=total&&!autoMode){endQuiz();return;}
   var Q;
   if(autoMode){
@@ -619,7 +616,7 @@ function showQuestion(){
       var _rec=loadRecent(_rk),_tries=0,_nq=null,_nk='';
       do{
         _nq=(typeKey==='b:code'&&qaSection==='code'&&handMode)?genHandTask(autoQDiff()):genAutoOne();
-        if(!_nq){if(handMode){toast('当前语言暂无手写题，已切回普通题（仅 C / C++ 与 JavaScript 有手写题）');handMode=false;}_nq=genAutoOne();}
+        if(!_nq){if(handMode){toast('当前语言暂无手写题，已切回普通题（仅 C / C++ 与 JavaScript 有手写题）');setQAState({handMode:false});}_nq=genAutoOne();}
         _nk=_nq.q+(_nq.code?('|'+_nq.code):'');
         _tries++;
       }while(_tries<8&&_rec.indexOf(_nk)>=0);
@@ -634,7 +631,7 @@ function showQuestion(){
     if(typeKey==='b:code'&&qaSection==='code'&&handMode&&Q&&!Q.hand){
       var _ht=genHandTask(Math.max(0,curDiff));
       if(_ht){Q=_ht;qlist[qidx]=Q;}
-      else{toast('当前语言暂无手写题，已切回普通题（仅 C / C++ 与 JavaScript 有手写题）');handMode=false;}
+      else{toast('当前语言暂无手写题，已切回普通题（仅 C / C++ 与 JavaScript 有手写题）');setQAState({handMode:false});}
     }
   }
   if(!Q){endQuiz();return;}
@@ -870,7 +867,7 @@ function appendNextChip(fb){
 function retryQuestion(){
   var _Q=qlist[qidx];if(!canRewrite(_Q))return;   /* 选项/填空永远不能重写，避免误触把非手写题重渲染 */
   cancelPending();            /* 清掉任何残留的自动跳转计时 */
-  locked=false;               /* 解锁，允许再次作答 */
+  setQAState({locked:false});   /* 解锁，允许再次作答 */
   showQuestion();             /* qidx 不动；Q 还是同一对象，settled 标记保留 */
 }
 function canRewrite(Q){return !!(Q&&Q.hand===true);}
@@ -934,10 +931,10 @@ function backOneLayer(){
   if(top==='quiz'){
     navStack.pop();
     if(autoMode){endQuiz();return;}                 /* 无限模式：返回 = 结束并结算 */
-    if(reviewMode){var _ro=reviewOne;reviewMode=false;reviewOne=false;cancelPending();navReset();renderShelf();if(_ro)openWeakBook();return;}
+    if(reviewMode){var _ro=reviewOne;setQAState({reviewMode:false});reviewOne=false;cancelPending();navReset();renderShelf();if(_ro)openWeakBook();return;}
     var bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
     if(lastRun&&lastRun.bk&&bk===lastRun.bk&&bk!=='online'){
-      quizOver=true;cancelPending();
+      setQAState({quizOver:true});cancelPending();
       renderShelf();                                  /* 先把书架铺回去，面板取消后落回书架 */
       startType(lastRun.bk,lastRun.cn,null);return;  /* 回到上次的难度面板 */
     }
@@ -979,7 +976,7 @@ function syncHudLevel(){
 }
 function markUnknown(){
   closeScratch();   /* 批次 B：作答时收起，避免遮挡反馈 */
-  if(locked)return;locked=true;
+  if(locked)return;setQAState({locked:true});
   curAnsCorrect=false;   /* C1 二批：「不会」永远不自动跳 */
   var Q=qlist[qidx];
   /* 首次作答才结算（记薄弱题 / 记自适应窗口）；重试后再按「不会」不再重复记 */
@@ -1045,7 +1042,7 @@ function maybeAdvance(correct,ms){if(correct&&quickJump())advance(ms||QUICK_JUMP
 var curAnsCorrect=false;
 function answer(correct,given,ans,btn,opt){
   closeScratch();   /* 批次 B：作答时收起，避免遮挡反馈 */
-  if(locked)return;locked=true;
+  if(locked)return;setQAState({locked:true});
   opt=opt||{};
   var _bk=(typeKey&&typeKey.indexOf('b:')===0)?typeKey.slice(2):'';
   var Q=qlist[qidx];
@@ -1180,9 +1177,9 @@ function answer(correct,given,ans,btn,opt){
 }
 
 function endQuiz(){
-  quizOver=true;
+  setQAState({quizOver:true});
   promoReset();   /* C7：结算/退出 = 放弃挑战，不补发升档 */
-  if(reviewMode){reviewMode=false;finish(score);return;}
+  if(reviewMode){setQAState({reviewMode:false});finish(score);return;}
   var key=(autoMode&&typeKey.indexOf('b:')===0)?(typeKey+':auto'):((curDiff>=0)?(typeKey+':'+curDiff):typeKey);
   if(autoMode){
     /* 4.0.1-2：无限模式没有预设题量，分母必须用「真正作答过的题数」——
@@ -1191,7 +1188,7 @@ function endQuiz(){
     lastAuto={rank:selfRank,n:answeredCount,acc:windowAcc(),win:selfWindow.length,lab:curDiffLabel};
     total=answeredCount;
   }
-  autoMode=false;saveTypeBest(key,score);finish(score);
+  setQAState({autoMode:false});saveTypeBest(key,score);finish(score);
 }
 
 /* ---------- P2-A1：本局错题回顾 ---------- */
@@ -1201,8 +1198,8 @@ function dropRoundWrong(q){
 }
 function retryRoundWrong(){
   if(!roundWrong.length){toast('✅ 本轮错题都练完了');return;}
-  reviewMode=true;reviewOne=false;autoMode=false;quizOver=false;
-  typeKey='b:round';typeLabel='重练本局错题';qaSection='choice';handMode=false;
+  setQAState({reviewMode:true,autoMode:false,quizOver:false,qaSection:'choice',handMode:false});reviewOne=false;
+  typeKey='b:round';typeLabel='重练本局错题';
   navPush('quiz');
   var gl=langGuard(roundWrong.map(function(w){
     return {q:w.q,a:w.a,opts:(w.opts&&w.opts.length)?w.opts.slice():null,
@@ -1541,7 +1538,7 @@ function srsNextDueDays(){
 function startSrs(){
   var a=loadWeak().filter(srsDue);
   if(!a.length){toast('⏰ 今天没有到期复习题：错题会按 1/2/4/7/15/30 天间隔安排复习');return;}
-  reviewMode=true;reviewOne=false;autoMode=false;quizOver=false;typeKey='b:srs';typeLabel='SRS 复习';qaSection='choice';handMode=false;
+  setQAState({reviewMode:true,autoMode:false,quizOver:false,qaSection:'choice',handMode:false});reviewOne=false;typeKey='b:srs';typeLabel='SRS 复习';
   navPush('quiz');
   qlist=weakSort(a).map(weakToQ);   /* 次数多 + 新的在前，到期题内也有轻重 */
   ok=0;qidx=0;score=0;answeredCount=0;total=qlist.length;roundWrong=[];promoReset();showQuestion();
@@ -1549,7 +1546,7 @@ function startSrs(){
 function startReview(){
   var a=loadWeak();
   if(!a.length){toast('📚 暂无薄弱题：做题时点「😵 不会」就会沉淀到这里');return;}
-  reviewMode=true;reviewOne=false;autoMode=false;quizOver=false;typeKey='b:weak';typeLabel='回顾薄弱题';qaSection='choice';handMode=false;
+  setQAState({reviewMode:true,autoMode:false,quizOver:false,qaSection:'choice',handMode:false});reviewOne=false;typeKey='b:weak';typeLabel='回顾薄弱题';
   navPush('quiz');
   qlist=weakSort(a).map(weakToQ);
   ok=0;qidx=0;score=0;answeredCount=0;total=qlist.length;roundWrong=[];promoReset();showQuestion();
@@ -1559,7 +1556,7 @@ function startReviewOne(x){
   if(!x)return;
   qlist=langGuard([weakToQ(x)]);
   if(!qlist.length){toast('这题不属于当前语言，已跳过');return;}
-  reviewMode=true;reviewOne=true;autoMode=false;quizOver=false;typeKey='b:weak';typeLabel='回顾薄弱题';qaSection='choice';handMode=false;
+  setQAState({reviewMode:true,autoMode:false,quizOver:false,qaSection:'choice',handMode:false});reviewOne=true;typeKey='b:weak';typeLabel='回顾薄弱题';
   navPush('quiz');
   ok=0;qidx=0;score=0;answeredCount=0;total=1;roundWrong=[];promoReset();showQuestion();
 }
@@ -1594,7 +1591,7 @@ function startOnline(){
   });
 }
 function beginOnline(){
-  typeKey='b:online';typeLabel=(ONLINE_SRC==='offline')?'📴 联网（离线兜底）':'🌐 联网';curDiff=-1;curDiffLabel='';qaSection='choice';handMode=false;quizOver=false;reviewMode=false;
+  typeKey='b:online';typeLabel=(ONLINE_SRC==='offline')?'📴 联网（离线兜底）':'🌐 联网';curDiff=-1;curDiffLabel='';setQAState({qaSection:'choice',handMode:false,quizOver:false,reviewMode:false});
   navPush('quiz');
   qlist=shuffle(ONLINE_BANK.slice()).slice(0,Math.min(10,ONLINE_BANK.length)).map(function(it){return {q:it.q,a:it.a,opts:it.opts,src:it.src};});
   ok=0;qidx=0;score=0;answeredCount=0;total=qlist.length;roundWrong=[];promoReset();showQuestion();
@@ -4627,7 +4624,7 @@ function init(){
     /* P0-3：线上 / 是 404（无大厅），不再跳 ../index.html。回到书架即可；
        仅在答题中途才弹「进度将丢失」确认，书架上点它只是重渲染。 */
     if(quizOver===false&&qlist&&qlist.length){if(!confirm('返回书架？当前进度将丢失。'))return;}
-    cancelPending();quizOver=true;renderShelf();
+    cancelPending();setQAState({quizOver:true});renderShelf();
   };
   $('statsBtn').onclick=function(){openStats();};
   $('musicBtn').onclick=function(){openMusic();};
