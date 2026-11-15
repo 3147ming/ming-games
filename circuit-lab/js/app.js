@@ -41,6 +41,14 @@ import {
 import { setInstrumentProvider, setInstrumentRestorer } from './model.js';
 import { getPart } from './parts.js';
 import { renderTruthTab, truthPanelState } from './truth-panel.js';
+import {
+  filterExperiments, collectTags, normalizeCriteria, defaultCriteria,
+  PLATFORM_FILTERS, DIFFICULTY_FILTERS,
+} from './list-filter.js';
+import { scheduleThumbs } from './thumb.js';
+import {
+  circuitToSvg, svgDataUrl, svgToPngDataUrl, downloadDataUrl,
+} from './circuit-export.js';
 
 /** 允许切换的视图 id 白名单 */
 const VIEW_IDS = ['view-list', 'view-workspace', 'view-report'];
@@ -75,6 +83,11 @@ let dataPanel = null;
 /** 当前平台 id（由 board 回调同步，用于切回实验台时恢复标签） */
 let currentPlatformId = 'exp-box';
 
+/** 阶段 3 R15：列表搜索 / 筛选条件（只存内存，按规格不落盘） */
+const listCriteria = defaultCriteria();
+let searchDebounce = null;
+let filterTagSignature = '';
+
 /** DOM 引用集合，只在初始化时查询一次 */
 const dom = {
   views: document.querySelectorAll('.view'),
@@ -98,6 +111,12 @@ const dom = {
   tabPanels: document.querySelectorAll('.tab-panel'),
   truthBody: document.getElementById('truth-body'),
   btnTruth: document.getElementById('btn-truth'),
+  expSearch: document.getElementById('exp-search'),
+  expFilters: document.getElementById('exp-filters'),
+  expFilterResult: document.getElementById('exp-filter-result'),
+  btnExportDiagram: document.getElementById('btn-export-diagram'),
+  exportMenu: document.getElementById('export-menu'),
+  exportWrap: document.getElementById('export-wrap'),
   expInfoBlock: document.getElementById('exp-info-block'),
   propsPanel: document.getElementById('props-panel'),
   wsPlatform: document.getElementById('ws-platform'),
@@ -151,6 +170,7 @@ function switchView(viewId, options = {}) {
     view.hidden = !isTarget;
     view.classList.toggle('is-active', isTarget);
   });
+  if (viewId !== 'view-workspace') closeExportMenu();
   syncHashForView(viewId, options.fromHash);
   return true;
 }
@@ -784,9 +804,68 @@ function renderConfigBlock(host, example) {
   host.append(scoreActions, scoreBox);
 }
 
+/* ==========================================================================
+   阶段 3 R16：电路原理图导出（SVG 矢量 / 2× PNG）
+   ========================================================================== */
+
+/** 取当前工作区电路；未进入实验或 model 不可用时返回 null */
+function currentCircuitState() {
+  const board = window.__labBoard;
+  if (!board || !board.model || typeof board.model.getState !== 'function') return null;
+  try { return board.model.getState(); } catch (_) { return null; }
+}
+
+function closeExportMenu() {
+  if (!dom.exportMenu || !dom.btnExportDiagram) return;
+  dom.exportMenu.hidden = true;
+  dom.btnExportDiagram.setAttribute('aria-expanded', 'false');
+}
+
+function toggleExportMenu() {
+  if (!dom.exportMenu || !dom.btnExportDiagram) return;
+  const opening = dom.exportMenu.hidden;
+  dom.exportMenu.hidden = !opening;
+  dom.btnExportDiagram.setAttribute('aria-expanded', opening ? 'true' : 'false');
+}
+
+/**
+ * 导出当前电路。产物同时挂到 window.__labDiagram 供验收探针读取
+ * （下载动作在无头浏览器里不好拦截，读产物对象更可靠）。
+ */
+async function exportDiagram(kind) {
+  closeExportMenu();
+  const circuit = currentCircuitState();
+  if (!circuit) {
+    showToast('请先进入实验再导出电路图', 'error');
+    return;
+  }
+  const built = circuitToSvg(circuit);
+  const svgUrl = svgDataUrl(built.svg);
+  const base = String(currentExperimentId || 'circuit').replace(/[^a-zA-Z0-9_-]/g, '-');
+  const record = {
+    kind, svg: built.svg, width: built.width, height: built.height,
+    svgUrl, pngUrl: null,
+  };
+  window.__labDiagram = record;
+
+  if (kind === 'png') {
+    try {
+      record.pngUrl = await svgToPngDataUrl(built.svg, 2);
+      downloadDataUrl(record.pngUrl, `${base}@2x.png`);
+      showToast(`已导出 2× PNG 原理图（${built.width * 2}×${built.height * 2}）`, 'success');
+    } catch (err) {
+      showToast(`PNG 导出失败：${err.message}`, 'error');
+    }
+    return;
+  }
+  downloadDataUrl(svgUrl, `${base}.svg`);
+  showToast('已导出 SVG 矢量原理图', 'success');
+}
+
 /**
  * 生成实验报告：先切到报告视图，把"截图 + 波形 + 数据 + 评分"渲染进页面，
  * 同时保留「导出 HTML」单文件下载（数据冻结在点击这一刻）。
+ * 阶段 3 R16：电路图从 2.5D 画布截图换成干净的原理图 SVG 矢量图。
  */
 function generateExampleReport(example, observations) {
   const board = window.__labBoard;
@@ -797,7 +876,12 @@ function generateExampleReport(example, observations) {
     return;
   }
   const circuitCanvas = document.getElementById('breadboard-canvas');
-  const screenshot = circuitCanvas ? circuitCanvas.toDataURL('image/png') : '';
+  const circuitState = currentCircuitState();
+  const diagram = circuitState ? circuitToSvg(circuitState) : null;
+  // R16：报告里的电路图改为原理图 SVG（矢量、可缩放）；内核不可用时才退回画布截图
+  const screenshot = diagram
+    ? svgDataUrl(diagram.svg)
+    : (circuitCanvas ? circuitCanvas.toDataURL('image/png') : '');
   // 波形截图：抓示波器画布（若有），否则取暂态波形查看器画布
   let waveform = '';
   const scopeCanvas = document.querySelector('#instrument-panel .inst-scope-canvas')
@@ -810,6 +894,8 @@ function generateExampleReport(example, observations) {
     time: new Date().toLocaleString('zh-CN'),
     screenshot,
     waveform,
+    diagramKind: diagram ? 'svg' : 'canvas',
+    circuitSvg: diagram ? diagram.svg : '',
     circuit: circuitSummary(board.model),
     items: measured.items,
     observations: observations || '',
@@ -832,11 +918,14 @@ function renderReportView(snapshot, html, pass, total) {
   if (dom.reportMeta) dom.reportMeta.textContent = `${snapshot.time} · ${pass}/${total} 项符合预期`;
   if (dom.reportActions) dom.reportActions.hidden = false;
 
-  // 电路截图
+  // 电路图：R16 起为 SVG 矢量原理图，旧快照仍可能是画布截图
   if (snapshot.screenshot) {
+    const isSvg = snapshot.diagramKind === 'svg';
     const img = document.createElement('img');
-    img.className = 'report-shot';
+    img.className = isSvg ? 'report-shot report-shot--svg' : 'report-shot';
+    // alt 保持「电路截图」：既有 R1 回归断言依赖它；SVG 与否用 data-diagram 区分
     img.alt = '电路截图';
+    img.dataset.diagram = isSvg ? 'svg' : 'canvas';
     img.src = snapshot.screenshot;
     host.append(img);
   }
@@ -1052,28 +1141,106 @@ function destroyWaveView() {
    实验列表
    ========================================================================== */
 
+/**
+ * 阶段 3 R15：筛选 chips。标签聚合只在标签集合变化时重建 DOM，
+ * 其余情况只同步 active 态，避免输入搜索词时反复重建按钮丢焦点。
+ */
+function syncChipActive() {
+  if (!dom.expFilters) return;
+  const c = normalizeCriteria(listCriteria);
+  dom.expFilters.querySelectorAll('.filter-chip').forEach((chip) => {
+    const key = chip.dataset.filterKey;
+    const value = chip.dataset.filterValue;
+    let active = false;
+    if (key === 'platform') active = c.platform === value;
+    else if (key === 'difficulty') active = Number(c.difficulty) === Number(value);
+    else if (key === 'tag') active = c.tag === value;
+    chip.classList.toggle('is-active', active);
+    chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
+
+function renderFilterChips(list) {
+  if (!dom.expFilters) return;
+  const tags = collectTags(list);
+  const signature = tags.join('|');
+  if (signature === filterTagSignature) {
+    syncChipActive();
+    return;
+  }
+  filterTagSignature = signature;
+  dom.expFilters.replaceChildren();
+
+  const groups = [
+    {
+      key: 'platform', label: '平台',
+      items: PLATFORM_FILTERS.map((item) => ({ value: item.value, label: item.label })),
+    },
+    {
+      key: 'difficulty', label: '难度',
+      items: DIFFICULTY_FILTERS.map((item) => ({ value: item.value, label: item.label })),
+    },
+    {
+      key: 'tag', label: '标签',
+      items: [{ value: 'all', label: '全部' }].concat(tags.map((tag) => ({ value: tag, label: tag }))),
+    },
+  ];
+
+  groups.forEach((group) => {
+    const wrap = document.createElement('span');
+    wrap.className = 'filter-group';
+    const label = document.createElement('span');
+    label.className = 'filter-group-label';
+    label.textContent = group.label;
+    wrap.append(label);
+    group.items.forEach((item) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'filter-chip';
+      chip.dataset.filterKey = group.key;
+      chip.dataset.filterValue = String(item.value);
+      chip.textContent = item.label;
+      chip.setAttribute('aria-pressed', 'false');
+      wrap.append(chip);
+    });
+    dom.expFilters.append(wrap);
+  });
+  syncChipActive();
+}
+
 /** 渲染实验清单（整表重建，数据量小，逻辑最直观） */
 function renderList() {
   const list = getExperiments();
   const progress = getProgress();
+  const visible = filterExperiments(list, listCriteria);
 
   dom.grid.replaceChildren();
+  renderFilterChips(list);
 
   if (list.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty';
     empty.textContent = '暂无实验，可通过"导入实验配置"添加。';
     dom.grid.append(empty);
-    dom.listCount.textContent = '共 0 个实验';
-    return;
+  } else if (visible.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = '没有匹配的实验，试试调整筛选条件';
+    dom.grid.append(empty);
+  } else {
+    visible.forEach((exp) => {
+      const index = list.findIndex((item) => item.id === exp.id);
+      dom.grid.append(createExperimentCard(exp, progress[exp.id], index < 0 ? 0 : index));
+    });
   }
-
-  list.forEach((exp, index) => {
-    dom.grid.append(createExperimentCard(exp, progress[exp.id], index));
-  });
 
   const openedCount = list.filter((exp) => progress[exp.id]).length;
   dom.listCount.textContent = `共 ${list.length} 个实验 · 已打开 ${openedCount} 个`;
+  if (dom.expFilterResult) {
+    dom.expFilterResult.textContent = `显示 ${visible.length}/${list.length} 个`;
+  }
+  // 缩略图逐张在空闲时生成，不阻塞列表首帧
+  scheduleThumbs(dom.grid, (id) => getExperimentById(id));
 }
 
 /** 平台徽标：实验箱 / 面包板；platform 为 null 时调用方不渲染 */
@@ -1172,7 +1339,16 @@ function createExperimentCard(exp, record, index) {
     tagList.append(createEquipmentSummary(exp.equipment));
   }
 
-  card.append(top, meta, descEl, tagList);
+  // 阶段 3 R15：原理图风格缩略图（异步生成，见 thumb.js）
+  const thumb = document.createElement('span');
+  thumb.className = 'exp-thumb';
+  const thumbCanvas = document.createElement('canvas');
+  thumbCanvas.className = 'thumb-canvas';
+  thumbCanvas.dataset.thumbExp = exp.id;
+  thumbCanvas.setAttribute('aria-hidden', 'true');
+  thumb.append(thumbCanvas);
+
+  card.append(thumb, top, meta, descEl, tagList);
 
   // "已打开"角标：依据进度记录（同时给标题行留出避让空间）
   if (record) {
@@ -1818,6 +1994,48 @@ function bindEvents() {
   if (dom.btnShare) dom.btnShare.addEventListener('click', shareCurrentCircuit);
   if (dom.btnTruth) dom.btnTruth.addEventListener('click', () => activateTab('truth'));
   dom.fileInput.addEventListener('change', handleFileChange);
+
+  // 阶段 3 R15：搜索 debounce 200ms + chips 事件委托
+  if (dom.expSearch) {
+    dom.expSearch.addEventListener('input', (event) => {
+      const value = event.target.value;
+      if (searchDebounce) clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        listCriteria.query = value;
+        renderList();
+      }, 200);
+    });
+  }
+  if (dom.expFilters) {
+    dom.expFilters.addEventListener('click', (event) => {
+      const chip = event.target.closest('.filter-chip');
+      if (!chip) return;
+      const key = chip.dataset.filterKey;
+      const value = chip.dataset.filterValue;
+      if (key === 'platform') listCriteria.platform = value;
+      else if (key === 'difficulty') listCriteria.difficulty = Number(value);
+      else if (key === 'tag') listCriteria.tag = value;
+      renderList();
+    });
+  }
+
+  // 阶段 3 R16：导出菜单（按钮 / 菜单项 / 点击外部收起）
+  if (dom.btnExportDiagram) {
+    dom.btnExportDiagram.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleExportMenu();
+    });
+  }
+  if (dom.exportMenu) {
+    dom.exportMenu.addEventListener('click', (event) => {
+      const item = event.target.closest('[data-export]');
+      if (!item) return;
+      exportDiagram(item.dataset.export);
+    });
+  }
+  document.addEventListener('click', (event) => {
+    if (dom.exportWrap && !dom.exportWrap.contains(event.target)) closeExportMenu();
+  });
 
   dom.btnBack.addEventListener('click', leaveWorkspace);
   dom.btnBackReport.addEventListener('click', leaveWorkspace);

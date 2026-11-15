@@ -22,6 +22,9 @@ export function buildReportHtml(snapshot = {}) {
   const screenshot = typeof snapshot.screenshot === 'string' && snapshot.screenshot.startsWith('data:image')
     ? snapshot.screenshot
     : '';
+  // 阶段 3 R16：报告电路图从 2.5D 画布截图换成 SVG 矢量原理图
+  const isSvg = snapshot.diagramKind === 'svg'
+    || (typeof snapshot.screenshot === 'string' && snapshot.screenshot.startsWith('data:image/svg+xml'));
 
   const rows = items.map((item) => {
     const measured = typeof item.measured === 'number'
@@ -81,8 +84,11 @@ export function buildReportHtml(snapshot = {}) {
   <h1>${title}</h1>
   <p class="meta">生成时间：${time} · 平台：${escapeHtml(summary.platform || '—')} · 元件 ${summary.components.length} 个 · 导线 ${summary.wireCount} 根 · 网络 ${summary.netCount} 个</p>
 
-  <h2>一、电路</h2>
-  ${screenshot ? `<img class="shot" src="${screenshot}" alt="电路截图">` : '<p class="meta">（无截图）</p>'}
+  <h2>一、电路${isSvg ? '原理图' : ''}</h2>
+  ${screenshot
+    ? `<img class="shot${isSvg ? ' shot-svg' : ''}" src="${screenshot}" alt="电路截图" data-diagram="${isSvg ? 'svg' : 'canvas'}">`
+    : '<p class="meta">（无截图）</p>'}
+  ${isSvg ? '<p class="note">电路图为原理图风格矢量图（SVG），可任意缩放且不含投影、阴影与网格。</p>' : ''}
   <ul>${summary.components.map((c) => `<li>${escapeHtml(c)}</li>`).join('')}</ul>
 
   <h2>二、测量数据与预期对比</h2>

@@ -1,21 +1,17 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<link rel="stylesheet" href="shared/tokens.css">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>电路实验模拟器</title>
   <meta name="description" content="网页版数字电路与模拟电路实验模拟器：面包板搭电路、仿真、测量与实验报告。">
-    <meta name="theme-color" content="#0d1117">
   <!-- 内联图标，避免浏览器额外请求 /favicon.ico 产生 404 噪音 -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e1e28'/%3E%3Crect x='10.5' y='10.5' width='11' height='11' rx='2' fill='none' stroke='%23f2a93b' stroke-width='2'/%3E%3Ccircle cx='14' cy='14' r='1.4' fill='%23f2a93b'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="css/main.css">
-<link rel="manifest" href="manifest.json">
 </head>
 <body>
   <!-- 顶部标题栏：应用名 + 配置导入导出入口 -->
-  <header class="topbar" role="banner">
-<link rel="stylesheet" href="shared/tokens.css">
+  <header class="topbar">
     <div class="brand">
       <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
         <rect x="9" y="9" width="14" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
@@ -35,15 +31,15 @@
               aria-pressed="false" title="切换浅色投影模式 / 深色工作模式">浅色</button>
       <button class="btn btn-ghost" id="btn-keys" type="button"
               aria-haspopup="dialog" title="快捷键一览 ( F1 / ? )">快捷键</button>
-      <button aria-label="导入" class="btn btn-ghost" id="btn-import" type="button">导入实验配置</button>
-      <button aria-label="导出" class="btn btn-primary" id="btn-export" type="button">导出配置模板</button>
+      <button class="btn btn-ghost" id="btn-import" type="button">导入实验配置</button>
+      <button class="btn btn-primary" id="btn-export" type="button">导出配置模板</button>
       <button class="btn btn-ghost" id="btn-share" type="button" title="生成当前电路的分享链接">分享电路</button>
       <!-- 隐藏的文件选择器，由"导入实验配置"按钮触发 -->
-      <input type="file" id="file-input" accept=".json,application/json" hidden />
+      <input type="file" id="file-input" accept=".json,application/json" hidden>
     </div>
   </header>
 
-  <main class="app-main" role="main">
+  <main class="app-main">
     <!-- 视图 A：实验列表（默认显示） -->
     <section class="view is-active" id="view-list" aria-labelledby="list-heading">
       <div class="view-head">
@@ -52,6 +48,16 @@
           <h2 class="view-title" id="list-heading">实验列表</h2>
         </div>
         <p class="view-note" id="list-count">—</p>
+      </div>
+      <!-- 阶段 3 R15：搜索 + 组合筛选（条件只存内存，不落盘） -->
+      <div class="exp-toolbar" id="exp-toolbar" aria-label="实验搜索与筛选">
+        <label class="exp-search-wrap">
+          <span class="exp-search-label">搜索</span>
+          <input class="exp-search" id="exp-search" type="search" autocomplete="off"
+                 placeholder="搜索标题 / 描述 / 标签" aria-label="搜索实验">
+        </label>
+        <div class="filter-groups" id="exp-filters"></div>
+        <p class="filter-result" id="exp-filter-result" aria-live="polite"></p>
       </div>
       <!-- 30 秒上手（指令包 18）：首屏三步引导，不占实验列表的注意力 -->
       <ol class="onboard" id="onboard" aria-label="30 秒上手">
@@ -85,7 +91,7 @@
     <!-- 视图 B：实验工作区（三栏：元件库 / 2.5D 画布 / 信息面板） -->
     <section class="view view-workspace" id="view-workspace" aria-labelledby="workspace-title" hidden>
       <div class="ws-head">
-        <button aria-label="返回" class="btn btn-quiet btn-back" id="btn-back" type="button">← 实验列表</button>
+        <button class="btn btn-quiet btn-back" id="btn-back" type="button">← 实验列表</button>
         <div class="ws-head-main">
           <p class="eyebrow">WORKBENCH</p>
           <h2 class="view-title" id="workspace-title">未选择实验</h2>
@@ -103,6 +109,16 @@
           <!-- 阶段 2 R5：与右栏「真值表」tab 同一个入口，窄屏隐藏避免工具栏溢出 -->
           <button class="btn btn-ghost btn-truth" id="btn-truth" type="button"
                   title="打开真值表 / 卡诺图">真值表</button>
+          <!-- 阶段 3 R16：导出干净的原理图（矢量 SVG / 2x PNG） -->
+          <div class="export-wrap" id="export-wrap">
+            <button class="btn btn-ghost" id="btn-export-diagram" type="button"
+                    aria-haspopup="true" aria-expanded="false" aria-controls="export-menu"
+                    title="导出当前电路的原理图">导出电路图 ▾</button>
+            <div class="export-menu" id="export-menu" role="menu" hidden>
+              <button class="export-menu-item" type="button" role="menuitem" data-export="svg">SVG 矢量图<span>可无损缩放</span></button>
+              <button class="export-menu-item" type="button" role="menuitem" data-export="png">PNG 位图<span>2× 分辨率</span></button>
+            </div>
+          </div>
           <p class="ws-meta" id="workspace-meta"></p>
         </div>
       </div>
@@ -116,7 +132,7 @@
           </div>
           <div class="panel-body panel-fill panel-palette" id="parts-palette"></div>
           <div class="panel-foot">
-            <p aria-live="polite" class="foot-hint">拖拽到画布，或点选后在画布上落点</p>
+            <p class="foot-hint">拖拽到画布，或点选后在画布上落点</p>
           </div>
         </aside>
 
@@ -157,14 +173,14 @@
                         title="显示选项：机箱丝印 / 教学模式">显示</button>
                 <div class="hep-display-menu" id="hep-display-menu" hidden>
                   <label class="hep-opt">
-                    <input type="checkbox" id="hep-opt-silk" checked aria-label="丝绸材质" />
-                    <span autocomplete="off">机箱丝印</span>
+                    <input type="checkbox" id="hep-opt-silk" checked>
+                    <span>机箱丝印</span>
                   </label>
                   <label class="hep-opt">
-                    <input type="checkbox" id="hep-opt-teach" aria-label="教学模式" />
-                    <span autocomplete="off">教学模式（全部常驻）</span>
+                    <input type="checkbox" id="hep-opt-teach">
+                    <span>教学模式（全部常驻）</span>
                   </label>
-                  <p aria-live="polite" class="hep-opt-hint">默认：悬停看信息、点击展开单张；Esc 收起</p>
+                  <p class="hep-opt-hint">默认：悬停看信息、点击展开单张；Esc 收起</p>
                 </div>
               </div>
             </div>
@@ -172,7 +188,7 @@
           <div class="canvas-stack">
             <div class="canvas-area" id="canvas-area">
               <canvas id="breadboard-canvas" class="bench-canvas" aria-label="2.5D 电路实验台画布"></canvas>
-              <p aria-live="polite" class="canvas-hint" id="canvas-hint" hidden></p>
+              <p class="canvas-hint" id="canvas-hint" hidden></p>
               <div class="canvas-status" id="canvas-status" aria-live="polite"></div>
             </div>
             <div class="canvas-area canvas-area--schem" id="schematic-area" hidden>
@@ -299,14 +315,14 @@
         <div class="keys-row"><dt><kbd>Esc</kbd></dt><dd>取消连线 / 退出连续放置 / 退出导线工具 / 收起面板 / 清选中</dd></div>
         <div class="keys-row"><dt><kbd>F1</kbd></dt><dd>打开这个面板（<kbd>?</kbd> 同效）</dd></div>
       </dl>
-      <p aria-live="polite" class="keys-hint">滚轮 / 双指捏合可连续缩放；「水平」按钮把面板切成水平正视，再点「旋转」可整页转 90°。</p>
+      <p class="keys-hint">滚轮 / 双指捏合可连续缩放；「水平」按钮把面板切成水平正视，再点「旋转」可整页转 90°。</p>
     </div>
   </div>
 
   <!-- 首次进入的快捷键角标：显示 3 次后不再出现（localStorage 计数） -->
-  <div aria-live="polite" class="keys-tip" id="keys-tip" hidden>
+  <div class="keys-tip" id="keys-tip" hidden>
     <span>按 <kbd>F1</kbd> 看快捷键</span>
-    <button class="keys-tip-close" type="button" id="keys-tip-close" aria-label="关闭提示" aria-live="polite">×</button>
+    <button class="keys-tip-close" type="button" id="keys-tip-close" aria-label="关闭提示">×</button>
   </div>
 
   <script type="module" src="js/app.js"></script>
@@ -333,50 +349,6 @@
         document.body.appendChild(box);
       }, 500);
     });
-  
-// 页面可见性变化时暂停/恢复游戏循环（避免后台继续消耗资源）
-document.addEventListener('visibilitychange', function() {
-  if (document.hidden) {
-    // 暂停逻辑：停止 requestAnimationFrame / setInterval
-    if (typeof pauseGame === 'function') pauseGame();
-  } else {
-    // 恢复逻辑：重新开始游戏循环
-    if (typeof resumeGame === 'function') resumeGame();
-  }
-});
-
-
-// 页面卸载时清理游戏循环（避免后台继续消耗资源）
-window.addEventListener('pagehide', function() {
-  try {
-    if (typeof cancelAnimationFrame === 'function' && window.__mgRAF) cancelAnimationFrame(window.__mgRAF);
-  } catch(e) {}
-  try {
-    if (typeof clearInterval === 'function' && window.__mgIntervals) {
-      for (var i = 0; i < window.__mgIntervals.length; i++) clearInterval(window.__mgIntervals[i]);
-      window.__mgIntervals = [];
-    }
-  } catch(e) {}
-});
-
-
-// 全局错误捕获（非破坏性：只记录，不阻断游戏）
-window.addEventListener('error', function(e) {
-  try { console.error('[Game Error]', e.message, e.filename, e.lineno); } catch(err) {}
-});
-window.addEventListener('unhandledrejection', function(e) {
-  try { console.error('[Unhandled Rejection]', e.reason); } catch(err) {}
-});
-
-</script>
-
-<!-- PWA：Service Worker（离线可用 / 可安装到主屏） -->
-<script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function () {
-    navigator.serviceWorker.register('sw.js').catch(function () { /* 离线能力不可用不影响游戏 */ });
-  });
-}
-</script>
+  </script>
 </body>
 </html>

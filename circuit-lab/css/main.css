@@ -3665,14 +3665,153 @@ body[data-theme="light"] .keys-tip {
 .inst-la-timing { height: 160px; }
 .inst-la-sm-canvas { height: 180px; margin-bottom: 4px; }
 
-
-
-body{overscroll-behavior:none;-webkit-tap-highlight-color:transparent;}
-
-/* 触屏设备最小点击区域（无障碍 WCAG 2.5.5） */
-@media (pointer: coarse) {
-  button, [role="button"], a[href], input[type="submit"], input[type="button"] {
-    min-height: 44px;
-    min-width: 44px;
-  }
+/* ==========================================================================
+   阶段 3 R15：实验卡片缩略图 / 搜索 / 组合筛选
+   ========================================================================== */
+.exp-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: -4px 0 18px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.018);
 }
+
+.exp-search-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 240px;
+}
+
+.exp-search-label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.exp-search {
+  flex: 1;
+  min-width: 120px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-deep);
+  color: var(--text);
+  font: 12.5px/1.4 var(--font-ui);
+  outline: none;
+}
+.exp-search::placeholder { color: var(--text-faint); }
+.exp-search:focus { border-color: var(--amber); box-shadow: 0 0 0 2px var(--amber-soft); }
+
+.filter-groups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.filter-group { display: inline-flex; align-items: center; gap: 5px; }
+.filter-group-label {
+  margin-right: 2px;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.filter-chip {
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font: 11px/1.5 var(--font-ui);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.filter-chip:hover { color: var(--text); border-color: var(--amber); }
+.filter-chip:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.filter-chip.is-active {
+  border-color: var(--amber);
+  background: var(--amber);
+  color: var(--amber-ink);
+  font-weight: 600;
+}
+
+.filter-result {
+  margin: 0 0 0 auto;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.exp-thumb {
+  display: block;
+  width: 100%;
+  margin: 0 0 2px;
+}
+.thumb-canvas {
+  display: block;
+  width: 100%;
+  height: 104px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #fff;
+}
+
+/* R16：工具栏导出菜单。非常驻画布覆盖层，展开期间才出现，选完立即收起 */
+.export-wrap { position: relative; display: inline-flex; }
+.export-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  min-width: 178px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+}
+.export-menu[hidden] { display: none; }
+.export-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: 12.5px/1.4 var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.export-menu-item span { color: var(--text-faint); font-size: 10.5px; }
+.export-menu-item:hover { background: var(--amber-soft); }
+.export-menu-item:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+
+@media (max-width: 767px) {
+  .exp-toolbar { padding: 9px 10px; gap: 8px 10px; }
+  .exp-search-wrap { flex: 1 1 100%; }
+  .filter-result { margin-left: 0; }
+  .filter-groups { gap: 6px 10px; }
+  .thumb-canvas { height: 92px; }
+}
+
+/* 阶段 3：新增「导出电路图」按钮后，768~900 之间的工作区工具栏
+   内容宽约 698px，会把文档撑到 787px（clientWidth 753），必须允许换行。
+   767 以下已有更完整的 wrap 规则，这里只补中等宽度这一段。 */
+@media (min-width: 768px) and (max-width: 900px) {
+  .ws-head { flex-wrap: wrap; }
+  .ws-head-tools { flex-wrap: wrap; width: 100%; justify-content: flex-start; }
+  .ws-meta { margin-left: auto; }
+}
+
+
