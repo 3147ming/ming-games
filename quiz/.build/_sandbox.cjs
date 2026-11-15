@@ -59,6 +59,7 @@ const FRAMEWORK = [
   'function qaDiffDefault(bk){var ds=qaDiffs(bk);if(!ds)return -1;var sv=parseInt(S.getItem("bd_qa_diff_"+bk),10);return (sv>=0&&sv<ds.length)?sv:0;}',
 ].join('\n');
 
+const logic = fs.readFileSync(DIR + '/../src/logic.js', 'utf8');
 const core = fs.readFileSync(DIR + '/../src/engine_core.js', 'utf8');
 let ui = fs.readFileSync(DIR + '/../src/quiz-ui.js', 'utf8');
 const iEnd = ui.lastIndexOf('})();');
@@ -98,6 +99,6 @@ const ctx = {
 };
 ctx.globalThis = ctx;
 vm.createContext(ctx);
-vm.runInContext(FRAMEWORK + '\n' + core + '\n' + ui, ctx, { filename: 'bundle.js' });
+vm.runInContext(FRAMEWORK + '\n' + logic + '\n' + core + '\n' + ui, ctx, { filename: 'bundle.js' });
 
 module.exports = { ctx, E: ctx.__exp, store, document, fakeEl };

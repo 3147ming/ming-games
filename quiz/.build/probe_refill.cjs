@@ -20,11 +20,12 @@ function slice(src, from, to) {
 }
 const _core = fs.readFileSync(path.join(__dirname, '..', 'src', 'engine_core.js'), 'utf8');
 const _ui = fs.readFileSync(path.join(__dirname, '..', 'src', 'quiz-ui.js'), 'utf8');
-const P = new Function(
+const QALogic = require('../src/logic.js');
+const P = new Function('QALogic', 
   slice(_core, 'function validItem(it){', 'function genMathPrimary(') + '\n' +
   slice(_ui, '/* ---------- 4.0 自定义题库生成质量', '/* ---------- AI 出题 prompt') + '\n' +
   slice(_ui, '/* 4.0.1-4 +B：静默补题', 'function autoRefill(cn){') +
-  '\nreturn {refillOk:refillOk,examLike:examLike};')();
+  '\nreturn {refillOk:refillOk,examLike:examLike};')(QALogic);
 
 const CH = over => Object.assign({ q: '题干', a: '甲', opts: ['甲', '乙', '丙', '丁'] }, over);
 const PH = '（AI 生成，暂无解析）';

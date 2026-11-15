@@ -16,6 +16,7 @@ function ck(n, c, e) { (c ? pass : fail).push(n + (e ? ' :: ' + e : '')); }
 
 function boot() {
   const core = fs.readFileSync(path.join(DIR, '..', 'src', 'engine_core.js'), 'utf8');
+  const logic = fs.readFileSync(path.join(DIR, '..', 'src', 'logic.js'), 'utf8');
   const ui = fs.readFileSync(path.join(DIR, '..', 'src', 'quiz-ui.js'), 'utf8');
   const i0 = ui.indexOf('/*=== CODE_ENGINE_START ===*/');
   const i1 = ui.indexOf('/*=== CODE_ENGINE_END ===*/');
@@ -38,7 +39,7 @@ function getCodeProfile(){try{return JSON.parse(S.getItem('bt_qa_profile_code')|
   const ctx = { console, JSON, Math, Date, parseInt, parseFloat, String, Number, Array, Object, RegExp, isFinite, isNaN, setTimeout, clearTimeout };
   ctx.globalThis = ctx;
   vm.createContext(ctx);
-  vm.runInContext(prelude + '\n' + core + '\n' + block + '\n', ctx, { filename: 'engine.js' });
+  vm.runInContext(prelude + '\n' + logic + '\n;\n' + core + '\n' + block + '\n', ctx, { filename: 'engine.js' });
   return ctx;
 }
 

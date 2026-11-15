@@ -1146,8 +1146,8 @@ function answer(correct,given,ans,btn,opt){
            ⚠ 重试不计入窗口：同一题只算一次，否则反复重试会把档位刷上去。 */
         selfWindow.push(correct?1:0);if(selfWindow.length>WIN_CAP)selfWindow.shift();
         var _acc=windowAcc();
-        if(lvlCool>0){lvlCool--;}
-        else if(!correct&&selfWindow.length>=WIN_MIN&&_acc<=DN_ACC&&selfRank>0){selfRank--;lvlCool=LEVEL_COOL;}
+        var _dd=QALogic.demoteDecision(!correct?selfWindow:[],selfRank,lvlCool,{min:WIN_MIN,threshold:DN_ACC,cooldown:LEVEL_COOL});
+        lvlCool=_dd.cool;if(_dd.demote)selfRank--;
         setRank(_bk,selfRank);
         curDiffLabel=QA_TYPES[_bk].diffs[selfRank].n;
         promoStreakHit(correct,_bk);   /* C7 边界 2：idle 下的连对计数，达标即开挑战 */

@@ -28,12 +28,18 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
 body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif;
-  background:radial-gradient(120% 60% at 50% -10%,#e6dbff 0%,#f4efff 42%,#f3eefe 100%);
-  background-attachment:fixed;color:var(--ink);
+  color:var(--ink);
   min-height:100vh;-webkit-text-size-adjust:100%}
+/* P3：固定背景拆成独立合成层，移动端滚动不再反复合成整页渐变 */
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(120% 60% at 50% -10%,#e6dbff 0%,#f4efff 42%,#f3eefe 100%)}
 #topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;
-  padding:10px 12px;background:rgba(255,255,255,.82);backdrop-filter:blur(12px);
+  padding:10px 12px;background:rgba(255,255,255,.94);
   border-bottom:1px solid rgba(233,227,251,.9)}
+/* P3：支持 backdrop-filter 才启用模糊；不支持时用更实的白底兜底 */
+@supports ((backdrop-filter:blur(12px)) or (-webkit-backdrop-filter:blur(12px))){
+  #topbar{background:rgba(255,255,255,.82);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+}
 #topbar .title{font-weight:800;font-size:17px;letter-spacing:.3px}
 #topbar .title small{display:block;font-weight:600;color:var(--sub);font-size:10.5px;letter-spacing:.6px;margin-top:1px}
 #topbar .spacer{flex:1}
@@ -407,6 +413,131 @@ var selfWindow=[];   /* auto 模式滑动窗口：最近 ≤12 题（1 对 / 0 �
 function qaDiffs(bk){var T=QA_TYPES[bk];return (T&&T.diffs&&T.diffs.length)?T.diffs:null;}
 function qaDiffDefault(bk){var ds=qaDiffs(bk);if(!ds)return -1;var sv=parseInt(S.getItem("bd_qa_diff_"+bk),10);return (sv>=0&&sv<ds.length)?sv:0;}
 /* ===== 引擎核心（从 brain-gym 原样抽取） ===== */
+/* ===== 知识问答 · 无 DOM 纯逻辑层（UMD：浏览器挂 globalThis.QALogic，Node 可 require 单测） =====
+   为什么单独成文件：
+   1) SRS 间隔推进、降档门槛、干扰项生成、validItem 是四类「错了会教错人」的高风险判定，
+      以前只能整页起浏览器验（分钟级）；抽出来后 Node 秒级跑单测（.build/_probe_logic.cjs）。
+   2) 构建时由 .build/build.js 内联进单文件产物，不新增 <script src>、不给离线 PWA 加缓存缺口。
+   约束：本文件不许出现 document / window / localStorage / Date.now() 之外的环境依赖，
+        所有需要时间的值都由调用方显式传入 now，保证纯函数可重复断言。 */
+(function (root, factory) {
+    var api = factory();
+    if (typeof module === 'object' && module && module.exports) {
+        module.exports = api;
+    }
+    if (root) {
+        root.QALogic = api;
+    }
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+    'use strict';
+
+    /* ---------- SRS：SM-2 简化，6 级阶梯 1/2/4/7/15/30 天 ---------- */
+    var DAY = 86400000;
+    var SRS_INTERVALS = [1, 2, 4, 7, 15, 30];
+    var NON_CHOICE = { fill: 1, calc: 1, experiment: 1 };
+
+    function srsInit(now) {
+        return { lv: 0, due: now + DAY };
+    }
+    function srsDue(state, now) {
+        if (!state) { return false; }
+        return state.due <= now;
+    }
+    /* 就地改 state（与浏览器端 srsAdvance(rec,correct) 的副作用一致），返回「是否已掌握」。 */
+    function srsAdvance(state, correct, now) {
+        if (!state) { return false; }
+        if (correct) {
+            state.lv = Math.min(state.lv + 1, SRS_INTERVALS.length - 1);
+            state.due = now + SRS_INTERVALS[state.lv] * DAY;
+            return state.lv >= SRS_INTERVALS.length - 1;
+        }
+        state.lv = 0;
+        state.due = now + DAY;
+        return false;
+    }
+
+    /* ---------- 自适应降档门槛（原 answer() 里的内联判定） ----------
+       win：最近 ≤12 题的 1/0 数组；rank：当前档；cool：升/降档冷却剩余题数。
+       返回 {demote, coolDelta}：coolDelta 是冷却计数本轮该减多少（-1）或重置值。 */
+    function demoteDecision(win, rank, cool, opt) {
+        var o = opt || {};
+        var min = o.min == null ? 6 : o.min;
+        var threshold = o.threshold == null ? 0.4 : o.threshold;
+        var cooldown = o.cooldown == null ? 2 : o.cooldown;
+        if (cool > 0) { return { demote: false, cool: cool - 1 }; }
+        if (!win || win.length < min || rank <= 0) { return { demote: false, cool: 0 }; }
+        var hit = 0;
+        for (var i = 0; i < win.length; i++) { if (win[i]) { hit++; } }
+        var acc = hit / win.length;
+        if (acc <= threshold) { return { demote: true, cool: cooldown }; }
+        return { demote: false, cool: 0 };
+    }
+
+    /* ---------- 干扰项生成 ---------- */
+    function ansClass(s) {
+        s = String(s);
+        if (/^O\(/.test(s)) { return 'bigo'; }
+        if (/^-?\d+(\.\d+)?$/.test(s)) { return 'num'; }
+        return 'txt';
+    }
+    function fallbackWrongs(ans) {
+        var num = Number(ans);
+        if (ans !== '' && isFinite(num) && String(num) === String(ans).trim()) {
+            return [String(num + 1), String(num - 1), String(num + 2), String(num - 2),
+                    String(num + 3), String(num - 3)];
+        }
+        return ['以上都不对', '不确定', '其他答案'];
+    }
+    /* 数值答案干扰项不足时的邻居补齐：与旧 mkQA 内联逐步长算法逐值一致。
+       seen 是「已占用选项」对象，会被就地更新；返回新补出的字符串数组。 */
+    function numericNeighbors(ans, seen, need) {
+        var out = [];
+        var n = Number(ans);
+        if (!isFinite(n) || String(n) !== ans || need <= 0) { return out; }
+        var k = 1;
+        while (out.length < need && k < 40) {
+            var d = Math.ceil(k / 2) * (k % 2 ? 1 : -1);
+            var w = String(n + d);
+            if (!seen[w]) { seen[w] = 1; out.push(w); }
+            k++;
+        }
+        return out;
+    }
+
+    /* ---------- 题目合法性（全站统一闸门） ----------
+       两种来源：源静态题 item[3] 是 3 个干扰项（不含答案）；运行时题 it.opts 是 4 个选项（含答案）。
+       非选择题（fill/calc/experiment）只要题干与答案非空。缺省 type 一律按选择题走老逻辑。 */
+    function validItem(it) {
+        if (!it) { return false; }
+        if (NON_CHOICE[it.type]) {
+            var q = (it.q == null) ? '' : String(it.q).trim();
+            var a = (it.a == null) ? '' : String(it.a).trim();
+            return !!(q && a);
+        }
+        var o = it.opts;
+        if (!o && it[3] != null) { o = String(it[3]).split('|'); }
+        if (!Array.isArray(o) || o.length < 3) { return false; }
+        /* 与浏览器端旧实现一致：用 Set 按原始值去重，不做 String 隐式转换。 */
+        if (new Set(o).size !== o.length) { return false; }
+        if (it.opts) { return o.length === 4 && o.indexOf(String(it.a)) >= 0; }
+        return o.length === 3 && o.indexOf(String(it.a)) < 0;
+    }
+
+    return {
+        DAY: DAY,
+        SRS_INTERVALS: SRS_INTERVALS,
+        srsInit: srsInit,
+        srsDue: srsDue,
+        srsAdvance: srsAdvance,
+        demoteDecision: demoteDecision,
+        ansClass: ansClass,
+        fallbackWrongs: fallbackWrongs,
+        numericNeighbors: numericNeighbors,
+        validItem: validItem
+    };
+});
+
+;
 /* P2-A2：本地存储写入统一走 safeSet —— 配额满时提示一次（不再静默丢数据）
    ⚠ 不要给 localStorage 实例挂方法（Storage 会把属性当 key 写进去），只能自己包一层。 */
 var quotaWarned=false;
@@ -1229,18 +1360,12 @@ var SUBJECT_GROUPS=[
 // ===== 薄弱题 / 实力自适应 辅助 =====
 var WEAK_CAP=150;
 /* B 批：SRS 间隔复习（SM-2 简化，6 级阶梯 1/2/4/7/15/30 天） */
-var SRS_INTERVALS=[1,2,4,7,15,30];
-function srsInit(){return {lv:0,due:Date.now()+86400000};}
-function srsDue(rec){var s=rec&&rec.srs;if(!s)return false;return s.due<=Date.now();}
+var SRS_INTERVALS=QALogic.SRS_INTERVALS;
+function srsInit(){return QALogic.srsInit(Date.now());}
+function srsDue(rec){return QALogic.srsDue(rec&&rec.srs,Date.now());}
 function srsAdvance(rec,correct){
   var s=rec&&rec.srs;if(!s){rec.srs=srsInit();s=rec.srs;}
-  if(correct){
-    s.lv=Math.min(s.lv+1,SRS_INTERVALS.length-1);
-    s.due=Date.now()+SRS_INTERVALS[s.lv]*86400000;
-    return s.lv>=SRS_INTERVALS.length-1;   /* 30 天档答对 = 掌握 */
-  }
-  s.lv=0;s.due=Date.now()+86400000;        /* 明天再复习 */
-  return false;
+  return QALogic.srsAdvance(s,correct,Date.now());
 }
 /* loadWeak 每次返回新解析对象；改动某条 srs/t 后必须按 type+q 找回再存 */
 function srsTouch(rec){if(!rec)return;var a=loadWeak();for(var i=0;i<a.length;i++){if(a[i]&&a[i].type===rec.type&&a[i].q===rec.q){a[i].srs=rec.srs;a[i].t=rec.t;saveWeak(a);return;}}}
@@ -1309,13 +1434,8 @@ function pickPoolByDiff(pool,diff){if(!pool)return [];
  return out.filter(function(it){
    return !(it&&NEG_Q_RE.test(String(it[0]))&&!(it[3]||it.opts));
  });}
-function fallbackWrongs(ans){var num=Number(ans);
- if(ans!==''&&isFinite(num)&&String(num)===String(ans).trim())return [String(num+1),String(num-1),String(num+2),String(num-2),String(num+3),String(num-3)];
- return ['以上都不对','不确定','其他答案']}
-function ansClass(s){s=String(s);
- if(/^O\(/.test(s))return 'bigo';
- if(/^-?\d+(\.\d+)?$/.test(s))return 'num';
- return 'txt';}
+function fallbackWrongs(ans){return QALogic.fallbackWrongs(ans)}
+function ansClass(s){return QALogic.ansClass(s)}
 /* P0-1：否定式题干（「不包括 / 不属于 / 以下哪个不是 …」）。
    这类题没有定制干扰项时随机补选项 ⇒ 多个选项都可能成立（多解），一律不许兜底。 */
 var NEG_Q_RE=/不包括|不属于|以下哪个不是|以下哪项不是|错误的是|不正确的是|不正确的|不是.*的是/;
@@ -1367,32 +1487,17 @@ function mkQA(q,ans,cands,exp){ans=String(ans);var seen={};seen[ans]=1;var ws=[]
     丢掉会让这道题只剩 3 个选项。真空值只可能是 undefined / 空串。 */
  shuffle(cands.slice()).forEach(function(w){w=String(w);if(ws.length>=3)return;if(w===''||w==='undefined'||seen[w])return;seen[w]=1;ws.push(w)});
  /* 参数巧合导致干扰项不足时，数值答案用邻居补足（保持 4 选项，不塌成 3 个） */
- var _n=Number(ans);
- if(ws.length<3&&isFinite(_n)&&String(_n)===ans){var _k=1;while(ws.length<3&&_k<40){var _d=Math.ceil(_k/2)*(_k%2?1:-1),_w=String(_n+_d);if(!seen[_w]){seen[_w]=1;ws.push(_w);}_k++;}}
+ if(ws.length<3){QALogic.numericNeighbors(ans,seen,3-ws.length).forEach(function(w){ws.push(w);});}
  return {q:q,a:ans,opts:shuffle([ans].concat(ws)),exp:exp||''}}
 /* P0-1 校验：统一判「这道题能不能教错人」。
    两种来源都能判：
    - 源静态题：item[3] 是 3 个干扰项的管道串（不含答案），要求 3 个、唯一、且不含答案；
    - 运行时题：q.opts 是 4 个选项（含答案），要求 4 个、唯一、且含答案（AI / 生成题走这条）。
    任一通过即视为合格（4 选项含答案，或 3 干扰项不含答案）。 */
-function validItem(it){
-  if(!it)return false;
-  /* 4.0.1-1：题目分类型。非选择题（填空/计算/实验）只要题干与答案非空，不校验四选项；
-     ⚠ 这是全站校验（extraPool / AI 入库 / autoRefill / stdAvail 都走它），
-       所以「缺省 type」必须继续按 choice 走老逻辑，旧题与源数组题（item[3] 干扰项）零变化。 */
-  var _ty=it.type;
-  if(_ty==='fill'||_ty==='calc'||_ty==='experiment'){
-    var _q=(it.q==null)?'':String(it.q).trim();
-    var _a=(it.a==null)?'':String(it.a).trim();
-    return !!(_q&&_a);
-  }
-  var o=it.opts;
-  if(!o && it[3]!=null)o=String(it[3]).split('|');
-  if(!Array.isArray(o)||o.length<3)return false;
-  if(new Set(o).size!==o.length)return false;            // 选项必须互不相同
-  if(it.opts)return o.length===4&&o.indexOf(String(it.a))>=0; // 运行时：4 选项且含答案
-  return o.length===3&&o.indexOf(String(it.a))<0;        // 源干扰项：3 个且不含答案
-}
+/* P0-1 校验：全站统一闸门，实现已抽到 src/logic.js（Node 单测覆盖）。
+   源静态题 = item[3] 三个干扰项（不含答案）；运行时题 = it.opts 四选项（含答案）；
+   非选择题（fill/calc/experiment）只要题干与答案非空；缺省 type 按选择题走老逻辑。 */
+function validItem(it){return QALogic.validItem(it)}
 function genMathPrimary(n){var out=[];for(var i=0;i<n;i++){var t=ri(4),a,b,ans,q,exp;
  if(t===0){a=ri(15)+1;b=ri(Math.max(1,20-a))+1;ans=a+b;q=a+' + '+b+' = ?';exp='把 '+a+' 和 '+b+' 合起来，得到 '+ans}
  else if(t===1){a=ri(18)+2;b=ri(a-1)+1;ans=a-b;q=a+' − '+b+' = ?';exp='从 '+a+' 里去掉 '+b+'，还剩 '+ans}
@@ -2993,8 +3098,8 @@ function answer(correct,given,ans,btn,opt){
            ⚠ 重试不计入窗口：同一题只算一次，否则反复重试会把档位刷上去。 */
         selfWindow.push(correct?1:0);if(selfWindow.length>WIN_CAP)selfWindow.shift();
         var _acc=windowAcc();
-        if(lvlCool>0){lvlCool--;}
-        else if(!correct&&selfWindow.length>=WIN_MIN&&_acc<=DN_ACC&&selfRank>0){selfRank--;lvlCool=LEVEL_COOL;}
+        var _dd=QALogic.demoteDecision(!correct?selfWindow:[],selfRank,lvlCool,{min:WIN_MIN,threshold:DN_ACC,cooldown:LEVEL_COOL});
+        lvlCool=_dd.cool;if(_dd.demote)selfRank--;
         setRank(_bk,selfRank);
         curDiffLabel=QA_TYPES[_bk].diffs[selfRank].n;
         promoStreakHit(correct,_bk);   /* C7 边界 2：idle 下的连对计数，达标即开挑战 */

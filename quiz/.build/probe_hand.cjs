@@ -24,6 +24,7 @@ function ck(n, c, e) { (c ? pass : fail).push(n + (e ? ' :: ' + e : '')); }
 /* ================= A/B：Node 侧静态校验 ================= */
 function nodeChecks() {
   const core = fs.readFileSync(path.join(BUILD, '..', 'src', 'engine_core.js'), 'utf8');
+  const logic = fs.readFileSync(path.join(BUILD, '..', 'src', 'logic.js'), 'utf8');
   const ce = fs.readFileSync(path.join(BUILD, 'code_engine.js'), 'utf8');
   const ui = fs.readFileSync(path.join(BUILD, '..', 'src', 'quiz-ui.js'), 'utf8');
   const ctx = { console, JSON, Math, Date, parseInt, parseFloat, String, Number, Array, Object, RegExp, isFinite, isNaN };
@@ -32,7 +33,7 @@ function nodeChecks() {
     + "var CODE_PROFILE_KEY='bt_qa_profile_code';"
     + 'function ri(n){return Math.floor(Math.random()*n)}\n'
     + 'function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),t=a[i];a[i]=a[j];a[j]=t;}return a;}\n'
-    + core + '\n' + ce, ctx);
+    + logic + '\n;\n' + core + '\n' + ce, ctx);
 
   const per = JSON.parse(vm.runInContext('JSON.stringify((function(){var c={};CODE_TASKS.forEach(function(t){c[t.r]=(c[t.r]||0)+1});return c;})())', ctx));
   const total = vm.runInContext('CODE_TASKS.length', ctx);

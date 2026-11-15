@@ -28,12 +28,18 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
 body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif;
-  background:radial-gradient(120% 60% at 50% -10%,#e6dbff 0%,#f4efff 42%,#f3eefe 100%);
-  background-attachment:fixed;color:var(--ink);
+  color:var(--ink);
   min-height:100vh;-webkit-text-size-adjust:100%}
+/* P3：固定背景拆成独立合成层，移动端滚动不再反复合成整页渐变 */
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(120% 60% at 50% -10%,#e6dbff 0%,#f4efff 42%,#f3eefe 100%)}
 #topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;
-  padding:10px 12px;background:rgba(255,255,255,.82);backdrop-filter:blur(12px);
+  padding:10px 12px;background:rgba(255,255,255,.94);
   border-bottom:1px solid rgba(233,227,251,.9)}
+/* P3：支持 backdrop-filter 才启用模糊；不支持时用更实的白底兜底 */
+@supports ((backdrop-filter:blur(12px)) or (-webkit-backdrop-filter:blur(12px))){
+  #topbar{background:rgba(255,255,255,.82);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+}
 #topbar .title{font-weight:800;font-size:17px;letter-spacing:.3px}
 #topbar .title small{display:block;font-weight:600;color:var(--sub);font-size:10.5px;letter-spacing:.6px;margin-top:1px}
 #topbar .spacer{flex:1}

@@ -20,8 +20,9 @@ const coreSrc = fs.readFileSync(path.join(BUILD, '..', 'src', 'engine_core.js'),
 const uiSrc = fs.readFileSync(path.join(BUILD, '..', 'src', 'quiz-ui.js'), 'utf8');
 const validSrc = slice(coreSrc, 'function validItem(it){', 'function genMathPrimary(');
 const typeSrc = slice(uiSrc, '/* ---------- 4.0 自定义题库生成质量', '/* ---------- AI 出题 prompt');
-const P = new Function(validSrc + '\n' + typeSrc +
-  '\nreturn {validItem:validItem,examLike:examLike,isAcademic:isAcademic,META_Q_RE:META_Q_RE,ACADEMIC_RE:ACADEMIC_RE};')();
+const QALogic = require('../src/logic.js');
+const P = new Function('QALogic', validSrc + '\n' + typeSrc +
+  '\nreturn {validItem:validItem,examLike:examLike,isAcademic:isAcademic,META_Q_RE:META_Q_RE,ACADEMIC_RE:ACADEMIC_RE};')(QALogic);
 
 /* ---------- 纯函数 ---------- */
 ck('META_Q_RE 不再无条件拦「作者是」：《红楼梦》的作者是谁？放行',

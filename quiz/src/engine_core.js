@@ -820,18 +820,12 @@ var SUBJECT_GROUPS=[
 // ===== 薄弱题 / 实力自适应 辅助 =====
 var WEAK_CAP=150;
 /* B 批：SRS 间隔复习（SM-2 简化，6 级阶梯 1/2/4/7/15/30 天） */
-var SRS_INTERVALS=[1,2,4,7,15,30];
-function srsInit(){return {lv:0,due:Date.now()+86400000};}
-function srsDue(rec){var s=rec&&rec.srs;if(!s)return false;return s.due<=Date.now();}
+var SRS_INTERVALS=QALogic.SRS_INTERVALS;
+function srsInit(){return QALogic.srsInit(Date.now());}
+function srsDue(rec){return QALogic.srsDue(rec&&rec.srs,Date.now());}
 function srsAdvance(rec,correct){
   var s=rec&&rec.srs;if(!s){rec.srs=srsInit();s=rec.srs;}
-  if(correct){
-    s.lv=Math.min(s.lv+1,SRS_INTERVALS.length-1);
-    s.due=Date.now()+SRS_INTERVALS[s.lv]*86400000;
-    return s.lv>=SRS_INTERVALS.length-1;   /* 30 天档答对 = 掌握 */
-  }
-  s.lv=0;s.due=Date.now()+86400000;        /* 明天再复习 */
-  return false;
+  return QALogic.srsAdvance(s,correct,Date.now());
 }
 /* loadWeak 每次返回新解析对象；改动某条 srs/t 后必须按 type+q 找回再存 */
 function srsTouch(rec){if(!rec)return;var a=loadWeak();for(var i=0;i<a.length;i++){if(a[i]&&a[i].type===rec.type&&a[i].q===rec.q){a[i].srs=rec.srs;a[i].t=rec.t;saveWeak(a);return;}}}
@@ -900,13 +894,8 @@ function pickPoolByDiff(pool,diff){if(!pool)return [];
  return out.filter(function(it){
    return !(it&&NEG_Q_RE.test(String(it[0]))&&!(it[3]||it.opts));
  });}
-function fallbackWrongs(ans){var num=Number(ans);
- if(ans!==''&&isFinite(num)&&String(num)===String(ans).trim())return [String(num+1),String(num-1),String(num+2),String(num-2),String(num+3),String(num-3)];
- return ['以上都不对','不确定','其他答案']}
-function ansClass(s){s=String(s);
- if(/^O\(/.test(s))return 'bigo';
- if(/^-?\d+(\.\d+)?$/.test(s))return 'num';
- return 'txt';}
+function fallbackWrongs(ans){return QALogic.fallbackWrongs(ans)}
+function ansClass(s){return QALogic.ansClass(s)}
 /* P0-1：否定式题干（「不包括 / 不属于 / 以下哪个不是 …」）。
    这类题没有定制干扰项时随机补选项 ⇒ 多个选项都可能成立（多解），一律不许兜底。 */
 var NEG_Q_RE=/不包括|不属于|以下哪个不是|以下哪项不是|错误的是|不正确的是|不正确的|不是.*的是/;
@@ -958,32 +947,17 @@ function mkQA(q,ans,cands,exp){ans=String(ans);var seen={};seen[ans]=1;var ws=[]
     丢掉会让这道题只剩 3 个选项。真空值只可能是 undefined / 空串。 */
  shuffle(cands.slice()).forEach(function(w){w=String(w);if(ws.length>=3)return;if(w===''||w==='undefined'||seen[w])return;seen[w]=1;ws.push(w)});
  /* 参数巧合导致干扰项不足时，数值答案用邻居补足（保持 4 选项，不塌成 3 个） */
- var _n=Number(ans);
- if(ws.length<3&&isFinite(_n)&&String(_n)===ans){var _k=1;while(ws.length<3&&_k<40){var _d=Math.ceil(_k/2)*(_k%2?1:-1),_w=String(_n+_d);if(!seen[_w]){seen[_w]=1;ws.push(_w);}_k++;}}
+ if(ws.length<3){QALogic.numericNeighbors(ans,seen,3-ws.length).forEach(function(w){ws.push(w);});}
  return {q:q,a:ans,opts:shuffle([ans].concat(ws)),exp:exp||''}}
 /* P0-1 校验：统一判「这道题能不能教错人」。
    两种来源都能判：
    - 源静态题：item[3] 是 3 个干扰项的管道串（不含答案），要求 3 个、唯一、且不含答案；
    - 运行时题：q.opts 是 4 个选项（含答案），要求 4 个、唯一、且含答案（AI / 生成题走这条）。
    任一通过即视为合格（4 选项含答案，或 3 干扰项不含答案）。 */
-function validItem(it){
-  if(!it)return false;
-  /* 4.0.1-1：题目分类型。非选择题（填空/计算/实验）只要题干与答案非空，不校验四选项；
-     ⚠ 这是全站校验（extraPool / AI 入库 / autoRefill / stdAvail 都走它），
-       所以「缺省 type」必须继续按 choice 走老逻辑，旧题与源数组题（item[3] 干扰项）零变化。 */
-  var _ty=it.type;
-  if(_ty==='fill'||_ty==='calc'||_ty==='experiment'){
-    var _q=(it.q==null)?'':String(it.q).trim();
-    var _a=(it.a==null)?'':String(it.a).trim();
-    return !!(_q&&_a);
-  }
-  var o=it.opts;
-  if(!o && it[3]!=null)o=String(it[3]).split('|');
-  if(!Array.isArray(o)||o.length<3)return false;
-  if(new Set(o).size!==o.length)return false;            // 选项必须互不相同
-  if(it.opts)return o.length===4&&o.indexOf(String(it.a))>=0; // 运行时：4 选项且含答案
-  return o.length===3&&o.indexOf(String(it.a))<0;        // 源干扰项：3 个且不含答案
-}
+/* P0-1 校验：全站统一闸门，实现已抽到 src/logic.js（Node 单测覆盖）。
+   源静态题 = item[3] 三个干扰项（不含答案）；运行时题 = it.opts 四选项（含答案）；
+   非选择题（fill/calc/experiment）只要题干与答案非空；缺省 type 按选择题走老逻辑。 */
+function validItem(it){return QALogic.validItem(it)}
 function genMathPrimary(n){var out=[];for(var i=0;i<n;i++){var t=ri(4),a,b,ans,q,exp;
  if(t===0){a=ri(15)+1;b=ri(Math.max(1,20-a))+1;ans=a+b;q=a+' + '+b+' = ?';exp='把 '+a+' 和 '+b+' 合起来，得到 '+ans}
  else if(t===1){a=ri(18)+2;b=ri(a-1)+1;ans=a-b;q=a+' − '+b+' = ?';exp='从 '+a+' 里去掉 '+b+'，还剩 '+ans}

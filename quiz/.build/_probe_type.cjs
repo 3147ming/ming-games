@@ -22,8 +22,9 @@ const uiSrc = fs.readFileSync(path.join(BUILD, '..', 'src', 'quiz-ui.js'), 'utf8
 const validSrc = slice(coreSrc, 'function validItem(it){', 'function genMathPrimary(');
 const typeSrc = slice(uiSrc, '/* ---------- 4.0 自定义题库生成质量', '/* ---------- AI 出题 prompt');
 const promptSrc = slice(uiSrc, 'function makeQuizPrompt(name,count,items){', 'function aiBuild(name){');
-const P = new Function(validSrc + '\n' + typeSrc + '\n' + promptSrc +
-  '\nreturn {validItem:validItem,examLike:examLike,qTypeOf:qTypeOf,isNonChoiceQ:isNonChoiceQ,makeQuizPrompt:makeQuizPrompt};')();
+const QALogic = require('../src/logic.js');
+const P = new Function('QALogic', validSrc + '\n' + typeSrc + '\n' + promptSrc +
+  '\nreturn {validItem:validItem,examLike:examLike,qTypeOf:qTypeOf,isNonChoiceQ:isNonChoiceQ,makeQuizPrompt:makeQuizPrompt};')(QALogic);
 
 ck('validItem：旧题（无 type）4 选项含答案 → 合格', P.validItem({ q: 'x', a: 'B', opts: ['A', 'B', 'C', 'D'] }) === true);
 ck('validItem：旧题只有 3 选项 → 不合格（老闸不放松）', P.validItem({ q: 'x', a: 'B', opts: ['A', 'B', 'C'] }) === false);

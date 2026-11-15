@@ -92,7 +92,7 @@ const regKeys = Object.keys(E.STORE_REG).map((n) => E.STORE_REG[n].k);
 const prefixes = ['bt_qa_rank_', 'bt_qa_recent_'];
 const known = regKeys.concat(['bt_qa_schema', 'bt_qa_']);
 const unknown = [];
-['../src/wrongbook.js', '../src/engine_core.js', '../src/quiz-ui.js'].forEach((f) => {
+['../src/logic.js', '../src/wrongbook.js', '../src/engine_core.js', '../src/quiz-ui.js'].forEach((f) => {
   literals(f).forEach((k) => {
     if (known.indexOf(k) >= 0) return;
     if (prefixes.some((p) => k.indexOf(p) === 0)) return;

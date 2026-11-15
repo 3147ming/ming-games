@@ -27,6 +27,7 @@ const head = fs.readFileSync(path.join(SRC, 'head.html'), 'utf8');           // 
 const core = fs.readFileSync(path.join(SRC, 'engine_core.js'), 'utf8');
 /* 错题本导出/导入的纯函数（UMD：浏览器挂 window.WrongBook，Node 里可 require 做单测）。
    内联进产物的原因：index.html 是单文件离线 PWA，多一个外部脚本就多一个缓存失败点。 */
+const logic = fs.readFileSync(path.join(SRC, 'logic.js'), 'utf8');
 const wb = fs.readFileSync(path.join(SRC, 'wrongbook.js'), 'utf8');
 const ui = fs.readFileSync(path.join(SRC, 'quiz-ui.js'), 'utf8');
 
@@ -61,7 +62,7 @@ const IDB = [
 /* 写产物之前先跑语言标签断言：不合规直接阻断，绝不产出会让语言闸漏题的 index.html */
 require('./_guard_tags.cjs');
 
-const html = head + '\n' + FRAMEWORK + '\n' + core + '\n' + IDB + '\n;\n' + wb + '\n;\n' + ui + '\n</script>\n</body>\n</html>\n';
+const html = head + '\n' + FRAMEWORK + '\n' + logic + '\n;\n' + core + '\n' + IDB + '\n;\n' + wb + '\n;\n' + ui + '\n</script>\n</body>\n</html>\n';
 const buf = Buffer.from(html, 'utf8');
 const md5 = crypto.createHash('md5').update(buf).digest('hex');
 /* Service Worker 版本号由产物内容自动生成，避免手工递增漏改让用户拿到旧缓存。

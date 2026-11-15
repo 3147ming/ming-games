@@ -52,6 +52,7 @@ const FRAMEWORK = [
 ].join('\n');
 
 const core = fs.readFileSync(DIR + '/../src/engine_core.js', 'utf8');
+const logic = fs.readFileSync(DIR + '/../src/logic.js', 'utf8');
 let ui = fs.readFileSync(DIR + '/../src/quiz-ui.js', 'utf8');
 // 在 quiz-ui.js 的 IIFE 收尾前，把需要测的函数/状态暴露到 globalThis
 const iEnd = ui.lastIndexOf('})();');
@@ -70,7 +71,7 @@ const ctx = {
 };
 ctx.globalThis = ctx;
 vm.createContext(ctx);
-vm.runInContext(FRAMEWORK + '\n' + core + '\n' + ui, ctx, { filename: 'bundle.js' });
+vm.runInContext(FRAMEWORK + '\n' + logic + '\n;\n' + core + '\n' + ui, ctx, { filename: 'bundle.js' });
 const E = ctx.__exp;
 
 // ---------- 测试 ----------
