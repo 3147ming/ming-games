@@ -25,6 +25,7 @@ import { createBgm, moodFromRunState } from './bgm.js';
 import { BGM_MANIFEST } from './bgm-manifest.js';
 // 音频设置：主音量 + 静音的读/写/校验（纯逻辑，可无头单测）。播放层只管"把值变成增益"。
 import { createAudioSettings, bgmGain, toPercent, fromPercent } from './audio-settings.js';
+import { WAVE_CHARS, DANGERS } from './wave-config.js';
 
 const params = new URLSearchParams(location.search);
 const stage = document.getElementById('stage');
@@ -65,6 +66,16 @@ const audioSum = document.getElementById('audio-sum');
 const audioVol = document.getElementById('audio-vol');
 const audioVolVal = document.getElementById('audio-vol-val');
 const audioMuteBtn = document.getElementById('audio-mute');
+// 波次模式（Brotato 化）：标题页设置 + 开局配置。旧模式路径完全不变。
+const btnStartWaves = document.getElementById('btn-start-waves');
+const waveSum = document.getElementById('wave-sum');
+const waveCharsEl = document.getElementById('wave-chars');
+const waveDangersEl = document.getElementById('wave-dangers');
+const waveEndlessEl = document.getElementById('wave-endless');
+let waveChar = 'wanderer';
+let waveDanger = 0;
+let waveEndless = false;
+let lastWaveOpts = null;
 
 const usePilot = params.get('pilot') === '1';
 // 阶段 9：?speed=N 现在设「开局局内倍速」初值（合法档见 GAME_SPEEDS；非法值回落 1x）。
@@ -234,7 +245,8 @@ function todayKey() {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
-function startRun() {
+function startRun(waveOpts = null) {
+  lastWaveOpts = waveOpts;
   const seed = newSeed();
   titleMeta.textContent = `种子 ${seed}${reducedMotion ? ' · 已按系统偏好减弱动效' : ''}`;
   show('arena');
@@ -256,6 +268,7 @@ function startRun() {
     reducedMotion,
     onDone: showResult,
     meta,
+    wave: waveOpts,
   });
   if (usePilot) arena.driver = pilotDriver;
   arena.gameSpeed = initSpeed;
@@ -280,9 +293,26 @@ function showResult(res) {
   stopBgmPoll();
   setBgmMood('settle');
   const survived = res && res.survived;
-  resTitle.textContent = survived ? '你活到了天亮' : '荒野把你留下了';
-  resSub.textContent = survived ? '整整十分钟。' : '再来一次，这次走位再稳一点。';
-  resStats.innerHTML = `
+  // 波次模式的结算口径是「到达波次」，不是「存活秒数」——两套模式不能混用同一套大字。
+  const isWave = !!(res && res.mode === 'waves');
+  resTitle.textContent = isWave
+    ? (survived ? (res.endless ? '无尽 · 已收工' : '20 波全部撑过') : `倒在第 ${res.wave} 波`)
+    : (survived ? '你活到了天亮' : '荒野把你留下了');
+  resSub.textContent = isWave
+    ? `到达第 ${res.wave} 波 · ${res.danger} 危险 · 武器 ${(res.slots || []).length}/6 · 累计材料 ${Math.round(Number(res.totalMaterials) || 0)}`
+    : (survived ? '整整十分钟。' : '再来一次，这次走位再稳一点。');
+  resStats.innerHTML = isWave
+    ? `
+    <div class="rs-row rs-main">
+      <div class="rs-cell"><span class="rs-k">到达波次</span><span class="rs-v">${res.wave}</span></div>
+      <div class="rs-cell"><span class="rs-k">总击杀</span><span class="rs-v">${res.kills}</span></div>
+    </div>
+    <div class="rs-row">
+      <div class="rs-cell"><span class="rs-k">等级</span><span class="rs-v sm">${res.level}</span></div>
+      <div class="rs-cell"><span class="rs-k">累计材料</span><span class="rs-v sm">${Math.round(Number(res.totalMaterials) || 0)}</span></div>
+      <div class="rs-cell"><span class="rs-k">商店购买</span><span class="rs-v sm">${res.purchases || 0}</span></div>
+    </div>`
+    : `
     <div class="rs-row rs-main">
       <div class="rs-cell"><span class="rs-k">存活时间</span><span class="rs-v">${fmt(res.survivalSec)}</span></div>
       <div class="rs-cell"><span class="rs-k">总击杀</span><span class="rs-v">${res.kills}</span></div>
@@ -300,7 +330,9 @@ function showResult(res) {
   //   只算评级与分数，纪录一律按"未破"处理；挑战成绩走 wild.challenge.v1 另账。
   const isChallenge = challengeRun;
   challengeRun = false;
-  const sub = isChallenge
+  // 波次模式不写 wild.best.v1：整局 1100+ 秒会按「存活秒数」把旧纪录顶掉，
+  // 两套模式口径不同，不能混进同一张榜（与挑战局同一处理）。
+  const sub = (isChallenge || isWave)
     ? { grade: gradeOf(res), score: scoreOf(res), records: { sec: false, kills: false, level: false }, best: loadBest() }
     : submitRun(res);
   resGradeLt.textContent = sub.grade;
@@ -333,12 +365,15 @@ function showResult(res) {
 
   // 阶段 7 · 局外进度闭环：基础灵魂（击杀×0.5 + 存活×0.2）+ 每日任务奖励 + 成就解锁奖励。
   // awardSouls 记基础灵魂并 saveMeta；settleRun 记每日/成就奖励并 saveMeta —— 各改各的字段，加性不重算。
-  const { gained, souls } = awardSouls(res.level, res.kills, res.survivalSec || 0);
+  // 波次模式整局约 1275s，按「存活秒数」发灵魂 / 记账号 / 判成就都会把旧口径刷爆
+  // ⟹ 统一封顶到旧模式上限 600s（纪录本身另走「不写 best.v1」的隔离）。
+  const soulSec = isWave ? Math.min(res.survivalSec || 0, 600) : (res.survivalSec || 0);
+  const { gained, souls } = awardSouls(res.level, res.kills, soulSec);
   const dateKey = todayKey();
   const acct0 = loadAccount();
   const best = loadBest();
   const meta = loadMeta();
-  const settlement = settleRun(localStorage, res, {
+  const settlement = settleRun(localStorage, isWave ? { ...res, survivalSec: soulSec } : res, {
     dateKey,
     stats: {
       // ★ 修阶段7 遗留 bug：best.js 的字段叫 bestSec，原先写 bestSurvival ⟹ undefined ⟹
@@ -376,7 +411,7 @@ function showResult(res) {
   //   已删除 —— 中文名的完整复盘统一由上面的 renderBuild(res) 渲染进 #res-build。
   // ── 阶段 4-5：本地账号累计（总局数/总击杀/总存活 + 称号 + 距下个称号差额）──
   // ★ submitRun 必须在写档前比对旧纪录（与 best.js 同口径），返回 account/title/next/record。
-  const acc = submitAccount(res);
+  const acc = submitAccount(isWave ? { ...res, survivalSec: soulSec } : res);
   renderAccount(acc, res);
   show('screen-result');
   window.WILD = { result: res };
@@ -518,7 +553,32 @@ function goTitle() {
 }
 
 btnStart.onclick = () => startRun();
-btnRetry.onclick = () => startRun();
+btnRetry.onclick = () => startRun(lastWaveOpts);
+if (btnStartWaves) btnStartWaves.onclick = () => startRun({ char: waveChar, danger: waveDanger, endless: waveEndless });
+
+/** 波次模式设置：角色（正负特性）/ 危险 0-5 / 无尽。纯标题页 UI，不碰存档。 */
+function renderWaveSetup() {
+  if (!waveCharsEl || !waveDangersEl) return;
+  waveCharsEl.innerHTML = WAVE_CHARS.map((c) =>
+    `<button type="button" class="wave-chip${c.id === waveChar ? ' on' : ''}" data-char="${c.id}" title="${c.desc}">${c.label}</button>`).join('');
+  waveDangersEl.innerHTML = DANGERS.map((d) =>
+    `<button type="button" class="wave-chip${d.level === waveDanger ? ' on' : ''}" data-danger="${d.level}">${d.label}</button>`).join('');
+  waveCharsEl.querySelectorAll('[data-char]').forEach((b) => {
+    b.onclick = () => { waveChar = b.dataset.char; renderWaveSetup(); };
+  });
+  waveDangersEl.querySelectorAll('[data-danger]').forEach((b) => {
+    b.onclick = () => { waveDanger = Number(b.dataset.danger); renderWaveSetup(); };
+  });
+  if (waveEndlessEl) {
+    waveEndlessEl.checked = waveEndless;
+    waveEndlessEl.onchange = () => { waveEndless = waveEndlessEl.checked; renderWaveSetup(); };
+  }
+  if (waveSum) {
+    const ch = WAVE_CHARS.find((c) => c.id === waveChar);
+    waveSum.textContent = `波次 · ${ch ? ch.label : '流浪者'} / ${DANGERS[waveDanger].label}${waveEndless ? ' · 无尽' : ''}`;
+  }
+}
+renderWaveSetup();
 if (btnHome) btnHome.onclick = () => goTitle();
 
 // ── 阶段 4-5：标题页英雄选择 + 玩家名 ──

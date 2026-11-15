@@ -20,6 +20,8 @@
 
 import { silhouette, silhouetteBox, SILHOUETTE_ANCHOR } from './glyph.js';
 import { Sfx, Haptic } from './sfx.js';
+import { WaveDirector } from './wave-director.js';
+import { syncWaveUi } from './wave-ui.js';
 // 内容池（武器/技能/被动的**表**）住在 content.js；本文件是执行层。
 // ⚠ 二者循环引用，所以两边都**只在函数体内**访问对方 ——
 //   顶层的 import 不会读值，只有真正调用时才解引用，两种加载顺序都安全。
@@ -1213,7 +1215,7 @@ const DBG = typeof location !== 'undefined' && /[?&]dbg=1\b/.test(location.searc
  * Node 里直接驱动 step(dt, input) 即可做无头长跑与单测。
  */
 export class ArenaCore {
-  constructor({ rng, width = 360, height = 640, reducedMotion = false, durationMs = ARENA.DURATION_MS, meta = {} }) {
+  constructor({ rng, width = 360, height = 640, reducedMotion = false, durationMs = ARENA.DURATION_MS, meta = {}, wave = null }) {
     this.rng = rng;
     // 阶段 4-7.x：心心掉落用**独立**随机源，与主 rng 流完全隔离。
     // ★ 不共用 this.rng：killEnemy 每杀一只都决定一次掉不掉，若走主 rng 会把"整局 spawn/开火/
@@ -1221,7 +1223,11 @@ export class ArenaCore {
     //   随机流逐字节不变 ⟹ 既有平衡/确定性验收不破，心心只是"在已确定的击杀上叠一层回血"。
     this.dropRng = new Rng('heart:' + (rng && rng.seed ? rng.seed : 'seed'));
     this.reduced = reducedMotion;
-    this.durationMs = durationMs;
+    // ★ 波次模式（Brotato 化）：只替换「时间轴调度」，战斗/武器/敌人/伤害全部复用。
+    //   wave=null ⟹ 旧 600 秒连续局，下面所有 waveMode 分支都不进入，行为逐位不变。
+    this.waveMode = !!wave;
+    this.waveOpts = wave;
+    this.durationMs = this.waveMode ? Number.POSITIVE_INFINITY : durationMs;
     this.setBounds(width, height);
 
     this.time = 0;
@@ -1540,6 +1546,8 @@ export class ArenaCore {
     this.meta = meta || {};
     this.applyGrowth();   // 阶段 5 · 长期成长：把 meta.levels / rebirth 套到初始状态
     this.applyLoadout();  // 阶段 6-3 · 局外配装：在成长之后叠加（同口子，互不擦除）
+    // 状态机必须在成长/配装之后建：角色倍率乘在已有值上，保留两者的加算。
+    this.wd = this.waveMode ? new WaveDirector(this, this.waveOpts || {}) : null;
   }
 
   /** 阶段 5 · 长期成长（A1 属性树 + A2 职业线 + A3 转生倍率）。
@@ -1728,11 +1736,14 @@ export class ArenaCore {
 
   /** 剩余秒数 */
   get remainSec() {
+    if (this.waveMode) return this.wd ? Math.max(0, this.wd.timeLeft) : 0;
     return Math.max(0, (this.durationMs - this.time) / 1000);
   }
 
   /** 当前波次（WAVES 按 t 升序，取最后一个 t ≤ 已过秒数的） */
   wave() {
+    // ★ 构造期 openingSalvo() 会先于 wd 建立调用本方法，必须给未就绪兜底。
+    if (this.waveMode) return this.wd ? this.wd.spawnWave() : { spawn: 0.8, w: { normal: 1 } };
     const s = this.elapsed;
     let cur = ARENA.WAVES[0];
     for (const w of ARENA.WAVES) {
@@ -1744,6 +1755,7 @@ export class ArenaCore {
 
   /** 是否处于「后 3 分钟」高潮窗口 */
   inClimax() {
+    if (this.waveMode) return false;
     return this.remainSec <= ARENA.CLIMAX_SEC;
   }
 
@@ -1771,13 +1783,13 @@ export class ArenaCore {
     //   「暂停」由调用方决定：渲染层 _loop / sim / fastForward 在 shopOpen 时不再调 step。
     //   这样 step 仍是「推进一帧」的纯函数，老测试直接 set c.time + step 不会被卡死
     //   （实测：内部早退会让 Boss/死亡结算等快进到 120s+ 的测试永远停住）。
-    if (this._nextShopIdx < ARENA.SHOP_TIMES.length
+    if (!this.waveMode && this._nextShopIdx < ARENA.SHOP_TIMES.length
         && this.elapsed >= ARENA.SHOP_TIMES[this._nextShopIdx]) {
       this.openShop();
     }
     // 阶段 4-3：时间型里程碑（撑过 1/3/5 分钟）。放在 time 更新之后、其余逻辑之前：
     // 它只 push 一行待显示文本，不暂停、不打断任何判定（spec 二-3「不暂停」）。
-    this._checkMilestones();
+    if (!this.waveMode) this._checkMilestones();
 
     // 阶段 8-2：原「冲击波三拍计时 + 技能 CD/无敌」整段已随主动技能删除。
     //   ⟹ 保留下来的与技能无关的计时量，口径分两类：
@@ -1826,6 +1838,9 @@ export class ArenaCore {
     if (mag > 0.001) { this.lastDir.x = ux; this.lastDir.y = uy; }
 
     // ── 刷怪（数据驱动的波次表） ──
+    // ★ 波次模式：旧调度整段跳过，改由 WaveDirector.step() 自己调 spawnEnemy / 清场 / 结算。
+    if (this.waveMode) this.wd.step(dt);
+    if (!this.waveMode) {
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
       const climax = this.inClimax();
@@ -1843,7 +1858,9 @@ export class ArenaCore {
       if (this.bossRef) interval *= ARENA.BOSS_DENSITY_MUL;
       this.spawnTimer = interval * (1 - ARENA.SPAWN_JITTER / 2 + this.rng.next() * ARENA.SPAWN_JITTER);
     }
+    }  // end 旧模式刷怪分支
 
+    if (!this.waveMode) {
     // ── 贴身围堵（阶段 4-1.2）──
     // 与上面那条**独立**的节拍：刷怪表管"从外面涌进来"，这条管"贴脸补位"。
     // ★ 为什么必须独立：刷怪表的速率是"整场铺开"的口径，玩家一跑，那批怪全在身后排队；
@@ -1876,6 +1893,7 @@ export class ArenaCore {
     this._stepEliteWaves(dt);
     this._stepRain(dt);   // 阶段 8：Boss 弹幕雨（按 dt 推进 ⟹ 天然跟随倍速，见倍速任务接口约定）
     this._stepFinalRain(); // 阶段11·P1-12：终局弹雨（固定时间表，零主 rng 侵入）
+    }  // end 旧模式调度分支
 
     // ── 武器：环绕刃 / 直斩（投射物走下面的自动攻击）──
     // 三把武器**各打各的**：独立的计时器、独立的伤害、独立的结算。
@@ -2222,13 +2240,14 @@ export class ArenaCore {
   //   ⚠ 这是**线性**增长，而门槛是 g^lv **指数**增长 ⟹ 收入永远"追但追得吃力"，
   //   正是我们要的手感；若改成指数，后期升级会失控（1.17 那轮的教训）。
   expMulAt(sec = this.elapsed) {
+    if (this.waveMode) return 1;
     const m = sec / 60 - ARENA.EXP_GROWTH_FROM_MIN;
     return m > 0 ? 1 + ARENA.EXP_GROWTH_PER_MIN * m : 1;
   }
 
-  hpScale(sec = this.elapsed) { return Math.pow(ARENA.HP_GROWTH_PER_MIN, sec / 60); }
+  hpScale(sec = this.elapsed) { return this.waveMode ? (this.wd ? this.wd.hpScale() : 1) : Math.pow(ARENA.HP_GROWTH_PER_MIN, sec / 60); }
   /** 接触伤害随时间的成长系数（t 秒时 ×(1 + t/120)）。 */
-  contactScale(sec = this.elapsed) { return Math.pow(ARENA.CONTACT_GROWTH_MUL, sec / ARENA.CONTACT_GROWTH_SEC); }
+  contactScale(sec = this.elapsed) { return this.waveMode ? (this.wd ? this.wd.contactScale() : 1) : Math.pow(ARENA.CONTACT_GROWTH_MUL, sec / ARENA.CONTACT_GROWTH_SEC); }
   /** 敌人速度随时间的**追赶**系数（t 秒时 ×(1 + t/180)，见 ENEMY_SPEED_RAMP_ON）。
    *  和上面两条一样抽成方法：让测试能拿**同一个公式**核对 spawnEnemy 真的把它冻进了出生属性。
    *  ⚠ 开关默认关闭 —— 打开它会把"跑满 10 分钟"从 16/16 打下去（逐档证据见常量注释）。 */
@@ -3732,6 +3751,7 @@ export class ArenaCore {
   gainXp(n) {
     this.xp += n * this.xpMul;       // 阶段 3「经验 +%」被动
     this.gemsCollected += n;
+    if (this.waveMode) this.wd.onPickup(n);   // 波次模式：材料入账 + 未拾取双倍结转
     if (this.xp >= this.xpToLevel && !this.pendingUpgrade) this.openUpgrade();
   }
 
@@ -3745,6 +3765,7 @@ export class ArenaCore {
    *    · 若可选项不足 3 个，退回完整池子 —— 三选一必须**永远是 3 个**，
    *      宁可给一个已封顶的项，也不能让弹窗只剩 1~2 个选项。 */
   openUpgrade(opts = {}) {
+    if (this.waveMode) return this.wd.openLevelChoices(opts);
     const pool = OFFERS.filter((o) => o.avail(this));
     const picks = [];
 
@@ -3799,6 +3820,7 @@ export class ArenaCore {
 
   /** 选择第 i 个选项（0..UPGRADE_CHOICES-1）。选完若仍有富余经验则连开下一级。 */
   chooseUpgrade(i) {
+    if (this.waveMode) return this.wd.chooseLevel(i);
     const up = this.pendingUpgrade && this.pendingUpgrade[i];
     if (!up) return false;
     this.applyUpgrade(up.id);
@@ -4447,6 +4469,8 @@ export class ArenaCore {
       shopVisits: this.shopVisits,
       shopSpend: this.shopSpend,
       shopBought: this.shopBought.slice(),
+      // 波次模式的附加读数（旧模式不产生任何新键）。
+      ...(this.waveMode ? this.wd.resultFields() : {}),
     };
   }
 
@@ -4493,12 +4517,13 @@ export class ArenaCore {
  * 仅在浏览器中实例化（依赖 document / window / requestAnimationFrame）。
  */
 export class Arena {
-  constructor({ stage, rng, reducedMotion = false, onDone, meta = {} }) {
+  constructor({ stage, rng, reducedMotion = false, onDone, meta = {}, wave = null }) {
     this.stage = stage;
     this.rng = rng;
     this.reduced = reducedMotion;
     this.onDone = onDone;
     this.meta = meta || {}; // 阶段 3 元进度：透传给 ArenaCore 开局套用
+    this.waveOpts = wave;   // 波次模式配置（null = 旧 600 秒连续局）
     this.skin = skinById(this.meta.skin || DEFAULT_SKIN).id;  // 阶段 6-2：皮肤（纯渲染，乱 id 归一到默认）
     this.core = null;
     this.raf = 0;
@@ -4569,7 +4594,7 @@ export class Arena {
   start() {
     const w = this.stage.clientWidth || 360;
     const h = this.stage.clientHeight || 640;
-    this.core = new ArenaCore({ rng: this.rng, width: w, height: h, reducedMotion: this.reduced, meta: this.meta });
+    this.core = new ArenaCore({ rng: this.rng, width: w, height: h, reducedMotion: this.reduced, meta: this.meta, wave: this.waveOpts });
 
     // ── 构建 DOM ──
     const root = document.createElement('div');
@@ -4577,6 +4602,8 @@ export class Arena {
     root.innerHTML = `
       <canvas class="arena-canvas"></canvas>
       <div class="arena-inventory"></div>
+      <div class="arena-wavehud" hidden></div>
+      <div class="arena-waveshop" hidden></div>
       <button class="arena-mute" type="button" aria-label="音效开关"><span>音</span></button>
       <div class="arena-hint">拖动屏幕移动 · WASD/方向键亦可</div>
       <!-- 阶段 9：局内倍速按钮（原主动技能槽腾出的右下角空位）。V 键同样可切换。 -->
@@ -4606,6 +4633,8 @@ export class Arena {
     this.choicesEl = root.querySelector('.alu-choices');
     // 阶段 6-4：魂火商栈覆盖层（局内商店；driver 在场时由 _loop 自动跳过，不弹这个）
     this.shopEl = root.querySelector('.arena-shop');
+    this.waveHudEl = root.querySelector('.arena-wavehud');
+    this.waveShopEl = root.querySelector('.arena-waveshop');
     this.shopChoicesEl = root.querySelector('.shop-choices');
     this.shopBalanceEl = root.querySelector('.shop-balance');
     this.shopEl.querySelector('.shop-skip').onclick = () => {
@@ -4976,8 +5005,17 @@ export class Arena {
       this.shopEl.hidden = true;
       this._needsPaint = true;
     }
+    // ★ 波次模式：波间商店是暂停态。无人值守时自动「进入下一波」（与旧模式
+    //   resolveShop([]) 同口径：不买东西、不停局），否则 sim 会卡在第一波结束。
+    const waveShop = !!(this.core.waveMode && this.core.wd && this.core.wd.phase === 'shop');
+    if (waveShop && this.driver) {
+      this.core.wd.nextWave();
+      if (this.waveShopEl) this.waveShopEl.hidden = true;
+      this._needsPaint = true;
+    }
+    if (this.core.waveMode) syncWaveUi(this);
 
-    const paused = !!this.core.pendingUpgrade || !!this.core.shopOpen || this.paused;
+    const paused = !!this.core.pendingUpgrade || !!this.core.shopOpen || waveShop || this.paused;
     if (!this.core.done && !paused) {
       // 阶段 9 局内倍速：把这一帧的墙上时间按 gameSpeed 放大成"游戏时间"，
       // 再拆成 ≤0.05 的子步喂给 stepWorld（物理口径不变，不会隧穿过敌人）。
@@ -4986,7 +5024,7 @@ export class Arena {
       // 表现层 stepFx 始终走墙上时间（见 stepFx 注释），不在下面这个循环里。
       const gameDt = dt * this.gameSpeed;
       let rem = gameDt;
-      while (rem > 1e-6 && !this.core.done && !this.core.pendingUpgrade && !this.core.shopOpen) {
+      while (rem > 1e-6 && !this.core.done && !this.core.pendingUpgrade && !this.core.shopOpen && !waveShop) {
         const sub = Math.min(0.05, rem);
         this.core.stepWorld(sub, this.input);
         rem -= sub;
@@ -5059,6 +5097,8 @@ export class Arena {
   }
 
   _showUpgrade() {
+    const _t = this.root.querySelector('.alu-title');
+    if (_t) _t.textContent = this.core.waveMode ? '升级！四选一' : '升级！三选一';
     this.levelupEl.hidden = false;
     this.choicesEl.innerHTML = '';
     for (let i = 0; i < this.core.pendingUpgrade.length; i++) {
@@ -5066,7 +5106,9 @@ export class Arena {
       const btn = document.createElement('button');
       btn.className = 'alu-choice';
       btn.dataset.i = String(i); // 阶段10·P1-9：数字键 1/2/3 选牌用
-      btn.innerHTML = `<span class="alu-tag">${i + 1}·${CAT_LABEL[up.cat] || ''}</span><span class="alu-name">${up.label}</span><span class="alu-desc">${up.desc}</span>`;
+      btn.innerHTML = this.core.waveMode
+        ? `<span class="alu-tag" style="color:${up.rarityColor || ''}">${i + 1}·${up.rarityLabel || ''}</span><span class="alu-name">${up.label}</span><span class="alu-desc">${up.desc}</span>`
+        : `<span class="alu-tag">${i + 1}·${CAT_LABEL[up.cat] || ''}</span><span class="alu-name">${up.label}</span><span class="alu-desc">${up.desc}</span>`;
       btn.onclick = () => {
         this.core.chooseUpgrade(i);
         this.levelupEl.hidden = true;
@@ -5293,9 +5335,16 @@ export class Arena {
 
   /** 内容批三：守望之瞳的渲染 —— 底座 + 转向的炮口 + 开火闪光 + 寿命环。 */
   _renderSentry(ctx, c) {
-    const s = this.sentry;
+    // ★ sentry 是 **ArenaCore** 的武器状态（core.initWeapon 里挂到 core 上），
+    //   本方法在 Arena 包装层，this 上没有这个字段。旧写法 const s = this.sentry
+    //   会在局内拿到「守望之瞳」后每帧抛 TypeError，直接打断 rAF（整局卡死、不进结算）。
+    const s = c && c.sentry;
+    if (!s || !Array.isArray(s.turrets)) return;
     for (const t of s.turrets) {
-      const p = this._toScreen(t.x, t.y);
+      // 世界层已经 ctx.translate(视口中心 − 相机)，坐标直接用世界坐标即可（毒雾/弹雨同口径）。
+      // 旧代码调了全文件仅此一处引用的 this._toScreen —— 该方法根本不存在，
+      // 一旦真的画守望之瞳就会抛 TypeError 打断 rAF。
+      const p = { x: t.x, y: t.y };
       const alpha = Math.min(1, t.life / 1.2);   // 最后 1.2s 淡出，给玩家「要消失了」的预告
       ctx.save();
       ctx.globalAlpha = alpha;
@@ -6199,7 +6248,9 @@ export class Arena {
     ctx.fillStyle = COLOR.ink;
     ctx.textAlign = 'left';
     // 阶段 6-4：魂火（局内商店货币）随 Lv/HP 同行显示 —— 让玩家随时看得见攒了多少。
-    ctx.fillText(`Lv.${c.level}  HP ${Math.ceil(c.hp)}/${c.maxHp}  魂火 ${Math.floor(c.soulfire)}`, barX, xpY + 10);
+    // 波次模式的货币是「材料」，不是旧模式的魂火 —— 显示魂火 0 会让玩家以为捡了个寂寞。
+    const money = c.waveMode ? `材料 ${c.wd ? c.wd.materials : 0}` : `魂火 ${Math.floor(c.soulfire)}`;
+    ctx.fillText(`Lv.${c.level}  HP ${Math.ceil(c.hp)}/${c.maxHp}  ${money}`, barX, xpY + 10);
 
     // 角落击杀计数（数字往上跳本身就是爽点，不需要额外奖励挂钩）
     ctx.textAlign = 'right';

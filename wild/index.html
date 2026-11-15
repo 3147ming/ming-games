@@ -33,12 +33,24 @@
                皮肤/装备两块默认折叠成一行摘要，点开才展开。 -->
           <div class="title-actions">
             <button aria-label="开始游戏" id="btn-start" class="big">进入荒野</button>
+            <!-- 波次模式（Brotato 化）：20 波 + 波间商店，与旧 600 秒连续局并存 -->
+            <button aria-label="波次模式" id="btn-start-waves" class="big">波次模式 · 20 波</button>
             <!-- 游戏总入口 · 大厅（2026-10-01 用户裁决：主按钮区放显眼入口，
                  页脚的 .more-games 小字链接保留但不再是唯一入口） -->
             <a class="big hub-btn" href="https://ming-games.surge.sh" target="_blank" rel="noopener">游戏大厅</a>
           </div>
           <!-- 阶段 4-5：英雄选择（流浪者默认；重壳守卫/疾风行者用灵魂解锁） -->
           <div id="hero-select" class="hero-select"></div>
+          <!-- 波次模式设置：角色（正负特性）/ 危险 0-5 / 无尽。默认收起，摘要行常驻。 -->
+          <button aria-expanded="false" aria-label="波次模式设置" class="pick-h" type="button" data-target="wave-setup"><span id="wave-sum">波次 · 流浪者 / 危险 0</span><i>▾</i></button>
+          <div id="wave-setup" class="prog-panel wave-setup" hidden>
+            <div class="prog-head">波次模式设置</div>
+            <div class="wave-set-label">角色</div>
+            <div id="wave-chars" class="wave-chips"></div>
+            <div class="wave-set-label">危险等级</div>
+            <div id="wave-dangers" class="wave-chips"></div>
+            <label class="wave-endless"><input id="wave-endless" type="checkbox" /> 无尽模式（20 波后继续）</label>
+          </div>
           <!-- 阶段 6-2：皮肤选择（纯外观；摘要行常驻，点开才展开全部 8 套） -->
           <button aria-expanded="false" aria-label="选择皮肤" class="pick-h" type="button" data-target="skin-select"><span id="skin-sum">皮肤 · 默认</span><i>▾</i></button>
           <div id="skin-select" class="skin-select" hidden></div>
