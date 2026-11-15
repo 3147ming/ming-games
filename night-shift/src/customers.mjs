@@ -203,6 +203,8 @@ export function createCustomers(scene, opts = {}) {
   const identityWeightOf = typeof opts.identityWeightOf === 'function' ? opts.identityWeightOf : null;
   /** 稳定脸谱池大小（见 config.REGULARS.rosterSize 注释）：保证同一张脸跨夜反复出现 */
   const rosterSize = Math.max(4, opts.regularRosterSize ?? REGULARS.rosterSize);
+  /** 批五 A1：顾客踏进店门的回调（门铃等表现层挂这里；纯表现，不参与判定） */
+  const onDoor = typeof opts.onDoor === 'function' ? opts.onDoor : null;
 
   /** 预定今日到达时刻（按夜段权重分布） */
   function buildSchedule(total) {
@@ -527,6 +529,14 @@ export function createCustomers(scene, opts = {}) {
           moving = true;
         } else {
           c.routeIdx += 1;
+          /* 批五 A1：跨过门口那一刻 → 门铃。
+           * route[0] 就是 POS.doorIn（见 routeToShelf 的第一段），所以 routeIdx 变 1
+           * 恰好是"刚踏进店内"的瞬间 —— 比在 spawn 时响更准（spawn 还在广场上）。
+           * doorRung 保证每位顾客只响一次。 */
+          if (c.routeIdx === 1 && !c.doorRung && c.phase === 'toShelf') {
+            c.doorRung = true;
+            try { onDoor?.(c); } catch { /* 表现层失败不能挡住客流 */ }
+          }
         }
       }
       if (!moving) c.char.update(dt, false, null);

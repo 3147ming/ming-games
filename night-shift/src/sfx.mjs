@@ -25,6 +25,7 @@
 import { settings, onSettingsChange } from './settings.mjs';
 import { createBgm, storeAudioScene } from './bgm.mjs';
 import { BGM_MANIFEST } from './bgm-manifest.mjs';
+import { createAudioKit } from './audio-kit.mjs';
 
 /* ---------- 基础 ---------- */
 
@@ -33,6 +34,12 @@ let master = null;
 let bgmBus = null;
 let sfxBus = null;
 let muted = false;
+/**
+ * 离线合成套件（2026-11-14 批五 A1-A3）。
+ * 与下面的实时 tone()/noise() **并存**：套件没准备好（没 AudioContext / 还没 warm 完）时，
+ * 老路径照旧兜底 —— 声音可以差一点，但不能因为引擎升级而"突然没声"。
+ */
+let kit = null;
 
 /** 十二平均律 → 频率 */
 const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
@@ -56,6 +63,20 @@ function ac() {
       sfxBus = ctx.createGain();
       sfxBus.gain.value = settings.sfx;
       sfxBus.connect(master);
+
+      /* 离线合成套件挂在同一个 ctx/master 上：
+       * 它自带总线（near/world/amb/dry）+ 压缩 + 软削波 + 卷积混响，
+       * 与老路径的 sfxBus 并列 —— 两条路共用 master，静音/总音量仍然只有一处。 */
+      try {
+        kit = createAudioKit({ ctx, master });
+        if (kit && kit.ready) {
+          // 预热放到下一拍：首次点击要立刻有反馈，不能被 10ms 的合成挡住
+          setTimeout(() => { try { kit?.warm(); } catch { /* 合成失败不影响发声 */ } }, 0);
+        }
+      } catch (e) {
+        kit = null;
+        console.warn('[sfx] 离线合成不可用，回落实时合成：', e);
+      }
     }
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     return ctx;
@@ -216,12 +237,16 @@ export const sfx = {
 
   /* ---------- 金钱 ---------- */
   /** 金币入账：清脆"叮" */
-  coin() { tone(880, 0.06, { type: 'triangle', gain: 0.14 }); tone(1320, 0.1, { type: 'triangle', gain: 0.12, at: 0.05 }); },
+  coin() {
+    if (kit && kit.ready && kit.play('coin', { gain: 0.8 })) return;
+    tone(880, 0.06, { type: 'triangle', gain: 0.14 }); tone(1320, 0.1, { type: 'triangle', gain: 0.12, at: 0.05 });
+  },
   /**
    * 投币：硬币落进机器 —— 两三声金属碰撞后落底。
    * 用高频 + 极短包络模拟金属，最后一声低一点表示"落到底槽"。
    */
   insertCoin() {
+    if (kit && kit.ready && kit.play('insert_coin', { gain: 0.85 })) return;
     noise(0.02, { gain: 0.06, hp: 3000 });
     tone(1980, 0.03, { type: 'square', gain: 0.05 });
     tone(1560, 0.03, { type: 'square', gain: 0.045, at: 0.05 });
@@ -310,6 +335,11 @@ export const sfx = {
    *   carpet —— 软地：闷一些（低通噪声，低频更弱）
    */
   footstep(surface = 'tile') {
+    // 批五 A1：优先走离线合成的 3 变体（连续脚步声不再"复读机"）
+    if (kit && kit.ready) {
+      kit.play(surface === 'tile' ? 'step_tile' : 'step_carpet', { gain: 0.85, jitter: 0.06 });
+      return;
+    }
     if (surface === 'tile') {
       noise(0.055, { gain: 0.075, lp: 2600 });
       tone(150 + Math.random() * 30, 0.04, { type: 'sine', gain: 0.05 });
@@ -334,7 +364,10 @@ export const sfx = {
   /** 空抓泄气：下滑的钝音 */
   deflate() { tone(420, 0.3, { type: 'sawtooth', gain: 0.09, slide: 130, cutoff: 900 }); },
   /** 弹珠落槽"嗒"：极短、干脆 */
-  clack() { noise(0.018, { gain: 0.06, hp: 2200 }); tone(1400, 0.03, { type: 'square', gain: 0.05 }); },
+  clack() {
+    if (kit && kit.ready && kit.play('clack', { gain: 0.8 })) return;
+    noise(0.018, { gain: 0.06, hp: 2200 }); tone(1400, 0.03, { type: 'square', gain: 0.05 });
+  },
   /** 大奖 / JACKPOT：上行琶音 + 铃音 */
   jackpot() {
     [0, 4, 7, 12, 16].forEach((s, i) => {
@@ -354,6 +387,49 @@ export const sfx = {
       tone(hz(m), i === 3 ? 0.34 : 0.1, { type: 'triangle', gain: 0.12, at: i * 0.1 });
     });
   },
+
+  /* ---------- 批五 A1-A3：新音色 + 空间层 ---------- */
+  /**
+   * 顾客推门：两音门铃（店内最容易被记住的声音）。
+   * 必须走离线合成 —— 实时振荡器做不出金属长尾，听着像"手机提示音"。
+   */
+  doorChime() {
+    if (kit && kit.ready) { kit.play('door_chime', { gain: 0.75 }); return; }
+    tone(659, 0.38, { type: 'sine', gain: 0.1, cutoff: 5200 });
+    tone(880, 0.4, { type: 'sine', gain: 0.09, at: 0.18, cutoff: 5200 });
+  },
+  /** 扫码枪"嘀"（收银台高频反馈，比 coin 更短更干） */
+  scanner() {
+    if (kit && kit.ready) { kit.play('scanner', { gain: 0.7 }); return; }
+    tone(2450, 0.05, { type: 'square', gain: 0.05, cutoff: 6000 });
+  },
+  /** 收银机抽屉（滑轨 + 铃 + 碰撞三合一） */
+  drawer() {
+    if (kit && kit.ready) { kit.play('drawer', { gain: 0.7 }); return; }
+    noise(0.12, { gain: 0.05, hp: 700, lp: 4200 });
+    tone(1180, 0.2, { type: 'triangle', gain: 0.06, at: 0.14 });
+  },
+
+  /**
+   * 环境层：三条 loop（冰箱嗡鸣 / 夜雨 / 街外底噪）。
+   * levels 里给 0 就淡出到静音（不是 stop —— 保留节点，重新给值能立刻回来）。
+   * @param levels { fridge?, rain?, street? } 0..1
+   */
+  ambience(levels = {}) {
+    if (!kit || !kit.ready) return false;
+    for (const name of ['fridge_hum', 'rain', 'street']) {
+      const key = name === 'fridge_hum' ? 'fridge' : name;
+      const v = levels[key];
+      if (!Number.isFinite(v)) continue;
+      if (v > 0.01) kit.startLoop(name, { gain: v, fade: 1.5 });
+      else kit.setLoopGain(name, 0.0001);
+    }
+    return true;
+  },
+  /** 进店 / 出街：切混响空间（店内短尾巴，街道长尾巴） */
+  setZone(z) { kit?.setZone(z); },
+  /** 听者位置与朝向（每帧喂；只有带 pos 的声部才吃它） */
+  listener(pos, forward) { kit?.setListener(pos, forward); },
 
   /* ---------- BGM 控制 ---------- */
   /**
@@ -416,6 +492,8 @@ export const sfx = {
       hum: false,   // 旧字段（低频嗡鸣）—— 现在由引擎的 tension/boss 预设自带 hum 声部
       rampErrors,
       lastRampError,
+      // ★ 批五：离线合成套件的状态（缓冲数 / 声部 / 抢占次数 / 区域 / 生成耗时）
+      kit: kit ? kit.stats() : null,
       // ★ B 包：引擎的完整诊断（情绪 / 双合成层 / mp3 槽位状态）一并透出
       bgm: b,
     };

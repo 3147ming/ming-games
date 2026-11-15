@@ -203,6 +203,9 @@ const customers = createCustomers(world.scene, {
    * 传**回调**而不是快照：主题每夜翻页，顾客生成时必须读当前生效的效果；
    * `themes` 在下方才创建，但回调只在开局 spawn 之后被调用，不存在 TDZ 问题。 */
   identityWeightOf: () => themes.effects()?.idWeight ?? null,
+  /* 批五 A1：踏进门 → 门铃（离线合成的两音金属长尾，店里最有辨识度的一声）。
+   * 纯表现层：回调抛异常也不影响客流推进（customers 内已 try/catch）。 */
+  onDoor: () => sfx.doorChime(),
 });
 
 /* ==================================================================
@@ -931,6 +934,22 @@ try {
   console.warn('[NIGHT SHIFT] Bloom 不可用，降级为直出：', e);
   post = createPassThrough(world.renderer);
 }
+
+/* 批五 R4：桌面端默认开平面反射（触屏不开；后续 perfAdapt 一慢就先关它） */
+/* ⚠ 这两个开关的声明必须在这里（第一次读写之前）。
+ * 曾把它们放在文件末尾的 perfAdapt 段落里，结果模块顶层执行到下面那个 if 时
+ * 撞上 let 的 TDZ → ReferenceError → main.mjs 顶层中断 → rAF 永不启动 → 整屏黑。 */
+let reflOn = false;
+let shadowsOn = false;
+if (reflWanted() && typeof world.setReflectionEnabled === 'function') {
+  reflOn = true;
+  world.setReflectionEnabled(true);
+}
+
+/* 批五 R3：软阴影的开关真源在 scene（它建 renderer 时已按设备决定），
+ * 这里只是把状态同步过来，让 perfAdapt 的升降级从正确的起点开始走。 */
+shadowsOn = !!(world.shadowStats?.().on);
+if (!shadowsOn) world.setShadowsEnabled?.(false);
 
 /* ---------- 娱乐设施小游戏：进入 / 结算 / 退出 ---------- */
 /** 点唱机（纯氛围机）：按 E 循环切换店内 BGM 曲风 */
@@ -2354,6 +2373,15 @@ function startNight() {
   } catch { /* 自动补货失败不该挡住开局 */ }
   /* --- 成长线扩展：翻主题页 → 应用客流/垃圾/故障 → 排抉择与环境 --- */
   themes.rollForNight();     // 把"明夜（已定死）"翻成"今晚"，再摇出新的明晚
+  /* --- 批五 A2：环境声层随主题起落（雨夜才下雨；冰箱嗡鸣与街外底噪常驻） ---
+   * 用 loop 的增益而不是 start/stop：夜里反复开局时不会每次重新建节点，
+   * 也不会出现"上一夜的雨声还在响"（每次开局都显式给值）。 */
+  try {
+    const rainy = state.themeId === 'rain';
+    sfx.ambience({ fridge: 0.4, rain: rainy ? 0.55 : 0.0001, street: 0.22 });
+    /* 批五 T3：雨夜地面湿（广场水洼 + 室内门口一带），其它夜保持"刚拖过地"的微湿 */
+    world.setGroundWet?.(rainy ? 0.9 : 0.18);
+  } catch { /* 音频/地面表现失败不影响开局 */ }
   // 模块 4 ①：本夜小偷排程；②：本夜二手挂牌（都在 running 段由 step 推进 / 结算产收益）
   monitor.rollForNight();
   secondhand.rollListings();
@@ -2437,6 +2465,9 @@ function startNight() {
 }
 
 function endNight() {
+  /* 批五 A2：打烊 → 环境声收一档。不要突然静音：结算面板弹出时留一点底噪，
+   * 否则听觉上像"游戏被关了"，和画面不匹配。 */
+  try { sfx.ambience({ fridge: 0.16, rain: 0.14, street: 0.12 }); } catch { /* 忽略 */ }
   /* 0) 打烊清场（A 方案，零惩罚）：移除店内未结账顾客 mesh，记一笔账本 + 结算面板金行。
    * ⚠ 必须在临期货报废之前 —— 清场读的是 state.customers 当前快照；且要让滞留顾客
    *    在结算面板弹出前就从场景消失（原 bug：他们卡在店里直到点"开始下一夜"才被 resetForNight 移除）。 */
@@ -2866,6 +2897,8 @@ const BLOOM_BASE = post.uniforms?.composite?.strength?.value ?? 0;
 
 /** 娃娃机柜内娃娃数的脏检查缓存（-1 = 还没推过，首帧必然同步一次） */
 let lastClawDolls = -1;
+/** 批五 A3：喂给音频套件的听者朝向（复用对象 —— 每帧 new 一个 Vector3 是白给 GC 找活） */
+const _audioFwd = { x: 0, y: 0, z: -1 };
 
 /** 促销是否在售（2026-10-06 块3：用于"促销结束音"的边沿检测，需跨帧持久故在模块级） */
 let promoWasOn = false;
@@ -2878,6 +2911,16 @@ const perfAdapt = {
   dts: [], slowSince: 0, fastSince: 0,
   inited: false, basePr: 2, curPr: 2, prFloor: 1.25, prStep: 0.25,
 };
+/** 批五 R4：触屏默认不开平面反射（那是"每帧多渲染一遍场景"）。
+ *  开关变量 reflOn / shadowsOn 的声明在文件上方（第一次读写之前），这里只留判定。 */
+function reflWanted() {
+  if (typeof window === 'undefined' || !window.matchMedia) return true;
+  return !window.matchMedia('(pointer: coarse)').matches;
+}
+/** 批五 R3：软阴影只在桌面端开（手机上那笔深度 pass 换不来观感） */
+function shadowsWanted() {
+  return reflWanted();
+}
 function perfInit() {
   if (perfAdapt.inited || typeof window === 'undefined') return;
   const touch = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
@@ -2892,6 +2935,21 @@ function perfApplyPixelRatio() {
   world.renderer.setSize(window.innerWidth, window.innerHeight, false);
 }
 function perfDegrade() {
+  /* 批五 R4：先关平面反射 —— 它等于"每帧多渲染一遍场景"，
+   * 降它比降泛光/分辨率更立竿见影，而且对观感的影响是局部的（只有湿地变干）。 */
+  if (reflOn) {
+    reflOn = false;
+    world?.setReflectionEnabled?.(false);
+    console.info('[perf] 降级：关闭平面反射');
+    return;
+  }
+  /* 批五 R3：其次关软阴影 —— 同样等于"每帧多一遍全场景深度 pass" */
+  if (shadowsOn) {
+    shadowsOn = false;
+    world?.setShadowsEnabled?.(false);
+    console.info('[perf] 降级：关闭软阴影');
+    return;
+  }
   if (post.mips > 0) {
     post.setMips(post.mips - 1);
     console.info(`[perf] 降级：bloom mips → ${post.mips}`);
@@ -2909,6 +2967,14 @@ function perfRecover() {
   } else if (post.mips < 3) {
     post.setMips(post.mips + 1);
     console.info(`[perf] 恢复：bloom mips → ${post.mips}`);
+  } else if (!shadowsOn && shadowsWanted()) {
+    shadowsOn = true;
+    world?.setShadowsEnabled?.(true);
+    console.info('[perf] 恢复：开启软阴影');
+  } else if (!reflOn && reflWanted()) {
+    reflOn = true;
+    world?.setReflectionEnabled?.(true);
+    console.info('[perf] 恢复：开启平面反射');
   }
 }
 function perfStep(dt) {
@@ -3134,17 +3200,27 @@ function step(now) {
   }
   if (typeof world.updateSnack === 'function') world.updateSnack(dt); // R2 摊主烹饪动画
   if (typeof world.updatePond === 'function') world.updatePond(dt); // 池塘涟漪 + 鱼浮动
+  if (typeof world.tickGround === 'function') world.tickGround(dt); // 批五 T3：地面涟漪时间
   /* --- 可感知反馈：粒子推进 / 头顶情绪 / 远处指引点 --- */
   world.updateFeedback(dt);
   world.setEmotions(emotionList());
   world.setBeacons(beaconList());
   /* --- 新手引导（第 1 夜前 3 分钟，三步走完即消失） --- */
   updateTutorial();
+  /* 批五 A3：听者位置/朝向（相机世界矩阵的 -Z 列；只有带 pos 的声部吃它，代价可忽略） */
+  if (world.camera?.matrixWorld && typeof sfx.listener === 'function') {
+    const e = world.camera.matrixWorld.elements;
+    _audioFwd.x = -e[8]; _audioFwd.y = -e[9]; _audioFwd.z = -e[10];
+    sfx.listener(world.camera.position, _audioFwd);
+  }
   renderHud(envSnapshot(), dt);
   syncPauseLayer();
   syncDebug();
   // 后处理渲染（Bloom 不可用时 post 是直出替身，接口一致，无需分支）
-  post.render(world.scene, world.camera);
+  /* 批五 R4：平面反射必须在主渲染**之前**跑 —— 它要把场景画进自己的 RT，
+   * 主渲染时地面材质才采样得到上一帧的反射图（延迟一帧，视觉上察觉不到）。 */
+  if (reflOn && typeof world.renderReflection === 'function') world.renderReflection();
+  post.render(world.scene, world.camera, dt);
 
   if (!state.paused && state.phase === 'running' && state.gameHour >= GAME_HOURS) {
     // 天亮时若还在玩设施：先收掉小游戏，否则结算面板会被盖在下面

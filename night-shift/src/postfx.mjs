@@ -128,6 +128,17 @@ uniform int mipCount;
 uniform float brightness;
 uniform float gammaInv;    // 1/gamma，预先在 CPU 端算好，省掉片元里的除法
 uniform float vignette;    // 0 = 关闭
+/* --- 批五 R1/R2：电影级调色链 + 眼适应 --- */
+uniform sampler2D tAdapt;  // 1×1，时间性平均亮度（0..1 感知域）
+uniform float uAdaptOn;    // 0 = 不做眼适应（低端/关闭）
+uniform float uExposure;   // 手动曝光（设置页以外基本恒 1）
+uniform float uLook;       // 0..1 调色链强度（0 = 退回旧观感）
+uniform float uSaturation;
+uniform float uGrain;
+uniform float uSharpen;
+uniform float uToneMix;    // 0 = 纯 ACES，1 = 纯 AgX（参考件的做法：两者混合）
+uniform float uTime;
+uniform vec2 uTexel;
 varying vec2 vUv;
 
 // 线性 → sRGB 的 OETF（分段函数，标准 sRGB 传递曲线）
@@ -139,14 +150,90 @@ vec3 linearToSRGB(vec3 c) {
   return mix(lo, hi, step(vec3(0.0031308), c));
 }
 
+float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+
+/* ACES（Hill 拟合）：高光滚到白而不是硬切。
+ * 旧链路是在 1.0 处直接 clamp —— 霓虹一亮就变成"纯白方块"，这是手机夜景最假的地方。 */
+vec3 aces(vec3 x) {
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+
+/* AgX（Björn Ottosson 的紧凑近似）：高光掉到白的时候**色相不漂移**。
+ * ACES 会把亮青色霓虹一路推成白色（六边形色相翻转），而夜景的主角就是霓虹；
+ * AgX 只降饱和、守住色相，代价是整体略"灰"。所以这里不换、而是**混**：
+ *   tone = mix(aces, agx, uToneMix)，默认 0.28 —— 高光色相被拉回来，
+ *   同时保留 ACES 的对比度，不至于把整场压成一张灰片。 */
+vec3 agxContrast(vec3 x) {
+  vec3 x2 = x * x;
+  vec3 x4 = x2 * x2;
+  return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
+}
+vec3 agx(vec3 v) {
+  const mat3 toAgx = mat3(
+    0.842479062253094, 0.0423282422610123, 0.0423756549057051,
+    0.0784335999999992, 0.878468636469772, 0.0784336,
+    0.0792237451477643, 0.0791661274605434, 0.879142973793104
+  );
+  const mat3 fromAgx = mat3(
+    1.19687900512017, -0.0528968517574562, -0.0529716355144438,
+    -0.0980208811401368, 1.15190312990417, -0.0980434501171241,
+    -0.0990297440797205, -0.0989611768448433, 1.15107367264116
+  );
+  v = toAgx * max(v, vec3(0.0));
+  v = agxContrast(v);
+  return clamp(fromAgx * v, 0.0, 1.0);
+}
+
+/* 分裂色：暗部偏青、高光偏暖。夜景里这一步比"提高饱和度"有效得多 ——
+ * 它给的是"颜色关系"，不是"颜色多少"。 */
+vec3 splitTone(vec3 c) {
+  float l = luma(c);
+  vec3 sh = vec3(0.92, 1.01, 1.08);
+  vec3 hi = vec3(1.06, 1.0, 0.93);
+  return c * mix(sh, hi, smoothstep(0.05, 0.6, l));
+}
+
+/* 颗粒：用屏幕坐标 + 时间的哈希（不用噪声贴图，零资源） */
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
 void main() {
+  /* 锐化：4 邻域 unsharp。放在最前面（在原始 HDR 上做），
+   * 放到 sRGB 之后会把噪点一起放大成"颗粒感过头的假清晰"。 */
   vec3 base = texture2D(tDiffuse, vUv).rgb;
+  if (uSharpen > 0.001) {
+    vec3 nb = texture2D(tDiffuse, vUv + vec2(uTexel.x, 0.0)).rgb
+            + texture2D(tDiffuse, vUv - vec2(uTexel.x, 0.0)).rgb
+            + texture2D(tDiffuse, vUv + vec2(0.0, uTexel.y)).rgb
+            + texture2D(tDiffuse, vUv - vec2(0.0, uTexel.y)).rgb;
+    base += (base - nb * 0.25) * uSharpen;
+  }
+
   vec3 bloom = vec3(0.0);
   bloom += texture2D(tBlur0, vUv).rgb * w0;
   if (mipCount > 1) bloom += texture2D(tBlur1, vUv).rgb * w1;
   if (mipCount > 2) bloom += texture2D(tBlur2, vUv).rgb * w2;
-  // clamp：HDR 尾部在此收敛到白核（项目未启用 tone mapping，保持电影感的硬截断）
-  vec3 col = clamp(base + bloom * strength, 0.0, 1.0);
+  vec3 hdr = base + bloom * strength;
+
+  /* R2 眼适应：亮度低 → 提曝光；亮度高 → 压曝光。
+   * 上下限收得很紧（0.72..1.5）：这是"深夜进店/出街"的呼吸感，
+   * 不是真的相机自动曝光 —— 放太开会让画面一直忽明忽暗地"喘气"。 */
+  float adapt = texture2D(tAdapt, vec2(0.5)).r;
+  float autoExp = clamp(0.30 / max(adapt, 0.04), 0.72, 1.5);
+  float expo = uExposure * mix(1.0, autoExp, uAdaptOn);
+  hdr *= expo;
+
+  /* R1 调色链（线性域）：ACES/AgX 混合 → 分裂色 → S 曲线 → 提黑 → 饱和度 */
+  vec3 graded = mix(aces(hdr), agx(hdr), clamp(uToneMix, 0.0, 1.0));
+  graded = splitTone(graded);
+  graded = mix(graded, graded * graded * (3.0 - 2.0 * graded), 0.16);
+  graded += vec3(0.004, 0.006, 0.009);          // 抬一点黑位，避免"死黑一片"
+  graded = mix(vec3(luma(graded)), graded, uSaturation);
+
+  vec3 col = mix(clamp(hdr, 0.0, 1.0), graded, uLook);
 
   /* 亮度 + 伽马：直接解决"深夜太黑"（需求原话）。
    * 上限放到 4.0 再收敛，避免亮度拉满时中间调被 1.0 硬截断成一片死白。 */
@@ -160,10 +247,45 @@ void main() {
   float d = distance(vUv, vec2(0.5));
   float vig = mix(1.0, 1.0 - smoothstep(0.35, 1.0, d), clamp(vignette, 0.0, 1.0));
 
+  /* R1 颗粒：在 sRGB 编码前加（模拟胶片颗粒，同时掩盖 8bit 色带） */
+  if (uGrain > 0.0001) {
+    float g = hash21(vUv * vec2(1920.0, 1080.0) + fract(uTime) * 37.0) - 0.5;
+    col += g * uGrain;
+  }
+
   /* linearToSRGB 必须**留在这一行**：ADR-005 第 ③ 条 —— 手写 shader 上屏漏掉
    * linear→sRGB 会让整屏发黑（与"主循环没起来"的症状一模一样，极难排查）。
    * postfx.test 对这条有正则断言守护，重构时别把它拆成中间变量。 */
   gl_FragColor = vec4(linearToSRGB(col) * vig, 1.0);
+}
+`;
+
+/**
+ * 眼适应用的降采样亮度 pass：从最小的模糊层里取 3×3 个点求平均，
+ * 再用 tPrev 做时间性平滑（τ≈1.2s）。输出 1×1 的 R 通道。
+ */
+const FRAG_ADAPT = /* glsl */`
+uniform sampler2D tSrc;
+uniform sampler2D tPrev;
+uniform float uRate;
+varying vec2 vUv;
+
+void main() {
+  vec3 sum = vec3(0.0);
+  for (int j = 0; j < 3; j++) {
+    for (int i = 0; i < 3; i++) {
+      vec2 uv = (vec2(float(i), float(j)) + 0.5) / 3.0;
+      sum += texture2D(tSrc, uv).rgb;
+    }
+  }
+  vec3 c = sum / 9.0;
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  /* 感知化：线性亮度直接做曝光会"暗部一动就过曝"，
+   * 先压到 0..4 再开 1/2.2 次方，接近人眼对亮度的响应。 */
+  l = pow(clamp(l / 4.0, 0.0, 1.0), 0.4545);
+  float prev = texture2D(tPrev, vec2(0.5)).r;
+  float outL = mix(prev, l, clamp(uRate, 0.0, 1.0));
+  gl_FragColor = vec4(outL, 0.0, 0.0, 1.0);
 }
 `;
 
@@ -220,6 +342,22 @@ export function createBloom(renderer, opts = {}) {
       brightness: { value: 1.0 },
       gammaInv: { value: 1.0 },
       vignette: { value: 0 },
+      /* 批五 R1/R2 */
+      tAdapt: { value: null },
+      uAdaptOn: { value: 1 },
+      uExposure: { value: 1 },
+      uLook: { value: 1 },
+      uSaturation: { value: 1.06 },
+      uGrain: { value: 0.012 },
+      uSharpen: { value: 0.12 },
+      uToneMix: { value: 0.28 },
+      uTime: { value: 0 },
+      uTexel: { value: new THREE.Vector2(1, 1) },
+    },
+    adapt: {
+      tSrc: { value: null },
+      tPrev: { value: null },
+      uRate: { value: 0.05 },
     },
   };
 
@@ -241,6 +379,13 @@ export function createBloom(renderer, opts = {}) {
     uniforms: uniforms.composite,
     vertexShader: VERT,
     fragmentShader: FRAG_COMPOSITE,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const matAdapt = new THREE.ShaderMaterial({
+    uniforms: uniforms.adapt,
+    vertexShader: VERT,
+    fragmentShader: FRAG_ADAPT,
     depthTest: false,
     depthWrite: false,
   });
@@ -307,11 +452,23 @@ export function createBloom(renderer, opts = {}) {
   /** 各级模糊 RT：ha/hb 两张乒乓交替，避免读写同一张 */
   const rtBlurA = [];
   const rtBlurB = [];
+  /** 批五 R2：眼适应 1×1 乒乓（A→B→A）。尺寸与窗口无关，只在初始化时建一次 */
+  const rtAdapt = [];
+  let adaptFlip = 0;
+  let adaptRate = 0.05;
+  let adaptFrames = 0;
+  /** 批五 R1/R2：累计时间（颗粒抖动 + 眼适应共用）。漏声明过一版 —— 严格模式下
+   *  每帧 render 都会抛 ReferenceError，表现成画面卡在最后一帧。 */
+  let adaptTime = 0;
 
   function allocate(w, h) {
     size.set(w, h);
     rtScene?.dispose();
     rtScene = makeRT(w, h, pixelType, true, msaa);
+    if (!rtAdapt[0]) {
+      rtAdapt[0] = makeRT(1, 1);
+      rtAdapt[1] = makeRT(1, 1);
+    }
     // 模糊层逐级减半
     for (let i = 0; i < 3; i++) {
       rtBlurA[i]?.dispose();
@@ -400,6 +557,23 @@ export function createBloom(renderer, opts = {}) {
       if (Number.isFinite(g.vignette)) u.vignette.value = Math.min(1, Math.max(0, g.vignette));
     },
 
+    /**
+     * 批五 R1/R2：电影级调色链参数。
+     * 全部可选；传 0 就是关掉对应层（look=0 等价于旧观感，便于 A/B 与降级）。
+     * @param o { look, saturation, grain, sharpen, exposure, adapt }
+     */
+    setLook(o = {}) {
+      const u = uniforms.composite;
+      if (!u || !o || typeof o !== 'object') return;
+      if (Number.isFinite(o.look)) u.uLook.value = Math.max(0, Math.min(1, o.look));
+      if (Number.isFinite(o.saturation)) u.uSaturation.value = Math.max(0, Math.min(2, o.saturation));
+      if (Number.isFinite(o.grain)) u.uGrain.value = Math.max(0, Math.min(0.1, o.grain));
+      if (Number.isFinite(o.sharpen)) u.uSharpen.value = Math.max(0, Math.min(1, o.sharpen));
+      if (Number.isFinite(o.exposure)) u.uExposure.value = Math.max(0.1, Math.min(4, o.exposure));
+      if (Number.isFinite(o.toneMix)) u.uToneMix.value = Math.max(0, Math.min(1, o.toneMix));
+      if (typeof o.adapt === 'boolean') u.uAdaptOn.value = o.adapt ? 1 : 0;
+    },
+
     /** 当前分辨率（供测试/调试读取） */
     get size() { return size.clone(); },
 
@@ -407,7 +581,11 @@ export function createBloom(renderer, opts = {}) {
      * 主渲染入口：渲染 scene 并把泛光叠加上屏。
      * 与 renderer.render(scene, camera) 的调用位置完全等价，可直接替换。
      */
-    render(scene, camera) {
+    render(scene, camera, dt = 1 / 60) {
+      /* dt 可能是 undefined / NaN / 0（暂停帧、首帧、探针手动 pump）。
+       * 直接拿它算 adaptRate 会把 NaN 写进 uniform —— 画面全白，而且不会自愈
+       * （下一帧 tPrev 读到的还是 NaN）。所以先归一。 */
+      if (!Number.isFinite(dt) || dt <= 0) dt = 1 / 60;
       if (mips === 0 || broken) {
         renderer.setRenderTarget(null);
         renderer.render(scene, camera);
@@ -453,6 +631,34 @@ export function createBloom(renderer, opts = {}) {
         uniforms.composite.tBlur1.value = rtBlurA[1]?.texture ?? rtBlurA[0]?.texture ?? null;
         uniforms.composite.tBlur2.value = rtBlurA[2]?.texture ?? rtBlurA[0]?.texture ?? null;
         uniforms.composite.mipCount.value = mips;
+        uniforms.composite.uTexel.value.set(1 / Math.max(1, size.x), 1 / Math.max(1, size.y));
+
+        /* 批五 R2：眼适应。从**最小**的模糊层取 3×3 个点求平均，
+         * 再用 1×1 乒乓做时间性平滑。两个额外 draw，成本可忽略。
+         * 为什么取模糊层而不是原图：原图上采样 9 个点会被高光/噪点带偏，
+         * 模糊层天然就是"整幅画面的平均亮度"。 */
+        /* 批五 R1/R2：时间推进放在 adapt 分支**外面** —— 颗粒抖动也要它，
+         * 否则关掉眼适应后噪点会僵成一张固定的雪花图。 */
+        adaptTime += dt;
+        uniforms.composite.uTime.value = adaptTime;
+
+        if (uniforms.composite.uAdaptOn.value > 0.5 && rtAdapt[0] && rtAdapt[1]) {
+          adaptRate = 1 - Math.exp(-Math.max(1 / 240, Math.min(0.12, dt)) / 1.1);
+          uniforms.adapt.uRate.value = adaptRate;
+          const src = rtBlurA[Math.max(0, Math.min(mips, 3) - 1)] ?? rtBlurA[0];
+          uniforms.adapt.tSrc.value = src?.texture ?? null;
+          if (src) {
+            adaptFlip = 1 - adaptFlip;
+            uniforms.adapt.tPrev.value = rtAdapt[1 - adaptFlip].texture;
+            blit(matAdapt, rtAdapt[adaptFlip]);
+            uniforms.composite.tAdapt.value = rtAdapt[adaptFlip].texture;
+            adaptFrames++;
+          }
+        } else {
+          uniforms.composite.uAdaptOn.value = 0;
+          uniforms.composite.tAdapt.value = rtBlurA[0]?.texture ?? null;  // 不会真的采样（uAdaptOn=0）
+        }
+
         renderer.setRenderTarget(null);
         blit(matComposite, null);
       } catch (e) {
@@ -470,10 +676,12 @@ export function createBloom(renderer, opts = {}) {
     dispose() {
       rtScene?.dispose();
       for (let i = 0; i < 3; i++) { rtBlurA[i]?.dispose(); rtBlurB[i]?.dispose(); }
+      rtAdapt[0]?.dispose(); rtAdapt[1]?.dispose();
       geo.dispose();
       matBright.dispose();
       matBlur.dispose();
       matComposite.dispose();
+      matAdapt.dispose();
     },
 
     /** 调试信息 */
@@ -488,6 +696,16 @@ export function createBloom(renderer, opts = {}) {
         // 实际选用的 RT 像素格式：探测不支持时会从 half-float 退到 unsigned-byte
         pixelType: pixelType === THREE.HalfFloatType ? 'half-float' : 'unsigned-byte',
         degraded: broken,
+        /* 批五 R1/R2：调色链与眼适应的运行时状态（探针/报告用） */
+        look: uniforms.composite.uLook.value,
+        saturation: uniforms.composite.uSaturation.value,
+        exposure: uniforms.composite.uExposure.value,
+        toneMix: uniforms.composite.uToneMix.value,
+        adaptOn: uniforms.composite.uAdaptOn.value > 0.5,
+        adaptFrames,
+        adaptRate,
+        grain: uniforms.composite.uGrain.value,
+        sharpen: uniforms.composite.uSharpen.value,
       };
     },
   };
@@ -503,6 +721,7 @@ export function createPassThrough(renderer) {
     enabled: false,
     setSize: noop,
     setGrade: noop,   // 直出时调色无处可去（没有 composite pass），保持接口一致即可
+    setLook: noop,    // 同上：直出没有调色链，但要能被 main 无条件调用
     render(scene, camera) {
       renderer.setRenderTarget(null);
       renderer.render(scene, camera);
@@ -518,6 +737,12 @@ export function createPassThrough(renderer) {
       height: 0,
       pixelType: 'none',
       degraded: true,
+      look: 0,
+      adaptOn: false,
+      adaptFrames: 0,
+      adaptRate: 0,
+      grain: 0,
+      sharpen: 0,
     }),
   };
 }

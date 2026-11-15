@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 3D 场景搭建
  * 垂直切片：程序化几何 + 程序化贴图（ADR-004），无外部资源、无构建步骤。
  *
@@ -23,6 +23,11 @@ import { NEON } from './art.mjs';
 import { fmtYuan } from './fmt.mjs';
 import { state } from './state.mjs';
 import { itemArtFor } from './artmap.mjs';
+import {
+  buildGroundDetail, buildGroundMask, makeDataTexture,
+  applyGroundDetail, createPlanarReflection,
+} from './groundmat.mjs';
+import { installSoftShadows } from './shadows.mjs';
 
 let MATS = null;
 /** 钓鱼池塘逐帧动画引用（水面顶点起伏 + 鱼浮动），由 buildFacility 赋值 */
@@ -492,6 +497,19 @@ export function createWorld(canvas) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouch ? 1.5 : 2));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
 
+  /* ================= 批五 R3：PCSS 软阴影 =================
+   * ⚠ 时序硬约束：必须在**任何材质首次编译之前**改写 ShaderChunk，
+   *   否则已编译的 program 会沿用旧的 getShadow（three 不会因为 chunk 变了而自动重编）。
+   * 触屏不开：阴影等于"每帧多一遍全场景深度 pass"，手机上这笔开销换不来观感。
+   * installSoftShadows 失败时返回 {ok:false} 并保持 stock PCF —— 绝不抛错挡住启动。 */
+  const softShadow = installSoftShadows(THREE, {
+    depthMeters: 11.5,   // 与下面 shadowLight 的 near/far 跨度对齐（半影宽度换算成米）
+    widthMeters: 9.0,    // 地面处阴影相机的可见宽度
+    blockers: 8, taps: 12,
+  });
+  renderer.shadowMap.enabled = !isTouch;
+  renderer.shadowMap.autoUpdate = true;
+
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x141A24);
   scene.fog = new THREE.Fog(0x141A24, 16, 46); // 场地变大，雾距同步放宽
@@ -594,6 +612,49 @@ export function createWorld(canvas) {
   const floor = box(storeW, 0.08, storeD, 'floor', 2);
   floor.position.set((STORE.minX + STORE.maxX) / 2, 0.035, (STORE.minZ + STORE.maxZ) / 2);
   world.add(floor);
+
+  /* ================= 批五 T1/T2/T3：地面材质增强 =================
+   * MATS.plaza 与 MATS.floor 通过 ALIASES 指向**同一个** floorTile 实例，
+   * 直接在共享材质上注入 = 室内室外一起湿，还会波及所有用 floorTile 的网格。
+   * 所以两块地面各 clone 一份，贴图仍然共享（clone 不复制 GPU 贴图）。
+   *
+   * gDetail = 通道打包瓦片（R/G 法线、B 粗糙、A 颗粒）
+   * gMask   = 世界坐标的大尺度遮罩（污渍 / 磨损 / 低洼） */
+  const gDetail = makeDataTexture(buildGroundDetail(512), 4);
+  const gMask = makeDataTexture(buildGroundMask(512), 4);
+
+  const plazaMat = MATS.plaza.clone();
+  const plazaGround = applyGroundDetail(plazaMat, {
+    detail: gDetail, mask: gMask, outdoor: true, wet: 0.25,
+    door: { x: POS.door.x, z: POS.door.z },
+  });
+  plaza.material = plazaMat;
+
+  const floorMat = MATS.floor.clone();
+  const floorGround = applyGroundDetail(floorMat, {
+    detail: gDetail, mask: gMask, outdoor: false, wet: 0.12,
+    door: { x: POS.door.x, z: POS.door.z },
+  });
+  floor.material = floorMat;
+
+  /* --- 批五 R4：平面反射（半分辨率，镜面 y=0，默认关闭由 main 按画质打开） ---
+   * 反射图与投影矩阵都挂同一个对象实例：uniform 直接引用它，
+   * 每帧 render() 原地更新矩阵，材质侧不需要再 copy 一次。 */
+  let groundTime = 0;
+  const reflection = createPlanarReflection(renderer, scene, camera, {
+    scale: 0.5, height: 0, enabled: false,
+  });
+  for (const g of [plazaGround, floorGround]) {
+    g.uniforms.uGRefl.value = reflection.texture;
+    g.uniforms.uGReflMatrix.value = reflection.matrix;
+  }
+  /* ⚠ 地面自己必须退出反射遍：它采样 uGRefl（= 反射 RT 的贴图），
+   * 而反射遍又把场景画进同一个 RT → WebGL 直接报
+   * "Feedback loop formed between Framebuffer and active Texture"，
+   * 该 draw call 被整个丢弃（地面在水里变成一张黑洞）。
+   * 而且"地面里的地面"本来也不该存在，隐藏掉既修 bug 又更正确。 */
+  plaza.userData.noReflect = true;
+  floor.userData.noReflect = true;
 
   /* ================= 便利店（保留原有坐标与交互锚点） ================= */
   const st = STORE.wallT;
@@ -1737,6 +1798,68 @@ export function createWorld(canvas) {
     tube.position.set(x, 2.82, 0);
     world.add(tube);
   }
+
+  /* ---------- 批五 R3：软阴影的唯一主光 ----------
+   * three 里能投阴影的只有 Directional / Spot / Point；Point 走立方体阴影图（一遍场景渲 6 次），
+   * 而这里要的只是"货架在过道上投一道柔和的边"，一盏朝下的 SpotLight 最省。
+   *   · 位置贴天花（SH-0.22 = 2.98m，略高于两根灯管的 2.82），保证不穿天花板；
+   *   · angle 1.18rad ≈ 68° 半角 → 地面覆盖半径 ≈ 2.98·tan68° ≈ 7.4m，正好罩满店内；
+   *   · 强度 0.8 低于两根主灯管的 1.4/1.2 —— **不改变现有布光平衡**，
+   *     只把原来靠 contactShadow 径向渐变贴图伪造的"贴地那道边"换成真阴影。
+   * 半影宽度由 PCSS 按遮挡距离算（shadows.mjs），所以此处不设 shadow.radius。 */
+  const shadowLight = new THREE.SpotLight(0xFFE2B8, 0.8, 13, 1.18, 0.55, 1.6);
+  shadowLight.position.set(storeCx, SH - 0.22, storeCz);
+  shadowLight.target.position.set(storeCx, 0, storeCz);
+  shadowLight.castShadow = !isTouch && renderer.shadowMap.enabled === true;
+  shadowLight.shadow.mapSize.set(1024, 1024);
+  shadowLight.shadow.camera.near = 0.5;
+  shadowLight.shadow.camera.far = 12;   // 跨度 11.5m，与 installSoftShadows 的 depthMeters 对齐
+  shadowLight.shadow.bias = -0.0004;    // 负偏置微推向光源，压掉残留的漏光条
+  shadowLight.shadow.normalBias = 0.02; // 沿法线外推，治薄板（层板/背板）的自阴影
+  scene.add(shadowLight);
+  scene.add(shadowLight.target);
+
+  /* 哪些网格参与阴影：
+   *  · 天球（半径 52 的 BackSide 球）绝对不能 cast —— 它会把整场包进阴影里；
+   *  · 地面不 cast（自己投自己只会换来满屏条纹），但必须 receive；
+   *  · 半透明件（接触阴影贴片、玻璃、导视箭头）一律跳过 —— 它们投出来的是实心影子，
+   *    比没有影子更假。
+   * 只设一次开销可控；运行时新建的机器由 addFacilities 再补一次。 */
+  let shadowCasters = 0;
+  const SHADOW_NO_CAST = new Set([sky, plaza, floor, ceil]);
+  const SHADOW_SKIP = new Set([sky]);
+  function applyShadowFlags(root) {
+    if (!root || renderer.shadowMap.enabled !== true) return 0;
+    let n = 0;
+    root.traverse((o) => {
+      if (!o.isMesh || SHADOW_SKIP.has(o)) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      if (!mats.length || mats.some((m) => !m)) return;
+      if (mats.some((m) => m.transparent === true || m.opacity < 0.99 || m.visible === false)) return;
+      o.receiveShadow = true;
+      if (!SHADOW_NO_CAST.has(o)) { o.castShadow = true; n++; }
+    });
+    shadowCasters += n;
+    return n;
+  }
+
+  /** 阴影总开关（perfAdapt 降级用）。切 `shadowMap.enabled` 会改 program 的 USE_SHADOWMAP，
+   *  必须显式让材质重编，否则会残留上一帧的阴影采样。 */
+  function setShadowsEnabled(v) {
+    const on = v === true;
+    if (renderer.shadowMap.enabled === on) return on;
+    renderer.shadowMap.enabled = on;
+    shadowLight.castShadow = on;
+    const mats = new Set();
+    scene.traverse((o) => {
+      if (!o.isMesh || !o.material) return;
+      const list = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of list) if (m) mats.add(m);
+    });
+    for (const m of mats) m.needsUpdate = true;
+    return on;
+  }
+  shadowLight.userData.setEnabled = setShadowsEnabled;
 
   /* ================= 环境交互物：垃圾 =================
    * 垃圾是**运行时动态**生成的（worldstate 刷新），所以这里用对象池：
@@ -2906,6 +3029,7 @@ export function createWorld(canvas) {
       const p = buildFacility(fac);
       builtIds.add(fac.id);
       p.group.visible = true;
+      applyShadowFlags(p.group); // 运行时新建的机器也要投/受影（否则解锁后像贴纸）
       if (!facilityHits.includes(p.hit)) facilityHits.push(p.hit);
       added.push(p.fac);
     }
@@ -3046,6 +3170,10 @@ export function createWorld(canvas) {
   // P1-6：FOV 缓动。setFov 只写目标值，updateFov 每帧用 exp 逼近，转屏/调设置不再瞬跳。
   let targetFov = camera.fov;
 
+  /* 批五 R3：等静态几何全部建完再一次性打标记（遍历一遍，而不是每个 build 函数各改一处，
+   * 那样一定会漏掉某个忘了写的物体，表现为"全场都有影子，只有饮水机浮着"）。 */
+  applyShadowFlags(world);
+
   return {
     renderer, scene, camera, world, colliders, lights,
     anchors: {
@@ -3082,6 +3210,46 @@ export function createWorld(canvas) {
       camera.fov += (targetFov - camera.fov) * k;
       if (Math.abs(targetFov - camera.fov) < 0.05) camera.fov = targetFov;
       camera.updateProjectionMatrix();
+    },
+    /* --- 批五 T3/R4：地面湿度 / 涟漪时间 / 平面反射 --- */
+    setGroundWet(v) {
+      const w = Math.max(0, Math.min(1, Number(v) || 0));
+      plazaGround.setWet(w);          // 室外：低洼积水
+      floorGround.setWet(w * 0.6);    // 室内：门口一带（shader 里按 uGDoor 衰减）
+    },
+    /** 每帧推进涟漪时间（水洼法线扰动用；没水洼时几乎零成本） */
+    tickGround(dt) {
+      if (typeof dt !== 'number' || !Number.isFinite(dt)) return;
+      groundTime += dt;
+      plazaGround.setTime(groundTime);
+      floorGround.setTime(groundTime);
+    },
+    setReflectionEnabled(v) {
+      reflection.setEnabled(v === true);
+      const on = reflection.enabled;
+      plazaGround.uniforms.uGReflOn.value = on ? 1 : 0;
+      floorGround.uniforms.uGReflOn.value = on ? 1 : 0;
+    },
+    renderReflection() { return reflection.render(); },
+    groundStats() {
+      return {
+        wet: plazaGround.uniforms.uGWet.value,
+        indoorWet: floorGround.uniforms.uGWet.value,
+        reflection: reflection.stats(),
+      };
+    },
+    /* --- 批五 R3：PCSS 软阴影（触屏默认关；perfAdapt 可运行时降级） --- */
+    setShadowsEnabled,
+    shadowStats() {
+      return {
+        on: renderer.shadowMap.enabled === true,
+        casting: shadowLight.castShadow === true,
+        pcss: softShadow.ok === true,
+        reason: softShadow.reason ?? null,
+        taps: softShadow.taps ?? 0,
+        mapSize: shadowLight.shadow.mapSize.x,
+        casters: shadowCasters,
+      };
     },
     /** 标签过滤 / 新手引导箭头（P1-5、P1-7、P2-10） */
     updateLabels, setGuideVisible,
