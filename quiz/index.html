@@ -569,6 +569,187 @@ function qaDiffDefault(bk){var ds=qaDiffs(bk);if(!ds)return -1;var sv=parseInt(S
 });
 
 ;
+/* ===== 知识问答 · 网络适配层（UMD：浏览器挂 globalThis.QANet，Node 可 require 单测） =====
+   目的（A4）：以前 8 类外部端点的超时、中断、错误分类、降级顺序散在 netFailText /
+   trySource / fetchOnline / callAI / testAI / callAIRaw / 维基三接口里，断网行为没法单测。
+   现在统一：
+   - FALLBACK   一张显式降级表（每条链路的源顺序、超时、失败策略、涉及端点）；
+   - FAIL_TEXT  一张失败文案表，netFailText 只做委托；
+   - timedFetch 带超时 + AbortController 的 fetch，返回原生 Response 的 Promise，
+                调用点的 .then/.catch 形状不变（原有探针的 fetch stub 照旧生效）；
+   - reason     统一错误分类（timeout / net / http / empty / nofetch）；
+   - chain      按总预算逐源重试（联网题库的主源 → 代理 → 离线兜底）。
+   本文件不碰 DOM、不读写存储；需要时间/定时器的地方都由调用方或 env 注入，便于 Node 单测。 */
+(function (root, factory) {
+    var api = factory();
+    if (typeof module === 'object' && module && module.exports) {
+        module.exports = api;
+    }
+    if (root) {
+        root.QANet = api;
+    }
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+    'use strict';
+
+    /* 一张显式降级表：源顺序即降级顺序。端点 URL 只在各自的调用处定义一份，
+       这里登记 id / 用途 / 失败策略，避免把 URL 复制成第二真相。 */
+    var FALLBACK = {
+        quiz: {
+            label: '联网题库',
+            chain: ['opentdb', 'allorigins', 'offlinePool'],
+            endpoints: ['opentdb.com/api.php', 'api.allorigins.win/raw'],
+            timeoutMs: 8000, minLeftMs: 1500, onFail: 'offlinePool'
+        },
+        wiki: {
+            label: '百科释义',
+            chain: ['opensearch', 'search', 'wikidata', 'summary', 'extract'],
+            endpoints: ['zh.wikipedia.org/w/api.php (opensearch)', 'zh.wikipedia.org/w/api.php (search)',
+                        'www.wikidata.org/w/api.php', 'zh.wikipedia.org/api/rest_v1/page/summary',
+                        'zh.wikipedia.org/w/api.php (extracts)'],
+            timeoutMs: 6000, onFail: 'empty'
+        },
+        ai: {
+            label: 'AI 建题 / 评判 / 连接测试',
+            chain: ['configuredUrl', 'proxy'],
+            endpoints: ['7 家服务商 + Pollinations（URL 见 AI_PROVIDERS）'],
+            timeoutMs: 30000, testTimeoutMs: 10000, onFail: 'disableOrToast'
+        },
+        suggest: {
+            label: '百度联想 / 百科卡片',
+            chain: ['suggestion.baidu.com', 'baike.baidu.com'],
+            endpoints: ['suggestion.baidu.com/su', 'baike.baidu.com/api/openapi/BaikeLemmaCardApi'],
+            timeoutMs: 5000, onFail: 'empty'
+        },
+        audio: {
+            label: '本地音频扩展名探测',
+            chain: ['mp3', 'flac', 'wav', 'm4a', 'ogg', 'aac'],
+            endpoints: ['quiz/audio/<basename>.<ext>'],
+            timeoutMs: 0, onFail: 'nextExt'
+        }
+    };
+
+    var FAIL_TEXT = {
+        timeout: '⚠️ 联网超时，已尝试备用源',
+        net: '⚠️ 网络不可达，请检查网络后重试',
+        nofetch: '⚠️ 当前环境不支持联网，已使用本地离线题库（{n}题）',
+        http: '⚠️ 联网服务返回异常，已尝试备用源',
+        empty: '⚠️ 联网题库返回空数据，已使用本地离线题库（{n}题）',
+        fail: '⚠️ 联网获取失败，已使用本地离线题库（{n}题）'
+    };
+    function failText(reason, offlineCount) {
+        var t = FAIL_TEXT[reason] || FAIL_TEXT.fail;
+        return t.replace(/\{n\}/g, String(offlineCount == null ? 0 : offlineCount));
+    }
+
+    function err(kind, message) {
+        var e = new Error(message || kind);
+        e.name = kind === 'timeout' ? 'AbortError' : kind;
+        e.reason = kind;
+        return e;
+    }
+    /* 统一错误分类：AbortError / reason=timeout 一律归超时，其余归网络不可达。 */
+    function reason(e) {
+        if (!e) { return 'net'; }
+        if (e.reason && FAIL_TEXT[e.reason]) { return e.reason; }
+        var name = String(e.name || '');
+        if (/Abort|timeout/i.test(name) || /timeout/i.test(String(e.message || ''))) { return 'timeout'; }
+        return 'net';
+    }
+
+    function envOf(env) {
+        var E = env || {};
+        var G = (typeof globalThis !== 'undefined') ? globalThis : null;
+        /* 显式传 fetch:null 表示「环境不支持联网」，不能被宿主自带的 fetch 顶掉 */
+        var f = Object.prototype.hasOwnProperty.call(E, 'fetch')
+            ? E.fetch : (typeof fetch === 'function' ? fetch : null);
+        var st = E.setTimeout || (typeof setTimeout === 'function' ? setTimeout : null);
+        var ct = E.clearTimeout || (typeof clearTimeout === 'function' ? clearTimeout : null);
+        return {
+            fetch: f,
+            /* 原生 fetch / setTimeout 以对象方法形式调用会抛 Illegal invocation，
+               必须绑定到全局对象再调（Node 单测的 mock 函数同样接受 .call）。 */
+            callFetch: function (u, o) { return f.call(G, u, o); },
+            AbortController: E.AbortController || (typeof AbortController === 'function' ? AbortController : null),
+            setTimeout: function (fn, ms) { return st.call(G, fn, ms); },
+            clearTimeout: function (h) { if (ct) { return ct.call(G, h); } },
+            now: E.now || function () { return Date.now(); }
+        };
+    }
+    /* 带超时的 fetch：返回原生 Response 的 Promise，签名与既有 .then 链兼容。
+       env 可注入 fetch / AbortController / 定时器，供 Node 单测构造断网场景。 */
+    function timedFetch(url, opt, ms, env) {
+        var E = envOf(env);
+        return new Promise(function (resolve, reject) {
+            if (!E.fetch) { reject(err('nofetch')); return; }
+            var o = {}, k;
+            for (k in opt) { if (Object.prototype.hasOwnProperty.call(opt, k)) { o[k] = opt[k]; } }
+            var ac = null, timer = null, done = false;
+            function finish(kind, value) {
+                if (done) { return; }
+                done = true;
+                if (timer) { E.clearTimeout(timer); }
+                if (kind) { reject(err(kind, value)); } else { resolve(value); }
+            }
+            if (ms > 0 && E.AbortController) {
+                try { ac = new E.AbortController(); o.signal = ac.signal; } catch (e) { ac = null; }
+            }
+            if (ms > 0) {
+                timer = E.setTimeout(function () {
+                    try { if (ac && ac.abort) { ac.abort(); } } catch (e) { }
+                    finish('timeout');
+                }, ms);
+            }
+            try {
+                Promise.resolve(E.callFetch(url, o)).then(function (r) {
+                    finish('', r);
+                }).catch(function (e) {
+                    finish(reason(e));
+                });
+            } catch (e) {
+                finish('net');
+            }
+        });
+    }
+
+    /* 按总预算逐源重试：attempt(src, leftMs, next)；next(ok, value, reason) 决定是否继续。
+       done(ok, value, reason, src)。预算见底或源用尽时以最后一个 reason 收尾。 */
+    function chain(sources, budget, attempt, done, env) {
+        var E = envOf(env);
+        var i = 0, t0 = E.now(), lastReason = '';
+        var minLeft = 1500;
+        function finish(ok, value, why, src) {
+            done(!!ok, value, why || lastReason || 'fail', src || null);
+        }
+        function next(ok, value, why) {
+            if (why) { lastReason = why; }
+            if (ok) { finish(true, value, '', sources[i - 1]); return; }
+            var left = budget - (E.now() - t0);
+            if (i >= sources.length || left < minLeft) {
+                finish(false, null, lastReason || (left < minLeft ? 'timeout' : 'fail'), null);
+                return;
+            }
+            var src = sources[i++];
+            try {
+                attempt(src, left, next);
+            } catch (e) {
+                lastReason = 'net';
+                next(false, null, 'net');
+            }
+        }
+        next(false, null, '');
+    }
+
+    return {
+        FALLBACK: FALLBACK,
+        FAIL_TEXT: FAIL_TEXT,
+        failText: failText,
+        reason: reason,
+        timedFetch: timedFetch,
+        chain: chain
+    };
+});
+
+;
 /* P2-A2：本地存储写入统一走 safeSet —— 配额满时提示一次（不再静默丢数据）
    ⚠ 不要给 localStorage 实例挂方法（Storage 会把属性当 key 写进去），只能自己包一层。 */
 var quotaWarned=false;
@@ -869,11 +1050,8 @@ var OFFLINE_POOL=[
 {q:'披萨起源于哪个国家？',a:'意大利',opts:['意大利','法国','美国','西班牙'],cat:'美食'}
 ];
 function safeDecodeURI(s){s=String(s==null?'':s);try{return decodeURIComponent(s)}catch(e){try{return decodeURIComponent(s.replace(/%(?![0-9a-fA-F]{2})/g,'%25'))}catch(e2){return s}}}
-function netFailText(reason){
- if(reason==='timeout')return '⚠️ 联网超时，已尝试备用源';
- if(reason==='net')return '⚠️ 网络不可达，请检查网络后重试';
- if(reason==='nofetch')return '⚠️ 当前环境不支持联网，已使用本地离线题库（'+OFFLINE_POOL.length+'题）';
- return '⚠️ 联网获取失败，已使用本地离线题库（'+OFFLINE_POOL.length+'题）';}
+/* A4：失败文案统一由 QANet.FAIL_TEXT 提供，这里只补离线题库题量。 */
+function netFailText(reason){return QANet.failText(reason,OFFLINE_POOL.length);}
 function onlineSourceList(){return [
  {name:'main',url:QA_MAIN_URL},
  {name:'proxy',url:'https://api.allorigins.win/raw?url='+encodeURIComponent(QA_MAIN_URL)}];}
@@ -889,28 +1067,27 @@ function parseOnlineData(d){try{var raw=d;if(raw==null)return null;
  return arr.length?arr:null;}catch(e){return null}}
 function useOfflinePool(){try{var arr=shuffle(OFFLINE_POOL.slice()).slice(0,Math.min(20,OFFLINE_POOL.length)).map(function(it){return {q:it.q,a:it.a,opts:shuffle((it.opts||[]).slice()),cat:it.cat||'离线题库',src:'offline'}});
  if(!arr.length)return false;ONLINE_BANK=arr;ONLINE_SRC='offline';updateOnlineStatus();return true;}catch(e){return false}}
-function trySource(src,budget,cb){var done=false,timer=null,ac=null;
- function finish(ok,arr,reason){if(done)return;done=true;try{if(timer)clearTimeout(timer)}catch(e){}cb(!!ok,arr||null,reason||'');}
- try{var opt={};if(typeof AbortController==='function'){try{ac=new AbortController();opt.signal=ac.signal}catch(e){opt={}}}
-  var ms=Math.max(1200,Math.min(QA_NET_TIMEOUT,budget||QA_NET_TIMEOUT));
-  timer=setTimeout(function(){try{if(ac&&ac.abort)ac.abort()}catch(e){}finish(false,null,'timeout')},ms);
-  fetch(src.url,opt).then(function(r){if(!r||r.ok===false){finish(false,null,'http');return null}return r.json();})
+function trySource(src,budget,cb){var done=false;
+ function finish(ok,arr,reason){if(done)return;done=true;cb(!!ok,arr||null,reason||'');}
+ var ms=Math.max(1200,Math.min(QA_NET_TIMEOUT,budget||QA_NET_TIMEOUT));
+ /* A4：超时 / AbortController / 错误分类统一由 QANet.timedFetch 负责 */
+ QANet.timedFetch(src.url,{},ms).then(function(r){if(!r||r.ok===false){finish(false,null,'http');return null}return r.json();})
   .then(function(d){if(d==null)return;var arr=parseOnlineData(d);if(arr&&arr.length)finish(true,arr,'');else finish(false,null,'empty');})
-  .catch(function(e){finish(false,null,(e&&e.name&&String(e.name).indexOf('Abort')>=0)?'timeout':'net')});
- }catch(e){finish(false,null,'net')}}
+  .catch(function(e){finish(false,null,QANet.reason(e));});}
 function fetchOnline(cb){
  cb=(typeof cb==='function'?cb:function(){});
- var srcs=onlineSourceList(),t0=Date.now(),i=0,lastReason='';
+ var srcs=onlineSourceList(),lastReason='';
  function fallback(reason){if(useOfflinePool()){cb(true,{degraded:true,reason:reason||lastReason||'fail'})}else{cb(false,{degraded:false,reason:reason||lastReason||'fail'})}}
- function nextSource(){
-  if(i>=srcs.length){fallback(lastReason||'fail');return}
-  var left=QA_NET_TIMEOUT-(Date.now()-t0);
-  if(left<1500){fallback(lastReason||'timeout');return}
-  var src=srcs[i++];
+ /* A4：按 FALLBACK.quiz 的顺序（主源 → 代理 → 离线）在总预算内逐源重试 */
+ QANet.chain(srcs,QA_NET_TIMEOUT,function(src,left,next){
   trySource(src,left,function(ok,arr,reason){
-   if(ok&&arr&&arr.length){try{ONLINE_BANK=arr;ONLINE_SRC='online';safeSet('bt_qa_online',JSON.stringify({t:Date.now(),items:arr}));}catch(e){}updateOnlineStatus();cb(true,{degraded:false,source:src.name});return}
-   lastReason=reason||lastReason;nextSource();});}
- try{nextSource();}catch(e){fallback(lastReason||'net')}}
+   if(ok&&arr&&arr.length)next(true,arr,'');
+   else{lastReason=reason||lastReason;next(false,null,lastReason);}
+  });
+ },function(ok,arr,reason,src){
+  if(ok&&arr&&arr.length){try{ONLINE_BANK=arr;ONLINE_SRC='online';safeSet('bt_qa_online',JSON.stringify({t:Date.now(),items:arr}));}catch(e){}updateOnlineStatus();cb(true,{degraded:false,source:src?src.name:''});return}
+  fallback(reason||lastReason||'fail');
+ });}
 function startOnline(){typeKey='b:online';typeLabel='🌐 联网';if(ONLINE_BANK.length){beginOnline();return;}
  st.innerHTML='';var c=h('div');c.style.cssText='max-width:560px;margin:0 auto;padding:20px;text-align:center';
  c.appendChild(h('div','hud','🌐 正在联网获取最新题目…'));
@@ -4877,11 +5054,9 @@ function callAI(cfg,prompt,cb){
   if(!/^https?:\/\//.test(url)){cb(null);return;}
   var hd={'Content-Type':'application/json'};
   if(cfg.key)hd['Authorization']='Bearer '+cfg.key;
-  /* P0-5：30s 超时 + 可中断，避免 AI 卡死且无反馈（与 callAIRaw 对齐） */
-  var ctl=null,timer=null;
-  try{ctl=new AbortController();timer=setTimeout(function(){try{ctl.abort();}catch(e){}},30000);}catch(e){}
-  fetch(url,{method:'POST',headers:hd,body:JSON.stringify(body),signal:ctl?ctl.signal:undefined})
-    .then(function(r){if(timer)clearTimeout(timer);return r.json();}).then(function(d){
+  /* A4：30s 超时 + 中断 + 错误分类统一走 QANet.timedFetch */
+  QANet.timedFetch(url,{method:'POST',headers:hd,body:JSON.stringify(body)},30000)
+    .then(function(r){return r.json();}).then(function(d){
       try{var content=d.choices[0].message.content;if(!content){cb(null);return;}var arr=null;
         var m=content.match(/\[[\s\S]*\]/);
         if(m){try{arr=JSON.parse(m[0]);}catch(e0){}}
@@ -4907,7 +5082,7 @@ function callAI(cfg,prompt,cb){
           return {q:x.q,a:String(x.a).trim(),opts:(_ty==='choice'?shuffle(os):null),exp:String(x.exp||'').trim(),src:String(x.src||'').trim(),type:_ty};
         });cb(out);}
       catch(e){cb(null);}
-    }).catch(function(e){if(timer)clearTimeout(timer);cb(null);});
+    }).catch(function(){cb(null);});
 }
 /* 测试连接：只验证「地址 / Key / 模型」通不通，不要求 AI 返回题目 JSON。
    判定标准 = HTTP 2xx；失败时把状态码（如 401 / 403）或「网络错误 / 超时」回给调用方，
@@ -4918,18 +5093,15 @@ function testAI(cfg,cb){
   if(!/^https?:\/\//.test(url)){cb(false,'地址无效');return;}
   var body={model:cfg.model||(free?'openai':'deepseek-chat'),messages:[{role:'user',content:'请只回复两个字：连接成功'}],temperature:0};
   if(free)body.reasoning_effort='low';
-  var ctl=null,timer=null;
-  try{ctl=new AbortController();timer=setTimeout(function(){try{ctl.abort();}catch(e){}},10000);}catch(e){}
   var hd={'Content-Type':'application/json'};
   if(cfg.key)hd['Authorization']='Bearer '+cfg.key;
-  fetch(url,{method:'POST',headers:hd,body:JSON.stringify(body),signal:ctl?ctl.signal:undefined})
+  /* A4：连接测试 10s，超时错误仍是 AbortError，下面的分支不用改 */
+  QANet.timedFetch(url,{method:'POST',headers:hd,body:JSON.stringify(body)},10000)
     .then(function(r){
-      if(timer)clearTimeout(timer);
       if(r&&r.ok){cb(true);return;}
       cb(false,String((r&&r.status)||'未知'));
     })
     .catch(function(e){
-      if(timer)clearTimeout(timer);
       if(e&&e.name==='AbortError'){cb(false,'超时');return;}
       cb(false,'网络错误');
     });
@@ -4977,19 +5149,16 @@ function callAIRaw(cfg,prompt,cb,ms){
   if(free)body.reasoning_effort='low';
   var hd={'Content-Type':'application/json'};
   if(cfg.key)hd['Authorization']='Bearer '+cfg.key;
-  var ctl=null,timer=null;
-  try{ctl=new AbortController();timer=setTimeout(function(){try{ctl.abort();}catch(e){}},ms||30000);}catch(e){}
-  fetch(url,{method:'POST',headers:hd,body:JSON.stringify(body),signal:ctl?ctl.signal:undefined})
+  /* A4：手写代码 AI 评判统一走 timedFetch，超时文案沿用原分支 */
+  QANet.timedFetch(url,{method:'POST',headers:hd,body:JSON.stringify(body)},ms||30000)
     .then(function(r){if(!r||!r.ok)throw new Error('HTTP '+((r&&r.status)||'?'));return r.json();})
     .then(function(d){
-      if(timer)clearTimeout(timer);
       var t='';
       try{t=d.choices[0].message.content||'';}catch(e){}
       if(!t){cb(null,'AI 返回空内容');return;}
       cb(String(t),null);
     })
     .catch(function(e){
-      if(timer)clearTimeout(timer);
       cb(null,(e&&e.name==='AbortError')?'AI 评判超时':((e&&e.message)||'AI 请求失败'));
     });
 }

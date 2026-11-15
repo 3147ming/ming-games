@@ -141,8 +141,16 @@ const core = read('engine_core.js');
 const ui = read('quiz-ui.js');
 const head = read('head.html');
 ok(build.indexOf("readFileSync(path.join(SRC, 'logic.js')") >= 0, 'build.js 读 logic.js');
-ok(build.indexOf("FRAMEWORK + '\\n' + logic + '\\n;\\n' + core") >= 0, 'logic 内联在 core 之前');
-ok(sandbox.indexOf("vm.runInContext(FRAMEWORK + '\\n' + logic + '\\n' + core") >= 0, '沙箱同序装配');
+/* 装配链后面还会插入 net / state / 题库，这里只断言「logic 在 core 之前」这个顺序约束 */
+/* 按整行取：表达式里含 '\n;\n' 字符串，不能用 [^;]+ 截 */
+const htmlLine = (build.match(/^const html = .*$/m) || [''])[0];
+const iLogic = htmlLine.indexOf('logic');
+const iCore = htmlLine.indexOf('coreOut') >= 0 ? htmlLine.indexOf('coreOut') : htmlLine.indexOf('+ core');
+ok(iLogic >= 0 && iCore > iLogic, 'logic 内联在 core 之前');
+const sbExpr = (sandbox.match(/vm\.runInContext\(([^\n]*?)\);/) || [])[1] || '';
+const sLogic = sbExpr.indexOf('logic');
+const sCore = sbExpr.indexOf("' + core");
+ok(sLogic >= 0 && sCore > sLogic, '沙箱同序装配（logic 在 core 之前）');
 ok(core.indexOf('function validItem(it){return QALogic.validItem(it)}') >= 0, 'core 委托 validItem');
 ok(core.indexOf('function srsAdvance(rec,correct){') >= 0 && core.indexOf('QALogic.srsAdvance(s,correct,Date.now())') >= 0, 'core 委托 SRS');
 ok(ui.indexOf('QALogic.demoteDecision(') >= 0, 'UI 委托降档判定');

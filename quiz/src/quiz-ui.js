@@ -3638,11 +3638,9 @@ function callAI(cfg,prompt,cb){
   if(!/^https?:\/\//.test(url)){cb(null);return;}
   var hd={'Content-Type':'application/json'};
   if(cfg.key)hd['Authorization']='Bearer '+cfg.key;
-  /* P0-5：30s 超时 + 可中断，避免 AI 卡死且无反馈（与 callAIRaw 对齐） */
-  var ctl=null,timer=null;
-  try{ctl=new AbortController();timer=setTimeout(function(){try{ctl.abort();}catch(e){}},30000);}catch(e){}
-  fetch(url,{method:'POST',headers:hd,body:JSON.stringify(body),signal:ctl?ctl.signal:undefined})
-    .then(function(r){if(timer)clearTimeout(timer);return r.json();}).then(function(d){
+  /* A4：30s 超时 + 中断 + 错误分类统一走 QANet.timedFetch */
+  QANet.timedFetch(url,{method:'POST',headers:hd,body:JSON.stringify(body)},30000)
+    .then(function(r){return r.json();}).then(function(d){
       try{var content=d.choices[0].message.content;if(!content){cb(null);return;}var arr=null;
         var m=content.match(/\[[\s\S]*\]/);
         if(m){try{arr=JSON.parse(m[0]);}catch(e0){}}
@@ -3668,7 +3666,7 @@ function callAI(cfg,prompt,cb){
           return {q:x.q,a:String(x.a).trim(),opts:(_ty==='choice'?shuffle(os):null),exp:String(x.exp||'').trim(),src:String(x.src||'').trim(),type:_ty};
         });cb(out);}
       catch(e){cb(null);}
-    }).catch(function(e){if(timer)clearTimeout(timer);cb(null);});
+    }).catch(function(){cb(null);});
 }
 /* 测试连接：只验证「地址 / Key / 模型」通不通，不要求 AI 返回题目 JSON。
    判定标准 = HTTP 2xx；失败时把状态码（如 401 / 403）或「网络错误 / 超时」回给调用方，
@@ -3679,18 +3677,15 @@ function testAI(cfg,cb){
   if(!/^https?:\/\//.test(url)){cb(false,'地址无效');return;}
   var body={model:cfg.model||(free?'openai':'deepseek-chat'),messages:[{role:'user',content:'请只回复两个字：连接成功'}],temperature:0};
   if(free)body.reasoning_effort='low';
-  var ctl=null,timer=null;
-  try{ctl=new AbortController();timer=setTimeout(function(){try{ctl.abort();}catch(e){}},10000);}catch(e){}
   var hd={'Content-Type':'application/json'};
   if(cfg.key)hd['Authorization']='Bearer '+cfg.key;
-  fetch(url,{method:'POST',headers:hd,body:JSON.stringify(body),signal:ctl?ctl.signal:undefined})
+  /* A4：连接测试 10s，超时错误仍是 AbortError，下面的分支不用改 */
+  QANet.timedFetch(url,{method:'POST',headers:hd,body:JSON.stringify(body)},10000)
     .then(function(r){
-      if(timer)clearTimeout(timer);
       if(r&&r.ok){cb(true);return;}
       cb(false,String((r&&r.status)||'未知'));
     })
     .catch(function(e){
-      if(timer)clearTimeout(timer);
       if(e&&e.name==='AbortError'){cb(false,'超时');return;}
       cb(false,'网络错误');
     });
@@ -3738,19 +3733,16 @@ function callAIRaw(cfg,prompt,cb,ms){
   if(free)body.reasoning_effort='low';
   var hd={'Content-Type':'application/json'};
   if(cfg.key)hd['Authorization']='Bearer '+cfg.key;
-  var ctl=null,timer=null;
-  try{ctl=new AbortController();timer=setTimeout(function(){try{ctl.abort();}catch(e){}},ms||30000);}catch(e){}
-  fetch(url,{method:'POST',headers:hd,body:JSON.stringify(body),signal:ctl?ctl.signal:undefined})
+  /* A4：手写代码 AI 评判统一走 timedFetch，超时文案沿用原分支 */
+  QANet.timedFetch(url,{method:'POST',headers:hd,body:JSON.stringify(body)},ms||30000)
     .then(function(r){if(!r||!r.ok)throw new Error('HTTP '+((r&&r.status)||'?'));return r.json();})
     .then(function(d){
-      if(timer)clearTimeout(timer);
       var t='';
       try{t=d.choices[0].message.content||'';}catch(e){}
       if(!t){cb(null,'AI 返回空内容');return;}
       cb(String(t),null);
     })
     .catch(function(e){
-      if(timer)clearTimeout(timer);
       cb(null,(e&&e.name==='AbortError')?'AI 评判超时':((e&&e.message)||'AI 请求失败'));
     });
 }

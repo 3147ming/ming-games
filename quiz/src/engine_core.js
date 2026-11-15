@@ -1044,11 +1044,8 @@ var OFFLINE_POOL=[
 {q:'披萨起源于哪个国家？',a:'意大利',opts:['意大利','法国','美国','西班牙'],cat:'美食'}
 ];
 function safeDecodeURI(s){s=String(s==null?'':s);try{return decodeURIComponent(s)}catch(e){try{return decodeURIComponent(s.replace(/%(?![0-9a-fA-F]{2})/g,'%25'))}catch(e2){return s}}}
-function netFailText(reason){
- if(reason==='timeout')return '⚠️ 联网超时，已尝试备用源';
- if(reason==='net')return '⚠️ 网络不可达，请检查网络后重试';
- if(reason==='nofetch')return '⚠️ 当前环境不支持联网，已使用本地离线题库（'+OFFLINE_POOL.length+'题）';
- return '⚠️ 联网获取失败，已使用本地离线题库（'+OFFLINE_POOL.length+'题）';}
+/* A4：失败文案统一由 QANet.FAIL_TEXT 提供，这里只补离线题库题量。 */
+function netFailText(reason){return QANet.failText(reason,OFFLINE_POOL.length);}
 function onlineSourceList(){return [
  {name:'main',url:QA_MAIN_URL},
  {name:'proxy',url:'https://api.allorigins.win/raw?url='+encodeURIComponent(QA_MAIN_URL)}];}
@@ -1064,28 +1061,27 @@ function parseOnlineData(d){try{var raw=d;if(raw==null)return null;
  return arr.length?arr:null;}catch(e){return null}}
 function useOfflinePool(){try{var arr=shuffle(OFFLINE_POOL.slice()).slice(0,Math.min(20,OFFLINE_POOL.length)).map(function(it){return {q:it.q,a:it.a,opts:shuffle((it.opts||[]).slice()),cat:it.cat||'离线题库',src:'offline'}});
  if(!arr.length)return false;ONLINE_BANK=arr;ONLINE_SRC='offline';updateOnlineStatus();return true;}catch(e){return false}}
-function trySource(src,budget,cb){var done=false,timer=null,ac=null;
- function finish(ok,arr,reason){if(done)return;done=true;try{if(timer)clearTimeout(timer)}catch(e){}cb(!!ok,arr||null,reason||'');}
- try{var opt={};if(typeof AbortController==='function'){try{ac=new AbortController();opt.signal=ac.signal}catch(e){opt={}}}
-  var ms=Math.max(1200,Math.min(QA_NET_TIMEOUT,budget||QA_NET_TIMEOUT));
-  timer=setTimeout(function(){try{if(ac&&ac.abort)ac.abort()}catch(e){}finish(false,null,'timeout')},ms);
-  fetch(src.url,opt).then(function(r){if(!r||r.ok===false){finish(false,null,'http');return null}return r.json();})
+function trySource(src,budget,cb){var done=false;
+ function finish(ok,arr,reason){if(done)return;done=true;cb(!!ok,arr||null,reason||'');}
+ var ms=Math.max(1200,Math.min(QA_NET_TIMEOUT,budget||QA_NET_TIMEOUT));
+ /* A4：超时 / AbortController / 错误分类统一由 QANet.timedFetch 负责 */
+ QANet.timedFetch(src.url,{},ms).then(function(r){if(!r||r.ok===false){finish(false,null,'http');return null}return r.json();})
   .then(function(d){if(d==null)return;var arr=parseOnlineData(d);if(arr&&arr.length)finish(true,arr,'');else finish(false,null,'empty');})
-  .catch(function(e){finish(false,null,(e&&e.name&&String(e.name).indexOf('Abort')>=0)?'timeout':'net')});
- }catch(e){finish(false,null,'net')}}
+  .catch(function(e){finish(false,null,QANet.reason(e));});}
 function fetchOnline(cb){
  cb=(typeof cb==='function'?cb:function(){});
- var srcs=onlineSourceList(),t0=Date.now(),i=0,lastReason='';
+ var srcs=onlineSourceList(),lastReason='';
  function fallback(reason){if(useOfflinePool()){cb(true,{degraded:true,reason:reason||lastReason||'fail'})}else{cb(false,{degraded:false,reason:reason||lastReason||'fail'})}}
- function nextSource(){
-  if(i>=srcs.length){fallback(lastReason||'fail');return}
-  var left=QA_NET_TIMEOUT-(Date.now()-t0);
-  if(left<1500){fallback(lastReason||'timeout');return}
-  var src=srcs[i++];
+ /* A4：按 FALLBACK.quiz 的顺序（主源 → 代理 → 离线）在总预算内逐源重试 */
+ QANet.chain(srcs,QA_NET_TIMEOUT,function(src,left,next){
   trySource(src,left,function(ok,arr,reason){
-   if(ok&&arr&&arr.length){try{ONLINE_BANK=arr;ONLINE_SRC='online';safeSet('bt_qa_online',JSON.stringify({t:Date.now(),items:arr}));}catch(e){}updateOnlineStatus();cb(true,{degraded:false,source:src.name});return}
-   lastReason=reason||lastReason;nextSource();});}
- try{nextSource();}catch(e){fallback(lastReason||'net')}}
+   if(ok&&arr&&arr.length)next(true,arr,'');
+   else{lastReason=reason||lastReason;next(false,null,lastReason);}
+  });
+ },function(ok,arr,reason,src){
+  if(ok&&arr&&arr.length){try{ONLINE_BANK=arr;ONLINE_SRC='online';safeSet('bt_qa_online',JSON.stringify({t:Date.now(),items:arr}));}catch(e){}updateOnlineStatus();cb(true,{degraded:false,source:src?src.name:''});return}
+  fallback(reason||lastReason||'fail');
+ });}
 function startOnline(){typeKey='b:online';typeLabel='🌐 联网';if(ONLINE_BANK.length){beginOnline();return;}
  st.innerHTML='';var c=h('div');c.style.cssText='max-width:560px;margin:0 auto;padding:20px;text-align:center';
  c.appendChild(h('div','hud','🌐 正在联网获取最新题目…'));

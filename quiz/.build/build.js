@@ -1,4 +1,4 @@
-// 组装 quiz/index.html：head + 全局框架 + 纯逻辑 + 题库(JSON) + 引擎核心 + UI + 收尾
+// 组装 quiz/index.html：head + 全局框架 + 纯逻辑 + 网络适配 + 题库(JSON) + 引擎核心 + UI + 收尾
 //
 // 用法：
 //   node quiz/.build/build.js            生成产物 + 同步部署包 + 重算 SW 版本
@@ -42,6 +42,7 @@ console.log('题库校验通过：' + poolReport.stats.questions + ' 题由 data
 /* 错题本导出/导入的纯函数（UMD：浏览器挂 window.WrongBook，Node 里可 require 做单测）。
    内联进产物的原因：index.html 是单文件离线 PWA，多一个外部脚本就多一个缓存失败点。 */
 const logic = fs.readFileSync(path.join(SRC, 'logic.js'), 'utf8');
+const net = fs.readFileSync(path.join(SRC, 'net.js'), 'utf8');
 const wb = fs.readFileSync(path.join(SRC, 'wrongbook.js'), 'utf8');
 const ui = fs.readFileSync(path.join(SRC, 'quiz-ui.js'), 'utf8');
 
@@ -76,7 +77,7 @@ const IDB = [
 /* 写产物之前先跑语言标签断言：不合规直接阻断，绝不产出会让语言闸漏题的 index.html */
 require('./_guard_tags.cjs');
 
-const html = head + '\n' + FRAMEWORK + '\n' + logic + '\n;\n' + coreOut + '\n' + IDB + '\n;\n' + wb + '\n;\n' + ui + '\n</script>\n</body>\n</html>\n';
+const html = head + '\n' + FRAMEWORK + '\n' + logic + '\n;\n' + net + '\n;\n' + coreOut + '\n' + IDB + '\n;\n' + wb + '\n;\n' + ui + '\n</script>\n</body>\n</html>\n';
 const buf = Buffer.from(html, 'utf8');
 const md5 = crypto.createHash('md5').update(buf).digest('hex');
 /* Service Worker 版本号由产物内容自动生成，避免手工递增漏改让用户拿到旧缓存。
