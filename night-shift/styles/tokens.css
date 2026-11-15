@@ -1780,8 +1780,20 @@ details.set-sec[open] > summary.sec-head::after { content: '收起 ▴'; }
  *            —— 遮罩在最顶层，所以它「隐藏时不吃指针」是硬约束（见 #ns-rotate 注释）
  * ============================================================ */
 
-/* 防止页面级滚动/橡皮筋（移动端拖拽转视角时浏览器抢手势） */
-html, body { overscroll-behavior: none; }
+/* 防止页面级滚动/橡皮筋（移动端拖拽转视角时浏览器抢手势）
+ * 另外三条是"手指拖视角时被浏览器抢手势"的其余成因：
+ *   - user-select：长按 HUD 文本会被判成"选中文字"，弹出选择手柄并吞掉这次拖拽
+ *   - tap-highlight：轻触时闪一下灰底
+ *   - touch-action: manipulation：去掉 300ms 双击缩放判定
+ * ⚠ 这四条原先只存在于 Pages 仓库的 shared/tokens.css 末尾一行（手工补的），
+ *   源里没有 → 任何一次镜像就丢，且丢了没有任何报错，只能靠手感发现。2026-11-15 回流到源。 */
+html, body {
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
 #scene-canvas { touch-action: none; }
 
 /* 触屏设备：可点元素最小 44px，去掉 300ms 点击延迟 + 禁止双击缩放 */

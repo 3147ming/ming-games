@@ -1,23 +1,27 @@
 /* =============================================================
    night-shift · Service Worker
    -------------------------------------------------------------
-   目标：首次联网打开后，断网也能直接从浏览器 / 主屏图标打开使用。
+   目标：首次联网打开后，断网也能从浏览器 / 主屏图标打开使用。
 
-   策略
+   策略（network-first + 缓存兜底）
    - install ：预缓存应用外壳（页面 / manifest / 图标），skipWaiting
-   - activate：删除旧版本缓存，clients.claim 立即接管
+   - activate：删除别的版本缓存，clients.claim 立即接管
    - fetch   ：仅处理同源 GET
-       · 页面导航   → 网络优先（联网时总是拿最新页面；断网才回退缓存）
-       · 静态资源   → stale-while-revalidate（缓存优先，后台静默更新）
-       · sw.js 自身 → 永不缓存（保证 SW 更新能被浏览器检测到）
-       · 外部请求   → 完全不拦（直连网络）
+       · 一律先走网络，成功就顺手更新缓存
+       · 网络失败（断网）才回退缓存；导航失败再兜底到 index.html
+       · sw.js 自身完全不拦（否则浏览器永远检测不到 SW 更新）
 
-   升级
-   - VERSION 手工维护：night-shift-v1 → v2 → …；产物一变缓存名就变，
-     旧缓存会在 activate 里被清掉。
+   为什么不用 stale-while-revalidate
+   - SWR 会让"发布后第一次打开"仍显示旧样式/旧脚本，第二次才新。本项目没有
+     构建产物指纹（ADR-001 无构建），没有可靠的版本号可用来失效缓存。
+   - 之前靠手工维护 VERSION 常量：改了源码忘了升版本，旧缓存就永远不清 ——
+     这种"要记得做"的纪律最终一定会破。
+   - network-first 让"发布即生效"成为结构性保证，离线兜底能力一点没少。
+
+   VERSION 只用于缓存命名：想强制所有客户端清空旧缓存时改它。
    ============================================================= */
 
-var VERSION = 'night-shift-v1';
+var VERSION = 'night-shift-v2';
 var CACHE = VERSION;
 var BASE = self.registration ? self.registration.scope : self.location.href.replace(/sw\.js.*$/, '');
 
@@ -63,40 +67,24 @@ self.addEventListener('fetch', function (event) {
   try { url = new URL(req.url); } catch (e) { return; }
   if (url.origin !== self.location.origin) return;
 
-  /* sw.js 永不缓存：保证浏览器每次都能检测到 SW 更新 */
+  /* sw.js 自身永不拦截：保证浏览器每次都能检测到 SW 更新 */
   if (url.pathname.endsWith('/sw.js')) return;
 
-  /* 页面导航：网络优先，断网才回退缓存（保证用户总能拿到最新页面） */
-  if (req.mode === 'navigate') {
-    event.respondWith(
-      fetch(req).then(function (resp) {
-        if (resp && resp.status === 200) {
-          var clone = resp.clone();
-          caches.open(CACHE).then(function (cache) { cache.put(req, clone); });
-        }
-        return resp;
-      }).catch(function () {
-        return caches.match(req).then(function (cached) {
-          return cached || caches.match(abs('./index.html'));
-        });
-      })
-    );
-    return;
-  }
-
-  /* 静态资源：stale-while-revalidate */
   event.respondWith(
-    caches.match(req).then(function (cached) {
-      var network = fetch(req).then(function (resp) {
-        if (resp && resp.status === 200 && resp.type === 'basic') {
-          var clone = resp.clone();
-          caches.open(CACHE).then(function (cache) { cache.put(req, clone); });
-        }
-        return resp;
-      }).catch(function () {
-        return cached;
+    fetch(req).then(function (resp) {
+      /* 只缓存干净的 200：206 是分段响应，304 没有实体，都不能塞进 Cache */
+      if (resp && resp.status === 200 && resp.type === 'basic') {
+        var clone = resp.clone();
+        caches.open(CACHE).then(function (cache) { cache.put(req, clone); });
+      }
+      return resp;
+    }).catch(function () {
+      return caches.match(req).then(function (cached) {
+        if (cached) return cached;
+        /* 只有导航请求才有"回退到首页"的语义；图片/脚本 404 就该是 404 */
+        if (req.mode === 'navigate') return caches.match(abs('./index.html'));
+        return Response.error();
       });
-      return cached || network;
     })
   );
 });

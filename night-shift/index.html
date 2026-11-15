@@ -1,17 +1,24 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-<link rel="icon" href="data:,">
 <meta charset="utf-8">
+<!-- 空 data URI 图标：避免浏览器自动请求 /favicon.ico 拿到 404。
+     目的不是"有个图标"，而是让控制台干净 —— 无头探针要按 console 错误判红，
+     一条必然发生的 favicon 404 会逼着每个探针都写过滤规则，漏写就误报。
+     ⚠ 必须排在 <meta charset> 之后：编码声明之前不能出现非 ASCII 字符。 -->
+<link rel="icon" href="data:,">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0c0e14">
+<meta name="description" content="夜班便利店 —— 模拟经营 + 顾客剧情线，3 位常客多段推进。">
 <title>夜班便利店 NIGHT SHIFT · 垂直切片</title>
-    <meta name="description" content="夜班便利店 —— 模拟经营 + 顾客剧情线，3 位常客多段推进。">
+<!-- PWA 清单。必须放在项目根并与 deploy/ 一起产出，不许只存在于 Pages 仓库：
+     否则镜像一次就被当"多余文件"删掉，manifest 立刻指向 404，且没有任何报错。 -->
+<link rel="manifest" href="./manifest.json">
 <link rel="stylesheet" href="./shared/tokens.css">
-  <link rel="stylesheet" href="./styles/tokens.css">
+<link rel="stylesheet" href="./styles/tokens.css">
 <!-- 无构建步骤：原生 ESM + importmap 指向本地 Three.js 副本（离线可跑，见 ADR-001） -->
 <script type="importmap">
 {
@@ -20,7 +27,6 @@
   }
 }
 </script>
-<link rel="manifest" href="manifest.json">
 </head>
 <body>
 <div id="app" role="main">
@@ -31,48 +37,15 @@
   <div id="boot"><div class="ring"></div><div>加载中…</div></div>
 </div>
 <noscript>本游戏需要启用 JavaScript。</noscript>
-<script type="module" src="./src/main.mjs">
-// 页面可见性变化时暂停/恢复游戏循环（避免后台继续消耗资源）
-document.addEventListener('visibilitychange', function() {
-  if (document.hidden) {
-    // 暂停逻辑：停止 requestAnimationFrame / setInterval
-    if (typeof pauseGame === 'function') pauseGame();
-  } else {
-    // 恢复逻辑：重新开始游戏循环
-    if (typeof resumeGame === 'function') resumeGame();
-  }
-});
-
-
-// 页面卸载时清理游戏循环（避免后台继续消耗资源）
-window.addEventListener('pagehide', function() {
-  try {
-    if (typeof cancelAnimationFrame === 'function' && window.__mgRAF) cancelAnimationFrame(window.__mgRAF);
-  } catch(e) {}
-  try {
-    if (typeof clearInterval === 'function' && window.__mgIntervals) {
-      for (var i = 0; i < window.__mgIntervals.length; i++) clearInterval(window.__mgIntervals[i]);
-      window.__mgIntervals = [];
-    }
-  } catch(e) {}
-});
-
-
-// 全局错误捕获（非破坏性：只记录，不阻断游戏）
-window.addEventListener('error', function(e) {
-  try { console.error('[Game Error]', e.message, e.filename, e.lineno); } catch(err) {}
-});
-window.addEventListener('unhandledrejection', function(e) {
-  try { console.error('[Unhandled Rejection]', e.reason); } catch(err) {}
-});
-
-</script>
-
-<!-- PWA：Service Worker（离线可用 / 可安装到主屏） -->
+<script type="module" src="./src/main.mjs"></script>
+<!-- PWA：Service Worker（离线可用 / 可装到主屏）
+     ⚠ 只在 https 下注册。http 场景（本地 5188、手机走局域网 IP 验收）一律不注册，
+     因为 SW 会把静态资源缓存下来，导致"改了源码、探针却拿到旧文件"的假绿/假红。
+     Pages 与 surge 都是 https，线上能力不受影响。 -->
 <script>
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('sw.js').catch(function () { /* 离线能力不可用不影响游戏 */ });
+    navigator.serviceWorker.register('./sw.js').catch(function () { /* 离线能力不可用不影响游戏 */ });
   });
 }
 </script>

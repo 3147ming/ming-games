@@ -1,7 +1,8 @@
 {
-  "name": "深夜值班",
-  "short_name": "深夜值班",
-  "description": "3D 恐怖值班模拟，顾客剧情与生存挑战。",
+  "id": "./",
+  "name": "夜班便利店 NIGHT SHIFT",
+  "short_name": "夜班便利店",
+  "description": "夜班便利店 —— 模拟经营 + 顾客剧情线，3 位常客多段推进。",
   "lang": "zh-CN",
   "dir": "ltr",
   "start_url": "./",
@@ -11,9 +12,9 @@
     "standalone",
     "minimal-ui"
   ],
-  "orientation": "portrait",
-  "background_color": "#1d0f1a",
-  "theme_color": "#4a2a3d",
+  "orientation": "landscape",
+  "background_color": "#0c0e14",
+  "theme_color": "#0c0e14",
   "categories": [
     "games"
   ],
