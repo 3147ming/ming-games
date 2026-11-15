@@ -117,7 +117,9 @@ export const WAVE_ITEMS = [
   { id: 'i_dmg', label: '磨刀石', desc: '伤害 +8%', cost: 20, apply: (c) => { c.dmgBase += 0.08; } },
   { id: 'i_atk', label: '急速齿轮', desc: '攻速 +8%', cost: 20, apply: (c) => { c.attackInterval = Math.max(0.2, c.attackInterval / 1.08); } },
   { id: 'i_magnet', label: '磁石', desc: '拾取范围 +40', cost: 12, apply: (c) => { c.magnet += 40; } },
-  { id: 'i_material', label: '材料箱', desc: '立刻获得 18 材料', cost: 0, apply: (_c, d) => { d.materials += 18; } },
+  // ★ 阶段12 经济校准：原来 cost 0 给 18 —— 每次刷到就等于白捡 18，直接把材料经济打穿。
+  //   改成 14 买 22：净赚 8，仍是"缺钱时值得买"的选项，但不再是无脑免费。
+  { id: 'i_material', label: '材料箱', desc: '立刻获得 22 材料', cost: 14, apply: (_c, d) => { d.materials += 22; } },
   { id: 'i_reroll', label: '免费刷新券', desc: '本窗下次刷新免费', cost: 14, apply: (_c, d) => { d.freeRerolls += 1; } },
 ];
 export const itemGoodById = (id) => WAVE_ITEMS.find((i) => i.id === id) || null;
@@ -170,7 +172,27 @@ export const SHOP_SLOTS = 4;
 export const SHOP_REROLL_BASE = 8;
 export const SHOP_REROLL_GROWTH = 1.45;
 export const SHOP_SELL_RATE = 0.6;
+
+/** 商品价格的波数成长：第 1 波 ×1.16 → 第 20 波 ×4.20。
+ *  ★ 阶段12 经济校准：0.10（×3.00）时材料虽已压到 4.6k，但仍能每波清空 2 件货；
+ *    抬到 0.16 让后期一件传说武器 = 22×3.6×4.2 ≈ 333 材料，
+ *    而第 20 波收入约 350 —— 一件就是一波的钱，"买还是攒"才有意义。 */
+export const SHOP_PRICE_GROWTH = 0.16;
+
+/** 危险等级的灵魂奖励：每级 +15%（Danger 5 = ×1.75）。
+ *  只作用于结算灵魂，不改局内数值 —— 难度本身已经通过 HP/伤害/密度体现。 */
+export const DANGER_SOUL_MUL = 0.15;
 /** 波末结算：基础材料 + 波数加成 + 收获加成。 */
-export const waveEndMaterials = (w, d) => Math.round((6 + w * 3 + d.harvest) * (1 + d.harvest * 0.02));
-/** 未拾取材料的结转：下一波拾取时双倍发放，直到额度耗尽。 */
-export const CARRY_DOUBLE = 2;
+/** 波末材料：波次模式的**主要收入**。
+ *  ★ 阶段12 经济校准：原来 `6 + w*3`（第 20 波 66）只占一局收入的 2%，
+ *    90% 材料来自击杀掉落 —— 而击杀数随同屏密度指数增长，收入曲线完全失控
+ *    （实测 3.4 万材料、余额 3.3 万、商店只花掉 1.4 千）。
+ *    改成 `22 + w*10`（第 1 波 32 / 第 20 波 222），让每波收入可预期，
+ *    击杀掉落只作为"多打多拿"的零头。第 1 波必须给到 30+，否则开局
+ *    连一把 16 材料的武器都买不起，会直接进入死亡螺旋（实测 4 局死 3 局）。 */
+export const waveEndMaterials = (w, d) => Math.round((22 + w * 10 + d.harvest) * (1 + d.harvest * 0.02));
+/** 未拾取材料的结转率：波末只把 **50%** 的经验值带进下一波（拾取时 1:1 补发）。
+ *  ★ 阶段12 经济校准：原设计是「全额结转 + 双倍补发」——等于漏捡也不亏、还倒赚，
+ *    实测一局光结转就能灌出 1.5 万材料，商店四格每波清空。
+ *    改成 50% 后，漏捡仍然有补偿，但不再是"最优策略是别捡"。 */
+export const CARRY_KEEP = 0.5;

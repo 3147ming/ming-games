@@ -139,10 +139,13 @@ export function saveMeta(meta) {
  *   与「属性树 50 级上限 + 阶梯花费」的总量（约 4.5 万灵魂 ≈ 13 局）匹配。
  *  · 击杀项按 0.5 取整到分（用 floor 落到整数，避免存档里出现小数灵魂）。
  *  · 存活项按 0.2/秒 —— 600 秒 = 120 灵魂，相对击杀项是零头，但它是"不杀也能拿"的兜底。 */
-export function awardSouls(level, kills, survivalSec = 0) {
+export function awardSouls(level, kills, survivalSec = 0, mul = 1) {
   const k = Math.max(0, Math.floor(Number(kills) || 0));
   const sec = Math.max(0, Number(survivalSec) || 0);
-  const gained = Math.floor(k * 0.5 + sec * 0.2);
+  // 阶段12：第 4 参是**模式倍率**（波次模式按 Dangerous 等级给奖励）。
+  // 默认 1 ⟹ 旧 600 秒模式、每日挑战、测试调用全部保持原口径不变。
+  const rate = Math.max(0, Number(mul) || 1);
+  const gained = Math.floor((k * 0.5 + sec * 0.2) * rate);
   const m = loadMeta();
   m.souls += gained;
   saveMeta(m);

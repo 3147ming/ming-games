@@ -14,7 +14,7 @@ import {
   waveSpawnInterval, waveEndMaterials, WAVE_STATS, statById, RARITIES, rarityOf,
   rollRarity, WAVE_WEAPONS, weaponGoodById, WAVE_ITEMS, itemGoodById,
   charById, dangerOf, SHOP_SLOTS, SHOP_REROLL_BASE, SHOP_REROLL_GROWTH,
-  SHOP_SELL_RATE,
+  SHOP_SELL_RATE, SHOP_PRICE_GROWTH, CARRY_KEEP,
 } from './wave-config.js';
 
 const rarityIndex = (key) => Math.max(0, RARITIES.findIndex((r) => r.key === key));
@@ -37,7 +37,8 @@ export class WaveDirector {
 
     this.materials = this.char.startMaterials;
     this.totalMaterials = this.char.startMaterials;
-    this.carry = 0;               // 未拾取材料结转（下一波双倍）
+    this.carry = 0;               // 未拾取材料结转（只带 CARRY_KEEP 比例）
+    this.matFrac = 0;             // 材料折算的小数累加器（见 onPickup 注释）
     this.luck = this.char.luck;
     this.harvest = this.char.harvest;
     this.freeRerolls = 0;
@@ -118,8 +119,13 @@ export class WaveDirector {
     this.waveDamage = dmg;
     this.killSrcAtWaveStart = cur;
 
-    // 未拾取材料留到下一波，拾取时按 CARRY_DOUBLE 双倍发放。
-    this.carry += (c.gems || []).length;
+    // 未拾取材料留到下一波，拾取时 1:1 补发；但只带 **CARRY_KEEP（50%）** 过去。
+    // ★ 量纲修正：carry 必须按**经验值**累计，不能按宝石个数 —— onPickup 收到的是 xp，
+    //   而补给/精英宝石的 xp 是普通宝石的数倍（SUPPLY_GEM_XP）。按个数记会低估，
+    //   二者不同量纲，补发时对不上账。
+    let leftover = 0;
+    for (const g of (c.gems || [])) leftover += (g.xp || 1);
+    this.carry += leftover * CARRY_KEEP;
     if (c.gems) c.gems.length = 0;
     c.enemies.length = 0;
     if (c.bullets) c.bullets.length = 0;
@@ -162,7 +168,7 @@ export class WaveDirector {
       const p = pool.splice(this.rng.int(pool.length), 1)[0];
       const key = p.kind === 'weapon' ? rollRarity(this.rng, this.wave, this.luck) : 'common';
       const r = rarityOf(rarityIndex(key));
-      const cost = Math.max(1, Math.round(p.good.cost * r.cost * (1 + this.wave * 0.10)));
+      const cost = Math.max(1, Math.round(p.good.cost * r.cost * (1 + this.wave * SHOP_PRICE_GROWTH)));
       goods.push({
         kind: p.kind, id: p.good.id, label: p.good.label, desc: p.good.desc,
         tag: p.good.tag || '', rarity: key, rarityLabel: r.label, rarityColor: r.color,
@@ -270,12 +276,28 @@ export class WaveDirector {
       this.carry -= bonus;
       amount += bonus;
     }
-    // 材料与经验同源但不同量纲：经验按原值走 gainXp（升级曲线不变），
-    // 材料按 0.4 折算 —— 满屏局一局能拾取 2~3 万颗宝石，1:1 入账会让
-    // 「买什么」失去决策意义（实测 5 万材料 / 商店只要几十）。
-    const v = Math.max(1, Math.round(amount * 0.4));
-    this.materials += v;
-    this.totalMaterials += v;
+    // 材料与经验同源但不同量纲：经验按原值走 gainXp（升级曲线不变）。
+    // ★ 阶段12 经济校准：0.4 → 分段 0.26 / 0.18 / 0.12。
+    //   实测 0.4 时一局 3.0~3.4 万材料、购买 46~53 次，商店四格几乎每波清空，
+    //   没有"这波买武器还是攒钱"的取舍。但一刀切压到 0.26 又会把**前 5 波**卡死
+    //   （开局 20s 只掉几百 xp，买不起第一把武器就进入死亡螺旋）。
+    //   所以按波数分段：前期宽松保起步，中期收紧，15 波后最紧 —— 后期材料多、
+    //   价格也高，正好把"要不要刷新"变成真正的选择。
+    // ★★ 阶段12 经济校准的真正关键：**不能逐次 max(1, round())**。
+    //   一颗普通宝石的 xp 是 1，折算 0.06 后 round → 0，再被 max(1) 抬到 1 ——
+    //   等于每颗宝石固定给 1 材料。实测一局拾取 33,579 次 ⟹ 下限就是 33,579 材料，
+    //   折算率怎么调都没用（余额永远 3 万+，商店只花掉一千多）。
+    //   改成浮点累加器：每次只加 `amount * rate` 的小数，攒够 1 才入账，零头保留。
+    const rate = this.wave <= 5 ? 0.12 : this.wave <= 14 ? 0.06 : 0.04;
+    this.matFrac += amount * rate;
+    // +1e-9：0.12 这类十进制小数在二进制里累加会出现 0.2+1.8=1.9999999999999998，
+    // 直接 floor 会无缘无故少给 1 材料（测试②就抓到过）。
+    const whole = Math.floor(this.matFrac + 1e-9);
+    if (whole > 0) {
+      this.matFrac -= whole;
+      this.materials += whole;
+      this.totalMaterials += whole;
+    }
   }
 
   /** 打开 4 选 1：复用 core.pendingUpgrade 的暂停语义（渲染层已有弹窗）。 */

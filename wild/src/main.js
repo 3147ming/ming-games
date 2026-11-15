@@ -25,7 +25,9 @@ import { createBgm, moodFromRunState } from './bgm.js';
 import { BGM_MANIFEST } from './bgm-manifest.js';
 // 音频设置：主音量 + 静音的读/写/校验（纯逻辑，可无头单测）。播放层只管"把值变成增益"。
 import { createAudioSettings, bgmGain, toPercent, fromPercent } from './audio-settings.js';
-import { WAVE_CHARS, DANGERS } from './wave-config.js';
+import { WAVE_CHARS, DANGERS, DANGER_SOUL_MUL } from './wave-config.js';
+// 波次模式自己的纪录（最高波次）；与旧 best.v1 分账，互不污染。
+import { loadWaveBest, submitWaveBest, waveBestLine } from './wave-best.js';
 
 const params = new URLSearchParams(location.search);
 const stage = document.getElementById('stage');
@@ -295,11 +297,15 @@ function showResult(res) {
   const survived = res && res.survived;
   // 波次模式的结算口径是「到达波次」，不是「存活秒数」——两套模式不能混用同一套大字。
   const isWave = !!(res && res.mode === 'waves');
+  // 波次纪录在**渲染前**结算：新纪录 / 距纪录差几波都要显示在副标题里。
+  const wb = isWave ? submitWaveBest(localStorage, res) : null;
   resTitle.textContent = isWave
     ? (survived ? (res.endless ? '无尽 · 已收工' : '20 波全部撑过') : `倒在第 ${res.wave} 波`)
     : (survived ? '你活到了天亮' : '荒野把你留下了');
   resSub.textContent = isWave
-    ? `到达第 ${res.wave} 波 · ${res.danger} 危险 · 武器 ${(res.slots || []).length}/6 · 累计材料 ${Math.round(Number(res.totalMaterials) || 0)}`
+    ? `到达第 ${res.wave} 波 · 危险 ${res.danger} · 武器 ${(res.slots || []).length}/6`
+      + ` · 累计材料 ${Math.round(Number(res.totalMaterials) || 0)} · 购买 ${res.purchases || 0} 次`
+      + (wb ? `　·　${wb.isNew ? '★ 新纪录' : waveBestLine(wb.best)}` : '')
     : (survived ? '整整十分钟。' : '再来一次，这次走位再稳一点。');
   resStats.innerHTML = isWave
     ? `
@@ -310,7 +316,7 @@ function showResult(res) {
     <div class="rs-row">
       <div class="rs-cell"><span class="rs-k">等级</span><span class="rs-v sm">${res.level}</span></div>
       <div class="rs-cell"><span class="rs-k">累计材料</span><span class="rs-v sm">${Math.round(Number(res.totalMaterials) || 0)}</span></div>
-      <div class="rs-cell"><span class="rs-k">商店购买</span><span class="rs-v sm">${res.purchases || 0}</span></div>
+      <div class="rs-cell"><span class="rs-k">历史最高</span><span class="rs-v sm">${wb && wb.best ? `第 ${wb.best.wave} 波` : '—'}</span></div>
     </div>`
     : `
     <div class="rs-row rs-main">
@@ -368,7 +374,9 @@ function showResult(res) {
   // 波次模式整局约 1275s，按「存活秒数」发灵魂 / 记账号 / 判成就都会把旧口径刷爆
   // ⟹ 统一封顶到旧模式上限 600s（纪录本身另走「不写 best.v1」的隔离）。
   const soulSec = isWave ? Math.min(res.survivalSec || 0, 600) : (res.survivalSec || 0);
-  const { gained, souls } = awardSouls(res.level, res.kills, soulSec);
+  // 危险等级奖励：每级 +15% 灵魂（Danger 5 = ×1.75）。旧模式 dangerMul 恒为 1，口径不变。
+  const dangerMul = isWave ? 1 + (Number(res.danger) || 0) * DANGER_SOUL_MUL : 1;
+  const { gained, souls } = awardSouls(res.level, res.kills, soulSec, dangerMul);
   const dateKey = todayKey();
   const acct0 = loadAccount();
   const best = loadBest();
@@ -386,7 +394,8 @@ function showResult(res) {
     totalLevels: totalLevels(meta),
   });
   const bonusSouls = settlement.souls;
-  resSouls.textContent = `本局灵魂 +${gained}${bonusSouls ? `（含每日/成就 +${bonusSouls}）` : ''}（共 ${souls + bonusSouls}）`;
+  const dmTxt = dangerMul > 1 ? `危险 ×${dangerMul.toFixed(2)} · ` : '';
+  resSouls.textContent = `${dmTxt}本局灵魂 +${gained}${bonusSouls ? `（含每日/成就 +${bonusSouls}）` : ''}（共 ${souls + bonusSouls}）`;
   // 结算页顺手展示"这一局长出了什么"：每日完成情况 + 新解锁的成就
   const extra = [];
   if (settlement.daily.done.length) extra.push(`每日任务完成 ${settlement.daily.done.length}/${DAILY_COUNT}`);
@@ -547,6 +556,7 @@ function goTitle() {
   renderMetaPanel(); renderBestPanel(); renderHeroSelect(); renderSkinSelect();
   renderLoadoutSelect(); renderDailyPanel(); renderAchPanel(); renderAcctBadge();
   renderChallengePanel(); renderCodexPanel();   // 阶段10·P1-10 / P1-11
+  renderWaveSetup();   // 阶段12：回标题时刷新「最高 N 波」，否则纪录要等下次启动才更新
   // 标题页没有局可查：置 null 而不是留一份过期的 result。
   // ★ 读 window.WILD 的探针必须自己判空（tools/probe-wild.mjs 已做）。
   window.WILD = null;
@@ -575,7 +585,10 @@ function renderWaveSetup() {
   }
   if (waveSum) {
     const ch = WAVE_CHARS.find((c) => c.id === waveChar);
-    waveSum.textContent = `波次 · ${ch ? ch.label : '流浪者'} / ${DANGERS[waveDanger].label}${waveEndless ? ' · 无尽' : ''}`;
+    // 摘要行常驻「最高 N 波」：开局前就能看到自己的目标，不用点开面板。
+    const wb = loadWaveBest();
+    waveSum.textContent = `波次 · ${ch ? ch.label : '流浪者'} / ${DANGERS[waveDanger].label}${waveEndless ? ' · 无尽' : ''}`
+      + (wb && wb.wave ? ` · 最高 ${wb.wave} 波` : '');
   }
 }
 renderWaveSetup();
