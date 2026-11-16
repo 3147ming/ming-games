@@ -3960,11 +3960,14 @@ var CODE_TOPICS=[
       'continue 跳过偶数，只加奇数：1+3+… 到 '+n+' = '+squareSumOdd(n));
   }},
   {k:'do-while 至少一次',lang:'c',ranks:[2],kb:12,gen:function(){
-    var a=riN(2,5),b=riN(2,4),r=Math.min(a+1,b);
+    var a=riN(2,5),b=riN(2,4),r=Math.max(a+1,b);
     return mkCodeQ('这段 C 代码输出什么？',
       'int i = '+a+';\ndo { i++; } while (i < '+b+');\nprintf("%d", i);',
       String(r),[String(a),String(b),String(a+b)],
-      'do-while 先执行一次再判断：i 先变成 '+(a+1)+'，再判断是否 <'+b+'，'+(r===(a+1)?'满足则退出':'继续循环到 '+r));
+      'do-while 先执行一次：i 从 '+a+' 自增到 '+(a+1)+'；'+
+        ((a+1)>=b
+          ? '此时 '+(a+1)+' < '+b+' 不成立（'+(a+1)+' ≥ '+b+'），直接退出，输出 '+r
+          : '此时 '+(a+1)+' < '+b+' 成立，继续循环直到 i = '+b+' 时退出，输出 '+r));
   }},
   {k:'双重循环计数',lang:'c',ranks:[2,3],kb:4,gen:function(){
     var n=riN(3,6);
@@ -4079,8 +4082,8 @@ var CODE_TOPICS=[
     var a=riN(1,4),b=riN(1,4);
     return mkCodeQ('这段 C 代码输出什么？',
       '#define SQ(x) x*x\n\nprintf("%d", SQ('+a+' + '+b+'));',
-      String(a+b*b),[String((a+b)*(a+b)),String(a*a+b*b),String(a+b*2)],
-      '宏只是文本替换，SQ('+a+' + '+b+') 展开成 '+a+' + '+b+' * '+b+'，先乘后加得 '+(a+b*b));
+      String(a+a*b+b),[String((a+b)*(a+b)),String(a*a+b*b),String(a+b*2)],
+      '宏只做文本替换、不给参数加括号：SQ('+a+' + '+b+') 展开成 '+a+' + '+b+' * '+a+' + '+b+'，先算 '+b+'×'+a+'='+(a*b)+'，再加得 '+(a+a*b+b));
   }},
   {k:'补码转无符号',lang:'c',ranks:[4],kb:9,gen:function(){
     var k=riN(1,9);
