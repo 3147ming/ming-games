@@ -60,6 +60,7 @@ const FRAMEWORK = [
 ].join('\n');
 
 const logic = fs.readFileSync(DIR + '/../src/logic.js', 'utf8');
+const learnCore = fs.readFileSync(DIR + '/../src/learn_core.js', 'utf8');
 const net = fs.readFileSync(DIR + '/../src/net.js', 'utf8');
 const state = fs.readFileSync(DIR + '/../src/state.js', 'utf8');
 const core = fs.readFileSync(DIR + '/../src/engine_core.js', 'utf8');
@@ -101,6 +102,6 @@ const ctx = {
 };
 ctx.globalThis = ctx;
 vm.createContext(ctx);
-vm.runInContext(FRAMEWORK + '\n' + logic + '\n;\n' + net + '\n;\n' + state + '\n;\n' + core + '\n' + ui, ctx, { filename: 'bundle.js' });
+vm.runInContext(FRAMEWORK + '\n' + logic + '\n;\n' + learnCore + '\n;\n' + net + '\n;\n' + state + '\n;\n' + core + '\n' + ui, ctx, { filename: 'bundle.js' });
 
 module.exports = { ctx, E: ctx.__exp, store, document, fakeEl };

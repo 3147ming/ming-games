@@ -12,14 +12,14 @@ const pools = JSON.parse(read('data/pools.json'));
 ok(Object.prototype.hasOwnProperty.call(pools, 'circuit'), 'pools.json 有 circuit 顶层 key');
 const cq = pools.circuit;
 ok(cq && Object.keys(cq).sort().join(',') === '0,1,2,3,4', 'circuit 分 0~4 五档', cq ? Object.keys(cq).join(',') : '无');
-const expect = [56, 97, 139, 89, 126];
+const expect = [56, 106, 165, 117, 169];
 let tot = 0;
 if (cq) expect.forEach((n, d) => {
   const arr = cq[String(d)];
   ok(Array.isArray(arr) && arr.length === n, '档' + d + ' 题量 ' + n, arr ? String(arr.length) : '缺');
   tot += arr ? arr.length : 0;
 });
-ok(tot === 507, 'circuit 合计 507 题', String(tot));
+ok(tot === 613, 'circuit 合计 613 题（原507+扩容106）', String(tot));
 
 // 数据质量：每题 4 元数组、干扰项恰好 3 项不含答案、同档题干不重复
 let shapeErr = [], dupErr = [];
@@ -27,7 +27,9 @@ if (cq) Object.keys(cq).forEach(d => {
   const seen = {};
   (cq[d] || []).forEach((it, i) => {
     const w = '档' + d + '#' + i;
-    if (!Array.isArray(it) || it.length !== 4) { shapeErr.push(w + ' 非4元'); return; }
+    /* P0.5 扩容题带第 5 元素 meta（exp/src），题库与引擎均支持 4/5 元形态 */
+    if (!Array.isArray(it) || (it.length !== 4 && it.length !== 5)) { shapeErr.push(w + ' 元数异常=' + (it && it.length)); return; }
+    if (it.length === 5 && it[4] != null && typeof it[4] !== 'object') { shapeErr.push(w + ' meta非对象'); return; }
     const [q, a, tag, dis] = it;
     if (!q || !a || !tag || !dis) shapeErr.push(w + ' 空字段');
     const opts = String(dis).split('|');
@@ -37,7 +39,7 @@ if (cq) Object.keys(cq).forEach(d => {
     seen[q] = 1;
   });
 });
-ok(shapeErr.length === 0, 'circuit 507 题选项形态全合法', shapeErr.slice(0, 6).join('; '));
+ok(shapeErr.length === 0, 'circuit ' + tot + ' 题选项形态全合法', shapeErr.slice(0, 6).join('; '));
 ok(dupErr.length === 0, 'circuit 无重复题干', dupErr.slice(0, 6).join('; '));
 
 // ---------- 2. 引擎注册 ----------
@@ -65,7 +67,7 @@ const poolTool = read('.build/_pools.cjs');
 ok(/k === 'circuit'/.test(poolTool) || /k==='circuit'/.test(poolTool), '_pools.cjs 校验器给 circuit 开标签白名单');
 const probePools = read('.build/_probe_pools.cjs');
 ok(/subjects === 12/.test(probePools), '_probe_pools 分类数更新为 12');
-ok(/questions === 1314/.test(probePools), '_probe_pools 题量更新为 1314');
+ok(/questions === 1420/.test(probePools), '_probe_pools 题量更新为 1420');
 
 // ---------- 5. 构建注入 ----------
 const html = read('index.html');

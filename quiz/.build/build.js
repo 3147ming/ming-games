@@ -42,6 +42,12 @@ console.log('题库校验通过：' + poolReport.stats.questions + ' 题由 data
 /* 错题本导出/导入的纯函数（UMD：浏览器挂 window.WrongBook，Node 里可 require 做单测）。
    内联进产物的原因：index.html 是单文件离线 PWA，多一个外部脚本就多一个缓存失败点。 */
 const logic = fs.readFileSync(path.join(SRC, 'logic.js'), 'utf8');
+const learnCore = fs.readFileSync(path.join(SRC, 'learn_core.js'), 'utf8');
+const learnUI = fs.readFileSync(path.join(SRC, 'learn-ui.js'), 'utf8');
+/* P3：课程 JSON 作为全局 COURSE_DATA 内联（离线可读，不新增网络请求） */
+const courseCircuit = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'course_circuit.json'), 'utf8'));
+const courseCode = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'course_code.json'), 'utf8'));
+const COURSE_GLOBAL = 'var COURSE_DATA=' + JSON.stringify({circuit:courseCircuit,code:courseCode}) + ';';
 const net = fs.readFileSync(path.join(SRC, 'net.js'), 'utf8');
 const state = fs.readFileSync(path.join(SRC, 'state.js'), 'utf8');
 const wb = fs.readFileSync(path.join(SRC, 'wrongbook.js'), 'utf8');
@@ -78,7 +84,7 @@ const IDB = [
 /* 写产物之前先跑语言标签断言：不合规直接阻断，绝不产出会让语言闸漏题的 index.html */
 require('./_guard_tags.cjs');
 
-const html = head + '\n' + FRAMEWORK + '\n' + logic + '\n;\n' + net + '\n;\n' + state + '\n;\n' + coreOut + '\n' + IDB + '\n;\n' + wb + '\n;\n' + ui + '\n</script>\n</body>\n</html>\n';
+const html = head + '\n' + FRAMEWORK + '\n' + logic + '\n;\n' + learnCore + '\n;\n' + net + '\n;\n' + state + '\n;\n' + coreOut + '\n' + IDB + '\n;\n' + wb + '\n;\n' + ui + '\n;\n' + COURSE_GLOBAL + '\n' + learnUI + '\n</script>\n</body>\n</html>\n';
 const buf = Buffer.from(html, 'utf8');
 const md5 = crypto.createHash('md5').update(buf).digest('hex');
 /* Service Worker 版本号由产物内容自动生成，避免手工递增漏改让用户拿到旧缓存。

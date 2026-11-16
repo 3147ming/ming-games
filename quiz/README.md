@@ -24,7 +24,7 @@
 
 拼装顺序有依赖：`engine_core.js` 用到的 `QALogic` / `QANet` 必须先注入，`quiz-ui.js` 依赖引擎与状态源的函数。所有自建 `vm` 沙箱探针都必须按同一顺序装配，否则报 `ReferenceError`。
 
-**题库权威数据**：`data/pools.json`（12 分类 / 1314 题）。`engine_core.js` 里保留一段 JSON 生成的 `POOLS` 镜像，仅供「只装配 `engine_core.js`」的离线探针直接运行；`build.js` 在构建前用 `_pools.cjs` 校验 JSON，并断言镜像与 JSON 逐字一致，然后**用 JSON 序列化结果替换镜像**注入产物。改题流程：改 `pools.json` → `node quiz/.build/_pools.cjs --sync` → `node quiz/.build/build.js`。
+**题库权威数据**：`data/pools.json`（12 分类 / 1420 题，电路 613 题）。`engine_core.js` 里保留一段 JSON 生成的 `POOLS` 镜像，仅供「只装配 `engine_core.js`」的离线探针直接运行；`build.js` 在构建前用 `_pools.cjs` 校验 JSON，并断言镜像与 JSON 逐字一致，然后**用 JSON 序列化结果替换镜像**注入产物。改题流程：改 `pools.json` → `node quiz/.build/_pools.cjs --sync` → `node quiz/.build/build.js`。
 
 ```bash
 node quiz/.build/build.js           # 生成产物 + 同步部署包 + 重算 SW 版本
@@ -58,6 +58,11 @@ node quiz/.build/_pools.cjs --check # 只校验题库 JSON 与引擎镜像
 - **Q3 纯逻辑层**：SRS 间隔推进、降档判定、干扰项生成、`validItem` 抽成无 DOM 的纯函数，`_probe_logic.cjs` 做 62 项单测 + 200+200 组与旧实现的随机等价对照。
 - **A4 网络适配层**：`FALLBACK` 显式降级表、`FAIL_TEXT`、`timedFetch`、`chain`、`reason`。联网题库 / `callAI` / `testAI` / `callAIRaw` 统一走它。注意 `envOf()` 必须用 `f.call(globalThis, ...)` 调用原生 `fetch` / `setTimeout`，否则浏览器里会 `Illegal invocation`。
 - **P3 滚动重绘**：渐变背景改 `body::before` 固定合成层，顶栏 `backdrop-filter` 放进 `@supports` 兜底。
+- **学习系统（从零到掌握）**：第三个一级视图 `#learn`，topbar 📖 进入。不是刷题机器，而是课程级学习系统：
+  - `data/course_circuit.json`（46 节）+`course_code.json`（25 节）= 71 节技能树，按依赖 DAG 分层解锁；每节七段式微课（引入/概念/分步例题/易错点/形成性练习/过关测验/AI 导师），内容固化在 JSON 离线可读。
+  - `src/learn_core.js`（UMD 纯逻辑，零 DOM/存储依赖）：技能树解锁/拓扑分层、过关判定（5 题对 4 题比例判定）、掌握度升降（压线 80/满分 100/不倒退）、SRS 长期巩固（复用 QALogic.srsAdvance）、今日任务与打卡、薄弱定向组卷。`_probe_learn_core.cjs` 133 项单测。
+  - `src/learn-ui.js`（UI 层）：首页三场景（课前预习/课后复习/考前冲刺）+ 学科卡 + 技能树四态着色 + 微课七段 + 过关测验（复用题库抽题 + LearnCore 判定，过关解锁下游）+ 苏格拉底式 AI 导师（配了 AI 走 `QAAskAI` 个性化，未配/失败回退离线脚本）+ 今日任务打卡。`probe_learn_ui.cjs` 39 项真实 UI 冒烟。
+  - 过关答错按知识点聚合进薄弱专项；3 个学习键（`bt_qa_learn_prog/daily/tutor`）进 STORE_REG（b:1 备份），schema 升 3。老存档无新键时首次进入自动初始化、既有数据不动。
 
 ## 四、性能（P2 / P4：先测再动）
 
@@ -69,10 +74,10 @@ node quiz/.build/_pools.cjs --check # 只校验题库 JSON 与引擎镜像
 
 ## 五、存储
 
-20 个 `bt_qa_*` 键没有统一的版本号，导出备份的清单靠手工维护必然漏项。现在用一张注册表同时充当**备份清单**与**迁移目标**：
+23 个 `bt_qa_*` 键（含学习系统 3 键）没有统一的版本号，导出备份的清单靠手工维护必然漏项。现在用一张注册表同时充当**备份清单**与**迁移目标**：
 
 ```js
-var STORE_SCHEMA = 2;
+var STORE_SCHEMA = 3;   // 3 = 学习系统 3 键进注册表
 var STORE_REG = { stats:{k:'bt_qa_stats',t:'obj',d:{},b:1}, ... };
 var BACKUP_KEYS = /* 由 STORE_REG 里 b:1 的项派生，外加 bt_qa_schema */;
 ```
@@ -99,9 +104,11 @@ node quiz/.build/_probe_pools.cjs          # M3 题库 21 项
 node quiz/.build/_probe_net.cjs            # A4 网络适配 37 项
 node quiz/.build/_probe_state.cjs          # Q1 状态源 26 项
 node quiz/.build/_probe_circuit.cjs        # circuit 学科接线 34 项
+node quiz/.build/_probe_learn_core.cjs     # 学习系统纯逻辑 133 项
+node quiz/.build/probe_learn_ui.cjs        # 学习中心真实 UI 39 项
 node quiz/.build/probe_circuit_ui.cjs      # circuit 真实 UI 全流程 10 项
 node quiz/.build/_probe_perf.cjs           # P2 / P4 性能测量 + _headers 静态门禁
-node quiz/.build/_runall.cjs 0 36          # 36 套定向验证（含浏览器探针，约 30-60 分钟）
+node quiz/.build/_runall.cjs               # 38 套全量回归（含学习系统 + 浏览器探针，约 10 分钟）
 ```
 
 - `_runall.cjs` 逐套单独起浏览器，逐套落盘到 `_reg_<start>_<end>.txt`；**判定只看汇总行 `N/M 通过` 或 `=== … N/M 通过 ===`，不要看退出码**（部分探针在失败时仍返回 0）。
@@ -112,6 +119,7 @@ node quiz/.build/_runall.cjs 0 36          # 36 套定向验证（含浏览器�
 
 1. 改样式/骨架 → `head.html`；改题库 → `data/pools.json` + 同步镜像；改出题与判分 → `engine_core.js`；改交互 → `quiz-ui.js`；改错题本序列化 → `src/wrongbook.js`。
 2. 改完必须 `node quiz/.build/build.js`，否则 `--check` 会拦。
-3. `build.js` 写产物前会跑 `_guard_tags.cjs`：手写题语言标签缺失 / 非法直接阻断，不产出 `index.html`。
+3. `build.js` 写产物前会跑 `_guard_tags.cjs` + `_course.cjs`：手写题语言标签缺失 / 课程七段缺字段 / 过关题量不足都直接阻断，不产出 `index.html`。
+3b. 学习系统装配顺序：`build.js` 为 `FRAMEWORK → logic → learn_core → net → state → core → IDB → wb → ui → COURSE_DATA → learn-ui`；`_sandbox.cjs` 同步到 learn_core（learn-ui 是 DOM 层不进沙箱）。改课程 JSON 后无需手动同步（构建期直接读 JSON 序列化注入）。
 4. 产物首行带「生成文件」注释；新增任何构建路径都要保留这条标识。
 5. 新增源码片必须同时更新 `build.js` 与 `.build/_sandbox.cjs` 的装配顺序，否则 Node 探针先炸。

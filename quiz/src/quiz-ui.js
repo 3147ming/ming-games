@@ -4411,7 +4411,7 @@ function openSettings(){
 /* ---------- P2-A2：数据导出 / 导入 ---------- */
 /* 存储注册表：一处登记 = 同时进「备份清单」与「迁移校验」。
    以前 BACKUP_KEYS 是手写 8 项，新增键必漏，导出的备份悄悄少一项。 */
-var STORE_SCHEMA=2;
+var STORE_SCHEMA=3;
 var STORE_REG={
   stats:      {k:'bt_qa_stats',       t:'obj', d:{},  b:1},
   best:       {k:'bt_qa_best',        t:'obj', d:{},  b:1},
@@ -4425,7 +4425,10 @@ var STORE_REG={
   autorefill: {k:'bt_qa_autorefill',  t:'any', d:false,b:0},
   learnBefore:{k:'bt_qa_learn_before',t:'any', d:null,b:0},
   quickjump:  {k:'bt_qa_quickjump',   t:'any', d:null,b:0},
-  online:     {k:'bt_qa_online',      t:'any', d:null,b:0}   /* 联网题库缓存：可重新拉取，不进备份 */
+  online:     {k:'bt_qa_online',      t:'any', d:null,b:0},  /* 联网题库缓存：可重新拉取，不进备份 */
+  learnProg:  {k:'bt_qa_learn_prog',  t:'obj', d:{},  b:1},  /* 学习系统：每节掌握度/SRS/尝试次数 */
+  learnDaily: {k:'bt_qa_learn_daily', t:'obj', d:{},  b:1},  /* 学习系统：每日任务与打卡 */
+  learnTutor: {k:'bt_qa_learn_tutor', t:'obj', d:{},  b:1}   /* 学习系统：AI 导师对话缓存 */
 };
 /* 带前缀的动态键（每个科目 / 自定义分类各一条），备份时整族收进去 */
 var STORE_PREFIX_BACKUP=['bt_qa_rank_','bt_qa_recent_','bt_qa_recent_auto_','bt_qa_recent_code_'];
@@ -4720,6 +4723,16 @@ function registerSW(){
   }catch(e){/* 老浏览器 / 被策略禁用：静默忽略 */}
 }
 
+/* P4：学习系统 AI 导师桥接 —— 复用 callAIRaw 的纯文本返回，未配置 API 时回 null 让学习系统降级到离线脚本。 */
+window.QAAskAI=function(prompt,cb){
+  var cfg=loadAICfg();
+  if(!cfg||!cfg.url||(!cfg.key&&!isFreeAI(cfg.url))){cb(null);return;}
+  var sys='你是「知识问答」学习系统的苏格拉底式导师。规则：1) 绝不直接给出题目答案；2) 一次只问一个问题；3) 用中文；4) 通过追问和提示引导学习者自己推导；5) 回复控制在 120 字以内。';
+  callAIRaw(cfg,sys+'\n\n学习者的问题：'+prompt,function(text,err){
+    if(err||!text){cb(null);return;}
+    cb(String(text).replace(/\s+/g,' ').trim().slice(0,300));
+  },15000);
+};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 
 })();
