@@ -1,6 +1,6 @@
 # 知识问答（quiz）
 
-书架式分类刷题：选择题 / 程序编写 / 填空题三个板块，807 道静态题（权威数据在 `data/pools.json`）+ 生成器 + 50 道手写题，支持 PWA 离线与 AI 建题。
+书架式分类刷题：选择题 / 程序编写 / 填空题三个板块，1314 道静态题（含电路与模拟电子 507 题）（权威数据在 `data/pools.json`）+ 生成器 + 50 道手写题，支持 PWA 离线与 AI 建题。
 
 线上入口：<https://ming-games.pages.dev/quiz/>（实测可直开单文件形态）。统一构建形态在 `dist/games/quiz/index.html`，只有在 Cloudflare Pages 以 `dist` 为发布目录时才对应 `/games/quiz/index.html`；`deploy.config.json` 登记的是 `dist`，但线上实测以仓库根为发布目录，两条路径的差异见 `DEPLOY.md`，改线上配置前先量一次。
 
@@ -24,7 +24,7 @@
 
 拼装顺序有依赖：`engine_core.js` 用到的 `QALogic` / `QANet` 必须先注入，`quiz-ui.js` 依赖引擎与状态源的函数。所有自建 `vm` 沙箱探针都必须按同一顺序装配，否则报 `ReferenceError`。
 
-**题库权威数据**：`data/pools.json`（11 分类 / 807 题）。`engine_core.js` 里保留一段 JSON 生成的 `POOLS` 镜像，仅供「只装配 `engine_core.js`」的离线探针直接运行；`build.js` 在构建前用 `_pools.cjs` 校验 JSON，并断言镜像与 JSON 逐字一致，然后**用 JSON 序列化结果替换镜像**注入产物。改题流程：改 `pools.json` → `node quiz/.build/_pools.cjs --sync` → `node quiz/.build/build.js`。
+**题库权威数据**：`data/pools.json`（12 分类 / 1314 题）。`engine_core.js` 里保留一段 JSON 生成的 `POOLS` 镜像，仅供「只装配 `engine_core.js`」的离线探针直接运行；`build.js` 在构建前用 `_pools.cjs` 校验 JSON，并断言镜像与 JSON 逐字一致，然后**用 JSON 序列化结果替换镜像**注入产物。改题流程：改 `pools.json` → `node quiz/.build/_pools.cjs --sync` → `node quiz/.build/build.js`。
 
 ```bash
 node quiz/.build/build.js           # 生成产物 + 同步部署包 + 重算 SW 版本
@@ -53,6 +53,7 @@ node quiz/.build/_pools.cjs --check # 只校验题库 JSON 与引擎镜像
 
 ## 三、架构分层（中长期重构结果）
 
+- **新增学科 circuit（电路与模拟电子）**：507 题人工精编题库（5 档），与编程同等地位——同走 genStdPool、支持 diffMatters 自动升档、归入💻信息技术组；`_probe_circuit.cjs` 34 项接线校验 + `probe_circuit_ui.cjs` 10 项真实 UI 全流程。
 - **Q1 单一状态源**：8 个并行模式标志（`autoMode` / `reviewMode` / `handMode` / `quizOver` / `locked` / `promoState` / `qaSection` / `customMixed`）以前散在 30 多处直接赋值。现在所有写点统一走 `setQAState(patch, ctx)`，先合并、再经 `QALogic.validateState()` 断言非法组合，最后一次性写回 8 个全局镜像（读点保持不动，避免改 3000+ 行）。关键入口 `showQuestion()` 还会 `assertQAState()`。
 - **Q3 纯逻辑层**：SRS 间隔推进、降档判定、干扰项生成、`validItem` 抽成无 DOM 的纯函数，`_probe_logic.cjs` 做 62 项单测 + 200+200 组与旧实现的随机等价对照。
 - **A4 网络适配层**：`FALLBACK` 显式降级表、`FAIL_TEXT`、`timedFetch`、`chain`、`reason`。联网题库 / `callAI` / `testAI` / `callAIRaw` 统一走它。注意 `envOf()` 必须用 `f.call(globalThis, ...)` 调用原生 `fetch` / `setTimeout`，否则浏览器里会 `Illegal invocation`。
@@ -97,8 +98,10 @@ node quiz/.build/_probe_logic.cjs          # Q3 纯逻辑 62 项
 node quiz/.build/_probe_pools.cjs          # M3 题库 21 项
 node quiz/.build/_probe_net.cjs            # A4 网络适配 37 项
 node quiz/.build/_probe_state.cjs          # Q1 状态源 26 项
+node quiz/.build/_probe_circuit.cjs        # circuit 学科接线 34 项
+node quiz/.build/probe_circuit_ui.cjs      # circuit 真实 UI 全流程 10 项
 node quiz/.build/_probe_perf.cjs           # P2 / P4 性能测量 + _headers 静态门禁
-node quiz/.build/_runall.cjs 0 33          # 33 套定向验证（含浏览器探针，约 30-60 分钟）
+node quiz/.build/_runall.cjs 0 36          # 36 套定向验证（含浏览器探针，约 30-60 分钟）
 ```
 
 - `_runall.cjs` 逐套单独起浏览器，逐套落盘到 `_reg_<start>_<end>.txt`；**判定只看汇总行 `N/M 通过` 或 `=== … N/M 通过 ===`，不要看退出码**（部分探针在失败时仍返回 0）。

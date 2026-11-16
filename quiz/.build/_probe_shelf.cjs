@@ -34,9 +34,9 @@ ok(gs.length === 5, '渲染出 5 个分组块（4 组科目 + 我的/联网）',
 ok(gs.slice(0, 4).map(titleOf).join('|') === '🔬 自然科学|📜 人文社科|🧠 生活百科|💻 信息技术',
   '4 组标题与顺序正确', gs.slice(0, 4).map(titleOf).join('|'));
 ok(titleOf(gs[4] || {}) === '📚 我的 / 联网', '自定义 + 联网归入末尾分组', titleOf(gs[4] || {}));
-const expectCards = [4, 4, 3, 1];
+const expectCards = [4, 4, 3, 2];
 ok(gs.slice(0, 4).every((g, i) => cardsOf(g) === expectCards[i]),
-  '各组卡片数 = 4/4/3/1', gs.slice(0, 4).map(cardsOf).join(','));
+  '各组卡片数 = 4/4/3/2（tech 组含 code+circuit）', gs.slice(0, 4).map(cardsOf).join(','));
 ok(cardsOf(gs[4] || {}) === 1, '无自定义题时该组只有联网卡', cardsOf(gs[4] || {}));
 /* 兜底：新增一个没登记的科目，重渲染后不能消失 */
 E.QA_TYPES.__probe_new = { name: '探针科目', icon: '🧪', alias: [], gen: function () { return []; } };
