@@ -627,7 +627,9 @@ export function createMusicEngine(opts = {}) {
       const t = (wallClock() - wallStart) / 1000;
       return started && running ? t : pausedAtSong;
     }
-    return be.now() - startAt;
+    const t = be.now() - startAt;
+    // 音频时钟给出 NaN/Infinity 时不能把整条时间轴带崩，退回挂钟口径
+    return Number.isFinite(t) ? t : (wallClock() - wallStart) / 1000;
   }
 
   function emit(e, at) {
@@ -677,18 +679,29 @@ export function createMusicEngine(opts = {}) {
       if (!timeline) throw new Error('engine.start: 先 load(song)');
       started = true;
       paused = false;
-      const hasAudio = !!(be && be.available());
+      let hasAudio = false;
+      try { hasAudio = !!(be && be.available()); } catch { hasAudio = false; }
       useFallbackClock = !hasAudio;
       if (hasAudio) {
-        startAt = be.now() + LEAD_IN;
-        cursor = 0;
-        running = true;
-      } else {
+        try {
+          const at = be.now() + LEAD_IN;
+          if (!Number.isFinite(at)) throw new Error('音频时钟非法');
+          startAt = at;
+          cursor = 0;
+          running = true;
+        } catch {
+          // 后端在"可用"判断上撒谎（常见于 suspended 的 context）：退回挂钟，别让起播失败
+          useFallbackClock = true;
+          errors += 1;
+          lastError = 'audio clock unavailable at start';
+        }
+      }
+      if (useFallbackClock) {
         wallStart = wallClock() - (-LEAD_IN) * 1000;
         running = true;
       }
       startTimer();
-      tick();
+      try { tick(); } catch { /* 排程异常不该阻断起播 */ }
       return api;
     },
 
@@ -730,6 +743,29 @@ export function createMusicEngine(opts = {}) {
 
     /** 立即静音（硬停，不是把音量拧到 0）。 */
     mute() { stopTimer(); running = false; if (be) be.panic(); return api; },
+
+    /**
+     * ★ 时钟救援：把当前歌曲时间"冻结"在 fromSongTime，并改用挂钟继续走。
+     *
+     * 为什么需要它：`now()` 默认读 AudioContext.currentTime。一旦这个 context 停在
+     * suspended（iOS 首次解锁被拒、低电量模式、来电抢占、某些安卓 WebView），
+     * currentTime 会**原地不动** —— 表现为"按了开始，画面还在准备层/倒计时不动，
+     * 音符一颗都不掉"。游戏并没有崩，它只是没有时钟可用。
+     *
+     * 这里做的不是修 AudioContext（修不了），而是承认它坏了：切到挂钟，
+     * 让谱面照常下落 —— 玩家至少能玩到，而不是对着静止画面发呆。
+     */
+    forceFallback(fromSongTime) {
+      const t = Number.isFinite(Number(fromSongTime)) ? Number(fromSongTime) : now();
+      useFallbackClock = true;
+      started = true;
+      paused = false;
+      running = true;
+      wallStart = wallClock() - t * 1000;
+      cursor = lowerBoundByTime(timeline ? timeline.events : [], Math.max(0, t));
+      startTimer();
+      return api;
+    },
 
     /** 打中反馈音（由 ui/judge 在命中时调用，属于音效不属于乐曲）。 */
     hitSound(verdict) {
