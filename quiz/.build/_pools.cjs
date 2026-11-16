@@ -73,8 +73,6 @@ function validate(data) {
           stats.byTag[tag] = (stats.byTag[tag] || 0) + 1;
           if (k === 'code') {
             if (!CODE_TAG_RE.test(tag)) errs.push(where + ' code 题标签非法: ' + tag);
-          } else if (k === 'circuit') {
-            /* circuit 用中文知识点标签（电路基础/运放应用…），与 code 同属自由标签分类 */
           } else if (tag !== k) errs.push(where + ' 标签与分类不一致: ' + tag + ' ≠ ' + k);
         }
         if (seen[q]) errs.push(where + ' 题干重复: ' + q);

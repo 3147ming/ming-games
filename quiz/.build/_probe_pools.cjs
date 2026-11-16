@@ -10,11 +10,11 @@ const data = P.load();
 const v = P.validate(data);
 ok(v.errs.length === 0, '题库字段/选项/去重/标签校验全通过', v.errs.slice(0, 3).join('; '));
 ok(v.stats.subjects === 12, '12 个分类', String(v.stats.subjects));
-ok(v.stats.questions === 1314, '1314 道题', String(v.stats.questions));
-ok(v.stats.withDistractors === 1226, '1226 道三干扰项题', String(v.stats.withDistractors));
+ok(v.stats.questions === 1361, '1361 道题', String(v.stats.questions));
+ok(v.stats.withDistractors === 1273, '1273 道三干扰项题', String(v.stats.withDistractors));
 ok(v.stats.withCandidates === 22, '22 道四候选题', String(v.stats.withCandidates));
 ok(v.stats.plain === 66, '66 道走随机兜底', String(v.stats.plain));
-ok(v.stats.meta === 580, '580 道带解析/来源', String(v.stats.meta));
+ok(v.stats.meta === 1134, '1134 道带解析/来源', String(v.stats.meta));
 
 /* code 分类的语言标签必须都在 UI 的 CODE_LANGS 白名单内 */
 const SB = require('./_sandbox.cjs');

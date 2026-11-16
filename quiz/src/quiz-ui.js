@@ -166,13 +166,11 @@ function stdAvail(bk){
    其余分类是扁平题库（pickPoolByDiff 对数组不分档），换档只改题量与扣分 → 不能说「实力：困难」 */
 function diffMatters(bk){return bk==='math'||bk==='code'||bk==='circuit';}
 function codeCount(){var n=0;for(var d in POOLS.code){if(POOLS.code.hasOwnProperty(d))n+=POOLS.code[d].length;}return n;}
+function circuitCount(){var n=0;for(var d in POOLS.circuit){if(POOLS.circuit.hasOwnProperty(d))n+=POOLS.circuit[d].length;}return n;}
 function shelfCount(bk,cn){
   if(bk==='math')return '动态生成';
   if(bk==='code'){var e=codeEstimate();return (e>=10000?Math.floor(e/10000)+'万+':e)+' 题（模板生成，理论组合数）';}
-  if(bk==='circuit'){
-    var n=0;for(var d in POOLS.circuit){if(POOLS.circuit.hasOwnProperty(d))n+=POOLS.circuit[d].length;}
-    return n+' 题（人工精编）';
-  }
+  if(bk==='circuit')return circuitCount()+' 题（人工精编·五档）';
   if(bk)return stdCount(bk)+' 题';
   var p=custom[cn]||[];return p.length+' 题';
 }
@@ -298,7 +296,7 @@ function pickDiffPanel(bk,cb){
   /* C4：上次选的档位若本类一题都出不了（如题库被清空），默认回到自动匹配 */
   if(defSel>0&&ds[defSel-1]&&isFinite(stdAvail(bk))&&stdAvail(bk)<=0)defSel=0;
   var ov=overlayPanel((T.icon||'')+' '+T.name+' · 选择难度','diff');
-  ov.p.appendChild(ht('div','hint',(bk==='math'?'🎓 按学业阶段出题：':(bk==='code'?'💻 按学习进度出题（已按你掌握的语言过滤）':(bk==='circuit'?'🔌 按学习进度出题，从电路基础到模拟 IC 设计全覆盖：':'⚙️ 选择难度，题量与扣分随档位变化')))+'也可选「🤖 自动匹配」无限刷题、难度实时跟着你走'));
+  ov.p.appendChild(ht('div','hint',(bk==='math'?'🎓 按学业阶段出题：':(bk==='code'?'💻 按学习进度出题（已按你掌握的语言过滤）：':(bk==='circuit'?'🔌 按学习进度出题：电路基础 → 器件 → 放大 → 频响/电源 → 高频与 IC 设计：':'⚙️ 选择难度，题量与扣分随档位变化')))+'也可选「🤖 自动匹配」无限刷题、难度实时跟着你走'));
   /* 块4：语言状态三态可见 —— only 保留检测结果；unset 红字警示可点进问卷；all 灰字说明可改 */
   if(bk==='code'){
     var _st=codeLangState();

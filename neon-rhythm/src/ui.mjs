@@ -243,11 +243,6 @@ function startGame(songId, difficulty, practice = false) {
   game.lastJudgeId = -1;
   game.laneFlash = [0, 0, 0, 0];
   game.pressed = [false, false, false, false];
-  lastClockT = Number.NaN;
-  stallStart = 0;
-  clockNoteShown = false;
-  const warnEl = $('clock-warning');
-  if (warnEl) warnEl.hidden = true;
 
   paintHud(true);
   $('hud-judge').className = 'hud-judge';
@@ -287,11 +282,6 @@ function showReady(song, songId, difficulty) {
  * 真正起播 —— 由空格键或点击准备层触发。
  * ★ 必须由**用户手势**直接调用（不能 setTimeout 里调），
  *   否则浏览器会拒绝解锁 AudioContext，整局变成无声。
- *
- * ⚠ 2026-11-16 实测修复：起播整段包了 try/catch。
- *   之前只要 `engine.start()` 抛一次（音频 context 被系统挂起、currentTime 返回异常值），
- *   准备层已经隐藏、raf 没启动、`game.running` 还是 false —— 玩家看到的就是
- *   "按了开始，什么都没发生"。现在起播失败一律降级为静音计时继续，并给一句提示。
  */
 function beginPlay() {
   if (curScreen !== 'game' || !game.pendingStart) return;
@@ -302,83 +292,23 @@ function beginPlay() {
 
   $('ready-mask').hidden = true;
 
-  let audioOk = true;
-  try {
-    unlockAudio();
-    engine.start();
-  } catch (err) {
-    audioOk = false;
-    console.warn('[neon] 音频起播失败，改用静音计时：', err && err.message);
-    try { engine.forceFallback(-LEAD_IN); } catch { /* 再失败就只剩静音计时 */ }
-  }
-
-  try {
-    game.g.begin(0);
-  } catch (err) {
-    console.error('[neon] 局内状态机起播失败：', err);
-  }
+  // 起播：必须在用户手势的同一个调用栈里
+  unlockAudio();
+  // load() 已在 startGame() 里做过（重建时间轴是同步的），这里只负责起播
+  engine.start();
+  game.g.begin(0);
   game.startWallMs = performance.now();
   game.running = true;
-  if (!audioOk) noteClockFallback();
 
   cancelAnimationFrame(game.raf);
   game.raf = requestAnimationFrame(frame);
-}
-
-/* ---------- 时钟看门狗 ----------
- * 症状（2026-11-16 反馈）："按开始后没反应"。
- * 根因：AudioContext 停在 suspended 时 currentTime 不前进，engine.time() 恒等于 -LEAD_IN，
- *       frame() 里 `phase === 'countdown' && timeMs >= 0` 永远不成立 —— 倒计时不动、音符不掉，
- *       但 raf 在跑、日志无异常，所以看起来像"卡死"。
- * 处置：连续 0.6 秒发现时间没走，就把时钟切成挂钟继续（有画面、无音乐），并告知玩家。
- */
-let lastClockT = Number.NaN;
-let stallStart = 0;
-let lastFrameAt = 0;
-let clockNoteShown = false;
-
-function noteClockFallback() {
-  if (clockNoteShown) return;
-  clockNoteShown = true;
-  const el = $('clock-warning');
-  if (!el) return;
-  el.hidden = false;
-  setTimeout(() => { el.hidden = true; }, 4200);
-}
-
-/**
- * 看门狗必须用「绝对时间差」而不是「每帧累加 dt」：
- *   无头/后台/省电模式下 rAF 可能只有 1~5fps，累加式计时要 8 秒才到 600ms，
- *   而真人看到的卡死不该等 8 秒。这里记"第一次发现时间没走的墙上时刻"，
- *   再用 wallNow - stallStart 判定，帧率多少都不影响灵敏度。
- */
-function watchClock(nowMs, wallNow) {
-  const prev = lastClockT;
-  let advanced;
-  if (!Number.isFinite(nowMs)) advanced = false;
-  else if (!Number.isFinite(prev)) advanced = true;      // 首帧/刚切换过，先认作在走
-  else advanced = Math.abs(nowMs - prev) >= 0.5;        // 0.5ms 以内视为没动
-  lastClockT = nowMs;
-  if (advanced) { stallStart = 0; return false; }
-  if (!stallStart) stallStart = wallNow;
-  if (wallNow - stallStart < 600) return false;
-
-  stallStart = 0;
-  const from = Number.isFinite(nowMs) ? Math.max(-LEAD_IN, nowMs / 1000) : -LEAD_IN;
-  try { engine.forceFallback(from); } catch { /* 忽略 */ }
-  lastClockT = Number.NaN;
-  noteClockFallback();
-  return true;
 }
 
 /* ---------- 主循环 ---------- */
 
 function frame() {
   if (!game.running || !game.g) return;
-  const wallNow = performance.now();
   const nowMs = engine.time() * 1000;   // 音频时钟（秒 → 毫秒）
-  // 音频时钟冻结时（suspended / NaN）就地切换成挂钟，避免"按了开始没反应"
-  watchClock(nowMs, wallNow);
   shake *= 0.82;
   const missed = game.g.tick(nowMs);
 
@@ -728,19 +658,12 @@ document.addEventListener('keydown', (e) => {
 
 (() => {
   const rm = $('ready-mask');
-  if (!rm) return;
-  // pointerdown 比 click 更靠前也更可靠：
-  //   · 移动端某些浏览器在 canvas 覆盖层上会吞掉 click；
-  //   · 起播必须落在"用户手势"的同一调用栈里，pointerdown 天然满足。
-  // beginPlay 内部有 `ready-mask 已隐藏就返回` 的守卫，这里不会被触发两次。
-  rm.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    beginPlay();
-  });
-  rm.addEventListener('click', (e) => {
-    e.preventDefault();
-    beginPlay();
-  });
+  if (rm) {
+    rm.addEventListener('click', (e) => {
+      e.preventDefault();
+      beginPlay();
+    });
+  }
 })();
 
 function pressLane(lane) {

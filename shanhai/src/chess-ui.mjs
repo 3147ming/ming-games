@@ -25,7 +25,7 @@
         <div class="chess-lobby" id="chess-lobby">
           <p class="eyebrow">SHAN HAI · QI YI</p>
           <h2>棋艺</h2>
-          <p class="hero-copy">择一棋，对坐手谈。象棋与暗棋用汉字棋子，五子棋与跳棋用实体棋子。</p>
+          <p class="hero-copy">择一棋，对坐手谈。棋子皆为实体图形，非文字。</p>
           <div class="chess-opts" id="chess-opts"></div>
           <div class="chess-modes" id="chess-modes"></div>
           <div class="screen__foot">
@@ -258,11 +258,11 @@
     turnEl.textContent = `${sideLabel} · ${who}行棋`;
     turnEl.dataset.side = state.turn;
     if (state.passed) statusEl.textContent = `${sideLabel}无子可落，跳过一手。`;
-    else if (state.mode === 'banqi') statusEl.textContent = '翻棋或行子；帥>仕>相>俥>傌>炮>兵，兵可吃帥，炮不打兵。';
+    else if (state.mode === 'banqi') statusEl.textContent = '翻棋或行子；翻开的子归其本色，按品级吃子。';
     else if (state.mode === 'reversi') statusEl.textContent = '落子夹反，多者称雄；无子可落则跳过。';
-    else if (state.mode === 'xiangqi') statusEl.textContent = '车马炮士象全，将帅不出九宫、不可照面。';
-    else if (state.mode === 'checkers') statusEl.textContent = '跳棋：一步走 6 个方向；跳过相邻棋子可连跳（不吞子）；先占满对面三角者胜。';
-    else statusEl.textContent = '棋子落在交叉点，先连五子者胜。';
+    else if (state.mode === 'xiangqi') statusEl.textContent = '车马炮士象全，将帅不可照面。';
+    else if (state.mode === 'checkers') statusEl.textContent = '斜行跳吃，到底成王。';
+    else statusEl.textContent = '先连五子者胜。';
   }
 
   const api = { open, close, init, debugState: () => state, debugLayout: () => currentLayout };
