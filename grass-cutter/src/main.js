@@ -138,24 +138,6 @@ const input = new InputState(window).attach(canvas);
 // 指针锁定的失败是"环境限制"而不是 bug；InputState 内部已经 catch 了 Promise 形式
 canvas.addEventListener('click', () => { input.requestPointerLock(); audio.resume(); });
 
-/* 视角控制提示随锁定状态切换。
-   2026-11-16 反馈：锁定失败/被 Esc 解除后，玩家不知道鼠标为什么没反应 ——
-   现在把"当前能用什么方式转视角"直接写在提示条上，而不是让人自己猜。 */
-(function bindLookHint() {
-  const el = document.getElementById('hint-look');
-  if (!el) return;
-  const sync = () => {
-    const locked = document.pointerLockElement === canvas;
-    el.textContent = locked
-      ? 'Esc 解除鼠标锁定'
-      : '点击画面锁定鼠标（或按住左键拖动转视角）';
-    el.classList.toggle('is-locked', locked);
-  };
-  document.addEventListener('pointerlockchange', sync);
-  document.addEventListener('pointerlockerror', sync);
-  sync();
-}());
-
 // ─────────────────────────────────────────────── 玩家（模块 2）
 const player = new PlayerController({ input, shapes, spawn: world.layout.spawn });
 // 默认用内置程序化 PBR 武将；若配置了 HERO.ASSET_PATH，异步加载外部 glTF/VRM 后无缝替换。

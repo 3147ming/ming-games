@@ -24,7 +24,7 @@
 
 拼装顺序有依赖：`engine_core.js` 用到的 `QALogic` / `QANet` 必须先注入，`quiz-ui.js` 依赖引擎与状态源的函数。所有自建 `vm` 沙箱探针都必须按同一顺序装配，否则报 `ReferenceError`。
 
-**题库权威数据**：`data/pools.json`（12 分类 / 1420 题，电路 613 题）。`engine_core.js` 里保留一段 JSON 生成的 `POOLS` 镜像，仅供「只装配 `engine_core.js`」的离线探针直接运行；`build.js` 在构建前用 `_pools.cjs` 校验 JSON，并断言镜像与 JSON 逐字一致，然后**用 JSON 序列化结果替换镜像**注入产物。改题流程：改 `pools.json` → `node quiz/.build/_pools.cjs --sync` → `node quiz/.build/build.js`。
+**题库权威数据**：`data/pools.json`（12 分类 / 1470 题，电路 663 题（含 50 道期末真题））。`engine_core.js` 里保留一段 JSON 生成的 `POOLS` 镜像，仅供「只装配 `engine_core.js`」的离线探针直接运行；`build.js` 在构建前用 `_pools.cjs` 校验 JSON，并断言镜像与 JSON 逐字一致，然后**用 JSON 序列化结果替换镜像**注入产物。改题流程：改 `pools.json` → `node quiz/.build/_pools.cjs --sync` → `node quiz/.build/build.js`。
 
 ```bash
 node quiz/.build/build.js           # 生成产物 + 同步部署包 + 重算 SW 版本

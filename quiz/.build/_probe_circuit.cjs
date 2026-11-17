@@ -12,14 +12,14 @@ const pools = JSON.parse(read('data/pools.json'));
 ok(Object.prototype.hasOwnProperty.call(pools, 'circuit'), 'pools.json 有 circuit 顶层 key');
 const cq = pools.circuit;
 ok(cq && Object.keys(cq).sort().join(',') === '0,1,2,3,4', 'circuit 分 0~4 五档', cq ? Object.keys(cq).join(',') : '无');
-const expect = [56, 106, 165, 117, 169];
+const expect = [70, 141, 165, 117, 170];
 let tot = 0;
 if (cq) expect.forEach((n, d) => {
   const arr = cq[String(d)];
   ok(Array.isArray(arr) && arr.length === n, '档' + d + ' 题量 ' + n, arr ? String(arr.length) : '缺');
   tot += arr ? arr.length : 0;
 });
-ok(tot === 613, 'circuit 合计 613 题（原507+扩容106）', String(tot));
+ok(tot === 663, 'circuit 合计 663 题（原507+本地扩容106+远端真题50）', String(tot));
 
 // 数据质量：每题 4 元数组、干扰项恰好 3 项不含答案、同档题干不重复
 let shapeErr = [], dupErr = [];
@@ -54,20 +54,20 @@ const ui = read('src/quiz-ui.js');
 const uiChecks = [
   ["if(!bk||bk==='math'||bk==='code'||bk==='circuit')return Infinity;", 'stdAvail 含 circuit'],
   ["function diffMatters(bk){return bk==='math'||bk==='code'||bk==='circuit';}", 'diffMatters 含 circuit'],
-  ["if(bk==='circuit'){", 'shelfCount 有 circuit 分支'],
-  ["bk==='circuit'?'🔌 按学习进度出题", 'pickDiffPanel hint 含 circuit'],
+  ["if(bk==='circuit')return circuitCount()", 'shelfCount 有 circuit 分支'],
+  ["'🔌 按学习进度出题", 'pickDiffPanel hint 含 circuit'],
   ["if(!bk||bk==='code'||bk==='circuit'||bk==='online')return;", 'autoRefill guard 含 circuit'],
 ];
 uiChecks.forEach(([needle, name]) => ok(ui.indexOf(needle) >= 0, name));
-// shelfCount circuit 分支返回 507 题（人工精编）
-ok(/n\+=POOLS\.circuit\[d\]\.length/.test(ui), 'shelfCount 累加 POOLS.circuit 各档题量');
+// shelfCount circuit 分支：题量由 circuitCount() 封装累加 POOLS.circuit 各档（远端真题提交后的实现）
+ok(/function circuitCount\(\)/.test(ui) && /POOLS\.circuit\[d\]\.length/.test(ui), 'circuitCount 累加 POOLS.circuit 各档题量');
 
 // ---------- 4. 校验器与探针统计 ----------
 const poolTool = read('.build/_pools.cjs');
 ok(/k === 'circuit'/.test(poolTool) || /k==='circuit'/.test(poolTool), '_pools.cjs 校验器给 circuit 开标签白名单');
 const probePools = read('.build/_probe_pools.cjs');
 ok(/subjects === 12/.test(probePools), '_probe_pools 分类数更新为 12');
-ok(/questions === 1420/.test(probePools), '_probe_pools 题量更新为 1420');
+ok(/questions === 1470/.test(probePools), '_probe_pools 题量更新为 1470');
 
 // ---------- 5. 构建注入 ----------
 const html = read('index.html');

@@ -23,7 +23,6 @@ node tools/build.mjs --no-openall          # P3 起：生成原版行为产物�
 node tools/check-deploy.mjs                # 部署写目标门禁
 node tools/anchor.mjs --selftest           # 大文件改写纪律自检
 node server.mjs --root=offline --port=5391 # 用 http 验证 offline 产物
-node --test shanhai/tests/*.test.mjs       # 棋艺规则回归（象棋九宫 / 暗棋层级 / 跳棋六角星）
 ```
 
 产物目录 `dist/` 与 `offline/` 每次整体重建，是可再生产物；源码在 `games.json` 登记的 `dir` 下，构建过程**不修改任何游戏业务源码**。

@@ -72,8 +72,6 @@ export class InputState {
     this.stick = null;         // { x, y } ∈ [-1,1]，y 向下为正；没接触屏时为 null
     this.touchBound = false;
     this.lastLookAt = -Infinity; // 最近一次"手指正在转视角"的时刻（秒），P0-2 用
-    this._drag = null;             // 桌面未锁定时按住左键拖拽转视角的会话
-    this._dragConsumedClick = false;
   }
 
   attach(canvas) {
@@ -115,52 +113,12 @@ export class InputState {
       this.target.document?.body?.classList.toggle('locked', this.pointerLocked);
     };
 
-    // ── 第 4 批（2026-11-16 修复）：桌面端**没有指针锁定也要能转视角**。
-    //    症状：点一下画面，浏览器拒绝/被 Esc 解除锁定后，鼠标彻底失效 ——
-    //    玩家描述为"屏幕锁定了，鼠标怎么上下都不动"。
-    //    处置：未锁定时按住左键拖动 = 转视角（与触屏那套同一链路，都走 mouse.dx/dy）。
-    //    拖拽超过 10px 会吃掉紧随其后的 click，避免"想看上面"结果被反手锁了指针。
-    this._onDragDown = (e) => {
-      if (this.pointerLocked || e.pointerType === 'touch' || e.button !== 0) return;
-      this._drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: 0 };
-    };
-    this._onDragMove = (e) => {
-      const d = this._drag;
-      if (!d || e.pointerId !== d.id) return;
-      const dx = e.clientX - d.x, dy = e.clientY - d.y;
-      d.x = e.clientX; d.y = e.clientY;
-      d.moved += Math.abs(dx) + Math.abs(dy);
-      this.mouse.dx += dx;
-      this.mouse.dy += dy;
-      this.lastLookAt = this._t;
-    };
-    this._onDragUp = (e) => {
-      const d = this._drag;
-      if (!d || e.pointerId !== d.id) return;
-      this._dragConsumedClick = d.moved > 10;
-      this._drag = null;
-    };
-    // capture 阶段抢先执行：拖动过就别把这一下 click 当成"请求锁定指针"
-    this._onClickGuard = (e) => {
-      if (!this._dragConsumedClick) return;
-      this._dragConsumedClick = false;
-      e.stopImmediatePropagation();
-      e.preventDefault();
-    };
-
     t.addEventListener('keydown', this._onKeyDown);
     t.addEventListener('keyup', this._onKeyUp);
     t.addEventListener('blur', this._onBlur);
     t.addEventListener('mousemove', this._onMouseMove);
     t.addEventListener('mousedown', this._onMouseDown);
     t.addEventListener('mouseup', this._onMouseUp);
-    if (canvas) {
-      canvas.addEventListener('pointerdown', this._onDragDown);
-      canvas.addEventListener('pointermove', this._onDragMove);
-      canvas.addEventListener('pointerup', this._onDragUp);
-      canvas.addEventListener('pointercancel', this._onDragUp);
-      canvas.addEventListener('click', this._onClickGuard, true);
-    }
     t.document?.addEventListener('pointerlockchange', this._onLockChange);
     this.bound = true;
     return this;
@@ -339,13 +297,6 @@ export class InputState {
     t.removeEventListener('mousemove', this._onMouseMove);
     t.removeEventListener('mousedown', this._onMouseDown);
     t.removeEventListener('mouseup', this._onMouseUp);
-    if (this.canvas) {
-      this.canvas.removeEventListener('pointerdown', this._onDragDown);
-      this.canvas.removeEventListener('pointermove', this._onDragMove);
-      this.canvas.removeEventListener('pointerup', this._onDragUp);
-      this.canvas.removeEventListener('pointercancel', this._onDragUp);
-      this.canvas.removeEventListener('click', this._onClickGuard, true);
-    }
     t.document?.removeEventListener('pointerlockchange', this._onLockChange);
     this.bound = false;
   }

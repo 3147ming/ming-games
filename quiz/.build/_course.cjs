@@ -61,7 +61,8 @@ FILES.forEach(f=>{
   const covered=new Set();c.lessons.forEach(l=>l.tags.forEach(t=>covered.add(t)));
   if(c.id==='circuit'){
     const allTags=new Set();for(const d in pools.circuit)pools.circuit[d].forEach(it=>allTags.add(it[2]));
-    allTags.forEach(t=>{if(!covered.has(t))warns.push(f+' tag 未被任何节点覆盖: '+t);});
+    /* 期末真题用 'circuit' 作通用分类标签（真实知识点在 meta.topic），不代表具体知识点，不算未覆盖 */
+    allTags.forEach(t=>{if(t==='circuit')return;if(!covered.has(t))warns.push(f+' tag 未被任何节点覆盖: '+t);});
   }
 });
 console.log('课程校验['+(FULL?'完整':'P0')+'模式]：节点 '+total+'，样例节 '+fullLessons);

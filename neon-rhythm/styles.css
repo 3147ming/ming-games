@@ -299,23 +299,6 @@ html, body {
 
 /* 触摸泳道反馈 */
 .lane-hits { position: absolute; inset: 0; pointer-events: none; display: flex; }
-
-/* 音频降级提示：只解释、不打断，4.2s 后自己消失 */
-.clock-warning {
-  position: absolute; left: 50%; z-index: 6;
-  top: calc(64px + var(--safe-t));
-  transform: translateX(-50%);
-  margin: 0; padding: 7px 14px;
-  max-width: 88vw; text-align: center;
-  font-size: 12px; line-height: 1.4; letter-spacing: .02em;
-  color: #ffd9a0;
-  background: rgba(60, 34, 8, .82);
-  border: 1px solid rgba(255, 190, 90, .35);
-  border-radius: 999px;
-  pointer-events: none;
-  animation: screenIn .2s var(--ease) both;
-}
-.clock-warning[hidden] { display: none; }
 .lane-hit {
   flex: 1 1 0; opacity: 0;
   background: linear-gradient(to top, rgba(0, 229, 255, .3), transparent 62%);
