@@ -96,6 +96,13 @@ body.locked #stage { cursor: none; }
   padding: 0 2px;
 }
 
+/* 视角控制提示：未锁定与已锁定用不同颜色，一眼能看出当前处于哪种状态 */
+.hint-look {
+  color: #ffd98a;
+  font-weight: 700;
+}
+.hint-look.is-locked { color: #9fe3b8; }
+
 /* ───────────────────────── 准星 */
 .reticle {
   position: fixed;

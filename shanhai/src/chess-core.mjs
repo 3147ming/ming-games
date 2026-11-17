@@ -19,7 +19,10 @@
     Array.from({ length: rows }, () => Array.from({ length: cols }, () => (fill ? fill() : null)));
 
   function cloneState(s) {
-    const board = s.board.map((row) => row.map((c) => (c && typeof c === 'object' ? { ...c } : c)));
+    // 棋盘有两种形态：网格棋（二维行列）与跳棋（一维 121 孔），克隆必须都认。
+    const board = Array.isArray(s.board[0])
+      ? s.board.map((row) => row.map((c) => (c && typeof c === 'object' ? { ...c } : c)))
+      : s.board.map((c) => (c && typeof c === 'object' ? { ...c } : c));
     const out = { ...s, board };
     delete out.passed;
     return out;
@@ -33,11 +36,11 @@
 
   /* ── 模式清单（UI 用来渲染入口） ──────────────────────────────────── */
   const MODES = [
-    { id: 'xiangqi', name: '象棋', blurb: '楚河汉界，车马炮士象全。', players: 2, vsAI: true, cols: 9, rows: 10 },
-    { id: 'gomoku', name: '五子棋', blurb: '十五路棋盘，先连五子者胜。', players: 2, vsAI: true, cols: 15, rows: 15 },
-    { id: 'checkers', name: '跳棋', blurb: '西洋跳棋，斜行跳吃、到底成王。', players: 2, vsAI: true, cols: 8, rows: 8 },
-    { id: 'banqi', name: '暗棋', blurb: '三十二子覆面，翻棋论高低。', players: 2, vsAI: true, cols: 8, rows: 4 },
-    { id: 'reversi', name: '翻棋', blurb: '翻转棋：落子夹反，多者称雄。', players: 2, vsAI: true, cols: 8, rows: 8 },
+    { id: 'xiangqi', name: '象棋', blurb: '楚河汉界，棋子落在交叉点，将帅坐镇九宫。', players: 2, vsAI: true, geom: 'point', cols: 9, rows: 10 },
+    { id: 'gomoku', name: '五子棋', blurb: '十五路棋盘，棋子落在线的交叉处，先连五子者胜。', players: 2, vsAI: true, geom: 'point', cols: 15, rows: 15 },
+    { id: 'checkers', name: '跳棋', blurb: '中国跳棋：六角星 121 孔，连跳不吞子，先占满对面三角者胜。', players: 2, vsAI: true, geom: 'hexstar' },
+    { id: 'banqi', name: '暗棋', blurb: '三十二子覆面，翻棋按品级吃子，兵可吃将。', players: 2, vsAI: true, geom: 'grid', cols: 8, rows: 4 },
+    { id: 'reversi', name: '翻棋', blurb: '翻转棋：落子夹反，多者称雄。', players: 2, vsAI: true, geom: 'grid', cols: 8, rows: 8 },
   ];
   const MODE_BY_ID = Object.fromEntries(MODES.map((m) => [m.id, m]));
 
@@ -83,7 +86,10 @@
     };
     switch (p.kind) {
       case 'general':
-        push(x, y - 1); push(x, y + 1); push(x - 1, y); push(x + 1, y);
+        // 象棋：将/帅只能在九宫内走一步。之前漏了九宫判断，将能横着走出宫 —— 规则硬伤。
+        for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+          if (inPalace(side, x + dx, y + dy)) push(x + dx, y + dy);
+        }
         break;
       case 'advisor':
         for (const [dx, dy] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
@@ -226,54 +232,120 @@
   }
 
   /* ════════════════════════════════════════════════════════════════
-   *  西洋跳棋（8×8，强制吃子，连跳，到底成王）
-   * ════════════════════════════════════════════════════════════════ */
-  function checkersSetup() {
-    const cols = 8, rows = 8;
-    const b = makeBoard(cols, rows, null);
-    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
-      if ((x + y) % 2 !== 1) continue; // 只用深色格
-      if (y <= 2) b[y][x] = { side: 'b', kind: 'man' };
-      else if (y >= 5) b[y][x] = { side: 'r', kind: 'man' };
-    }
-    return { mode: 'checkers', board: b, cols, rows, turn: 'r', status: 'playing', winner: null, lastMove: null, moveCount: 0, noCap: 0 };
-  }
-  function checkersDirs(p) {
-    return p.king ? [[-1, -1], [-1, 1], [1, -1], [1, 1]]
-      : (p.side === 'r' ? [[-1, -1], [-1, 1]] : [[1, -1], [1, 1]]);
-  }
-  function checkersCaptures(board, cols, rows, x, y, piece) {
-    const res = [];
-    for (const [dy, dx] of checkersDirs(piece)) {
-      const mx = x + dx, my = y + dy, jx = x + 2 * dx, jy = y + 2 * dy;
-      if (!inB(jx, jy, cols, rows)) continue;
-      const mid = board[my][mx], land = board[jy][jx];
-      if (mid && mid.side !== piece.side && !land) {
-        const nb = board.map((r) => r.slice());
-        nb[y][x] = null; nb[my][mx] = null;
-        const np = { ...piece };
-        if ((np.side === 'r' && jy === 0) || (np.side === 'b' && jy === rows - 1)) np.king = true;
-        nb[jy][jx] = np;
-        const sub = checkersCaptures(nb, cols, rows, jx, jy, np);
-        if (sub.length) for (const sq of sub) res.push({ path: [[x, y]].concat(sq.path), captures: [[mx, my]].concat(sq.captures), to: sq.to });
-        else res.push({ path: [[x, y], [jx, jy]], captures: [[mx, my]], to: [jx, jy] });
-      }
-    }
-    return res;
-  }
-  function checkersActionsAt(s, x, y, side) {
-    const p = s.board[y][x];
-    if (!p || p.side !== side) return [];
-    const caps = checkersCaptures(s.board, s.cols, s.rows, x, y, p)
-      .map((sq) => ({ from: [x, y], to: sq.to, path: sq.path, captures: sq.captures }));
-    if (caps.length) return caps; // 有吃必吃
+   *  跳棋 · 中国跳棋（六角星棋盘 121 孔）
+   * ════════════════════════════════════════════════════════════════
+   * 为什么整段重写：原来这里是 8×8 西洋跳棋（斜行、跳吃、成王），
+   * 和"跳棋"这三个字在中文语境里指的东西不是一回事 —— 玩家要的是
+   * 六角星、跳过去不吞子、谁先把自己人全搬到对面三角谁赢的那个。
+   *
+   * 棋盘构造（轴向坐标 q,r,s 且 s = -q-r）：
+   *   · 中心六边形：|q|,|r|,|s| <= 4      → 61 孔
+   *   · 六个角臂：某一轴 >=5、另外两轴 <=4 → 每角 10 孔，共 60 孔
+   *   合计 121 孔，与实体棋盘一致。
+   *
+   * 规则（二人各 10 子，占对角两个三角）：
+   *   ① 一步：走到相邻的 6 个空孔之一；
+   *   ② 跳跃：跳过相邻的任意一枚棋子（不论敌我）落到其正后方空孔，
+   *      落点可以继续跳 —— 连跳不吞子，可中途停；
+   *   ③ 谁先把自己 10 子全部搬进对面三角谁赢；不能只搬一半就宣布结束。
+   */
+  const CC_DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+
+  const CC_HOLES = (() => {
     const out = [];
-    for (const [dy, dx] of checkersDirs(p)) {
-      const nx = x + dx, ny = y + dy;
-      if (!inB(nx, ny, s.cols, s.rows)) continue;
-      if (!s.board[ny][nx]) out.push({ from: [x, y], to: [nx, ny] });
+    for (let q = -8; q <= 8; q++) for (let r = -8; r <= 8; r++) {
+      const t = -q - r;
+      const hex = Math.abs(q) <= 4 && Math.abs(r) <= 4 && Math.abs(t) <= 4;
+      const arm =
+        (Math.abs(q) >= 5 && Math.abs(r) <= 4 && Math.abs(t) <= 4) ||
+        (Math.abs(r) >= 5 && Math.abs(q) <= 4 && Math.abs(t) <= 4) ||
+        (Math.abs(t) >= 5 && Math.abs(q) <= 4 && Math.abs(r) <= 4);
+      if (hex || arm) out.push({ q, r });
     }
     return out;
+  })();
+
+  const CC_INDEX = (() => {
+    const m = new Map();
+    CC_HOLES.forEach((h, i) => m.set(h.q + ',' + h.r, i));
+    return m;
+  })();
+  const ccAt = (q, r) => {
+    const v = CC_INDEX.get(q + ',' + r);
+    return v === undefined ? -1 : v;
+  };
+
+  /** 起始三角：红方 +q 角、黑方 -q 角，各 10 孔（正好摆满 10 子）。 */
+  const CC_ZONE = {
+    r: CC_HOLES.map((h, i) => i).filter((i) => CC_HOLES[i].q >= 5),
+    b: CC_HOLES.map((h, i) => i).filter((i) => CC_HOLES[i].q <= -5),
+  };
+  const ccGoalZone = (side) => (side === 'r' ? CC_ZONE.b : CC_ZONE.r);
+
+  function checkersSetup() {
+    const board = new Array(CC_HOLES.length).fill(null);
+    for (const i of CC_ZONE.r) board[i] = { side: 'r' };
+    for (const i of CC_ZONE.b) board[i] = { side: 'b' };
+    return {
+      mode: 'checkers', board, cols: CC_HOLES.length, rows: 1,
+      turn: 'r', status: 'playing', winner: null, lastMove: null, moveCount: 0,
+    };
+  }
+
+  /** 六角距离（用来给 AI 估"离目标还有多远"）。 */
+  function ccHexDist(a, b) {
+    const dq = a.q - b.q, dr = a.r - b.r, ds = (-a.q - a.r) - (-b.q - b.r);
+    return Math.max(Math.abs(dq), Math.abs(dr), Math.abs(ds));
+  }
+
+  /** 从第 i 孔出发、只靠连续跳跃能到的所有空孔。 */
+  function ccJumpsFrom(s, i) {
+    const out = [];
+    const seen = new Set([i]);
+    const stack = [i];
+    while (stack.length) {
+      const cur = stack.pop();
+      const { q, r } = CC_HOLES[cur];
+      for (const [dq, dr] of CC_DIRS) {
+        const mid = ccAt(q + dq, r + dr);
+        if (mid < 0 || !s.board[mid]) continue;          // 必须跳过一枚棋子
+        const land = ccAt(q + 2 * dq, r + 2 * dr);
+        if (land < 0 || s.board[land] || seen.has(land)) continue;
+        seen.add(land);
+        out.push(land);
+        stack.push(land);                                 // 连跳：从落点继续
+      }
+    }
+    return out;
+  }
+
+  function checkersActionsAt(s, x, side) {
+    const i = x | 0;
+    if (!(i >= 0 && i < s.board.length)) return [];
+    const p = s.board[i];
+    if (!p || p.side !== side) return [];
+    // ★ 中国跳棋**没有**"有跳必跳"：跳跃只是更划算，不是义务。
+    //   所以一步走法与跳跃一起给出（旧版照搬西洋跳棋的强制吃子，等于凭空加了条规则）。
+    const out = ccJumpsFrom(s, i).map((j) => ({ from: [i, 0], to: [j, 0], jump: true }));
+    const { q, r } = CC_HOLES[i];
+    for (const [dq, dr] of CC_DIRS) {
+      const n = ccAt(q + dq, r + dr);
+      if (n >= 0 && !s.board[n]) out.push({ from: [i, 0], to: [n, 0], jump: false });
+    }
+    return out;
+  }
+
+  /** 该方的 10 枚棋子是否全部落在对面三角里。 */
+  function ccHasWon(s, side) {
+    const goal = new Set(ccGoalZone(side));
+    let mine = 0, placed = 0;
+    for (let i = 0; i < s.board.length; i++) {
+      const p = s.board[i];
+      if (!p || p.side !== side) continue;
+      mine++;
+      if (goal.has(i)) placed++;
+    }
+    return mine === CC_ZONE[side].length && placed === mine;
   }
 
   /* ════════════════════════════════════════════════════════════════
@@ -311,11 +383,20 @@
     for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) b[y][x] = pieces[k++];
     return { mode: 'banqi', board: b, cols, rows, turn: 'r', status: 'playing', winner: null, lastMove: null, moveCount: 0 };
   }
+  /**
+   * 暗棋吃子（通行规则，与象棋的"等级吃"不同，所以单列一处）：
+   *   · 帥 > 仕 > 相 > 俥 > 傌 > 炮 > 兵；
+   *   · 只有兵能吃帥，帥吃不了兵；
+   *   · 炮不吃兵（"炮不打兵"是暗棋里区分度最高的一条）；
+   *   · 炮吃子要隔子，这条在走法里判，不在这里。
+   */
   function banqiCanCapture(att, def) {
     if (att.side === def.side) return false;
+    if (att.kind === 'soldier') return def.kind === 'general' || def.kind === 'soldier';
+    if (att.kind === 'cannon') return def.kind !== 'soldier';
+    if (def.kind === 'general') return false;          // 将只能被兵吃
+    if (att.kind === 'general' && def.kind === 'soldier') return false;
     const a = BANQI_RANK[att.kind], d = BANQI_RANK[def.kind];
-    if (att.kind === 'soldier' && def.kind === 'general') return true;
-    if (att.kind === 'cannon' && def.kind === 'cannon') return false;
     return a >= d;
   }
   function banqiTargets(s, x, y) {
@@ -330,7 +411,11 @@
       out.push({ x: nx, y: ny, cap: !!(q && q.side !== side), occ: !!q });
     };
     switch (p.kind) {
-      case 'general': case 'chariot':
+      case 'general':
+        // 暗棋没有九宫：帥走一步，四个方向
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) push(x + dx, y + dy);
+        break;
+      case 'chariot':
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           let nx = x + dx, ny = y + dy;
           while (inB(nx, ny, cols, rows)) {
@@ -345,22 +430,12 @@
         for (const [dx, dy] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) push(x + dx, y + dy);
         break;
       case 'elephant':
-        for (const [dx, dy] of [[-2, -2], [-2, 2], [2, -2], [2, 2]]) {
-          const nx = x + dx, ny = y + dy;
-          if (!inB(nx, ny, cols, rows)) continue;
-          if (at(x + dx / 2, y + dy / 2)) continue;
-          push(nx, ny);
-        }
+        // 暗棋没有河、也不塞象眼：只按"田"字走
+        for (const [dx, dy] of [[-2, -2], [-2, 2], [2, -2], [2, 2]]) push(x + dx, y + dy);
         break;
       case 'horse':
-        for (const [dx, dy] of [[-1, -2], [1, -2], [-2, -1], [2, -1], [-1, 2], [1, 2], [-2, 1], [2, 1]]) {
-          const nx = x + dx, ny = y + dy;
-          if (!inB(nx, ny, cols, rows)) continue;
-          const legX = Math.abs(dx) === 2 ? x + dx / 2 : x;
-          const legY = Math.abs(dy) === 2 ? y + dy / 2 : y;
-          if (at(legX, legY)) continue;
-          push(nx, ny);
-        }
+        // 暗棋不设马腿
+        for (const [dx, dy] of [[-1, -2], [1, -2], [-2, -1], [2, -1], [-1, 2], [1, 2], [-2, 1], [2, 1]]) push(x + dx, y + dy);
         break;
       case 'cannon':
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
@@ -440,7 +515,7 @@
       return s.mode === 'gomoku' ? gomokuActionsAt(s, x, y) : reversiActionsAt(s, x, y, who);
     }
     if (s.mode === 'xiangqi') return xiangqiActionsAt(s, x, y, who);
-    if (s.mode === 'checkers') return checkersActionsAt(s, x, y, who);
+    if (s.mode === 'checkers') return checkersActionsAt(s, x, who);
     if (s.mode === 'banqi') return banqiActionsAt(s, x, y, who);
     return [];
   }
@@ -448,6 +523,10 @@
   function allActions(s, side) {
     const who = side || s.turn;
     const out = [];
+    if (s.mode === 'checkers') {
+      for (let i = 0; i < s.board.length; i++) out.push(...checkersActionsAt(s, i, who));
+      return out;
+    }
     for (let y = 0; y < s.rows; y++) for (let x = 0; x < s.cols; x++) {
       if (s.mode === 'gomoku' || s.mode === 'reversi') {
         if (!s.board[y][x]) out.push(...actionsAt(s, x, y, who));
@@ -467,6 +546,10 @@
   }
   function countPieces(s, side) {
     let n = 0;
+    if (s.mode === 'checkers') {
+      for (const c of s.board) if (c && typeof c === 'object' && c.side === side) n++;
+      return n;
+    }
     for (let y = 0; y < s.rows; y++) for (let x = 0; x < s.cols; x++) {
       const c = s.board[y][x];
       if (c && typeof c === 'object' && c.side === side && c.faceUp !== false) n++;
@@ -490,6 +573,12 @@
       const [x, y] = action.to;
       s.board[y][x] = s.turn;
       if (s.mode === 'reversi' && action.flips) for (const [fx, fy] of action.flips) s.board[fy][fx] = s.turn;
+    } else if (s.mode === 'checkers') {
+      // 跳棋棋盘是一维孔位：from/to 的 y 恒为 0，搬移即可（跳跃不吞子）
+      const fi = action.from[0], ti = action.to[0];
+      const p = s.board[fi];
+      s.board[fi] = null;
+      s.board[ti] = p;
     } else {
       const [fx, fy] = action.from, [tx, ty] = action.to;
       const p = s.board[fy][fx];
@@ -501,14 +590,10 @@
         }
       }
       s.board[fy][fx] = null;
-      if (s.mode === 'checkers' && p) {
-        if ((p.side === 'r' && ty === 0) || (p.side === 'b' && ty === s.rows - 1)) p.king = true;
-      }
       s.board[ty][tx] = p;
     }
     s.lastMove = action.flip ? { flip: action.flip } : { from: action.from, to: action.to };
     s.moveCount = (s.moveCount || 0) + 1;
-    if (s.mode === 'checkers') s.noCap = action.captures && action.captures.length ? 0 : (s.noCap || 0) + 1;
     s = setEndIfFinished(s, mover, winByGeneral);
     s.turn = other(s.turn);
     if (s.mode === 'reversi') s = prepareTurn(s);
@@ -524,13 +609,16 @@
       return s;
     }
     if (s.mode === 'reversi') return s; // 由 prepareTurn 处理 pass / 终局
-    // 象棋 / 跳棋 / 暗棋：轮到的一方无棋可走即判负
+    // 跳棋：先看刚走完的一方是否已把全部棋子搬进对面三角
+    if (s.mode === 'checkers') {
+      if (ccHasWon(s, mover)) { s.status = 'over'; s.winner = mover; return s; }
+      // 兜底：真出现"一步都动不了"的极端局面（被围死）就判负，不让界面卡在无法出招上
+      if (allActions(s, s.turn).length === 0) { s.status = 'over'; s.winner = other(s.turn); return s; }
+      return s;
+    }
+    // 象棋 / 暗棋：轮到的一方无棋可走即判负
     const acts = allActions(s, s.turn);
     if (acts.length === 0) { s.status = 'over'; s.winner = other(s.turn); return s; }
-    if (s.mode === 'checkers') {
-      if (countPieces(s, s.turn) === 0) { s.status = 'over'; s.winner = other(s.turn); return s; }
-      if ((s.noCap || 0) >= 40) { s.status = 'over'; s.winner = 'draw'; return s; }
-    }
     if (s.mode === 'banqi') {
       if (countPieces(s, s.turn) === 0) { s.status = 'over'; s.winner = other(s.turn); return s; }
     }
@@ -572,18 +660,19 @@
     }
     return v;
   }
+  /* 跳棋评估：以"离目标三角的总步数"为主，越接近对面越值钱；落在目标区直接给高分。 */
   function evalCheckers(s, side) {
+    const goal = ccGoalZone(side);
+    const goalSet = new Set(goal);
+    const goalPoint = CC_HOLES[goal[Math.floor(goal.length / 2)]];
     let v = 0;
-    for (let y = 0; y < s.rows; y++) for (let x = 0; x < s.cols; x++) {
-      const c = s.board[y][x];
+    for (let i = 0; i < s.board.length; i++) {
+      const c = s.board[i];
       if (!c) continue;
-      let w = c.king ? VAL.king : VAL.man;
-      if (!c.king) {
-        const adv = c.side === 'r' ? (s.rows - 1 - y) : y;
-        w += adv * 12;
-      }
-      w += (x >= 2 && x <= 5) ? 4 : 0;
-      v += c.side === side ? w : -w;
+      const value = goalSet.has(i)
+        ? 220
+        : 160 - ccHexDist(CC_HOLES[i], goalPoint) * 12;
+      v += c.side === side ? value : -value;
     }
     return v;
   }
@@ -702,11 +791,28 @@
     return acts[0];
   }
 
+  /* 跳棋 AI：分支因子比象棋大得多，进深搜会卡主线程，这里走"一步评估 + 轻微噪声"。 */
+  function ccAi(s, side) {
+    const acts = allActions(s, side);
+    if (!acts.length) return null;
+    const opp = other(side);
+    let best = acts[0], bestV = -Infinity;
+    for (const a of acts) {
+      const ns = applyAction(s, a);
+      let v = evalCheckers(ns, side) - evalCheckers(ns, opp) * 0.35;
+      if (ns.status === 'over' && ns.winner === side) v += 1e6;
+      if (a.jump) v += 6;                    // 连跳优先，推进更快
+      v += Math.random() * 2;               // 打散同分走法，不让它每局一模一样
+      if (v > bestV) { bestV = v; best = a; }
+    }
+    return best;
+  }
+
   function aiAction(state, side) {
     const who = side || state.turn;
     if (state.mode === 'gomoku') return gomokuAi(state, who);
     if (state.mode === 'banqi') return banqiAi(state, who);
-    if (state.mode === 'checkers') return chooseBySearch(state, who, 5);
+    if (state.mode === 'checkers') return ccAi(state, who);
     if (state.mode === 'reversi') return chooseBySearch(state, who, 4);
     if (state.mode === 'xiangqi') return chooseBySearch(state, who, 2);
     return null;
@@ -714,10 +820,10 @@
 
   /* ── 渲染辅助：把格子里的对象翻译成 {side, kind, faceUp} ──────────── */
   function cellInfo(s, x, y) {
-    const c = s.board[y][x];
+    const c = s.mode === 'checkers' ? s.board[x] : s.board[y][x];
     if (!c) return null;
     if (s.mode === 'gomoku' || s.mode === 'reversi') return { side: c, kind: 'stone', faceUp: true };
-    if (s.mode === 'checkers') return { side: c.side, kind: c.king ? 'king' : 'man', faceUp: true, king: !!c.king };
+    if (s.mode === 'checkers') return { side: c.side, kind: 'stone', faceUp: true };
     return { side: c.side, kind: c.kind, faceUp: c.faceUp !== false };
   }
 
@@ -742,8 +848,10 @@
     other, cloneState, createGame,
     actionsAt, allActions, applyAction, prepareTurn,
     aiAction, cellInfo, countPieces, countSide,
+    // 跳棋棋盘几何（渲染层画孔位、算像素坐标都读这一份，避免两处各算一遍）
+    CC: { HOLES: CC_HOLES, ZONE: CC_ZONE, DIRS: CC_DIRS, goalZone: ccGoalZone, hexDist: ccHexDist, hasWon: ccHasWon },
     // 仅供测试 / 调试
-    _internal: { xiangqiTargets, banqiCanCapture, gomokuWinAt, reversiFlips, generalsFacing },
+    _internal: { xiangqiTargets, banqiTargets, banqiCanCapture, gomokuWinAt, reversiFlips, generalsFacing, ccJumpsFrom },
   };
 
   Object.defineProperty(root, 'ShanhaiChessCore', {
