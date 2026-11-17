@@ -80,6 +80,7 @@ import {
   resetMixState,
   MAX_MIX_ITER,
 } from './simmix.js';
+import { shouldPauseFrame } from './visibility.js';
 
 /** 存档键前缀 */
 const STORAGE_PREFIX = 'lab-sim-circuit-';
@@ -1067,6 +1068,12 @@ function startFlowLoop() {
   const step = () => {
     if (!board || !board.transientRun.active) {
       stopFlowLoop();
+      return;
+    }
+    // 后台标签页：不推进相位、不重绘，仅保留 rAF 链由浏览器原生节流。
+    // 切回前台自动续上，仿真状态机与运行计时完全不受影响。
+    if (shouldPauseFrame(typeof document !== 'undefined' ? document : null)) {
+      flowRaf = window.requestAnimationFrame(step);
       return;
     }
     board.scene.flow.phase = (board.scene.flow.phase + 0.018) % 1;

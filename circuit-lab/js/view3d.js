@@ -14,6 +14,7 @@
  */
 
 import { getPart, footprintOf } from './parts.js';
+import { shouldPauseFrame } from './visibility.js';
 
 /** 斜投影参数：yaw 绕竖直轴，pitch 俯角 */
 export const CAMERA_DEFAULT = { yaw: Math.PI * 0.18, pitch: Math.PI * 0.30, scale: 14 };
@@ -226,6 +227,13 @@ export function createView3d(opts) {
 
   function loop(now) {
     if (!active) return;
+    // 后台标签页：跳过推进与绘制，仅保留 rAF 链由浏览器原生节流。
+    // 回前台后把 last 归零，避免一次巨大的 dt 让镜头跳变。
+    if (shouldPauseFrame(typeof document !== 'undefined' ? document : null)) {
+      last = 0;
+      raf = requestAnimationFrame(loop);
+      return;
+    }
     const dt = last ? Math.min(64, now - last) : 16;
     last = now;
     if (autoRotate) cam.yaw += (dt / 1000) * 0.22;
