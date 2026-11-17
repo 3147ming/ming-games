@@ -4658,22 +4658,13 @@ export class Arena {
     // 阶段 9：局内倍速按钮（右下角，原技能槽空位）。点击循环 0.5→1→2→3→0.5。
     this.speedBtn = root.querySelector('.arena-speed');
     this.speedBtn.textContent = this.gameSpeed + 'x';
-    // 阶段10·P1-11：倍速键改「长按 400ms 才切」，短按不响应 —— 顺手根治走位时的误触。
-    //   （V 键仍是即时切换，见 _onKeyDown。）
-    this._speedPressTimer = null;
-    const cancelSpeedPress = () => {
-      if (this._speedPressTimer) { clearTimeout(this._speedPressTimer); this._speedPressTimer = null; }
+    // 阶段12：改回「点按即切」。
+    // ★ 长按 400ms 在手机上要按住不放才生效，手感很别扭（用户反馈「改成点按切换」）。
+    //   防误触不靠长按：按钮在左下角、远离右手走位区，且已是 44px 热区。
+    //   V 键仍是即时切换（见 _onKeyDown）。
+    this.speedBtn.onclick = () => {
+      if (!this.ended) this._cycleSpeed();
     };
-    this.speedBtn.onpointerdown = () => {
-      cancelSpeedPress();
-      this._speedPressTimer = setTimeout(() => {
-        this._speedPressTimer = null;
-        if (!this.ended) this._cycleSpeed();
-      }, 400);
-    };
-    this.speedBtn.onpointerup = cancelSpeedPress;
-    this.speedBtn.onpointercancel = cancelSpeedPress;
-    this.speedBtn.onpointerleave = cancelSpeedPress;
     // 阶段10·P1-8：暂停键 + 暂停菜单接线。
     this.pauseEl = root.querySelector('.arena-pause');
     this.pauseMenuEl = root.querySelector('.arena-pausemenu');
@@ -4751,6 +4742,20 @@ export class Arena {
     };
     window.addEventListener('blur', this._resetInput);
     document.addEventListener('visibilitychange', this._resetInput);
+    // 阶段12：切后台**真的暂停**，而不是靠浏览器节流。
+    // 浏览器只会把后台 rAF 压到 ~1fps，逻辑仍按 50ms/帧往前推 —— 手机锁屏几分钟回来，
+    // 一局已经"偷跑"了一大截（还可能直接撞死）。停掉 rAF 才是真暂停；
+    // 回前台先重置 last，避免用旧的 last 算出一个大 dt。
+    this._onVisibility = () => {
+      if (this.ended) return;
+      if (document.hidden) {
+        if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; }
+      } else {
+        this.last = performance.now();
+        if (!this.raf) this.raf = requestAnimationFrame((t) => this._loop(t));
+      }
+    };
+    document.addEventListener('visibilitychange', this._onVisibility);
 
     this._onKeyDown = (e) => {
       Sfx.resume();   // 阶段 3：键盘手势同样解锁音频
@@ -6507,6 +6512,7 @@ export class Arena {
     window.removeEventListener('resize', this._onResize);
     window.removeEventListener('blur', this._resetInput);
     document.removeEventListener('visibilitychange', this._resetInput);
+    document.removeEventListener('visibilitychange', this._onVisibility);
     this.root?.remove();
   }
 }

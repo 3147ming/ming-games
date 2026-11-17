@@ -231,6 +231,12 @@ function show(id) {
 
 const fmt = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
+/** HTML 转义：凡是**玩家可控文本**（账号名）拼进 innerHTML 前必须过一遍。
+ *  ★ 存档里的名字可能来自导入/改档，直接拼进去就是一个注入点；
+ *    模板字符串在这里只负责版式，不该承担信任边界。 */
+const escHtml = (s) => String(s).replace(/[&<>"']/g, (ch) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
 function newSeed() {
   // 阶段10·P1-10：挑战局走固定种子（同一天所有人同一套刷怪序列）。
   if (challengeMode) return challengeSeed(todayKey());
@@ -726,7 +732,7 @@ function renderAccount(acc, res) {
   const nt = acc.next;
   const heroLabel = (HERO_LABELS[res.hero] || res.hero);
   resAccount.innerHTML = `
-    <div class="ra-head">${acc.account.name || '荒野旅人'}（${heroLabel}）· <b>${acc.title}</b>${acc.record ? ' <span class="ra-rec">本角色新纪录</span>' : ''}</div>
+    <div class="ra-head">${escHtml(acc.account.name || '荒野旅人')}（${heroLabel}）· <b>${acc.title}</b>${acc.record ? ' <span class="ra-rec">本角色新纪录</span>' : ''}</div>
     <div class="ra-row">
       <span>总局数 ${acc.account.runs}</span>
       <span>总击杀 ${acc.account.kills}</span>
