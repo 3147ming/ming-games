@@ -2063,7 +2063,7 @@ function autoLevelTxt(bk){
 var toastTimer=null;
 function toast(msg){
   var t=$('toast');
-  if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t);}
+  if(!t){t=document.createElement('div');t.id='toast';t.setAttribute('role','status');t.setAttribute('aria-live','polite');document.body.appendChild(t);}
   t.textContent=msg;t.className='show';
   if(toastTimer)clearTimeout(toastTimer);
   toastTimer=setTimeout(function(){t.className='';},1900);
@@ -2975,7 +2975,7 @@ function markUnknown(){
     }
   }
   lockOpts();
-  var fb=h('div','fb unk');
+  var fb=h('div','fb unk');fb.setAttribute('role','status');fb.setAttribute('aria-live','polite');
   var _unkMsg='😵 已跳过本题'+(recorded?'，已记入薄弱题':'');
   if(typeKey==='b:srs')_unkMsg='😵 已跳过本题 · 明天再复习一次';
   fb.appendChild(ht('div','fbm',_unkMsg));
@@ -3014,7 +3014,7 @@ function answer(correct,given,ans,btn,opt){
   curAnsCorrect=!!correct;   /* C1 二批：草稿板「收起」后据此重新计时（重试答对也算） */
   if(reviewMode){
     if(btn)markChosen(btn,ans);else lockOpts();
-    var fbR=h('div','fb '+(correct?'ok':'no'));
+    var fbR=h('div','fb '+(correct?'ok':'no'));fbR.setAttribute('role','status');fbR.setAttribute('aria-live','polite');
     var _roundR=(typeKey==='b:round');
     /* B 批：SRS 复习局 —— 走间隔升档/重置，不复用 b:weak「答对即移除」语义 */
     if(typeKey==='b:srs'){
@@ -3114,7 +3114,7 @@ function answer(correct,given,ans,btn,opt){
     }
   }else if(correct){score+=5;}
   if(btn)markChosen(btn,ans);else lockOpts();
-  var fb=h('div','fb '+(correct?'ok':'no'));
+  var fb=h('div','fb '+(correct?'ok':'no'));fb.setAttribute('role','status');fb.setAttribute('aria-live','polite');
   if(opt.note){
     var noteTxt=(correct?'✅ 判为正确 '+(first?'＋10':'＋5'):('❌ 判为不正确'+((first&&_pen)?'　（−5 分）':'')))+'　'+opt.note;
       if(correct){fb.textContent=noteTxt;appendExp(fb,Q);appendSrc(fb,Q);appendNextChip(fb);}
@@ -6045,6 +6045,17 @@ function ensureBgm(){if(bgm)return bgm;bgm=new Audio();bgm.loop=false;bgm.volume
 var synthCtx=null,synthTimer=null,synthMaster=null,synthStep=0;
 var SYNTH_CHORDS=[[0,4,7,11],[-3,2,5,9],[-5,0,4,7],[2,5,9,12]];
 function synthStop(){if(synthTimer){clearInterval(synthTimer);synthTimer=null;}if(synthMaster){try{synthMaster.disconnect();}catch(e){}synthMaster=null;}}
+/* 文档改进#2：页面切到后台时停掉合成器音序定时器，避免空转耗电；回到前台且仍在播放则续上。
+   <audio> 曲目由浏览器自行管理、用户可能想后台听，故不干预，只处理合成器 setInterval。 */
+var synthHidePause=false;
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden){
+    if(synthTimer){synthStop();synthHidePause=true;}
+  }else if(synthHidePause){
+    synthHidePause=false;
+    if(musicPlaying)synthStart();
+  }
+});
 function synthStart(){
   var AC=window.AudioContext||window.webkitAudioContext;if(!AC)return false;
   try{
