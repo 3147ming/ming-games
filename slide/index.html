@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#1a1410">
+<meta name="description" content="华容道 SLIDE —— 3×3 / 4×4 数字华容道，最少步数挑战，支持每日固定盘面。">
+<title>华容道 · SLIDE</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231a1410'/%3E%3Ctext x='16' y='23' font-size='16' text-anchor='middle' fill='%23c9a227'%3E15%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+:root{--ac:#c9a227;--bg:#1a1410;--paper:#ece6da;--dim:#a99b86;--line:#3d3226}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%}
+body{background:radial-gradient(120% 80% at 50% -10%,#2c2117 0%,var(--bg) 64%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:18px 12px calc(22px + env(safe-area-inset-bottom))}
+.wrap{width:min(100%,440px)}
+.head{text-align:center;margin-bottom:12px}.logo{font-size:24px;letter-spacing:.3em;margin:0;color:var(--ac)}.sub{font-size:11px;letter-spacing:.14em;color:var(--dim);margin:5px 0 0}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:12px;padding:9px 12px;margin-bottom:12px;font-size:12px}
+.bar b{color:var(--ac);font-size:15px}.bar .stat{display:flex;gap:12px;flex-wrap:wrap}
+.tabs{display:flex;gap:6px;justify-content:center;margin-bottom:10px}
+.tab{border:1px solid var(--line);border-radius:999px;padding:6px 14px;background:transparent;color:var(--dim);font:inherit;font-size:12px;cursor:pointer;min-height:36px}
+.tab.on{border-color:var(--ac);color:var(--ac);background:rgba(201,162,39,.1)}
+.board{display:grid;gap:5px;background:rgba(0,0,0,.3);border:2px solid var(--line);border-radius:12px;padding:6px;margin:0 auto;width:min(100%,340px);aspect-ratio:1}
+.tile{border:none;border-radius:8px;background:linear-gradient(160deg,#d9b547,#a4811e);color:#1a1408;font:inherit;font-size:clamp(20px,7vw,30px);font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .12s}
+.tile.empty{background:rgba(0,0,0,.35);cursor:default}
+.tile:active:not(.empty){transform:scale(.94)}
+.controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px}
+.btn{border:none;border-radius:12px;min-height:44px;padding:0 16px;font:inherit;font-size:13px;cursor:pointer;background:var(--ac);color:#1a1408;font-weight:600}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--paper);font-weight:400}
+.msg{text-align:center;min-height:20px;font-size:12px;margin:10px 0;color:var(--dim)}
+.msg.win{color:var(--ac)}
+.done{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.72)}
+.done[hidden]{display:none}.done .inner{width:min(100%,360px);background:linear-gradient(180deg,#2c2117,#1a1410);border:1px solid var(--line);border-radius:18px;padding:24px;text-align:center}
+.done h2{margin:0 0 12px;color:var(--ac);letter-spacing:.1em}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head"><h1 class="logo">SLIDE</h1><p class="sub">华 容 道 · 最 少 步 数 挑 战</p></div>
+  <div class="bar"><div class="stat"><span>最佳 <b id="best">—</b></span><span>步数 <b id="moves">0</b></span><span>胜局 <b id="wins">0</b></span></div><button class="btn ghost" id="btn-info" style="min-height:32px;padding:0 10px">规则</button></div>
+  <div class="tabs" id="tabs"></div>
+  <div class="board" id="board"></div>
+  <div class="msg" id="msg">点空格旁边的方块滑动</div>
+  <div class="controls">
+    <button class="btn" id="btn-new">新局</button>
+    <button class="btn ghost" id="btn-undo">撤销</button>
+    <button class="btn ghost" id="btn-daily">每日局</button>
+  </div>
+</div>
+<div class="done" id="done" hidden><div class="inner"><h2>完成！</h2><p id="done-info" style="font-size:13px;color:var(--dim);line-height:1.8"></p><div class="controls"><button class="btn" id="done-again">再来一局</button></div></div></div>
+<div class="done" id="info" hidden><div class="inner" style="text-align:left"><h2>玩法</h2><p style="font-size:12px;line-height:1.9;color:var(--dim)">点数字方块把它滑进空格，最终把 1~(n²-1) 按顺序排列、空格留在右下角。步数越少越好。「撤销」回退上一步。每日局按日期固定初始盘面，同一天题目一致。</p><div class="controls"><button class="btn" id="info-close">知道了</button></div></div></div>
+<script>
+(function(){
+'use strict';
+var KEY='mg_slide.v1',$=function(i){return document.getElementById(i)};
+var S=(function(){try{var o=JSON.parse(localStorage.getItem(KEY));if(o&&typeof o==='object')return o}catch(e){}return {best:{},wins:0,runs:0,daily:null}})();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function rng(seed){var x=seed>>>0||1;return function(){x^=x<<13;x^=x>>>17;x^=x<<5;return (x>>>0)/4294967296}}
+function seedFrom(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+var SIZES=[{n:3,key:'3'},{n:4,key:'4'}],size=SIZES[0];
+var tiles=[],moves=0,start=0,undo=[],doneFlag=false,daily=false;
+function solved(t){for(var i=0;i<t.length-1;i++)if(t[i]!==i+1)return false;return t[t.length-1]===0}
+function newGame(isDaily){
+  daily=!!isDaily;undo=[];moves=0;doneFlag=false;start=Date.now();
+  var seed=daily?seedFrom('slide-'+today()+'-'+size.key):(Date.now()^Math.random()*1e9|0);
+  var rand=rng(seed),t=[];for(var i=1;i<size.n*size.n;i++)t.push(i);t.push(0);
+  // 洗牌：随机走合法步，保证有解
+  for(var k=0;k<size.n*size.n*12;k++){
+    var z=t.indexOf(0),zr=Math.floor(z/size.n),zc=z%size.n,nb=[];
+    if(zr>0)nb.push(z-size.n);if(zr<size.n-1)nb.push(z+size.n);
+    if(zc>0)nb.push(z-1);if(zc<size.n-1)nb.push(z+1);
+    var pick=nb[Math.floor(rand()*nb.length)];var tmp=t[z];t[z]=t[pick];t[pick]=tmp;
+  }
+  if(solved(t)){var a=t[0];t[0]=t[1];t[1]=a}
+  tiles=t;render();$('msg').className='msg';$('msg').textContent=daily?'每日局 · '+today():'进行中';
+}
+function render(){
+  $('best').textContent=S.best[size.key]!=null?S.best[size.key]:'—';$('wins').textContent=S.wins;$('moves').textContent=moves;
+  $('tabs').innerHTML=SIZES.map(function(s){return '<button class="tab'+(s.key===size.key?' on':'')+'" data-k="'+s.key+'">'+s.n+'×'+s.n+'</button>'}).join('');
+  Array.prototype.forEach.call($('tabs').children,function(b){b.addEventListener('click',function(){size=SIZES.filter(function(s){return s.key===b.getAttribute('data-k')})[0];newGame(false)})});
+  var board=$('board');board.style.gridTemplateColumns='repeat('+size.n+',1fr)';board.innerHTML='';
+  tiles.forEach(function(v,i){
+    var el=document.createElement('button');el.className='tile'+(v===0?' empty':'');el.textContent=v||'';
+    if(v!==0){el.setAttribute('data-i',i);el.addEventListener('click',function(){move(i)})}
+    board.appendChild(el);
+  });
+}
+function move(i){
+  if(doneFlag)return;var z=tiles.indexOf(0);
+  var r=Math.floor(i/size.n),c=i%size.n,zr=Math.floor(z/size.n),zc=z%size.n;
+  if(Math.abs(r-zr)+Math.abs(c-zc)!==1)return;
+  undo.push({i:i,z:z});var t=tiles[z];tiles[z]=tiles[i];tiles[i]=t;moves++;
+  if(solved(tiles)){
+    doneFlag=true;S.runs++;S.wins++;if(daily)S.daily=today();
+    var isBest=S.best[size.key]==null||moves<S.best[size.key];if(isBest)S.best[size.key]=moves;save();
+    $('done-info').innerHTML=size.n+'×'+size.n+' 共 <b style="color:var(--ac)">'+moves+'</b> 步'+(isBest?' · 新纪录！':'');
+    $('done').hidden=false;$('msg').className='msg win';$('msg').textContent='完成！';render();return;
+  }
+  render();
+}
+$('btn-new').addEventListener('click',function(){newGame(false)});
+$('btn-daily').addEventListener('click',function(){newGame(true)});
+$('btn-undo').addEventListener('click',function(){if(!undo.length||doneFlag)return;var u=undo.pop();var t=tiles[u.z];tiles[u.z]=tiles[u.i];tiles[u.i]=t;moves--;render()});
+$('done-again').addEventListener('click',function(){$('done').hidden=true;newGame(false)});
+$('btn-info').addEventListener('click',function(){$('info').hidden=false});
+$('info-close').addEventListener('click',function(){$('info').hidden=true});
+newGame(false);
+})();
+</script>
+</body>
+</html>

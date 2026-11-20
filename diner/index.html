@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#1a0f12">
+<meta name="description" content="深夜食堂 MIDNIGHT —— 摆摊经营小游戏，按客单配菜、控火候、赚金币升级菜单。">
+<title>深夜食堂 · MIDNIGHT</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231a0f12'/%3E%3Ctext x='16' y='23' font-size='16' text-anchor='middle' fill='%23e0736b'%3E食%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+:root{--ac:#e0736b;--bg:#1a0f12;--paper:#f5ece6;--dim:#b09a90;--line:#43272c;--win:#5cc08a}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%}
+body{background:radial-gradient(120% 80% at 50% -10%,#33191d 0%,var(--bg) 64%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:16px 12px calc(20px + env(safe-area-inset-bottom))}
+.wrap{width:min(100%,500px)}
+.head{text-align:center;margin-bottom:10px}.logo{font-size:23px;letter-spacing:.26em;margin:0;color:var(--ac)}.sub{font-size:10px;letter-spacing:.14em;color:var(--dim);margin:4px 0 0}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:12px;padding:9px 12px;margin-bottom:10px;font-size:12px}
+.bar b{color:var(--ac);font-size:15px}.bar .stat{display:flex;gap:12px;flex-wrap:wrap}
+.order{background:rgba(0,0,0,.24);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;min-height:96px}
+.order .who{font-size:12px;color:var(--dim);margin-bottom:8px}
+.want{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:6px}
+.tag{display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid var(--line);font-size:16px}
+.shelf{display:flex;gap:7px;justify-content:center;flex-wrap:wrap;margin:10px 0}
+.food{border:1px solid var(--line);border-radius:12px;background:#2a181d;color:var(--paper);font:inherit;min-width:70px;min-height:58px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:24px}
+.food small{font-size:10px;color:var(--dim)}
+.food.sel{border-color:var(--ac);background:rgba(224,115,107,.2)}
+.msg{text-align:center;min-height:20px;font-size:12px;margin:8px 0;color:var(--dim)}
+.msg.win{color:var(--win)}.msg.lose{color:var(--ac)}
+.bar-cook{height:8px;border-radius:999px;background:#2a181d;overflow:hidden;margin:8px 0}
+.bar-cook i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--ac),#f5c26b);transition:width .1s}
+.controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+.btn{border:none;border-radius:12px;min-height:42px;padding:0 16px;font:inherit;font-size:13px;cursor:pointer;background:var(--ac);color:#1a0f12;font-weight:600}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--paper);font-weight:400}
+.overlay{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.72)}
+.overlay[hidden]{display:none}.overlay .inner{width:min(100%,380px);background:linear-gradient(180deg,#33191d,#1a0f12);border:1px solid var(--line);border-radius:18px;padding:22px;text-align:center}
+.overlay h2{margin:0 0 10px;color:var(--ac);letter-spacing:.1em;font-size:19px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head"><h1 class="logo">MIDNIGHT</h1><p class="sub">深 夜 食 堂 · 摆 摊 经 营</p></div>
+  <div class="bar"><div class="stat"><span>金币 <b id="coin">0</b></span><span>served <b id="served">0</b></span><span>连击 <b id="combo">0</b></span><span>最佳 <b id="best">0</b></span></div><button class="btn ghost" id="btn-info" style="min-height:30px;padding:0 10px">规则</button></div>
+  <div class="order"><div class="who" id="who">等待客人…</div><div class="want" id="want"></div></div>
+  <div class="bar-cook"><i id="cook"></i></div>
+  <div class="msg" id="msg">看清客人要什么，按 QQ 顺序点食材</div>
+  <div class="shelf" id="shelf"></div>
+  <div class="controls"><button class="btn" id="btn-serve">上菜</button><button class="btn ghost" id="btn-skip">换客</button><button class="btn ghost" id="btn-daily">每日营业</button></div>
+</div>
+<div class="overlay" id="info" hidden><div class="inner" style="text-align:left"><h2>玩法</h2><p id="info-body" style="font-size:12px;line-height:1.9;color:var(--dim)"></p><div class="controls"><button class="btn" id="info-close">知道了</button></div></div></div>
+<div class="overlay" id="over" hidden><div class="inner"><h2 id="over-title">收摊</h2><p id="over-info" style="font-size:13px;color:var(--dim);line-height:1.8"></p><div class="controls"><button class="btn" id="over-btn">再开一晚</button></div></div></div>
+<script>
+(function(){
+'use strict';
+var KEY='mg_diner.v1',$=function(i){return document.getElementById(i)};
+var S=(function(){try{var o=JSON.parse(localStorage.getItem(KEY));if(o&&typeof o==='object')return o}catch(e){}return {best:0,runs:0,served:0,daily:null}})();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function rng(seed){var x=seed>>>0||1;return function(){x^=x<<13;x^=x>>>17;x^=x<<5;return (x>>>0)/4294967296}}
+function seedFrom(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+var FOODS=[{e:'🍜',n:'拉面'},{e:'🍢',n:'关东煮'},{e:'🍗',n:'烤鸡'},{e:'🍺',n:'啤酒'},{e:'🥟',n:'饺子'},{e:'🍚',n:'炒饭'}];
+var GUESTS=['加班社畜','夜归学生','出租车司机','失眠诗人','代驾小哥','巡夜警察','代购大姐','失意歌手'];
+var coin=0,served=0,combo=0,daily=false,order=[],picked=[],rand=rng(Date.now()|0),tick=null,timeLeft=30;
+function HUD(){$('coin').textContent=coin;$('served').textContent=served;$('combo').textContent=combo;$('best').textContent=S.best}
+function newOrder(){
+  var cnt=Math.min(4,1+Math.floor(served/4)),want=[];
+  for(var i=0;i<cnt;i++)want.push(Math.floor(rand()*FOODS.length));
+  order=want;picked=[];
+  $('who').textContent=GUESTS[Math.floor(rand()*GUESTS.length)]+' 点了 '+cnt+' 样';
+  render();
+}
+function render(){
+  $('want').innerHTML=order.map(function(f,i){return '<span class="tag">'+FOODS[f].e+'</span>'}).join('');
+  $('shelf').innerHTML=FOODS.map(function(f,i){return '<button class="food'+(picked.indexOf(i)>=0?' sel':'')+'" data-i="'+i+'">'+f.e+'<small>'+f.n+'</small></button>'}).join('');
+  Array.prototype.forEach.call($('shelf').children,function(b){b.addEventListener('click',function(){var i=+b.getAttribute('data-i');if(picked.length<order.length)picked.push(i);render()})});
+  HUD();
+}
+function serve(){
+  if(!order.length)return;
+  var ok=picked.length===order.length&&picked.every(function(v,i){return v===order[i]});
+  if(ok){var pay=order.length*8+combo*2;coin+=pay;served++;combo++;$('msg').className='msg win';$('msg').textContent='上菜正确 +'+pay+' 金币（连击 '+combo+'）';
+    if(served>S.served)S.served=served;save();newOrder();}
+  else{combo=0;$('msg').className='msg lose';$('msg').textContent='配错了！客人摇头走开…';picked=[];render();}
+}
+function start(isDaily){
+  daily=!!isDaily;coin=0;served=0;combo=0;rand=rng(daily?seedFrom('diner-'+today()):(Date.now()|0));
+  S.runs++;save();$('over').hidden=true;$('msg').className='msg';$('msg').textContent='营业开始！';timeLeft=30;newOrder();
+  clearInterval(tick);tick=setInterval(function(){timeLeft--;$('cook').style.width=(timeLeft/30*100)+'%';if(timeLeft<=0)closeShop()},1000);
+  $('cook').style.width='100%';
+}
+function closeShop(){
+  clearInterval(tick);var score=coin+served*2;
+  if(score>S.best)S.best=score;if(daily)S.daily=today();save();
+  $('over-title').textContent='收摊了';$('over-info').innerHTML='今晚赚了 <b style="color:var(--ac)">'+coin+'</b> 金币 · 服务 '+served+' 位客人<br>总计 '+score+' 分'+(score>=S.best?' · 新纪录！':'');
+  $('over').hidden=false;
+}
+$('btn-serve').addEventListener('click',serve);
+$('btn-skip').addEventListener('click',function(){combo=0;newOrder()});
+$('btn-daily').addEventListener('click',function(){start(true)});
+$('btn-info').addEventListener('click',function(){$('info-body').textContent='客人会点 1~4 样食物，按菜单顺序点选食材，再点「上菜」。配齐且顺序正确得分，连击有加成；配错会断连击。每晚 30 秒，时间到自动收摊。每日营业按日期固定客单序列。';$('info').hidden=false});
+$('info-close').addEventListener('click',function(){$('info').hidden=true});
+$('over-btn').addEventListener('click',function(){start(false)});
+HUD();newOrder();
+})();
+</script>
+</body>
+</html>

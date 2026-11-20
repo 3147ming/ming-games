@@ -303,6 +303,26 @@
   .ach-kv i { font-style: normal; color: var(--paper-dim); font-size: 11px; letter-spacing: .04em; }
   .ach-none { margin: 0; font-size: 12px; color: var(--paper-dim); line-height: 1.7; }
 
+  /* ---------- 全局排行榜（与成就页共用 sheet） ---------- */
+  .lb-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+  .lb-filter[aria-pressed="true"] { border-color: rgba(214,171,88,.5); color: var(--gold); }
+  .lb-game[hidden] { display: none; }
+  .lb-tag {
+    display: inline-block; margin-left: 8px; padding: 2px 7px;
+    font-size: 10px; font-weight: 400; letter-spacing: .1em; color: var(--paper-dim);
+    border: 1px solid var(--line); border-radius: 999px; vertical-align: middle;
+  }
+  .lb-tag.owner { color: var(--flux); border-color: rgba(168,154,230,.4); }
+  .lb-best { font-size: 12px; letter-spacing: .06em; color: var(--paper-dim); }
+  .lb-best b { margin: 0 6px; font-size: 24px; font-weight: 600; color: var(--gold); }
+  .lb-board { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--paper-dim); }
+  .lb-board-row {
+    display: flex; justify-content: space-between; gap: 10px;
+    padding: 3px 0; border-bottom: 1px dashed var(--line);
+  }
+  .lb-board-row b { color: var(--paper); font-weight: 500; }
+  .lb-note { margin: 0; font-size: 11px; line-height: 1.7; color: var(--paper-dim); }
+
   .daily-item {
     border: 1px solid var(--line); border-radius: 14px;
     background: rgba(20,17,13,.6); padding: 12px 13px 13px;
@@ -367,6 +387,7 @@
       <div class="hub-actions">
         <button id="btn-fav" class="chip" type="button" aria-pressed="false">☆ 只看收藏</button>
         <button id="btn-ach" class="chip" type="button">🏆 成就</button>
+        <button id="btn-board" class="chip" type="button">📊 排行榜</button>
         <button id="btn-daily" class="chip" type="button">📅 每日挑战</button>
       </div>
       <div class="hub-tags" id="tags" role="group" aria-label="按分类筛选分类"></div>
@@ -599,6 +620,117 @@ const GAMES = [
     status: 'live',
     order: 13,
     orientation: 'landscape',
+  },
+  {
+    id: 'trio',
+    name: '三张牌',
+    en: 'Trio Cards',
+    desc: '三张牌凑同花、顺子、豹子比大小，押注与连胜的卡牌博弈。',
+    kw: '卡牌 扑克 三张牌 同花 顺子 豹子 博弈',
+    tag: '卡牌',
+    cover: 'covers/trio.png',
+    ar: '1280 / 800',
+    url: 'trio/',
+    status: 'live',
+    order: 14,
+    orientation: 'portrait',
+  },
+  {
+    id: 'sudoku',
+    name: '数独速递',
+    en: 'Sudoku Express',
+    desc: '4×4/6×6/9×9 三级数独，计时挑战、提示与每日一题。',
+    kw: '数独 益智 数字 逻辑 每日 计时',
+    tag: '益智',
+    cover: 'covers/sudoku.png',
+    ar: '1280 / 800',
+    url: 'sudoku/',
+    status: 'live',
+    order: 15,
+    orientation: 'portrait',
+  },
+  {
+    id: 'slide',
+    name: '华容道',
+    en: 'Slide Puzzle',
+    desc: '3×3/4×4 数字华容道，最少步数挑战与每日固定盘面。',
+    kw: '华容道 滑块 解谜 数字 最少步数',
+    tag: '解谜',
+    cover: 'covers/slide.png',
+    ar: '1280 / 800',
+    url: 'slide/',
+    status: 'live',
+    order: 16,
+    orientation: 'portrait',
+  },
+  {
+    id: 'brick',
+    name: '方块消消',
+    en: 'Brick Breaker',
+    desc: '经典打砖块：多球、加宽、激光道具，关卡递进。',
+    kw: '打砖块 街机 弹球 道具 关卡',
+    tag: '街机',
+    cover: 'covers/brick.png',
+    ar: '1280 / 800',
+    url: 'brick/',
+    status: 'live',
+    order: 17,
+    orientation: 'portrait',
+  },  {
+    id: 'diner',
+    name: '深夜食堂',
+    en: 'Midnight Diner',
+    desc: '摆摊经营：看清客单按序配菜，30 秒营业赚金币，连击有加成。',
+    kw: '模拟 经营 食堂 摆摊 配菜 客人',
+    tag: '模拟',
+    cover: 'covers/diner.png',
+    ar: '1280 / 800',
+    url: 'diner/',
+    status: 'live',
+    order: 18,
+    orientation: 'portrait',
+  },
+  {
+    id: 'territory',
+    name: '占位棋',
+    en: 'Territory',
+    desc: '6×6 棋盘包围翻转，与 AI 对弈争夺领土。',
+    kw: '策略 棋盘 包围 翻转 黑白棋 AI',
+    tag: '策略',
+    cover: 'covers/territory.png',
+    ar: '1280 / 800',
+    url: 'territory/',
+    status: 'live',
+    order: 19,
+    orientation: 'portrait',
+  },
+  {
+    id: 'hex',
+    name: '六角战场',
+    en: 'Hex Battle',
+    desc: '回合制战棋：移动、攻击、地形加成，消灭敌人通关三关战役。',
+    kw: '战棋 回合制 六角 地形 战役 策略',
+    tag: '战棋',
+    cover: 'covers/hex.png',
+    ar: '1280 / 800',
+    url: 'hex/',
+    status: 'live',
+    order: 20,
+    orientation: 'portrait',
+  },
+  {
+    id: 'tap',
+    name: '节奏拍打',
+    en: 'Tap Rhythm',
+    desc: '四键下落式打拍，PERFECT/GREAT 判定与连击加成，每日固定谱面。',
+    kw: '音游 节奏 下落 四键 连击 判定',
+    tag: '音游',
+    cover: 'covers/tap.png',
+    ar: '1280 / 800',
+    url: 'tap/',
+    status: 'live',
+    order: 21,
+    orientation: 'portrait',
   },
 ];
 
@@ -858,6 +990,7 @@ function bindTools() {
   });
 
   document.getElementById('btn-ach').addEventListener('click', openAchievements);
+  document.getElementById('btn-board').addEventListener('click', openLeaderboard);
   document.getElementById('btn-daily').addEventListener('click', openDaily);
 }
 
@@ -1072,9 +1205,140 @@ function readLab() {
   };
 }
 
+/* ---------- 本批补齐：原先这 5 款在「成就总览」里恒显示「未开始」 ----------
+ * 依据各游戏 storage 模块的真实存档结构只读解析；键缺失 / 损坏一律返回未开始。
+ * 传统割草不写本地存档，标「不适用」而不是「未开始」（避免误导为没玩过）。
+ * -------------------------------------------------------------------------- */
+
+/** 纸上迷城 PAPER-MAZE：papermaze.save.v1 */
+function readMaze() {
+  const s = jparse(lsGet('papermaze.save.v1'), null);
+  if (!s) return { started: false, rows: [] };
+  const e = (s.endings && typeof s.endings === 'object') ? s.endings : {};
+  let fast = 0;
+  objKeys(e).forEach(function (k) {
+    const v = num(e[k] && e[k].bestMs);
+    if (v > 0 && (!fast || v < fast)) fast = v;
+  });
+  return {
+    started: true,
+    rows: rowsOf([
+      kv('局数', num(s.runs)),
+      kv('达成结局', objKeys(e).length + ' 个'),
+      kv('最快结局', fast ? Math.round(fast / 1000) + 's' : undefined),
+      kv('累计时长', Math.round(num(s.elapsedMs) / 60000) + ' 分钟'),
+    ]),
+  };
+}
+
+/** 霓虹律动 NEON-RHYTHM：neonrhythm.scores.v1 */
+function readRhythm() {
+  const s = jparse(lsGet('neonrhythm.scores.v1'), null);
+  if (!s) return { started: false, rows: [] };
+  const c = (s.charts && typeof s.charts === 'object') ? s.charts : {};
+  let best = 0, plays = 0, fc = 0, gradeS = 0;
+  objKeys(c).forEach(function (k) {
+    const e = c[k] || {};
+    if (num(e.score) > best) best = num(e.score);
+    plays += num(e.plays);
+    if (e.fullCombo === true) fc += 1;
+    if (e.grade === 'S') gradeS += 1;
+  });
+  return {
+    started: true,
+    rows: rowsOf([
+      kv('已玩谱面', objKeys(c).length + ' / 12'),
+      kv('最高分', best || undefined),
+      kv('总游玩', plays + ' 次'),
+      kv('Full Combo', fc + ' 张'),
+      kv('S 评级', gradeS + ' 张'),
+    ]),
+  };
+}
+
+/** 像素跑酷 PIXEL-RUNNER：pixelrunner.save.v1 */
+function readRunner() {
+  const s = jparse(lsGet('pixelrunner.save.v1'), null);
+  if (!s) return { started: false, rows: [] };
+  const b = s.best || {}, t = s.totals || {};
+  return {
+    started: true,
+    rows: rowsOf([
+      kv('最高分', num(b.score) || undefined),
+      kv('最远距离', num(b.distance) + ' m'),
+      kv('总局数', num(t.runs)),
+      kv('成就', objKeys(s.achievements).length + ' 个'),
+      kv('每日赛道', objKeys(s.dailyBest).length + ' 天'),
+    ]),
+  };
+}
+
+/** 山海拾遗 SHANHAI：shanhai.save.v1 */
+function readShanhai() {
+  const s = jparse(lsGet('shanhai.save.v1'), null);
+  if (!s) return { started: false, rows: [] };
+  const c = (s.cleared && typeof s.cleared === 'object') ? s.cleared : {};
+  const order = ['C', 'B', 'A', 'S'];
+  let best = '';
+  objKeys(c).forEach(function (k) {
+    const r = c[k] && c[k].bestRating;
+    if (r && order.indexOf(r) > order.indexOf(best)) best = r;
+  });
+  return {
+    started: true,
+    rows: rowsOf([
+      kv('通关关卡', objKeys(c).length + ' 关'),
+      kv('最佳评级', best || undefined),
+      kv('最近更新', s.updatedAt ? String(s.updatedAt).slice(0, 10) : undefined),
+    ]),
+  };
+}
+
+/** 传统割草 GRASS-CUTTER：源码不落盘，局末 S/A/B/C 仅当次有效 */
+function readGrass() {
+  return {
+    started: false, na: true,
+    rows: rowsOf([
+      kv('本地存档', '该作不落盘'),
+      kv('局末评级', 'S/A/B/C 仅当次有效'),
+    ]),
+  };
+}
+
+function readDiner2(){return readNewGame("mg_diner.v1",null,function(s){return [kv("最佳营收",num(s.best)),kv("累计服务",num(s.served)),kv("营业次数",num(s.runs)),kv("每日营业",s.daily||undefined)]})}
+function readTerritory2(){return readNewGame("mg_territory.v1",null,function(s){return [kv("胜局",num(s.wins)),kv("总局数",num(s.runs)),kv("最佳占子",num(s.best)),kv("每日局",s.daily||undefined)]})}
+function readHex2(){return readNewGame("mg_hex.v1",null,function(s){return [kv("最远关卡",num(s.best)),kv("通关次数",num(s.wins)),kv("总局数",num(s.runs)),kv("每日战役",s.daily||undefined)]})}
+function readTap2(){return readNewGame("mg_tap.v1",null,function(s){return [kv("最高分",num(s.best)),kv("总局数",num(s.runs)),kv("每日谱面",s.daily||undefined)]})}
+/** 新游戏（trio/sudoku/slide/brick）通用只读 reader：直接读 mg_*.v1 存档 */
+function readNewGame(key, scoreFn, rowsFn) {
+  var s = jparse(lsGet(key), null);
+  if (!s) return { started: false, rows: [] };
+  var rows = [];
+  try { rows = rowsFn(s); } catch (e) {}
+  return { started: true, rows: rowsOf(rows) };
+}
+function readTrio2() { return readNewGame("mg_trio.v1", function(s){return s.best}, function(s){
+  return [kv("最高金币", num(s.best)), kv("总局数", num(s.runs)), kv("连胜", num(s.streak)), kv("每日局", s.daily || undefined)];
+}) }
+function readSudoku2() { return readNewGame("mg_sudoku.v1", null, function(s){
+  var b = s.best || {}; var fast = 0; for (var k in b) { if (num(b[k]) > 0 && (!fast || num(b[k]) < fast)) fast = num(b[k]); }
+  return [kv("胜局", num(s.wins)), kv("总局数", num(s.runs)), kv("通关难度", objKeys(b).length + " 档"), kv("最快", fast ? Math.round(fast/1000) + "s" : undefined)];
+}) }
+function readSlide2() { return readNewGame("mg_slide.v1", null, function(s){
+  var b = s.best || {}; var few = 0; for (var k in b) { if (num(b[k]) > 0 && (!few || num(b[k]) < few)) few = num(b[k]); }
+  return [kv("胜局", num(s.wins)), kv("总局数", num(s.runs)), kv("通关难度", objKeys(b).length + " 档"), kv("最少步", few || undefined)];
+}) }
+function readBrick2() { return readNewGame("mg_brick.v1", null, function(s){
+  return [kv("最高分", num(s.best)), kv("最高关卡", num(s.level)), kv("总局数", num(s.runs)), kv("每日局", s.daily || undefined)];
+}) }
+
 const ACH_READERS = {
   wild: readWild, raid: readRaid, card: readCard, gym: readGym,
   sim: readSim, zhaoyun: readZhaoyun, quiz: readQuiz, lab: readLab,
+  'paper-maze': readMaze, 'neon-rhythm': readRhythm, 'pixel-runner': readRunner,
+  'grass-cutter': readGrass, shanhai: readShanhai,
+  trio: readTrio2, sudoku: readSudoku2, slide: readSlide2, brick: readBrick2,
+  diner: readDiner2, territory: readTerritory2, hex: readHex2, tap: readTap2,
 };
 
 /** 扫一遍 localStorage 的名字（成就页用；隐私模式下拿不到就返回空数组，不报错）。 */
@@ -1097,17 +1361,96 @@ function openAchievements() {
     const rows = (res.rows || []).map(function (r) {
       return '<span class="ach-kv"><i>' + esc(r.k) + '</i>' + esc(r.v) + '</span>';
     }).join('');
+    const state = res.na ? '不适用' : (res.started ? '已有存档' : '未开始');
+    let body;
+    if (res.na) body = '<div class="ach-rows">' + rows + '</div>';
+    else if (res.started && rows) body = '<div class="ach-rows">' + rows + '</div>';
+    else body = '<p class="ach-none">未开始 —— 玩过一局后这里会出现进度摘要。</p>';
     return '<div class="ach-game" data-game="' + esc(g.id) + '">' +
       '<div class="ach-head">' +
         '<span class="ach-name">' + esc(g.name) + '</span>' +
-        '<span class="ach-state' + (res.started ? ' on' : '') + '">' + (res.started ? '已有存档' : '未开始') + '</span>' +
-      '</div>' +
-      (res.started && rows
-        ? '<div class="ach-rows">' + rows + '</div>'
-        : '<p class="ach-none">未开始 —— 玩过一局后这里会出现进度摘要。</p>') +
+        '<span class="ach-state' + (res.started ? ' on' : '') + '">' + state + '</span>' +
+      '</div>' + body +
     '</div>';
   }).join('');
-  openSheet('成就总览', '各游戏的<b>本地存档读取摘要</b>（最高分 / 最深层 / 已通关数 / 图鉴 / 成就）。本页<b>只读不写</b>，不会改动任何游戏存档；键缺失或存档损坏一律显示「未开始」或「—」。', parts);
+  openSheet('成就总览', '各游戏的<b>本地存档读取摘要</b>（最高分 / 最深层 / 已通关数 / 图鉴 / 成就）。本页<b>只读不写</b>，不会改动任何游戏存档；「不适用」表示该作不写本地存档，而非没玩过。', parts);
+}
+
+/* ============================================================================
+ * 6. 全局排行榜 —— 方向 A 的第一刀
+ *    动态加载 shared/hub.mjs（纯逻辑 SDK），只读聚合 13 款游戏的本机纪录。
+ *    零后端：这是「跨游戏总览」，不是跨玩家榜；界面上如实标注，不误导。
+ * ========================================================================== */
+async function openLeaderboard() {
+  let Hub;
+  try {
+    Hub = await import('./shared/hub.mjs');
+  } catch (e) {
+    openSheet('全局排行榜', 'SDK 加载失败。',
+      '<p class="ach-none">请确认 shared/hub.mjs 已随站点一起部署：' + esc(String(e)) + '</p>');
+    return;
+  }
+  const all = Hub.overview();
+  const list = all.slice().sort(function (a, b) {
+    const ha = a.state === '有纪录' ? 0 : 1;
+    const hb = b.state === '有纪录' ? 0 : 1;
+    return ha - hb;
+  });
+  const cards = list.map(function (g) {
+    const rows = (g.legacy && g.legacy.rows ? g.legacy.rows : []).map(function (r) {
+      return '<span class="ach-kv"><i>' + esc(r.k) + '</i>' + esc(r.v) + '</span>';
+    }).join('');
+    const board = g.board.slice(0, 5).map(function (r, j) {
+      return '<div class="lb-board-row"><span>#' + (j + 1) + ' ' + esc(r.label) +
+        (r.detail ? ' · ' + esc(r.detail) : '') +
+        ' <i style="font-style:normal;opacity:.7">(' + esc(r.from) + ')</i></span>' +
+        '<b>' + esc(r.score) + ' ' + esc(r.unit) + '</b></div>';
+    }).join('');
+    const best = g.best
+      ? '<div class="lb-best">' + esc(g.best.label) + '<b>' + esc(g.best.score) + '</b>' + esc(g.best.unit) + '</div>'
+      : '<p class="ach-none">' + (g.state === '不适用'
+          ? '该作不写本地存档，暂无可展示的纪录。'
+          : '还没有纪录 —— 玩过一局后这里会出现本机最佳。') + '</p>';
+    return '<div class="ach-game lb-game" data-owner="' + (g.owner ? '1' : '0') +
+      '" data-state="' + esc(g.state) + '">' +
+      '<div class="ach-head">' +
+        '<span class="ach-name">' + esc(g.name) +
+          '<span class="lb-tag' + (g.owner ? ' owner' : '') + '">' + esc(g.tag) + '</span></span>' +
+        '<span class="ach-state' + (g.state === '有纪录' ? ' on' : '') + '">' + esc(g.state) + '</span>' +
+      '</div>' + best +
+      (rows ? '<div class="ach-rows">' + rows + '</div>' : '') +
+      (board ? '<div class="lb-board">' + board + '</div>' : '') +
+      '<a class="daily-link" href="' + esc(g.url) + '" target="_blank" rel="noopener">进入游戏 ▶</a>' +
+    '</div>';
+  }).join('');
+  const filters = '<div class="lb-filters" id="lb-filters">' +
+    '<button class="chip lb-filter" type="button" data-f="all" aria-pressed="true">全部 13 款</button>' +
+    '<button class="chip lb-filter" type="button" data-f="owner" aria-pressed="false">我负责的 8 分类</button>' +
+    '<button class="chip lb-filter" type="button" data-f="other" aria-pressed="false">其他分组（只读）</button>' +
+    '<button class="chip lb-filter" type="button" data-f="record" aria-pressed="false">仅有纪录</button>' +
+    '</div>';
+  const note = Hub.GAMES.length + ' 款游戏的<b>本机纪录聚合</b>（跨游戏总览，非跨玩家榜）。' +
+    '数据<b>只读</b>，不改动任何游戏存档；统一榜另写在独立命名空间 <code>' + esc(Hub.NS) + '</code>。' +
+    '今日种子 <b>' + esc(all[0].seed) + '</b>，与荒野 WILD / 一世一牌的每日局同口径。' +
+    '动作 / 射击由「明」维护，此处仅读取其存档。';
+  openSheet('全局排行榜', note, filters + '<div id="lb-list">' + cards + '</div>');
+
+  const host = document.getElementById('lb-filters');
+  if (!host) return;
+  Array.prototype.forEach.call(host.querySelectorAll('.lb-filter'), function (btn) {
+    btn.addEventListener('click', function () {
+      const f = btn.getAttribute('data-f');
+      Array.prototype.forEach.call(host.querySelectorAll('.lb-filter'), function (b) {
+        b.setAttribute('aria-pressed', String(b === btn));
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('#lb-list .lb-game'), function (card) {
+        const owner = card.getAttribute('data-owner') === '1';
+        const rec = card.getAttribute('data-state') === '有纪录';
+        card.hidden = !(f === 'all' || (f === 'owner' && owner) ||
+                        (f === 'other' && !owner) || (f === 'record' && rec));
+      });
+    });
+  });
 }
 
 /* 每日聚合：逐款核对过源码（见交付报告），有就给入口、没有就如实写「该游戏暂无每日」 */
@@ -1152,6 +1495,46 @@ const DAILY_INFO = {
     level: 'no', badge: '暂无每日', title: '暂无每日玩法',
     note: '该游戏暂无每日挑战 / 每日任务机制（存档只有实验打开记录与电路草稿）。',
     where: '入口：—',
+  },
+  trio: {
+    level: 'yes', badge: '有每日', title: '每日局',
+    note: '按 trio-YYYY-MM-DD 固定牌堆，同一天所有人手牌与对手牌一致；成绩写入 mg_trio.v1。',
+    where: '入口：进入游戏 →「每日局」按钮',
+  },
+  sudoku: {
+    level: 'yes', badge: '有每日', title: '每日题',
+    note: '按 sudoku-YYYY-MM-DD-难度 固定盘面，同日同难度题目一致；计时与最佳写入 mg_sudoku.v1。',
+    where: '入口：进入游戏 →「每日题」按钮',
+  },
+  slide: {
+    level: 'yes', badge: '有每日', title: '每日局',
+    note: '按 slide-YYYY-MM-DD-难度 固定初始盘面，同日同难度比最少步数；写入 mg_slide.v1。',
+    where: '入口：进入游戏 →「每日局」按钮',
+  },
+  brick: {
+    level: 'yes', badge: '有每日', title: '每日关卡',
+    note: '按 brick-YYYY-MM-DD-关卡 固定砖块布局，同日关卡一致；最高分与到达关卡写入 mg_brick.v1。',
+    where: '入口：进入游戏 →「每日关卡」按钮',
+  },
+  diner: {
+    level: 'yes', badge: '有每日', title: '每日营业',
+    note: '按 diner-YYYY-MM-DD 固定客单序列，同日客人点单一致；最佳营收写入 mg_diner.v1。',
+    where: '入口：进入游戏 →「每日营业」按钮',
+  },
+  territory: {
+    level: 'yes', badge: '有每日', title: '每日局',
+    note: '按 territory-YYYY-MM-DD 固定先手布局，同日阵型一致；胜局与最高子数写入 mg_territory.v1。',
+    where: '入口：进入游戏 →「每日局」按钮',
+  },
+  hex: {
+    level: 'yes', badge: '有每日', title: '每日战役',
+    note: '按 hex-YYYY-MM-DD-关卡 固定敌方配置，同日战役一致；最远关卡写入 mg_hex.v1。',
+    where: '入口：进入游戏 →「每日战役」按钮',
+  },
+  tap: {
+    level: 'yes', badge: '有每日', title: '每日谱面',
+    note: '按 tap-YYYY-MM-DD 固定下落谱面，同日判定序列一致；最高分写入 mg_tap.v1。',
+    where: '入口：进入游戏 →「每日谱面」按钮',
   },
 };
 

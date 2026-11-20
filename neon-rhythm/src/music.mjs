@@ -213,6 +213,68 @@ export const SONGS = [
       hat: '....x.......x...', hatGain: 0.010,
     },
   },
+
+  {
+    id: 'cyber-nocturne',
+    title: '赛博夜曲',
+    titleEn: 'CYBER NOCTURNE',
+    style: '慵懒',
+    bpm: 112,
+    bars: 20,
+    holdLen: 5,
+    accent: '#c77dff',
+    accent2: '#ff8fab',
+    progression: [
+      { name: 'Fmaj7', bass: 41, tones: [53, 57, 60, 64] },
+      { name: 'Em7', bass: 40, tones: [52, 55, 59, 62] },
+      { name: 'Dm7', bass: 38, tones: [50, 53, 57, 60] },
+      { name: 'G7', bass: 43, tones: [55, 59, 62, 65] },
+    ],
+    lanes: [
+      { wave: 'triangle', gain: 0.046, cutoff: 2100, dur: 0.28, pattern: 'X.......o..x....X.......o..x....' },
+      { wave: 'sine', gain: 0.044, cutoff: 2500, dur: 0.30, pattern: '....x.......X...o...x.......X...' },
+      { wave: 'triangle', gain: 0.042, cutoff: 2700, dur: 0.28, pattern: '..o.....X.......o..x.....X......' },
+      { wave: 'sine', gain: 0.038, cutoff: 3100, dur: 0.30, pattern: '........h.......H.......x.......' },
+    ],
+    bassVoice: { wave: 'sine', gain: 0.054, cutoff: 720, dur: 0.5, pattern: 'X.......x...X...' },
+    pad: { wave: 'sine', gain: 0.017, cutoff: 1800 },
+    drums: {
+      kick: 'X.......x.......', kickGain: 0.060,
+      snare: '....X.......X..x', snareGain: 0.038,
+      hat: '..x...x...x...x.', hatGain: 0.013,
+    },
+  },
+
+  {
+    id: 'star-drift',
+    title: '星轨跃迁',
+    titleEn: 'STAR DRIFT',
+    style: '疾速',
+    bpm: 168,
+    bars: 22,
+    holdLen: 3,
+    accent: '#00ffa3',
+    accent2: '#ffd400',
+    progression: [
+      { name: 'C', bass: 48, tones: [55, 60, 64, 67] },
+      { name: 'G', bass: 43, tones: [55, 59, 62, 67] },
+      { name: 'Am', bass: 45, tones: [57, 60, 64, 69] },
+      { name: 'F', bass: 41, tones: [53, 57, 60, 65] },
+    ],
+    lanes: [
+      { wave: 'sawtooth', gain: 0.033, cutoff: 2300, dur: 0.08, pattern: 'X..o...oX..o...oX..o...oX..o...o' },
+      { wave: 'square', gain: 0.031, cutoff: 2100, dur: 0.08, pattern: '..X..o....X..o....X..o....X..o...' },
+      { wave: 'square', gain: 0.030, cutoff: 2500, dur: 0.08, pattern: '....x..X....o..x.....x..X....o..x' },
+      { wave: 'triangle', gain: 0.029, cutoff: 3000, dur: 0.08, pattern: 'o...X...x...X...o...h...x...X...' },
+    ],
+    bassVoice: { wave: 'sawtooth', gain: 0.051, cutoff: 850, dur: 0.09, pattern: 'X.x.X.x.X.x.X.xx' },
+    pad: { wave: 'sawtooth', gain: 0.011, cutoff: 1300 },
+    drums: {
+      kick: 'X..X..X...X..X..', kickGain: 0.079,
+      snare: '....X.......X..x', snareGain: 0.045,
+      hat: 'x.x.x.x.x.x.x.x.', hatGain: 0.012,
+    },
+  },
 ];
 
 /** 按 id 取歌；未知 id 返回 null（调用方必须显式处理，不要静默回落到第一首）。 */

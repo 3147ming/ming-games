@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0f0a1c">
+<meta name="description" content="节奏拍打 TAP —— 4 键下落式打拍，连击评级与自编谱面。">
+<title>节奏拍打 · TAP</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f0a1c'/%3E%3Ccircle cx='10' cy='16' r='3' fill='%23ff6b9d'/%3E%3Ccircle cx='22' cy='16' r='3' fill='%234db8ff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+:root{--ac:#ff6b9d;--ac2:#4db8ff;--bg:#0f0a1c;--paper:#f0e9f7;--dim:#9a8fb4;--line:#2f2447}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%}
+body{background:radial-gradient(120% 80% at 50% -10%,#1d1236 0%,var(--bg) 64%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:12px 12px calc(18px + env(safe-area-inset-bottom))}
+.wrap{width:min(100%,460px)}
+.head{text-align:center;margin-bottom:8px}.logo{font-size:22px;letter-spacing:.24em;margin:0;color:var(--ac)}.sub{font-size:10px;letter-spacing:.12em;color:var(--dim);margin:3px 0 0}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin-bottom:8px;font-size:12px}
+.bar b{color:var(--ac);font-size:15px}.bar .stat{display:flex;gap:12px;flex-wrap:wrap}
+.stage{position:relative;width:min(100%,300px);height:min(64vh,460px);margin:0 auto;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:linear-gradient(180deg,#150d28,#0b0716);touch-action:none}
+.lane{position:absolute;top:0;bottom:0;width:25%;border-right:1px solid rgba(255,255,255,.06)}
+.lane:nth-child(4){border-right:none}
+.judge-line{position:absolute;left:0;right:0;bottom:58px;height:2px;background:linear-gradient(90deg,transparent,var(--ac),transparent);box-shadow:0 0 12px var(--ac)}
+.note{position:absolute;width:20%;height:20px;border-radius:6px;transform:translateX(-50%);pointer-events:none}
+.pad{position:absolute;bottom:0;left:0;right:0;height:58px;display:flex}
+.key{flex:1;border:none;border-right:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--dim);font:inherit;font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none}
+.key:last-child{border-right:none}.key.hit{background:rgba(255,255,255,.16);color:var(--paper)}
+.key:nth-child(1){color:#ff6b9d}.key:nth-child(2){color:#a89ae6}.key:nth-child(3){color:#4db8ff}.key:nth-child(4){color:#5cc08a}
+.combo{position:absolute;top:12px;left:0;right:0;text-align:center;pointer-events:none}
+.combo b{font-size:34px;color:var(--paper);text-shadow:0 2px 12px var(--ac)}
+.combo small{display:block;font-size:10px;color:var(--dim);letter-spacing:.2em}
+.overlay{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(8,5,16,.9);text-align:center;padding:16px}
+.overlay[hidden]{display:none}.overlay h2{margin:0;font-size:20px;letter-spacing:.14em;color:var(--ac)}
+.overlay p{margin:0;font-size:11px;color:var(--dim);line-height:1.7}
+.controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+.btn{border:none;border-radius:12px;min-height:40px;padding:0 14px;font:inherit;font-size:13px;cursor:pointer;background:var(--ac);color:#1a0a14;font-weight:600}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--paper);font-weight:400}
+.msg{text-align:center;min-height:18px;font-size:11px;margin:6px 0;color:var(--dim)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head"><h1 class="logo">TAP</h1><p class="sub">节 奏 拍 打 · 四 键 下 落</p></div>
+  <div class="bar"><div class="stat"><span>分数 <b id="score">0</b></span><span>连击 <b id="combo">0</b></span><span>最高 <b id="best">0</b></span></div><button class="btn ghost" id="btn-info" style="min-height:30px;padding:0 10px">规则</button></div>
+  <div class="stage" id="stage">
+    <div class="lane"></div><div class="lane"></div><div class="lane"></div><div class="lane"></div>
+    <div class="judge-line"></div>
+    <div class="combo"><b id="comboBig"></b><small>COMBO</small></div>
+    <div class="pad" id="pad">
+      <div class="key" data-k="0">D</div><div class="key" data-k="1">F</div><div class="key" data-k="2">J</div><div class="key" data-k="3">K</div>
+    </div>
+    <div class="overlay" id="overlay"><h2 id="ov-title">节奏拍打</h2><p id="ov-text">音符落到判定线时按 D / F / J / K（或点下方键）。点击开始</p><div class="controls"><button class="btn" id="ov-btn">开始</button></div></div>
+  </div>
+  <div class="msg" id="msg">PERFECT +100 · GREAT +50 · MISS 断连击</div>
+  <div class="controls"><button class="btn" id="btn-start">开始</button><button class="btn ghost" id="btn-daily">每日谱面</button></div>
+</div>
+<div class="overlay" id="info" hidden style="position:fixed;z-index:60"><div style="width:min(90%,380px);background:#1d1236;border:1px solid var(--line);border-radius:16px;padding:22px"><h2 style="margin:0 0 10px;color:var(--ac);font-size:18px">玩法</h2><p style="font-size:12px;line-height:1.9;color:var(--dim);margin:0">音符从上方落下，到达底部判定线时按对应的 D / F / J / K（手机点下方四个键）。判定分 PERFECT / GREAT / MISS，连击越高分数加成越多。每局随机生成谱面，每日谱面按日期固定。纯本地存档。</p><div class="controls" style="margin-top:16px"><button class="btn" id="info-close">知道了</button></div></div></div>
+<script>
+(function(){
+'use strict';
+var KEY='mg_tap.v1',$=function(i){return document.getElementById(i)};
+var S=(function(){try{var o=JSON.parse(localStorage.getItem(KEY));if(o&&typeof o==='object')return o}catch(e){}return {best:0,runs:0,daily:null}})();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function rng(seed){var x=seed>>>0||1;return function(){x^=x<<13;x^=x>>>17;x^=x<<5;return (x>>>0)/4294967296}}
+function seedFrom(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+var stage=$('stage'),pad=$('pad'),notes=[],score=0,combo=0,maxCombo=0,running=false,raf=null,startT=0,daily=false;
+var COLORS=['#ff6b9d','#a89ae6','#4db8ff','#5cc08a'];
+var JUDGE_Y=()=>stage.clientHeight-58,SPEED=0.32; // px per ms
+function HUD(){$('score').textContent=score;$('combo').textContent=combo;$('comboBig').textContent=combo>1?combo:'';$('best').textContent=S.best}
+function genChart(seed){
+  var rand=rng(seed),out=[],t=0;
+  for(var i=0;i<60;i++){t+=rand()*260+220;out.push({lane:Math.floor(rand()*4),t:t,hit:false,el:null})}
+  return out;
+}
+function startChart(isDaily){
+  daily=!!isDaily;S.runs++;save();score=0;combo=0;maxCombo=0;running=true;
+  notes=genChart(daily?seedFrom('tap-'+today()):(Date.now()|0));
+  // 清理旧音符
+  Array.prototype.forEach.call(stage.querySelectorAll('.note'),function(n){n.remove()});
+  notes.forEach(function(n){
+    var el=document.createElement('div');el.className='note';el.style.background=COLORS[n.lane];
+    el.style.left=(n.lane*25+12.5)+'%';stage.appendChild(el);n.el=el;
+  });
+  $('overlay').hidden=true;HUD();startT=performance.now();loop();
+}
+function loop(){
+  if(!running)return;var now=performance.now()-startT;
+  var judge=JUDGE_Y();
+  notes.forEach(function(n){
+    if(n.hit||!n.el)return;
+    var y=judge-(n.t-now)*SPEED;
+    n.el.style.top=y+'px';
+    if(n.t-now<-160){n.hit=true;combo=0;n.el.remove();$('msg').className='msg';$('msg').textContent='MISS';HUD()}
+  });
+  if(notes.every(function(n){return n.hit})){endGame();return}
+  raf=requestAnimationFrame(loop);
+}
+function hit(lane){
+  var now=performance.now()-startT,best=null,bestD=1e9;
+  notes.forEach(function(n){if(n.hit||n.lane!==lane)return;var d=Math.abs(n.t-now);if(d<bestD){bestD=d;best=n}});
+  if(best&&bestD<160){
+    best.hit=true;if(best.el)best.el.remove();
+    var perfect=bestD<70;score+=perfect?100:50;combo++;if(combo>maxCombo)maxCombo=combo;
+    $('msg').className='msg win';$('msg').textContent=(perfect?'PERFECT':'GREAT')+' +'+(perfect?100:50);
+    var key=pad.querySelector('.key[data-k="'+lane+'"]');key.classList.add('hit');setTimeout(function(){key.classList.remove('hit')},90);
+  }else{combo=0;$('msg').className='msg';$('msg').textContent='空击'}
+  HUD();
+}
+pad.querySelectorAll('.key').forEach(function(k){
+  k.addEventListener('pointerdown',function(e){e.preventDefault();hit(+k.getAttribute('data-k'))});
+});
+window.addEventListener('keydown',function(e){
+  var map={d:0,f:1,j:2,k:3};var key=e.key.toLowerCase();
+  if(map[key]!==undefined&&running){e.preventDefault();hit(map[key])}
+});
+function endGame(){
+  running=false;cancelAnimationFrame(raf);
+  if(score>S.best){S.best=score}if(daily)S.daily=today();save();
+  $('ov-title').textContent='本局结束';$('ov-text').textContent='得分 '+score+' · 最大连击 '+maxCombo+(score>=S.best?' · 新纪录！':'');
+  $('ov-btn').textContent='再来一局';$('overlay').hidden=false;
+}
+$('ov-btn').addEventListener('click',function(){startChart($('ov-btn').getAttribute('data-daily')==='1')});
+$('btn-start').addEventListener('click',function(){startChart(false)});
+$('btn-daily').addEventListener('click',function(){$('ov-btn').setAttribute('data-daily','1');$('ov-title').textContent='每日谱面';$('ov-text').textContent='按日期固定谱面 · '+today();$('ov-btn').textContent='开始每日谱面';$('overlay').hidden=false});
+$('btn-info').addEventListener('click',function(){$('info').hidden=false});
+$('info-close').addEventListener('click',function(){$('info').hidden=true});
+// 尺寸变化重算
+window.addEventListener('resize',function(){});
+HUD();
+})();
+</script>
+</body>
+</html>

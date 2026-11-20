@@ -255,4 +255,26 @@ export function verdictWeight(verdict) {
   return WEIGHTS[verdict] === undefined ? 0 : WEIGHTS[verdict];
 }
 
-export default { verdictFor, judgeAt, judgeHold, createScoreState, applyVerdict, summarize };
+/* ---------- 与历史最佳的逐项对比（纯函数，供结算面板显示"可追赶目标"） ---------- */
+
+/**
+ * 生成某项指标的对比徽标数据。
+ * @param {number} cur     本局值
+ * @param {number} best    历史最佳值
+ * @param {'up'|'down'} goodDir 数值变大是好事('up')还是坏事('down'，如 MISS)
+ * @param {number} [decimals]   差值保留小数位（准确率用 2）
+ * @returns {{dir:'up'|'down'|'flat', delta:number, good:boolean, text:string}}
+ */
+export function compareMetric(cur, best, goodDir = 'up', decimals = 0) {
+  const c = Number.isFinite(Number(cur)) ? Number(cur) : 0;
+  const b = Number.isFinite(Number(best)) ? Number(best) : 0;
+  const delta = Math.round((c - b) * Math.pow(10, decimals)) / Math.pow(10, decimals);
+  const dir = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
+  const good = dir === 'flat' ? false : goodDir === 'up' ? dir === 'up' : dir === 'down';
+  const abs = Math.abs(delta);
+  const shown = decimals > 0 ? abs.toFixed(decimals) : String(abs);
+  const text = dir === 'flat' ? '—' : (dir === 'up' ? '↑' : '↓') + shown;
+  return { dir, delta, good, text };
+}
+
+export default { verdictFor, judgeAt, judgeHold, createScoreState, applyVerdict, summarize, compareMetric };

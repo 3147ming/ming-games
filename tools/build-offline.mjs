@@ -140,9 +140,11 @@ export function renderHubHtml(opts) {
   const parts = {
     '/*__HUB_CSS__*/': read('hub.css'),
     '/*__HUB_DATA__*/': data,
+    '/*__HUB_SDK__*/': read('hub-sdk.js'),
     '/*__HUB_BRIDGE__*/': read('hub-bridge.js'),
     '/*__HUB_ROUTER__*/': read('router.js'),
-    '/*__HUB_UI__*/': read('hub-ui.js')
+    '/*__HUB_UI__*/': read('hub-ui.js'),
+    '/*__HUB_META__*/': read('hub-meta.js')
   };
   for (const [anchor, content] of Object.entries(parts)) {
     html = replaceOnceText(html, anchor, content, `hub.html:${anchor}`);

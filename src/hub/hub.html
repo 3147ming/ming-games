@@ -18,7 +18,13 @@
     <h1 class="hub-title">游戏大厅</h1>
     <p class="hub-sub" id="hubSub"></p>
   </header>
+  <div class="hub-tools" id="hubTools" role="group" aria-label="大厅工具">
+    <button class="hub-chip" id="btn-ach" type="button">🏆 成就</button>
+    <button class="hub-chip" id="btn-board" type="button">📊 排行榜</button>
+    <button class="hub-chip" id="btn-daily" type="button">📅 每日挑战</button>
+  </div>
   <main class="hub-grid" id="hub-grid"></main>
+
   <footer class="hub-foot" id="hubFoot"></footer>
 </div>
 
@@ -36,9 +42,23 @@
   </div>
 </div>
 <div class="hub-notice" id="hub-notice" role="status" aria-live="polite"></div>
+<div class="hub-modal" id="hub-modal" hidden>
+  <div class="hub-sheet" role="dialog" aria-modal="true" aria-labelledby="hub-sheet-title">
+    <div class="hub-sheet-head">
+      <h2 class="hub-sheet-title" id="hub-sheet-title"></h2>
+      <button class="hub-sheet-close" id="hub-sheet-close" type="button" aria-label="关闭">✕</button>
+    </div>
+    <p class="hub-sheet-note" id="hub-sheet-note"></p>
+    <div class="hub-sheet-body" id="hub-sheet-body"></div>
+  </div>
+</div>
+
 
 <script>
 /*__HUB_DATA__*/
+</script>
+<script>
+/*__HUB_SDK__*/
 </script>
 <script>
 /*__HUB_BRIDGE__*/
@@ -48,6 +68,9 @@
 </script>
 <script>
 /*__HUB_UI__*/
+</script>
+<script>
+/*__HUB_META__*/
 </script>
 </body>
 </html>

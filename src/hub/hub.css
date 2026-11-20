@@ -116,6 +116,75 @@ body.in-game > #hub-app { display: none; }
 .hub-notice.show { opacity: 1; transform: translate(-50%, 0); }
 .hub-notice.err { border-color: rgba(224,115,107,.7); color: #ffd9d4; }
 
+
+/* ---------- 元系统：工具栏 + 成就/排行/每日 modal（与旧版大厅同源，补 16 款覆盖） ---------- */
+.hub-tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.hub-chip {
+  min-height: 36px; padding: 0 14px; border-radius: 999px; cursor: pointer;
+  background: linear-gradient(180deg, var(--panel), var(--bg2));
+  border: 1px solid var(--line); color: var(--paper);
+  font: inherit; font-size: 12px; letter-spacing: .06em;
+  transition: border-color .15s, color .15s, transform .1s;
+}
+.hub-chip:hover { border-color: rgba(214,171,88,.55); color: var(--gold); }
+.hub-chip:active { transform: scale(.96); }
+.hub-chip[aria-pressed="true"] { border-color: rgba(214,171,88,.6); color: var(--gold); }
+
+.hub-modal {
+  position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center;
+  padding: 0; background: rgba(0,0,0,.62); backdrop-filter: blur(3px);
+}
+.hub-modal[hidden] { display: none; }
+.hub-sheet {
+  width: min(100%, 720px); max-height: 86vh; overflow-y: auto;
+  background: linear-gradient(180deg, var(--bg2), var(--bg));
+  border: 1px solid var(--line); border-bottom: none;
+  border-radius: 18px 18px 0 0; padding: 22px 20px calc(24px + env(safe-area-inset-bottom));
+  box-shadow: var(--shadow); animation: sheet-rise .22s ease-out;
+}
+@keyframes sheet-rise { from { transform: translateY(24px); opacity: .4; } to { transform: none; opacity: 1; } }
+.hub-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hub-sheet-title { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: .14em; color: var(--gold); }
+.hub-sheet-close {
+  flex: none; width: 34px; height: 34px; border-radius: 50%; cursor: pointer;
+  background: transparent; border: 1px solid var(--line); color: var(--dim); font-size: 15px;
+}
+.hub-sheet-close:hover { color: var(--gold); border-color: rgba(214,171,88,.5); }
+.hub-sheet-note { margin: 10px 0 16px; font-size: 11px; line-height: 1.75; color: var(--dim); }
+.hub-sheet-note b { color: var(--paper); font-weight: 500; }
+.hub-sheet-note code { color: var(--gold); font-size: 10px; }
+.hub-sheet-body { display: flex; flex-direction: column; gap: 14px; }
+
+.hub-filter-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.hub-game { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 12px 14px; }
+.hub-game[hidden] { display: none; }
+.hub-game-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.hub-game-name { font-size: 14px; font-weight: 600; }
+.hub-game-tag {
+  display: inline-block; margin-left: 8px; padding: 2px 7px; font-size: 10px; font-weight: 400;
+  border: 1px solid var(--line); border-radius: 999px; color: var(--dim); letter-spacing: .1em;
+}
+.hub-game-tag.owner { color: #b6a8f0; border-color: rgba(168,154,230,.4); }
+.hub-game-state { font-size: 10px; color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; }
+.hub-game-state.on { color: var(--good); border-color: rgba(92,192,138,.5); }
+.hub-game-best { margin: 8px 0; font-size: 12px; color: var(--dim); }
+.hub-game-best b { margin: 0 6px; font-size: 22px; color: var(--gold); font-weight: 600; }
+.hub-kvs { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; color: var(--dim); }
+.hub-kv i { font-style: normal; color: var(--dim); opacity: .8; margin-right: 6px; }
+.hub-board { margin-top: 8px; font-size: 11px; color: var(--dim); }
+.hub-board-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px dashed var(--line); }
+.hub-board-row b { color: var(--paper); font-weight: 500; }
+.hub-none { margin: 6px 0 0; font-size: 11px; line-height: 1.7; color: var(--dim); }
+.hub-go {
+  display: inline-block; margin-top: 10px; font-size: 11px; color: var(--gold);
+  text-decoration: none; border-bottom: 1px solid rgba(214,171,88,.4);
+}
+
+@media (min-width: 700px) {
+  .hub-modal { align-items: center; padding: 24px; }
+  .hub-sheet { border-radius: 18px; border-bottom: 1px solid var(--line); max-height: 82vh; }
+}
+@media (prefers-reduced-motion: reduce) { .hub-sheet { animation: none; } .hub-chip:active { transform: none; } }
 @media (max-width: 600px) {
   .hub-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
   .card-name { font-size: 13px; }

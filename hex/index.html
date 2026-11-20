@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#17120c">
+<meta name="description" content="六角战场 HEX —— 极简回合制战棋：移动、攻击、地形加成，三关小战役。">
+<title>六角战场 · HEX</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2317120c'/%3E%3Cpath d='M16 5l9 5v12l-9 5-9-5V10z' fill='none' stroke='%23d6ab58' stroke-width='2.5'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+:root{--ac:#d6ab58;--bg:#17120c;--paper:#efe6d5;--dim:#a99a80;--line:#403322;--me:#d6ab58;--en:#d0574d;--win:#5cc08a}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%}
+body{background:radial-gradient(120% 80% at 50% -10%,#2e2415 0%,var(--bg) 64%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:14px 12px calc(20px + env(safe-area-inset-bottom))}
+.wrap{width:min(100%,480px)}
+.head{text-align:center;margin-bottom:8px}.logo{font-size:22px;letter-spacing:.24em;margin:0;color:var(--ac)}.sub{font-size:10px;letter-spacing:.12em;color:var(--dim);margin:3px 0 0}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin-bottom:8px;font-size:12px}
+.bar b{color:var(--ac);font-size:15px}.bar .stat{display:flex;gap:12px;flex-wrap:wrap}
+.board{display:grid;gap:3px;margin:0 auto;width:min(100%,420px);aspect-ratio:1.15}
+.cell{background:#241d12;border:1px solid var(--line);border-radius:8px;position:relative;cursor:pointer;min-width:0;min-height:0;padding:0;font-size:9px;color:var(--dim)}
+.cell.forest{background:#1e2c1a}.cell.water{background:#142430}.cell.hill{background:#33291a}
+.cell.reach{outline:2px solid rgba(214,171,88,.6);outline-offset:-2px}
+.cell.atk{outline:2px solid rgba(208,87,77,.7);outline-offset:-2px}
+.unit{position:absolute;inset:12%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:clamp(11px,3.5vw,17px);font-weight:700;color:#1a1408}
+.unit.me{background:radial-gradient(circle at 35% 30%,#f5dc9f,var(--me))}
+.unit.en{background:radial-gradient(circle at 35% 30%,#f5a29c,var(--en));color:#2a0a08}
+.hp{position:absolute;bottom:2px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--paper);background:rgba(0,0,0,.6);padding:0 3px;border-radius:4px}
+.controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+.btn{border:none;border-radius:12px;min-height:40px;padding:0 14px;font:inherit;font-size:13px;cursor:pointer;background:var(--ac);color:#1a1408;font-weight:600}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--paper);font-weight:400}
+.msg{text-align:center;min-height:18px;font-size:12px;margin:6px 0;color:var(--dim)}
+.msg.win{color:var(--win)}.msg.lose{color:var(--en)}
+.overlay{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.72)}
+.overlay[hidden]{display:none}.overlay .inner{width:min(100%,360px);background:linear-gradient(180deg,#2e2415,#17120c);border:1px solid var(--line);border-radius:18px;padding:22px;text-align:center}
+.overlay h2{margin:0 0 10px;color:var(--ac);letter-spacing:.1em;font-size:19px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head"><h1 class="logo">HEX</h1><p class="sub">六 角 战 场 · 回 合 战 棋</p></div>
+  <div class="bar"><div class="stat"><span>关卡 <b id="level">1</b>/3</span><span>回合 <b id="turn">1</b></span><span>通关 <b id="wins">0</b></span></div><button class="btn ghost" id="btn-info" style="min-height:30px;padding:0 10px">规则</button></div>
+  <div class="board" id="board"></div>
+  <div class="msg" id="msg">点己方棋子选中，再点高亮格移动或攻击</div>
+  <div class="controls"><button class="btn ghost" id="btn-wait">待机</button><button class="btn" id="btn-new">重开</button><button class="btn ghost" id="btn-daily">每日战役</button></div>
+</div>
+<div class="overlay" id="info" hidden><div class="inner" style="text-align:left"><h2>玩法</h2><p id="info-body" style="font-size:12px;line-height:1.9;color:var(--dim)"></p><div class="controls"><button class="btn" id="info-close">知道了</button></div></div></div>
+<div class="overlay" id="over" hidden><div class="inner"><h2 id="over-title">战役结束</h2><p id="over-info" style="font-size:13px;color:var(--dim);line-height:1.8"></p><div class="controls"><button class="btn" id="over-btn">再来</button></div></div></div>
+<script>
+(function(){
+'use strict';
+var KEY='mg_hex.v1',$=function(i){return document.getElementById(i)};
+var S=(function(){try{var o=JSON.parse(localStorage.getItem(KEY));if(o&&typeof o==='object')return o}catch(e){}return {wins:0,runs:0,best:0,daily:null}})();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function rng(seed){var x=seed>>>0||1;return function(){x^=x<<13;x^=x>>>17;x^=x<<5;return (x>>>0)/4294967296}}
+function seedFrom(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+var R=6,C=7,level=1,turnNo=1,grid=[],units=[],sel=-1,daily=false,rand=rng(Date.now()|0),over=false;
+var TERRAIN=['plain','forest','water','hill'];
+function build(){
+  grid=[];rand=rng(daily?seedFrom('hex-'+today()+'-'+level):(Date.now()|0)^(level*7919));
+  for(var r=0;r<R;r++){var row=[];for(var c=0;c<C;c++){var v=rand();row.push(v<0.15?'forest':v<0.27?'water':v<0.38?'hill':'plain')}grid.push(row)}
+  units=[{id:0,team:'me',r:R-2,c:1,hp:12,atk:4,mov:2},
+         {id:1,team:'en',r:1,c:2,hp:7+level*2,atk:2+level,mov:1},
+         {id:2,team:'en',r:1,c:4,hp:7+level*2,atk:2+level,mov:1}];
+  if(level>=2)units.push({id:3,team:'en',r:0,c:3,hp:6+level*2,atk:2+level,mov:1});
+  sel=-1;turnNo=1;over=false;
+}
+function unitAt(r,c){return units.filter(function(u){return u.hp>0&&u.r===r&&u.c===c})[0]}
+function dist(a,b){return Math.max(Math.abs(a.r-b.r),Math.abs(a.c-b.c))}
+function terrainDef(r,c){return grid[r][c]==='hill'?1:grid[r][c]==='forest'?1:0}
+function reachable(u){var out=[];for(var r=0;r<R;r++)for(var c=0;c<C;c++){if(dist({r:u.r,c:u.c},{r:r,c:c})<=u.mov&&dist({r:u.r,c:u.c},{r:r,c:c})>0&&!unitAt(r,c)&&grid[r][c]!=='water')out.push(r*C+c)}return out}
+function attackable(u){var out=[];units.forEach(function(e){if(e.team!==u.team&&e.hp>0&&dist(u,e)===1)out.push(e.r*C+e.c)});return out}
+function render(){
+  $('level').textContent=level;$('turn').textContent=turnNo;$('wins').textContent=S.wins;
+  var el=$('board');el.style.gridTemplateColumns='repeat('+C+',1fr)';el.innerHTML='';
+  var u=sel>=0?units[sel]:null;
+  var reach=u?reachable(u):[],atk=u?attackable(u):[];
+  for(var r=0;r<R;r++)for(var c=0;c<C;c++){
+    var p=r*C+c,cell=document.createElement('button');
+    cell.className='cell '+grid[r][c]+(reach.indexOf(p)>=0?' reach':'')+(atk.indexOf(p)>=0?' atk':'');
+    var ou=unitAt(r,c);
+    if(ou){var d=document.createElement('span');d.className='unit '+(ou.team==='me'?'me':'en');d.textContent=ou.team==='me'?'⚔':'👹';
+      cell.appendChild(d);var hp=document.createElement('span');hp.className='hp';hp.textContent=ou.hp;cell.appendChild(hp)}
+    (function(rr,cc){cell.addEventListener('click',function(){clickCell(rr,cc)})})(r,c);
+    el.appendChild(cell);
+  }
+}
+function clickCell(r,c){
+  if(over)return;var u=unitAt(r,c);
+  if(sel>=0){
+    var s=units[sel];
+    if(u&&u.team==='en'&&dist(s,u)===1){attack(s,u);return}
+    if(!u&&reachable(s).indexOf(r*C+c)>=0){s.r=r;s.c=c;sel=-1;endTurn();return}
+  }
+  if(u&&u.team==='me'){sel=u.id;render();$('msg').textContent='选中我方单位：高亮格可移动，红框敌人可攻击'}
+}
+function attack(a,d){
+  var dmg=Math.max(1,a.atk-terrainDef(d.r,d.c)+Math.floor(Math.random()*2));d.hp-=dmg;
+  $('msg').className='msg win';$('msg').textContent='攻击造成 '+dmg+' 伤害！';
+  if(d.hp<=0){$('msg').textContent='击败一个敌人！';if(units.filter(function(x){return x.team==='en'&&x.hp>0}).length===0){winLevel();return}}
+  sel=-1;endTurn();
+}
+function endTurn(){render();if(checkLose())return;setTimeout(enemyTurn,300)}
+function enemyTurn(){
+  units.forEach(function(e){
+    if(e.team!=='en'||e.hp<=0)return;
+    var me=units.filter(function(u){return u.team==='me'&&u.hp>0})[0];if(!me)return;
+    if(dist(e,me)===1){var dmg=Math.max(1,e.atk-terrainDef(me.r,me.c));me.hp-=dmg;
+      $('msg').className='msg lose';$('msg').textContent='敌人攻击，你受到 '+dmg+' 伤害';}
+    else{var opts=[];for(var r=0;r<R;r++)for(var c=0;c<C;c++)if(dist(e,{r:r,c:c})<=e.mov&&dist(e,{r:r,c:c})>0&&!unitAt(r,c)&&grid[r][c]!=='water'){
+      opts.push({r:r,c:c,d:Math.abs(r-me.r)+Math.abs(c-me.c)})}opts.sort(function(a,b){return a.d-b.d});
+      if(opts.length){e.r=opts[0].r;e.c=opts[0].c}}
+  });
+  checkLose();if(!over)turnNo++;sel=-1;render();
+}
+function checkLose(){
+  var me=units.filter(function(u){return u.team==='me'&&u.hp>0})[0];
+  if(!me||me.hp<=0){over=true;$('over-title').textContent='战败';$('over-info').textContent='在第 '+level+' 关倒下';$('over').hidden=false;return true}
+  return false;
+}
+function winLevel(){
+  if(level<3){level++;build();$('msg').className='msg win';$('msg').textContent='过关！进入第 '+level+' 关';render();return}
+  over=true;S.runs++;S.wins++;if(level>=3&&(!S.best||level>S.best))S.best=3;if(daily)S.daily=today();save();
+  $('over-title').textContent='战役胜利！';$('over-info').textContent='三关全部通关';$('over').hidden=false;
+  $('msg').className='msg win';$('msg').textContent='胜利！';render();
+}
+$('btn-new').addEventListener('click',function(){level=1;daily=false;build();render()});
+$('btn-daily').addEventListener('click',function(){level=1;daily=true;build();$('msg').textContent='每日战役 · '+today();render()});
+$('btn-wait').addEventListener('click',function(){if(!over){sel=-1;endTurn()}});
+$('btn-info').addEventListener('click',function(){$('info-body').textContent='回合制战棋。点选己方单位（金），高亮格可移动，红框敌人可攻击。林地/山地提供 +1 防御，水域不可进入。消灭所有敌人过关，共 3 关。我方单位被击败则战败。每日战役按日期固定地形与敌方配置。';$('info').hidden=false});
+$('info-close').addEventListener('click',function(){$('info').hidden=true});
+$('over-btn').addEventListener('click',function(){$('over').hidden=true;level=1;daily=false;build();render()});
+build();render();
+})();
+</script>
+</body>
+</html>

@@ -28,11 +28,18 @@ export const SPEED_RAMP = 11;         // 每秒加速 px/s
 export const MAX_STEP = 1 / 120;      // 单步最大 dt（防止切后台回来瞬移）
 export const SUB_STEPS_MAX = 8;
 
-/* 障碍物类型：地面刺 / 高横杆 / 飞行物 */
-export const OBSTACLE_KINDS = ['spike', 'bar', 'drone'];
+/* 障碍物类型：地面刺 / 高横杆 / 飞行物 / 双联刺 / 光刃柱 */
+export const OBSTACLE_KINDS = ['spike', 'bar', 'drone', 'twin', 'pillar'];
 
-/* 道具 */
-export const POWERUPS = ['shield', 'magnet', 'slow'];
+/* 道具：护盾 / 磁铁 / 慢放 / 极速（金币翻倍）/ 护盾加成（叠层） */
+export const POWERUPS = ['shield', 'magnet', 'slow', 'boost', 'heart'];
+
+/* 稀有道具：拾取演出与粒子分层用 */
+export const RARE_POWERUPS = ['shield', 'boost', 'heart'];
+export const POWERUP_RARITY = { coin: 'common', shield: 'rare', magnet: 'common', slow: 'common', boost: 'rare', heart: 'rare' };
+
+/* 无敌帧：护盾破碎后的短暂保护，避免连续碰撞瞬间暴死 */
+export const INVULN_TIME = 0.9;
 
 /* 币值与分值 */
 export const COIN_VALUE = 1;
@@ -131,8 +138,11 @@ export function createRun(opts = {}) {
     nearMiss: 0,
     combo: 0,
     shield: false,
+    shieldStacks: 0,         // heart 叠加的额外护盾层
     magnetT: 0,
     slowT: 0,
+    boostT: 0,               // boost：金币翻倍剩余秒数
+    invulnT: 0,              // 无敌帧：护盾破碎后的保护窗口
     obstacles: [],
     pickups: [],
     nextSpawnAt: 1.6,        // 首个障碍前的空窗
@@ -204,9 +214,23 @@ function pickKind(run, rng) {
   if (t < 8) return 'spike';
   const r = rng();
   if (t < 20) return r < 0.75 ? 'spike' : 'bar';
-  if (r < 0.42) return 'spike';
-  if (r < 0.76) return 'bar';
-  return 'drone';
+  // 20s 后解锁飞行物；35s 后解锁双联刺；50s 后解锁光刃柱（渐进加难）
+  if (t < 35) {
+    if (r < 0.38) return 'spike';
+    if (r < 0.68) return 'bar';
+    return 'drone';
+  }
+  if (t < 50) {
+    if (r < 0.30) return 'spike';
+    if (r < 0.54) return 'bar';
+    if (r < 0.76) return 'drone';
+    return 'twin';
+  }
+  if (r < 0.24) return 'spike';
+  if (r < 0.44) return 'bar';
+  if (r < 0.62) return 'drone';
+  if (r < 0.82) return 'twin';
+  return 'pillar';
 }
 
 function spawnObstacle(run, rng) {
@@ -221,11 +245,19 @@ function spawnObstacle(run, rng) {
     // 高横杆：必须滑铲
     const w = 60 + Math.floor(rng() * 3) * 20;
     run.obstacles.push({ kind, x: ahead, y: 62, w, h: 26, hit: false });
-  } else {
+  } else if (kind === 'drone') {
     // 飞行物：悬在空中，跳过或蹲下都能过（但高度要求精准）
     const w = 40;
     const y = 38 + rng() * 24;
     run.obstacles.push({ kind, x: ahead, y, w, h: 30, hit: false, bobT: rng() * 6.28 });
+  } else if (kind === 'twin') {
+    // 双联刺：两个尖刺前后错开 92px，逼玩家用二段跳 / 精准落点一次越过
+    for (let i = 0; i < 2; i++) {
+      run.obstacles.push({ kind: 'twin', x: ahead + i * 92, y: 0, w: 26, h: 34, hit: false, twinIndex: i });
+    }
+  } else {
+    // 光刃柱：细高柱（w 18 / h 52），比普通刺更高更窄，必须起跳更精准
+    run.obstacles.push({ kind: 'pillar', x: ahead, y: 0, w: 18, h: 52, hit: false, bobT: rng() * 6.28 });
   }
 
   run.lastKind = kind;
@@ -238,8 +270,18 @@ function spawnPickup(run, rng) {
   const r = rng();
 
   if (r < 0.16) {
-    const kind = POWERUPS[Math.floor(rng() * POWERUPS.length)];
-    run.pickups.push({ kind, x: ahead, y: 90 + rng() * 50, r: 16, taken: false, bobT: rng() * 6.28 });
+    // 权重分布：普通道具（磁铁/慢放）更常见，稀有道具（护盾/极速/护盾加成）较少
+    const roll = rng();
+    let kind;
+    if (roll < 0.24) kind = 'magnet';
+    else if (roll < 0.46) kind = 'slow';
+    else if (roll < 0.68) kind = 'shield';
+    else if (roll < 0.85) kind = 'boost';
+    else kind = 'heart';
+    run.pickups.push({
+      kind, x: ahead, y: 90 + rng() * 50, r: 16, taken: false, bobT: rng() * 6.28,
+      rarity: POWERUP_RARITY[kind],
+    });
     return;
   }
 
@@ -322,6 +364,8 @@ function advance(run, dt, events, opts) {
   // 道具计时
   if (run.magnetT > 0) run.magnetT = Math.max(0, run.magnetT - dt);
   if (run.slowT > 0) run.slowT = Math.max(0, run.slowT - dt);
+  if (run.boostT > 0) run.boostT = Math.max(0, run.boostT - dt);
+  if (run.invulnT > 0) run.invulnT = Math.max(0, run.invulnT - dt);
 
   // 生成
   run.nextSpawnAt -= dt;
@@ -349,9 +393,18 @@ function advance(run, dt, events, opts) {
     const ob = { x: o.x - o.w / 2, y: o.y, w: o.w, h: o.h };
     if (aabb(pb, ob)) {
       o.hit = true;
-      if (run.shield) {
-        run.shield = false;
-        events.push({ type: 'shield-break', t: run.t, kind: o.kind });
+      // 无敌帧：护盾破碎后的短窗口内直接穿过，不重复扣护盾 / 不死亡
+      if (run.invulnT > 0) {
+        events.push({ type: 'invuln-pass', t: run.t, kind: o.kind });
+      } else if (run.shield) {
+        // 优先消耗 heart 叠加层，再消耗基础护盾
+        if (run.shieldStacks > 0) {
+          run.shieldStacks -= 1;
+        } else {
+          run.shield = false;
+        }
+        run.invulnT = INVULN_TIME;
+        events.push({ type: 'shield-break', t: run.t, kind: o.kind, stacksLeft: run.shieldStacks });
         run.history.push({ t: run.t, type: 'shield-break' });
       } else {
         run.dead = true;
@@ -382,17 +435,25 @@ function advance(run, dt, events, opts) {
     if (dist <= p.r + 16 + magnetR) {
       p.taken = true;
       if (p.kind === 'coin') {
-        run.coins += COIN_VALUE;
-        events.push({ type: 'coin', t: run.t, x: p.x, y: p.y });
+        const val = run.boostT > 0 ? COIN_VALUE * 2 : COIN_VALUE;
+        run.coins += val;
+        events.push({ type: 'coin', t: run.t, x: p.x, y: p.y, boosted: run.boostT > 0, value: val });
       } else if (p.kind === 'shield') {
         run.shield = true;
-        events.push({ type: 'powerup', t: run.t, kind: 'shield' });
+        events.push({ type: 'powerup', t: run.t, kind: 'shield', rarity: 'rare' });
       } else if (p.kind === 'magnet') {
         run.magnetT = 6;
-        events.push({ type: 'powerup', t: run.t, kind: 'magnet' });
+        events.push({ type: 'powerup', t: run.t, kind: 'magnet', rarity: 'common' });
       } else if (p.kind === 'slow') {
         run.slowT = 5;
-        events.push({ type: 'powerup', t: run.t, kind: 'slow' });
+        events.push({ type: 'powerup', t: run.t, kind: 'slow', rarity: 'common' });
+      } else if (p.kind === 'boost') {
+        run.boostT = 6;
+        events.push({ type: 'powerup', t: run.t, kind: 'boost', rarity: 'rare' });
+      } else if (p.kind === 'heart') {
+        run.shield = true;
+        run.shieldStacks = Math.min(3, run.shieldStacks + 1);
+        events.push({ type: 'powerup', t: run.t, kind: 'heart', rarity: 'rare', stacks: run.shieldStacks });
       }
     }
   }
@@ -414,6 +475,7 @@ export function summarize(run) {
     nearMiss: run.nearMiss,
     score: scoreOf(run),
     shield: run.shield,
+    shieldStacks: run.shieldStacks,
     deathReason: run.deathReason,
     seed: run.seed,
   };
@@ -423,6 +485,32 @@ export function summarize(run) {
 export function scoreOf(run) {
   return distanceOf(run) * SCORE_PER_METER + run.coins * 10;
 }
+
+/* ------------------------------ 局末评级 ------------------------------ */
+
+/**
+ * 局末 S/A/B/C/D 评级（纯函数，与山海拾遗 / 传统割草口径统一）。
+ * 只看本局绝对表现，不依赖历史最佳 —— 新玩家第一局也可能拿 B，避免"永远 D"的挫败。
+ * 主指标 distance，nearMiss 作技术加成（敢贴着障碍跑有额外认可）。
+ * 阈值沿用本作成就档位：100 / 500 / 1000 米，20 近失。
+ * @param {{distance?:number,nearMiss?:number,score?:number}} sum summarize() 的产出
+ */
+export function gradeOf(sum = {}) {
+  const dist = Math.max(0, Number(sum.distance) || 0);
+  const near = Math.max(0, Number(sum.nearMiss) || 0);
+  // 近失加成：每 20 次近失折算 100 米"表现分"，封顶 +300，鼓励高风险贴身跑法
+  const perf = dist + Math.min(300, Math.floor(near / 20) * 100);
+  if (perf >= 1000) return 'S';
+  if (perf >= 500) return 'A';
+  if (perf >= 200) return 'B';
+  if (perf >= 80) return 'C';
+  return 'D';
+}
+
+/** 评级文案，供结算页与存档摘要复用。 */
+export const GRADE_LABEL = {
+  S: '疾风无影', A: '步履生风', B: '渐入佳境', C: '稳中求进', D: '再跑一次',
+};
 
 /* ------------------------------ 自检（构建期 + 测试用） ------------------------------ */
 
@@ -450,5 +538,6 @@ export function validateSpawning(seed = 'validate', iterations = 200) {
 export default {
   createRun, step, pressJump, pressSlide, releaseSlide,
   aabb, playerBox, speedAt, spawnGap, makeRng, hashSeed,
-  summarize, scoreOf, distanceOf, validateSpawning,
+  summarize, scoreOf, distanceOf, gradeOf, GRADE_LABEL, validateSpawning,
+  OBSTACLE_KINDS, POWERUPS, RARE_POWERUPS, POWERUP_RARITY, INVULN_TIME,
 };

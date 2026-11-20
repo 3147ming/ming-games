@@ -469,3 +469,56 @@ html, body {
     min-width: 44px;
   }
 }
+
+/* 局末评级徽章（S/A/B/C/D）—— 与山海拾遗 / 传统割草口径统一 */
+.res-grade {
+  font-size: 72px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: .02em;
+  margin: 2px 0 0;
+  animation: gradeBadgePop .5s cubic-bezier(.22,.61,.36,1) both;
+  text-shadow: 0 0 28px currentColor, 0 3px 14px rgba(0, 0, 0, .55);
+}
+.res-grade[data-grade="S"] { color: var(--gold); }
+.res-grade[data-grade="A"] { color: var(--lime); }
+.res-grade[data-grade="B"] { color: var(--cyan); }
+.res-grade[data-grade="C"] { color: #9fb3c8; }
+.res-grade[data-grade="D"] { color: var(--red); }
+.res-grade-label {
+  font-size: 12px;
+  letter-spacing: .34em;
+  color: var(--muted, #9fb3c8);
+  margin: 0 0 6px;
+}
+@keyframes gradeBadgePop {
+  0%   { opacity: 0; transform: scale(.4) rotate(-8deg); }
+  60%  { opacity: 1; transform: scale(1.18) rotate(2deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .res-grade { animation: none; }
+}
+
+/* 稀有道具 toast：金色描边 + 渐变大字，区别于普通道具 */
+.toast.rare {
+  color: #fff;
+  background: linear-gradient(90deg, var(--gold), #ff9f43, var(--pink));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 14px rgba(255, 159, 67, .85));
+  font-size: clamp(20px, 5.6vw, 27px);
+}
+/* 稀有 / 限时道具条：发光描边 */
+.pw-rare {
+  box-shadow: 0 0 12px color-mix(in srgb, var(--c) 55%, transparent), inset 0 0 8px color-mix(in srgb, var(--c) 25%, transparent);
+  animation: pwPulse 1.1s var(--ease) infinite;
+}
+@keyframes pwPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .68; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pw-rare { animation: none; }
+}

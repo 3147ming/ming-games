@@ -13,7 +13,7 @@
 
 import {
   createRun, step, pressJump, pressSlide, releaseSlide,
-  playerBox, distanceOf, summarize, PLAYER_W, PLAYER_H, SLIDE_H,
+  playerBox, distanceOf, summarize, gradeOf, GRADE_LABEL, PLAYER_W, PLAYER_H, SLIDE_H,
   GRAVITY, JUMP_V, SPEED_MAX, BASE_SPEED, MAX_STEP,
 } from './engine.mjs';
 
@@ -84,6 +84,13 @@ const SFX = {
   shield: () => beep({ freq: 880, freq2: 440, dur: 0.22, type: 'sawtooth', gain: 0.075 }),
   hit: () => beep({ freq: 220, freq2: 70, dur: 0.32, type: 'sawtooth', gain: 0.1 }),
   near: () => beep({ freq: 1400, freq2: 1800, dur: 0.05, type: 'square', gain: 0.025 }),
+  // 稀有道具：上行三音阶，明显区别于普通道具
+  rare: () => {
+    beep({ freq: 660, freq2: 990, dur: 0.12, type: 'triangle', gain: 0.06 });
+    setTimeout(() => beep({ freq: 990, freq2: 1320, dur: 0.16, type: 'triangle', gain: 0.06 }), 80);
+  },
+  boost: () => beep({ freq: 520, freq2: 1760, dur: 0.3, type: 'sawtooth', gain: 0.055 }),
+  invuln: () => beep({ freq: 300, freq2: 520, dur: 0.1, type: 'sine', gain: 0.03 }),
 };
 
 /* ============================ 背景音乐 ============================ */
@@ -271,10 +278,15 @@ const COLORS = {
   spike: '#ff4757',
   bar: '#ffd93d',
   drone: '#a29bfe',
+  twin: '#ff6b81',
+  pillar: '#4dd2ff',
   coin: '#ffd93d',
   shield: '#7bed9f',
   magnet: '#ff6b9d',
   slow: '#a29bfe',
+  boost: '#ffa502',
+  heart: '#ff4757',
+  invuln: '#7bed9f',
 };
 
 function draw() {
@@ -360,21 +372,40 @@ function draw() {
       g2d.restore();
       g2d.shadowBlur = 0;
     } else {
-      const col = p.kind === 'shield' ? COLORS.shield : p.kind === 'magnet' ? COLORS.magnet : COLORS.slow;
-      const icon = p.kind === 'shield' ? '🛡' : p.kind === 'magnet' ? '🧲' : '⏳';
+      const col = COLORS[p.kind] || COLORS.slow;
+      const icon = p.kind === 'shield' ? '🛡' : p.kind === 'magnet' ? '🧲'
+        : p.kind === 'slow' ? '⏳' : p.kind === 'boost' ? '⚡' : '💗';
+      const rare = p.rarity === 'rare';
       g2d.save();
       g2d.translate(sx, sy);
-      g2d.shadowBlur = fxOn() ? 16 : 0;
+      // 稀有道具：外层旋转光环（纯视觉，fx 开关控制）
+      if (rare && fxOn()) {
+        g2d.save();
+        g2d.rotate(run.t * 2 + p.bobT);
+        g2d.strokeStyle = col;
+        g2d.globalAlpha = 0.55 + Math.sin(run.t * 7) * 0.25;
+        g2d.lineWidth = 2;
+        const orbit = r * 2.15;
+        for (let k = 0; k < 4; k++) {
+          const a = (k / 4) * Math.PI * 2;
+          g2d.beginPath();
+          g2d.arc(Math.cos(a) * orbit, Math.sin(a) * orbit, 2.6, 0, Math.PI * 2);
+          g2d.fillStyle = col;
+          g2d.fill();
+        }
+        g2d.restore();
+      }
+      g2d.shadowBlur = fxOn() ? (rare ? 22 : 16) : 0;
       g2d.shadowColor = col;
       g2d.fillStyle = 'rgba(10,15,30,0.7)';
       g2d.strokeStyle = col;
-      g2d.lineWidth = 2;
-      const rr = r * 1.5;
+      g2d.lineWidth = rare ? 3 : 2;
+      const rr = r * (rare ? 1.65 : 1.5);
       g2d.beginPath();
       g2d.arc(0, 0, rr, 0, Math.PI * 2);
       g2d.fill(); g2d.stroke();
       g2d.shadowBlur = 0;
-      g2d.font = `${Math.round(rr * 1.3)}px system-ui`;
+      g2d.font = `${Math.round(rr * 1.25)}px system-ui`;
       g2d.textAlign = 'center';
       g2d.textBaseline = 'middle';
       g2d.fillText(icon, 0, 1);
@@ -419,7 +450,7 @@ function draw() {
       for (let i = 0; i < ow; i += 12) {
         g2d.fillRect(x0 + i, y0, 5, oh);
       }
-    } else {
+    } else if (o.kind === 'drone') {
       const bob = Math.sin(run.t * 4 + o.bobT) * 5;
       g2d.fillStyle = COLORS.drone;
       g2d.shadowBlur = fxOn() ? 12 : 0;
@@ -434,6 +465,46 @@ function draw() {
       g2d.arc(sx - ow * 0.14, y0 + oh / 2 + bob, ow * 0.09, 0, Math.PI * 2);
       g2d.arc(sx + ow * 0.14, y0 + oh / 2 + bob, ow * 0.09, 0, Math.PI * 2);
       g2d.fill();
+    } else if (o.kind === 'twin') {
+      // 双联刺：画成两组锯齿，中间用虚线连接提示"要一次跳过"
+      g2d.fillStyle = COLORS.twin;
+      g2d.shadowBlur = fxOn() ? 12 : 0;
+      g2d.shadowColor = 'rgba(255,107,129,0.8)';
+      g2d.beginPath();
+      g2d.moveTo(x0, bottomY);
+      for (let i = 0; i < 2; i++) {
+        g2d.lineTo(x0 + ow * (i + 0.5), y0);
+        g2d.lineTo(x0 + ow * (i + 1), bottomY);
+      }
+      g2d.closePath();
+      g2d.fill();
+      g2d.shadowBlur = 0;
+      if (o.twinIndex === 0 && fxOn()) {
+        g2d.strokeStyle = 'rgba(255,107,129,0.35)';
+        g2d.lineWidth = 2;
+        g2d.setLineDash([6, 5]);
+        g2d.beginPath();
+        g2d.moveTo(sx + ow / 2, bottomY - 6);
+        g2d.lineTo(sx + ow / 2 + 92 * view.scale - ow, bottomY - 6);
+        g2d.stroke();
+        g2d.setLineDash([]);
+      }
+    } else if (o.kind === 'pillar') {
+      // 光刃柱：细高发光柱 + 顶部刃尖 + 扫光
+      g2d.fillStyle = COLORS.pillar;
+      g2d.shadowBlur = fxOn() ? 18 : 0;
+      g2d.shadowColor = 'rgba(77,210,255,0.9)';
+      g2d.fillRect(x0, y0, ow, oh);
+      g2d.beginPath();
+      g2d.moveTo(x0 - ow * 0.25, y0);
+      g2d.lineTo(sx, y0 - oh * 0.35);
+      g2d.lineTo(x0 + ow * 1.25, y0);
+      g2d.closePath();
+      g2d.fill();
+      g2d.shadowBlur = 0;
+      // 内部亮芯
+      g2d.fillStyle = 'rgba(255,255,255,0.85)';
+      g2d.fillRect(sx - ow * 0.12, y0 + oh * 0.1, ow * 0.24, oh * 0.8);
     }
   }
 
@@ -483,19 +554,26 @@ function drawPlayer(run, toScreenX, toScreenY) {
 
   g2d.save();
 
-  // 拖尾（跳跃时）
-  if (!run.onGround && fxOn()) {
-    g2d.globalAlpha = 0.22;
-    g2d.fillStyle = COLORS.player;
-    for (let i = 1; i <= 3; i++) {
+  // 无敌帧闪烁：高频透明脉动，明确告诉玩家"此刻打不到我"
+  if (run.invulnT > 0) {
+    g2d.globalAlpha = 0.45 + 0.55 * Math.abs(Math.sin(run.t * 26));
+  }
+
+  // 拖尾（跳跃时）；boost 期间尾焰变金色且更长
+  const boosting = run.boostT > 0;
+  if ((!run.onGround || boosting) && fxOn()) {
+    g2d.globalAlpha *= boosting ? 0.42 : 0.22;
+    g2d.fillStyle = boosting ? COLORS.boost : COLORS.player;
+    const n = boosting ? 5 : 3;
+    for (let i = 1; i <= n; i++) {
       g2d.fillRect(x0 - i * 7, y0 + h * 0.2 + i * 3, w * 0.7, h * 0.5 - i * 4);
     }
-    g2d.globalAlpha = 1;
+    g2d.globalAlpha = run.invulnT > 0 ? (0.45 + 0.55 * Math.abs(Math.sin(run.t * 26))) : 1;
   }
 
   // 身体（像素块）
   g2d.shadowBlur = fxOn() ? 16 : 0;
-  g2d.shadowColor = run.shield ? COLORS.shield : 'rgba(64,224,208,0.8)';
+  g2d.shadowColor = boosting ? COLORS.boost : run.shield ? COLORS.shield : 'rgba(64,224,208,0.8)';
   g2d.fillStyle = COLORS.player;
   g2d.fillRect(x0, y0, w, h);
 
@@ -509,14 +587,30 @@ function drawPlayer(run, toScreenX, toScreenY) {
   const eyeSize = Math.max(3, w * 0.16);
   g2d.fillRect(x0 + w * 0.62, y0 + h * 0.22, eyeSize, eyeSize);
 
-  // 护盾环
+  // 护盾环：基础环 + heart 叠加层（每多一层多画一圈、半径递减）
   if (run.shield) {
-    g2d.strokeStyle = COLORS.shield;
-    g2d.lineWidth = 2.5;
-    g2d.globalAlpha = 0.75 + Math.sin(run.t * 6) * 0.2;
+    const rings = 1 + (run.shieldStacks || 0);
+    for (let k = 0; k < rings; k++) {
+      g2d.strokeStyle = COLORS.shield;
+      g2d.lineWidth = 2.5 - k * 0.4;
+      g2d.globalAlpha = (0.75 + Math.sin(run.t * 6 + k) * 0.2) * (1 - k * 0.18);
+      g2d.beginPath();
+      g2d.arc(sx, y0 + h / 2, h * (0.92 + k * 0.16), 0, Math.PI * 2);
+      g2d.stroke();
+    }
+    g2d.globalAlpha = 1;
+  }
+
+  // 无敌帧外圈：淡青色虚线光环
+  if (run.invulnT > 0 && fxOn()) {
+    g2d.strokeStyle = COLORS.invuln;
+    g2d.lineWidth = 2;
+    g2d.globalAlpha = 0.4 + 0.3 * Math.sin(run.t * 18);
+    g2d.setLineDash([5, 6]);
     g2d.beginPath();
-    g2d.arc(sx, y0 + h / 2, h * 0.92, 0, Math.PI * 2);
+    g2d.arc(sx, y0 + h / 2, h * 1.15, 0, Math.PI * 2);
     g2d.stroke();
+    g2d.setLineDash([]);
     g2d.globalAlpha = 1;
   }
 
@@ -555,9 +649,11 @@ function updateHud() {
   }
   // 道具条
   const pw = [];
-  if (run.shield) pw.push(`<span class="pw" style="--c:${COLORS.shield}">🛡 护盾</span>`);
+  if (run.shield) pw.push(`<span class="pw" style="--c:${COLORS.shield}">🛡 护盾${run.shieldStacks ? ' +' + run.shieldStacks : ''}</span>`);
   if (run.magnetT > 0) pw.push(`<span class="pw" style="--c:${COLORS.magnet}">🧲 <i>${run.magnetT.toFixed(1)}s</i></span>`);
   if (run.slowT > 0) pw.push(`<span class="pw" style="--c:${COLORS.slow}">⏳ <i>${run.slowT.toFixed(1)}s</i></span>`);
+  if (run.boostT > 0) pw.push(`<span class="pw pw-rare" style="--c:${COLORS.boost}">⚡ 金币×2 <i>${run.boostT.toFixed(1)}s</i></span>`);
+  if (run.invulnT > 0) pw.push(`<span class="pw pw-rare" style="--c:${COLORS.invuln}">✨ 无敌 <i>${run.invulnT.toFixed(1)}s</i></span>`);
   const key = pw.join('|');
   if (key !== hudCache.powers) {
     hudCache.powers = key;
@@ -592,16 +688,33 @@ function loop(now) {
       if (ev.type === 'coin') {
         SFX.coin();
         const sx = view.w * 0.28 + 20;
-        burst(sx, view.groundY - 80, COLORS.coin, 6, 160);
+        if (ev.boosted) {
+          burst(sx, view.groundY - 80, COLORS.boost, 10, 210);
+        } else {
+          burst(sx, view.groundY - 80, COLORS.coin, 6, 160);
+        }
       } else if (ev.type === 'powerup') {
-        SFX.power();
-        toast(ev.kind === 'shield' ? '🛡 护盾' : ev.kind === 'magnet' ? '🧲 磁铁' : '⏳ 慢放', 'gold');
-        haptic(12);
+        const rare = ev.rarity === 'rare';
+        if (rare) SFX.rare(); else SFX.power();
+        const names = { shield: '🛡 护盾', magnet: '🧲 磁铁', slow: '⏳ 慢放', boost: '⚡ 极速 · 金币×2', heart: '💗 护盾 +1' };
+        toast(names[ev.kind] || '道具', rare ? 'rare' : 'gold');
+        if (rare) {
+          haptic(20);
+          shake(6, 0.18);
+          const sx = view.w * 0.28;
+          burst(sx, view.groundY - 90, COLORS[ev.kind] || COLORS.shield, 16, 260);
+        } else {
+          haptic(12);
+        }
+      } else if (ev.type === 'invuln-pass') {
+        SFX.invuln();
       } else if (ev.type === 'shield-break') {
         SFX.shield();
-        toast('护盾破碎', 'pink');
+        toast(ev.stacksLeft > 0 ? `护盾破碎 · 还剩 ${ev.stacksLeft} 层` : '护盾破碎', 'pink');
         shake(10, 0.25);
         haptic(24);
+        const sx = view.w * 0.28;
+        burst(sx, view.groundY - PLAYER_H * view.scale, COLORS.shield, 12, 200);
       } else if (ev.type === 'near-miss') {
         SFX.near();
       } else if (ev.type === 'land' && fxOn()) {
@@ -678,8 +791,19 @@ function finishRun() {
 }
 
 function showResult(sum, isBest, unlocked) {
-  $('res-title').textContent = sum.deathReason === 'bar' ? '撞上横杆' : sum.deathReason === 'drone' ? '撞上飞行物' : '撞上地刺';
+  const DEATH_LABEL = { spike: '撞上地刺', bar: '撞上横杆', drone: '撞上飞行物', twin: '撞上双联刺', pillar: '撞上光刃柱' };
+  $('res-title').textContent = DEATH_LABEL[sum.deathReason] || '撞上障碍';
   $('res-score').textContent = sum.score;
+  // 局末评级：与山海拾遗 / 传统割草口径统一，把「跑多远」升级为「跑得多好」
+  const grade = gradeOf(sum);
+  const gEl = $('res-grade');
+  if (gEl) {
+    gEl.textContent = grade;
+    gEl.dataset.grade = grade;
+    gEl.className = 'res-grade grade-' + grade;
+    const label = $('res-grade-label');
+    if (label) label.textContent = GRADE_LABEL[grade] || '';
+  }
   $('res-best').hidden = !isBest;
   $('res-dist').textContent = sum.distance;
   $('res-coins').textContent = sum.coins;

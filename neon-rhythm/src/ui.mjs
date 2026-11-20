@@ -20,7 +20,7 @@ import {
 import {
   LANES, chartKey, generateChart, validateChart, APPROACH_BY_DIFFICULTY,
 } from './chart.mjs';
-import { VERDICT_LABEL, MAX_OFFSET_MS } from './judge.mjs';
+import { VERDICT_LABEL, MAX_OFFSET_MS, compareMetric } from './judge.mjs';
 import { createGame } from './game.mjs';
 import {
   loadScores, saveScores, loadSettings, saveSettings, mergeResult, bestFor,
@@ -106,7 +106,7 @@ function gradeChips(songId) {
 function renderMenu() {
   const sum = summarizeScores(scores);
   $('menu-stats').innerHTML =
-    `<span>已玩 <b>${sum.played}/12</b> 张谱面</span>` +
+    `<span>已玩 <b>${sum.played}/${SONGS.length * DIFFICULTIES.length}</b> 张谱面</span>` +
     `<span>最高分 <b>${fmtScore(sum.bestScore)}</b></span>` +
     `<span>最长连击 <b>${sum.bestCombo}</b></span>`;
 
@@ -174,6 +174,7 @@ const game = {
   running: false,
   countdownShown: -1,
   lastJudgeId: -1,
+  milestoneShown: -1,   // 已演出的连击里程碑数（comboEvents 游标）
   laneFlash: [0, 0, 0, 0],
   pressed: [false, false, false, false],
   startWallMs: 0,
@@ -241,7 +242,10 @@ function startGame(songId, difficulty, practice = false) {
   });
   game.countdownShown = -1;
   game.lastJudgeId = -1;
+  game.milestoneShown = -1;
   game.laneFlash = [0, 0, 0, 0];
+  const msEl = $('hud-milestone');
+  if (msEl) { msEl.className = 'hud-milestone'; msEl.textContent = ''; }
   game.pressed = [false, false, false, false];
   lastClockT = Number.NaN;
   stallStart = 0;
@@ -397,6 +401,17 @@ function frame() {
       haptic(lv.verdict === 'perfect' ? 8 : lv.verdict === 'great' ? 6 : 4);
       try { engine.hitSound(lv.verdict); } catch { /* 忽略 */ }
     }
+  }
+
+  // 连击里程碑演出：逻辑层 COMBO_MILESTONES 已记好，这里只消费新增项。
+  // 50 以上才演出（10/25 太密会稀释高光的稀缺感），与方案口径一致。
+  const milestones = game.g.comboEvents || [];
+  if (milestones.length > game.milestoneShown) {
+    for (let i = game.milestoneShown + 1; i < milestones.length; i++) {
+      const m = milestones[i];
+      if (m.combo >= 50) flashMilestone(m.combo);
+    }
+    game.milestoneShown = milestones.length - 1;
   }
 
   draw(nowMs);
@@ -653,6 +668,23 @@ function flashJudge(verdict) {
   judgeTimer = setTimeout(() => { el.className = 'hud-judge'; }, 460);
 }
 
+/* 连击里程碑高光：50 / 100 / 200 / 400 一次性横幅，带震屏与音效。
+   ★ 与判定字分层：判定字常驻中上方，里程碑横幅在偏下位置独立弹出，互不遮挡。 */
+let milestoneTimer = 0;
+function flashMilestone(combo) {
+  const el = $('hud-milestone');
+  if (!el) return;
+  el.innerHTML = `<b>${combo}</b> COMBO<small>${combo >= 200 ? '无双' : combo >= 100 ? '狂热' : '绝佳'}</small>`;
+  el.className = 'hud-milestone';
+  void el.offsetWidth;
+  el.classList.add('show');
+  shake = Math.min(9, shake + 7);
+  haptic(30);
+  try { engine.hitSound('perfect'); } catch { /* 忽略 */ }
+  clearTimeout(milestoneTimer);
+  milestoneTimer = setTimeout(() => { el.className = 'hud-milestone'; }, 1100);
+}
+
 /* ---------- 结算 ---------- */
 
 function finishGame() {
@@ -694,16 +726,25 @@ function finishGame() {
   if (r.cleared && !r.fullCombo && !r.allPerfect) badges.push('<span class="badge cl">CLEAR</span>');
   $('res-badges').innerHTML = badges.join('');
 
+  // 与历史最佳的逐项对比（prev = merge 前的最佳那条，分数唯一权威）。
+  // 只在有历史成绩时显示对比徽标，让每局都有可追赶的具体目标。
+  const cmp = (cur, best, goodDir, decimals) => {
+    if (!prev) return '';
+    const c = compareMetric(cur, best, goodDir, decimals);
+    if (c.dir === 'flat') return '';
+    return `<i class="res-delta ${c.good ? 'good' : 'bad'}">${c.text}</i>`;
+  };
   const rows = [
-    ['准确率', r.accuracyPct.toFixed(2) + '%'],
-    ['最大连击', r.maxCombo + ' / ' + game.chart.notes.length],
-    ['PERFECT', r.counts.perfect],
-    ['GREAT', r.counts.great],
-    ['GOOD', r.counts.good],
-    ['MISS', r.counts.miss],
+    ['准确率', r.accuracyPct.toFixed(2) + '%', cmp(r.accuracyPct, (prev ? prev.accuracy : 0) * 100, 'up', 2)],
+    ['最大连击', r.maxCombo + ' / ' + game.chart.notes.length, cmp(r.maxCombo, prev ? prev.maxCombo : 0, 'up', 0)],
+    ['分数', fmtScore(r.score), cmp(r.score, prev ? prev.score : 0, 'up', 0)],
+    ['PERFECT', r.counts.perfect, cmp(r.counts.perfect, prev ? prev.counts.perfect : 0, 'up', 0)],
+    ['GREAT', r.counts.great, cmp(r.counts.great, prev ? prev.counts.great : 0, 'up', 0)],
+    ['GOOD', r.counts.good, cmp(r.counts.good, prev ? prev.counts.good : 0, 'up', 0)],
+    ['MISS', r.counts.miss, cmp(r.counts.miss, prev ? prev.counts.miss : 0, 'down', 0)],
   ];
   $('res-rows').innerHTML = rows.map(
-    ([k, v]) => `<div class="res-row"><span>${k}</span><b>${v}</b></div>`,
+    ([k, v, delta]) => `<div class="res-row"><span>${k}</span><b>${v}${delta || ''}</b></div>`,
   ).join('');
 
   const isNew = merged.wrote && (!prev || r.score > prev.score);

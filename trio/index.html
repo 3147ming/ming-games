@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#141018">
+<meta name="description" content="三张牌 TRIO —— 用三张牌凑同花、顺子、豹子比大小，押注连胜的卡牌博弈小游戏。">
+<title>三张牌 · TRIO</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23141018'/%3E%3Ctext x='16' y='23' font-size='18' text-anchor='middle' fill='%23d6ab58'%3ET%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+:root{--gold:#d6ab58;--red:#d0574d;--ink:#141018;--paper:#ece6da;--dim:#958a7c;--line:#332b3c;--win:#5cc08a}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:radial-gradient(120% 80% at 50% -10%,#241a2e 0%,var(--ink) 62%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:20px 14px calc(24px + env(safe-area-inset-bottom))}
+.wrap{width:min(100%,520px)}
+.head{text-align:center;margin-bottom:16px}
+.logo{font-size:26px;letter-spacing:.3em;margin:0;color:var(--gold)}
+.sub{font-size:11px;letter-spacing:.2em;color:var(--dim);margin:6px 0 0}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(0,0,0,.24);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:14px;font-size:12px}
+.bar b{color:var(--gold);font-size:15px}
+.bar .stat{display:flex;gap:14px;flex-wrap:wrap}
+.arena{background:linear-gradient(180deg,#1d1625,#17111f);border:1px solid var(--line);border-radius:18px;padding:18px 14px;margin-bottom:14px}
+.row-label{font-size:11px;color:var(--dim);letter-spacing:.1em;margin:0 0 8px}
+.cards{display:flex;gap:8px;justify-content:center;min-height:104px}
+.card{width:62px;height:88px;flex:none;border-radius:10px;background:linear-gradient(160deg,#f6f1e7,#ddd4c4);color:#1a1520;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 6px 16px rgba(0,0,0,.4);position:relative;transition:transform .18s,box-shadow .18s}
+.card .r{font-size:26px;font-weight:700;line-height:1}
+.card .s{font-size:20px;line-height:1.2}
+.card.red{color:var(--red)}
+.card.flip{transform:rotateY(90deg);opacity:.25}
+.card.win{box-shadow:0 0 0 2px var(--gold),0 6px 20px rgba(214,171,88,.4)}
+.hand-title{margin:14px 0 8px;font-size:11px;color:var(--dim);letter-spacing:.1em;text-align:center}
+.hand{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;min-height:56px}
+.pick{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:rgba(255,255,255,.03);color:var(--paper);font-size:12px;cursor:pointer;min-width:44px;min-height:44px}
+.pick.sel{border-color:var(--gold);color:var(--gold);background:rgba(214,171,88,.12)}
+.pick:disabled{opacity:.4;cursor:default}
+.controls{display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap}
+.btn{border:none;border-radius:12px;min-height:46px;padding:0 20px;font:inherit;font-size:14px;cursor:pointer;background:linear-gradient(180deg,var(--gold),#b8903f);color:#1a1305;font-weight:600}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--paper);font-weight:400}
+.btn:active{transform:scale(.97)}
+.msg{text-align:center;min-height:22px;font-size:13px;margin:10px 0;color:var(--dim)}
+.msg.win{color:var(--win)}.msg.lose{color:var(--red)}
+.rank{display:inline-block;padding:2px 10px;border-radius:999px;font-size:11px;border:1px solid var(--line);color:var(--gold);margin-left:6px}
+.sheet{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.7)}
+.sheet[hidden]{display:none}
+.panel{width:min(100%,420px);max-height:82vh;overflow:auto;background:linear-gradient(180deg,#1d1625,#141018);border:1px solid var(--line);border-radius:18px;padding:22px}
+.panel h2{margin:0 0 10px;font-size:18px;letter-spacing:.1em;color:var(--gold)}
+.panel p{font-size:12px;line-height:1.8;color:var(--dim)}
+.panel .kv{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px dashed var(--line)}
+.panel .kv b{color:var(--paper);font-weight:500}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head"><h1 class="logo">TRIO</h1><p class="sub">三 张 牌 · 凑 组 合 比 大 小</p></div>
+  <div class="bar">
+    <div class="stat"><span>金币 <b id="coin">100</b></span><span>连胜 <b id="streak">0</b></span><span>最高 <b id="best">0</b></span></div>
+    <button class="pick" id="btn-info" style="min-height:32px;padding:4px 10px">规则</button>
+  </div>
+  <div class="arena">
+    <p class="row-label">对手牌</p>
+    <div class="cards" id="opp"><div class="card flip"></div><div class="card flip"></div><div class="card flip"></div></div>
+    <p class="hand-title">你的手牌 · 选 3 张组成牌型</p>
+    <div class="hand" id="hand"></div>
+    <div class="msg" id="msg">下注后翻开比大小</div>
+    <div class="controls">
+      <button class="pick" id="bet1" style="min-width:auto">押 10</button>
+      <button class="btn" id="btn-deal" disabled>开牌</button>
+      <button class="btn ghost" id="btn-daily">每日局</button>
+      <button class="btn ghost" id="btn-reset">重置</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="info" hidden><div class="panel">
+  <h2>玩法</h2>
+  <p>每局发 5 张手牌，选 <b>3 张</b>组成牌型，与对手的 3 张牌比大小。</p>
+  <p><b>牌型从大到小</b>：豹子（三同点）＞ 同花（三张同色）＞ 顺子（连续点数）＞ 散牌。同级比最大点数，A 最大。</p>
+  <p>押注越高赢得越多；连胜有额外加成。金币归零则本轮结束。每日局用固定种子，同一天所有人牌堆一致。</p>
+  <p style="margin-top:12px;color:var(--gold)">纯本地存档，无网络、无真钱。</p>
+  <div class="controls"><button class="btn" id="btn-info-close">知道了</button></div>
+</div></div>
+
+<script>
+(function(){
+'use strict';
+var KEY='mg_trio.v1';
+var $=function(id){return document.getElementById(id)};
+var S=load();
+function load(){try{var o=JSON.parse(localStorage.getItem(KEY));if(o&&typeof o==='object')return o}catch(e){}return {coin:100,best:0,runs:0,streak:0,daily:null}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function rng(seed){var x=seed>>>0||1;return function(){x^=x<<13;x^=x>>>17;x^=x<<5;return (x>>>0)/4294967296}}
+function seedFrom(str){var h=2166136261;for(var i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+var SUITS=['♠','♥','♦','♣'],RANKS=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+var RV={A:14,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,J:11,Q:12,K:13};
+var deck=[];for(var s=0;s<4;s++)for(var r=0;r<13;r++)deck.push({s:s,r:r});
+function mkDeck(rand){var d=deck.slice();for(var i=d.length-1;i>0;i--){var j=Math.floor(rand()*(i+1));var t=d[i];d[i]=d[j];d[j]=t}return d}
+function classify(c){
+  var vals=c.map(function(x){return RV[x.r]}).sort(function(a,b){return b-a});
+  var trip=vals[0]===vals[1]&&vals[1]===vals[2];
+  var flush=c[0].s===c[1].s&&c[1].s===c[2].s;
+  var uniq=vals.slice().sort(function(a,b){return a-b});
+  var straight=(uniq[0]+1===uniq[1]&&uniq[1]+1===uniq[2])||(uniq[0]===2&&uniq[1]===3&&uniq[2]===14);
+  var type=trip?4:flush?3:straight?2:1;
+  var top=straight&&uniq[0]===2&&uniq[2]===14?5:vals[0];
+  return {type:type,top:top};
+}
+function cmp(a,b){var x=classify(a),y=classify(b);return x.type===y.type?(x.top-y.top):(x.type-y.type)}
+function typeName(c){return ['散牌','顺子','同花','豹子'][classify(c).type-1]||'散牌'}
+function cardHTML(c){return '<div class="card'+(c.s===1||c.s===2?' red':'')+'"><span class="r">'+c.r+'</span><span class="s">'+SUITS[c.s]+'</span></div>'}
+var state={hand:[],opp:[],sel:[],bet:10,daily:false};
+function render(){
+  $('coin').textContent=S.coin;$('streak').textContent=S.streak;$('best').textContent=S.best;
+  $('opp').innerHTML=state.opp.length?state.opp.map(cardHTML).join(''):'<div class="card flip"></div>'.repeat(3);
+  $('hand').innerHTML=state.hand.map(function(c,i){return '<button class="pick'+(state.sel.indexOf(i)>=0?' sel':'')+'" data-i="'+i+'">'+c.r+SUITS[c.s]+'</button>'}).join('');
+  Array.prototype.forEach.call($('hand').querySelectorAll('.pick'),function(b){b.addEventListener('click',function(){var i=+b.getAttribute('data-i');var p=state.sel.indexOf(i);if(p>=0)state.sel.splice(p,1);else if(state.sel.length<3)state.sel.push(i);render()})});
+  $('btn-deal').disabled=!(state.sel.length===3&&S.coin>=state.bet);
+}
+function deal(daily){
+  var seed=daily?seedFrom('trio-'+today()):(Date.now()^(Math.random()*1e9|0));
+  var d=mkDeck(rng(seed));
+  state={hand:d.slice(0,5),opp:d.slice(5,8),sel:[],bet:state.bet,daily:!!daily};
+  $('msg').className='msg';$('msg').textContent='选 3 张组成牌型，再点「开牌」';
+  render();
+}
+function reveal(){
+  if(state.sel.length!==3||!state.opp.length)return;
+  var mine=state.sel.map(function(i){return state.hand[i]});
+  var d=cmp(mine,state.opp),win=d>0;
+  S.coin+=(win?state.bet:-state.bet);S.runs++;
+  if(win){S.streak++;var bonus=Math.min(50,S.streak*2);S.coin+=bonus}else S.streak=0;
+  S.coin=Math.max(0,S.coin);
+  if(S.coin>S.best)S.best=S.coin;
+  if(state.daily)S.daily=today();
+  save();
+  $('msg').className='msg '+(win?'win':'lose');
+  $('msg').innerHTML='你 <b>'+typeName(mine)+'</b> vs 对手 '+typeName(state.opp)+' · '+(win?'赢 +'+state.bet:'输 -'+state.bet)+'<span class="rank">'+(win?'胜':'负')+'</span>';
+  if(win)$('msg').innerHTML+=' <span style="font-size:11px">连胜奖励 +'+Math.min(50,S.streak*2)+'</span>';
+  setTimeout(function(){if(S.coin>0)deal(state.daily);else{$('msg').className='msg lose';$('msg').textContent='金币耗尽 —— 点「重置」再来一局';state.opp=[];state.hand=[];state.sel=[];render()}},1100);
+}
+$('btn-deal').addEventListener('click',reveal);
+$('btn-daily').addEventListener('click',function(){deal(true)});
+$('btn-reset').addEventListener('click',function(){S={coin:100,best:S.best,runs:S.runs,streak:0,daily:S.daily};save();deal(false);$('msg').className='msg';$('msg').textContent='已重置，重新开局'});
+$('bet1').addEventListener('click',function(){state.bet=state.bet===10?50:state.bet===50?10:10;$('bet1').textContent='押 '+state.bet;render()});
+$('btn-info').addEventListener('click',function(){$('info').hidden=false});
+$('btn-info-close').addEventListener('click',function(){$('info').hidden=true});
+deal(false);
+})();
+</script>
+</body>
+</html>
