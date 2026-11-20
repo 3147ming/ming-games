@@ -40,6 +40,7 @@ import { Rng } from './rng.js';   // 阶段 4-7.x：心心掉落的**独立**随
 import { SKIN_TINT_ALPHA, DEFAULT_SKIN, SKINS, skinById, skinNeedsTint } from './skins.js';  // 阶段 6-2：纯外观皮肤
 import { loadoutBuffs } from './loadout.js';  // 阶段 6-3：局外配装（纯数值，applyGrowth 之后叠加）
 import { SHOP_TIMES, rollShop, applyShopGood } from './shop.js';  // 阶段 6-4：局内商店「魂火商栈」（纯逻辑，不碰 DOM）
+import { WAVE_ARENA, waveArenaHalf, clampToWaveArena } from './wave-config.js';  // 波次模式：固定竞技场 + 边界夹紧
 
 // 阶段10 · P0-5：进化所需被动的短名。
 //   PASSIVES 的 label 是「伤害 +12%」这种长文案，塞不进底部 chip；
@@ -1131,16 +1132,27 @@ const SPRITE_FIT = {
   fast:   { axis: 'w', k: 2.4 },  // 63×80：宽 2.4r → 高 3.05r（瘦高，像"疾影"）
   tank:   { axis: 'w', k: 2.5 },  // 184×190：宽 2.5r → 高 2.58r（敦实，像"重壳"）
   ranged: { axis: 'w', k: 2.4 },  // 阶段 4-1 远程精英：中等偏小（与 fast 同系数，靠配色区分）
+  // 美术升级（2026-11）：5 只 Boss 的**专属立绘**（豆包生成、暗黑奇幻、纯透明底）。
+  //   ★ 这不是"复用普通怪贴图"——每只 Boss 一张独立原画，仍是"一种实体一套形象"，
+  //     满足 spec 的"不要用普通怪贴图"口径。axis:'h' 让高瘦立绘按身高贴回碰撞圈：
+  //     Boss r 32~46，k≈3.1 ⇒ 立绘高 ≈ 100~143px，比普通怪高一档，压迫感够。
+  boss1: { axis: 'h', k: 3.1 }, boss2: { axis: 'h', k: 3.1 },
+  boss3: { axis: 'h', k: 3.1 }, boss4: { axis: 'h', k: 3.1 },
+  boss5: { axis: 'h', k: 3.2 },  // 终局 Boss 略大，配合最大碰撞圈
 };
 // id（实体种类）→ 素材文件名。player 用 'hero'，敌人用 kind。
 const SPRITE_FILE = {
   hero: 'hero.png', normal: 'normal.png', fast: 'fast.png', tank: 'tank.png',
   ranged: 'ranged.png',   // 阶段 4-1：尚未入库，按规范名预留 —— 文件一放进去就自动生效
+  // 美术升级：Boss 专属立绘（可选，缺失自动回退剪影）
+  boss1: 'boss1.png', boss2: 'boss2.png', boss3: 'boss3.png',
+  boss4: 'boss4.png', boss5: 'boss5.png',
 };
 // 「还没入库」的可选素材：加载前先 HEAD 探一次。
 // ★ 直接 new Image() 也能跑（onerror → 回退剪影，正是 spec 要的容错），但那样**每次进页面
 //   都会在控制台留一条 404** —— 一条真故障会和这条噪音混在一起，属于自己给自己挖坑。
-const OPTIONAL_SPRITES = new Set(['ranged']);
+// Boss 立绘也放这里：老设备/离线圈缺文件时静默回退程序化剪影，不留 404 噪音。
+const OPTIONAL_SPRITES = new Set(['ranged', 'boss1', 'boss2', 'boss3', 'boss4', 'boss5']);
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1835,6 +1847,12 @@ export class ArenaCore {
     const ux = mag > 0.001 ? input.x / mag : 0, uy = mag > 0.001 ? input.y / mag : 0;   // 归一化后的输入方向
     const moved = Math.hypot(this.player.vx, this.player.vy) * dt;
     if (moved > 0) { this.player.x += this.player.vx * dt; this.player.y += this.player.vy * dt; }
+    // 波次模式 = Brotato 的固定竞技场：玩家被墙夹住；旧 600 秒连续局仍保持无界地图。
+    // 只在玩家中心身上夹，不碰速度：撞墙后松开输入能立刻起步，不会粘墙。
+    if (this.waveMode) {
+      const p = clampToWaveArena(this.player.x, this.player.y, this.player.r || 12);
+      this.player.x = p.x; this.player.y = p.y;
+    }
     // 阶段 5 · B1 猎风：位移积分攒层（站定则开始掉层）。全部确定性，不碰 rng。
     this._stepWind(moved, mag > 0.001, dt);
     if (mag > 0.001) { this.lastDir.x = ux; this.lastDir.y = uy; }
@@ -2283,6 +2301,36 @@ export class ArenaCore {
   }
 
   /**
+   * 波次模式的出生偏移：怪从**固定竞技场边缘**进场，而不是跟着玩家走的无界环。
+   * 这是 Brotato 与幸存者类最直观的一条差异 —— 玩家不能靠一直跑把战场拖成长廊。
+   * ★ 不消耗额外 rng：方向沿用调用方已经抽好的 ang，dist 只用来做一点点内侧抖动。
+   */
+  waveSpawnOffset(ang, dist = 360) {
+    const h = waveArenaHalf();
+    const px = this.player.x, py = this.player.y;
+    let dx = Math.cos(ang), dy = Math.sin(ang);
+    const edgeDist = (ax, ay) => {
+      let tx = Infinity, ty = Infinity;
+      if (ax > 1e-6) tx = (h.x - px) / ax;
+      else if (ax < -1e-6) tx = (-h.x - px) / ax;
+      if (ay > 1e-6) ty = (h.y - py) / ay;
+      else if (ay < -1e-6) ty = (-h.y - py) / ay;
+      return Math.min(tx > 0 ? tx : Infinity, ty > 0 ? ty : Infinity);
+    };
+    let edge = edgeDist(dx, dy);
+    // 玩家贴边且朝向外侧时，把方向翻到场内，避免出生点被夹在墙外。
+    if (!Number.isFinite(edge) || edge < 70) {
+      dx = -dx; dy = -dy;
+      edge = edgeDist(dx, dy);
+    }
+    if (!Number.isFinite(edge)) edge = Math.min(h.x, h.y);
+    const inset = 14 + (Math.abs(dist) % 36);
+    const d = Math.max(70, edge - inset);
+    const p = clampToWaveArena(px + dx * d, py + dy * d, 14);
+    return { dx: p.x - px, dy: p.y - py };
+  }
+
+  /**
    * 在玩家周围的环形上随机出生一只当前波次允许的敌人。
    * 阶段 4-1：四边 → 圆环（无限场没有边）；阶段 4-1.2：环从 750~1000 收到 380~550；
    * 阶段 4-8：再收到 **300~420**（等于把"在途"再砍掉一截，见 SPAWN_RING_MAX 的注释），
@@ -2395,14 +2443,16 @@ export class ArenaCore {
         if (this.enemies.length >= ARENA.MAX_ENEMIES) break; // 簇内也要逐只判（见函数头）
         const a = ang + (this.rng.next() - 0.5) * 0.5;            // 紧簇角度（±0.25 rad）
         const dd = rMin + this.rng.next() * (rMax - rMin);        // 各自仍在环带上
-        const o2 = at ? { dx: Math.cos(a) * dd, dy: Math.sin(a) * dd } : this.spawnOffset(a, dd);
+        const o2 = at ? { dx: Math.cos(a) * dd, dy: Math.sin(a) * dd }
+          : (this.waveMode ? this.waveSpawnOffset(a, dd) : this.spawnOffset(a, dd));
         this.enemies.push(this.makeEnemy('swarm', cx + o2.dx, cy + o2.dy, sec, false));
         this.spawned += 1;
         this.kindCounts.swarm = (this.kindCounts.swarm || 0) + 1;
       }
       return kind;
     }
-    const off = at ? { dx: Math.cos(ang) * dist, dy: Math.sin(ang) * dist } : this.spawnOffset(ang, dist);
+    const off = at ? { dx: Math.cos(ang) * dist, dy: Math.sin(ang) * dist }
+      : (this.waveMode ? this.waveSpawnOffset(ang, dist) : this.spawnOffset(ang, dist));
     this.enemies.push(this.makeEnemy(kind, cx + off.dx, cy + off.dy, sec, elite, ang));
     this.spawned += 1;
     if (elite) this.eliteSpawned += 1;
@@ -2920,7 +2970,7 @@ export class ArenaCore {
     const b = BOSS_TYPES[id];
     const sec = this.elapsed;
     const ang = this.rng.next() * TAU;
-    const off = this.spawnOffset(ang, ARENA.BOSS_SPAWN_DIST);
+    const off = this.waveMode ? this.waveSpawnOffset(ang, ARENA.BOSS_SPAWN_DIST) : this.spawnOffset(ang, ARENA.BOSS_SPAWN_DIST);
     const base = ENEMY_TYPES.normal;                 // ★ 锚点是**普通怪**（spec 四的口径）
     const hp = base.hp * this.hpScale(sec) * b.hpMul;
     const e = {
@@ -3448,6 +3498,13 @@ export class ArenaCore {
   /** 弹雨的作用域：以玩家为中心的**一屏**（倾盆而下时屏幕上要看得见完整预警）。 */
   _rainField() {
     const w = Math.max(1, Number(this.w) || 0), h = Math.max(1, Number(this.h) || 0);
+    if (this.waveMode) {
+      // 固定竞技场里弹雨不能下到墙外；玩家贴边时把预警区整体推回场内。
+      const hb = waveArenaHalf();
+      const x0 = Math.max(-hb.x, Math.min(hb.x - w, this.player.x - w / 2));
+      const y0 = Math.max(-hb.y, Math.min(hb.y - h, this.player.y - h / 2));
+      return [x0, y0, w, h];
+    }
     return [this.player.x - w / 2, this.player.y - h / 2, w, h];
   }
 
@@ -5267,11 +5324,23 @@ export class Arena {
     const c = this.core;
     if (!c) return;
     const p = c.player;
-    if (!this._camReady) { this.cam.x = p.x; this.cam.y = p.y; this._camReady = true; return; }
+    if (!this._camReady) { this.cam.x = p.x; this.cam.y = p.y; this._camReady = true; this._clampWaveCam(); return; }
     const k = 1 - Math.exp(-Math.max(dt, 0) / ARENA.CAM_TAU);
     this.cam.x += (p.x - this.cam.x) * k;
     this.cam.y += (p.y - this.cam.y) * k;
+    this._clampWaveCam();
     this._updateShake(dt);
+  }
+
+  /** 波次模式相机停在固定竞技场内；视口比场地还宽时直接居中。旧连续局不调用。 */
+  _clampWaveCam() {
+    const c = this.core;
+    if (!c || !c.waveMode) return;
+    const hb = waveArenaHalf();
+    const hw = Math.max(0, (Number(this.w) || 0) / 2);
+    const hh = Math.max(0, (Number(this.h) || 0) / 2);
+    this.cam.x = hw >= hb.x ? 0 : clamp(this.cam.x, -hb.x + hw, hb.x - hw);
+    this.cam.y = hh >= hb.y ? 0 : clamp(this.cam.y, -hb.y + hh, hb.y - hh);
   }
 
   /**
@@ -5352,6 +5421,37 @@ export class Arena {
         ctx.fill();
       }
     }
+  }
+
+  /** 波次模式固定竞技场的可见边界。Brotato 是“站在场地里躲”，不是拖着地图跑。 */
+  _renderWaveBoundary(ctx) {
+    const c = this.core;
+    if (!c || !c.waveMode) return;
+    const hw = WAVE_ARENA.W / 2, hh = WAVE_ARENA.H / 2;
+    const hb = waveArenaHalf();
+    const t = WAVE_ARENA.WALL;
+    ctx.save();
+    ctx.fillStyle = WAVE_ARENA.FILL_COLOR;
+    ctx.fillRect(-hw, -hh, WAVE_ARENA.W, t);
+    ctx.fillRect(-hw, hh - t, WAVE_ARENA.W, t);
+    ctx.fillRect(-hw, -hh, t, WAVE_ARENA.H);
+    ctx.fillRect(hw - t, -hh, t, WAVE_ARENA.H);
+    ctx.strokeStyle = WAVE_ARENA.EDGE_COLOR;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-hb.x, -hb.y, hb.x * 2, hb.y * 2);
+    ctx.strokeStyle = 'rgba(236,106,84,0.28)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = -hb.x; x <= hb.x; x += 64) {
+      ctx.moveTo(x, -hb.y); ctx.lineTo(x + 18, -hb.y + 18);
+      ctx.moveTo(x, hb.y); ctx.lineTo(x + 18, hb.y - 18);
+    }
+    for (let y = -hb.y; y <= hb.y; y += 64) {
+      ctx.moveTo(-hb.x, y); ctx.lineTo(-hb.x + 18, y + 18);
+      ctx.moveTo(hb.x, y); ctx.lineTo(hb.x - 18, y + 18);
+    }
+    ctx.stroke();
+    ctx.restore();
   }
 
   /** 阶段10·P1-6：毒雾地面。世界层、画在地面之上、实体之下。
@@ -5511,6 +5611,7 @@ export class Arena {
     //  （数字跟着抖就没法读了，而"我还有多少血"恰恰是最不能读错的那个数）。
     ctx.translate(w / 2 - this.cam.x + this._shakeX, h / 2 - this.cam.y + this._shakeY);
     this._renderGround(ctx, w, h);
+    this._renderWaveBoundary(ctx);   // 波次模式：固定竞技场边界（旧连续局直接返回）
     this._renderMist(ctx, c);   // 阶段10·P1-6：毒雾地面（在实体之下、地面之上）
     if (c.weapons && c.weapons.sentry) this._renderSentry(ctx, c);   // 内容批三：守望之瞳
     this._pdone('ground');

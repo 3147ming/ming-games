@@ -6,6 +6,31 @@
 //   写完由 director 统一调 c._refreshClassBuffs() 刷新派生值。
 
 export const WAVE_COUNT = 20;
+
+/** 波次模式的固定竞技场（Brotato 的核心地图口径）。
+ *  旧连续局仍是无界地图；这里只给 WaveDirector 用，避免两套模式互相污染。 */
+export const WAVE_ARENA = Object.freeze({
+  W: 1180,
+  H: 820,
+  WALL: 34,
+  EDGE_COLOR: 'rgba(236, 106, 84, 0.85)',
+  FILL_COLOR: 'rgba(18, 20, 24, 0.92)',
+});
+/** 玩家/敌人可用的内圈半宽高（扣掉墙体厚度）。 */
+export function waveArenaHalf() {
+  return {
+    x: WAVE_ARENA.W / 2 - WAVE_ARENA.WALL,
+    y: WAVE_ARENA.H / 2 - WAVE_ARENA.WALL,
+  };
+}
+/** 把坐标夹进固定竞技场内；r 是实体半径。 */
+export function clampToWaveArena(x, y, r = 0) {
+  const h = waveArenaHalf();
+  return {
+    x: Math.max(-h.x + r, Math.min(h.x - r, x)),
+    y: Math.max(-h.y + r, Math.min(h.y - r, y)),
+  };
+}
 /** 20 波时长（秒）—— **照抄 Brotato**：1-9 波每波 +5 秒，10-19 波固定 60 秒，第 20 波 90 秒。
  *  总计 1050 秒。旧实现自创成 20→90 线性递增、总计 1275 秒，比原版长 21%，节奏完全不同。 */
 export const WAVE_SECS = [
@@ -262,9 +287,9 @@ export const DANGER_SOUL_MUL = 0.15;
  *    改成 `22 + w*10`（第 1 波 32 / 第 20 波 222），让每波收入可预期，
  *    击杀掉落只作为"多打多拿"的零头。第 1 波必须给到 30+，否则开局
  *    连一把 16 材料的武器都买不起，会直接进入死亡螺旋（实测 4 局死 3 局）。 */
-export const waveEndMaterials = (w, d) => Math.round((15 + w * 5 + d.harvest) * (1 + d.harvest * 0.02));
+export const waveEndMaterials = (w, d) => Math.round((22 + w * 10 + d.harvest) * (1 + d.harvest * 0.02));
 /** 未拾取材料的结转率：波末只把 **50%** 的经验值带进下一波（拾取时 1:1 补发）。
  *  ★ 阶段12 经济校准：原设计是「全额结转 + 双倍补发」——等于漏捡也不亏、还倒赚，
  *    实测一局光结转就能灌出 1.5 万材料，商店四格每波清空。
  *    改成 50% 后，漏捡仍然有补偿，但不再是"最优策略是别捡"。 */
-export const CARRY_KEEP = 1;
+export const CARRY_KEEP = 0.5;

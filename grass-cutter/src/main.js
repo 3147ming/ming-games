@@ -69,6 +69,7 @@ import { createInkOutline } from './render/inkOutline.js';
 import { resolveOutlineStyle } from './render/heroMap.js';
 import { TimeControl } from './core/timeControl.js';
 import { InkFx } from './combat/inkFx.js';
+import { ArtSprites } from './combat/artSprites.js';
 import { AudioManager } from './audio/sfx.js';
 import { AudioUi } from './ui/audioUi.js';
 
@@ -163,6 +164,8 @@ canvas.addEventListener('click', () => { input.requestPointerLock(); audio.resum
 const player = new PlayerController({ input, shapes, spawn: world.layout.spawn });
 // 默认用内置程序化 PBR 武将；若配置了 HERO.ASSET_PATH，异步加载外部 glTF/VRM 后无缝替换。
 let playerMesh = createHeroMesh();
+// 加载期/失败回退也同步放大，避免同一套视觉比例在资产替换前后跳变。
+playerMesh.scale.setScalar(HERO.MODEL_VISUAL_SCALE ?? 1);
 scene.add(playerMesh);
 
 // 模块 12：墨色描边（反向外壳）。宽度是**屏幕像素**，所以要跟着视口高度走（见 resize）。
@@ -274,6 +277,8 @@ if (coarse) {
 // 手机浏览器要求用户手势后才允许出声：首个 pointerdown 解一次（不重做 #boot）
 window.addEventListener('pointerdown', () => audio.resume(), { once: true });
 const inkFx = new InkFx(scene, { camera, timeControl, decals: decalPool, audio });
+// 美术升级：豆包特效贴图（无双爆破 / 武艺剑气 / 斗气 / 暴击星芒），纯表现层，失败静默降级
+const artSprites = new ArtSprites(scene, { reducedMotion });
 // 第 4 批 P1-1：系统开「减弱动态效果」→ 关震屏与全屏纸闪（顿帧/慢动作保留）
 if (reducedMotion) inkFx.setMotion({ shake: false, paper: false });
 // 第 4 批 P1-2：重击/C 技命中 → 镜头 FOV 短促推近再弹回（无双/武艺不触发）
@@ -602,6 +607,7 @@ function tick() {
   }
   if (run.pending > 0 && !runPanel.open) { runPaused = true; pickCards(); }
   inkFx.handle(combat.events);
+  artSprites.handle(combat.events, player.position);
   if (cinnabarTimer > 0) cinnabarTimer = Math.max(0, cinnabarTimer - dt);
   {
     const style = resolveOutlineStyle({ musouActive: combat.ranbuTimer > 0, artFlash: cinnabarTimer > 0 });
@@ -755,6 +761,7 @@ function tick() {
   }
 
   inkFx.update(dt, combat.fxState(), player);
+  artSprites.update(dt);
 
   rig.setTarget(player.position, player.velocity); // 第 4 批 P1-2：第二参 = 水平速度，用于朝向提前量
   lastDebug = rig.update(dt);

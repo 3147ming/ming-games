@@ -258,6 +258,9 @@ export class HeroAssetAnimator {
 export function createHeroMeshFromAsset(asset) {
   const root = new Group();
   root.name = 'hero';
+  // 视觉比例：只放大渲染根节点，不动 PLAYER.HEIGHT / 碰撞盒 / 打击盒。
+  // 这样在保留 8m/4m 相机规范的同时，主角不再是一个小方块。
+  root.scale.setScalar(HERO.MODEL_VISUAL_SCALE ?? 1);
   // ★SPEC(模块13) 主角可读性：外部模型也要过一遍墨灰阶。
   //   否则"换了真模型 → 可读性又没了"——spec 的验收口径是画面效果，不是哪套代码在画。
   if (HERO.TONE_APPLY_TO_ASSET) applyInkToneToScene(asset.scene);

@@ -891,7 +891,7 @@ export const HERO = {
   BODY_ROUGHNESS: 0.4, // ★SPEC 0.55 → 0.4（高光更利）
   BODY_METALNESS: 0.3, // ★SPEC 金属度 0.3
   TONE_APPLY_TO_ASSET: true, // 外部模型（模块 12）的材质也按这套口径染一遍，否则换模型可读性就没了
-  TONE_MIX: 0.85, // 外部模型染色时"保留原贴图"的比例（1 = 完全用墨灰覆盖，0 = 不动）
+  TONE_MIX: 0.45, // 墨灰覆盖强度（1 = 完全墨灰，0 = 完全保留原贴图）；CC0 骑士模型保留更多结构与贴图细节
   PLUME_SCALE: 1.3, // ★SPEC 朱砂盔缨尺寸 ×1.3
   PLUME_EMISSIVE: 0xc23b22, // ★SPEC 盔缨自发光朱砂
   PLUME_EMISSIVE_INTENSITY: 1.2, // ★SPEC 常态强度 1.2
@@ -912,19 +912,21 @@ export const HERO = {
 
   // ── 模块 12：外部角色资产（glTF / VRM）加载 ──
   // path 为 null → 使用内置程序化 PBR 武将（零资产可读、单测可跑、探针可绿）。
-  // 当前指向 tools/make-hero-glb.mjs 合成的占位 .glb（用户未提供模型文件时由我自行生成，
-  //   用于端到端验证「GLTFLoader 加载 → 骨骼映射 → 动画驱动」管线）。真美术模型到位后直接替换
-  //   assets/hero/model.glb 即可，契约不变。
+  // 当前指向 CC0 骨骼骑士模型（blocky_03_knight.glb，含 22 骨骼 / 10 段动画 / 贴图）。
+  // 视觉放大只作用于渲染根节点，不改 PLAYER.HEIGHT / 碰撞盒 / 打击盒，避免破坏既有手感与判定。
   //   · .glb/.gltf 用 GLTFLoader（已 vendored 到 vendor/three/jsm/loaders/，不引入 npm 依赖）
   //   · .vrm 用 @pixiv/three-vrm（⚠ 该包需 npm 安装，会破"零依赖零构建"铁律，需主理人授权）
   // 加载期间显示「水墨剪影占位」；加载失败/无资产 → 优雅退回程序化 PBR 武将，绝不黑屏。
   ASSET_PATH: 'assets/hero/model.glb',
+  MODEL_VISUAL_SCALE: 1.25, // 8m/4m 相机规格不变，用视觉比例解决“主角像小方块”的观感问题
   // 动画状态 → 资产内 clip 名称（按名称映射；找不到则退回程序化姿态驱动）
+  // CC0 骑士没有 N1/C3/heavy 等细分动作，统一借用 punch 作为攻击视觉；
+  // dash / 受击 / charge 等状态保留程序化姿态，避免把“蓄力”也播成出拳。
   ANIM: {
     idle: 'idle', run: 'run', dash: 'dash', jump: 'jump',
-    N1: 'N1', N2: 'N2', C3: 'C3', C4: 'C4', C5: 'C5',
-    heavy: 'heavy', charge: 'charge', musou: 'musou',
-    art1: 'art1', art2: 'art2',
+    N1: 'punch', N2: 'punch', C3: 'punch', C4: 'punch', C5: 'punch',
+    heavy: 'punch', charge: 'charge', musou: 'punch',
+    art1: 'punch', art2: 'punch',
     hitFront: 'hitFront', hitBack: 'hitBack', hitLeft: 'hitLeft', hitRight: 'hitRight',
     death: 'death',
   },
@@ -946,8 +948,11 @@ export const HERO = {
   //     否则退化成单 LOD0，行为与旧版一致（不影响模块 1~11）。
   //   · 减面由 tools/make-hero-lod.mjs 离线生成 model.lod1.glb / model.lod2.glb（零外部依赖，
   //     顶点聚类），只在模型三角面 > DECIMATE_THRESHOLD 时才需要。
+  //   · 当前 CC0 骑士模型远低于 DECIMATE_THRESHOLD，且主角始终在 8m/4m 相机焦点内；
+  //     旧 model.lod1/lod2.glb 是占位模型，不能和新模型混用，所以这里关闭 LOD 副资产加载，
+  //     始终使用完整 LOD0。等为新模型重新生成 LOD 后再打开即可。
   LOD: {
-    ENABLED: true,
+    ENABLED: false,
     NEAR: 25, // 0~25m 显示 LOD0（完整）
     FAR: 45, // 25~45m 显示 LOD1；>45m 显示 LOD2（再远则保持 LOD2，模块 9 距离剔除另算）
     SHADOW_MAX: 30, // 阴影 30m 内开启
