@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#151210">
+<title>龙凤棋 · 规则</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23151210'/%3E%3Ccircle cx='32' cy='32' r='20' fill='none' stroke='%23c8a96b' stroke-width='3'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#151210;color:#eee3cd;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;line-height:1.75}
+.wrap{max-width:760px;margin:0 auto;padding:18px 16px 40px}
+h1{font-size:22px;color:#c8a96b;margin:0 0 4px}.lead{font-size:13px;opacity:.7;margin:0 0 16px}
+.card{background:#211b15;border:1px solid #483923;border-radius:14px;padding:14px 16px;margin:12px 0}
+.card h2{font-size:16px;color:#e4c98c;margin:0 0 6px}.card p{margin:5px 0;font-size:14px}
+.card em{color:#e6b84f;font-style:normal;font-weight:600}
+.back{display:inline-block;min-height:44px;line-height:44px;padding:0 16px;border:1px solid #6b5839;border-radius:10px;color:#f3e9d4;text-decoration:none;font-size:14px}
+a{color:#8ec5e8}.note{font-size:12px;opacity:.72}
+@media(pointer:coarse){.back{min-height:48px;line-height:48px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<p><a class="back" href="./index.html">← 返回棋盘</a></p>
+<h1>龙凤棋 · 龙棋规则</h1>
+<p class="lead">规则出处：麻城市人民政府收录的民间棋「龙棋」。<a href="http://www.mc.gov.cn/mlmc/whmc/msfq/10466903.html" target="_blank" rel="noopener">原文链接</a>。「龙凤棋」无统一权威版本，本站按此套可查规则实现。</p>
+
+<div class="card"><h2>棋盘</h2>
+<p>三层同心正方形，每层 8 个落点（4 角 + 4 边中点），共 <em>24 点</em>。同一方位的点用径向直线相连；每层方框的横边、竖边也是连线。</p>
+<p><em>实线</em>（横 / 竖）可成龙、可吃子；<em>虚线</em>（斜向径向）只用于走子，不成龙也不吃子。</p></div>
+
+<div class="card"><h2>1 · 布子</h2><p>两人对局，红先。每方 <em>9 枚</em>，布子阶段轮流落子，每次 1 枚。布满 18 枚后自动进入走子阶段。</p></div>
+<div class="card"><h2>2 · 成龙</h2><p>己方 3 子在<em>同一条横线或竖线</em>上连续相连，即成一「龙」。斜线不算。</p></div>
+<div class="card"><h2>3 · 吃子与保护</h2><p>每成一条龙，可吃对方 <em>1 枚</em>子。已组成龙的对方棋子受保护，不得被吃。</p></div>
+<div class="card"><h2>4 · 始龙</h2><p>同一条线上的同一组三点，<em>一局只能成一次龙</em>（民间称「始龙」）。棋子移开后再回到原位，也不能靠同一组合再次成龙吃子。</p></div>
+<div class="card"><h2>5 · 走子</h2><p>布子完成后，每步沿连线走到相邻的<em>空点</em>，不可跳格，也不可直接吃掉相邻敌子。</p></div>
+<div class="card"><h2>6 · 满天飞</h2><p>当盘面<em>只剩 3 枚子</em>时，轮到的一方可以把自己一枚子飞到棋盘任意空点。</p></div>
+<div class="card"><h2>7 · 打炮</h2><p>当一方<em>只剩 2 枚子</em>时：若对方 1 子在某条横线 / 竖线的一端，己方 1 子在这条线的中间，则另一枚己方子可飞到该线<em>另一端</em>，组成三点一线并吃掉对方那枚子。受保护的成龙子不能被打炮。</p></div>
+<div class="card"><h2>8 · 胜负</h2><p>吃光对方全部棋子即胜；对方无合法走法且无法成龙即负；双方 <em>60 回合无吃子</em>判和。</p></div>
+
+<p class="note">本站为程序化实现，落点、成龙、打炮均以几何坐标判定，规则如上八条；AI 分「入门 / 老练」两档，老练档会封堵你的成龙点并计算自己的成龙吃子。</p>
+</div>
+</body>
+</html>

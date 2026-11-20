@@ -21,6 +21,9 @@ import { fmtYuan } from './fmt.mjs';
 /* 培训树（纯逻辑）：每位员工点过的节点 → 累计倍率。
  * staff 只消费 getBonuses 的结果，不认识节点价格/前置规则（那些在 training.mjs）。 */
 import { getBonuses } from './training.mjs';
+/* 任务块 H-1：疲惫降效的唯一口径在 staff-decision.mjs（Node 可单测）。
+ * 这里与它循环 import 是安全的：双方都只在函数体内使用对方，模块实例化期不取值。 */
+import { fatigueFactor } from './staff-decision.mjs';
 
 /**
  * 需求驱动的 SKU 排序（纯函数，Node 可单测）。
@@ -37,13 +40,20 @@ import { getBonuses } from './training.mjs';
  * @param {{missed?:object, sold?:object, shelfQty?:object}} ctx 当夜流水与货架存量
  * @returns {Array} 排好序的新数组（不改入参）
  */
+/**
+ * 单 SKU 的需求分（从 rankSkuByDemand 里提出来，供决策层叠加偏好权重时复用，
+ * 保证「偏好加成相当于多少流失件数」只有一处口径）。
+ */
+export function skuDemandScore(s, ctx = {}) {
+  const miss = ctx.missed ?? {}, sold = ctx.sold ?? {}, shelf = ctx.shelfQty ?? {};
+  return (miss[s.id] | 0) * 4 + (sold[s.id] | 0) + Math.max(0, 6 - (shelf[s.id] ?? 0)) * 0.5;
+}
+
 export function rankSkuByDemand(skus, ctx = {}) {
   const miss = ctx.missed ?? {}, sold = ctx.sold ?? {}, shelf = ctx.shelfQty ?? {};
   const hasTelemetry = skus.some((s) => (miss[s.id] | 0) > 0 || (sold[s.id] | 0) > 0);
-  const score = (s) =>
-    (miss[s.id] | 0) * 4 + (sold[s.id] | 0) + Math.max(0, 6 - (shelf[s.id] ?? 0)) * 0.5;
   return skus.slice().sort((a, b) =>
-    hasTelemetry ? (score(b) - score(a)) : ((shelf[a.id] ?? 0) - (shelf[b.id] ?? 0)));
+    hasTelemetry ? (skuDemandScore(b, ctx) - skuDemandScore(a, ctx)) : ((shelf[a.id] ?? 0) - (shelf[b.id] ?? 0)));
 }
 
 /**
@@ -94,6 +104,8 @@ export function createStaff(opts = {}) {
       id: `${type}#${++idSeq}`,
       type,
       stamina: 100,
+      workSec: 0,
+      restSec: 0,
       resting: false,
       working: false,
       status: 'idle',     // idle | working | resting | errand | stopped | off
@@ -165,9 +177,12 @@ export function createStaff(opts = {}) {
 
   /** 培训后的行动冷却。
    *  口径：训练缩短的是"两次动作之间的间隔"，不是单次动作的产出 ——
-   *  这样玩家能直观看到"同一个人一分钟里多干了一件事"，而不是数值偷偷变大。 */
-  function actionCdOf(bonus) {
-    return STAFF.actionCd * (bonus?.actionCdMul ?? 1);
+   *  这样玩家能直观看到"同一个人一分钟里多干了一件事"，而不是数值偷偷变大。
+   *  任务块 H-1：疲惫店员效率下降，等价于冷却按 1/factor 拉长（90s 后约 ×1.25）。 */
+  function actionCdOf(bonus, s) {
+    const base = STAFF.actionCd * (bonus?.actionCdMul ?? 1);
+    const factor = fatigueFactor(s?.workSec ?? 0, s?.restSec ?? 0);
+    return base / (factor > 0 ? factor : 1);
   }
 
   function updateMember(s, dt, now) {
@@ -180,6 +195,11 @@ export function createStaff(opts = {}) {
       s.status = 'off';
       return;
     }
+
+    /* 任务块 H-1：连续工作时长（与 stamina 互补）。休息时按 2 倍速回退，
+     * 与 staff-decision.fatigueFactor 的 20s 恢复口径对齐。 */
+    if (s.resting) s.workSec = Math.max(0, (s.workSec ?? 0) - dt * 2);
+    else s.workSec = (s.workSec ?? 0) + dt;
 
     /* 体力：工作掉、休息回 */
     if (s.resting) {
@@ -221,7 +241,7 @@ export function createStaff(opts = {}) {
       : worldState.repair(broken.id, state.cash);
     if (r.ok) onEvent('repair-done', { type: s.type, name: defOf(s.type).name, id: broken.id });
     else if (r.reason === 'insufficient') onEvent('repair-nocash', { type: s.type });
-    s.cooldownUntil = now + actionCdOf(bonus);
+    s.cooldownUntil = now + actionCdOf(bonus, s);
   }
 
   function aiCleaner(s, now, bonus = {}) {
@@ -243,7 +263,7 @@ export function createStaff(opts = {}) {
     }
     // name 必须带上：main.mjs 的 toast 要显示"谁完成的"（Bug⑥ —— 漏传就会拼出 "undefined 清理了垃圾"）
     if (count > 0) onEvent('clean-done', { type: s.type, name: defOf(s.type).name, count });
-    s.cooldownUntil = now + actionCdOf(bonus);
+    s.cooldownUntil = now + actionCdOf(bonus, s);
   }
 
   function aiPurchaser(s, now, bonus = {}) {
@@ -262,7 +282,7 @@ export function createStaff(opts = {}) {
           : economy.buyWarehouseGood(p.goodId, p.qty, premium);
         if (res.ok) onEvent('purchase-done', { type: s.type, staffName: defOf(s.type).name, good: p.goodId ?? 'snack', name: p.name });
       }
-      s.cooldownUntil = now + actionCdOf(bonus);
+      s.cooldownUntil = now + actionCdOf(bonus, s);
       return;
     }
     if (s.status === 'errand') return; // 外出中，不工作
@@ -357,7 +377,7 @@ function preferStockerSku() {
       s.working = true;
       s.status = 'stock-shelf';
       onEvent('stock-done', { type: s.type, name: defOf(s.type).name, kind: 'shelf', label: '货架' });
-      s.cooldownUntil = now + actionCdOf(bonus);
+      s.cooldownUntil = now + actionCdOf(bonus, s);
       return;
     }
     // 2) 售货机补货（消耗 backroom 零食饮料）
@@ -370,7 +390,7 @@ function preferStockerSku() {
         state.deviceStock.vending = (state.deviceStock.vending | 0) + 1;
         s.working = true; s.status = 'stock-vending';
         onEvent('stock-done', { type: s.type, name: defOf(s.type).name, kind: 'vending', label: '售货机' });
-        s.cooldownUntil = now + actionCdOf(bonus);
+        s.cooldownUntil = now + actionCdOf(bonus, s);
         return;
       }
     }
@@ -381,7 +401,7 @@ function preferStockerSku() {
       state.deviceStock.claw = (state.deviceStock.claw | 0) + 1;
       s.working = true; s.status = 'stock-claw';
       onEvent('stock-done', { type: s.type, name: defOf(s.type).name, kind: 'claw', label: '娃娃机' });
-      s.cooldownUntil = now + actionCdOf(bonus);
+      s.cooldownUntil = now + actionCdOf(bonus, s);
       return;
     }
     s.working = false;
@@ -429,6 +449,8 @@ function preferStockerSku() {
           hired: !!entry,
           onDuty: entry ? entry.onDuty !== false : true,
           stamina: entry ? Math.round(entry.stamina) : 0,
+          /* 任务块 H-1：连续工作时长（秒），供 HUD / 诊断确认疲惫降效确实生效 */
+          workSec: entry ? Math.round(entry.workSec ?? 0) : 0,
           status: entry ? entry.status : 'idle',
           /* 培训：等级 / 总数 / 当前累计的夜产出与关键倍率（HUD 直接展示） */
           training: training ? {

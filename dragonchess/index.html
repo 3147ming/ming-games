@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#151210">
+<title>龙凤棋 · 龙棋</title>
+<meta name="description" content="龙凤棋（龙棋）——三层同心正方形民间棋，布子、成龙、满天飞、打炮，双档 AI 对弈。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23151210'/%3E%3Ccircle cx='32' cy='32' r='20' fill='none' stroke='%23c8a96b' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='9' fill='%23b23a2e'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+:root{--ink:#1b1713;--paper:#f3ead8;--gold:#c8a96b;--red:#b23a2e;--blue:#243b53}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:radial-gradient(circle at 50% 0%,#2a2119,#12100e 70%);color:#f0e6d2;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
+.wrap{max-width:760px;margin:0 auto;padding:14px 14px 30px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+h1{font-size:20px;margin:0;letter-spacing:2px;color:var(--gold)}
+.sub{font-size:12px;opacity:.68;margin:2px 0 0}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+button,select{min-height:44px;padding:0 14px;border-radius:10px;border:1px solid #6b5839;background:#2b231a;color:#f3e9d4;font:inherit;font-size:14px;cursor:pointer;touch-action:manipulation}
+button:hover,select:hover{border-color:var(--gold)}button:disabled{opacity:.4;cursor:not-allowed}
+select{padding-right:8px}
+.status{display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:#221c16;border:1px solid #463823;border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:13px}
+.status b{color:var(--gold)}.turn-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:5px}
+.turn-dot.r{background:var(--red)}.turn-dot.b{background:var(--blue)}
+.board-shell{position:relative;background:var(--paper);border:8px solid #6d5636;border-radius:16px;box-shadow:0 12px 34px #0009;overflow:hidden}
+canvas{display:block;width:100%;height:auto;touch-action:manipulation}
+.hint{margin:10px 2px 0;font-size:13px;line-height:1.6;color:#d8cbb2;min-height:42px}
+.end{position:absolute;inset:0;display:none;place-items:center;background:#0d0b09dd;text-align:center;padding:20px}
+.end.show{display:grid}.end h2{font-size:26px;color:var(--gold);margin:0 0 8px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;opacity:.72;margin-top:8px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}
+@media(pointer:coarse){button,select{min-height:48px}}
+@media(max-width:430px){h1{font-size:17px}.bar{margin-left:0;width:100%}.bar button,.bar select{flex:1;padding:0 8px;font-size:13px}.status{font-size:12px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div><h1>龙凤棋 · 龙棋</h1><p class="sub">民间棋 · 三环二十四点 · 成龙吃子</p></div>
+  <div class="bar">
+    <select id="level" aria-label="AI 难度"><option value="easy">AI · 入门</option><option value="hard">AI · 老练</option></select>
+    <button id="undo" type="button">悔棋</button>
+    <button id="restart" type="button">新局</button>
+    <button id="rules" type="button">规则</button>
+  </div>
+</header>
+
+<div class="status" aria-live="polite">
+  <span><b id="phase">布子</b></span>
+  <span><i class="turn-dot r" id="tdot"></i><b id="turn">红方落子</b></span>
+  <span>红 <b id="rnum">0</b>/9 · 蓝 <b id="bnum">0</b>/9</span>
+  <span>无吃子 <b id="idle">0</b>/60</span>
+</div>
+
+<div class="board-shell">
+  <canvas id="cv" width="600" height="600" aria-label="龙凤棋棋盘"></canvas>
+  <div class="end" id="end"><div><h2 id="endtitle">红方胜</h2><p id="enddesc"></p><button id="again" type="button">再来一局</button></div></div>
+</div>
+
+<p class="hint" id="hint">布子阶段：红蓝轮流落子，各 9 枚。三子在同一横线或竖线上相连即「成龙」，可吃对方一子。</p>
+<div class="legend">
+  <span><i style="background:#b23a2e"></i>红方</span>
+  <span><i style="background:#243b53"></i>蓝方</span>
+  <span>实线＝可成龙的横竖线</span><span>虚线＝斜线，只走不吃</span>
+</div>
+</div>
+
+<script type="module">
+import {
+  POINTS, EDGES, DRAGON_LINES, createGame, place, move, capture, undo,
+  legalMoves, cannonMoves, dragonsNow, countPieces, isSkyMode, isCannonMode,
+  aiPlay, other,
+} from './src/rules.mjs';
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const $ = (id) => document.getElementById(id);
+let S = createGame();
+let sel = null, targets = [], flash = [], flashUntil = 0, aiTimer = null, aiLevel = 'easy';
+const PAD = 54, SPAN = 492;
+const px = (x) => PAD + ((x + 3) / 6) * SPAN;
+const py = (y) => PAD + ((3 - y) / 6) * SPAN;
+
+const PHASE = { place: '布子', move: '走子' };
+function modeName() {
+  if (S.phase === 'place') return '布子';
+  if (isCannonMode(S, S.turn)) return '打炮';
+  if (isSkyMode(S, S.turn)) return '满天飞';
+  return '走子';
+}
+function hintText() {
+  if (S.winner) return S.winner === 'draw' ? '和局。双方六十回合无吃子。' : `${S.winner === 'r' ? '红方' : '蓝方'}获胜 · ${reasonText(S.endReason)}`;
+  if (S.pendingCapture) return `成龙！请点击一枚对方棋子吃掉（不可吃已成龙的子）。`;
+  if (S.phase === 'place') return `布子阶段 · ${S.turn === 'r' ? '红方' : '蓝方'}落子，还剩 ${9 - S.placed[S.turn]} 枚。`;
+  if (isCannonMode(S, S.turn)) return '打炮：选中己方子，飞到同线另一端吃掉对方子。';
+  if (isSkyMode(S, S.turn)) return '满天飞：盘面仅剩三子，己方可落到任意空点。';
+  return sel ? '点击高亮落点走子；再次点击该子可取消选择。' : '点击己方棋子，查看可走落点。';
+}
+function reasonText(r) {
+  return ({ eliminate: '吃光对方', immobile: '对方无子可动', 'no-capture': '六十回合无吃子', 'step-limit': '步数上限' })[r] ?? r ?? '';
+}
+
+function line(id) {
+  const e = EDGES.find((x) => x.key === id) ?? EDGES.find((x) => x.a === id || x.b === id);
+  return e ?? null;
+}
+function isDiagonal(e) {
+  const a = POINTS.find((p) => p.id === e.a), b = POINTS.find((p) => p.id === e.b);
+  return a.x !== b.x && a.y !== b.y;
+}
+function draw(now = 0) {
+  ctx.clearRect(0, 0, 600, 600);
+  ctx.fillStyle = '#f3ead8'; ctx.fillRect(0, 0, 600, 600);
+  // 同心方框底纹
+  ctx.strokeStyle = '#d9c6a1'; ctx.lineWidth = 1;
+  for (const s of [3, 2, 1]) {
+    ctx.strokeRect(px(-s), py(s), px(s) - px(-s), py(-s) - py(s));
+  }
+  // 连线：横竖实线 / 斜线虚线
+  for (const e of EDGES) {
+    const a = POINTS.find((p) => p.id === e.a), b = POINTS.find((p) => p.id === e.b);
+    ctx.beginPath(); ctx.moveTo(px(a.x), py(a.y)); ctx.lineTo(px(b.x), py(b.y));
+    ctx.setLineDash(isDiagonal(e) ? [5, 6] : []);
+    ctx.strokeStyle = isDiagonal(e) ? '#cbb894' : '#b39a6b';
+    ctx.lineWidth = isDiagonal(e) ? 1 : 1.8;
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  // 成龙闪光
+  const on = now < flashUntil;
+  if (on) {
+    ctx.save(); ctx.globalAlpha = 0.35 + 0.4 * Math.abs(Math.sin(now / 160));
+    ctx.strokeStyle = '#e0a92e'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+    for (const ids of flash) {
+      ctx.beginPath();
+      ids.forEach((id, i) => {
+        const p = POINTS.find((q) => q.id === id);
+        i ? ctx.lineTo(px(p.x), py(p.y)) : ctx.moveTo(px(p.x), py(p.y));
+      });
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // 点
+  for (const p of POINTS) {
+    ctx.beginPath(); ctx.arc(px(p.x), py(p.y), 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#8e7751'; ctx.fill();
+  }
+  // 可落点
+  for (const t of targets) {
+    const tid = typeof t === 'string' ? t : t.to;
+    const p = POINTS.find((q) => q.id === tid);
+    if (!p) continue;
+    const cannon = !!t.cannon;
+    ctx.beginPath(); ctx.arc(px(p.x), py(p.y), cannon ? 15 : 11, 0, Math.PI * 2);
+    ctx.fillStyle = cannon ? 'rgba(196,62,46,.32)' : 'rgba(46,140,96,.35)';
+    ctx.fill();
+    ctx.strokeStyle = cannon ? '#b23a2e' : '#2e8c60'; ctx.lineWidth = 2; ctx.stroke();
+    if (cannon) { ctx.fillStyle = '#7d241a'; ctx.font = '12px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('炮', px(p.x), py(p.y)); }
+  }
+  // 棋子
+  for (const p of POINTS) {
+    const side = S.board[p.id]; if (!side) continue;
+    const x = px(p.x), y = py(p.y);
+    if (sel === p.id) {
+      ctx.beginPath(); ctx.arc(x, y, 23, 0, Math.PI * 2);
+      ctx.strokeStyle = '#e6b84f'; ctx.lineWidth = 3; ctx.stroke();
+    }
+    const grad = ctx.createRadialGradient(x - 5, y - 6, 2, x, y, 18);
+    if (side === 'r') { grad.addColorStop(0, '#e06a55'); grad.addColorStop(1, '#9c2b22'); }
+    else { grad.addColorStop(0, '#456682'); grad.addColorStop(1, '#1b2e42'); }
+    ctx.beginPath(); ctx.arc(x, y, 17, 0, Math.PI * 2); ctx.fillStyle = grad; ctx.fill();
+    ctx.strokeStyle = '#0006'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = '#f7ecd6'; ctx.font = 'bold 15px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(side === 'r' ? '龙' : '凤', x, y + 1);
+  }
+  if (on) requestAnimationFrame(draw);
+}
+
+function sync() {
+  $('phase').textContent = modeName();
+  $('turn').textContent = S.pendingCapture ? '成龙 · 待吃子' : (S.turn === 'r' ? '红方行棋' : '蓝方行棋');
+  $('tdot').className = 'turn-dot ' + S.turn;
+  $('rnum').textContent = countPieces(S, 'r');
+  $('bnum').textContent = countPieces(S, 'b');
+  $('idle').textContent = S.noCapture;
+  $('hint').textContent = hintText();
+  $('undo').disabled = !S.history.length;
+  if (S.winner) {
+    $('end').classList.add('show');
+    $('endtitle').textContent = S.winner === 'draw' ? '和局' : (S.winner === 'r' ? '红方胜' : '蓝方胜');
+    $('enddesc').textContent = reasonText(S.endReason);
+  } else $('end').classList.remove('show');
+  requestAnimationFrame(draw);
+}
+
+function clearSel() { sel = null; targets = []; }
+function aiTurn() {
+  clearTimeout(aiTimer);
+  if (S.winner || S.turn !== 'b') return;
+  aiTimer = setTimeout(() => {
+    // 一次操作可能产生「成龙待吃子」，再走一次把吃子完成
+    for (let i = 0; i < 3 && !S.winner; i++) {
+      if (S.pendingCapture && S.pendingCapture.owner !== 'b') break;
+      const before = S.step;
+      aiPlay(S, aiLevel, Math.random);
+      if (S.step === before && !S.pendingCapture) break;
+    }
+    clearSel(); sync();
+  }, 260);
+}
+function afterPlayer() {
+  clearSel();
+  if (S.winner) { sync(); return; }
+  if (S.pendingCapture && S.pendingCapture.owner === 'r') { sync(); return; }
+  aiTurn(); sync();
+}
+
+function onClick(ev) {
+  if (S.winner || S.turn !== 'r') return;
+  const r = cv.getBoundingClientRect();
+  const x = (ev.clientX - r.left) * (600 / r.width);
+  const y = (ev.clientY - r.top) * (600 / r.height);
+  let hit = null, best = 26 * 26;
+  for (const p of POINTS) {
+    const d = (px(p.x) - x) ** 2 + (py(p.y) - y) ** 2;
+    if (d < best) { best = d; hit = p.id; }
+  }
+  if (!hit) return;
+  if (S.pendingCapture) {
+    const res = capture(S, hit);
+    if (res.ok) { flash = []; afterPlayer(); }
+    else { $('hint').textContent = res.reason === 'dragon-protected' ? '这枚子已成型，不能吃。' : '请点对方棋子。'; }
+    return;
+  }
+  if (S.phase === 'place') {
+    const res = place(S, hit);
+    if (res.ok) {
+      if (res.dragons.length) { flash = res.dragons; flashUntil = performance.now() + 900; }
+      afterPlayer();
+    }
+    return;
+  }
+  if (sel && targets.some((t) => (t.to ?? t) === hit)) {
+    const res = move(S, sel, hit);
+    if (res.ok) {
+      if (res.dragons.length) { flash = res.dragons; flashUntil = performance.now() + 900; }
+      afterPlayer();
+    }
+    return;
+  }
+  if (S.board[hit] === 'r') {
+    sel = hit;
+    targets = cannonMoves(S, 'r').filter((m) => m.from === hit);
+    if (!targets.length) targets = legalMoves(S, hit, 'r');
+    sync();
+  } else { clearSel(); sync(); }
+}
+
+cv.addEventListener('click', onClick);
+$('undo').addEventListener('click', () => {
+  clearTimeout(aiTimer); clearSel(); undo(S); flash = []; sync();
+});
+$('restart').addEventListener('click', () => {
+  clearTimeout(aiTimer); S = createGame(Date.now()); clearSel(); flash = []; sync();
+});
+$('again').addEventListener('click', () => $('restart').click());
+$('level').addEventListener('change', (e) => { aiLevel = e.target.value; });
+$('rules').addEventListener('click', () => { location.href = './rules.html'; });
+
+/** 浏览器诊断接口（证据截图 / 自对弈验证用） */
+window.__DRAGON__ = {
+  get state() { return S; },
+  snapshot: () => ({ phase: S.phase, turn: S.turn, board: { ...S.board }, placed: { ...S.placed },
+    pending: S.pendingCapture, winner: S.winner, reason: S.endReason, noCapture: S.noCapture }),
+  clickPoint: (id) => {
+    const p = POINTS.find((q) => q.id === id);
+    if (!p) return false;
+    // 直接构造与 canvas 相同坐标的点击事件
+    const r = cv.getBoundingClientRect();
+    onClick({ clientX: r.left + (px(p.x) / 600) * r.width, clientY: r.top + (py(p.y) / 600) * r.height });
+    return true;
+  },
+  select: (id) => { sel = id; targets = legalMoves(S, id, S.turn); sync(); },
+  newGame: () => $('restart').click(),
+  setLevel: (v) => { aiLevel = v; $('level').value = v; },
+};
+sync();
+</script>
+</body>
+</html>

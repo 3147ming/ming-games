@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111513">
+  <title>棋艺规则 · 山海拾遗</title>
+  <link rel="stylesheet" href="../shared/tokens.css">
+  <link rel="stylesheet" href="./styles/game.css">
+  <style>
+    @media (pointer: coarse) { button, a[href] { min-height: 44px; } }
+    .rules-wrap { max-width: 860px; margin: 0 auto; padding: 20px 18px 60px; }
+    .rules-head { display:flex; align-items:center; gap:12px; margin-bottom:18px; }
+    .rules-head h1 { font-family: var(--font-display); font-size: 26px; margin:0; color: var(--gold); letter-spacing:.08em; }
+    .rules-head a.back { color: var(--stone-bright); text-decoration:none; font-size:14px; border:1px solid var(--line-strong); border-radius:var(--mg-r-pill); padding:6px 14px; }
+    .rules-nav { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:22px; }
+    .rules-nav a { font-size:13px; color:var(--paper); text-decoration:none; border:1px solid var(--line-strong); border-radius:var(--mg-r-pill); padding:7px 14px; background:var(--ink-800); }
+    .rules-nav a:hover { border-color:var(--gold); color:var(--gold); }
+    .rules-card { background: var(--ink-850); border:1px solid var(--line); border-radius:var(--mg-r-md); padding:18px 20px; margin-bottom:20px; }
+    .rules-card h2 { font-family:var(--font-display); color:var(--paper); font-size:20px; margin:0 0 6px; border-left:3px solid var(--cinnabar); padding-left:10px; }
+    .rules-card .lead { color:var(--paper-dim); font-size:14px; margin:0 0 14px; }
+    .rules-card ol, .rules-card ul { color:var(--paper-dim); font-size:14px; line-height:1.85; padding-left:22px; margin:8px 0; }
+    .rules-card li b { color:var(--paper); }
+    .rules-card .src { font-size:12px; color:var(--stone); margin-top:14px; border-top:1px dashed var(--line); padding-top:10px; word-break:break-all; }
+    .rules-card .src a { color:var(--stone-bright); }
+    .tag { display:inline-block; font-size:11px; padding:2px 8px; border-radius:var(--mg-r-pill); background:var(--ink-700); color:var(--gold); margin-left:8px; }
+  </style>
+</head>
+<body>
+  <div class="rules-wrap">
+    <div class="rules-head">
+      <h1>棋艺规则</h1>
+      <a class="back" href="./index.html">← 返回山海拾遗</a>
+    </div>
+
+    <nav class="rules-nav" aria-label="规则目录">
+      <a href="#jungle">斗兽棋</a>
+      <a href="#checkers">跳棋</a>
+      <a href="#banqi">暗棋</a>
+      <a href="#niu">憋死牛</a>
+      <a href="#gua">西瓜棋</a>
+    </nav>
+
+    <section class="rules-card" id="jungle">
+      <h2>斗兽棋 <span class="tag">7×9 · 八兽</span></h2>
+      <p class="lead">两侧兽穴，中间有河与陷阱。先进入对方兽穴者胜。</p>
+      <ol>
+        <li><b>棋盘</b>：7 列 × 9 行，两端中央为兽穴；每方兽穴周围 4 个陷阱，共 8 个。</li>
+        <li><b>吃子等级</b>：象 &gt; 狮 &gt; 虎 &gt; 豹 &gt; 狼 &gt; 犬 &gt; 猫 &gt; 鼠，同级互吃。</li>
+        <li><b>鼠象特例</b>：鼠可吃象，象不能吃鼠；河中的鼠只能被河中的鼠吃。</li>
+        <li><b>河流</b>：仅鼠能入河；其他兽只能走陆路。</li>
+        <li><b>狮虎跳河</b>：可沿直线跳过整条河（纵向跨 3 行、横向跨 2 列水域）；若水域中有鼠则不可跳。</li>
+        <li><b>陷阱</b>：走入<b>对方</b>陷阱的兽战力归零，任意敌子可吃；己方陷阱不削弱自己。</li>
+        <li><b>兽穴</b>：不能进己方兽穴；进入对方兽穴立即获胜。</li>
+        <li><b>和棋</b>：连续 25 回合无吃子判和（界面显示剩余回合）；吃子重置计数。</li>
+        <li><b>其他判负</b>：棋子被吃光，或轮到时无任何合法走法。</li>
+      </ol>
+      <div class="src">规则参考：民间通行斗兽棋规则（7×9 电子版通用布局）。</div>
+    </section>
+
+    <section class="rules-card" id="checkers">
+      <h2>跳棋 <span class="tag">中国跳棋 · 121 孔</span></h2>
+      <p class="lead">六角星棋盘，双方各 10 子，先占满对面三角者胜。</p>
+      <ol>
+        <li><b>走法</b>：每步沿六方向走一格到相邻空孔。</li>
+        <li><b>跳跃</b>：跳过一枚相邻棋子（敌我皆可作"桥"）落到其后的空孔；可连续跳跃。</li>
+        <li><b>不吞子</b>：跳跃不移除被跳过的棋子（与西洋跳棋不同）。</li>
+        <li><b>无强制</b>：有跳不强制跳，一步走法同样合法。</li>
+        <li><b>跳序标记</b>：选中棋子后，所有可达落点同时高亮，并用 ①②③… 标出到达所需的最少跳数；数字越大跳得越远。</li>
+        <li><b>胜利</b>：己方 10 子全部进入对面三角。</li>
+      </ol>
+      <div class="src">规则参考：中国跳棋通行规则。</div>
+    </section>
+
+    <section class="rules-card" id="banqi">
+      <h2>暗棋 <span class="tag">8×4 · 三十二子</span></h2>
+      <p class="lead">棋子覆面，轮流翻棋或走己方明棋。等级大吃小，兵是将的克星。</p>
+      <ol>
+        <li><b>开局</b>：三十二子覆面于 8×4 棋盘，红黑各 16（帅/将 1、仕/士 2、相/象 2、车 2、马 2、炮 2、兵/卒 5）。</li>
+        <li><b>等级</b>：将/帅 &gt; 士 &gt; 象 &gt; 车 &gt; 马 &gt; 炮 &gt; 兵/卒，大吃小、同级互吃。</li>
+        <li><b>兵吃将</b>：兵/卒可吃将/帅，将/帅不能吃兵/卒。</li>
+        <li><b>炮</b>：不吃子时走一格；吃子须隔一枚"炮架"，且不打兵/卒。</li>
+        <li><b>翻棋</b>：暗子唯一合法动作是翻棋；翻棋消耗一手后立即换手，翻开的子当手不能再走。</li>
+        <li><b>判负</b>：将/帅被吃即负；或棋子被吃光；或轮到时无合法动作。</li>
+        <li><b>判和</b>：双方只剩不可过河子（都只剩兵）；或连续 60 回合无吃子；或双方循环不变。</li>
+      </ol>
+      <div class="src">
+        标准规则来源（本作据此重做判定）：<br>
+        · 象棋屋《暗棋象棋规则》：<a href="https://www.xiangqiwu.com/c-xiangqizhishi/p-24012317221779526" target="_blank" rel="noopener">https://www.xiangqiwu.com/c-xiangqizhishi/p-24012317221779526</a><br>
+        · Wikiwand《暗棋》：<a href="https://www.wikiwand.com/zh/%E6%9A%97%E6%A3%8B" target="_blank" rel="noopener">https://www.wikiwand.com/zh/暗棋</a>
+      </div>
+    </section>
+
+    <section class="rules-card" id="niu">
+      <h2>憋死牛（区字棋） <span class="tag">5 点 · 各 2 子</span></h2>
+      <p class="lead">"区"字五点，四角加中心。把对方两子堵死不能动者胜。</p>
+      <ol>
+        <li><b>棋盘</b>：5 个点（4 角 + 中心），按"区"字连线。</li>
+        <li><b>布子</b>：每人 2 子；先占中心者先手。</li>
+        <li><b>走法</b>：沿线走一格到空点。</li>
+        <li><b>胜负</b>：把对方两子全部堵死、无法移动者胜；被堵方若一步可脱身则不算死。</li>
+      </ol>
+      <div class="src">规则参考：民间"区字棋 / 憋死牛"通行规则。</div>
+    </section>
+
+    <section class="rules-card" id="gua">
+      <h2>西瓜棋 <span class="tag">13 点 · 各 6 子</span></h2>
+      <p class="lead">圆周 12 点加中心，沿圆周或径向走一格，围住对方即吃。</p>
+      <ol>
+        <li><b>棋盘</b>：圆周 12 点 + 中心 1 点，共 13 点。</li>
+        <li><b>布子</b>：每人 6 子。</li>
+        <li><b>走法</b>：沿圆周或径向走一格。</li>
+        <li><b>吃子</b>：把对方子围住（两端或径向被夹、无法移动）即吃掉。</li>
+        <li><b>胜负</b>：吃光对方子，或对方无子可动 / 认输。</li>
+      </ol>
+      <div class="src">规则参考：民间"西瓜棋"通行规则。</div>
+    </section>
+  </div>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "麻将 · 四人局",
+  "short_name": "麻将",
+  "description": "136 张简版麻将，碰杠胡、七对与番型结算。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#10231d",
+  "theme_color": "#10231d",
+  "categories": ["games", "puzzle"]
+}

@@ -34,6 +34,8 @@
       </div>
       <nav class="masthead__actions" aria-label="对局操作" role="navigation">
         <button aria-label="棋艺对局" class="btn btn--ghost btn--small" id="open-chess" type="button">棋艺</button>
+        <button aria-label="查看规则" class="btn btn--ghost btn--small" id="open-rules" type="button">规则</button>
+        <button aria-label="民间棋" class="btn btn--ghost btn--small" id="open-folk" type="button">民间棋</button>
         <button aria-label="选择关卡" class="btn btn--ghost btn--small" id="pick-stage" type="button">择卷</button>
         <button aria-label="重开关卡" class="btn btn--ghost btn--small" id="restart-stage" type="button" disabled>重开</button>
       </nav>
@@ -209,6 +211,15 @@ window.addEventListener('unhandledrejection', function(e) {
   <script defer src="./src/chess-core.mjs"></script>
   <script defer src="./src/chess-render.mjs"></script>
   <script defer src="./src/chess-ui.mjs"></script>
+
+  <!-- 规则页 / 民间棋入口 -->
+  <script>
+  (function(){
+    var r=document.getElementById('open-rules'),f=document.getElementById('open-folk');
+    if(r) r.addEventListener('click',function(){ location.href='./rules.html'; });
+    if(f) f.addEventListener('click',function(){ location.href='./folk.html'; });
+  })();
+  </script>
 
 <!-- PWA：Service Worker（离线可用 / 可安装到主屏） -->
 <script>

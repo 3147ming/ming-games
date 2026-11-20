@@ -45,6 +45,10 @@ import { createTaskboard } from './taskboard.mjs';
 /* 进货运输闭环（2026-10-06 块5）：下单→在途→到货→搬运 */
 import { createDelivery } from './delivery.mjs';
 import { createIncidents } from './incidents.mjs';
+/* 任务块 H：四事件三段流程 + 打烊结算 + 单 key 存档（纯逻辑模块） */
+import {
+  SHIFT_EVENTS, createEventMachine, applyEffects, settleShift, createShiftStore,
+} from './shift-events.mjs';
 import { createInventory } from './items.mjs';
 import { computeBounds, applyLayout } from './layout.mjs';
 import {
@@ -803,6 +807,56 @@ const incidents = createIncidents({
     }
   },
 });
+
+/* ---------- 任务块 H：醉客闹事 / 夜盗 / 停电 / 临检 三段流程 ----------
+ * 与既有 incidents（设备维度：停电/大故障/高峰）并行但每夜只排一个，避免叠加劝退。
+ * 玩家在处理窗口按 E 视为处置成功；超时自动结算失败后果。 */
+const H_EFFECT_LABEL = {
+  cash: '金币', reputation: '口碑', shelfDamage: '货架损坏',
+  customersLost: '流失顾客', recovered: '追回',
+};
+let hShiftLog = [];
+let hNextEventIn = 40 + Math.random() * 50;
+let hFiredTonight = 0;
+const hShiftStore = createShiftStore(typeof localStorage !== 'undefined' ? localStorage : null);
+
+const hEvents = createEventMachine({
+  onEvent: (type, p) => {
+    if (type !== 'phase') return;
+    if (p.phase === 'warning') {
+      toast(`⚠ 预警：${p.name} · ${p.hint}`, 'warn', 2400);
+    } else if (p.phase === 'window') {
+      toast(`${p.name}！${p.hint}（按 E 处理）`, 'bad', 2400);
+    } else if (p.phase === 'result') {
+      applyEffects(state, p.effects);
+      hShiftLog.push({ id: p.id, success: p.success, label: p.label, at: state.wallElapsed });
+      const bits = Object.entries(p.effects)
+        .map(([k, v]) => `${H_EFFECT_LABEL[k] ?? k} ${v > 0 ? '+' : ''}${v}`);
+      toast(`${p.label}${bits.length ? ' · ' + bits.join('、') : ''}`, p.success ? 'ok' : 'bad', 2600);
+    }
+  },
+});
+
+function hEventTick(dt, now) {
+  if (hFiredTonight === 0 && !hEvents.snapshot() && state.wallElapsed > 15) {
+    hNextEventIn -= dt;
+    if (hNextEventIn <= 0) {
+      const ids = Object.keys(SHIFT_EVENTS);
+      hEvents.start(ids[Math.floor(Math.random() * ids.length)], now);
+      hFiredTonight = 1;
+    }
+  }
+  hEvents.tick(dt, now);
+}
+
+/** 浏览器诊断接口：验证三段流程 / 事件效果 / 存档 */
+window.__NS_H__ = {
+  snapshot: () => hEvents.snapshot(),
+  log: () => hShiftLog.slice(),
+  fire: (id) => hEvents.start(id, state.wallElapsed),
+  handle: (ok = true) => hEvents.handle(ok),
+  store: hShiftStore,
+};
 
 const inventory = createInventory({ state });
 
@@ -2051,6 +2105,9 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (e.code === 'KeyE') {
+    // 任务块 H：事件处理窗口优先接管 E，避免同时触发店内交互
+    const hs = hEvents.snapshot();
+    if (hs?.phase === 'window') { hEvents.handle(true); return; }
     // 手感 2：按下瞬间给一次"按键手感"音；结果出来再报成功/失败音
     sfx.key();
     /* P0-2：统一交互入口。找零窗口(state.tipWindow)、引导标记、清仓计数、上货反馈
@@ -2329,6 +2386,10 @@ function retryNight() {
     if (!res.ok) return false;
     syncWorldVisuals();
     scheduleEvents();
+    /* 任务块 H：每夜只排一起新事件，事件日志按夜重置 */
+    hFiredTonight = 0;
+    hNextEventIn = 40 + Math.random() * 50;
+    hShiftLog = [];
     state.segmentLabel = '';
     lastServedCount = state.served;
     lastLostCount = state.lostSales;
@@ -2491,6 +2552,23 @@ function endNight() {
   report.tips = Math.round(state.tips ?? 0);
   report.litter = worldState.litter?.length ?? 0;
   report.incidents = incidentCount;
+  /* 任务块 H-4：打烊结算 + 单 key 版本号存档，次日客流预估进结算面板 */
+  const hSettle = settleShift({
+    day: state.night,
+    revenue: report.revenue ?? 0,
+    costs: Math.max(0, (report.revenue ?? 0) - (report.netProfit ?? 0)),
+    visitors: state.served ?? 0,
+    reputation: report.reputation ?? state.reputation ?? 50,
+    events: hShiftLog,
+    unlocks: { stars: state.starsUnlocked ?? true },
+    staff: (state.staff ?? []).map((s) => ({
+      type: s.type, stamina: s.stamina, status: s.status, onDuty: s.onDuty,
+    })),
+    crowded: (state.surgeUntil ?? 0) > state.wallElapsed,
+  });
+  report.shiftForecast = hSettle.forecast;
+  hShiftStore.save(hSettle);
+  toast(`次日客流预估 · 约 ${hSettle.forecast} 人`, 'info', 2600);
   report.expiring = expiring && expiring.left > 0 ? expiring : null;
   report.cleared = cleared;          // 打烊清场人数（A 方案零惩罚，仅展示用）
   report.ledger = ledger.entries();
@@ -3073,6 +3151,8 @@ function step(now) {
 
     /* --- 需求I ⑥：随机突发事件推进（停电/大故障/客流高峰） --- */
     incidents.update(dt, { now: state.wallElapsed, activeDevice: () => state.minigameId });
+    /* 任务块 H：四事件三段流程推进（每夜最多一起） */
+    hEventTick(dt, state.wallElapsed);
 
     // 需求H：自动存档（按**游戏秒**计时，暂停/小游戏中不累计）
     save.tick(dt);

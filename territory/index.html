@@ -4,128 +4,241 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#141026">
-<meta name="description" content="占位棋 TERRITORY —— 小棋盘领土争夺，落子扩张、包围翻转，与 AI 对弈。">
+<meta name="description" content="占位棋 TERRITORY —— 8×8 标准 / 6×6 快棋，包围翻转，与 AI 对弈，支持悔棋与棋谱。">
 <title>占位棋 · TERRITORY</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23141026'/%3E%3Ccircle cx='16' cy='16' r='9' fill='%23a89ae6'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="../shared/tokens.css">
 <style>
 :root{--ac:#a89ae6;--bg:#141026;--paper:#ece9f7;--dim:#9a92b8;--line:#332a52;--me:#a89ae6;--ai:#e0736b}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%}
-body{background:radial-gradient(120% 80% at 50% -10%,#241a42 0%,var(--bg) 64%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:16px 12px calc(20px + env(safe-area-inset-bottom))}
-.wrap{width:min(100%,440px)}
-.head{text-align:center;margin-bottom:10px}.logo{font-size:23px;letter-spacing:.24em;margin:0;color:var(--ac)}.sub{font-size:10px;letter-spacing:.14em;color:var(--dim);margin:4px 0 0}
-.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:12px;padding:9px 12px;margin-bottom:10px;font-size:12px}
+body{background:radial-gradient(120% 80% at 50% -10%,#241a42 0%,var(--bg) 64%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:14px 12px calc(20px + env(safe-area-inset-bottom))}
+.wrap{width:min(100%,460px)}
+.head{text-align:center;margin-bottom:8px}.logo{font-size:22px;letter-spacing:.24em;margin:0;color:var(--ac)}.sub{font-size:10px;letter-spacing:.14em;color:var(--dim);margin:4px 0 0}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin-bottom:8px;font-size:12px}
 .score{display:flex;gap:12px;align-items:center}.me b{color:var(--me);font-size:18px}.ai b{color:var(--ai);font-size:18px}
+.modebar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;justify-content:center}
+.modebar .chip{border:1px solid var(--line);background:rgba(0,0,0,.22);color:var(--dim);border-radius:999px;min-height:34px;padding:0 12px;font:inherit;font-size:11px;cursor:pointer}
+.modebar .chip.on{background:var(--ac);color:#140f26;border-color:var(--ac);font-weight:600}
 .board{display:grid;gap:3px;background:#241c3d;border:2px solid var(--line);border-radius:12px;padding:4px;margin:0 auto;width:min(100%,360px);aspect-ratio:1}
-.cell{background:#1b1633;border:none;border-radius:6px;cursor:pointer;position:relative;min-width:0;min-height:0;padding:0}
+.cell{background:#1b1633;border:none;border-radius:6px;cursor:pointer;position:relative;min-width:0;min-height:0;padding:0;-webkit-tap-highlight-color:transparent}
 .cell:hover{background:#2a2249}
-.cell .disc{position:absolute;inset:14%;border-radius:50%;transition:transform .2s;display:flex;align-items:center;justify-content:center}.cell .disc svg{width:58%;height:58%;color:#241a42}
+.cell .disc{position:absolute;inset:12%;border-radius:50%;transition:transform .2s,box-shadow .15s;display:flex;align-items:center;justify-content:center;z-index:2}.cell .disc svg{width:58%;height:58%;color:#241a42}
 .cell .disc.me{background:radial-gradient(circle at 35% 30%,#c9bff5,var(--me));box-shadow:0 2px 6px rgba(0,0,0,.4)}
 .cell .disc.ai{background:radial-gradient(circle at 35% 30%,#f5a29c,var(--ai));box-shadow:0 2px 6px rgba(0,0,0,.4)}
-.cell.hint::after{content:'';position:absolute;inset:38%;border-radius:50%;background:rgba(168,154,230,.35)}
+.cell.hint::before{content:'';position:absolute;inset:12%;border-radius:50%;background:radial-gradient(circle at 35% 30%,rgba(201,191,245,.34),rgba(168,154,230,.16));border:2px solid var(--me);animation:hintPulse 1.5s ease-in-out infinite;z-index:1}
+@keyframes hintPulse{0%,100%{opacity:.5;transform:scale(.9)}50%{opacity:1;transform:scale(1.03)}}
+.cell .disc.flip-preview{box-shadow:0 0 0 3px #ffcf5c,0 0 16px rgba(255,207,92,.85)}
 .controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px}
-.btn{border:none;border-radius:12px;min-height:42px;padding:0 16px;font:inherit;font-size:13px;cursor:pointer;background:var(--ac);color:#140f26;font-weight:600}
+.btn{border:none;border-radius:12px;min-height:44px;padding:0 16px;font:inherit;font-size:13px;cursor:pointer;background:var(--ac);color:#140f26;font-weight:600;-webkit-tap-highlight-color:transparent}
 .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--paper);font-weight:400}
+.btn:disabled{opacity:.4;cursor:default}
 .msg{text-align:center;min-height:20px;font-size:12px;margin:8px 0;color:var(--dim)}
 .msg.win{color:#5cc08a}.msg.lose{color:var(--ai)}
+.hist{margin-top:8px;border:1px solid var(--line);border-radius:12px;background:rgba(0,0,0,.2);overflow:hidden}
+.hist .h-head{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;font-size:12px;color:var(--dim);cursor:pointer;min-height:40px}
+.hist .h-head b{color:var(--ac)}
+.hist ol{margin:0;padding:6px 12px 10px 30px;max-height:132px;overflow:auto;font-size:11px;line-height:1.9;color:var(--dim)}
+.hist ol li span.me{color:var(--me)}.hist ol li span.ai{color:var(--ai)}
+.hist[hidden] ol{display:none}
 .overlay{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.72)}
 .overlay[hidden]{display:none}.overlay .inner{width:min(100%,360px);background:linear-gradient(180deg,#241a42,#141026);border:1px solid var(--line);border-radius:18px;padding:22px;text-align:center}
 .overlay h2{margin:0 0 10px;color:var(--ac);letter-spacing:.1em;font-size:19px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (max-width:375px){.board{width:min(100%,340px)}.btn{padding:0 12px;font-size:12px}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="head"><h1 class="logo">TERRITORY</h1><p class="sub">占 位 棋 · 包 围 翻 转</p></div>
-  <div class="bar"><div class="score"><span class="me">你 <b id="me">2</b></span><span class="ai">AI <b id="ai">2</b></span></div><button class="btn ghost" id="btn-info" style="min-height:30px;padding:0 10px">规则</button></div>
+  <div class="bar"><div class="score"><span class="me">你 <b id="me">2</b></span><span class="ai">AI <b id="ai">2</b></span></div><button class="btn ghost" id="btn-info" style="min-height:34px;padding:0 12px">规则</button></div>
+  <div class="modebar"><button class="chip on" data-size="8">标准 8×8</button><button class="chip" data-size="6">快棋 6×6</button></div>
   <div class="board" id="board"></div>
   <div class="msg" id="msg">你执紫棋先手 · 落子包围对手即可翻转</div>
-  <div class="controls"><button class="btn" id="btn-new">新局</button><button class="btn ghost" id="btn-daily">每日局</button></div>
+  <div class="controls"><button class="btn" id="btn-new">新局</button><button class="btn ghost" id="btn-daily">每日局</button><button class="btn ghost" id="btn-undo">悔棋</button></div>
+  <div class="hist" id="hist" hidden><div class="h-head" id="hist-head"><span>最近棋谱 <b id="hist-n">0</b> 手</span><span id="hist-arrow">展开 ▾</span></div><ol id="hist-list"></ol></div>
 </div>
 <div class="overlay" id="info" hidden><div class="inner" style="text-align:left"><h2>玩法</h2><p id="info-body" style="font-size:12px;line-height:1.9;color:var(--dim)"></p><div class="controls"><button class="btn" id="info-close">知道了</button></div></div></div>
 <div class="overlay" id="over" hidden><div class="inner"><h2 id="over-title">对局结束</h2><p id="over-info" style="font-size:13px;color:var(--dim);line-height:1.8"></p><div class="controls"><button class="btn" id="over-btn">再来一局</button></div></div></div>
 <script>
 (function(){
 'use strict';
-var DISCICON={"me": "<svg viewBox='2.20 1.96 5.60 5.60' fill='currentColor' aria-hidden='true'><path d='M7.45 6.6a.35.35 0 1 1 0 .7h-4.9a.35.35 0 1 1 0-.7zM6.01 3.587c.107.19.16.285.241.326a.3.3 0 0 0 .164.031c.09-.008.175-.076.346-.213.354-.283.53-.424.674-.409.088.01.17.052.228.12.094.108.079.335.049.786l-.018.253c-.042.636-.063.953-.254 1.16a1 1 0 0 1-.087.082c-.22.177-.538.177-1.175.177H3.822c-.637 0-.955 0-1.175-.177a1 1 0 0 1-.087-.082c-.191-.207-.212-.524-.254-1.16l-.018-.253c-.03-.451-.045-.678.049-.787a.35.35 0 0 1 .228-.119c.143-.015.32.126.674.41.17.136.256.204.346.212a.3.3 0 0 0 .164-.031c.08-.041.134-.136.241-.326l.348-.616c.277-.49.415-.734.62-.756a.4.4 0 0 1 .084 0c.205.022.343.266.62.756z'/></svg>", "ai": "<svg viewBox='2.15 2.15 5.70 5.70' fill='currentColor' aria-hidden='true'><path d='M2.382 4.164c-.055-.392-.083-.588-.016-.725a.4.4 0 0 1 .032-.057c.084-.128.42-.268 1.09-.55C4.083 2.584 4.56 2.15 5 2.15c.441 0 .922.476 1.517.754.674.314 1.011.47 1.09.596a.4.4 0 0 1 .03.056c.062.134.035.325-.02.708C7.275 6.654 5.95 7.85 5 7.85S2.723 6.578 2.382 4.164'/></svg>"};
+var DISCICON={"me":"<svg viewBox='2.20 1.96 5.60 5.60' fill='currentColor' aria-hidden='true'><path d='M7.45 6.6a.35.35 0 1 1 0 .7h-4.9a.35.35 0 1 1 0-.7zM6.01 3.587c.107.19.16.285.241.326a.3.3 0 0 0 .164.031c.09-.008.175-.076.346-.213.354-.283.53-.424.674-.409.088.01.17.052.228.12.094.108.079.335.049.786l-.018.253c-.042.636-.063.953-.254 1.16a1 1 0 0 1-.087.082c-.22.177-.538.177-1.175.177H3.822c-.637 0-.955 0-1.175-.177a1 1 0 0 1-.087-.082c-.191-.207-.212-.524-.254-1.16l-.018-.253c-.03-.451-.045-.678.049-.787a.35.35 0 0 1 .228-.119c.143-.015.32.126.674.41.17.136.256.204.346.212a.3.3 0 0 0 .164-.031c.08-.041.134-.136.241-.326l.348-.616c.277-.49.415-.734.62-.756a.4.4 0 0 1 .084 0c.205.022.343.266.62.756z'/></svg>","ai":"<svg viewBox='2.15 2.15 5.70 5.70' fill='currentColor' aria-hidden='true'><path d='M2.382 4.164c-.055-.392-.083-.588-.016-.725a.4.4 0 0 1 .032-.057c.084-.128.42-.268 1.09-.55C4.083 2.584 4.56 2.15 5 2.15c.441 0 .922.476 1.517.754.674.314 1.011.47 1.09.596a.4.4 0 0 1 .03.056c.062.134.035.325-.02.708C7.275 6.654 5.95 7.85 5 7.85S2.723 6.578 2.382 4.164'/></svg>"};
 var KEY='mg_territory.v1',$=function(i){return document.getElementById(i)};
-var S=(function(){try{var o=JSON.parse(localStorage.getItem(KEY));if(o&&typeof o==='object')return o}catch(e){}return {wins:0,runs:0,best:0,daily:null}})();
+var S=(function(){try{var o=JSON.parse(localStorage.getItem(KEY));if(o&&typeof o==='object')return o}catch(e){}return{wins:0,runs:0,best:0,daily:null}})();
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-function rng(seed){var x=seed>>>0||1;return function(){x^=x<<13;x^=x>>>17;x^=x<<5;return (x>>>0)/4294967296}}
+function rng(seed){var x=seed>>>0||1;return function(){x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296}}
 function seedFrom(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
-var N=6,board=[],turn=1,over=false,daily=false,rand=rng(Date.now()|0);
 var DIR=[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
-function idx(r,c){return r*N+c}
-function inside(r,c){return r>=0&&r<N&&c>=0&&c<N}
-function flips(board,r,c,p){
-  if(board[idx(r,c)]!==0)return [];
+
+/* ---------- 纯逻辑层（接受 board/n，供 headless 自对弈测试复用）---------- */
+function inside(n,r,c){return r>=0&&r<n&&c>=0&&c<n}
+function flipsOn(b,n,r,c,p){
+  if(r<0||c<0||r>=n||c>=n||b[r*n+c]!==0)return[];
   var out=[];
   DIR.forEach(function(d){
-    var dr=d[0],dc=d[1],rr=r+dr,cc=c+dc,line=[];
-    while(inside(rr,cc)&&board[idx(rr,cc)]===-p){line.push(idx(rr,cc));rr+=dr;cc+=dc}
-    if(line.length&&inside(rr,cc)&&board[idx(rr,cc)]===p)out=out.concat(line);
+    var rr=r+d[0],cc=c+d[1],line=[];
+    while(inside(n,rr,cc)&&b[rr*n+cc]===-p){line.push(rr*n+cc);rr+=d[0];cc+=d[1]}
+    if(line.length&&inside(n,rr,cc)&&b[rr*n+cc]===p)out=out.concat(line);
   });
   return out;
 }
-function moves(p){var m=[];for(var r=0;r<N;r++)for(var c=0;c<N;c++)if(flips(board,r,c,p).length)m.push(idx(r,c));return m}
-function place(pos,p){
-  var r=Math.floor(pos/N),c=pos%N,f=flips(board,r,c,p);
-  if(!f.length)return false;
-  board[pos]=p;f.forEach(function(i){board[i]=p});turn=-p;return true;
+function movesOn(b,n,p){var m=[];for(var r=0;r<n;r++)for(var c=0;c<n;c++){var f=flipsOn(b,n,r,c,p);if(f.length)m.push({pos:r*n+c,flips:f.length})}return m}
+function applyOn(b,n,pos,p){var r=Math.floor(pos/n),c=pos%n,f=flipsOn(b,n,r,c,p);if(!f.length)return 0;b[pos]=p;f.forEach(function(i){b[i]=p});return f.length}
+function newBoard(n){var b=new Array(n*n).fill(0),m=Math.floor(n/2);b[(m-1)*n+(m-1)]=1;b[m*n+m]=1;b[(m-1)*n+m]=-1;b[m*n+(m-1)]=-1;return b}
+function countOn(b){var me=0,ai=0;b.forEach(function(v){if(v===1)me++;else if(v===-1)ai++});return{me:me,ai:ai}}
+function bestOn(b,n,p,rand){
+  var m=movesOn(b,n,p);if(!m.length)return-1;
+  var best=m[0].pos,bestScore=-1e9;
+  m.forEach(function(o){
+    var copy=b.slice(),f=applyOn(copy,n,o.pos,p);
+    var opp=movesOn(copy,n,-p).length;
+    var sc=-opp+f*0.1+rand()*0.5;
+    if(sc>bestScore){bestScore=sc;best=o.pos}
+  });
+  return best;
 }
-function counts(){var me=0,ai=0;board.forEach(function(v){if(v===1)me++;else if(v===-1)ai++});return {me:me,ai:ai}}
+function simulate(n,seed){
+  var b=newBoard(n),rand=rng(seed),p=1,steps=0,pass=0;
+  while(steps<n*n*2){
+    var m=movesOn(b,n,p);
+    if(!m.length){pass++;if(pass>=2)break;p=-p;continue}
+    pass=0;var pos=bestOn(b,n,p,rand);applyOn(b,n,pos,p);steps++;p=-p;
+  }
+  return{steps:steps,count:countOn(b),ended:true};
+}
+
+/* ---------- 游戏状态 ---------- */
+var N=8,board=[],turn=1,over=false,daily=false,rand=rng(Date.now()|0);
+var hist=[],undoSnap=null,aiTimer=null;
+
+function moves(p){return movesOn(board,N,p)}
+function flips(r,c,p){return flipsOn(board,N,r,c,p)}
+function counts(){return countOn(board)}
+
+function pushHist(p,pos,n){hist.push({p:p,pos:pos,n:n});if(hist.length>200)hist.shift()}
+function renderHist(){
+  $('hist-n').textContent=hist.length;
+  var ol=$('hist-list');ol.innerHTML='';
+  hist.slice(-10).reverse().forEach(function(h){
+    var li=document.createElement('li');
+    var who=h.p===1?'<span class="me">你</span>':'<span class="ai">AI</span>';
+    li.innerHTML=who+' · '+(Math.floor(h.pos/N)+1)+'行'+(h.pos%N+1)+'列 · 翻'+h.n;
+    ol.appendChild(li);
+  });
+}
+function clearPreview(){
+  var ds=document.querySelectorAll('#board .disc.flip-preview');
+  for(var i=0;i<ds.length;i++)ds[i].classList.remove('flip-preview');
+}
 function render(){
   var el=$('board');el.style.gridTemplateColumns='repeat('+N+',1fr)';el.innerHTML='';
-  var valid=over?[]:moves(turn);
+  var valid=over?[]:moves(turn),vset={};valid.forEach(function(o){vset[o.pos]=o.flips});
   for(var i=0;i<N*N;i++){
-    let cell=document.createElement('button');cell.className='cell'+(valid.indexOf(i)>=0?' hint':'');
-    if(board[i]!==0){var d=document.createElement('span');d.className='disc '+(board[i]===1?'me':'ai');d.innerHTML=DISCICON[board[i]===1?'me':'ai'];cell.appendChild(d)}
-    cell.setAttribute('data-i',i);cell.addEventListener('click',function(){var p=+cell.getAttribute('data-i');if(over||turn!==1)return;if(place(p,1)){afterMove()}else{$('msg').textContent='那里不能落子'}});
+    let cell=document.createElement('button');
+    var isHint=vset[i]!==undefined;
+    cell.className='cell'+(isHint?' hint':'');
+    cell.setAttribute('data-i',i);
+    if(board[i]!==0){
+      var d=document.createElement('span');d.className='disc '+(board[i]===1?'me':'ai');d.innerHTML=DISCICON[board[i]===1?'me':'ai'];cell.appendChild(d);
+    }
+    if(isHint){
+      cell.addEventListener('mouseenter',function(){
+        clearPreview();
+        var r=Math.floor(i/N),c=i%N;
+        flipsOn(board,N,r,c,turn).forEach(function(fi){
+          var target=el.querySelector('[data-i="'+fi+'"] .disc');if(target)target.classList.add('flip-preview');
+        });
+      });
+      cell.addEventListener('mouseleave',clearPreview);
+    }
+    cell.addEventListener('click',function(){
+      var pos=+cell.getAttribute('data-i');
+      if(over||turn!==1)return;
+      var r=Math.floor(pos/N),c=pos%N,f=flips(r,c,1);
+      if(!f.length){$('msg').textContent='这里翻不到子';return}
+      undoSnap={board:board.slice(),turn:1,hist:hist.slice(),daily:daily};
+      var n=applyOn(board,N,pos,1);
+      pushHist(1,pos,n);
+      $('msg').textContent='翻转 '+n+' 子';
+      proceed();
+    });
     el.appendChild(cell);
   }
   var c=counts();$('me').textContent=c.me;$('ai').textContent=c.ai;
+  $('btn-undo').disabled=!undoSnap;
+  renderHist();
 }
-function afterMove(){
-  if(moves(-1).length){
-    setTimeout(function(){aiMove();render();checkEnd()},350);
-  } else {render();checkEnd()}
+function proceed(){
   render();
-}
-function aiMove(){
-  var m=moves(-1);if(!m.length)return;
-  var best=m[0],bestScore=-1e9;
-  m.forEach(function(p){
-    var copy=board.slice();var r=Math.floor(p/N),c=p%N;
-    var f=flips(copy,r,c,-1);copy[p]=-1;f.forEach(function(i){copy[i]=-1});
-    var mobility=movesFor(copy,1).length;
-    var sc=mobility+rand()*0.5+(f.length>0?f.length*0.1:0);
-    if(sc>bestScore){bestScore=sc;best=p}
-  });
-  place(best,-1);
-}
-function movesFor(b,p){var m=[];for(var r=0;r<N;r++)for(var c=0;c<N;c++)if(flips2(b,r,c,p).length)m.push(1);return m}
-function flips2(b,r,c,p){if(b[idx(r,c)]!==0)return[];var out=[];DIR.forEach(function(d){var rr=r+d[0],cc=c+d[1],line=[];while(inside(rr,cc)&&b[idx(rr,cc)]===-p){line.push(1);rr+=d[0];cc+=d[1]}if(line.length&&inside(rr,cc)&&b[idx(rr,cc)]===p)out=out.concat(line)});return out}
-function checkEnd(){
-  if(!moves(1).length&&!moves(-1).length||board.every(function(v){return v!==0})){
-    over=true;var c=counts(),win=c.me>c.ai,tie=c.me===c.ai;
-    S.runs++;if(win)S.wins++;var score=c.me;if(score>S.best)S.best=score;if(daily)S.daily=today();save();
-    $('over-title').textContent=tie?'平局':win?'你赢了！':'AI 获胜';
-    $('over-info').textContent='你 '+c.me+' : '+c.ai+' AI';
-    $('over').hidden=false;$('msg').className='msg '+(win?'win':'lose');$('msg').textContent=tie?'平局':win?'胜利':'再接再厉';
+  if(over)return;
+  if(moves(turn).length===0){
+    if(moves(-turn).length===0){checkEnd();return}
+    var who=turn===1?'你':'AI';
+    turn=-turn;
+    $('msg').textContent=who+'无子可下，自动跳过';
+    render();
+  }
+  if(turn===-1){
+    if(aiTimer)clearTimeout(aiTimer);
+    aiTimer=setTimeout(function(){aiTimer=null;aiMove();proceed()},260);
   }
 }
-function start(isDaily){
+function aiMove(){
+  var pos=bestOn(board,N,-1,rand);if(pos<0)return;
+  var n=applyOn(board,N,pos,-1);pushHist(-1,pos,n);
+  turn=1;
+}
+function checkEnd(){
+  if(moves(1).length||moves(-1).length)return false;
+  over=true;if(aiTimer){clearTimeout(aiTimer);aiTimer=null}
+  var c=counts(),win=c.me>c.ai,tie=c.me===c.ai;
+  S.runs++;if(win)S.wins++;var score=c.me;if(score>S.best)S.best=score;if(daily)S.daily=today();save();
+  $('over-title').textContent=tie?'平局':win?'你赢了！':'AI 获胜';
+  $('over-info').textContent='你 '+c.me+' : '+c.ai+' AI';
+  $('over').hidden=false;
+  $('msg').className='msg '+(tie?'':win?'win':'lose');
+  $('msg').textContent=tie?'平局':win?'胜利':'再接再厉';
+  return true;
+}
+function start(isDaily,size){
+  if(size)N=size;
   daily=!!isDaily;rand=rng(daily?seedFrom('territory-'+today()):(Date.now()|0));
-  board=new Array(N*N).fill(0);var m=Math.floor(N/2);
-  board[idx(m-1,m-1)]=1;board[idx(m,m)]=1;board[idx(m-1,m)]=-1;board[idx(m,m-1)]=-1;
-  turn=1;over=false;$('over').hidden=true;$('msg').className='msg';$('msg').textContent=daily?'每日局 · '+today():'你执紫棋先手';render();
+  if(aiTimer){clearTimeout(aiTimer);aiTimer=null}
+  board=newBoard(N);turn=1;over=false;hist=[];undoSnap=null;
+  $('over').hidden=true;$('msg').className='msg';
+  $('msg').textContent=daily?'每日局 · '+today()+' · 固定种子':'你执紫棋先手';
+  document.querySelectorAll('.modebar .chip').forEach(function(ch){ch.classList.toggle('on',+ch.getAttribute('data-size')===N)});
+  render();
+}
+function undo(){
+  if(!undoSnap){$('msg').textContent='没有可悔的棋';return}
+  if(aiTimer){clearTimeout(aiTimer);aiTimer=null}
+  board=undoSnap.board.slice();turn=undoSnap.turn;hist=undoSnap.hist.slice();daily=undoSnap.daily;
+  undoSnap=null;over=false;$('over').hidden=true;$('msg').className='msg';$('msg').textContent='已悔棋一步';
+  render();
 }
 $('btn-new').addEventListener('click',function(){start(false)});
 $('btn-daily').addEventListener('click',function(){start(true)});
-$('btn-info').addEventListener('click',function(){$('info-body').textContent='你执紫棋先手，在空格落子。若落子后能在某一方向把AI的棋子夹在两枚己方棋子之间，就翻转它们。轮流转，无法落子则跳过。棋盘填满或双方都无子可下时结束，棋子多者胜。每日局用固定种子，对手策略一致。';$('info').hidden=false});
+$('btn-undo').addEventListener('click',undo);
+document.querySelectorAll('.modebar .chip').forEach(function(ch){ch.addEventListener('click',function(){start(false,+ch.getAttribute('data-size'))})});
+$('btn-info').addEventListener('click',function(){
+  $('info-body').textContent='你执紫棋先手，在空格落子。若落子后某一方向能把 AI 的棋子夹在两枚己方棋子之间，就翻转它们;'+
+    '轮流转，无法落子自动跳过。提示格有半透明预览与描边，鼠标悬停会金色圈出将被翻转的子。'+
+    '「悔棋」撤销你与 AI 的一个回合;「棋谱」展开最近 10 手。棋盘填满或双方都无子可下时结束，子多者胜。'+
+    '标准 8×8,快棋 6×6;每日局用固定种子，对手策略一致。';
+  $('info').hidden=false;
+});
 $('info-close').addEventListener('click',function(){$('info').hidden=true});
 $('over-btn').addEventListener('click',function(){start(false)});
+$('hist-head').addEventListener('click',function(){
+  var h=$('hist');h.hidden=!h.hidden;
+  $('hist-arrow').textContent=h.hidden?'展开 ▾':'收起 ▴';
+});
+
+window.__TERRITORY__={version:'3.0',simulate:simulate,movesOn:movesOn,flipsOn:flipsOn,applyOn:applyOn,newBoard:newBoard,countOn:countOn,bestOn:bestOn,
+  getN:function(){return N},getBoard:function(){return board.slice()},getTurn:function(){return turn},start:function(s,d){start(!!d,s)},
+  click:function(pos){var r=Math.floor(pos/N),c=pos%N;if(flips(r,c,1).length){undoSnap={board:board.slice(),turn:1,hist:hist.slice(),daily:daily};var n=applyOn(board,N,pos,1);pushHist(1,pos,n);turn=-1;proceed();return n}return 0}};
 start(false);
 })();
 </script>

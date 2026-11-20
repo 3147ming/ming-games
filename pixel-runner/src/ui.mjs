@@ -22,6 +22,8 @@ import {
   resolveStorage, clearAll, todayKey, ACHIEVEMENTS,
 } from './save.mjs';
 
+import { poseAt, stateOf, draw as drawVectorHero } from './hero-vector.mjs';
+
 /* ============================ 工具 ============================ */
 
 const $ = (id) => document.getElementById(id);
@@ -68,9 +70,9 @@ function drawArt(k, cx, cy, boxW, boxH, alpha){
   return true;
 }
 
-/* 天天酷跑式奔跑动画：单张立绘做 squash&stretch + 弹跳 + 前倾 + 接地阴影。
-   run: 引擎状态；cx/bottomY: 角色水平中心与脚底屏幕 y；w/h: 盒宽高。 */
-function drawHeroRun(run, cx, bottomY, w, h, boosting){
+/* 立绘皮肤（可选）：单张 hero.png 做 squash&stretch。
+   默认使用矢量骨架 drawHeroRun；仅当设置 skin==='sprite' 时走这条路径。 */
+function drawSpriteHero(run, cx, bottomY, w, h, boosting){
   const im = ART.hero;
   if (!artReady('hero')) return false;
   const phase = run.t * (boosting ? 20 : 14);
@@ -117,6 +119,63 @@ function drawHeroRun(run, cx, bottomY, w, h, boosting){
     }
   }
   g2d.drawImage(im, -dw / 2, -dh, dw, dh);
+  g2d.restore();
+  return true;
+}
+
+/* 矢量骨架主角（默认皮肤）：头/躯干/四肢用 canvas 部件绘制，关节角度驱动。
+   —— 不再依赖单张立绘，根治"图片直接贴上去"的观感问题。 */
+const HERO_PAL = { main:'#2DD4BF', dark:'#159c8c', accent:'#ffe08a', skin:'#f6d3a8', outline:'#06201d' };
+function drawHeroRun(run, cx, bottomY, w, h, boosting){
+  // 可选立绘皮肤：显式切换且图片就绪时才走旧路径
+  if (settings.skin === 'sprite' && artReady('hero')) return drawSpriteHero(run, cx, bottomY, w, h, boosting);
+
+  const speed = run.speed ?? 430;
+  const st = stateOf(run);
+  // 该状态持续时间：优先用引擎给的计时器，否则用 t
+  let since = run.t;
+  if (st === 'slide') since = run.slideT || run.t;
+  else if (st === 'hit' || (st === 'jump' && (run.landSquashT > 0))) since = run.landSquashT > 0 ? (0.12 - run.landSquashT) : run.t;
+  const pose = poseAt(st, since, speed, { base: BASE_SPEED, max: SPEED_MAX, boosting });
+
+  // 接地阴影：随离地高度缩小变淡
+  const airH = Math.max(0, view.groundY - bottomY);
+  const shScale = Math.max(0.35, 1 - airH / 260);
+  g2d.save();
+  g2d.globalAlpha = 0.28 * shScale;
+  g2d.fillStyle = '#000';
+  g2d.beginPath();
+  g2d.ellipse(cx, view.groundY + 2, w * 0.42 * shScale, h * 0.085 * shScale, 0, 0, Math.PI * 2);
+  g2d.fill();
+  g2d.restore();
+
+  // boost 残影：把骨架整体错开几帧半透明重绘
+  if (boosting && fxOn()) {
+    for (let i = 3; i >= 1; i--) {
+      g2d.save();
+      g2d.globalAlpha = 0.12;
+      g2d.translate(cx - i * 9, bottomY);
+      drawVectorHero(g2d, pose, { w, h }, HERO_PAL);
+      g2d.restore();
+    }
+  }
+  // 二段跳拖尾：连续残影
+  if ((st === 'rise' || st === 'fall') && fxOn() && (run.jumpsLeft < 1)) {
+    for (let i = 2; i >= 1; i--) {
+      g2d.save();
+      g2d.globalAlpha = 0.1 * (3 - i);
+      g2d.translate(cx - i * 5, bottomY - i * 3);
+      drawVectorHero(g2d, pose, { w, h }, HERO_PAL);
+      g2d.restore();
+    }
+  }
+
+  g2d.save();
+  g2d.translate(cx, bottomY);
+  const glow = boosting ? '#ffb400' : run.shield ? '#7bed9f' : 'rgba(64,224,208,0.55)';
+  g2d.shadowBlur = fxOn() ? 14 : 0;
+  g2d.shadowColor = glow;
+  drawVectorHero(g2d, pose, { w, h }, HERO_PAL);
   g2d.restore();
   return true;
 }
@@ -401,10 +460,10 @@ function draw() {
   const toScreenX = (wx) => (wx - camX);
   const toScreenY = (wy) => groundY - wy * scale;
 
-  // 远景（视差 0.25）
-  drawParallax(camX * 0.25, groundY, w, 0.35, COLORS.far, 140);
-  // 中景（视差 0.5）
-  drawParallax(camX * 0.5, groundY, w, 0.55, COLORS.mid, 90);
+  // 三层视差：远景天际线(0.25) / 中景霓虹招牌(0.5) / 近景跑道上沿(0.85)
+  drawParallax(camX * 0.25, groundY, w, 0.32, COLORS.far, 140, 'skyline', 'rgba(150,170,255,0.4)');
+  drawParallax(camX * 0.5, groundY, w, 0.5, COLORS.mid, 96, 'neon', '#ff6b9d');
+  drawParallax(camX * 0.85, groundY, w, 0.22, COLORS.mid, 54, 'neon', '#2dd4bf');
 
   // 地面
   g2d.fillStyle = COLORS.ground;
@@ -426,6 +485,23 @@ function draw() {
     g2d.moveTo(x, groundY);
     g2d.lineTo(x, groundY + 14);
     g2d.stroke();
+  }
+
+  // 高速速度线：速度越高越密，强化冲刺感（纯装饰，不影响判定）
+  if (fxOn() && run.speed > 620) {
+    const intensity = Math.min(1, (run.speed - 620) / 560);
+    g2d.save();
+    g2d.strokeStyle = run.boostT > 0 ? 'rgba(255,180,0,0.5)' : 'rgba(200,230,255,0.35)';
+    g2d.lineWidth = 2;
+    const n = Math.round(4 + intensity * 8);
+    for (let i = 0; i < n; i++) {
+      const seed = i * 137;
+      const yy = 30 + ((seed + Math.floor(run.x * 0.6)) % Math.max(1, groundY - 60));
+      const len = 24 + ((seed * 7) % 46) + intensity * 40;
+      const xx = ((seed * 3 - run.x * (1.4 + intensity)) % (w + 200)) - 100;
+      g2d.beginPath(); g2d.moveTo(xx, yy); g2d.lineTo(xx + len, yy); g2d.stroke();
+    }
+    g2d.restore();
   }
 
   // 拾取物
@@ -614,10 +690,9 @@ function draw() {
   g2d.restore();
 }
 
-function drawParallax(offX, groundY, w, alpha, color, baseH) {
+function drawParallax(offX, groundY, w, alpha, color, baseH, kind, neon) {
   g2d.save();
   g2d.globalAlpha = alpha;
-  g2d.fillStyle = color;
   const step = 90;
   for (let i = 0; i < 20; i++) {
     const wx = i * step - (offX % (step * 20)) * 0.999;
@@ -626,7 +701,25 @@ function drawParallax(offX, groundY, w, alpha, color, baseH) {
     // 用 i 做伪随机高度，保证滚动时形状稳定
     const hh = baseH * (0.55 + ((i * 37) % 100) / 160);
     const ww = 46 + ((i * 53) % 40);
+    g2d.fillStyle = color;
     g2d.fillRect(sx, groundY - hh, ww, hh);
+    if (kind === 'skyline') {
+      // 远景天际线：楼顶天线 + 稀疏窗
+      g2d.fillRect(sx + ww * 0.45, groundY - hh - 14, 2, 14);
+      g2d.fillStyle = neon || 'rgba(180,190,255,0.35)';
+      for (let r = 0; r < 3; r++) for (let cI = 0; cI < 2; cI++) {
+        if (((i * 7 + r * 3 + cI) % 5) < 2) g2d.fillRect(sx + 8 + cI * (ww - 20), groundY - hh + 10 + r * 16, 4, 6);
+      }
+    } else if (kind === 'neon') {
+      // 中景招牌霓虹：色块 + 发光边
+      g2d.fillStyle = neon || '#ff6b9d';
+      const ny = groundY - hh + 12;
+      g2d.fillRect(sx + 5, ny, ww - 10, 5);
+      g2d.fillRect(sx + 5, ny + 14, (ww - 10) * 0.6, 4);
+      g2d.globalAlpha = alpha * 0.5;
+      g2d.fillRect(sx + 3, ny - 2, ww - 6, 11);
+      g2d.globalAlpha = alpha;
+    }
   }
   g2d.restore();
 }
@@ -805,6 +898,10 @@ function loop(now) {
         burst(sx, view.groundY - PLAYER_H * view.scale, COLORS.shield, 12, 200);
       } else if (ev.type === 'near-miss') {
         SFX.near();
+        if (fxOn()) {
+          const sx = view.w * 0.28;
+          burst(sx, view.groundY - PLAYER_H * view.scale * 0.5, '#ffd93d', 8, 220);
+        }
       } else if (ev.type === 'land' && fxOn()) {
         const sx = view.w * 0.28;
         burst(sx, view.groundY, '#2a3a6a', 4, 90);
@@ -1098,6 +1195,7 @@ function paintSettings() {
   setT('set-fx', settings.fx !== false);
   setT('set-vib', settings.vibrate !== false);
   qsa('#set-control button').forEach((b) => b.classList.toggle('on', b.dataset.c === settings.control));
+  qsa('#set-skin button').forEach((b) => b.classList.toggle('on', b.dataset.s === (settings.skin || 'vector')));
 }
 
 function persist() {
@@ -1167,6 +1265,12 @@ qsa('#set-control button').forEach((b) => {
     persist();
   });
 });
+qsa('#set-skin button').forEach((b) => {
+  b.addEventListener('click', () => {
+    settings.skin = b.dataset.s;
+    persist();
+  });
+});
 
 $('btn-clear').addEventListener('click', () => {
   if (!confirm('清除全部成绩与成就？（不可恢复）')) return;
@@ -1209,6 +1313,16 @@ function boot() {
     startRun, pauseGame, resumeGame, quitToMenu,
     doJump, doSlide,
     distanceOf: () => (G.run ? distanceOf(G.run) : 0),
+    // 矢量角色诊断：当前动画状态与姿态帧
+    pose: () => {
+      if (!G.run) return null;
+      const st = stateOf(G.run);
+      const speed = G.run.speed ?? 430;
+      let since = G.run.t;
+      if (st === 'slide') since = G.run.slideT || G.run.t;
+      const p = poseAt(st, since, speed, { base: BASE_SPEED, max: SPEED_MAX, boosting: G.run.boostT > 0 });
+      return { state: st, frame: p.frame, fps: p.fps, thighL: p.thighL, torso: p.torso, speed };
+    },
   };
 }
 

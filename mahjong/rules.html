@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10231d">
+<title>麻将 · 规则</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%23f3ead8'/%3E%3Ctext x='12' y='42' font-size='30' fill='%23264b3a'%3E%E7%AD%89%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#10231d;color:#e9f0e6;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;line-height:1.75}
+.wrap{max-width:760px;margin:0 auto;padding:16px 16px 40px}h1{font-size:21px;color:#d9b66a;margin:0 0 4px}
+.lead{font-size:13px;opacity:.72;margin:0 0 16px}.card{background:#173428;border:1px solid #3a6650;border-radius:14px;padding:13px 16px;margin:12px 0}
+.card h2{font-size:16px;color:#e8d6a4;margin:0 0 6px}.card p,.card li{font-size:14px;margin:5px 0}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}td,th{padding:5px 6px;border-bottom:1px solid #3a6650;text-align:left}
+.back{display:inline-block;min-height:44px;line-height:44px;padding:0 16px;border:1px solid #52705e;border-radius:10px;color:#eef3e8;text-decoration:none;font-size:14px}
+em{color:#ffd166;font-style:normal;font-weight:600}
+@media(pointer:coarse){.back{min-height:48px;line-height:48px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<p><a class="back" href="./index.html">← 返回牌桌</a></p>
+<h1>麻将 · 简版规则</h1>
+<p class="lead">本作采用 136 张简版规则：不含花牌，可碰、杠、胡，支持七对与番型结算。<em>吃牌默认关闭</em>，可在牌桌设置中开启（国标 / 血战习惯不同）。</p>
+
+<div class="card"><h2>牌与人数</h2>
+<p>万 / 条 / 筒各 1–9 ×4 张，风牌东南西北 ×4，字牌中发白 ×4，共 <em>136 张</em>。4 人对局：1 位玩家 + 3 位 AI，每人 13 张，庄家 14 张，按摸打循环推进。</p></div>
+
+<div class="card"><h2>操作</h2>
+<ul>
+<li><em>碰</em>：他人打出一张，你手里有同样两张时可碰。</li>
+<li><em>杠</em>：明杠（碰到的牌再摸到第 4 张）或暗杠（手里 4 张同牌），杠后补一张岭上牌。</li>
+<li><em>胡</em>：他人打出的牌能使你成牌时点「胡」；自己摸牌成牌时点「自摸胡」。</li>
+<li><em>吃</em>：默认关闭；开启后可吃上家打出的同花色连续牌。</li>
+</ul></div>
+
+<div class="card"><h2>和牌判定</h2>
+<p>标准型：<em>4 面子（顺子或刻子）+ 1 将</em>。另支持 <em>七对</em>：七种牌各两张。不成牌时点胡会被拦截（诈胡不可通过）。听牌提示可在设置里关闭。</p></div>
+
+<div class="card"><h2>番型（默认全开，封顶 8 番）</h2>
+<table><tr><th>番型</th><th>番数</th><th>条件</th></tr>
+<tr><td>平胡</td><td>1</td><td>四组都是顺子，将牌非字牌</td></tr>
+<tr><td>门清</td><td>1</td><td>没有明碰 / 明杠 / 明吃</td></tr>
+<tr><td>自摸</td><td>1</td><td>自己摸牌成和</td></tr>
+<tr><td>碰碰胡</td><td>2</td><td>四组均为刻子</td></tr>
+<tr><td>清一色</td><td>4</td><td>全部为同一花色（万 / 条 / 筒）</td></tr>
+<tr><td>七对</td><td>4</td><td>七对牌型</td></tr>
+<tr><td>杠上开花</td><td>2</td><td>杠后补牌即自摸</td></tr>
+</table></div>
+
+<div class="card"><h2>结算</h2>
+<p>分数按番数指数计算：1 番 ×1、2 番 ×2 …… 8 番 ×8（封顶）。自摸由三家各付一份，点炮由放炮的一家独付。结算面板列出每项和牌明细与本局四家收支。</p></div>
+
+<div class="card"><h2>AI 与存档</h2>
+<p>AI 会按「现物优先 → 孤张 → 花色倾向」出牌，不做纯随机；有番型倾向时保留主花色。每步自动写入本地存档，断线或刷新后自动续局；点「新局」才清空当前牌局。</p></div>
+</div>
+</body>
+</html>

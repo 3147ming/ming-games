@@ -292,22 +292,34 @@
     return Math.max(Math.abs(dq), Math.abs(dr), Math.abs(ds));
   }
 
-  /** 从第 i 孔出发、只靠连续跳跃能到的所有空孔。 */
+  /** 从第 i 孔出发、只靠连续跳跃能到的所有空孔（旧接口，返回孔位下标数组）。 */
   function ccJumpsFrom(s, i) {
+    return ccJumpsWithSteps(s, i).map((x) => x.land);
+  }
+
+  /**
+   * 连跳路径（第三批 E-2）：BFS 记录每个落点的最少跳跃步数与路径，
+   * 用于 ①②③ 标跳序、歧义首段确认与 HUD 连跳计数。
+   * 返回 [{ land, steps, path:[起点,...,落点], jumped:[被跳过的孔位] }]
+   */
+  function ccJumpsWithSteps(s, i) {
     const out = [];
-    const seen = new Set([i]);
-    const stack = [i];
-    while (stack.length) {
-      const cur = stack.pop();
-      const { q, r } = CC_HOLES[cur];
+    const best = new Map(); // land -> steps（BFS 保证首次为最少跳数）
+    const queue = [{ cur: i, steps: 0, path: [i], jumped: [] }];
+    while (queue.length) {
+      const node = queue.shift();
+      const { q, r } = CC_HOLES[node.cur];
       for (const [dq, dr] of CC_DIRS) {
         const mid = ccAt(q + dq, r + dr);
         if (mid < 0 || !s.board[mid]) continue;          // 必须跳过一枚棋子
         const land = ccAt(q + 2 * dq, r + 2 * dr);
-        if (land < 0 || s.board[land] || seen.has(land)) continue;
-        seen.add(land);
-        out.push(land);
-        stack.push(land);                                 // 连跳：从落点继续
+        if (land < 0 || s.board[land]) continue;         // 落点必须空
+        const steps = node.steps + 1;
+        if (best.has(land) && best.get(land) <= steps) continue;
+        best.set(land, steps);
+        const rec = { land, steps, path: node.path.concat(land), jumped: node.jumped.concat(mid) };
+        out.push(rec);
+        queue.push({ cur: land, steps, path: rec.path, jumped: rec.jumped });
       }
     }
     return out;
@@ -320,7 +332,9 @@
     if (!p || p.side !== side) return [];
     // ★ 中国跳棋**没有**"有跳必跳"：跳跃只是更划算，不是义务。
     //   所以一步走法与跳跃一起给出（旧版照搬西洋跳棋的强制吃子，等于凭空加了条规则）。
-    const out = ccJumpsFrom(s, i).map((j) => ({ from: [i, 0], to: [j, 0], jump: true }));
+    const out = ccJumpsWithSteps(s, i).map((j) => ({
+      from: [i, 0], to: [j.land, 0], jump: true, steps: j.steps, path: j.path, jumped: j.jumped,
+    }));
     const { q, r } = CC_HOLES[i];
     for (const [dq, dr] of CC_DIRS) {
       const n = ccAt(q + dq, r + dr);
@@ -375,7 +389,7 @@
     const b = makeBoard(cols, rows, null);
     let k = 0;
     for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) b[y][x] = pieces[k++];
-    return { mode: 'banqi', board: b, cols, rows, turn: 'r', status: 'playing', winner: null, lastMove: null, moveCount: 0 };
+    return { mode: 'banqi', board: b, cols, rows, turn: 'r', status: 'playing', winner: null, lastMove: null, moveCount: 0, noCapture: 0 };
   }
   /**
    * 暗棋吃子（通行规则，与象棋的"等级吃"不同，所以单列一处）：
@@ -514,12 +528,13 @@
   function jgIsWater(x, y) { return y >= 3 && y <= 5 && ((x >= 1 && x <= 2) || (x >= 4 && x <= 5)); }
   // 兽穴：红方底部中央 (3,8)，蓝方顶部中央 (3,0)。
   function jgDen(side) { return side === 'r' ? [3, 8] : [3, 0]; }
-  // 陷阱：兽穴左右各一 + 前方一。红方 (2,8)(4,8)(3,7)；蓝方 (2,0)(4,0)(3,1)。
+  // 陷阱：每方 4 个，共 8 个（第三批规格）。红方兽穴(3,8)周围 (2,8)(4,8)(2,7)(4,7)；
+  // 蓝方兽穴(3,0)周围 (2,0)(4,0)(2,1)(4,1)。敌方走入即战力归零。
   function jgTrapOf(x, y) {
-    if ((x===2||x===4) && y===8) return 'r';
-    if (x===3 && y===7) return 'r';
-    if ((x===2||x===4) && y===0) return 'b';
-    if (x===3 && y===1) return 'b';
+    if (y === 8 && (x === 2 || x === 4)) return 'r';
+    if (y === 7 && (x === 2 || x === 4)) return 'r';
+    if (y === 0 && (x === 2 || x === 4)) return 'b';
+    if (y === 1 && (x === 2 || x === 4)) return 'b';
     return null;
   }
   function jungleSetup() {
@@ -538,7 +553,7 @@
     }
     if (blueRow2[3]) b[2][3] = { side:'b', kind:blueRow2[3] };
     if (redRow6[3])  b[6][3] = { side:'r', kind:redRow6[3] };
-    return { mode:'jungle', board:b, cols, rows, turn:'r', status:'playing', winner:null, lastMove:null, moveCount:0 };
+    return { mode:'jungle', board:b, cols, rows, turn:'r', status:'playing', winner:null, lastMove:null, moveCount:0, noCapture:0 };
   }
   // 吃子判定：att 攻击 def（均已翻开）。考虑陷阱削弱与鼠象特例。
   function jgCanCapture(s, ax, ay, dx, dy, att, def) {
@@ -711,7 +726,7 @@
   function applyAction(state, action) {
     let s = cloneState(state);
     const mover = s.turn;
-    let winByGeneral = false;
+    let winByGeneral = false, winByDen = false, didCapture = false;
     if (action.flip) {
       const [x, y] = action.flip;
       s.board[y][x] = { ...s.board[y][x], faceUp: true };
@@ -728,28 +743,51 @@
     } else {
       const [fx, fy] = action.from, [tx, ty] = action.to;
       const p = s.board[fy][fx];
-      if (action.captures) {
-        for (const [cx, cy] of action.captures) {
+      // 吃子：以目标格当前棋子为准，兼容 action.capture（单数）与 action.captures（复数）。
+      // 旧代码只读 action.captures，导致"将/帅被吃即负"永远不触发。
+      const victim = s.board[ty][tx];
+      if (victim && victim !== p && victim.side !== p.side) {
+        didCapture = true;
+        if (victim.kind === 'general' && (s.mode === 'xiangqi' || s.mode === 'banqi')) winByGeneral = true;
+      }
+      const capList = action.captures || (action.capture ? [action.capture] : null);
+      if (capList) {
+        for (const [cx, cy] of capList) {
           const cap = s.board[cy][cx];
-          if (cap && cap.kind === 'general') winByGeneral = true;
-          s.board[cy][cx] = null;
+          if (cap && cap !== p && cap.side !== p.side) {
+            didCapture = true;
+            if (cap.kind === 'general' && (s.mode === 'xiangqi' || s.mode === 'banqi')) winByGeneral = true;
+            s.board[cy][cx] = null;
+          }
         }
       }
       s.board[fy][fx] = null;
       s.board[ty][tx] = p;
-      if (action.enterDen && s.mode === 'jungle') winByGeneral = true; // 进敌方兽穴即胜
+      if (action.enterDen && s.mode === 'jungle') winByDen = true; // 进敌方兽穴即胜
     }
-    s.lastMove = action.flip ? { flip: action.flip } : { from: action.from, to: action.to };
+    // 无吃子回合计数（斗兽棋 25 回合、暗棋 60 回合判和；翻棋也算"重置"）
+    if (s.mode === 'jungle' || s.mode === 'banqi') {
+      if (didCapture || action.flip) s.noCapture = 0;
+      else s.noCapture = (s.noCapture || 0) + 1;
+    }
+    s.lastMove = action.flip ? { flip: action.flip }
+      : { from: action.from, to: action.to, steps: action.steps || 0, path: action.path || null };
     s.moveCount = (s.moveCount || 0) + 1;
-    s = setEndIfFinished(s, mover, winByGeneral);
+    s = setEndIfFinished(s, mover, winByGeneral, winByDen);
     s.turn = other(s.turn);
     if (s.mode === 'reversi') s = prepareTurn(s);
     return s;
   }
 
-  function setEndIfFinished(s, mover, winByGeneral) {
-    // 只有象棋是"吃掉将/帅即胜"；暗棋必须吃光对方全部棋子，吃掉将不算赢。
-    if (winByGeneral && s.mode === 'xiangqi') { s.status = 'over'; s.winner = mover; return s; }
+  function setEndIfFinished(s, mover, winByGeneral, winByDen) {
+    // 象棋：吃将即胜。暗棋：将/帅被吃即负（第三批规则，见规则页）。
+    if (winByGeneral && (s.mode === 'xiangqi' || s.mode === 'banqi')) {
+      s.status = 'over'; s.winner = mover; s.endReason = 'general'; return s;
+    }
+    // 斗兽棋：进敌方兽穴即胜。
+    if (winByDen && s.mode === 'jungle') {
+      s.status = 'over'; s.winner = mover; s.endReason = 'den'; return s;
+    }
     if (s.mode === 'gomoku') {
       const lm = s.lastMove;
       if (lm && lm.to && gomokuWinAt(s, lm.to[0], lm.to[1], mover)) { s.status = 'over'; s.winner = mover; return s; }
@@ -771,17 +809,40 @@
       // mover 刚走完，检查对手（下一个行动方）是否已被吃光：吃光即胜。
       // 注意此时 s.turn 仍是 mover（切 turn 在 applyAction 之后），所以要查 other(mover)。
       const foe = other(mover);
-      if (countPieces(s, foe) === 0) { s.status = 'over'; s.winner = mover; return s; }
-      // 兜底：当前行动方自己没子（理论上不会发生）
-      if (countPieces(s, s.turn) === 0) { s.status = 'over'; s.winner = other(s.turn); return s; }
+      if (countPieces(s, foe) === 0) { s.status = 'over'; s.winner = mover; s.endReason = 'eliminate'; return s; }
+      if (countPieces(s, s.turn) === 0) { s.status = 'over'; s.winner = other(s.turn); s.endReason = 'eliminate'; return s; }
+      // 只剩不可过河子（双方都只剩兵/卒，兵只能吃将，将已无 → 谁也吃不了谁）判和
+      if (banqiOnlyImmobileLeft(s)) { s.status = 'over'; s.winner = 'draw'; s.endReason = 'immobile'; return s; }
+      // 60 回合无吃子判和
+      if ((s.noCapture || 0) >= 60) { s.status = 'over'; s.winner = 'draw'; s.endReason = 'no-capture'; return s; }
     }
     if (s.mode === 'jungle') {
-      // winByGeneral 已在上面处理（进敌方兽穴）。这里补：吃光对方 / 对方无子可动。
+      // winByGeneral/winByDen 已在上面处理。这里补：吃光对方 / 对方无子可动 / 25回合无吃子。
       const foe = other(mover);
-      if (countPieces(s, foe) === 0) { s.status = 'over'; s.winner = mover; return s; }
-      if (allActions(s, foe).length === 0) { s.status = 'over'; s.winner = mover; return s; }
+      if (countPieces(s, foe) === 0) { s.status = 'over'; s.winner = mover; s.endReason = 'eliminate'; return s; }
+      if (allActions(s, foe).length === 0) { s.status = 'over'; s.winner = mover; s.endReason = 'stuck'; return s; }
+      if ((s.noCapture || 0) >= 25) { s.status = 'over'; s.winner = 'draw'; s.endReason = 'no-capture'; return s; }
     }
     return s;
+  }
+
+  /** 暗棋：双方都只剩兵/卒，或被吃后将已无、兵吃不到任何子 → 判和。 */
+  function banqiOnlyImmobileLeft(s) {
+    let rGeneral = false, bGeneral = false, rOther = 0, bOther = 0;
+    for (let y = 0; y < s.rows; y++) for (let x = 0; x < s.cols; x++) {
+      const p = s.board[y][x];
+      if (!p || typeof p !== 'object') continue;
+      if (p.side === 'r') {
+        if (p.kind === 'general') rGeneral = true;
+        else if (p.kind !== 'soldier') rOther++;
+      } else {
+        if (p.kind === 'general') bGeneral = true;
+        else if (p.kind !== 'soldier') bOther++;
+      }
+    }
+    // 双方都只剩兵（无任何将与其他子）→ 兵只能吃将，将已无 → 和
+    if (!rGeneral && !bGeneral && rOther === 0 && bOther === 0) return true;
+    return false;
   }
 
   function reversiFinish(s) {
@@ -1010,9 +1071,13 @@
     actionsAt, allActions, applyAction, prepareTurn,
     aiAction, cellInfo, countPieces, countSide,
     // 跳棋棋盘几何（渲染层画孔位、算像素坐标都读这一份，避免两处各算一遍）
-    CC: { HOLES: CC_HOLES, ZONE: CC_ZONE, DIRS: CC_DIRS, goalZone: ccGoalZone, hexDist: ccHexDist, hasWon: ccHasWon },
+    CC: { HOLES: CC_HOLES, ZONE: CC_ZONE, DIRS: CC_DIRS, goalZone: ccGoalZone, hexDist: ccHexDist, hasWon: ccHasWon, at: ccAt, jumpsWithSteps: ccJumpsWithSteps },
     // 仅供测试 / 调试
-    _internal: { xiangqiTargets, banqiTargets, banqiCanCapture, gomokuWinAt, reversiFlips, generalsFacing, ccJumpsFrom },
+    _internal: {
+      xiangqiTargets, banqiTargets, banqiCanCapture, gomokuWinAt, reversiFlips, generalsFacing, ccJumpsFrom, ccJumpsWithSteps,
+      jungleSetup, jgCanCapture, jungleTargets, jungleActionsAt, jungleWin, jgTrapOf, jgDen, jgIsWater,
+      banqiOnlyImmobileLeft, banqiSetup, banqiActionsAt, banqiRank: BANQI_RANK,
+    },
     JUNGLE: { LABEL: JUNGLE_LABEL, RANK: JUNGLE_RANK, isWater: jgIsWater, den: jgDen, trapOf: jgTrapOf },
   };
 

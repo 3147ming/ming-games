@@ -98,7 +98,7 @@ body{background:radial-gradient(120% 80% at 50% -10%,#3a1c1f 0%,var(--bg) 64%);c
 
 <div class="overlay" id="intro"><div class="inner">
   <h2>深夜食堂 · 开张</h2>
-  <p>顾客会点主食、小吃、饮料，还可能要酱料和特殊要求。<br>你要备料 → 调味 → 烹饪 → 摆盘 → 上菜，越快越准，评分越高。<br>一晚接待 5 位客人，耐心耗尽客人会走。</p>
+  <p>顾客会点主食、小吃、饮料，还可能要酱料和特殊要求。<br>你要备料 → 调味 → 烹饪 → 摆盘 → 上菜，越快越准，评分越高。<br>一晚接待 6 位客人，耐心耗尽客人会走。</p>
   <div class="controls">
     <button class="btn" id="btn-start">开始营业</button>
     <button class="btn ghost" id="btn-daily">每日营业</button>
@@ -117,7 +117,8 @@ body{background:radial-gradient(120% 80% at 50% -10%,#3a1c1f 0%,var(--bg) 64%);c
   <div class="controls"><button class="btn" id="over-btn">再开一晚</button></div>
 </div></div>
 
-<script>
+<script type="module">
+import { heatState, HEAT_LABEL, rate, tipFor, matchSpecials, SPECIALS, PATIENCE } from './scoring.mjs';
 (function(){
 'use strict';
 var KEY='mg_diner.v1',$=function(i){return document.getElementById(i)};
@@ -150,10 +151,10 @@ function foodImg(idx){if(!(idx in FOODIMG)){var im=new Image();im.onload=functio
 function pic(idx){var im=foodImg(idx);return im?'<img src="'+im.src+'" alt="">':FOODS[idx].e}
 function byId(id){for(var i=0;i<FOODS.length;i++)if(FOODS[i].id===id)return i;return -1}
 
-var coin=0,servedNight=0,totalNight=5,daily=false,rand=rng(Date.now()|0);
+var coin=0,servedNight=0,totalNight=6,daily=false,rand=rng(Date.now()|0);
 var order=null,selFoods=[],selSauces=[],selSpecials=[],plated=[];
 var phase='prep',step=0,patienceLeft=0,patienceMax=1,patienceAt=0;
-var cookTimer=null,cookStart=0,cookDur=2.6,cookDone=false,tickTimer=null;
+var cookTimer=null,cookStart=0,cookDur=2.6,cookDone=false,tickTimer=null,cookProgress=0;
 var lastResult=null,lottery=[],guestIdx=0;
 
 function pick(a){return a[Math.floor(rand()*a.length)]}
@@ -252,7 +253,7 @@ function renderWork(){
     w.innerHTML='<div class="pot"><div class="fire">🔥</div><div class="bar-cook"><i id="cookbar"></i></div><div style="font-size:11px;color:var(--dim)" id="cooktx">烹饪中…</div></div>';
     setMsg('火候需要时间，耐心条仍在走，抓紧下一步');
     c.innerHTML='<button class="btn" id="next" disabled>下一步：摆盘</button>';
-    $('next').onclick=function(){step=3;phase='plate';render()};
+    $('next').onclick=function(){cookProgress=(Date.now()-cookStart)/1000/cookDur;step=3;phase='plate';render()};
     updateCookBar();
   }else if(phase==='plate'){
     var slots=selFoods.map(function(fi,k){return '<div class="slot'+(k<plated.length?' has':'')+'" data-k="'+k+'">'+(k<plated.length?pic(fi):'')+'</div>'}).join('');
@@ -271,7 +272,8 @@ function renderWork(){
       '<div class="'+(r.foodOK?'ok':'no')+'">'+(r.foodOK?'✓':'✗')+' 餐点：'+r.foodDetail+'</div>'+
       '<div class="'+(r.sauceOK?'ok':'no')+'">'+(r.sauceOK?'✓':'✗')+' 酱料：'+r.sauceDetail+'</div>'+
       '<div class="'+(r.specialOK?'ok':'no')+'">'+(r.specialOK?'✓':'✗')+' 特殊要求：'+r.specialDetail+'</div>'+
-      '<div>耐心剩余 '+Math.ceil(patienceLeft)+'s'+(r.patienceBonus?'（时间加成）':'')+'</div>'+
+      '<div>火候 <b style="color:'+(r.heat==='perfect'?'#5cc08a':r.heat==='raw'?'#d6ab58':'#d0574d')+'">'+HEAT_LABEL[r.heat]+'</b> · 耐心剩余 '+Math.ceil(patienceLeft)+'s'+(r.patienceBonus?'（时间加成）':'')+'</div>'+
+      (r.parts?'<div style="font-size:10px;opacity:.8;margin-top:4px">口味 '+r.parts.taste+' / 摆盘 '+r.parts.plate+' / 速度 '+r.parts.speed+' / 要求 '+r.parts.req+'</div>':'')+
       '</div>';
     w.innerHTML='<div class="result"><div class="stars">'+stars+'</div>'+lines+'<div class="earn">+'+r.coin+' 金币'+(r.tip?' · 小费 +'+r.tip:'')+'</div></div>';
     setMsg(r.stars>=4?'客人很满意！':'客人勉强点头…',r.stars>=4?'win':'');
@@ -283,7 +285,7 @@ function renderWork(){
 function startCook(){
   clearInterval(cookTimer);
   cookDur=Math.max(1.2,Math.min(3.2,selFoods.reduce(function(a,k){return a+FOODS[k].cook},0)/Math.max(1,selFoods.length)+.4));
-  cookStart=Date.now();cookDone=false;render();
+  cookStart=Date.now();cookDone=false;cookProgress=0;render();
   cookTimer=setInterval(function(){
     var p=(Date.now()-cookStart)/1000/cookDur;
     if(p>=1){p=1;clearInterval(cookTimer);cookDone=true;var b=$('next');if(b){b.disabled=false;var t=$('cooktx');if(t)t.textContent='出锅！可以摆盘了'}}
@@ -291,8 +293,12 @@ function startCook(){
   },100);
 }
 function updateCookBar(){
-  var p=Math.min(1,(Date.now()-cookStart)/1000/cookDur);
-  var bar=$('cookbar');if(bar)bar.style.width=(p*100)+'%';
+  var raw=(Date.now()-cookStart)/1000/cookDur;
+  var p=Math.min(1,raw);
+  var bar=$('cookbar');if(bar){bar.style.width=(p*100)+'%';
+    var st=heatState(raw);
+    bar.style.background=st==='perfect'?'linear-gradient(90deg,#3fa06f,#5cc08a)':st==='raw'?'linear-gradient(90deg,#a07f3f,#d6ab58)':'linear-gradient(90deg,#8a2d25,#d0574d)';
+  }
 }
 function sameSet(a,b){if(a.length!==b.length)return false;var x=a.slice().sort(),y=b.slice().sort();for(var i=0;i<x.length;i++)if(x[i]!==y[i])return false;return true}
 function listDetail(want,got,names){
@@ -310,20 +316,27 @@ function evaluate(){
   var sauceOK=sameSet(order.sauces,selSauces);
   var specialOK=sameSet(order.specials,selSpecials);
   var pRatio=Math.max(0,Math.min(1,patienceLeft/patienceMax));
-  var acc=(foodOK?1:0)*.6+(sauceOK?1:0)*.2+(specialOK?1:0)*.2;
-  var raw=acc*4+(pRatio>.5?1:pRatio>.25?.5:0);
-  var stars=Math.max(1,Math.min(5,Math.round(raw)));
-  var coinGain=stars*4+order.foods.length*2;
-  var tip=stars>=4?(stars-3)*3:0;
-  coin+=coinGain+tip;servedNight++;
-  S.served=(S.served||0)+1;S.coin=(S.coin||0)+coinGain+tip;
+  // 火候三态：正好/欠火/过火
+  var heat=heatState(cookProgress||1);
+  // 要求命中：酱料 1 项 + 特殊要求 N 项
+  var spec=matchSpecials(order.specials,selSpecials);
+  var reqHit=(sauceOK?1:0)+spec.hitCount;
+  var reqTotal=1+order.specials.length;
+  // 四维加权：口味40（餐点+火候）/ 摆盘20（已上齐=1）/ 速度25 / 要求15
+  var graded=rate({foodOK:foodOK,heat:heat,platedRatio:1,patienceRatio:pRatio,reqHit:reqHit,reqTotal:reqTotal});
+  var stars=graded.stars;
+  var base=stars*4+order.foods.length*2;
+  var tip=tipFor(stars,base);
+  var coinGain=base+tip;
+  coin+=coinGain;servedNight++;
+  S.served=(S.served||0)+1;S.coin=(S.coin||0)+coinGain;
   S.rating=((S.rating||0)*(S.served-1)+stars)/S.served;
   if(stars>=5)S.perfect=(S.perfect||0)+1;
   var nightScore=coin+servedNight*3;
   if(nightScore>(S.best||0))S.best=nightScore;
   save();HUD();
   lastResult={
-    stars:stars,coin:coinGain,tip:tip,patienceBonus:pRatio>.5,
+    stars:stars,coin:base,tip:tip,patienceBonus:pRatio>.5,score:graded.score,parts:graded.parts,heat:heat,
     foodOK:foodOK,foodDetail:listDetail(order.foods.map(byId),selFoods,function(k){return FOODS[k].n}),
     sauceOK:sauceOK,sauceDetail:listDetail(order.sauces,selSauces,function(s){return s}),
     specialOK:specialOK,specialDetail:listDetail(order.specials,selSpecials,function(s){return s})
@@ -371,6 +384,12 @@ $('info-close').onclick=function(){$('info').hidden=true};
 $('over-btn').onclick=function(){start(false)};
 HUD();renderSteps();
 for(var i=0;i<FOODS.length;i++)foodImg(i);
+window.__DINNER__={
+  get order(){return order},get phase(){return phase},foods:FOODS,
+  get state(){return {servedNight:servedNight,totalNight:totalNight,coin:coin,selFoods:selFoods.slice(),selSauces:selSauces.slice(),selSpecials:selSpecials.slice(),cookProgress:cookProgress,lastResult:lastResult}},
+  setFoods:function(ids){selFoods=ids.map(byId).filter(function(i){return i>=0});render()},
+  setSauce:function(a){selSauces=a.slice();render()},setSpecial:function(a){selSpecials=a.slice();render()}
+};
 })();
 </script>
 </body>

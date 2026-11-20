@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#171423">
+<title>规则工坊 · 把描述变成能玩的规则</title>
+<meta name="description" content="本地规则工坊：描述规则 → 生成 RuleSet 与规则书 → 程序化美术 → 试玩验收 → 追问迭代，全程断网可用。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23171423'/%3E%3Cpath d='M14 16h36v32H14z' fill='none' stroke='%23c8a96b' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='8' fill='%23b4462f'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+:root{--bg:#171423;--panel:#221d33;--line:#4a3f6b;--gold:#d9b66a;--text:#eee8f5;--muted:#a99fbd}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 50% 0%,#2a2340,#120f1d 70%);color:var(--text);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;line-height:1.6}
+.wrap{max-width:1000px;margin:0 auto;padding:16px 14px 40px}
+h1{font-size:21px;margin:0;color:var(--gold)}.lead{font-size:13px;color:var(--muted);margin:4px 0 14px}
+.steps{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.steps span{flex:1;min-width:130px;text-align:center;padding:9px 6px;border:1px solid var(--line);border-radius:10px;font-size:13px;color:var(--muted);background:#1c1830}
+.steps span.on{border-color:var(--gold);color:var(--gold);background:#2c2545}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px;margin:12px 0}
+.panel h2{font-size:16px;margin:0 0 10px;color:var(--gold)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.type-card{border:1px solid var(--line);border-radius:12px;padding:14px;background:#1c1830;cursor:pointer;min-height:118px;transition:.15s}
+.type-card:hover{border-color:var(--gold)}.type-card.sel{border-color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold);background:#30294a}
+.type-card b{font-size:17px;display:block;margin-bottom:4px}.type-card small{color:var(--muted)}
+textarea,input[type=text]{width:100%;min-height:120px;background:#161329;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:11px;font:inherit;font-size:14px;resize:vertical}
+button,select{min-height:44px;padding:0 14px;border-radius:10px;border:1px solid #6a5a91;background:#30294a;color:var(--text);font:inherit;font-size:13px;cursor:pointer;touch-action:manipulation}
+button:hover:not(:disabled){border-color:var(--gold)}button:disabled{opacity:.4;cursor:not-allowed}
+button.primary{background:#9c7d3c;border-color:var(--gold);color:#fff}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:9px 0}
+.chips{display:flex;gap:6px;flex-wrap:wrap}.chips button{min-height:36px;font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+.art{width:100%;max-width:140px;height:auto;display:block;margin:0 auto}
+pre{background:#12101f;border:1px solid var(--line);border-radius:10px;padding:10px;max-height:260px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word}
+.q{border-left:3px solid var(--gold);padding:8px 10px;margin:9px 0;background:#1c1830;border-radius:8px}
+.q p{margin:0 0 7px;font-size:14px}
+.tag{display:inline-block;background:#3c3357;border-radius:20px;padding:3px 9px;font-size:11px;margin-right:5px}
+.good{color:#8be0a8}.bad{color:#ff9c8f}.muted{color:var(--muted)}
+.vers{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.vers button{min-height:36px;font-size:12px}
+@media(pointer:coarse){button,select{min-height:48px}}
+@media(max-width:430px){h1{font-size:17px}.steps span{min-width:0;font-size:11px;padding:7px 3px}.panel{padding:12px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>规则工坊</h1>
+<p class="lead">用中文说出你的规则，本地生成能玩的 RuleSet、规则书、棋子美术与 AI 对手。<b>零 API、断网可用</b>。</p>
+<div class="steps" id="steps"><span class="on">① 选类型</span><span>② 写描述 → 生成</span><span>③ 验收与迭代</span></div>
+
+<!-- 第 1 步 -->
+<section class="panel" id="step1">
+  <h2>第 1 步 · 选一个类型</h2>
+  <div class="cards" id="typeCards"></div>
+  <div class="row"><button class="primary" id="toStep2" disabled>下一步：写描述</button></div>
+</section>
+
+<!-- 第 2 步 -->
+<section class="panel" id="step2" hidden>
+  <h2>第 2 步 · 写下你的规则</h2>
+  <p class="muted" style="font-size:13px;margin:0 0 8px">越具体越好：棋盘多大、几人、怎么走、怎么吃、怎样算赢、僵持怎么办。</p>
+  <textarea id="desc" placeholder="例如：7×7 棋盘，两人各放 9 子，走一步占掉对方的格子，三子连成一线赢，60 回合无吃子判和"></textarea>
+  <div class="chips" id="examples"></div>
+  <div class="row"><button class="primary" id="generate">生成规则</button><button id="back1">返回选类型</button></div>
+  <div id="askBox"></div>
+  <div id="preview" hidden>
+    <h2>生成结果</h2>
+    <div class="grid" id="artGrid"></div>
+    <div class="row" id="health"></div>
+    <details><summary>规则书 Markdown（可复制）</summary><pre id="book"></pre><button id="copyBook">复制规则书</button></details>
+    <details><summary>RuleSet JSON</summary><pre id="json"></pre></details>
+    <div class="row"><button class="primary" id="toStep3">下一步：试玩验收</button></div>
+  </div>
+</section>
+
+<!-- 第 3 步 -->
+<section class="panel" id="step3" hidden>
+  <h2>第 3 步 · 验收与迭代</h2>
+  <div class="row"><button class="primary" id="play5">AI 自对弈 5 局</button><span class="muted" id="playNote">每局显示步数与终局原因</span></div>
+  <pre id="playLog">尚未试玩。</pre>
+  <h2>提点改动</h2>
+  <div class="chips" id="quickTags"></div>
+  <textarea id="feedback" style="min-height:72px" placeholder="例如：棋盘太小，改 9×9；或者：先手太强"></textarea>
+  <div class="row"><button id="applyFeedback">提交改动</button></div>
+  <div id="feedbackAsk"></div>
+  <h2>版本历史</h2>
+  <div class="vers" id="versions"></div>
+  <pre id="diffView" hidden></pre>
+  <div class="row">
+    <button id="exportJson">导出当前 JSON</button>
+    <button id="makeCode">生成短码</button>
+    <input type="text" id="codeIn" placeholder="粘贴短码还原规则" style="min-width:220px;flex:1">
+    <button id="restoreCode">还原</button>
+  </div>
+  <p class="muted" id="codeOut"></p>
+</section>
+</div>
+
+<script type="module">
+import {
+  TEMPLATE_TYPES, templateByType, parseDescription, answerQuestions, validateRuleSet,
+  ruleBook, applyBookEdits, createEngine, healthCheck, encodeShort, decodeShort,
+  diffBooks, makeVersion, artParams,
+} from '../shared/rule-engine.mjs';
+
+const $ = (id) => document.getElementById(id);
+const STORE = 'mg_rulecraft.v1';
+const ARTCACHE = 'mg_rulecraft.art.v1';
+let type = null, rs = null, currentQ = [], versions = [], curVersion = 0, baseRs = null, answered = {};
+
+function step(n) {
+  for (let i = 1; i <= 3; i++) {
+    $(`step${i}`).hidden = i !== n;
+    $('steps').children[i-1].classList.toggle('on', i === n);
+  }
+}
+function artData(params) {
+  const key = `${params.glyph}|${params.palette}|${params.motif}|${params.carrier}`;
+  let cache = {};
+  try { cache = JSON.parse(localStorage.getItem(ARTCACHE) || '{}'); } catch {}
+  if (cache[key]) return cache[key];
+  const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+  const c = cv.getContext('2d');
+  c.clearRect(0, 0, 256, 256);
+  // 载体
+  c.fillStyle = params.palette;
+  if (params.carrier === 'round') {
+    c.beginPath(); c.arc(128, 128, 108, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = '#0005'; c.lineWidth = 8; c.stroke();
+  } else if (params.carrier === 'rect') {
+    c.beginPath(); c.roundRect(44, 28, 168, 200, 14); c.fill();
+    c.strokeStyle = '#0005'; c.lineWidth = 7; c.stroke();
+  } else {
+    c.beginPath(); c.roundRect(40, 18, 176, 220, 20); c.fill();
+    c.strokeStyle = '#0006'; c.lineWidth = 7; c.stroke();
+  }
+  // 环层（motif ring1-3）
+  c.strokeStyle = '#fff8'; c.lineWidth = 3;
+  for (let i = 0; i < params.rings; i++) {
+    c.beginPath(); c.arc(128, 128, 40 + i * 18, 0, Math.PI * 2); c.stroke();
+  }
+  // 角饰
+  c.fillStyle = '#fff9';
+  for (let i = 0; i < params.corners; i++) {
+    const a = (Math.PI * 2 * i) / Math.max(1, params.corners);
+    c.beginPath(); c.arc(128 + Math.cos(a) * 82, 128 + Math.sin(a) * 82, 5, 0, Math.PI * 2); c.fill();
+  }
+  // 纹理密度
+  c.fillStyle = '#0002';
+  for (let i = 0; i < params.texture * 8; i++) {
+    c.fillRect(30 + (i * 29) % 196, 30 + (i * 47) % 196, 3, 3);
+  }
+  c.fillStyle = '#fff'; c.font = 'bold 84px "Songti SC",serif';
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(params.glyph, 128, 132);
+  const url = cv.toDataURL('image/png');
+  cache[key] = url;
+  try { localStorage.setItem(ARTCACHE, JSON.stringify(cache)); } catch {}
+  return url;
+}
+
+/* 第 1 步 */
+$('typeCards').innerHTML = TEMPLATE_TYPES.map((t) => {
+  const n = templateByType(t.key).length;
+  return `<div class="type-card" data-type="${t.key}"><b>${t.label}</b><small>内置 ${n} 个模板 · 选完即可生成开局</small></div>`;
+}).join('');
+$('typeCards').addEventListener('click', (e) => {
+  const card = e.target.closest('.type-card');
+  if (!card) return;
+  type = card.dataset.type;
+  [...$('typeCards').children].forEach((c) => c.classList.toggle('sel', c === card));
+  $('toStep2').disabled = false;
+});
+$('toStep2').addEventListener('click', () => step(2));
+$('back1').addEventListener('click', () => step(1));
+
+/* 第 2 步 */
+$('examples').innerHTML = [
+  '7×7 吃子棋，三子连线赢',
+  '两人抢分扑克，10 比 5 大',
+  '麻将只用万条筒，七对翻倍',
+].map((s, i) => `<button type="button" data-ex="${i}">示例 ${i+1}</button>`).join('');
+const EXAMPLES = [
+  '7×7 吃子棋，三子连线赢，两人，60 回合无吃子判和',
+  '两人抢分扑克，10 比 5 大，分数达到 21 赢，三轮和棋',
+  '麻将只用万条筒，七对翻倍，四人，番型翻倍，分数上限 8',
+];
+$('examples').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-ex]');
+  if (b) $('desc').value = EXAMPLES[+b.dataset.ex];
+});
+
+function renderQuestions(container, questions) {
+  container.innerHTML = '';
+  if (!questions?.length) return;
+  for (const q of questions) {
+    const box = document.createElement('div'); box.className = 'q';
+    box.innerHTML = `<p>${q.text}</p>`;
+    for (const o of q.options) {
+      const b = document.createElement('button'); b.textContent = o; b.style.margin = '0 6px 6px 0';
+      b.addEventListener('click', () => answer(q.key, o)); box.appendChild(b);
+    }
+    const d = document.createElement('button'); d.textContent = '用默认'; d.className = '';
+    d.addEventListener('click', () => answer(q.key, q.default)); box.appendChild(d);
+    container.appendChild(box);
+  }
+}
+function answer(key, option) {
+  answered[key] = option;
+  const list = Object.entries(answered).map(([k, v]) => ({ key: k, option: v }));
+  rs = answerQuestions(baseRs || rs, list);
+  rs.version = Object.keys(answered).length + 1;
+  currentQ = [];
+  $('askBox').innerHTML = '';
+  showPreview();
+}
+
+function showPreview() {
+  const v = validateRuleSet(rs);
+  $('preview').hidden = false;
+  $('json').textContent = JSON.stringify(rs, null, 2);
+  $('book').textContent = ruleBook(rs);
+  $('artGrid').innerHTML = rs.pieces.map((p) => {
+    const a = artParams(p, rs.type);
+    return `<div><img class="art" src="${artData(a)}" alt="${p.name}"><div style="text-align:center;font-size:12px">${p.name} · ${a.motif}</div></div>`;
+  }).join('');
+  const h = healthCheck(rs, 20);
+  $('health').innerHTML = `<span class="tag ${v.ok ? 'good' : 'bad'}">${v.ok ? '规则自检通过' : '规则有缺口'}</span>`
+    + `<span class="tag">先手胜率 ${Math.round(h.firstRate * 100)}%</span>`
+    + `<span class="tag">平均 ${h.avgSteps} 步</span>`
+    + h.notes.map((n) => `<span class="tag bad">${n}</span>`).join('');
+  persist();
+}
+
+$('generate').addEventListener('click', () => {
+  const text = $('desc').value.trim();
+  if (!text) { $('askBox').innerHTML = '<div class="q">先写一句话规则吧，比如「7×7 吃子棋，三子连线赢」。</div>'; return; }
+  const parsed = parseDescription(text, type || 'board');
+  rs = parsed.ruleSet;
+  baseRs = JSON.parse(JSON.stringify(rs)); answered = {};
+  currentQ = parsed.questions;
+  if (parsed.warnings.length) $('askBox').innerHTML = parsed.warnings.map((w) => `<div class="q">${w}</div>`).join('');
+  else $('askBox').innerHTML = '';
+  if (currentQ.length) {
+    renderQuestions($('askBox'), currentQ);
+    $('preview').hidden = true;
+  } else showPreview();
+});
+$('copyBook').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText($('book').textContent); $('copyBook').textContent = '已复制'; }
+  catch { $('copyBook').textContent = '请手动复制上方文本'; }
+});
+$('toStep3').addEventListener('click', () => { step(3); reloadVersions(); });
+
+/* 第 3 步 */
+$('quickTags').innerHTML = ['吃法不对', '棋盘太小', '先手太强', '胜负条件错', '美术风格换']
+  .map((s) => `<button type="button" data-tag="${s}">${s}</button>`).join('');
+$('quickTags').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tag]');
+  if (b) $('feedback').value = b.dataset.tag;
+});
+$('play5').addEventListener('click', () => {
+  if (!rs) return;
+  const eng = createEngine(rs);
+  const games = Array.from({ length: 5 }, (_, i) => {
+    const r = eng.selfPlay();
+    return `第 ${i+1} 局 · ${r.steps} 步 · 终局：${r.reason === 'eliminate' ? '吃光' : r.reason === 'lineup' ? '连成一线' : r.reason === 'reach' ? '到达目标区' : r.reason === 'score' ? '达到分数' : r.reason === 'no-capture' ? '无吃子判和' : r.reason}（${r.winner === 'draw' ? '和局' : (r.winner === 'a' ? '先手' : '后手') + '胜'}）`;
+  });
+  $('playLog').textContent = games.join('\n');
+});
+
+$('applyFeedback').addEventListener('click', () => {
+  const text = $('feedback').value.trim();
+  if (!rs || !text) return;
+  let auto = null;
+  if (/棋盘太小|棋盘大|扩大/.test(text)) {
+    rs.board.cols = Math.min(19, (rs.board.cols || 7) + 2);
+    rs.board.rows = Math.min(19, (rs.board.rows || 7) + 2);
+    auto = `已把棋盘改到 ${rs.board.cols}×${rs.board.rows}`;
+  } else if (/美术.*换|换.*风格/.test(text)) {
+    const palettes = ['#B4462F', '#2DD4BF', '#E8833A', '#8E7CC3', '#3C7DBF'];
+    for (const p of rs.pieces) p.art = { ...p.art, palette: palettes[(palettes.indexOf(p.art?.palette) + 1) % palettes.length] };
+    auto = '已换一套配色，棋子纹样族保持一致';
+  }
+  if (auto) {
+    const beforeBook = ruleBook(rs);
+    rs.version = (rs.version || 1) + 1;
+    $('feedbackAsk').innerHTML = `<div class="q good">${auto}，已生成 v${rs.version}。</div>`;
+    $('feedback').value = '';
+    // 规则书文字同步回参数（能对的就对）
+    const ed = applyBookEdits(rs, ruleBook(rs));
+    if (ed.conflict.length) $('feedbackAsk').innerHTML += `<div class="q bad">${ed.conflict.join('；')}</div>`;
+    rs = ed.ruleSet;
+    persist();
+    const afterBook = ruleBook(rs);
+    const dd = diffBooks(beforeBook, afterBook);
+    $('diffView').hidden = false;
+    $('diffView').textContent = dd.join('\n');
+    reloadVersions(); showPreview();
+  } else {
+    const qs = parseDescription(text, rs.type).questions;
+    renderQuestions($('feedbackAsk'), qs.length ? qs : [{
+      key: 'win-missing', text: '这条改动我还不能自动理解。你是想改胜负条件吗？',
+      options: ['吃光对方获胜', '到达目标区获胜', '保持现有规则'], default: '保持现有规则',
+    }]);
+  }
+});
+
+function persist() {
+  let data = {};
+  try { data = JSON.parse(localStorage.getItem(STORE) || '{}'); } catch {}
+  versions = makeVersion(rs, data.versions || []);
+  // 同一版本只留最后一条，避免重复点击刷屏
+  const uniq = [];
+  for (const v of versions) {
+    const i = uniq.findIndex((x) => x.version === v.version);
+    if (i >= 0) uniq[i] = v; else uniq.push(v);
+  }
+  versions = uniq;
+  curVersion = versions.length - 1;
+  try { localStorage.setItem(STORE, JSON.stringify({ versions, current: curVersion })); } catch {}
+}
+function reloadVersions() {
+  try {
+    const d = JSON.parse(localStorage.getItem(STORE) || '{}');
+    versions = d.versions || []; curVersion = d.current ?? versions.length - 1;
+    if (versions[curVersion]) { rs = JSON.parse(JSON.stringify(versions[curVersion])); delete rs.book; delete rs.at; }
+  } catch {}
+  $('versions').innerHTML = versions.map((v, i) =>
+    `<button type="button" data-v="${i}" class="${i === curVersion ? 'primary' : ''}">v${v.version}</button>`).join('');
+}
+$('versions').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-v]'); if (!b) return;
+  const i = +b.dataset.v;
+  const prev = versions[curVersion]?.book || '';
+  curVersion = i;
+  rs = JSON.parse(JSON.stringify(versions[i])); delete rs.book; delete rs.at;
+  const d = diffBooks(prev, versions[i].book || '');
+  $('diffView').hidden = false;
+  $('diffView').textContent = d.join('\n');
+  try { localStorage.setItem(STORE, JSON.stringify({ versions, current: curVersion })); } catch {}
+  reloadVersions();
+  $('diffView').hidden = false;
+  $('diffView').textContent = d.join('\n');
+});
+$('exportJson').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(rs, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `${rs.id}.json`; a.click(); URL.revokeObjectURL(a.href);
+});
+$('makeCode').addEventListener('click', () => {
+  if (!rs) return;
+  const code = encodeShort(rs);
+  $('codeOut').textContent = `短码（${code.length} 字符，可发给别人还原）：${code}`;
+  $('codeIn').value = code;
+});
+$('restoreCode').addEventListener('click', () => {
+  const got = decodeShort($('codeIn').value.trim());
+  if (!got) { $('codeOut').textContent = '短码无效或规则不完整，换一个试试。'; return; }
+  rs = got; type = got.type; persist(); showPreview(); step(2);
+  $('codeOut').textContent = `已还原：${rs.name}（v${rs.version || 1}）`;
+});
+
+reloadVersions();
+if (rs) showPreview();
+window.__RULECRAFT__ = {
+  snapshot: () => ({ type, id: rs?.id, version: rs?.version, name: rs?.name,
+    pieces: rs?.pieces?.length, versions: versions.length, questions: currentQ.length }),
+  generate: (text, t = 'board') => { type = t; $('desc').value = text; $('generate').click(); },
+};
+</script>
+</body>
+</html>

@@ -312,6 +312,33 @@
       "tag": "策略",
       "status": "ready",
       "renderer": "classic"
+    },
+    {
+      "id": "dragonchess",
+      "name": "龙凤棋",
+      "dir": "dragonchess",
+      "cover": "covers/dragonchess.png",
+      "tag": "策略",
+      "status": "ready",
+      "renderer": "classic"
+    },
+    {
+      "id": "mahjong",
+      "name": "麻将",
+      "dir": "mahjong",
+      "cover": "covers/mahjong.png",
+      "tag": "益智",
+      "status": "ready",
+      "renderer": "classic"
+    },
+    {
+      "id": "rulecraft",
+      "name": "规则工坊",
+      "dir": "rulecraft",
+      "cover": "covers/rulecraft.png",
+      "tag": "益智",
+      "status": "ready",
+      "renderer": "classic"
     }
   ]
 }

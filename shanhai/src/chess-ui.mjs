@@ -29,6 +29,8 @@
           <div class="chess-opts" id="chess-opts"></div>
           <div class="chess-modes" id="chess-modes"></div>
           <div class="screen__foot">
+            <button class="btn btn--ghost btn--small" id="chess-rules" type="button">规则页</button>
+            <button class="btn btn--ghost btn--small" id="chess-folk" type="button">民间棋</button>
             <button class="btn btn--ghost btn--small" id="chess-close" type="button">返回战棋</button>
           </div>
         </div>
@@ -56,6 +58,10 @@
     titleEl = document.getElementById('chess-title');
 
     document.getElementById('chess-close').addEventListener('click', close);
+    const rulesBtn = document.getElementById('chess-rules');
+    if (rulesBtn) rulesBtn.addEventListener('click', () => { location.href = './rules.html'; });
+    const folkBtn = document.getElementById('chess-folk');
+    if (folkBtn) folkBtn.addEventListener('click', () => { location.href = './folk.html'; });
     document.getElementById('chess-tolobby').addEventListener('click', showLobby);
     document.getElementById('chess-undo').addEventListener('click', undo);
     document.getElementById('chess-restart').addEventListener('click', () => { if (state) startGame(state.mode); });
@@ -194,6 +200,12 @@
       if (a.to && !a.from) { doMove(a); return; }        // 五子棋 / 翻转棋：落子
       selected = [x, y];                                 // 走子类：选中己方棋子
       targets = acts.map((ac) => ({ x: ac.to[0], y: ac.to[1], action: ac }));
+      // 连跳 HUD：统计可达落点与最大跳数（第三批 E-2）
+      const jumps = acts.filter((ac) => ac.jump);
+      if (state.mode === 'checkers' && jumps.length) {
+        const maxStep = Math.max(...jumps.map((ac) => ac.steps || 1));
+        statusEl.textContent = `连跳：${jumps.length} 个落点，最多 ${maxStep} 跳。① ② ③ 为跳序，数字越大跳得越远。`;
+      }
       render();
       return;
     }

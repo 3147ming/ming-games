@@ -1,0 +1,14 @@
+{
+  "name": "规则工坊",
+  "short_name": "规则工坊",
+  "description": "把中文规则描述变成可玩的 RuleSet、规则书与程序化棋子。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#171423",
+  "theme_color": "#171423",
+  "categories": ["games", "puzzle"]
+}

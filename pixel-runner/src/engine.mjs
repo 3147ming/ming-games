@@ -129,6 +129,8 @@ export function createRun(opts = {}) {
     jumpsLeft: 2,
     coyote: 0,               // 离地后剩余宽容时间
     buffer: 0,               // 跳跃缓冲剩余
+    speed: BASE_SPEED,       // 当前速度(px/s)，供矢量角色步频使用
+    landSquashT: 0,          // 落地压缩剩余(0.12s)
     sliding: false,
     slideT: 0,
     dead: false,
@@ -323,6 +325,8 @@ export function step(run, dt, opts = {}) {
 function advance(run, dt, events, opts) {
   run.t += dt;
   const speed = speedAt(run.t, opts);
+  run.speed = speed;                         // 供 UI 矢量角色步频/状态推断使用
+  if (run.landSquashT > 0) run.landSquashT = Math.max(0, run.landSquashT - dt);
 
   // 位移
   run.x += speed * dt;
@@ -334,6 +338,7 @@ function advance(run, dt, events, opts) {
   if (run.y <= 0) {
     if (!run.onGround) {
       events.push({ type: 'land', t: run.t });
+      run.landSquashT = 0.12;                 // 落地压缩 0.12s（矢量角色回弹动画）
     }
     run.y = 0;
     run.vy = 0;

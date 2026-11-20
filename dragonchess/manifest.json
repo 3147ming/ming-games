@@ -1,0 +1,14 @@
+{
+  "name": "龙凤棋 · 龙棋",
+  "short_name": "龙凤棋",
+  "description": "三层同心正方形民间棋，成龙吃子、满天飞、打炮。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#151210",
+  "theme_color": "#151210",
+  "categories": ["games", "strategy"]
+}

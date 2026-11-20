@@ -14,8 +14,11 @@ import { availableSkus, sellable } from './economy.mjs';
 /* P1-8：定价页的"满意度预估"直接读 PRICING.repPenaltyK，避免在展示层硬编码一份会漂的常数。 */
 import { PRICING } from './pricing.mjs';
 import {
-  settings, RANGES, DEFAULTS, setSettings, resetSettings,
+  settings, RANGES, DEFAULTS, ENUMS, setSettings, setSetting, resetSettings, onSettingsChange,
 } from './settings.mjs';
+/* 任务块 H-2：通知中心（三级 + 同屏 2 条 + +N 折叠）从 hud 这里接入，
+ * 排序 / 过滤 / 折叠全是纯逻辑，DOM 只负责把快照画出来。 */
+import { createNotifyCenter, LEVEL, FILTER } from './notify-center.mjs';
 import { fmtYuan, fmtYuanSigned } from './fmt.mjs';
 /* 任务6 CG：只取清单与判定（纯逻辑模块，无 DOM 依赖），展示在这里拼。
  * 为什么不把 CG 表直接写进 hud：那会让"里程碑只弹一次"这类规则无法在 Node 里单测。 */
@@ -326,6 +329,7 @@ export function renderHud(env, dt = 1 / 60) {
   const _hudT0 = (typeof performance !== 'undefined') ? performance.now() : 0;
   _hudWritesThisFrame = 0;
   syncModalLayer();
+  tickNotify(dt);
   if (!els.clock) return;
   setTextIfChanged(els.clock, fmtClock(state.gameHour));
   const seg = state.segmentLabel ?? '';
@@ -533,37 +537,69 @@ export function renderHud(env, dt = 1 / 60) {
  * 提示已移到屏幕左侧竖排（不挡中央视野），仍要把停留时间压短：
  * 默认 3000→2200ms，显式传进来的长时长统一封顶 2600ms，避免横幅赖在视野里。
  */
-const MAX_TOASTS = 2;
 const MAX_TOAST_MS = 2600;
-const toastQueue = [];
-const toastLive = [];
-let toastTimers = [];
+/** 既有调用方的 kind → 通知等级。bad 当紧急（同屏限 1），warn/important 当重要，其余普通。 */
+const KIND_LEVEL = {
+  bad: LEVEL.URGENT, warn: LEVEL.IMPORTANT, important: LEVEL.IMPORTANT,
+  ok: LEVEL.NORMAL, info: LEVEL.NORMAL,
+};
+const notify = createNotifyCenter({ maxVisible: 2, maxUrgent: 1, filter: settings.notifyFilter });
+let lastNotifySig = '';
 
-function pumpToasts() {
-  while (toastLive.length < MAX_TOASTS && toastQueue.length) {
-    const it = toastQueue.shift();
+/** 把通知快照画到左下容器。只有签名变化才动 DOM，避免每帧重排。 */
+function syncNotify() {
+  if (!els.toasts) return;
+  const s = notify.snapshot();
+  const sig = JSON.stringify(s.visible.map((n) => [n.id, n.text, n.level]))
+    + '|' + s.hidden + '|' + s.expanded;
+  if (sig === lastNotifySig) return;
+  lastNotifySig = sig;
+  els.toasts.replaceChildren();
+  for (const n of s.visible) {
     const div = document.createElement('div');
-    div.className = `toast ${it.kind}`;
-    div.textContent = it.msg;
+    const kind = n.level === LEVEL.URGENT ? 'bad' : n.level === LEVEL.IMPORTANT ? 'warn' : 'info';
+    div.className = `toast ${kind}`;
+    div.textContent = n.text;
+    div.dataset.notifyId = n.id;
     els.toasts.appendChild(div);
-    toastLive.push(div);
-    const t = setTimeout(() => {
-      div.classList.add('out');
-      const rm = setTimeout(() => div.remove(), 200);
-      toastTimers.push(rm);
-      const i = toastLive.indexOf(div);
-      if (i >= 0) toastLive.splice(i, 1);
-      pumpToasts();
-    }, it.duration);
-    toastTimers.push(t);
+  }
+  if (s.hidden > 0) {
+    const more = document.createElement('button');
+    more.className = 'toast-more';
+    more.type = 'button';
+    more.textContent = s.expanded ? '收起' : `+${s.hidden}`;
+    more.addEventListener('click', () => { notify.toggle(); syncNotify(); });
+    els.toasts.appendChild(more);
   }
 }
 
+/** 保留旧签名 toast(msg, kind, duration)，内部交给通知中心排队 / 折叠。 */
 export function toast(msg, kind = 'ok', duration = 2200) {
   if (!els.toasts) return;
-  toastQueue.push({ msg, kind, duration: Math.max(800, Math.min(MAX_TOAST_MS, duration | 0)) });
-  pumpToasts();
+  notify.push({
+    text: msg,
+    level: KIND_LEVEL[kind] ?? LEVEL.NORMAL,
+    ttl: Math.max(800, Math.min(MAX_TOAST_MS, duration | 0)) / 1000,
+  });
+  syncNotify();
 }
+
+/** 每帧推进通知寿命；返回是否有变化由 snapshot 签名比较处理。 */
+export function tickNotify(dt = 1 / 60) {
+  if (notify.tick(dt)) syncNotify();
+}
+
+/** 诊断接口（三视口截图 / 浏览器验证用） */
+export function notifySnapshot() { return notify.snapshot(); }
+
+notify.setFilter(settings.notifyFilter);
+onSettingsChange((s, changed) => {
+  if (changed.includes('notifyFilter')) {
+    notify.setFilter(s.notifyFilter);
+    lastNotifySig = '';
+    syncNotify();
+  }
+});
 
 /* ---------- 存档提示（右上角磨砂 · 2s 自动消失） ----------
    独立容器而不用 .toasts：存档反馈要固定在右上角且不挤走普通提示，
@@ -2524,6 +2560,7 @@ export function openLeaderboard(boards, onClose) {
 
 /** 把数值渲染成人看的文本（音量显示百分比、角度带单位） */
 function fmtSetting(key, v) {
+  if (ENUMS[key]) return ENUMS[key].find((o) => o.value === v)?.label ?? String(v);
   if (key === 'bgm' || key === 'sfx' || key === 'vignette') return `${Math.round(v * 100)}%`;
   if (key === 'fov') return `${Math.round(v)}°`;
   return v.toFixed(2);
@@ -2531,6 +2568,9 @@ function fmtSetting(key, v) {
 
 /** 数值演示短语：让玩家不靠猜就知道"拖到哪边会怎样" */
 function hintFor(key, v) {
+  if (ENUMS[key]) {
+    return ENUMS[key].find((o) => o.value === v)?.hint ?? '';
+  }
   const r = RANGES[key];
   if (!r?.hint) return '';
   const pos = (v - r.min) / (r.max - r.min);
@@ -2566,6 +2606,22 @@ export function openSettings(onClose, resetApi = null, onResetDone = null) {
       ${g.keys.map(row).join('')}
     </div>`).join('');
 
+  /* 通知三档是枚举而不是滑杆 —— 同屏条数 / 折叠 / 级别由 notify-center 统一处理。 */
+  const notifyBlock = `
+    <div class="set-group">
+      <div class="set-group-title">🔔 通知</div>
+      <div class="set-row">
+        <div class="set-head">
+          <span class="set-label">游戏内提示</span>
+          <span class="set-val" data-val="notifyFilter">${fmtSetting('notifyFilter', settings.notifyFilter)}</span>
+        </div>
+        <div class="set-enum">
+          ${ENUMS.notifyFilter.map((o) => `<button type="button" class="mini-btn ${settings.notifyFilter === o.value ? 'on' : ''}" data-notify="${o.value}">${o.label}</button>`).join('')}
+        </div>
+        <div class="set-hint" data-hint="notifyFilter">${hintFor('notifyFilter', settings.notifyFilter)}</div>
+      </div>
+    </div>`;
+
   /* 账号区：重开放在设置里而不是绑热键 ——
    * 不可逆动作不该有一次误触就能触发的入口（点进来还要再过一道密码确认，见 openResetConfirm）。 */
   let accountBlock = '';
@@ -2590,7 +2646,7 @@ export function openSettings(onClose, resetApi = null, onResetDone = null) {
       <div class="modal">
         <h2>⚙ 设置</h2>
         <div class="sub">改动立刻生效并自动保存 · 读档 / 重开都沿用</div>
-        <div class="set-list">${body}${accountBlock}</div>
+        <div class="set-list">${body}${notifyBlock}${accountBlock}</div>
         <div class="actions">
           <button class="btn" data-act="reset">恢复默认</button>
           <button class="btn primary" data-act="close">关闭</button>
@@ -2623,7 +2679,21 @@ export function openSettings(onClose, resetApi = null, onResetDone = null) {
         if (input) input.value = String(settings[key]);
         refresh(key);
       }
+      els.modal.querySelectorAll('[data-notify]').forEach((b) => {
+        b.classList.toggle('on', b.dataset.notify === settings.notifyFilter);
+      });
       toast('已恢复默认设置', 'info', 1600);
+      return;
+    }
+    if (btn.dataset.notify) {
+      setSetting('notifyFilter', btn.dataset.notify);
+      const val = els.modal.querySelector('[data-val="notifyFilter"]');
+      if (val) val.textContent = fmtSetting('notifyFilter', settings.notifyFilter);
+      const hint = els.modal.querySelector('[data-hint="notifyFilter"]');
+      if (hint) hint.textContent = hintFor('notifyFilter', settings.notifyFilter);
+      els.modal.querySelectorAll('[data-notify]').forEach((b) => {
+        b.classList.toggle('on', b.dataset.notify === settings.notifyFilter);
+      });
       return;
     }
     if (btn.dataset.act === 'open-reset') {
@@ -3068,9 +3138,7 @@ export function closeAll() {
   els.start.innerHTML = '';
   hideTutorial();
   if (els.incident) els.incident.style.display = 'none';
-  for (const t of toastTimers) clearTimeout(t);
-  toastTimers = [];
-  toastQueue.length = 0;
-  toastLive.length = 0;
-  if (els.toasts) els.toasts.innerHTML = '';
+  notify.clear();
+  lastNotifySig = '';
+  if (els.toasts) els.toasts.replaceChildren();
 }

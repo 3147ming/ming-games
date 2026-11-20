@@ -40,6 +40,8 @@ export const DEFAULTS = {
   sensitivity: 1.0,
   /** 视场角（度） */
   fov: 75,
+  /** 通知过滤：全部 / 仅重要 / 关闭（任务块 H-2） */
+  notifyFilter: 'all',
 };
 
 /**
@@ -54,6 +56,15 @@ export const RANGES = {
   vignette:    { min: 0,    max: 1,    step: 0.01, label: '暗角',     hint: '四角压暗，聚焦店铺中央' },
   sensitivity: { min: 0.3,  max: 2.5,  step: 0.05, label: '鼠标灵敏度' },
   fov:         { min: 60,   max: 100,  step: 1,    label: '视场角 FOV' },
+};
+
+/** 非数值型设置的合法取值（设置面板按这张表渲染按钮，不拖滑杆） */
+export const ENUMS = {
+  notifyFilter: [
+    { value: 'all', label: '全部', hint: '普通 / 重要 / 紧急都显示' },
+    { value: 'important', label: '仅重要', hint: '只显示重要与紧急' },
+    { value: 'off', label: '关闭', hint: '不显示游戏内通知' },
+  ],
 };
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -86,6 +97,9 @@ export function isSettingKey(key) {
  * 一旦被塞进 NaN，亮度会直接把画面算成黑色（与 ADR-005 的黑屏同症状，很难查）。
  */
 export function normalize(key, value) {
+  if (ENUMS[key]) {
+    return ENUMS[key].some((o) => o.value === value) ? value : DEFAULTS[key];
+  }
   const r = RANGES[key];
   const def = DEFAULTS[key];
   if (!r) return def;

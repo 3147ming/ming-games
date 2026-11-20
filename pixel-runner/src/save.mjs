@@ -35,6 +35,7 @@ export function defaultSettings() {
     fx: true,               // 粒子 / 拖尾 / 震屏
     vibrate: true,
     control: 'both',        // 'tap' | 'slide' | 'both'
+    skin: 'vector',         // 'vector' 矢量骨架（默认） | 'sprite' 立绘皮肤
   };
 }
 
@@ -142,6 +143,7 @@ export function normalizeSettings(raw) {
     fx: data.fx !== false,
     vibrate: data.vibrate !== false,
     control: ['tap', 'slide', 'both'].includes(data.control) ? data.control : d.control,
+    skin: data.skin === 'sprite' ? 'sprite' : 'vector',
   };
 }
 

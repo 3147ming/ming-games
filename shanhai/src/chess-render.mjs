@@ -428,6 +428,16 @@
           ctx.shadowBlur = 0;
           ctx.fillStyle = jump ? 'rgba(255,206,74,0.5)' : 'rgba(96,214,142,0.42)';
           ctx.beginPath(); ctx.arc(p[0], p[1], rr * 0.6, 0, Math.PI * 2); ctx.fill();
+          // 连跳跳序：用 ①②③… 标出第几步能到（第三批 E-2）。
+          if (jump && t.action && t.action.steps) {
+            const circled = '①②③④⑤⑥⑦⑧⑨⑩';
+            const label = circled[t.action.steps - 1] || String(t.action.steps);
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#1a1408';
+            ctx.font = `700 ${Math.max(9, Math.round(rr * 1.5))}px system-ui, sans-serif`;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(label, p[0], p[1] + 0.5);
+          }
         } else {
           ctx.fillStyle = 'rgba(96,214,142,0.85)';
           ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(3, radius * 0.26), 0, Math.PI * 2); ctx.fill();
