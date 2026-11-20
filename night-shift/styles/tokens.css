@@ -419,27 +419,36 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------- Toast ---------- */
+/* ---------- Toast ----------
+ * 提示不再压在画面正中（准星/交互提示/3D 视野都在这里，玩家反馈"遮视野"）。
+ * 改到屏幕左侧竖排：从角落信息下方起、到状态条上方止，靠左贴边、窄列半透明，
+ * 既不挡中央视野，也不吃指针（.toasts 继承 #hud-root 的 pointer-events:none）。 */
 .toasts {
   position: absolute;
-  left: 50%;
-  top: auto;
-  bottom: 64px;
-  transform: translateX(-50%);
+  left: calc(12px + env(safe-area-inset-left));
+  top: 132px;
+  bottom: auto;
+  transform: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  align-items: center;
+  gap: 5px;
+  align-items: flex-start;
+  max-width: min(280px, 40vw);
+  pointer-events: none;
 }
 .toast {
-  padding: 7px 14px;
-  background: var(--surface-raised);
+  padding: 5px 10px;
+  background: var(--glass-bg-strong, rgba(20, 24, 33, .82));
+  backdrop-filter: var(--glass-blur, blur(8px));
+  -webkit-backdrop-filter: var(--glass-blur, blur(8px));
   border: 1px solid var(--border-strong);
-  border-left-width: 4px;
+  border-left-width: 3px;
   border-radius: var(--radius);
-  font-size: 13px;
+  font-size: 11.5px;
+  line-height: 1.45;
   box-shadow: var(--shadow);
   animation: toast-in .18s ease;
+  opacity: .9;
 }
 .toast.ok { border-left-color: var(--money); }
 .toast.bad { border-left-color: var(--warning); color: var(--danger-text); }
@@ -885,7 +894,12 @@ html, body {
   border: 1px solid rgba(235, 87, 87, .55);
   border-radius: var(--mg-r-pill);
   box-shadow: var(--shadow-float), 0 0 26px rgba(235, 87, 87, .28);
-  font-size: 14px; font-weight: 600;
+  background: var(--glass-bg-strong, rgba(20, 24, 33, .86));
+  backdrop-filter: var(--glass-blur, blur(8px));
+  -webkit-backdrop-filter: var(--glass-blur, blur(8px));
+  font-size: 12.5px; font-weight: 600;
+  padding: 7px 14px;
+  opacity: .92;
   animation: incident-in .28s ease;
 }
 .incident .ic-emoji { font-size: 20px; }
@@ -1817,10 +1831,10 @@ html, body {
   .envline .env-row .label { font-size: 11px; }
   .envline .env-row .value { font-size: 13px; }
   .envline .ev { font-size: 12px; padding: 0 6px; }
-  /* 互动文字（卖出/采购/提示）改放屏幕下方中间，避开摇杆与动作按钮；
-   * 顶部弹窗在手机上会遮掉大半视野（2026-10-05 反馈）。 */
-  .toasts { bottom: calc(68px + env(safe-area-inset-bottom)); }
-  .toast { font-size: 12px; padding: 5px 11px; }
+  /* 手机横屏视野窄：toast 继续贴左竖排（不回中央），只压小字号与内边距。
+   * 顶部弹窗会遮掉大半视野（2026-10-05 反馈），中央更会压住准星 —— 一律靠左。 */
+  .toasts { top: 108px; left: calc(8px + env(safe-area-inset-left)); max-width: min(240px, 46vw); }
+  .toast { font-size: 10.5px; padding: 4px 8px; }
 }
 
 /* ---------- P1-12：窄屏/触屏下弹窗按钮常驻 ----------
@@ -1857,8 +1871,8 @@ html, body {
 .envline .env-row .value { font-size: 12px; }
 .hintbar { font-size: 10px; padding: 5px 8px; bottom: 6px; }
 .prompt { font-size: 13px; padding: 8px 14px; }
-.toast { font-size: 12px; padding: 7px 12px; }
-.toasts { top: 70px; bottom: auto; }
+.toast { font-size: 11px; padding: 6px 10px; }
+.toasts { top: 112px; left: calc(8px + env(safe-area-inset-left)); max-width: min(230px, 52vw); }
 .queue .head { font-size: 10px; }
 /* 左右角数据块在手机上缩小宽度 */
 .corner.tl, .corner.tr { max-width: 42%; }
@@ -1897,8 +1911,8 @@ html, body {
 .envline { display: none; }  /* 环境行横屏太占高度，直接藏 */
 .hintbar { font-size: 9px; padding: 3px 6px; bottom: 4px; }
 .prompt { font-size: 12px; padding: 6px 12px; }
-.toast { font-size: 11px; padding: 5px 10px; }
-.toasts { top: 50px; bottom: auto; }
+.toast { font-size: 10px; padding: 4px 8px; }
+.toasts { top: 72px; left: calc(6px + env(safe-area-inset-left)); max-width: min(220px, 50vw); gap: 3px; }
 .theme-banner, .promo-banner { font-size: 12px; padding: 5px 10px; }
 .theme-banner .tb-desc { font-size: 10px; }
 .theme-banner .tb-intro { font-size: 10px; }   /* 竖屏：引导语跟描述同级缩一号，别抢主题名 */

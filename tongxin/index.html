@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#141a20">
+<meta name="description" content="同心 · 找朋友 —— 四人扑克两两配合，暗找队友，同心协力赢墩得分。">
+<title>同心 · TONGXIN</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23141a20'/%3E%3Cpath d='M16 24C8 18 6 12 10 9c3-2 5 1 6 3 1-2 3-5 6-3 4 3 2 9-6 15z' fill='%23e0736b'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+:root{--ac:#e0736b;--gold:#d6ab58;--blue:#6aa9e0;--ink:#141a20;--paper:#e8e6e2;--dim:#8f9aa6;--line:#2c3844;--win:#5cc08a}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%}
+body{background:radial-gradient(120% 85% at 50% -10%,#1e2a36 0%,var(--ink) 62%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:14px 10px calc(20px + env(safe-area-inset-bottom))}
+.wrap{width:min(100%,560px)}
+.head{text-align:center;margin-bottom:8px}.logo{font-size:23px;letter-spacing:.22em;margin:0;color:var(--gold)}.sub{font-size:10px;letter-spacing:.14em;color:var(--dim);margin:3px 0 0}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:12px;padding:8px 11px;margin-bottom:8px;font-size:11px}
+.bar b{color:var(--gold);font-size:14px}
+.table{position:relative;background:linear-gradient(180deg,#1c2834,#10161c);border:1px solid var(--line);border-radius:16px;padding:10px;margin-bottom:8px;min-height:240px}
+.seats{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.seat{background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:10px;padding:7px 9px;position:relative;min-width:0}
+.seat.active{border-color:var(--gold);box-shadow:0 0 12px rgba(214,171,88,.3)}
+.seat .nm{font-size:11px;font-weight:600}.seat .nm.me{color:var(--gold)}
+.teamA{border-left:3px solid var(--ac)}.teamB{border-left:3px solid var(--blue)}
+.seat .tag{position:absolute;top:6px;right:7px;font-size:9px;padding:1px 6px;border-radius:8px;background:rgba(255,255,255,.08);color:var(--dim)}
+.seat .tag.known{color:var(--gold)}
+.center{text-align:center;padding:10px 0}
+.center .round{font-size:10px;color:var(--dim);letter-spacing:.15em}
+.center .score{font-size:22px;font-weight:700;margin:3px 0}.center .score .a{color:var(--ac)}.center .score .b{color:var(--blue)}
+.center .trick{font-size:11px;color:var(--dim)}
+.myhand{display:flex;gap:2px;justify-content:center;flex-wrap:wrap;margin:6px 0;min-height:54px}
+.card{width:32px;height:46px;border-radius:5px;background:#f6f1e7;color:#1a1520;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:700;cursor:pointer;box-shadow:0 3px 7px rgba(0,0,0,.4);transition:transform .12s;user-select:none}
+.card.red{color:#c0392b}.card .r{font-size:14px;line-height:1}.card .s{font-size:12px;line-height:1.2}.card.sel{transform:translateY(-10px)}
+.controls{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:6px}
+.btn{border:none;border-radius:10px;min-height:40px;padding:0 14px;font:inherit;font-size:12px;cursor:pointer;background:var(--gold);color:#1a1305;font-weight:600}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--paper);font-weight:400}
+.btn:disabled{opacity:.4;cursor:default}
+.msg{text-align:center;min-height:18px;font-size:11px;margin:6px 0;color:var(--dim)}
+.msg.win{color:var(--win)}.msg.lose{color:var(--ac)}
+.sheet{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.7)}
+.sheet[hidden]{display:none}.panel{width:min(100%,420px);max-height:84vh;overflow:auto;background:linear-gradient(180deg,#1c2834,#10161c);border:1px solid var(--line);border-radius:18px;padding:22px}
+.panel h2{margin:0 0 10px;font-size:18px;color:var(--gold)}.panel p{font-size:12px;line-height:1.85;color:var(--dim)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head"><h1 class="logo">TONGXIN</h1><p class="sub">同 心 · 找 朋 友</p></div>
+  <div class="bar"><div><span>金币 <b id="coin">100</b></span> · <span>胜 <b id="wins">0</b></span> · <span>局 <b id="scoreLine">红 0 : 0 蓝</b></span></div><button class="btn ghost" id="btn-info" style="min-height:28px;padding:0 8px">规则</button></div>
+  <div class="table">
+    <div class="seats" id="seats"></div>
+    <div class="center"><div class="round" id="round">第 1 墩</div><div class="score"><span class="a" id="sa">0</span> : <span class="b" id="sb">0</span></div><div class="trick" id="trick">等待出牌</div></div>
+    <div class="myhand" id="myhand"></div>
+  </div>
+  <div class="controls" id="playbar" hidden>
+    <button class="btn ghost" id="btn-pass">不要</button><button class="btn" id="btn-play">出牌</button><button class="btn ghost" id="btn-hint">提示</button>
+  </div>
+  <div class="msg" id="msg">点「新局」开始 · 找到你的同心队友</div>
+  <div class="controls"><button class="btn" id="btn-new">新局</button><button class="btn ghost" id="btn-reset">重置</button></div>
+</div>
+<div class="sheet" id="info" hidden><div class="panel">
+  <h2>玩法 · 同心（找朋友）</h2>
+  <p>四人各发 13 张牌，分成<b>红蓝两队</b>各两人。你只知道自己的队友是谁（面板已标出）；AI 队友与对手需靠出牌推断。</p>
+  <p>每墩出牌须压过上家同牌型（单张/对子/三张/顺子），不要则过。一墩结束，<b>赢墩者及其队友各得 1 分</b>，先到 <b>8 分</b>的队伍获胜。</p>
+  <p>配合要点：少压队友的牌，多帮队友赢墩。这是默契与推断的博弈。</p>
+  <div class="controls"><button class="btn" id="info-close">知道了</button></div>
+</div></div>
+<script>
+(function(){
+'use strict';
+var KEY='mg_tongxin.v1',$=function(i){return document.getElementById(i)};
+var S=(function(){try{var o=JSON.parse(localStorage.getItem(KEY));if(o&&typeof o==='object')return o}catch(e){}return {coin:100,wins:0}})();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function rng(seed){var x=seed>>>0||1;return function(){x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296}}
+var SUITS=['♠','♥','♦','♣'],RANKS=['3','4','5','6','7','8','9','10','J','Q','K','A','2'],RV={};RANKS.forEach(function(r,i){RV[r]=i+3});
+function mkDeck(){var d=[];SUITS.forEach(function(s){RANKS.forEach(function(r){d.push({r:r,s:s,v:RV[r]})})});return d}
+function shuffle(d,r){for(var i=d.length-1;i>0;i--){var j=Math.floor(r()*(i+1));var t=d[i];d[i]=d[j];d[j]=t}return d}
+var NAMES=['你(红)','AI·左(蓝)','AI·友(红)','AI·右(蓝)'],TEAM=[0,1,0,1];
+var G=null,sel={};
+function sortHand(h){h.sort(function(a,b){return b.v-a.v||a.s.localeCompare(b.s)})}
+function parse(cards){
+  if(!cards||!cards.length)return null;var v=cards.map(function(c){return c.v}).sort(function(a,b){return a-b}),n=v.length,counts={};v.forEach(function(x){counts[x]=(counts[x]||0)+1});
+  var cnts=Object.keys(counts).map(function(k){return counts[k]});
+  if(n===1)return {t:'single',main:v[0],len:n};if(n===2&&cnts[0]===2)return {t:'pair',main:v[0],len:n};
+  if(n===3&&cnts[0]===3)return {t:'triple',main:v[0],len:n};
+  if(n>=3&&cnts.every(function(c){return c===1})&&v[n-1]-v[0]===n-1)return {t:'straight',main:v[n-1],len:n};
+  return null;
+}
+function canBeat(cur,last){if(!cur)return false;if(!last)return true;if(cur.t!==last.t||cur.len!==last.len)return false;return cur.main>last.main}
+function cardHTML(c,i,isSel){var red=c.s==='♥'||c.s==='♦';return '<div class="card'+(red?' red':'')+(isSel?' sel':'')+'" data-i="'+i+'"><span class="r">'+c.r+'</span><span class="s">'+c.s+'</span></div>'}
+function start(){
+  var d=shuffle(mkDeck(),rng(Date.now()^(Math.random()*1e9|0)));
+  G={hands:[d.slice(0,13),d.slice(13,26),d.slice(26,39),d.slice(39,52)],pts:[0,0],last:null,lastP:-1,passes:0,turn:0,roundNo:1,trick:[],over:false};
+  G.hands.forEach(sortHand);sel={};$('playbar').hidden=false;
+  $('msg').className='msg';$('msg').textContent='你(红)与 AI·友(红) 一队 · 你先出牌';render();
+}
+function render(){
+  $('coin').textContent=S.coin;$('wins').textContent=S.wins;
+  $('sa').textContent=G.pts[0];$('sb').textContent=G.pts[1];$('scoreLine').textContent='红 '+G.pts[0]+' : '+G.pts[1]+' 蓝';
+  $('round').textContent='第 '+G.roundNo+' 墩';
+  $('seats').innerHTML=[0,1,2,3].map(function(i){
+    var known=i===0||i===2;
+    return '<div class="'+(TEAM[i]===0?'teamA':'teamB')+' seat'+(G.turn===i&&!G.over?' active':'')+'"><span class="nm'+(i===0?' me':'')+'">'+NAMES[i]+'</span><span class="tag'+(known?' known':'')+'">'+(known?(TEAM[i]===0?'红队':'蓝队'):'队?')+'</span><div style="font-size:10px;color:var(--dim);margin-top:3px">'+G.hands[i].length+' 张</div></div>';
+  }).join('');
+  $('trick').textContent=G.trick.length?('本墩 '+G.trick.length+' 张 · '+(G.last?NAMES[G.lastP]+' 领先':'—')):'等待出牌';
+  $('myhand').innerHTML=G.hands[0].map(function(c,i){return cardHTML(c,i,!!sel[i])}).join('');
+  Array.prototype.forEach.call($('myhand').children,function(el){el.addEventListener('click',function(){var i=+el.getAttribute('data-i');sel[i]=!sel[i];render()})});
+  var myTurn=G.turn===0&&!G.over;$('btn-play').disabled=!myTurn;$('btn-pass').disabled=!myTurn||!G.last;$('btn-hint').disabled=!myTurn;
+}
+function selCards(){return Object.keys(sel).filter(function(k){return sel[k]}).map(function(k){return G.hands[0][+k]})}
+function clearSel(){sel={}}
+function awardTrick(w){
+  G.pts[TEAM[w]]+=1;G.roundNo++;G.trick=[];
+  if(G.pts[TEAM[w]]>=8){endGame(TEAM[w]);return}
+  $('msg').className='msg '+(TEAM[w]===0?'win':'lose');$('msg').textContent=NAMES[w]+' 赢墩 · '+(TEAM[w]===0?'红队':'蓝队')+' +1 分';
+}
+function takeCards(p,cards){
+  cards.forEach(function(c){var idx=G.hands[p].indexOf(c);if(idx>=0)G.hands[p].splice(idx,1)});
+  G.trick=G.trick.concat(cards);G.last={cards:cards,parse:parse(cards)};G.lastP=p;G.passes=0;
+  if(G.hands[p].length===0){awardTrick(p);if(G.over)return;G.last=null;G.lastP=-1;G.turn=p;}
+  else G.turn=(p+1)%3===G.lastP?(p+1)%4:(p+1)%4;
+  // 简化：轮转下一位
+  G.turn=(p+1)%4;
+}
+function chooseAI(p){
+  var h=G.hands[p];
+  // 队友(同队)领先时不压；对手领先时找最小可压
+  if(G.last&&TEAM[G.lastP]===TEAM[p]){
+    // 队友领先 —— 尽量不压，但若只剩一张且能走也不强压
+    return null;
+  }
+  if(G.last){
+    var gr={};h.forEach(function(c){(gr[c.v]=gr[c.v]||[]).push(c)});
+    for(var v in gr)if(canBeat(parse(gr[v]),G.last.parse))return gr[v];
+    return null;
+  }else{
+    // 先手：出最小牌
+    return [h.reduce(function(a,b){return a.v<b.v?a:b})];
+  }
+}
+function aiTurn(){
+  if(G.over)return;var p=G.turn,choice=chooseAI(p);
+  if(choice){takeCards(p,choice);if(G.over)return;$('msg').className='msg';$('msg').textContent=NAMES[p]+' 出了 '+choice.length+' 张'}
+  else{
+    G.passes++;
+    if(G.passes>=3){G.last=null;G.lastP=-1;G.passes=0;awardTrick(p);if(G.over)return;$('msg').textContent='三家不要 · 结算'}
+    else $('msg').textContent=NAMES[p]+' 不要';
+    G.turn=(p+1)%4;
+  }
+  render();if(!G.over&&G.turn!==0)setTimeout(aiTurn,550);
+}
+function endGame(team){
+  G.over=true;var iWin=team===0;
+  if(iWin){S.wins++;S.coin+=20}else S.coin=Math.max(0,S.coin-10);save();
+  $('msg').className='msg '+(iWin?'win':'lose');$('msg').textContent=(iWin?'红队胜！你赢了 +20':'蓝队胜 · -10')+' · 点新局再来';
+  $('playbar').hidden=true;render();
+}
+$('btn-play').addEventListener('click',function(){
+  if(G.turn!==0)return;var cards=selCards(),p=parse(cards);
+  if(!p||!canBeat(p,G.last&&G.last.parse)){$('msg').className='msg';$('msg').textContent='牌型不合法或压不过';return}
+  clearSel();takeCards(0,cards);if(G.over)return;
+  $('msg').className='msg';$('msg').textContent='你出了 '+cards.length+' 张';render();
+  if(G.turn!==0)setTimeout(aiTurn,550);
+});
+$('btn-pass').addEventListener('click',function(){
+  if(G.turn!==0||!G.last)return;G.passes++;G.turn=1;
+  if(G.passes>=3){G.last=null;G.lastP=-1;G.passes=0;awardTrick(0);if(!G.over)$('msg').textContent='三家不要 · 你赢墩'}
+  else $('msg').textContent='你不要';
+  render();if(!G.over&&G.turn!==0)setTimeout(aiTurn,550);
+});
+$('btn-hint').addEventListener('click',function(){
+  if(G.turn!==0)return;var h=G.hands[0];
+  for(var i=0;i<h.length;i++)if(canBeat(parse([h[i]]),G.last&&G.last.parse)){clearSel();sel[h.indexOf(h[i])]=true;render();return}
+  $('msg').textContent='没有可压的牌，点「不要」';
+});
+$('btn-new').addEventListener('click',start);
+$('btn-reset').addEventListener('click',function(){S={coin:100,wins:0};save();start();$('msg').textContent='已重置'});
+$('btn-info').addEventListener('click',function(){$('info').hidden=false});
+$('info-close').addEventListener('click',function(){$('info').hidden=true});
+start();
+})();
+</script>
+</body>
+</html>

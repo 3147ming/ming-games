@@ -176,9 +176,16 @@ export function restockShelfIfPossible(opts = {}) {
   const ids = availableSkuIds();
   // 临期货优先：这一夜必须清掉的 SKU，员工先替玩家把它摆出去
   const expiringId = state.expiringTonight?.skuId ?? null;
-  const skuId = (expiringId && ids.includes(expiringId) && (state.backroom[expiringId] | 0) > 0)
+  const hasStock = (id) => (state.backroom[id] | 0) > 0;
+  /* 需求驱动的补货偏好（店员智能）：临期仍最高优先；无临期时，
+   * 优先上架"缺货流失最多"的 SKU（由 staff.mjs 算出传进来）。
+   * 偏好 SKU 必须：已解锁 + 仓库有货，否则忽略。旧调用方不传 preferSkuId → 行为不变。 */
+  const preferId = opts?.preferSkuId;
+  const skuId = (expiringId && ids.includes(expiringId) && hasStock(expiringId))
     ? expiringId
-    : ids.find((id) => state.backroom[id] > 0);
+    : (preferId && ids.includes(preferId) && hasStock(preferId))
+      ? preferId
+      : ids.find((id) => hasStock(id));
   if (!skuId) return false;
   // 找一个空格 / 同 SKU 未满软上限的格
   const slotIndex = state.slots.findIndex((s) =>

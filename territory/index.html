@@ -79,7 +79,7 @@ function render(){
   var el=$('board');el.style.gridTemplateColumns='repeat('+N+',1fr)';el.innerHTML='';
   var valid=over?[]:moves(turn);
   for(var i=0;i<N*N;i++){
-    var cell=document.createElement('button');cell.className='cell'+(valid.indexOf(i)>=0?' hint':'');
+    let cell=document.createElement('button');cell.className='cell'+(valid.indexOf(i)>=0?' hint':'');
     if(board[i]!==0){var d=document.createElement('span');d.className='disc '+(board[i]===1?'me':'ai');d.innerHTML=DISCICON[board[i]===1?'me':'ai'];cell.appendChild(d)}
     cell.setAttribute('data-i',i);cell.addEventListener('click',function(){var p=+cell.getAttribute('data-i');if(over||turn!==1)return;if(place(p,1)){afterMove()}else{$('msg').textContent='那里不能落子'}});
     el.appendChild(cell);

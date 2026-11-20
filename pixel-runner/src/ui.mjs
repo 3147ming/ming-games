@@ -67,6 +67,59 @@ function drawArt(k, cx, cy, boxW, boxH, alpha){
   g2d.restore();
   return true;
 }
+
+/* 天天酷跑式奔跑动画：单张立绘做 squash&stretch + 弹跳 + 前倾 + 接地阴影。
+   run: 引擎状态；cx/bottomY: 角色水平中心与脚底屏幕 y；w/h: 盒宽高。 */
+function drawHeroRun(run, cx, bottomY, w, h, boosting){
+  const im = ART.hero;
+  if (!artReady('hero')) return false;
+  const phase = run.t * (boosting ? 20 : 14);
+  const airborne = !run.onGround;
+  // 跑动律动：着地时周期性压缩，腾空时拉伸
+  let sy = 1, sx = 1, bob = 0, tilt = 0;
+  if (airborne) {
+    // 跳跃：向上拉伸、收窄，按上升/下降略前倾后仰
+    sy = 1.10; sx = 0.93;
+    tilt = -0.06 + Math.max(-0.10, Math.min(0.10, (run.vy || 0) / 2400));
+  } else {
+    const cyc = Math.sin(phase * 2);
+    sy = 1 + cyc * 0.055;      // 挤压拉伸
+    sx = 1 - cyc * 0.04;
+    bob = -Math.abs(Math.sin(phase)) * 3.5; // 双脚交替离地的弹跳
+    tilt = -0.07 + Math.sin(phase) * 0.025; // 冲刺前倾
+    if (boosting) tilt -= 0.06;
+  }
+  // 接地阴影：随离地高度缩小变淡（用角色相对地面高度近似）
+  const airH = Math.max(0, bottomY < view.groundY ? (view.groundY - bottomY) : 0);
+  const shScale = Math.max(0.35, 1 - airH / 260);
+  g2d.save();
+  g2d.globalAlpha = 0.28 * shScale;
+  g2d.fillStyle = '#000';
+  g2d.beginPath();
+  g2d.ellipse(cx, view.groundY + 2, w * 0.42 * shScale, h * 0.09 * shScale, 0, 0, Math.PI * 2);
+  g2d.fill();
+  g2d.restore();
+  // 主体：以脚底为轴做挤压拉伸 + 前倾
+  const iw = im.naturalWidth, ih = im.naturalHeight;
+  const sc = Math.min(w / iw, h / ih);
+  const dw = iw * sc, dh = ih * sc;
+  g2d.save();
+  g2d.translate(cx, bottomY + bob);
+  g2d.rotate(tilt);
+  g2d.scale(sx, sy);
+  // boost 残影：错开几帧的半透明副本，营造速度感
+  if (boosting && fxOn()) {
+    for (let i = 3; i >= 1; i--) {
+      g2d.save();
+      g2d.globalAlpha *= 0.14;
+      g2d.drawImage(im, -dw / 2 - i * 9, -dh, dw, dh);
+      g2d.restore();
+    }
+  }
+  g2d.drawImage(im, -dw / 2, -dh, dw, dh);
+  g2d.restore();
+  return true;
+}
 /* ===== /美术资源 ===== */
 
 
@@ -610,9 +663,8 @@ function drawPlayer(run, toScreenX, toScreenY) {
   // 身体（像素块）
   g2d.shadowBlur = fxOn() ? 16 : 0;
   g2d.shadowColor = boosting ? COLORS.boost : run.shield ? COLORS.shield : 'rgba(64,224,208,0.8)';
-  // 主角图片（1024×1024 等比 contain，跑动时上下浮动）；失败回退原几何绘制
-  const bobY = Math.sin(run.t * 14) * 2;  // 跑动上下浮动
-  if (!drawArt('hero', x0 + w / 2, y0 + h / 2 + bobY, w * 1.05, h * 1.05)) {
+  // 主角：天天酷跑式奔跑动画（挤压拉伸/弹跳/前倾/接地阴影/加速残影），失败回退几何绘制
+  if (!drawHeroRun(run, sx, bottomY, w * 1.06, h * 1.06, boosting)) {
     g2d.fillStyle = COLORS.player;
     g2d.fillRect(x0, y0, w, h);
     g2d.fillStyle = COLORS.playerDark;

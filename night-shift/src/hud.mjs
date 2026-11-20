@@ -528,10 +528,13 @@ export function renderHud(env, dt = 1 / 60) {
  * 线上问题：多件事同时发生（"该格已有其他商品""没对准""已上架""手上的货没放干净"）
  * 时，原来的实现直接把 div 往容器里塞并只裁到 4 条，结果几条提示**同屏堆叠**，
  * 玩家一条都读不清。
- * 现在改成**队列**：同屏最多 2 条，超出的排队等待；每条约 3 秒自动消失后
+ * 现在改成**队列**：同屏最多 2 条，超出的排队等待；每条约 2.2 秒自动消失后
  * 下一条才补位；新提示从下方淡入 —— 永不同屏重叠。
+ * 提示已移到屏幕左侧竖排（不挡中央视野），仍要把停留时间压短：
+ * 默认 3000→2200ms，显式传进来的长时长统一封顶 2600ms，避免横幅赖在视野里。
  */
 const MAX_TOASTS = 2;
+const MAX_TOAST_MS = 2600;
 const toastQueue = [];
 const toastLive = [];
 let toastTimers = [];
@@ -556,9 +559,9 @@ function pumpToasts() {
   }
 }
 
-export function toast(msg, kind = 'ok', duration = 3000) {
+export function toast(msg, kind = 'ok', duration = 2200) {
   if (!els.toasts) return;
-  toastQueue.push({ msg, kind, duration });
+  toastQueue.push({ msg, kind, duration: Math.max(800, Math.min(MAX_TOAST_MS, duration | 0)) });
   pumpToasts();
 }
 

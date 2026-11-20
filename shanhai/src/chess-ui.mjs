@@ -25,7 +25,7 @@
         <div class="chess-lobby" id="chess-lobby">
           <p class="eyebrow">SHAN HAI · QI YI</p>
           <h2>棋艺</h2>
-          <p class="hero-copy">择一棋，对坐手谈。象棋与暗棋用汉字棋子，五子棋与跳棋用实体棋子。</p>
+          <p class="hero-copy">择一棋，对坐手谈。象棋、暗棋与斗兽棋用汉字棋子，五子棋与跳棋用实体棋子。</p>
           <div class="chess-opts" id="chess-opts"></div>
           <div class="chess-modes" id="chess-modes"></div>
           <div class="screen__foot">
@@ -262,6 +262,7 @@
     else if (state.mode === 'reversi') statusEl.textContent = '落子夹反，多者称雄；无子可落则跳过。';
     else if (state.mode === 'xiangqi') statusEl.textContent = '车马炮士象全，将帅不出九宫、不可照面。';
     else if (state.mode === 'checkers') statusEl.textContent = '跳棋：一步走 6 个方向；跳过相邻棋子可连跳（不吞子）；先占满对面三角者胜。';
+    else if (state.mode === 'jungle') statusEl.textContent = '斗兽棋：象>狮>虎>豹>狼>犬>猫>鼠，鼠吃象、象不吃鼠；狮虎可跳河（河中有鼠则不可跳）；进敌方兽穴即胜。';
     else statusEl.textContent = '棋子落在交叉点，先连五子者胜。';
   }
 

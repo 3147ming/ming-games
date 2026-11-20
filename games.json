@@ -224,20 +224,56 @@
       "renderer": "classic"
     },
     {
-      "id": "hex",
-      "name": "六角战场",
-      "dir": "hex",
-      "cover": "covers/hex-v2.png",
-      "tag": "战棋",
-      "status": "ready",
-      "renderer": "classic"
-    },
-    {
       "id": "tap",
       "name": "节奏拍打",
       "dir": "tap",
       "cover": "covers/tap-v2.png",
       "tag": "音游",
+      "status": "ready",
+      "renderer": "classic"
+    },
+    {
+      "id": "liar",
+      "name": "骗子酒馆",
+      "dir": "liar",
+      "cover": "covers/liar.png",
+      "tag": "卡牌",
+      "status": "ready",
+      "renderer": "classic"
+    },
+    {
+      "id": "doudizhu",
+      "name": "斗地主",
+      "dir": "doudizhu",
+      "cover": "covers/doudizhu.png",
+      "tag": "卡牌",
+      "status": "ready",
+      "renderer": "classic"
+    },
+    {
+      "id": "wuyouk",
+      "name": "510K",
+      "dir": "wuyouk",
+      "cover": "covers/wuyouk.png",
+      "tag": "卡牌",
+      "status": "ready",
+      "renderer": "classic"
+    },
+    {
+      "id": "tongxin",
+      "name": "同心",
+      "dir": "tongxin",
+      "cover": "covers/tongxin.png",
+      "tag": "卡牌",
+      "status": "ready",
+      "renderer": "classic"
+    },
+    {
+      "id": "metro-runner",
+      "name": "地铁跑酷",
+      "dir": "metro-runner",
+      "cover": "covers/metro-runner.png",
+      "tag": "街机",
       "status": "ready",
       "renderer": "classic"
     }

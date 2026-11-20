@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0b1420">
+<meta name="description" content="地铁跑酷 METRO RUSH —— 三轨切换、跳跃滑铲、躲障碍收集金币的无限跑酷。">
+<title>地铁跑酷 · METRO RUSH</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b1420'/%3E%3Cpath d='M8 22V12a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v10z' fill='%23ffb142'/%3E%3Ccircle cx='12' cy='24' r='2' fill='%230b1420'/%3E%3Ccircle cx='20' cy='24' r='2' fill='%230b1420'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+:root{--gold:#ffb142;--cyan:#48dbfb;--ink:#0b1420;--paper:#e8eef5;--dim:#8fa3b8;--line:#22374d}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%}
+body{background:radial-gradient(120% 85% at 50% -10%,#132437 0%,var(--ink) 62%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:12px 10px calc(18px + env(safe-area-inset-bottom))}
+.wrap{width:min(100%,460px)}
+.head{text-align:center;margin-bottom:6px}.logo{font-size:21px;letter-spacing:.2em;margin:0;color:var(--gold)}.sub{font-size:9px;letter-spacing:.14em;color:var(--dim);margin:3px 0 0}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:6px;background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:12px;padding:7px 11px;margin-bottom:8px;font-size:11px}
+.bar b{color:var(--gold);font-size:15px}
+.stage{position:relative;width:min(100%,360px);height:min(66vh,520px);margin:0 auto;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#0b1420;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+.hud{position:absolute;top:8px;left:0;right:0;display:flex;justify-content:space-between;padding:0 12px;font-size:11px;color:var(--dim);pointer-events:none}
+.hud b{color:var(--gold);font-size:15px}
+.overlay{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(6,12,20,.9);text-align:center;padding:18px}
+.overlay[hidden]{display:none}.overlay h2{margin:0;font-size:20px;letter-spacing:.16em;color:var(--gold)}
+.overlay p{margin:0;font-size:11px;color:var(--dim);line-height:1.8;max-width:260px}
+.controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.btn{border:none;border-radius:12px;min-height:42px;padding:0 18px;font:inherit;font-size:13px;cursor:pointer;background:var(--gold);color:#1a1206;font-weight:600}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--paper);font-weight:400}
+.msg{text-align:center;min-height:16px;font-size:11px;margin:6px 0;color:var(--dim)}
+.keyhint{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:6px}
+.keyhint span{font-size:10px;color:var(--dim);border:1px solid var(--line);border-radius:6px;padding:3px 7px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head"><h1 class="logo">METRO RUSH</h1><p class="sub">地 铁 跑 酷 · 三 轨 穿 行</p></div>
+  <div class="bar"><div><span>最高 <b id="best">0</b></span> · <span>金币 <b id="coinBest">0</b></span></div><button class="btn ghost" id="btn-info" style="min-height:28px;padding:0 8px">规则</button></div>
+  <div class="stage" id="stage">
+    <canvas id="cv"></canvas>
+    <div class="hud"><span>距离 <b id="dist">0</b>m</span><span>金币 <b id="coins">0</b></span></div>
+    <div class="overlay" id="overlay"><h2 id="ovTitle">地铁跑酷</h2><p id="ovText">左右切换轨道，上滑跳跃、下滑滑铲，躲开列车与障碍，收集金币。撞车即结束。</p><div class="controls"><button class="btn" id="ovBtn">开始跑酷</button></div></div>
+  </div>
+  <div class="msg" id="msg">← → 切轨 · ↑ 跳 · ↓ 滑 · 手机可滑动</div>
+  <div class="keyhint"><span>← → / A D 切轨</span><span>↑ / W / 空格 跳</span><span>↓ / S 滑铲</span></div>
+  <div class="controls"><button class="btn" id="btn-start">开始</button><button class="btn ghost" id="btn-pause">暂停</button></div>
+</div>
+<div class="overlay" id="info" hidden style="position:fixed;z-index:60"><div style="width:min(90%,360px);background:#132437;border:1px solid var(--line);border-radius:16px;padding:22px"><h2 style="margin:0 0 10px;color:var(--gold);font-size:18px">玩法</h2><p style="font-size:12px;line-height:1.9;color:var(--dim);margin:0">角色在三条轨道上自动前进。<b>左右切换</b>轨道避开障碍，<b>上滑跳跃</b>越过矮障，<b>下滑滑铲</b>穿过高障。撞上列车或障碍即结束；收集金币加分。速度随距离逐渐提升。键盘方向键 / WASD / 空格，或手机滑动操作。纯本地存档。</p><div class="controls" style="margin-top:16px"><button class="btn" id="infoClose">知道了</button></div></div></div>
+<script>
+(function(){
+'use strict';
+var KEY='mg_metro.v1',$=function(i){return document.getElementById(i)};
+var S=(function(){try{var o=JSON.parse(localStorage.getItem(KEY));if(o&&typeof o==='object')return o}catch(e){}return {best:0,coinBest:0}})();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+var cv=$('cv'),ctx=cv.getContext('2d'),stage=$('stage');
+var W=0,H=0,DPR=1;
+function resize(){
+  var r=stage.getBoundingClientRect();DPR=Math.min(2,window.devicePixelRatio||1);
+  W=r.width;H=r.height;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize',resize);resize();
+
+var LANES=3,GEO={};
+function geom(){var laneW=W/3,horizon=H*0.28,ground=H*0.82;return {laneW,horizon,ground,laneX:[laneW*0.5,laneW*1.5,laneW*2.5]}}
+var G=null,raf=null,lastT=0,paused=false;
+function newGame(){
+  G={t:0,dist:0,coins:0,lane:1,targetLane:1,px:geom().laneX[1],jumpY:0,jumpV:0,slide:false,slideT:0,speed:6.2,obstacles:[],spawnT:0,running:true,over:false,stars:[]};
+  for(var i=0;i<26;i++)G.stars.push({x:Math.random()*W,y:Math.random()*H*0.5,s:Math.random()*1.5+0.3});
+  lastT=performance.now();loop();
+}
+function spawn(){
+  var lane=Math.floor(Math.random()*LANES),kind=Math.random()<0.28?'train':(Math.random()<0.5?'low':'high');
+  var coinLane=Math.random()<0.5?(lane+1)%LANES:(lane+2)%LANES;
+  G.obstacles.push({lane:lane,kind:kind,z:1,hit:false});
+  // 金币串
+  for(var i=0;i<5;i++)G.obstacles.push({lane:coinLane,kind:'coin',z:1+i*0.06,got:false});
+}
+function act(dir){
+  if(!G||G.over)return;
+  if(dir==='left'&&G.targetLane>0)G.targetLane--;
+  else if(dir==='right'&&G.targetLane<LANES-1)G.targetLane++;
+  else if(dir==='jump'&&G.jumpY===0){G.jumpV=9.5;}
+  else if(dir==='slide'){G.slide=true;G.slideT=0.55;}
+}
+function loop(now){
+  if(!G||!G.running)return;
+  now=now||performance.now();var dt=Math.min(0.04,(now-lastT)/1000);lastT=now;
+  if(!paused)update(dt);
+  draw();
+  if(!G.over)raf=requestAnimationFrame(loop);
+}
+function update(dt){
+  G.t+=dt;G.speed=6.2+Math.min(6,G.dist/260);
+  G.dist+=G.speed*dt*6;
+  G.px+=(geom().laneX[G.targetLane]-G.px)*Math.min(1,dt*12);
+  G.lane=G.targetLane;
+  // 跳跃物理
+  if(G.jumpV!==0||G.jumpY>0){G.jumpY+=G.jumpV;G.jumpV-=30*dt;if(G.jumpY<=0){G.jumpY=0;G.jumpV=0}}
+  if(G.slideT>0){G.slideT-=dt;if(G.slideT<=0)G.slide=false}
+  // 生成障碍
+  G.spawnT-=dt;if(G.spawnT<=0){spawn();G.spawnT=Math.max(0.5,1.35-G.dist/1600)}
+  // 更新障碍（z 从 1 到 -0.1）
+  for(var i=G.obstacles.length-1;i>=0;i--){
+    var o=G.obstacles[i];o.z-=dt*G.speed*0.36;
+    if(o.z<-0.15){G.obstacles.splice(i,1);continue}
+    // 碰撞：z 接近 0 且同轨
+    if(!o.hit&&!o.got&&Math.abs(o.z)<0.06){
+      var sameLane=o.lane===G.lane;
+      if(o.kind==='coin'){
+        if(sameLane){o.got=true;G.coins++}
+      }else if(sameLane){
+        // 判定闪避
+        var safe=false;
+        if(o.kind==='low'&&G.jumpY>18)safe=true;         // 跳过矮障
+        if(o.kind==='high'&&G.slide)safe=true;           // 滑过高障
+        if(o.kind==='train')safe=false;                   // 列车必须换轨
+        if(!safe){o.hit=true;gameOver();return}
+        else o.hit=true;
+      }
+    }
+  }
+}
+function gameOver(){
+  G.over=true;G.running=false;
+  var score=Math.floor(G.dist)+G.coins*15;var isBest=score>S.best;
+  if(isBest)S.best=score;if(G.coins>S.coinBest)S.coinBest=G.coins;save();
+  $('ovTitle').textContent='撞车了！';
+  $('ovText').textContent='本局 '+(Math.floor(G.dist))+'m · 金币 '+G.coins+' · 得分 '+score+(isBest?' · 新纪录！':'');
+  $('ovBtn').textContent='再跑一局';$('overlay').hidden=false;
+}
+function draw(){
+  var g=geom(),t=G?G.t:0;
+  // 天空
+  var sky=ctx.createLinearGradient(0,0,0,g.ground);sky.addColorStop(0,'#162942');sky.addColorStop(1,'#0b1420');
+  ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
+  // 星星
+  ctx.fillStyle='rgba(180,210,240,.5)';
+  (G?G.stars:[]).forEach(function(s){ctx.globalAlpha=0.3+0.4*Math.abs(Math.sin(t*2+s.x));ctx.fillRect(s.x,s.y,s.s,s.s)});ctx.globalAlpha=1;
+  // 远景楼群（视差）
+  ctx.fillStyle='#13233a';
+  for(var i=0;i<8;i++){var bw=W/7,bx=((i*83 - t*8)%(W+120))-60,bh=40+((i*37)%70);ctx.fillRect(bx,g.ground-bh,bw*0.8,bh)}
+  // 轨道透视
+  ctx.fillStyle='#111d2e';ctx.fillRect(0,g.ground,W,H-g.ground);
+  // 轨道线
+  ctx.strokeStyle='#2a3d56';ctx.lineWidth=1;
+  for(var k=0;k<=LANES;k++){var lx=k*g.laneW;ctx.beginPath();ctx.moveTo(W/2+(lx-W/2)*0.4,g.horizon);ctx.lineTo(lx,H);ctx.stroke()}
+  ctx.strokeStyle='#3a5170';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,g.ground);ctx.lineTo(W,g.ground);ctx.stroke();
+  if(!G)return;
+  // 障碍（按 z 排序，远的先画）
+  var obs=G.obstacles.slice().sort(function(a,b){return b.z-a.z});
+  obs.forEach(function(o){drawObstacle(o,g)});
+  // 角色
+  drawRunner(g);
+  // HUD
+  $('dist').textContent=Math.floor(G.dist);$('coins').textContent=G.coins;
+}
+function proj(laneX,z,g){var f=1/(1+z*2.2);return {x:W/2+(laneX-W/2)*f,y:g.ground-(g.ground-g.horizon)*0+(1-f)*20,s:f}}
+function drawObstacle(o,g){
+  if(o.got)return;var lx=g.laneX[o.lane],p=proj(lx,o.z,g),s=Math.max(0.25,p.s);
+  var size=42*s;
+  if(o.kind==='coin'){
+    ctx.save();ctx.translate(p.x,g.ground-30*s-o.z*0);ctx.fillStyle='#ffb142';ctx.shadowColor='#ffb142';ctx.shadowBlur=10*s;
+    ctx.beginPath();ctx.arc(0,0,size*0.28,0,Math.PI*2);ctx.fill();ctx.restore();return;
+  }
+  if(o.kind==='train'){
+    // 地铁列车：车头方块
+    ctx.save();ctx.fillStyle='#e84118';ctx.fillRect(p.x-size*1.1,g.ground-size*1.9,size*2.2,size*1.9);
+    ctx.fillStyle='#7f8fa6';ctx.fillRect(p.x-size*0.85,g.ground-size*1.6,size*0.7,size*0.6);
+    ctx.fillRect(p.x+size*0.15,g.ground-size*1.6,size*0.7,size*0.6);
+    ctx.fillStyle='#353b48';ctx.fillRect(p.x-size*1.1,g.ground-size*0.35,size*2.2,size*0.35);
+    ctx.restore();
+  }else if(o.kind==='low'){
+    ctx.fillStyle='#fbc531';ctx.fillRect(p.x-size*0.9,g.ground-size*0.6,size*1.8,size*0.6);
+  }else{
+    // 高障：横杆（需滑铲）
+    ctx.fillStyle='#718093';ctx.fillRect(p.x-size*0.9,g.ground-size*1.7,size*1.8,size*0.28);
+    ctx.fillRect(p.x-size*0.85,g.ground-size*0.5,size*0.18,size*1.2);
+    ctx.fillRect(p.x+size*0.67,g.ground-size*0.5,size*0.18,size*1.2);
+  }
+}
+function drawRunner(g){
+  var x=G.px,y=g.ground-G.jumpY*0.55;
+  var bob=G.jumpY===0?Math.abs(Math.sin(G.t*14))*3:0;
+  y-=bob;
+  var s=1.15;
+  ctx.save();ctx.translate(x,y);
+  // 接地阴影
+  ctx.globalAlpha=0.3*(1-Math.min(1,G.jumpY/120));ctx.fillStyle='#000';ctx.beginPath();ctx.ellipse(0,bob,16*s,4*s,0,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+  // 身体
+  var lean=G.jumpY>0?-0.15:-0.06;
+  ctx.rotate(lean);
+  ctx.fillStyle='#48dbfb';ctx.shadowColor='#48dbfb';ctx.shadowBlur=12;
+  var hh=G.slide?14*s:26*s;
+  ctx.fillRect(-9*s,-hh,18*s,hh);
+  ctx.fillStyle='#0be881';ctx.fillRect(-6*s,-hh-10*s,12*s,12*s); // 头
+  ctx.fillStyle='#0b1420';ctx.fillRect(-3*s,-hh-7*s,2*s,2*s);ctx.fillRect(2*s,-hh-7*s,2*s,2*s); // 眼
+  // 腿（跑动交替）
+  if(!G.slide){var lp=Math.sin(G.t*14)*4;ctx.fillStyle='#48dbfb';ctx.fillRect(-7*s,-2*s,5*s,7*s+lp);ctx.fillRect(2*s,-2*s,5*s,7*s-lp)}
+  ctx.restore();
+}
+$('ovBtn').addEventListener('click',function(){$('overlay').hidden=true;paused=false;$('btn-pause').textContent='暂停';newGame()});
+$('btn-start').addEventListener('click',function(){$('overlay').hidden=true;paused=false;$('btn-pause').textContent='暂停';newGame()});
+$('btn-pause').addEventListener('click',function(){if(!G||G.over)return;paused=!paused;this.textContent=paused?'继续':'暂停';if(!paused)lastT=performance.now()});
+$('btn-info').addEventListener('click',function(){$('info').hidden=false});
+$('infoClose').addEventListener('click',function(){$('info').hidden=true});
+// 键盘
+window.addEventListener('keydown',function(e){
+  var k=e.key.toLowerCase();
+  if(k==='arrowleft'||k==='a')act('left');
+  else if(k==='arrowright'||k==='d')act('right');
+  else if(k==='arrowup'||k==='w'||k===' ')act('jump');
+  else if(k==='arrowdown'||k==='s')act('slide');
+  else return;e.preventDefault();
+});
+// 触摸滑动
+var tsx=null,tsy=null;
+stage.addEventListener('touchstart',function(e){var t=e.touches[0];tsx=t.clientX;tsy=t.clientY},{passive:true});
+stage.addEventListener('touchend',function(e){if(tsx==null)return;var t=e.changedTouches[0],dx=t.clientX-tsx,dy=t.clientY-tsy;
+  if(Math.abs(dx)>Math.abs(dy)){act(dx>0?'right':'left')}else{act(dy<0?'jump':'slide')}tsx=null;tsy=null;},{passive:true});
+$('best').textContent=S.best;$('coinBest').textContent=S.coinBest;
+})();
+</script>
+</body>
+</html>

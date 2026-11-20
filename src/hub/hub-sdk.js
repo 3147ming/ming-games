@@ -47,8 +47,12 @@ const GAMES = Object.freeze([
   { id: 'brick',        name: '方块消消',         tag: '街机', url: 'brick/' },
   { id: 'diner',        name: '深夜食堂',         tag: '模拟', url: 'diner/' },
   { id: 'territory',    name: '占位棋',           tag: '策略', url: 'territory/' },
-  { id: 'hex',          name: '六角战场',         tag: '战棋', url: 'hex/' },
   { id: 'tap',          name: '节奏拍打',         tag: '音游', url: 'tap/' },
+  { id: 'metro-runner', name: '地铁跑酷',         tag: '街机', url: 'metro-runner/' },
+  { id: 'liar', name: '骗子酒馆', tag: '卡牌', url: 'liar/' },
+  { id: 'doudizhu', name: '斗地主', tag: '卡牌', url: 'doudizhu/' },
+  { id: 'wuyouk', name: '510K', tag: '卡牌', url: 'wuyouk/' },
+  { id: 'tongxin', name: '同心', tag: '卡牌', url: 'tongxin/' },
 ]);
 
 function isOwner(tag) { return OWNER_TAGS.indexOf(tag) >= 0; }
@@ -337,12 +341,34 @@ const LEGACY = {
       { k: '每日局', v: s.daily || '—' },
     ] };
   },
-  hex: function () {
-    const s = jp(ls('mg_hex.v1'), null);
-    if (!s) return null;
-    return { score: num(s.best), label: '最远关卡', unit: '关', note: 'mg_hex.v1（只读）', rows: [
-      { k: '通关次数', v: num(s.wins) }, { k: '总局数', v: num(s.runs) },
-      { k: '每日战役', v: s.daily || '—' },
+  liar: function () {
+    var s = jp(ls('mg_liar.v1'), null); if (!s) return null;
+    return { score: num(s.wins || s.best || 0), label: '胜局', unit: '局', note: 'mg_liar.v1（只读）', rows: [
+      { k: '胜局', v: num(s.wins) }, { k: '金币', v: num(s.coin) },
+    ] };
+  },
+  doudizhu: function () {
+    var s = jp(ls('mg_ddz.v1'), null); if (!s) return null;
+    return { score: num(s.wins || s.best || 0), label: '胜局', unit: '局', note: 'mg_ddz.v1（只读）', rows: [
+      { k: '胜局', v: num(s.wins) }, { k: '金币', v: num(s.coin) },
+    ] };
+  },
+  wuyouk: function () {
+    var s = jp(ls('mg_510k.v1'), null); if (!s) return null;
+    return { score: num(s.wins || s.best || 0), label: '胜局', unit: '局', note: 'mg_510k.v1（只读）', rows: [
+      { k: '胜局', v: num(s.wins) }, { k: '金币', v: num(s.coin) },
+    ] };
+  },
+  tongxin: function () {
+    var s = jp(ls('mg_tongxin.v1'), null); if (!s) return null;
+    return { score: num(s.wins || s.best || 0), label: '胜局', unit: '局', note: 'mg_tongxin.v1（只读）', rows: [
+      { k: '胜局', v: num(s.wins) }, { k: '金币', v: num(s.coin) },
+    ] };
+  },
+  'metro-runner': function () {
+    var s = jp(ls('mg_metro.v1'), null); if (!s) return null;
+    return { score: num(s.best), label: '最高分', unit: '分', note: 'mg_metro.v1（只读）', rows: [
+      { k: '最高金币', v: num(s.coinBest) },
     ] };
   },
   tap: function () {

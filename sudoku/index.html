@@ -3,40 +3,43 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<meta name="theme-color" content="#0e1a14">
+<meta name="theme-color" content="#f4eddf">
 <meta name="description" content="数独速递 —— 4×4 / 6×6 / 9×9 三级数独，计时挑战、提示与每日一题。">
 <title>数独速递 · SUDOKU</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230e1a14'/%3E%3Ctext x='16' y='23' font-size='17' text-anchor='middle' fill='%235cc08a'%3E9%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="../shared/tokens.css">
 <style>
-:root{--ac:#5cc08a;--bg:#0e1a14;--paper:#ece6da;--dim:#8fa79a;--line:#264634;--bad:#e0736b}
+:root{--ac:#2e7d5b;--bg:#f4eddf;--paper:#3b3226;--dim:#8d8168;--line:#d9cdb4;--bad:#c0392b;--cell:#fffcf4;--given:#f2ead9}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%}
-body{background:radial-gradient(120% 80% at 50% -10%,#16301f 0%,var(--bg) 64%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:18px 12px calc(22px + env(safe-area-inset-bottom))}
+body{background:radial-gradient(120% 90% at 50% -10%,#fbf7ee 0%,var(--bg) 70%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:18px 12px calc(22px + env(safe-area-inset-bottom))}
 .wrap{width:min(100%,480px)}
 .head{text-align:center;margin-bottom:12px}.logo{font-size:24px;letter-spacing:.28em;margin:0;color:var(--ac)}.sub{font-size:11px;letter-spacing:.14em;color:var(--dim);margin:5px 0 0}
-.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:12px;padding:9px 12px;margin-bottom:12px;font-size:12px}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(255,252,244,.7);border:1px solid var(--line);border-radius:12px;padding:9px 12px;margin-bottom:12px;font-size:12px}
 .bar b{color:var(--ac);font-size:15px}.bar .stat{display:flex;gap:12px;flex-wrap:wrap}
 .tabs{display:flex;gap:6px;justify-content:center;margin-bottom:10px;flex-wrap:wrap}
-.tab{border:1px solid var(--line);border-radius:999px;padding:6px 14px;background:transparent;color:var(--dim);font:inherit;font-size:12px;cursor:pointer;min-height:36px}
-.tab.on{border-color:var(--ac);color:var(--ac);background:rgba(92,192,138,.1)}
-.board{display:grid;gap:2px;background:var(--line);border:2px solid var(--line);border-radius:10px;padding:2px;margin:0 auto;width:min(100%,396px);aspect-ratio:1}
-.cell{background:#122319;border:none;color:var(--ac);font:inherit;font-size:clamp(16px,5vw,24px);font-weight:600;display:flex;align-items:center;justify-content:center;cursor:pointer;min-width:0;min-height:0;padding:0}
-.cell.given{color:var(--paper);background:#182c20}
-.cell.sel{background:rgba(92,192,138,.28);outline:2px solid var(--ac);outline-offset:-2px}
-.cell.peer{background:rgba(92,192,138,.09)}
-.cell.same{background:rgba(92,192,138,.18)}
+.tab{border:1px solid var(--line);border-radius:999px;padding:6px 14px;background:rgba(255,252,244,.7);color:var(--dim);font:inherit;font-size:12px;cursor:pointer;min-height:36px}
+.tab.on{border-color:var(--ac);color:var(--ac);background:rgba(46,125,91,.12)}
+.board{display:grid;gap:2px;background:var(--line);border:2px solid #b8a888;border-radius:10px;padding:2px;margin:0 auto;width:min(100%,396px);aspect-ratio:1;box-shadow:0 6px 20px rgba(90,70,40,.12)}
+.cell{background:var(--cell);border:none;color:var(--ac);font:inherit;font-size:clamp(16px,5vw,24px);font-weight:600;display:flex;align-items:center;justify-content:center;cursor:pointer;min-width:0;min-height:0;padding:0;position:relative}
+.cell.given{color:#2b241a;background:var(--given);font-weight:700}
+.cell.sel{background:rgba(46,125,91,.2);outline:2px solid var(--ac);outline-offset:-2px;z-index:1}
+.cell.peer{background:rgba(46,125,91,.07)}
+.cell.same{background:rgba(46,125,91,.16)}
 .cell.err{color:var(--bad)}
-.cell.bd-r{border-right:2px solid var(--line)}.cell.bd-b{border-bottom:2px solid var(--line)}
+.cell.bd-r{border-right:2px solid #b8a888}.cell.bd-b{border-bottom:2px solid #b8a888}
+.notes{position:absolute;inset:6%;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);font-size:clamp(7px,2.1vw,11px);line-height:1;font-weight:500;color:var(--dim);pointer-events:none}
+.notes span{display:flex;align-items:center;justify-content:center}
 .pad{display:flex;gap:5px;justify-content:center;flex-wrap:wrap;margin:12px 0 4px}
-.num{border:1px solid var(--line);border-radius:10px;background:#15271c;color:var(--paper);font:inherit;font-size:17px;min-width:42px;min-height:44px;cursor:pointer}
-.num:active{background:rgba(92,192,138,.25)}
+.num{border:1px solid var(--line);border-radius:10px;background:var(--cell);color:var(--ac);font:inherit;font-size:17px;font-weight:600;min-width:42px;min-height:44px;cursor:pointer;box-shadow:0 2px 5px rgba(90,70,40,.08)}
+.num:active{background:rgba(46,125,91,.18)}
 .controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:8px}
-.btn{border:none;border-radius:12px;min-height:44px;padding:0 16px;font:inherit;font-size:13px;cursor:pointer;background:var(--ac);color:#0b1a11;font-weight:600}
-.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--paper);font-weight:400}
+.btn{border:none;border-radius:12px;min-height:44px;padding:0 16px;font:inherit;font-size:13px;cursor:pointer;background:var(--ac);color:#fff;font-weight:600}
+.btn.ghost{background:rgba(255,252,244,.8);border:1px solid var(--line);color:var(--paper);font-weight:400}
+.btn.on{background:var(--ac);color:#fff;border-color:var(--ac)}
 .msg{text-align:center;min-height:20px;font-size:12px;margin:8px 0;color:var(--dim)}
 .msg.win{color:var(--ac)}
 .done{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.72)}
-.done[hidden]{display:none}.done .inner{width:min(100%,360px);background:linear-gradient(180deg,#173023,#0e1a14);border:1px solid var(--line);border-radius:18px;padding:24px;text-align:center}
+.done[hidden]{display:none}.done .inner{width:min(100%,360px);background:linear-gradient(180deg,#fffcf4,#f4eddf);border:1px solid var(--line);border-radius:18px;padding:24px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.2)}
 .done h2{margin:0 0 12px;color:var(--ac);letter-spacing:.1em}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -51,8 +54,10 @@ body{background:radial-gradient(120% 80% at 50% -10%,#16301f 0%,var(--bg) 64%);c
   <div class="msg" id="msg">选一个难度开始</div>
   <div class="controls">
     <button class="btn" id="btn-new">新局</button>
+    <button class="btn ghost" id="btn-notes">✎ 笔记</button>
     <button class="btn ghost" id="btn-hint">提示</button>
     <button class="btn ghost" id="btn-erase">擦除</button>
+    <button class="btn ghost" id="btn-pause">暂停</button>
     <button class="btn ghost" id="btn-daily">每日题</button>
   </div>
 </div>
@@ -68,8 +73,9 @@ function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()
 function rng(seed){var x=seed>>>0||1;return function(){x^=x<<13;x^=x>>>17;x^=x<<5;return (x>>>0)/4294967296}}
 function seedFrom(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
 var SIZES=[{n:4,w:2,h:2,key:'4'},{n:6,w:3,h:2,key:'6'},{n:9,w:3,h:3,key:'9'}];
-var size=SIZES[0],puzzle=[],solution=[],grid=[],given=[],sel=-1,start=0,timer=null,daily=false;
+var size=SIZES[0],puzzle=[],solution=[],grid=[],given=[],notes=[],sel=-1,start=0,timer=null,daily=false,noteMode=false,paused=false,pauseAt=0,pauseTotal=0;
 function fmt(ms){var s=Math.floor(ms/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function elapsed(){return (paused?pauseAt:Date.now())-start-pauseTotal}
 function makeSolution(n,rand){
   var b=new Array(n*n).fill(0);
   var boxOf=function(r,c){return Math.floor(r/size.h)*size.w+Math.floor(c/size.w)};
@@ -89,8 +95,9 @@ function newGame(isDaily){
   daily=!!isDaily;
   var seed=daily?seedFrom('sudoku-'+today()+'-'+size.key):(Date.now()^Math.random()*1e9|0);
   var r=makePuzzle(size.n,rng(seed));
-  puzzle=r.puz;solution=r.sol;grid=puzzle.slice();given=puzzle.map(function(v){return v>0});sel=-1;
-  start=Date.now();clearInterval(timer);timer=setInterval(function(){if(!doneFlag)$('time').textContent=fmt(Date.now()-start)},500);
+  puzzle=r.puz;solution=r.sol;grid=puzzle.slice();given=puzzle.map(function(v){return v>0});notes=puzzle.map(function(){return []});sel=-1;
+  start=Date.now();pauseTotal=0;paused=false;$('btn-pause').textContent='暂停';$('btn-pause').classList.remove('on');
+  clearInterval(timer);timer=setInterval(function(){if(!doneFlag&&!paused)$('time').textContent=fmt(elapsed())},250);
   doneFlag=false;render();$('msg').className='msg';$('msg').textContent=daily?'每日题 · '+today():'进行中';
 }
 var doneFlag=false;
@@ -101,7 +108,10 @@ function render(){
   for(var i=0;i<n*n;i++){
     var r=Math.floor(i/n),c=i%n,cell=document.createElement('button');cell.className='cell'+(given[i]?' given':'');
     if(given[i]||grid[i])cell.textContent=grid[i]||'';
-    else cell.textContent='';
+    else{
+      cell.textContent='';
+      if(notes[i]&&notes[i].length){var nd=document.createElement('div');nd.className='notes';var ns='';for(var v=1;v<=n;v++)ns+='<span>'+(notes[i].indexOf(v)>=0?v:'')+'</span>';nd.innerHTML=ns;cell.appendChild(nd)}
+    }
     if(!given[i]&&grid[i]&&grid[i]!==solution[i])cell.classList.add('err');
     if(i===sel)cell.classList.add('sel');
     else if(sel>=0&&(r===sr||c===sc||boxOf(r,c)===boxOf(sr,sc)))cell.classList.add('peer');
@@ -118,12 +128,13 @@ function render(){
 }
 function boxOf(r,c){return Math.floor(r/size.h)+'_'+Math.floor(c/size.w)}
 function input(v){
-  if(sel<0||doneFlag)return;if(given[sel])return;
-  grid[sel]=v;
+  if(sel<0||doneFlag||paused)return;if(given[sel])return;
+  if(noteMode){var a=notes[sel]||(notes[sel]=[]),k=a.indexOf(v);if(k>=0)a.splice(k,1);else a.push(v);render();return}
+  notes[sel]=[];grid[sel]=v;
   var okAll=true;for(var i=0;i<size.n*size.n;i++)if(grid[i]&&grid[i]!==solution[i]){okAll=false;break}
   if(okAll&&grid.every(function(x){return x>0})){
     doneFlag=true;clearInterval(timer);
-    var t=Date.now()-start;S.runs++;S.wins++;if(daily)S.daily=today();
+    var t=elapsed();S.runs++;S.wins++;if(daily)S.daily=today();
     if(!S.best[size.key]||t<S.best[size.key])S.best[size.key]=t;save();
     $('done-info').innerHTML=size.n+'×'+size.n+' 用时 <b style="color:var(--ac)">'+fmt(t)+'</b><br>'+(daily?'每日题已完成 ✓':'新纪录已保存');
     $('done').hidden=false;render();return;
@@ -132,11 +143,14 @@ function input(v){
 }
 $('btn-new').addEventListener('click',function(){newGame(false)});
 $('btn-daily').addEventListener('click',function(){newGame(true)});
-$('btn-hint').addEventListener('click',function(){if(sel<0||doneFlag)return;grid[sel]=solution[sel];render()});
-$('btn-erase').addEventListener('click',function(){if(sel<0||given[sel]||doneFlag)return;grid[sel]=0;render()});
+$('btn-notes').addEventListener('click',function(){noteMode=!noteMode;this.classList.toggle('on',noteMode);$('msg').textContent=noteMode?'笔记模式 · 点击数字标记候选':'笔记已关闭'});
+$('btn-pause').addEventListener('click',function(){if(doneFlag)return;if(!paused){paused=true;pauseAt=Date.now();this.textContent='继续';this.classList.add('on');$('msg').textContent='已暂停 · 计时停止'}else{pauseTotal+=Date.now()-pauseAt;paused=false;this.textContent='暂停';this.classList.remove('on');$('msg').textContent='继续中'}});
+$('btn-hint').addEventListener('click',function(){if(sel<0||doneFlag||paused)return;notes[sel]=[];grid[sel]=solution[sel];render()});
+$('btn-erase').addEventListener('click',function(){if(sel<0||given[sel]||doneFlag||paused)return;grid[sel]=0;notes[sel]=[];render()});
 $('done-again').addEventListener('click',function(){$('done').hidden=true;newGame(false)});
-$('btn-info').addEventListener('click',function(){$('info-body').textContent='在空格填入 1~'+size.n+'，使每行、每列、每个粗线宫内的数字都不重复。点击格子选中，再点下方数字填入。「提示」会填入正确答案，「擦除」清空当前格。每日题按日期固定盘面，同一天所有人题目一致。';$('info').hidden=false});
+$('btn-info').addEventListener('click',function(){$('info-body').textContent='在空格填入 1~'+size.n+'，使每行、每列、每个粗线宫内的数字都不重复。点击格子选中，再点下方数字填入。「✎笔记」开启后，点数字会在格内标记小字候选数，再点一次取消；填入正式数字会自动清除该格笔记。「提示」填入正确答案，「擦除」清空当前格。「暂停」可停止计时。每日题按日期固定盘面，同一天所有人题目一致。';$('info').hidden=false});
 $('info-close').addEventListener('click',function(){$('info').hidden=true});
+document.addEventListener('keydown',function(e){if(noteMode&&/^[1-9]$/.test(e.key)&&+e.key<=size.n)input(+e.key);else if(e.key==='Backspace'||e.key==='Delete'){if(sel>=0&&!given[sel]){grid[sel]=0;notes[sel]=[];render()}}});
 newGame(false);render();
 })();
 </script>

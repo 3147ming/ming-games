@@ -22,9 +22,10 @@
   };
 
   /* 象棋/暗棋的汉字。红黑各一套，与实体棋盘一致。 */
+  const ANIMALS = { rat:'鼠', cat:'猫', dog:'犬', wolf:'狼', leopard:'豹', tiger:'虎', lion:'狮', elephant:'象' };
   const PIECE_LABEL = {
-    r: { general: '帅', advisor: '仕', elephant: '相', chariot: '车', horse: '马', cannon: '炮', soldier: '兵' },
-    b: { general: '将', advisor: '士', elephant: '象', chariot: '车', horse: '马', cannon: '炮', soldier: '卒' },
+    r: Object.assign({ general: '帅', advisor: '仕', elephant: '相', chariot: '车', horse: '马', cannon: '炮', soldier: '兵' }, ANIMALS),
+    b: Object.assign({ general: '将', advisor: '士', elephant: '象', chariot: '车', horse: '马', cannon: '炮', soldier: '卒' }, ANIMALS),
   };
   const SERIF = '"Songti SC","STSong","SimSun","Noto Serif CJK SC",serif';
 
@@ -313,6 +314,37 @@
         ctx.fillStyle = ((x + y) % 2 === 0) ? '#1f6b3a' : '#1a5d33';
         ctx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
       }
+    } else if (state.mode === 'jungle') {
+      const J = Core().JUNGLE;
+      for (let y = 0; y < state.rows; y++) for (let x = 0; x < state.cols; x++) {
+        let fill = ((x + y) % 2 === 0) ? '#e8d4a8' : '#dcc392'; // 陆地：暖沙色
+        if (J.isWater(x, y)) fill = '#5a9bb5';                    // 河流：水蓝
+        ctx.fillStyle = fill;
+        ctx.fillRect(ox + x * cell, oy + y * cell, cell, cell);
+        // 陷阱：淡红圈标记
+        const trap = J.trapOf(x, y);
+        if (trap) {
+          ctx.save();
+          ctx.strokeStyle = trap === 'r' ? 'rgba(200,68,58,.75)' : 'rgba(47,58,74,.75)';
+          ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+          ctx.strokeRect(ox + x * cell + 3, oy + y * cell + 3, cell - 6, cell - 6);
+          ctx.restore();
+        }
+      }
+      // 兽穴：金色菱形
+      for (const side of ['r', 'b']) {
+        const [dx, dy] = J.den(side), px = ox + dx * cell + cell / 2, py = oy + dy * cell + cell / 2;
+        ctx.save(); ctx.fillStyle = side === 'r' ? 'rgba(200,68,58,.85)' : 'rgba(47,58,74,.85)';
+        ctx.beginPath(); ctx.moveTo(px, py - cell*0.34); ctx.lineTo(px + cell*0.34, py);
+        ctx.lineTo(px, py + cell*0.34); ctx.lineTo(px - cell*0.34, py); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#f5e6b0'; ctx.font = `bold ${Math.max(10,cell*0.32)}px ${SERIF}`;
+        ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('穴', px, py);
+        ctx.restore();
+      }
+      // 网格线
+      ctx.strokeStyle = 'rgba(90,60,20,0.4)'; ctx.lineWidth = 1;
+      for (let x=0;x<=state.cols;x++){ctx.beginPath();ctx.moveTo(ox+x*cell,oy);ctx.lineTo(ox+x*cell,oy+h);ctx.stroke();}
+      for (let y=0;y<=state.rows;y++){ctx.beginPath();ctx.moveTo(ox,oy+y*cell);ctx.lineTo(ox+w,oy+y*cell);ctx.stroke();}
     }
   }
 
@@ -378,12 +410,28 @@
 
     // 合法落点
     if (opts.targets) {
+      const isCheckers = state.mode === 'checkers';
       for (const t of opts.targets) {
         const p = posOf(L, t.x, t.y);
         if (!p) continue;
         ctx.save();
-        ctx.fillStyle = 'rgba(96,214,142,0.85)';
-        ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(3, radius * 0.26), 0, Math.PI * 2); ctx.fill();
+        if (isCheckers) {
+          // 跳棋：落点用醒目的双层标记 —— 外圈描边 + 内实心点，跳跃落点(有 from)更亮更大。
+          // 一维孔位棋盘上普通小点极易和空孔混淆，这里刻意放大并加光晕。
+          const jump = !!(t.action && t.action.jump);
+          const rr = Math.max(5, radius * (jump ? 0.42 : 0.34));
+          ctx.shadowColor = jump ? 'rgba(255,206,74,0.9)' : 'rgba(96,214,142,0.9)';
+          ctx.shadowBlur = 10;
+          ctx.strokeStyle = jump ? 'rgba(255,206,74,0.95)' : 'rgba(96,214,142,0.95)';
+          ctx.lineWidth = Math.max(2, radius * 0.14);
+          ctx.beginPath(); ctx.arc(p[0], p[1], rr, 0, Math.PI * 2); ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = jump ? 'rgba(255,206,74,0.5)' : 'rgba(96,214,142,0.42)';
+          ctx.beginPath(); ctx.arc(p[0], p[1], rr * 0.6, 0, Math.PI * 2); ctx.fill();
+        } else {
+          ctx.fillStyle = 'rgba(96,214,142,0.85)';
+          ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(3, radius * 0.26), 0, Math.PI * 2); ctx.fill();
+        }
         ctx.restore();
       }
     }
@@ -449,6 +497,10 @@
       if (!p) continue;
       if (state.mode === 'gomoku') gomokuStone(ctx, p[0], p[1], radius, info.side);
       else if (state.mode === 'reversi') reversiStone(ctx, p[0], p[1], radius, info.side);
+      else if (state.mode === 'jungle') {
+        // 斗兽棋：木质圆棋子 + 动物汉字（PIECE_LABEL 已并入八兽）
+        woodPiece(ctx, p[0], p[1], radius, info.side, info.kind, true);
+      }
       else woodPiece(ctx, p[0], p[1], radius, info.side, info.kind, info.faceUp);
     }
   }

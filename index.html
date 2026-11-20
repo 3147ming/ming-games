@@ -705,20 +705,6 @@ const GAMES = [
     orientation: 'portrait',
   },
   {
-    id: 'hex',
-    name: '六角战场',
-    en: 'Hex Battle',
-    desc: '回合制战棋：移动、攻击、地形加成，消灭敌人通关三关战役。',
-    kw: '战棋 回合制 六角 地形 战役 策略',
-    tag: '战棋',
-    cover: 'covers/hex-v2.png',
-    ar: '1280 / 800',
-    url: 'hex/',
-    status: 'live',
-    order: 20,
-    orientation: 'portrait',
-  },
-  {
     id: 'tap',
     name: '节奏拍打',
     en: 'Tap Rhythm',
@@ -730,6 +716,76 @@ const GAMES = [
     url: 'tap/',
     status: 'live',
     order: 21,
+    orientation: 'portrait',
+  },
+  {
+    id: 'liar',
+    name: '骗子酒馆',
+    en: 'Liar's Bar',
+    desc: '吹牛骰子心理博弈，叫牌与质疑的酒馆对决。',
+    kw: '卡牌 骰子 吹牛 心理 博弈',
+    tag: '卡牌',
+    cover: 'covers/liar.png',
+    ar: '1280 / 800',
+    url: 'liar/',
+    status: 'live',
+    order: 22,
+    orientation: 'portrait',
+  },
+  {
+    id: 'doudizhu',
+    name: '斗地主',
+    en: 'Doudizhu',
+    desc: '经典三人扑克，叫地主、出牌型、炸弹王炸与 AI 对弈。',
+    kw: '卡牌 斗地主 扑克 炸弹 地主',
+    tag: '卡牌',
+    cover: 'covers/doudizhu.png',
+    ar: '1280 / 800',
+    url: 'doudizhu/',
+    status: 'live',
+    order: 23,
+    orientation: 'portrait',
+  },
+  {
+    id: 'wuyouk',
+    name: '510K',
+    en: '510K',
+    desc: '民间热门抢分扑克，5/10/K 凑分，先到 100 分获胜。',
+    kw: '卡牌 510K 抢分 扑克 民间',
+    tag: '卡牌',
+    cover: 'covers/wuyouk.png',
+    ar: '1280 / 800',
+    url: 'wuyouk/',
+    status: 'live',
+    order: 24,
+    orientation: 'portrait',
+  },
+  {
+    id: 'tongxin',
+    name: '同心',
+    en: 'Tongxin',
+    desc: '四人找朋友，红蓝两队暗配队友，同心协力赢墩得分。',
+    kw: '卡牌 找朋友 配合 同心 四家',
+    tag: '卡牌',
+    cover: 'covers/tongxin.png',
+    ar: '1280 / 800',
+    url: 'tongxin/',
+    status: 'live',
+    order: 25,
+    orientation: 'portrait',
+  },
+  {
+    id: 'metro-runner',
+    name: '地铁跑酷',
+    en: 'Metro Rush',
+    desc: '三轨切换、跳跃滑铲、躲列车收金币的无限跑酷。',
+    kw: '跑酷 地铁 三轨 跳跃 滑铲 街机',
+    tag: '街机',
+    cover: 'covers/metro-runner.png',
+    ar: '1280 / 800',
+    url: 'metro-runner/',
+    status: 'live',
+    order: 26,
     orientation: 'portrait',
   },
 ];
@@ -1307,7 +1363,6 @@ function readGrass() {
 
 function readDiner2(){return readNewGame("mg_diner.v1",null,function(s){return [kv("最佳营收",num(s.best)),kv("累计服务",num(s.served)),kv("营业次数",num(s.runs)),kv("每日营业",s.daily||undefined)]})}
 function readTerritory2(){return readNewGame("mg_territory.v1",null,function(s){return [kv("胜局",num(s.wins)),kv("总局数",num(s.runs)),kv("最佳占子",num(s.best)),kv("每日局",s.daily||undefined)]})}
-function readHex2(){return readNewGame("mg_hex.v1",null,function(s){return [kv("最远关卡",num(s.best)),kv("通关次数",num(s.wins)),kv("总局数",num(s.runs)),kv("每日战役",s.daily||undefined)]})}
 function readTap2(){return readNewGame("mg_tap.v1",null,function(s){return [kv("最高分",num(s.best)),kv("总局数",num(s.runs)),kv("每日谱面",s.daily||undefined)]})}
 /** 新游戏（trio/sudoku/slide/brick）通用只读 reader：直接读 mg_*.v1 存档 */
 function readNewGame(key, scoreFn, rowsFn) {
@@ -1338,7 +1393,7 @@ const ACH_READERS = {
   'paper-maze': readMaze, 'neon-rhythm': readRhythm, 'pixel-runner': readRunner,
   'grass-cutter': readGrass, shanhai: readShanhai,
   trio: readTrio2, sudoku: readSudoku2, slide: readSlide2, brick: readBrick2,
-  diner: readDiner2, territory: readTerritory2, hex: readHex2, tap: readTap2,
+  diner: readDiner2, territory: readTerritory2, tap: readTap2,
 };
 
 /** 扫一遍 localStorage 的名字（成就页用；隐私模式下拿不到就返回空数组，不报错）。 */
@@ -1526,10 +1581,30 @@ const DAILY_INFO = {
     note: '按 territory-YYYY-MM-DD 固定先手布局，同日阵型一致；胜局与最高子数写入 mg_territory.v1。',
     where: '入口：进入游戏 →「每日局」按钮',
   },
-  hex: {
-    level: 'yes', badge: '有每日', title: '每日战役',
-    note: '按 hex-YYYY-MM-DD-关卡 固定敌方配置，同日战役一致；最远关卡写入 mg_hex.v1。',
-    where: '入口：进入游戏 →「每日战役」按钮',
+  liar: {
+    level: 'no', badge: '暂无每日', title: '暂无每日玩法',
+    note: '《骗子酒馆》暂未设每日固定局，每局随机。',
+    where: '入口：—',
+  },
+  doudizhu: {
+    level: 'no', badge: '暂无每日', title: '暂无每日玩法',
+    note: '《斗地主》暂未设每日固定局，每局随机。',
+    where: '入口：—',
+  },
+  wuyouk: {
+    level: 'no', badge: '暂无每日', title: '暂无每日玩法',
+    note: '《510K》暂未设每日固定局，每局随机。',
+    where: '入口：—',
+  },
+  tongxin: {
+    level: 'no', badge: '暂无每日', title: '暂无每日玩法',
+    note: '《同心》暂未设每日固定局，每局随机。',
+    where: '入口：—',
+  },
+  'metro-runner': {
+    level: 'no', badge: '暂无每日', title: '暂无每日玩法',
+    note: '《地铁跑酷》为无限跑酷，暂无每日固定局。',
+    where: '入口：—',
   },
   tap: {
     level: 'yes', badge: '有每日', title: '每日谱面',

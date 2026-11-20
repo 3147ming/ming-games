@@ -23,6 +23,30 @@ import { fmtYuan } from './fmt.mjs';
 import { getBonuses } from './training.mjs';
 
 /**
+ * 需求驱动的 SKU 排序（纯函数，Node 可单测）。
+ *
+ * 背景：采购员旧逻辑只看"货架上哪样最少"，于是经常补了没人买的滞销品，
+ * 而客人真正想买、却因缺货流失的 SKU 一直没人补（被玩家吐槽"店员不够聪明"）。
+ * 现在按三段信号打分，权重依次递减：
+ *   ① skuMissed —— 当夜"想买却没货"的流失件数（最强的真实需求信号）
+ *   ② skuSold   —— 当夜真实销量（次强，代表周转）
+ *   ③ 货架缺口  —— 现有库存越少越优先（保留旧逻辑的合理内核）
+ * 首夜没有任何流水时自动退化为"货架最少优先"，行为与改造前完全一致。
+ *
+ * @param {Array<{id:string}>} skus 已解锁的可售 SKU（来自 availableSkus()）
+ * @param {{missed?:object, sold?:object, shelfQty?:object}} ctx 当夜流水与货架存量
+ * @returns {Array} 排好序的新数组（不改入参）
+ */
+export function rankSkuByDemand(skus, ctx = {}) {
+  const miss = ctx.missed ?? {}, sold = ctx.sold ?? {}, shelf = ctx.shelfQty ?? {};
+  const hasTelemetry = skus.some((s) => (miss[s.id] | 0) > 0 || (sold[s.id] | 0) > 0);
+  const score = (s) =>
+    (miss[s.id] | 0) * 4 + (sold[s.id] | 0) + Math.max(0, 6 - (shelf[s.id] ?? 0)) * 0.5;
+  return skus.slice().sort((a, b) =>
+    hasTelemetry ? (score(b) - score(a)) : ((shelf[a.id] ?? 0) - (shelf[b.id] ?? 0)));
+}
+
+/**
  * @param opts.state       全局状态（含 staff / warehouse / cash / deviceStock）
  * @param opts.economy     { purchase, buyWarehouseGood, restockShelfIfPossible, backroomTotal, warehouseFree, warehouseCap, warehouseUsed }
  * @param opts.worldState  { deviceList, repair, repairCost, litter, clean, cleanAll, brokenCount }
@@ -289,30 +313,47 @@ export function createStaff(opts = {}) {
     return null;
   }
 
-  /** 采购员挑 SKU：货架上当前总量最少的已解锁 SKU（缺口最大优先补）；
-   *  2026-10-06：改为直接复用 economy.availableSkus()。
-   *  原来这里自己抄了一份 `!s.locked || state.upgrades?.[s.id]` 判定，
-   *  在 locked 语义扩展成"借用别的升级钥匙"（口香糖/电池/杂志）后就会漏判，
-   *  而且它还漏了 festivalOnly —— 采购员会在非节日夜去进节日礼盒。
-   *  单一真源比"两处写得很像"更不容易漂移。 */
-  function pickLowestShelfSku() {
-    const shelfQty = {};
-    for (const s of state.slots) {
-      if (s.skuId && s.qty > 0) shelfQty[s.skuId] = (shelfQty[s.skuId] ?? 0) + s.qty;
-    }
-    const unlocked = availableSkus();
-    if (unlocked.length === 0) return SKU_BY_ID.drink?.id ?? 'drink';
-    unlocked.sort((a, b) => (shelfQty[a.id] ?? 0) - (shelfQty[b.id] ?? 0));
-    return unlocked[0].id;
+/**
+ * 2026-10-06 起直接复用 economy.availableSkus() 拿"已解锁"清单，
+ * 避免自己抄一份 locked/festivalOnly 判定而与经济系统漂移。
+ */
+function pickLowestShelfSku() {
+  const shelfQty = {};
+  for (const s of state.slots) {
+    if (s.skuId && s.qty > 0) shelfQty[s.skuId] = (shelfQty[s.skuId] ?? 0) + s.qty;
   }
+  const unlocked = availableSkus();
+  if (unlocked.length === 0) return SKU_BY_ID.drink?.id ?? 'drink';
+  return rankSkuByDemand(unlocked, {
+    missed: state.skuMissed, sold: state.skuSold, shelfQty,
+  })[0].id;
+}
+
+/** 上货员优先上架的 SKU：当前仓库里有货、且需求分最高的那个。
+ *  只给 economy 一个"偏好提示"；economy 仍自己校验空位与临期优先级。 */
+function preferStockerSku() {
+  const shelfQty = {};
+  for (const s of state.slots) {
+    if (s.skuId && s.qty > 0) shelfQty[s.skuId] = (shelfQty[s.skuId] ?? 0) + s.qty;
+  }
+  const backroom = state.backroom ?? {};
+  return rankSkuByDemand(availableSkus(), {
+    missed: state.skuMissed, sold: state.skuSold, shelfQty,
+  }).find((s) => (backroom[s.id] | 0) > 0)?.id ?? null;
+}
 
   function aiStocker(s, now, bonus = {}) {
     // 1) 货架补货（backroom → 空货架格）
     /* 培训「理货进阶」的两个参数：
      *   batch     —— 一趟多搬几件（默认 PICK_BATCH 6）
      *   capExtra  —— 每格软上限往上加（economy 内部会 clamp 到 SLOT_CAP）
-     * 都做成可选参数，economy 的旧调用方（玩家/测试）不传时行为完全不变。 */
-    if (economy.restockShelfIfPossible({ capExtra: bonus.restockCapBonus ?? 0, batch: bonus.restockBatch })) {
+     * 都做成可选参数，economy 的旧调用方（玩家/测试）不传时行为完全不变。
+     * preferSkuId：需求驱动的补货偏好（缺货流失最多的 SKU 先上），economy 仍
+     * 自行校验空位与临期优先级，偏好只在"同样可补"时决定先补谁。 */
+    if (economy.restockShelfIfPossible({
+      capExtra: bonus.restockCapBonus ?? 0, batch: bonus.restockBatch,
+      preferSkuId: preferStockerSku(),
+    })) {
       s.working = true;
       s.status = 'stock-shelf';
       onEvent('stock-done', { type: s.type, name: defOf(s.type).name, kind: 'shelf', label: '货架' });

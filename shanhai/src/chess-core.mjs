@@ -41,6 +41,7 @@
     { id: 'checkers', name: '跳棋', blurb: '中国跳棋：六角星 121 孔，连跳不吞子，先占满对面三角者胜。', players: 2, vsAI: true, geom: 'hexstar' },
     { id: 'banqi', name: '暗棋', blurb: '三十二子覆面，翻棋按品级吃子，兵可吃将。', players: 2, vsAI: true, geom: 'grid', cols: 8, rows: 4 },
     { id: 'reversi', name: '翻棋', blurb: '翻转棋：落子夹反，多者称雄。', players: 2, vsAI: true, geom: 'grid', cols: 8, rows: 8 },
+    { id: 'jungle', name: '斗兽棋', blurb: '八兽相斗：鼠吃象、狮虎跳河，先入对方兽穴者胜。', players: 2, vsAI: true, geom: 'grid', cols: 7, rows: 9 },
   ];
   const MODE_BY_ID = Object.fromEntries(MODES.map((m) => [m.id, m]));
 
@@ -118,15 +119,8 @@
         }
         break;
       case 'chariot':
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          let nx = x + dx, ny = y + dy;
-          while (inB(nx, ny, cols, rows)) {
-            const q = at(nx, ny);
-            if (!q) out.push({ x: nx, y: ny, cap: false, occ: false });
-            else { out.push({ x: nx, y: ny, cap: q.side !== side, occ: true }); break; }
-            nx += dx; ny += dy;
-          }
-        }
+        // 暗棋：车只能横竖走一格（与象棋不同，这是暗棋的核心区别）
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) push(x + dx, y + dy);
         break;
       case 'cannon':
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
@@ -394,7 +388,8 @@
     if (att.side === def.side) return false;
     if (att.kind === 'soldier') return def.kind === 'general' || def.kind === 'soldier';
     if (att.kind === 'cannon') return def.kind !== 'soldier';
-    if (def.kind === 'general') return false;          // 将只能被兵吃
+    // 同级可互吃（同归于尽）；帅(7)吃不了兵(1)，但兵可吃帅（前面已处理）。
+    // 不能再对 general 一律 return false，否则两帅相遇无法互吃。
     if (att.kind === 'general' && def.kind === 'soldier') return false;
     const a = BANQI_RANK[att.kind], d = BANQI_RANK[def.kind];
     return a >= d;
@@ -507,6 +502,155 @@
     return flips.length ? [{ to: [x, y], flips }] : [];
   }
 
+  /* ════════════════════════════════════════════════════════════════
+   *  斗兽棋（Jungle Chess：7列×9行，河/陷阱/兽穴，八兽相克）
+   * ════════════════════════════════════════════════════════════════ */
+  const JUNGLE_RANK = { rat:1, cat:2, dog:3, wolf:4, leopard:5, tiger:6, lion:7, elephant:8 };
+  const JUNGLE_LABEL = {
+    r: { rat:'鼠',cat:'猫',dog:'犬',wolf:'狼',leopard:'豹',tiger:'虎',lion:'狮',elephant:'象' },
+    b: { rat:'鼠',cat:'猫',dog:'犬',wolf:'狼',leopard:'豹',tiger:'虎',lion:'狮',elephant:'象' },
+  };
+  // 河：中间两片区，列 1-2 与 4-5，行 3-5（0-based）。陆路为列 0、3、6。
+  function jgIsWater(x, y) { return y >= 3 && y <= 5 && ((x >= 1 && x <= 2) || (x >= 4 && x <= 5)); }
+  // 兽穴：红方底部中央 (3,8)，蓝方顶部中央 (3,0)。
+  function jgDen(side) { return side === 'r' ? [3, 8] : [3, 0]; }
+  // 陷阱：兽穴左右各一 + 前方一。红方 (2,8)(4,8)(3,7)；蓝方 (2,0)(4,0)(3,1)。
+  function jgTrapOf(x, y) {
+    if ((x===2||x===4) && y===8) return 'r';
+    if (x===3 && y===7) return 'r';
+    if ((x===2||x===4) && y===0) return 'b';
+    if (x===3 && y===1) return 'b';
+    return null;
+  }
+  function jungleSetup() {
+    const cols = 7, rows = 9, b = makeBoard(cols, rows, null);
+    // 标准布阵（行 0 蓝方底线，行 8 红方底线）
+    const back = ['lion','tiger','leopard','wolf','dog','cat','rat'];
+    // 更常见的是竖列排布；这里按经典电子版的 7 列阵型：
+    // 底行: 猫 犬 豹 虎 狮 ... 采用如下布阵保证兽穴(3)周围与左右陷阱有守卫
+    const blueRow0 = [ 'cat', 'dog', 'leopard', 'lion', 'tiger', 'wolf', 'rat' ];
+    const blueRow2 = [ null, null, null, 'elephant', null, null, null ];
+    const redRow8  = [ 'rat', 'wolf', 'tiger', 'lion', 'leopard', 'dog', 'cat' ];
+    const redRow6  = [ null, null, null, 'elephant', null, null, null ];
+    for (let x=0;x<cols;x++) {
+      if (blueRow0[x]) b[0][x] = { side:'b', kind:blueRow0[x] };
+      if (redRow8[x])  b[8][x] = { side:'r', kind:redRow8[x] };
+    }
+    if (blueRow2[3]) b[2][3] = { side:'b', kind:blueRow2[3] };
+    if (redRow6[3])  b[6][3] = { side:'r', kind:redRow6[3] };
+    return { mode:'jungle', board:b, cols, rows, turn:'r', status:'playing', winner:null, lastMove:null, moveCount:0 };
+  }
+  // 吃子判定：att 攻击 def（均已翻开）。考虑陷阱削弱与鼠象特例。
+  function jgCanCapture(s, ax, ay, dx, dy, att, def) {
+    if (!def || def.side === att.side) return false;
+    // 水陆互不相吃
+    const aw = jgIsWater(ax, ay), dw = jgIsWater(dx, dy);
+    if (aw !== dw) return false;
+    // 敌方在己方陷阱上：战力归零，任意子可吃
+    const trapOwner = jgTrapOf(dx, dy);
+    if (trapOwner && trapOwner !== def.side) return true;
+    const ar = JUNGLE_RANK[att.kind], dr = JUNGLE_RANK[def.kind];
+    // 鼠吃象、象不吃鼠
+    if (att.kind === 'elephant' && def.kind === 'rat') return false;
+    if (att.kind === 'rat' && def.kind === 'elephant') return true;
+    return ar >= dr; // 同级互吃
+  }
+  function jungleTargets(s, x, y) {
+    const p = s.board[y][x];
+    if (!p) return [];
+    const side = p.side, out = [];
+    const add = (nx, ny, via) => {
+      if (!inB(nx, ny, s.cols, s.rows)) return;
+      const q = s.board[ny][nx];
+      const myDen = jgDen(side), foeDen = jgDen(other(side));
+      // 不能进自己的兽穴
+      if (nx === myDen[0] && ny === myDen[1]) return;
+      // 进敌方兽穴 = 胜利
+      if (nx === foeDen[0] && ny === foeDen[1]) {
+        out.push({ x:nx, y:ny, cap:false, occ:false, enterDen:true }); return;
+      }
+      if (q && q.side === side) return; // 己方子挡路
+      const water = jgIsWater(nx, ny);
+      if (water && p.kind !== 'rat') return; // 只有鼠能下水
+      if (q) {
+        if (jgCanCapture(s, x, y, nx, ny, p, q)) out.push({ x:nx, y:ny, cap:true, occ:true });
+      } else {
+        out.push({ x:nx, y:ny, cap:false, occ:false });
+      }
+    };
+    // 普通一步
+    for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) add(x+dx, y+dy, false);
+    // 狮虎跳河：直线跳过整条河（纵向跨3行或横向跨2列），途中水中无鼠才能跳
+    if (p.kind === 'lion' || p.kind === 'tiger') {
+      // 纵向跳（上方河 y3-5、下方河同样 y3-5，跨过 y=3,4,5 从 y2->y6 或 y6->y2）
+      for (const dir of [-1, 1]) {
+        let ny = y + dir;
+        let blocked = false;
+        while (inB(x, ny, s.cols, s.rows) && jgIsWater(x, ny)) {
+          const w = s.board[ny][x];
+          if (w && w.kind === 'rat') { blocked = true; break; }
+          ny += dir;
+        }
+        if (!blocked && inB(x, ny, s.cols, s.rows) && !jgIsWater(x, ny)) {
+          const land = ny - dir; // 河对面第一块陆地前的位置其实是 ny 本身
+          // ny 已经是上岸第一格
+          const q = s.board[ny][x];
+          const den = jgDen(side);
+          if (!(x===den[0] && ny===den[1]) && (!q || q.side!==side) && (!q || jgCanCapture(s,x,y,x,ny,p,q)))
+            out.push({ x, y:ny, cap:!!q, occ:!!q, jump:true });
+        }
+      }
+      // 横向跳河：在河中行(y=3..5)横向跨过 2 列水域 (x1-2 或 x4-5)
+      if (y >= 3 && y <= 5) {
+        for (const [xA,xB] of [[1,2],[4,5]]) {
+          for (const dir of [-1,1]) {
+            const fromEdge = dir===1 ? xA-1 : xB+1;
+            if (x !== fromEdge) continue;
+            let blocked=false;
+            for (let xx=xA; xx<=xB; xx++){const w=s.board[y][xx];if(w&&w.kind==='rat'){blocked=true;break;}}
+            if (blocked) continue;
+            const land = dir===1 ? xB+1 : xA-1;
+            if (!inB(land,y,s.cols,s.rows)||jgIsWater(land,y)) continue;
+            const q=s.board[y][land];
+            if ((!q||q.side!==side)&&(!q||jgCanCapture(s,x,y,land,y,p,q)))
+              out.push({ x:land, y, cap:!!q, occ:!!q, jump:true });
+          }
+        }
+      }
+    }
+    return out;
+  }
+  function jungleActionsAt(s, x, y, side) {
+    const p = s.board[y][x];
+    if (!p || p.side !== side) return [];
+    const out = [];
+    for (const t of jungleTargets(s, x, y)) {
+      if (t.enterDen) out.push({ from:[x,y], to:[t.x,t.y], capture:null, enterDen:true });
+      else if (t.cap) out.push({ from:[x,y], to:[t.x,t.y], capture:[t.x,t.y] });
+      else if (!t.occ) out.push({ from:[x,y], to:[t.x,t.y], capture:null });
+    }
+    return out;
+  }
+  function jungleWin(s, side) {
+    const den = jgDen(other(side)); // 对手兽穴
+    // 走进敌方兽穴
+    for (const a of [den]) if (s.board[a[1]][a[0]] && s.board[a[1]][a[0]].side === side) return true;
+    return false;
+  }
+  function jungleEval(s, side) {
+    if (s.status === 'over') return s.winner === side ? 1e6 : s.winner === 'draw' ? 0 : -1e6;
+    let v = 0;
+    const foeDen = jgDen(other(side));
+    for (let y=0;y<s.rows;y++) for (let x=0;x<s.cols;x++) {
+      const p = s.board[y][x]; if (!p) continue;
+      const sign = p.side===side?1:-1;
+      v += sign * (JUNGLE_RANK[p.kind] * 10 + 20);
+      // 靠近敌方兽穴加分
+      if (p.side===side) v -= (Math.abs(x-foeDen[0])+Math.abs(y-foeDen[1])) * 2;
+    }
+    return v;
+  }
+
   /* ── 统一调度 ───────────────────────────────────────────────────── */
   function actionsAt(s, x, y, side) {
     const who = side || s.turn;
@@ -517,6 +661,7 @@
     if (s.mode === 'xiangqi') return xiangqiActionsAt(s, x, y, who);
     if (s.mode === 'checkers') return checkersActionsAt(s, x, who);
     if (s.mode === 'banqi') return banqiActionsAt(s, x, y, who);
+    if (s.mode === 'jungle') return jungleActionsAt(s, x, y, who);
     return [];
   }
 
@@ -552,7 +697,8 @@
     }
     for (let y = 0; y < s.rows; y++) for (let x = 0; x < s.cols; x++) {
       const c = s.board[y][x];
-      if (c && typeof c === 'object' && c.side === side && c.faceUp !== false) n++;
+      // 暗棋：未翻开的暗子也是该方棋子，胜负按真实归属计（不能排除 faceUp=false）
+      if (c && typeof c === 'object' && c.side === side) n++;
     }
     return n;
   }
@@ -591,6 +737,7 @@
       }
       s.board[fy][fx] = null;
       s.board[ty][tx] = p;
+      if (action.enterDen && s.mode === 'jungle') winByGeneral = true; // 进敌方兽穴即胜
     }
     s.lastMove = action.flip ? { flip: action.flip } : { from: action.from, to: action.to };
     s.moveCount = (s.moveCount || 0) + 1;
@@ -601,7 +748,8 @@
   }
 
   function setEndIfFinished(s, mover, winByGeneral) {
-    if (winByGeneral) { s.status = 'over'; s.winner = mover; return s; }
+    // 只有象棋是"吃掉将/帅即胜"；暗棋必须吃光对方全部棋子，吃掉将不算赢。
+    if (winByGeneral && s.mode === 'xiangqi') { s.status = 'over'; s.winner = mover; return s; }
     if (s.mode === 'gomoku') {
       const lm = s.lastMove;
       if (lm && lm.to && gomokuWinAt(s, lm.to[0], lm.to[1], mover)) { s.status = 'over'; s.winner = mover; return s; }
@@ -620,7 +768,18 @@
     const acts = allActions(s, s.turn);
     if (acts.length === 0) { s.status = 'over'; s.winner = other(s.turn); return s; }
     if (s.mode === 'banqi') {
+      // mover 刚走完，检查对手（下一个行动方）是否已被吃光：吃光即胜。
+      // 注意此时 s.turn 仍是 mover（切 turn 在 applyAction 之后），所以要查 other(mover)。
+      const foe = other(mover);
+      if (countPieces(s, foe) === 0) { s.status = 'over'; s.winner = mover; return s; }
+      // 兜底：当前行动方自己没子（理论上不会发生）
       if (countPieces(s, s.turn) === 0) { s.status = 'over'; s.winner = other(s.turn); return s; }
+    }
+    if (s.mode === 'jungle') {
+      // winByGeneral 已在上面处理（进敌方兽穴）。这里补：吃光对方 / 对方无子可动。
+      const foe = other(mover);
+      if (countPieces(s, foe) === 0) { s.status = 'over'; s.winner = mover; return s; }
+      if (allActions(s, foe).length === 0) { s.status = 'over'; s.winner = mover; return s; }
     }
     return s;
   }
@@ -691,6 +850,7 @@
     if (s.status === 'over') return s.winner === side ? 1e6 : s.winner === 'draw' ? 0 : -1e6;
     if (s.mode === 'checkers') return evalCheckers(s, side);
     if (s.mode === 'reversi') return evalReversi(s, side);
+    if (s.mode === 'jungle') return jungleEval(s, side);
     if (s.mode === 'banqi') return evalMaterial(s, side);
     return evalMaterial(s, side); // xiangqi
   }
@@ -836,6 +996,7 @@
       case 'checkers': s = checkersSetup(); break;
       case 'banqi': s = banqiSetup(opts.seed); break;
       case 'reversi': s = reversiSetup(); break;
+      case 'jungle': s = jungleSetup(); break;
       default: throw new Error('未知棋类：' + modeId);
     }
     s.status = 'playing'; s.winner = null; s.passed = false;
@@ -852,6 +1013,7 @@
     CC: { HOLES: CC_HOLES, ZONE: CC_ZONE, DIRS: CC_DIRS, goalZone: ccGoalZone, hexDist: ccHexDist, hasWon: ccHasWon },
     // 仅供测试 / 调试
     _internal: { xiangqiTargets, banqiTargets, banqiCanCapture, gomokuWinAt, reversiFlips, generalsFacing, ccJumpsFrom },
+    JUNGLE: { LABEL: JUNGLE_LABEL, RANK: JUNGLE_RANK, isWater: jgIsWater, den: jgDen, trapOf: jgTrapOf },
   };
 
   Object.defineProperty(root, 'ShanhaiChessCore', {
