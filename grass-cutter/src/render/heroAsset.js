@@ -288,6 +288,15 @@ export function createHeroMeshFromAsset(asset) {
   }
   const anim = new HeroAssetAnimator(asset);
   const lod = asset.lod || { lod1: null, lod2: null };
+  // ★ 朝向校正：Mixamo 的 glTF 面朝 +Z，本作 yaw=0 面朝 -Z。
+  //   只转渲染用的模型场景（含各级 LOD），不碰 player.facing / 打击盒 / 判定口径 ——
+  //   否则"转过去砍"会变成"背对敌人却打中了"。
+  const facingOffset = HERO.ASSET_FACING_OFFSET || 0;
+  if (facingOffset) {
+    asset.scene.rotation.y = facingOffset;
+    if (lod.lod1) lod.lod1.rotation.y = facingOffset;
+    if (lod.lod2) lod.lod2.rotation.y = facingOffset;
+  }
   const hasLod = HERO.LOD.ENABLED && (lod.lod1 || lod.lod2);
   if (hasLod) {
     // 构建 THREE.LOD：LOD0 完整（带骨骼动画），LOD1/LOD2 为离线减面的静态副资产

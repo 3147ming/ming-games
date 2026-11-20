@@ -1,6 +1,6 @@
 /**
  * 主角建模升级守护测试（node --test）
- * 覆盖：CC0 骨骼模型文件本体、视觉放大接线、动画映射、染色强度、旧 LOD 隔离。
+ * 覆盖：CC0 骨骼模型文件本体、视觉放大接线、动画映射、染色强度、旧 LOD 隔离、朝向校正、输入焦点。
  * 说明：heroAsset.js / main.js 依赖浏览器与 three vendor，Node 下无法直接实例化，
  *      故使用源码文本断言 + GLB 二进制结构解析（与美术接入守护口径一致）。
  */
@@ -66,4 +66,27 @@ test('动画映射与染色强度适配 CC0 骑士模型', () => {
 test('旧占位 LOD 副资产不参与加载，避免新旧模型串用', () => {
   const lodBlock = config.match(/LOD:\s*\{([\s\S]*?)\n  \},/)?.[1] || '';
   assert.match(lodBlock, /ENABLED:\s*false/, 'LOD 副资产未关闭，可能加载旧占位 LOD');
+});
+
+test('CC0 骑士补 180° 朝向校正，避免攻击时脸朝镜头', () => {
+  assert.match(config, /ASSET_FACING_OFFSET:\s*Math\.PI/, '缺少模型朝向校正配置');
+  assert.match(heroAsset, /asset\.scene\.rotation\.y\s*=\s*facingOffset/,
+    '外部模型场景未应用朝向校正');
+  assert.match(heroAsset, /if \(lod\.lod1\) lod\.lod1\.rotation\.y\s*=\s*facingOffset/,
+    'LOD 副资产朝向未同步校正');
+  // 只转模型场景，绝不碰逻辑朝向/命中判定
+  assert.doesNotMatch(heroAsset, /player\.facing\s*=\s*facingOffset/, '朝向校正污染了逻辑 facing');
+});
+
+test('输入层吞掉全部游戏键默认行为与右键菜单，并把焦点锁在画布', () => {
+  const inputSrc = fs.readFileSync(path.join(srcDir, 'player', 'input.js'), 'utf8');
+  const html = fs.readFileSync(path.join(srcDir, '..', 'index.html'), 'utf8');
+  assert.match(inputSrc, /\.\.\.Object\.values\(ACTIONS\)\.flat\(\)/, 'SWALLOW 未覆盖全部游戏按键');
+  assert.match(inputSrc, /!e\.ctrlKey && !e\.metaKey && !e\.altKey/, '系统组合键被误吞');
+  assert.match(inputSrc, /_onContextMenu\s*=\s*\(e\)\s*=>\s*e\.preventDefault\(\)/, '右键卸势仍会弹出浏览器菜单');
+  assert.match(inputSrc, /addEventListener\('contextmenu', this\._onContextMenu\)/, '右键菜单拦截未接线');
+  // keyup 也要拦，否则按钮上的空格/回车在松手时仍会触发
+  assert.match(inputSrc, /_onKeyUp[\s\S]{0,200}shouldSwallow\(e\)/ , 'keyup 未拦默认行为');
+  assert.match(html, /<canvas[^>]*tabindex="0"/, '画布不可聚焦，进入游戏键盘焦点不在游戏里');
+  assert.match(main, /canvas\.focus\(\{ preventScroll: true \}\)/, '启动后未把焦点交给画布');
 });

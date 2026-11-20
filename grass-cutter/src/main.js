@@ -139,8 +139,16 @@ const rig = new CameraRig(camera, {
 
 // ─────────────────────────────────────────────── 输入（模块 2）
 const input = new InputState(window).attach(canvas);
-// 指针锁定的失败是"环境限制"而不是 bug；InputState 内部已经 catch 了 Promise 形式
-canvas.addEventListener('click', () => { input.requestPointerLock(); audio.resume(); });
+// 指针锁定失败是"环境限制"而不是 bug；InputState 内部已经 catch 了 Promise 形式。
+// ★ 进入战场的第一件事就是把键盘焦点交给画布：否则焦点还停在地址栏/启动页按钮上，
+//   按 WASD/空格/Tab 会先被浏览器当快捷键处理（滚动、切焦点），游戏只收到一半按键。
+const grabGameFocus = () => {
+  try { canvas.focus({ preventScroll: true }); } catch { /* 老浏览器不支持参数 */ }
+};
+grabGameFocus();
+canvas.addEventListener('pointerdown', () => grabGameFocus());
+const lockGame = () => { grabGameFocus(); input.requestPointerLock(); audio.resume(); };
+canvas.addEventListener('click', lockGame);
 
 /* 视角控制提示随锁定状态切换。
    2026-11-16 反馈：锁定失败/被 Esc 解除后，玩家不知道鼠标为什么没反应 ——
@@ -1071,6 +1079,9 @@ window.MUSOU = {
 };
 
 boot.classList.add('gone');
+// 启动遮罩收起后再focus一次：前面那次可能被 boot 层抢走焦点，
+// 这里确保"进入游戏"这个时刻键盘确实锁在画布上。
+grabGameFocus();
 requestAnimationFrame(tick);
 console.log(
   '[传统割草游戏] 模块5-8 已启动（无双/武艺 · 据点/士气 · 战场UI · 关卡/Boss）',

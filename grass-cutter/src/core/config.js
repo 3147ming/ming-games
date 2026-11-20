@@ -918,7 +918,11 @@ export const HERO = {
   //   · .vrm 用 @pixiv/three-vrm（⚠ 该包需 npm 安装，会破"零依赖零构建"铁律，需主理人授权）
   // 加载期间显示「水墨剪影占位」；加载失败/无资产 → 优雅退回程序化 PBR 武将，绝不黑屏。
   ASSET_PATH: 'assets/hero/model.glb',
-  MODEL_VISUAL_SCALE: 1.25, // 8m/4m 相机规格不变，用视觉比例解决“主角像小方块”的观感问题
+  MODEL_VISUAL_SCALE: 1.25, // 8m/4m 相机规格不变，用视觉比例解决"主角像小方块"的观感问题
+  // ★ Mixamo 导出的 glTF 默认面朝 +Z，而本作 yaw=0 面朝 -Z（见 combat/hitbox.js facingDir）。
+  //   差这 180° 会让主角"攻击时脸朝着镜头"。外部模型统一补这个偏航；
+  //   程序化武将本身按 -Z 建，不走这条分支，逻辑朝向/命中判定一律不动。
+  ASSET_FACING_OFFSET: Math.PI,
   // 动画状态 → 资产内 clip 名称（按名称映射；找不到则退回程序化姿态驱动）
   // CC0 骑士没有 N1/C3/heavy 等细分动作，统一借用 punch 作为攻击视觉；
   // dash / 受击 / charge 等状态保留程序化姿态，避免把“蓄力”也播成出拳。

@@ -44,15 +44,21 @@ export const MOUSE_ACTIONS = {
   parry: [2],
 };
 
-/** 这些键按住会导致页面滚动/焦点移动，要拦掉默认行为 */
+/**
+ * 这些键会触发浏览器默认行为（滚动 / 焦点移动 / 快捷键 / 后退），一律拦掉。
+ * ★ 取 ACTIONS 全集而不是手抄几个：原来只列了 Space/方向键/Tab，
+ *   结果 Q/E/R/F/N/C/数字键这些游戏键在某些浏览器里仍会触发浏览器动作，
+ *   玩家描述为"玩着玩着浏览器自己动了"。
+ * ★ 带 Ctrl/Meta/Alt 的组合键**不拦**：Ctrl+R 刷新、F12 开发者工具、Alt+Tab
+ *   这些必须留给浏览器，否则出问题连调试都没法做。
+ */
 const SWALLOW = new Set([
-  'Space',
-  'ArrowUp',
-  'ArrowDown',
-  'ArrowLeft',
-  'ArrowRight',
-  'Tab',
+  ...Object.values(ACTIONS).flat(),
+  'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab',
+  'Backspace', // 老版本浏览器仍是"后退"，拦掉不影响游戏
 ]);
+/** 是否该吞掉这次按键的默认行为（系统组合键放行） */
+const shouldSwallow = (e) => !e.ctrlKey && !e.metaKey && !e.altKey && SWALLOW.has(e.code);
 
 export class InputState {
   constructor(target = typeof window !== 'undefined' ? window : null) {
@@ -85,13 +91,17 @@ export class InputState {
       // 重复触发（长按）不该刷新"按下时刻"，否则按住空格会一直重新起跳
       if (!e.repeat) this.pressedAt.set(e.code, this._t);
       this.held.add(e.code);
-      if (SWALLOW.has(e.code)) e.preventDefault();
+      if (shouldSwallow(e)) e.preventDefault();
       this.onKey?.(e.code, true, e);
     };
     this._onKeyUp = (e) => {
       this.held.delete(e.code);
+      // keyup 也要拦：部分默认行为（如按钮上的空格/回车）是在松手时才触发的。
+      if (shouldSwallow(e)) e.preventDefault();
       this.onKey?.(e.code, false, e);
     };
+    // 右键在游戏里是「卸势」，浏览器菜单会瞬间抢走焦点、手感全断。
+    this._onContextMenu = (e) => e.preventDefault();
     this._onBlur = () => {
       // 失焦时把按键全松开：否则"切出去再回来还在往前走"会非常迷惑
       this.held.clear();
@@ -150,6 +160,7 @@ export class InputState {
 
     t.addEventListener('keydown', this._onKeyDown);
     t.addEventListener('keyup', this._onKeyUp);
+    t.addEventListener('contextmenu', this._onContextMenu);
     t.addEventListener('blur', this._onBlur);
     t.addEventListener('mousemove', this._onMouseMove);
     t.addEventListener('mousedown', this._onMouseDown);
@@ -335,6 +346,7 @@ export class InputState {
     const t = this.target;
     t.removeEventListener('keydown', this._onKeyDown);
     t.removeEventListener('keyup', this._onKeyUp);
+    t.removeEventListener('contextmenu', this._onContextMenu);
     t.removeEventListener('blur', this._onBlur);
     t.removeEventListener('mousemove', this._onMouseMove);
     t.removeEventListener('mousedown', this._onMouseDown);
