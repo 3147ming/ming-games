@@ -255,6 +255,12 @@ export class AudioManager {
       case 'paper':
         this._noise(0.1, { type: 'highpass', freq: 5000, q: 1, gain: 0.08 });
         break;
+      case 'awaken': // 流派觉醒：铜锣定音 + 上行三音，短促有仪式感
+        this._tone(523, 0.5, { type: 'sine', gain: 0.3, detune: 3 });
+        setTimeout(() => this._tone(659, 0.5, { type: 'sine', gain: 0.26 }), 90);
+        setTimeout(() => this._tone(784, 0.7, { type: 'triangle', gain: 0.24 }), 180);
+        this._noise(0.25, { type: 'bandpass', freq: 2600, q: 0.7, gain: 0.1 });
+        break;
       default:
         break;
     }

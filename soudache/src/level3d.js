@@ -18,6 +18,8 @@ import {
 } from './models.js';
 // 只为挑台阶朝向而查询格子是否实心（纯查询，不修改 mapgen 的任何输出）
 import { isTileSolid, elevationAt } from './mapgen.js';
+// 幽灵痕迹：氛围层，暗示"有人先来过"（独立 fork 子流，纯视觉不改 map）
+import { generateGhostTraces } from './ghostTraces.js';
 
 /** 把颜色按亮度系数缩放（k>1 提亮，k<1 压暗），返回 CSS 十六进制串 */
 function shade(hex, k) {
@@ -310,6 +312,52 @@ export function buildLevel(scene, map, rng) {
   }
 
   for (const container of map.containers) addContainer(container);
+
+  /* ---------------- 幽灵痕迹（氛围层：脚印 / 撬痕血迹）----------------
+   * 用独立 fork 子流生成，纯视觉：不改 map、不进碰撞、不碰战利品与敌人。
+   * 两种痕迹各 1 个 InstancedMesh（各 1 draw call），贴地略抬高避免 z-fighting。
+   * 半透明 + 加色混合，暗处也能看到淡淡反光 —— "有人刚走过"的暗示。 */
+  {
+    const ghostRand = rng.fork(RNG_SALT_3D.level ^ 0x9E3779B9); // 独立子流，绝不扰动既有装饰序列
+    const traces = generateGhostTraces(map, ghostRand, {
+      groups: 4, stepsPerGroup: 5, stepLen: (map.tile || 40) * 0.55,
+    });
+    const footprints = traces.filter((t) => t.type === 'footprint');
+    const scuffs = traces.filter((t) => t.type === 'scuff');
+    const Y = u(0.03); // 贴地高度，略高于地面避免 z-fighting
+
+    const mkTraces = (list, radius, color, opacity) => {
+      if (!list.length) return;
+      const geo = new THREE.CircleGeometry(radius, 10);
+      const mat = new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity, depthWrite: false,
+        side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+      });
+      const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+      const m = new THREE.Matrix4();
+      const p = new THREE.Vector3();
+      const s = new THREE.Vector3();
+      const layFlat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+      const up = new THREE.Vector3(0, 0, 1);
+      for (let i = 0; i < list.length; i++) {
+        const t = list[i];
+        p.set(t.x, Y, t.y);
+        const sc = t.scale || 1;
+        s.set(sc, sc, 1);
+        const spin = new THREE.Quaternion().setFromAxisAngle(up, t.angle || 0);
+        m.compose(p, layFlat.clone().multiply(spin), s);
+        mesh.setMatrixAt(i, m);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.frustumCulled = false;
+      group.add(mesh);
+      disposables.push(geo, mat);
+    };
+
+    // 脚印：冷青微光；撬痕/血迹：暗红微光
+    mkTraces(footprints, u(0.16), new THREE.Color('#4fd1c5'), 0.22);
+    mkTraces(scuffs, u(0.42), new THREE.Color('#b83a32'), 0.28);
+  }
 
   /* --- 架高平台：台面 + 台沿 + 台阶 --------------------------------------
    * 数量很少（上限 MATCH.platformCount），直接用独立 Mesh，不必走实例化。

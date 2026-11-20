@@ -1503,6 +1503,8 @@ export class ArenaCore {
     this.wLvl = Object.fromEntries(Object.keys(ARENA.W_LEVEL_MAX).map((k) => [k, 0]));
     this.evolved = Object.fromEntries(Object.keys(ARENA.W_LEVEL_MAX).map((k) => [k, 0]));
     this.passiveTaken = {};
+    // 满级待进化提示：每把武器只提醒一次，避免升级弹窗反复刷同一句
+    this._evoReadyNotified = new Set();
     this.spiralCd = ARENA.SPIRAL_CD;   // 螺旋弹幕节拍器（进化后启用）
     this.spiralAng = 0;
 
@@ -3857,8 +3859,14 @@ export class ArenaCore {
     // ★ wlvlUp 是唯一的闸门：剑可以在 C1→C2 之后再爬一次等级去够 C3，
     //   所以不能写死"进化过就不再加等级" —— 那会把 C3 这条线彻底堵死。
     if (w && this.wlvlUp(w)) {
-      this.wLvl[w] = (this.wLvl[w] || 0) + 1;
+      const beforeLv = this.wLvl[w] || 0;
+      this.wLvl[w] = beforeLv + 1;
       if (this.wLvl[w] > ARENA.W_LEVEL_MAX[w]) this.wLvl[w] = ARENA.W_LEVEL_MAX[w];
+      // 满级瞬间：若还差被动（没能立刻进化），弹一次"集齐即可进化"的即时提示。
+      // 放在这里而不是每帧轮询：只在"刚好升到满级"这一帧触发，天然不重复。
+      if (this.wLvl[w] === ARENA.W_LEVEL_MAX[w] && beforeLv < ARENA.W_LEVEL_MAX[w]) {
+        this._notifyEvoReady(w);
+      }
     }
     // 被动按 id 计数（进化需要的被动走这里）
     if (o.cat === 'passive') this.passiveTaken[id] = (this.passiveTaken[id] || 0) + 1;
@@ -3896,6 +3904,31 @@ export class ArenaCore {
     if (this.wLvl[w] > ARENA.W_LEVEL_MAX[w]) this.wLvl[w] = ARENA.W_LEVEL_MAX[w];
     this._checkEvolution();
     return true;
+  }
+
+  /**
+   * 满级待进化提示（构筑高光反馈）：某武器刚升到满级、但进化还差被动时，
+   * 弹一条金色横幅告诉玩家"再拿够 X 层【某被动】即可进化"，把散落的升级串成目标感。
+   * 纯视觉：只读 wLvl/passiveTaken，不改任何数值；每把武器+每一阶只提醒一次。
+   */
+  _notifyEvoReady(w) {
+    const stage = this.evolved[w] || 0;
+    const evo = evoOfWeapon(w, stage); // 当前这一阶要进化成什么
+    if (!evo) return;                  // 已到顶或没有进化线
+    if ((this.passiveTaken[evo.passive] || 0) >= evo.need) return; // 被动已够，_checkEvolution 会立刻进化，无需提示
+    const key = `${w}:${stage}`;
+    if (this._evoReadyNotified.has(key)) return;
+    this._evoReadyNotified.add(key);
+    const p = PASSIVES.find((x) => x.id === evo.passive);
+    const pName = p ? p.label : evo.passive;
+    const wName = WEAPONS.find((x) => x.id === w)?.label || w;
+    const have = this.passiveTaken[evo.passive] || 0;
+    const needMore = Math.max(0, evo.need - have);
+    this.milestones.push({
+      text: `◈ ${wName}已满级 · 再拿${needMore}层【${pName}】进化「${evo.label}」◈`,
+      kind: 'evo', t: 0, life: ARENA.EVO_BANNER_LIFE,
+    });
+    if (typeof Sfx !== 'undefined' && typeof Sfx.evolve === 'function') Sfx.evolve();
   }
 
   /** 阶段 4-5：检查所有进化线是否达成（满级 + 凑齐指定被动）。每条线只套一次。

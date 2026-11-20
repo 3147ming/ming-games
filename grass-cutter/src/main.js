@@ -55,6 +55,9 @@ import { RunProgress } from './game/progression.js';
 import { computeRating } from './game/rating.js';
 import { CARDS, drawThree } from './game/cards.js';
 import { LevelUpPanel } from './ui/levelUp.js';
+// ── 流派羁绊：选卡凑成组合时解锁质变加成 + 「流派觉醒」横幅（纯增量，不改战斗结构）
+import { newlyUnlocked, applyTo, activeSynergies } from './game/synergy.js';
+import { SynergyBanner } from './ui/synergyBanner.js';
 // ── 模块 10/11：水墨后处理 / 环境氛围 / 风草 / 贴花 / 武将模型 / 时间通道 / 水墨战斗特效 / 战斗音效 ──
 import { PostFX } from './core/postfx.js';
 import { enhanceWorld } from './core/environment.js';
@@ -290,6 +293,8 @@ const defense = new DefenseSystem(); // 防御/卸势（2026-09-25，机制见 c
 // ── 局内成长（P0-5）：run 是唯一真相，combat.mods 与它**共用同一个对象**（加点即时生效）
 const run = new RunProgress();
 const runPanel = new LevelUpPanel();
+const synBanner = new SynergyBanner();
+const activeSynIds = new Set(); // 本局已觉醒的流派（"再来一把"走 reload，天然重置）
 combat.mods = run.mods;
 let runPaused = false;   // 本批唯一的暂停标志（P1-1 切后台与 P0-5 升级弹层共用）
 
@@ -578,6 +583,16 @@ function tick() {
     input.pressedAt.clear(); // 弹层期间按下的攻击/闪避不该在恢复后补发
     runPanel.show(drawThree(CARDS, run.taken), (card) => {
       run.take(card);
+      // 流派羁绊：本次选卡若凑成组合，叠加质变加成并弹「流派觉醒」横幅。
+      // 加成写进 run.mods（== combat.mods 同一引用），下一帧自动生效，无需同步代码。
+      const fresh = newlyUnlocked(run.taken, [...activeSynIds]);
+      if (fresh.length) {
+        for (const syn of fresh) { applyTo(run.mods, syn); activeSynIds.add(syn.id); }
+        player.maxHp = PLAYER.HP + run.mods.maxHpBonus; // 流派可能改了生命上限，即时跟上
+        player.hp = Math.min(player.hp, player.maxHp);
+        synBanner.announce(fresh[0]);                   // 横幅一次弹一个（连觉醒时由动画自然覆盖）
+        audio.play('awaken');                            // 流派觉醒专属音效（铜锣 + 上行三音）
+      }
       player.maxHp = PLAYER.HP + run.mods.maxHpBonus;
       player.heal(20);                                // 走已有的 heal()（controller.js）
       player.hp = Math.min(player.hp, player.maxHp);  // 背水那类减上限的卡不许把血留在外面
@@ -1013,6 +1028,12 @@ window.MUSOU = {
   run,
   runPanel,
   runSnapshot: () => run.snapshot(),
+  // ── 流派羁绊（探针用）：读当前已觉醒流派 / 模拟选卡后新觉醒的流派
+  synergy: {
+    active: () => activeSynergies(run.taken).map((s) => ({ id: s.id, name: s.name, bonus: s.bonus })),
+    /** 只计算不落地：给定已选卡，返回相对于当前已觉醒集合会新激活的流派 */
+    preview: (taken = run.taken) => newlyUnlocked(taken, [...activeSynIds]).map((s) => s.id),
+  },
   // 局末评级：结算后可用它自查（未结算时为 null）
   lastRating: () => lastRating,
   /** 探针用：把待选卡次数直接设成 n（不开弹层也能验 HUD 与暂停语义） */
