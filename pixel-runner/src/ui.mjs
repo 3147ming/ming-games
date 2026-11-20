@@ -38,6 +38,38 @@ const prefersReduced = window.matchMedia
 
 const fxOn = () => settings.fx !== false && !prefersReduced;
 
+/* ===== 美术资源：预加载 + contain 绘制（auto-injected） ===== */
+const ART_SRC = {
+  hero: 'assets/art/chars/hero.png',
+  spike: 'assets/art/obstacles/spike.png', barrier: 'assets/art/obstacles/barrier.png',
+  drone: 'assets/art/obstacles/drone.png', twin: 'assets/art/obstacles/twin.png',
+  pillar: 'assets/art/obstacles/pillar.png',
+  shield: 'assets/art/items/shield.png', magnet: 'assets/art/items/magnet.png',
+  slow: 'assets/art/items/slow.png', boost: 'assets/art/items/boost.png',
+  heart: 'assets/art/items/heart.png',
+};
+const ART = {};
+for (const k in ART_SRC) {
+  const im = new Image();
+  im.src = ART_SRC[k];
+  ART[k] = im;  // complete=false 期间自动走几何 fallback，避免首帧空白
+}
+function artReady(k){ const im = ART[k]; return im && im.complete && im.naturalWidth > 0; }
+// contain：等比缩放居中，不拉伸变形
+function drawArt(k, cx, cy, boxW, boxH, alpha){
+  const im = ART[k]; if (!artReady(k)) return false;
+  const iw = im.naturalWidth, ih = im.naturalHeight;
+  const s = Math.min(boxW / iw, boxH / ih);
+  const dw = iw * s, dh = ih * s;
+  g2d.save();
+  if (alpha != null) g2d.globalAlpha *= alpha;
+  g2d.drawImage(im, cx - dw / 2, cy - dh / 2, dw, dh);
+  g2d.restore();
+  return true;
+}
+/* ===== /美术资源 ===== */
+
+
 /* ============================ 音频（程序化） ============================ */
 
 let audioCtx = null;
@@ -408,7 +440,11 @@ function draw() {
       g2d.font = `${Math.round(rr * 1.25)}px system-ui`;
       g2d.textAlign = 'center';
       g2d.textBaseline = 'middle';
-      g2d.fillText(icon, 0, 1);
+      // 道具图片（contain），失败回退 emoji
+      const keyMap = { shield:'shield', magnet:'magnet', slow:'slow', boost:'boost', heart:'heart' };
+      if (!drawArt(keyMap[p.kind] || p.kind, 0, 1, rr * 2.1, rr * 2.1)) {
+        g2d.fillText(icon, 0, 1);
+      }
       g2d.restore();
     }
   }
@@ -423,7 +459,7 @@ function draw() {
     const x0 = sx - ow / 2;
     const y0 = bottomY - oh;
 
-    if (o.kind === 'spike') {
+    if (o.kind === 'spike') {if (drawArt('spike', x0 + ow/2, y0 + oh/2, ow, oh)) { continue; }
       g2d.fillStyle = COLORS.spike;
       g2d.shadowBlur = fxOn() ? 10 : 0;
       g2d.shadowColor = 'rgba(255,71,87,0.7)';
@@ -439,7 +475,7 @@ function draw() {
       g2d.closePath();
       g2d.fill();
       g2d.shadowBlur = 0;
-    } else if (o.kind === 'bar') {
+    } else if (o.kind === 'bar') {if (drawArt('barrier', x0 + ow/2, y0 + oh/2, ow, oh)) { continue; }
       g2d.fillStyle = COLORS.bar;
       g2d.shadowBlur = fxOn() ? 10 : 0;
       g2d.shadowColor = 'rgba(255,217,61,0.7)';
@@ -450,7 +486,7 @@ function draw() {
       for (let i = 0; i < ow; i += 12) {
         g2d.fillRect(x0 + i, y0, 5, oh);
       }
-    } else if (o.kind === 'drone') {
+    } else if (o.kind === 'drone') {if (drawArt('drone', sx, y0 + oh/2, ow, oh + Math.sin(run.t * 4 + (o.bobT||0)) * 5)) { continue; }
       const bob = Math.sin(run.t * 4 + o.bobT) * 5;
       g2d.fillStyle = COLORS.drone;
       g2d.shadowBlur = fxOn() ? 12 : 0;
@@ -465,7 +501,7 @@ function draw() {
       g2d.arc(sx - ow * 0.14, y0 + oh / 2 + bob, ow * 0.09, 0, Math.PI * 2);
       g2d.arc(sx + ow * 0.14, y0 + oh / 2 + bob, ow * 0.09, 0, Math.PI * 2);
       g2d.fill();
-    } else if (o.kind === 'twin') {
+    } else if (o.kind === 'twin') {if (drawArt('twin', x0 + ow/2, y0 + oh/2, ow, oh)) { continue; }
       // 双联刺：画成两组锯齿，中间用虚线连接提示"要一次跳过"
       g2d.fillStyle = COLORS.twin;
       g2d.shadowBlur = fxOn() ? 12 : 0;
@@ -489,7 +525,7 @@ function draw() {
         g2d.stroke();
         g2d.setLineDash([]);
       }
-    } else if (o.kind === 'pillar') {
+    } else if (o.kind === 'pillar') {if (drawArt('pillar', x0 + ow/2, y0 + oh/2, ow, oh)) { continue; }
       // 光刃柱：细高发光柱 + 顶部刃尖 + 扫光
       g2d.fillStyle = COLORS.pillar;
       g2d.shadowBlur = fxOn() ? 18 : 0;
@@ -574,18 +610,18 @@ function drawPlayer(run, toScreenX, toScreenY) {
   // 身体（像素块）
   g2d.shadowBlur = fxOn() ? 16 : 0;
   g2d.shadowColor = boosting ? COLORS.boost : run.shield ? COLORS.shield : 'rgba(64,224,208,0.8)';
-  g2d.fillStyle = COLORS.player;
-  g2d.fillRect(x0, y0, w, h);
-
-  // 深色装饰（像素风的分块感）
-  g2d.fillStyle = COLORS.playerDark;
-  g2d.fillRect(x0, y0 + h * 0.62, w, h * 0.38);
-  g2d.fillRect(x0 + w * 0.7, y0, w * 0.3, h * 0.32);
-
-  // 眼
-  g2d.fillStyle = '#06201d';
-  const eyeSize = Math.max(3, w * 0.16);
-  g2d.fillRect(x0 + w * 0.62, y0 + h * 0.22, eyeSize, eyeSize);
+  // 主角图片（1024×1024 等比 contain，跑动时上下浮动）；失败回退原几何绘制
+  const bobY = Math.sin(run.t * 14) * 2;  // 跑动上下浮动
+  if (!drawArt('hero', x0 + w / 2, y0 + h / 2 + bobY, w * 1.05, h * 1.05)) {
+    g2d.fillStyle = COLORS.player;
+    g2d.fillRect(x0, y0, w, h);
+    g2d.fillStyle = COLORS.playerDark;
+    g2d.fillRect(x0, y0 + h * 0.62, w, h * 0.38);
+    g2d.fillRect(x0 + w * 0.7, y0, w * 0.3, h * 0.32);
+    g2d.fillStyle = '#06201d';
+    const eyeSize = Math.max(3, w * 0.16);
+    g2d.fillRect(x0 + w * 0.62, y0 + h * 0.22, eyeSize, eyeSize);
+  }
 
   // 护盾环：基础环 + heart 叠加层（每多一层多画一圈、半径递减）
   if (run.shield) {

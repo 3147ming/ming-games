@@ -173,7 +173,7 @@
       "id": "trio",
       "name": "三张牌",
       "dir": "trio",
-      "cover": "covers/trio.png",
+      "cover": "covers/trio-v2.png",
       "tag": "卡牌",
       "status": "ready",
       "renderer": "classic"
@@ -182,7 +182,7 @@
       "id": "sudoku",
       "name": "数独速递",
       "dir": "sudoku",
-      "cover": "covers/sudoku.png",
+      "cover": "covers/sudoku-v2.png",
       "tag": "益智",
       "status": "ready",
       "renderer": "classic"
@@ -191,7 +191,7 @@
       "id": "slide",
       "name": "华容道",
       "dir": "slide",
-      "cover": "covers/slide.png",
+      "cover": "covers/slide-v2.png",
       "tag": "解谜",
       "status": "ready",
       "renderer": "classic"
@@ -200,7 +200,7 @@
       "id": "brick",
       "name": "方块消消",
       "dir": "brick",
-      "cover": "covers/brick.png",
+      "cover": "covers/brick-v2.png",
       "tag": "街机",
       "status": "ready",
       "renderer": "classic"
@@ -209,7 +209,7 @@
       "id": "diner",
       "name": "深夜食堂",
       "dir": "diner",
-      "cover": "covers/diner.png",
+      "cover": "covers/diner-v2.png",
       "tag": "模拟",
       "status": "ready",
       "renderer": "classic"
@@ -218,7 +218,7 @@
       "id": "territory",
       "name": "占位棋",
       "dir": "territory",
-      "cover": "covers/territory.png",
+      "cover": "covers/territory-v2.png",
       "tag": "策略",
       "status": "ready",
       "renderer": "classic"
@@ -227,7 +227,7 @@
       "id": "hex",
       "name": "六角战场",
       "dir": "hex",
-      "cover": "covers/hex.png",
+      "cover": "covers/hex-v2.png",
       "tag": "战棋",
       "status": "ready",
       "renderer": "classic"
@@ -236,7 +236,7 @@
       "id": "tap",
       "name": "节奏拍打",
       "dir": "tap",
-      "cover": "covers/tap.png",
+      "cover": "covers/tap-v2.png",
       "tag": "音游",
       "status": "ready",
       "renderer": "classic"
