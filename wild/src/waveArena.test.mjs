@@ -14,8 +14,13 @@ import {
   clampToWaveArena,
   waveEndMaterials,
   CARRY_KEEP,
+  WAVE_GEM_MAGNET,
+  WAVE_WEAPONS,
+  weaponGoodById,
+  weaponBaseOf,
 } from './wave-config.js';
 import { ArenaCore } from './arena.js';
+import { Rng } from './rng.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const arenaSrc = fs.readFileSync(path.join(here, 'arena.js'), 'utf8');
@@ -63,4 +68,115 @@ test('旧连续局的无界地图逻辑保留，波次模式才启用边界', ()
   assert.match(arenaSrc, /_clampWaveCam\(/, '相机没有跟随固定竞技场');
   assert.match(arenaSrc, /_renderWaveBoundary\(ctx\)/, '竞技场边界未渲染');
   assert.match(arenaSrc, /阶段 4-1：位移\*\*不再 clamp\*\*/, '旧模式无界地图注释丢失');
+});
+
+test('波次模式起手拾取半径 90，旧连续局仍是 280', () => {
+  assert.equal(WAVE_GEM_MAGNET, 90, '固定竞技场里 280 等于全场自动吸宝石');
+  const core = new ArenaCore({ rng: new Rng('magnet'), wave: { mode: '20' } });
+  assert.equal(core.magnet, 90, 'WaveDirector 未覆盖起手拾取半径');
+  const legacy = new ArenaCore({ rng: new Rng('magnet'), wave: null });
+  assert.equal(legacy.magnet, 280, '旧连续局口径被污染');
+});
+
+test('波次武器池扩到 12 把，进阶型号映射回 6 个底层机制', () => {
+  assert.equal(WAVE_WEAPONS.length, 12, '货架只有 6 把武器谈不上 build 多样性');
+  const ids = WAVE_WEAPONS.map((w) => w.id);
+  assert.equal(new Set(ids).size, ids.length, '武器 id 有重复');
+  const bases = new Set(WAVE_WEAPONS.map((w) => weaponBaseOf(w.id)));
+  assert.deepEqual([...bases].sort(), ['laser', 'mist', 'orbit', 'projectile', 'sentry', 'sword']);
+  for (const w of WAVE_WEAPONS) {
+    assert.equal(weaponGoodById(w.id), w);
+    assert.ok(w.label && w.desc && w.cost > 0, `${w.id} 缺少展示字段`);
+  }
+  assert.equal(weaponBaseOf('railgun'), 'laser');
+  assert.equal(weaponBaseOf('smg'), 'projectile');
+  assert.equal(weaponBaseOf('unknown'), 'unknown');
+});
+
+test('战斗中经验满只排队，波末倒计时结束后才弹升级，选完才进商店', () => {
+  const core = new ArenaCore({ rng: new Rng('wave-upgrade'), wave: { mode: '20' } });
+  assert.equal(core.waveMode, true);
+
+  // 战斗中经验满：只排队，绝不弹窗
+  core.xp = core.xpToLevel + 1;
+  core.wd.queueLevelUps();
+  assert.equal(core.pendingUpgrade, null, '战斗中弹窗会打断走位，必须延到波末');
+  assert.equal(core.wd.pendingLevels, 1);
+  assert.equal(core.level, 1, '等级应在排队时就结算，避免连升门槛错位');
+
+  // 波末倒计时结束：先弹升级
+  core.wd.endWave();
+  assert.ok(core.pendingUpgrade, '波末应先弹出升级选择');
+  assert.equal(core.wd.phase, 'battle', '选升级期间商店还没开');
+
+  // 选完 → 才进商店
+  assert.equal(core.chooseUpgrade(0), true);
+  assert.equal(core.pendingUpgrade, null);
+  assert.equal(core.wd.pendingLevels, 0);
+  assert.equal(core.wd.phase, 'shop', '升级选完才允许进波间商店');
+});
+
+test('连升攒 3 级，波末逐张弹完才开商店', () => {
+  const core = new ArenaCore({ rng: new Rng('wave-multi'), wave: { mode: '20' } });
+  core.xp = core.xpNeed(0) + core.xpNeed(1) + core.xpNeed(2) + 1;
+  core.wd.queueLevelUps();
+  assert.equal(core.wd.pendingLevels, 3);
+  assert.equal(core.pendingUpgrade, null);
+
+  core.wd.endWave();
+  for (let i = 3; i > 0; i--) {
+    assert.ok(core.pendingUpgrade, `第 ${4 - i} 张升级牌应弹出`);
+    assert.equal(core.wd.phase, 'battle');
+    core.chooseUpgrade(0);
+    assert.equal(core.wd.pendingLevels, i - 1);
+  }
+  assert.equal(core.wd.phase, 'shop');
+});
+
+test('购买/卖出进阶武器按 base 开关底层机制', () => {
+  const core = new ArenaCore({ rng: new Rng('wave-buy'), wave: { mode: '20' } });
+  const d = core.wd;
+  d.phase = 'shop';
+  d.materials = 9999;
+  d.shop = [{
+    kind: 'weapon', id: 'smg', label: '连弩', desc: '', tag: 'ranged',
+    rarity: 'common', cost: 1, locked: false, sold: false,
+  }];
+  assert.equal(d.buy(0), true);
+  assert.equal(core.weapons.projectile, true, '连弩应开启投射物底层机制');
+  assert.equal(core.weapons.smg, undefined, '不应写入不存在的底层武器 id');
+  assert.ok(core.gUpMul > 1, '进阶型号 pow 应折算进伤害乘区');
+
+  d.shop = [];
+  // 流浪者起始就带一把投射物，所以卖掉连弩后底层机制仍要开着。
+  assert.ok(d.sellSlot(1) > 0, '先卖掉连弩');
+  assert.equal(core.weapons.projectile, true, '还有一把投射物在，机制不能关');
+  assert.ok(d.sellSlot(0) > 0, '再卖掉初始投射物');
+  assert.equal(core.weapons.projectile, false, '同 base 全卖光才关闭机制');
+});
+
+test('gainXp 走排队路径，不再直接调用 openUpgrade', () => {
+  assert.match(arenaSrc, /if \(this\.waveMode\) \{[\s\S]{0,240}queueLevelUps\(\)/,
+    'gainXp 未把升级改为排队');
+});
+
+test('精英波奖励选完继续打，不消耗待升级次数也不误开商店', () => {
+  const core = new ArenaCore({ rng: new Rng('wave-elite'), wave: { mode: '20' } });
+  const d = core.wd;
+  core.xp = core.xpToLevel + 1;
+  d.queueLevelUps();
+  assert.equal(d.pendingLevels, 1);
+
+  core.openUpgrade({ reason: 'elite' });
+  assert.equal(core.pendingUpgradeKind, 'elite');
+  core.chooseUpgrade(0);
+  assert.equal(core.pendingUpgrade, null);
+  assert.equal(d.phase, 'battle', '波内精英奖励选完应继续战斗，不能开商店');
+  assert.equal(d.pendingLevels, 1, '精英奖励不能消耗波末待升级次数');
+
+  // 波末升级仍要正常弹出并进商店
+  d.endWave();
+  assert.ok(core.pendingUpgrade);
+  core.chooseUpgrade(0);
+  assert.equal(d.phase, 'shop');
 });

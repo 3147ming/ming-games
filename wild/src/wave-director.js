@@ -13,9 +13,10 @@ import {
   WAVE_COUNT, WAVE_BOSS, WAVE_BOSS_D5, ENDLESS_WAVE_SEC, waveSec, waveWeights,
   waveSpawnInterval, waveEnemyCap, waveHpScale, waveDmgScale,
   waveEndMaterials, WAVE_STATS, statById, RARITIES, rarityOf,
-  rollRarity, WAVE_WEAPONS, weaponGoodById, WAVE_ITEMS, itemGoodById,
+  rollRarity, WAVE_WEAPONS, weaponGoodById, weaponBaseOf, WAVE_ITEMS, itemGoodById,
   charById, dangerOf, SHOP_SLOTS, SHOP_SELL_RATE, SHOP_WEAPON_CHANCE,
   SHOP_GUARANTEED_WEAPONS, shopPrice, rerollPrice, eliteWavesOf, CARRY_KEEP,
+  WAVE_GEM_MAGNET,
 } from './wave-config.js';
 
 const rarityIndex = (key) => Math.max(0, RARITIES.findIndex((r) => r.key === key));
@@ -46,6 +47,9 @@ export class WaveDirector {
 
     this.slots = [];              // [{ id, rarity }]，长度 ≤ char.maxWeapons
     this.statTaken = {};          // 属性升级次数（用于 max 过滤）
+    // ★ Brotato 口径：战斗中经验满**不弹窗**，只把升级次数排进队列；
+    //   波末倒计时结束后逐张弹出选择，全部选完才开商店。
+    this.pendingLevels = 0;
     this.shop = [];               // 当前货架
     this.rerollCount = 0;
     this.purchases = 0;
@@ -65,6 +69,10 @@ export class WaveDirector {
     core.dmgBase *= this.char.dmgMul;
     core.moveBase *= this.char.moveMul;
     core.attackInterval = Math.max(0.2, core.attackInterval / this.char.atkMul);
+    // ★ 波次模式基础拾取半径压到 90：旧连续局的 280 在固定竞技场里 ≈ 全场自动吸，
+    //   走位捡材料这条核心玩法会直接消失。局外 magnet 加算在此被有意覆盖，
+    //   后续成长走 WAVE_STATS.magnet / i_magnet / 磁暴事件。
+    core.magnet = WAVE_GEM_MAGNET;
     for (const k of Object.keys(core.weapons)) core.weapons[k] = false;
     core.weapons[this.char.start] = true;
     if (typeof core.initWeapon === 'function') core.initWeapon(this.char.start);
@@ -121,6 +129,7 @@ export class WaveDirector {
 
   /** 波末：清场 + 结算材料 + 结转未拾取 + 进商店（或通关）。 */
   endWave() {
+    if (this.phase !== 'battle') return;   // 升级阶段 phase 仍在 battle，防同一波重复结算
     const c = this.core;
     // 输出统计：core.killSrc 本来就按伤害来源归因。取本波增量做「谁在摸鱼」的近似，
     // 比在各武器开火处插桩侵入性小得多；UI 文案标为「击杀贡献」而非精确伤害。
@@ -161,7 +170,15 @@ export class WaveDirector {
       c.survived = true;
       return;
     }
-    this.openShop();
+    // ★ Brotato 口径：倒计时结束后**先选升级，再进商店**。
+    //   战斗中攒下的 pendingLevels 在这里逐张弹出，全部选完才 openShop。
+    this.afterWaveUpgrades();
+  }
+
+  /** 波末关卡：先把战斗中攒下的升级逐张弹出来，选完再开商店。 */
+  afterWaveUpgrades() {
+    if (this.pendingLevels > 0) this.openLevelChoices();
+    else this.openShop();
   }
 
   /* ─────────────── 波间商店 ─────────────── */
@@ -242,8 +259,11 @@ export class WaveDirector {
       if (same) same.rarity += 1;
       else {
         this.slots.push({ id: g.id, rarity: ri });
-        c.weapons[g.id] = true;
-        if (typeof c.initWeapon === 'function') c.initWeapon(g.id);
+        // ★ 进阶型号（smg/sniper/…）没有独立底层机制，统一映射回 base 开火；
+        //   差异化由 _applyWeaponRarity 的 pow/cd/pierce 折算进伤害乘区实现。
+        const b = weaponBaseOf(g.id);
+        c.weapons[b] = true;
+        if (typeof c.initWeapon === 'function') c.initWeapon(b);
       }
       this._applyWeaponRarity();
     } else {
@@ -265,7 +285,8 @@ export class WaveDirector {
     const value = Math.max(1, Math.round(shopPrice(Math.round(baseCost), this.wave) * SHOP_SELL_RATE));
     this.materials += value;
     this.slots.splice(i, 1);
-    if (!this.slots.some((x) => x.id === s.id)) this.core.weapons[s.id] = false;
+    const baseId = weaponBaseOf(s.id);
+    if (!this.slots.some((x) => weaponBaseOf(x.id) === baseId)) this.core.weapons[baseId] = false;
     this.sells += 1;
     this._applyWeaponRarity();
     this.core._refreshClassBuffs();
@@ -281,7 +302,19 @@ export class WaveDirector {
     //   而敌人 HP 是指数增长 ⟹ 玩家强度永远追不上，后期必然打不动。
     //   这里按「每把武器的稀有度加成累加」重建：6 把普通 ×2.8、6 把传说 ×8.2。
     const sum = this.slots.reduce((a, s) => a + s.rarity, 0);
-    this.core.gUpMul = 1 + sum * 0.30;
+    // ★ 12 把武器的差异化：进阶型号没有独立开火机制，把 pow/cd/pierce 折算进同一乘区。
+    //   等效 DPS ∝ 单发伤害 / 攻击间隔，所以 `pow / cd` 才是对口径的折算
+    //   （早期写成 pow + (1/cd-1)*0.5，把连弩的攻速优势打了半折，净收益反而 <1）。
+    //   pierce 是额外命中机会，保守按每次 +6% 计入。按**平均**计入避免同 base 多把叠加爆炸，
+    //   也不碰 arena.js 的开火护栏。
+    let model = 0;
+    for (const s of this.slots) {
+      const g = weaponGoodById(s.id);
+      if (!g) continue;
+      model += (g.pow || 1) / (g.cd || 1) + (g.pierce || 0) * 0.06;
+    }
+    const modelMul = this.slots.length ? model / this.slots.length : 1;
+    this.core.gUpMul = (1 + sum * 0.30) * modelMul;
   }
 
   nextWave() {
@@ -331,8 +364,27 @@ export class WaveDirector {
     }
   }
 
+  /** 战斗中经验满级：**只排队、不弹窗**（Brotato 口径：升级选择放在波末倒计时后）。
+   *  ★ 等级 / 经验 / 门槛在这里一次性结算，波末的 chooseLevel 只负责"选哪张牌"。
+   *    这样连升时几何门槛不会错位，战斗也不会被弹窗打断。
+   *    等级自带的随级成长（gDmgMul 里的 perLv）即时生效 —— 属性牌才是延后的那部分。 */
+  queueLevelUps() {
+    const c = this.core;
+    let queued = 0;
+    while (c.xp >= c.xpToLevel) {
+      c.xp -= c.xpToLevel;
+      c.level += 1;
+      c.xpToLevel = c.xpNeed();
+      queued += 1;
+    }
+    if (queued > 0) {
+      this.pendingLevels += queued;
+      c._refreshClassBuffs();
+    }
+  }
+
   /** 打开 4 选 1：复用 core.pendingUpgrade 的暂停语义（渲染层已有弹窗）。 */
-  openLevelChoices() {
+  openLevelChoices(opts = {}) {
     const c = this.core;
     const pool = WAVE_STATS.filter((s) => (this.statTaken[s.id] || 0) < s.max).slice();
     const picks = [];
@@ -354,7 +406,8 @@ export class WaveDirector {
       });
     }
     c.pendingUpgrade = picks;
-    c.pendingUpgradeKind = 'wave';
+    // 精英波奖励走同一个弹窗，但来路不同：选完要继续打，绝不能误开波间商店。
+    c.pendingUpgradeKind = opts.reason || 'wave';
     return picks;
   }
 
@@ -372,13 +425,18 @@ export class WaveDirector {
       this.materials += 12;
       this.totalMaterials += 12;
     }
+    const reason = c.pendingUpgradeKind;
     c.pendingUpgrade = null;
     c.pendingUpgradeKind = null;
-    c.level += 1;
-    c.xp -= c.xpToLevel;
-    c.xpToLevel = c.xpNeed();
     c._refreshClassBuffs();
-    if (c.xp >= c.xpToLevel && !c.pendingUpgrade) c.openUpgrade(); // 连升
+    // ★ 只有波末升级（reason='wave'）才推进待选队列并决定进不进商店。
+    //   精英波奖励是**波内**即时奖励，选完继续打 —— 若在这里误开商店，
+    //   一局会被中途打断、波次状态机直接错位。
+    if (reason !== 'elite') {
+      this.pendingLevels = Math.max(0, this.pendingLevels - 1);
+      if (this.pendingLevels > 0) this.openLevelChoices();       // 连升：继续逐张选
+      else if (this.phase !== 'done') this.openShop();           // 全选完 → 波间商店
+    }
     return true;
   }
 
@@ -408,6 +466,7 @@ export class WaveDirector {
     return {
       phase: this.phase, wave: this.wave, timeLeft: Math.max(0, this.timeLeft),
       materials: this.materials, carry: this.carry, slots: this.slots.length,
+      pendingLevels: this.pendingLevels,
       wavesCleared: this.wavesCleared, danger: this.danger.level,
       char: this.char.id, endless: this.endless,
     };

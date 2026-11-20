@@ -7,6 +7,12 @@
 
 export const WAVE_COUNT = 20;
 
+/** 波次模式基础拾取半径（Brotato 口径：起手很小，靠「拾取范围」属性一点点扩大）。
+ *  ★ 旧连续局的 ARENA.GEM_MAGNET=280 是「磁吸自动收割」口径，在固定小竞技场里
+ *    等于全场宝石自动飞进兜里，走位拾取这条核心玩法直接消失。这里压到 90，
+ *    玩家必须走过去捡，配合 i_magnet / WAVE_STATS.magnet 才有成长感。 */
+export const WAVE_GEM_MAGNET = 90;
+
 /** 波次模式的固定竞技场（Brotato 的核心地图口径）。
  *  旧连续局仍是无界地图；这里只给 WaveDirector 用，避免两套模式互相污染。 */
 export const WAVE_ARENA = Object.freeze({
@@ -187,16 +193,31 @@ export const WAVE_STATS = [
 export const statById = (id) => WAVE_STATS.find((s) => s.id === id) || null;
 
 /* ─────────────── 商店：武器与道具 ─────────────── */
-/** 6 把武器直接映射 content.js 的 WEAPONS id；买下即占一个槽。 */
+/** 12 把武器：6 把底层机制各有独立 step；另外 6 把是**同机制的进阶型号**
+ *  （Brotato 同武器分 Tier / 变种的口径），用 `base` 指向底层机制、`pow` 给伤害倾向、
+ *  `cd` 给攻速倾向。这样货架不再只有 6 把换来换去，凑同类合成与不同 build 有得玩。
+ *  ★ 所有 weapon id 都要能被 weaponLabel 识别；base 必须是 content.js 里存在的机制 id。 */
 export const WAVE_WEAPONS = [
-  { id: 'projectile', label: '投射物', desc: '自动锁定最近敌人', cost: 14, tag: 'ranged' },
-  { id: 'orbit', label: '环绕刃', desc: '利刃绕身旋转', cost: 16, tag: 'melee' },
-  { id: 'laser', label: '直斩', desc: '穿透光束', cost: 18, tag: 'ranged' },
-  { id: 'sword', label: '剑', desc: '飞行穿透剑气', cost: 18, tag: 'melee' },
-  { id: 'mist', label: '毒雾', desc: '脚下腐蚀地面', cost: 20, tag: 'element' },
-  { id: 'sentry', label: '守望之瞳', desc: '自动炮台补刀', cost: 22, tag: 'engineering' },
+  // ── 基础 6 把 ──
+  { id: 'projectile', base: 'projectile', label: '投射物', desc: '自动锁定最近的敌人', cost: 14, tag: 'ranged' },
+  { id: 'orbit', base: 'orbit', label: '环绕刃', desc: '利刃绕身旋转', cost: 16, tag: 'melee' },
+  { id: 'laser', base: 'laser', label: '直斩', desc: '穿透光束', cost: 18, tag: 'ranged' },
+  { id: 'sword', base: 'sword', label: '剑', desc: '飞行穿透剑气', cost: 18, tag: 'melee' },
+  { id: 'mist', base: 'mist', label: '毒雾', desc: '脚下腐蚀地面', cost: 20, tag: 'element' },
+  { id: 'sentry', base: 'sentry', label: '守望之瞳', desc: '自动炮台补刀', cost: 22, tag: 'engineering' },
+  // ── 进阶型号 6 把（Brotato 武器池扩容：同机制、不同手感）──
+  { id: 'smg', base: 'projectile', label: '连弩', desc: '高速连发，单发偏轻', cost: 22, tag: 'ranged', pow: 0.8, cd: 0.72 },
+  { id: 'sniper', base: 'projectile', label: '贯穿枪', desc: '慢射速、高单发、强穿透', cost: 26, tag: 'ranged', pow: 1.9, cd: 1.5, pierce: 2 },
+  { id: 'saw', base: 'orbit', label: '锯齿环', desc: '更密更快,贴身绞杀', cost: 24, tag: 'melee', pow: 1.25 },
+  { id: 'flamer', base: 'mist', label: '烈焰', desc: '更频繁、更烫的地面', cost: 26, tag: 'element', pow: 1.4, cd: 0.7 },
+  { id: 'railgun', base: 'laser', label: '磁轨炮', desc: '高伤瞬发光束', cost: 28, tag: 'ranged', pow: 1.7, cd: 1.35 },
+  { id: 'drone', base: 'sentry', label: '蜂群无人机', desc: '部署更快、伤害略低', cost: 26, tag: 'engineering', pow: 0.85, cd: 0.68 },
 ];
 export const weaponGoodById = (id) => WAVE_WEAPONS.find((w) => w.id === id) || null;
+export const weaponBaseOf = (id) => {
+  const w = weaponGoodById(id);
+  return w ? (w.base || w.id) : id;
+};
 
 /** 道具：即时收益 / 小属性 / 功能性。apply(c, d) 里 d 是 WaveDirector。 */
 export const WAVE_ITEMS = [

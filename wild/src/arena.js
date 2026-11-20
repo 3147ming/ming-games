@@ -3810,7 +3810,13 @@ export class ArenaCore {
   gainXp(n) {
     this.xp += n * this.xpMul;       // 阶段 3「经验 +%」被动
     this.gemsCollected += n;
-    if (this.waveMode) this.wd.onPickup(n);   // 波次模式：材料入账 + 未拾取双倍结转
+    if (this.waveMode) {
+      // 波次模式：材料入账 + 未拾取结转；经验满只排队，**不弹窗**。
+      // Brotato 口径：倒计时结束后才逐张选升级，选完再进波间商店。
+      this.wd.onPickup(n);
+      this.wd.queueLevelUps();
+      return;
+    }
     if (this.xp >= this.xpToLevel && !this.pendingUpgrade) this.openUpgrade();
   }
 
@@ -5193,7 +5199,16 @@ export class Arena {
 
   _showUpgrade() {
     const _t = this.root.querySelector('.alu-title');
-    if (_t) _t.textContent = this.core.waveMode ? '升级！四选一' : '升级！三选一';
+    if (_t) {
+      if (this.core.waveMode) {
+        const wv = this.core.wd;
+        _t.textContent = this.core.pendingUpgradeKind === 'elite'
+          ? '精英奖励 · 四选一'
+          : `第 ${wv ? wv.wave : ''} 波结束 · 升级四选一`;
+      } else {
+        _t.textContent = '升级！三选一';
+      }
+    }
     this.levelupEl.hidden = false;
     this.choicesEl.innerHTML = '';
     for (let i = 0; i < this.core.pendingUpgrade.length; i++) {
@@ -6610,6 +6625,12 @@ export class Arena {
       }
       // 阶段 6-4：快进同样不阻塞在商栈（自动「下次再来」，与 sim 口径一致）。
       if (this.core.shopOpen) { this.core.resolveShop([]); continue; }
+      // 波次模式：波间商店也是暂停态，无人值守时自动进入下一波
+      // （与 _loop 里 driver 的处理同口径，否则探针快进会卡在第一波结束）。
+      if (this.core.waveMode && this.core.wd && this.core.wd.phase === 'shop') {
+        this.core.wd.nextWave();
+        continue;
+      }
       this.core.step(h, drive && drive.input ? drive.input : { x: 0, y: 0 });
       // 阶段 8-2：原 `if (drive && drive.cast) this.core.castSkill();` 已删除。
     }

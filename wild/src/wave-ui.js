@@ -1,10 +1,16 @@
 // 波次模式的 DOM 层：波次 HUD + 波间商店面板。零玩法逻辑（全在 WaveDirector）。
 // 由 Arena._loop 每帧调 syncWaveUi(arena)；旧模式不 import 本模块的行为路径。
 
-import { RARITIES, WAVE_COUNT } from './wave-config.js';
+import { RARITIES, WAVE_COUNT, weaponGoodById } from './wave-config.js';
 import { WEAPONS } from './content.js';
 
-const weaponLabel = (id) => (WEAPONS.find((w) => w.id === id) || { label: id }).label;
+// 波次武器池有 12 把（含 6 把进阶型号），content.js 只有 6 把底层机制。
+// 先查波次表，货架/槽位才能正确显示「连弩 / 贯穿枪 / 磁轨炮」这些进阶型号。
+const weaponLabel = (id) => {
+  const g = weaponGoodById(id);
+  if (g) return g.label;
+  return (WEAPONS.find((w) => w.id === id) || { label: id }).label;
+};
 const rarColor = (i) => RARITIES[Math.max(0, Math.min(RARITIES.length - 1, i | 0))].color;
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
@@ -21,7 +27,8 @@ export function syncWaveUi(a) {
     const boss = d.bossWaves.includes(d.wave) && d.phase === 'battle' ? ' · BOSS' : '';
     const phase = d.phase === 'shop' ? '波间整备'
       : d.phase === 'done' ? '已结束'
-        : `${Math.ceil(Math.max(0, d.timeLeft))}s`;
+        : c.pendingUpgrade && d.timeLeft <= 0 ? '波末升级'
+          : `${Math.ceil(Math.max(0, d.timeLeft))}s`;
     hud.textContent = `${label}${boss} · ${phase} · 材料 ${d.materials} · ${d.danger.label}`;
   }
 
