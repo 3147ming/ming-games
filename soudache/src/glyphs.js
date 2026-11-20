@@ -177,6 +177,35 @@ export function drawGlyph(ctx, kind, x, y, s, color) {
       ctx.closePath();
       ctx.stroke();
       break;
+    case 'helmet':
+      // 头盔：半圆盔顶 + 帽檐 + 下颚带
+      ctx.beginPath();
+      ctx.arc(0, h * 0.05, h * 0.72, Math.PI, 0);
+      ctx.stroke();
+      line(-h * 0.8, h * 0.05, h * 0.8, h * 0.05);
+      line(-h * 0.55, h * 0.05, -h * 0.4, h * 0.65);
+      line(h * 0.55, h * 0.05, h * 0.4, h * 0.65);
+      break;
+    case 'surgery':
+      // 手术包：方箱 + 中央十字 + 一把手术刀
+      rect(-h * 0.75, -h * 0.55, h * 1.3, h * 1.1);
+      line(-h * 0.4, 0, -h * 0.05, 0);
+      line(-h * 0.225, -h * 0.175, -h * 0.225, h * 0.175);
+      line(h * 0.15, h * 0.45, h * 0.7, -h * 0.45);
+      break;
+    case 'armorKit':
+      // 护甲维修包：盾牌 + 扳手
+      ctx.beginPath();
+      ctx.moveTo(-h * 0.55, -h * 0.55);
+      ctx.lineTo(h * 0.1, -h * 0.55);
+      ctx.lineTo(h * 0.1, h * 0.15);
+      ctx.lineTo(-h * 0.225, h * 0.65);
+      ctx.lineTo(-h * 0.55, h * 0.15);
+      ctx.closePath();
+      ctx.stroke();
+      line(h * 0.2, h * 0.5, h * 0.75, -h * 0.05);
+      circle(h * 0.62, -h * 0.28, h * 0.2);
+      break;
     case 'drawer':
       rect(-h * 0.85, -h * 0.6, h * 1.7, h * 1.2);
       line(-h * 0.85, 0, h * 0.85, 0);

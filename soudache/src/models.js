@@ -11,7 +11,11 @@
  */
 
 import * as THREE from '../vendor/three.module.js';
-import { VIEW3D, PALETTE3D, WEAPONS, ARMORS, RARITY } from './config.js';
+import { VIEW3D, PALETTE3D, WEAPONS, ARMORS, RARITY, SURFACE3D } from './config.js';
+import { bakeSurface } from './surfaces.js';
+import { loadGLB, glbLambert } from './assets.js';
+// 尺寸真值单独成文件（零 three 依赖）：3D 枪模与战前改枪台的 2D 线稿读同一份，避免两表漂移
+import { VM_PARAMS, resolvedBarrel } from './vmparams.js';
 
 /** 米 → 场景单位的换算系数（见 config.VIEW3D 的单位说明） */
 const U = VIEW3D.metersToUnits;
@@ -64,6 +68,12 @@ export function lowPolyMat(color, opts = {}) {
     params.roughness = opts.roughness != null ? opts.roughness : 0.85;
     params.metalness = opts.metalness != null ? opts.metalness : 0.0;
     params.envMapIntensity = opts.envIntensity != null ? opts.envIntensity : VIEW3D.envIntensity;
+    // P12 细节通道：凹凸 / 粗糙度贴图只在 Standard 分支挂（Lambert 不支持 roughnessMap）。
+    if (opts.bumpMap) {
+      params.bumpMap = opts.bumpMap;
+      params.bumpScale = opts.bumpScale != null ? opts.bumpScale : SURFACE3D.bumpScale;
+    }
+    if (opts.roughnessMap) params.roughnessMap = opts.roughnessMap;
     const mat = new THREE.MeshStandardMaterial(params);
     return mat;
   }
@@ -84,13 +94,16 @@ export function lowPolyMat(color, opts = {}) {
  * @param {number} roughness 粗糙度
  * @returns {THREE.Material} 材质
  */
-export function surfaceMat(color, map, roughness = VIEW3D.wallRoughness) {
+export function surfaceMat(color, map, roughness = VIEW3D.wallRoughness, detail = null) {
   return lowPolyMat(color, {
     standard: true,
     map: map || undefined,
     roughness,
     metalness: VIEW3D.metalness,
     flat: false, // 大平面不需要 flatShading，否则会露出三角形硬边
+    // P12：detail = { bumpMap, roughnessMap }，低画质 / 无 DOM 时为 null 自动降级。
+    bumpMap: detail ? detail.bumpMap : null,
+    roughnessMap: detail ? detail.roughnessMap : null,
   });
 }
 
@@ -104,28 +117,84 @@ export function mergeGeometries(geos) {
   const list = [];
   let total = 0;
   let withColor = true;
+  let withUv = true;
   for (const g of geos) {
     const ng = g.index ? g.toNonIndexed() : g;
     list.push(ng);
     total += ng.attributes.position.count;
     if (!ng.attributes.color) withColor = false;
+    // P12：P3 以来这里只合并 position/normal/color，把 uv 丢了 ——
+    // 结果是墙体/掩体箱合并后 material.map 根本采样不到，贴图一直没生效。
+    // 现在按同样口径带上 uv；不含 uv 的输入（如手工灌木几何）整批跳过该属性。
+    if (!ng.attributes.uv) withUv = false;
   }
   const position = new Float32Array(total * 3);
   const normal = new Float32Array(total * 3);
   const color = withColor ? new Float32Array(total * 3) : null;
+  const uv = withUv ? new Float32Array(total * 2) : null;
   let offset = 0;
   for (const g of list) {
     position.set(g.attributes.position.array, offset * 3);
     normal.set(g.attributes.normal.array, offset * 3);
     if (color) color.set(g.attributes.color.array, offset * 3);
+    if (uv) uv.set(g.attributes.uv.array, offset * 2);
     offset += g.attributes.position.count;
   }
   const out = new THREE.BufferGeometry();
   out.setAttribute('position', new THREE.BufferAttribute(position, 3));
   out.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
   if (color) out.setAttribute('color', new THREE.BufferAttribute(color, 3));
+  if (uv) out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   out.computeBoundingSphere();
   return out;
+}
+
+/**
+ * 把同一父节点下的静态小件按材质合并（只合并 2 个以上同材质 Mesh）。
+ *
+ * 用途：程序化敌人 / 队友（?glb=0）每个关节组里有若干 BoxGeometry，
+ * 同一个关节里的零件不会相对运动，合并后关节旋转依旧生效，draw 却少一截。
+ * ⚠ 只合并同一父节点内的直接子 Mesh，绝不跨关节，否则走路动画会把腿粘在一起。
+ * ⚠ 被遮蔽的 Mesh（detailMeshes / 枪口火光 / 显式 keep）必须跳过：
+ *    它们会被逐帧改 visible 或单独引用，合并后就无法单独控制。
+ * @param {THREE.Object3D} root 模型根
+ * @param {THREE.Object3D[]} keep 必须保留独立对象的 Mesh
+ * @returns {number} 合并掉的 Mesh 数量
+ */
+export function mergeRigidParts(root, keep = []) {
+  const skip = new Set(keep.filter(Boolean));
+  const parents = [];
+  root.traverse((o) => { if (o.children.length) parents.push(o); });
+  let removed = 0;
+  for (const parent of parents) {
+    const byMat = new Map();
+    for (const child of parent.children) {
+      if (!child.isMesh || child.isInstancedMesh || skip.has(child)) continue;
+      if (child.userData && child.userData.noMerge) continue;
+      const mat = child.material;
+      if (!mat || Array.isArray(mat)) continue;
+      if (!byMat.has(mat)) byMat.set(mat, []);
+      byMat.get(mat).push(child);
+    }
+    for (const [mat, meshes] of byMat) {
+      if (meshes.length < 2) continue;
+      const geos = meshes.map((m) => {
+        m.updateMatrix();
+        const g = m.geometry.clone();
+        g.applyMatrix4(m.matrix);
+        return g;
+      });
+      const merged = mergeGeometries(geos);
+      for (const g of geos) g.dispose();
+      const out = new THREE.Mesh(merged, mat);
+      out.castShadow = meshes.some((m) => m.castShadow);
+      out.receiveShadow = meshes.some((m) => m.receiveShadow);
+      parent.add(out);
+      for (const m of meshes) parent.remove(m);
+      removed += meshes.length - 1;
+    }
+  }
+  return removed;
 }
 
 /** 便捷：把几何体平移后返回自身 */
@@ -192,6 +261,67 @@ function getTex(key, draw, size = 64) {
   return _texCache[key];
 }
 
+/**
+ * P12：把 surfaces.js 烘焙出的 RGBA 字节包成贴图。
+ * albedo 走 sRGB，height / roughness 必须走线性（NoColorSpace），
+ * 否则凹凸会被 gamma 抬歪、粗糙度会被整体压低。
+ * @param {Uint8ClampedArray} pixels RGBA 字节
+ * @param {number} size 边长
+ * @param {boolean} linear 是否为数据通道（非颜色）
+ * @returns {THREE.CanvasTexture|null}
+ */
+function surfaceTexture(pixels, size, linear) {
+  if (typeof document === 'undefined') return null;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.putImageData(new ImageData(pixels, size, size), 0, 0);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = linear ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = 4;
+    return tex;
+  } catch {
+    return null;
+  }
+}
+
+/** P12 三通道贴图缓存（按配方懒烘焙，同进程只算一次） */
+const _surfaceCache = {};
+
+/**
+ * 取某配方的 { map, bumpMap, roughnessMap } 集合。
+ * 无 DOM（Node 单测）/ 配置关闭 / 烘焙失败时返回 null，调用方回退到 P3 简易贴图。
+ * @param {string} kind SURFACE_KINDS 之一
+ * @returns {object|null}
+ */
+export function getSurfaceMaps(kind) {
+  if (!SURFACE3D.enabled) return null;
+  if (_surfaceCache[kind] !== undefined) return _surfaceCache[kind];
+  let maps = null;
+  try {
+    const baked = bakeSurface(kind, SURFACE3D.size, SURFACE3D.seed);
+    const map = surfaceTexture(baked.albedo, baked.size, false);
+    if (map) {
+      maps = {
+        map,
+        bumpMap: surfaceTexture(baked.height, baked.size, true),
+        roughnessMap: surfaceTexture(baked.roughness, baked.size, true),
+        checksum: baked.checksum,
+        size: baked.size,
+      };
+    }
+  } catch {
+    maps = null;
+  }
+  _surfaceCache[kind] = maps;
+  return maps;
+}
+
 /** 在画布上撒噪点，营造材质颗粒感 */
 function speckle(ctx, size, base, spread, count) {
   for (let i = 0; i < count; i += 1) {
@@ -217,6 +347,18 @@ const FLOOR_TEX = (ctx, s) => {
 const CONCRETE_TEX = (ctx, s) => {
   ctx.fillStyle = '#7c8794'; ctx.fillRect(0, 0, s, s);
   speckle(ctx, s, [110, 122, 138], 0.7, 320);
+  // 预制板缝：横竖各两道，模拟浇筑混凝土分块，避免大面死板
+  ctx.strokeStyle = 'rgba(40,48,60,0.30)'; ctx.lineWidth = 1.5;
+  for (const f of [s * 0.34, s * 0.68]) {
+    ctx.beginPath(); ctx.moveTo(0, f); ctx.lineTo(s, f); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(f, 0); ctx.lineTo(f, s); ctx.stroke();
+  }
+  // 竖向污渍：底部略深的潮气痕，增加材质层次
+  const grd = ctx.createLinearGradient(0, 0, 0, s);
+  grd.addColorStop(0, 'rgba(30,38,48,0)');
+  grd.addColorStop(1, 'rgba(30,38,48,0.22)');
+  ctx.fillStyle = grd; ctx.fillRect(0, 0, s, s);
+  speckle(ctx, s, [70, 80, 92], 0.4, 90);
 };
 const WOOD_TEX = (ctx, s) => {
   ctx.fillStyle = '#8a5a2a'; ctx.fillRect(0, 0, s, s);
@@ -260,13 +402,128 @@ const ARMOR_TEX = (ctx, s) => {
   speckle(ctx, s, [120, 132, 148], 0.4, 60);
 };
 
-export function getFloorTexture() { return getTex('floor', FLOOR_TEX, 128); }
-export function getConcreteTexture() { return getTex('concrete', CONCRETE_TEX, 128); }
+/** 三张大面贴图：优先用 P12 分层烘焙，无 DOM / 关闭开关时回退到 P3 撒点画法。 */
+export function getFloorTexture() {
+  const m = getSurfaceMaps('floor');
+  return m ? m.map : getTex('floor', FLOOR_TEX, 128);
+}
+export function getConcreteTexture() {
+  const m = getSurfaceMaps('concrete');
+  return m ? m.map : getTex('concrete', CONCRETE_TEX, 128);
+}
 export function getWoodTexture() { return getTex('wood', WOOD_TEX, 128); }
-export function getMetalTexture() { return getTex('metal', METAL_TEX, 128); }
+export function getMetalTexture() {
+  const m = getSurfaceMaps('metal');
+  return m ? m.map : getTex('metal', METAL_TEX, 128);
+}
 export function getMedkitTexture() { return getTex('medkit', MEDKIT_TEX, 64); }
 export function getAmmoTexture() { return getTex('ammo', AMMO_TEX, 64); }
 export function getArmorTexture() { return getTex('armor', ARMOR_TEX, 64); }
+
+/** P3 室内灯地面光池：径向衰减的暖白贴图，纯程序化生成，零外部素材 */
+const LAMP_POOL_TEX = (ctx, s) => {
+  const g = ctx.createRadialGradient(s / 2, s / 2, s * 0.04, s / 2, s / 2, s * 0.5);
+  g.addColorStop(0, 'rgba(255,233,196,0.95)');
+  g.addColorStop(0.42, 'rgba(255,208,148,0.45)');
+  g.addColorStop(1, 'rgba(255,190,120,0)');
+  ctx.clearRect(0, 0, s, s);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, s, s);
+};
+export function getLampPoolTexture() { return getTex('lampPool', LAMP_POOL_TEX, 96); }
+
+/** P3-C2 地面贴花：血迹（径向暗红血池 + 飞溅），纯程序化，零外部素材 */
+const BLOOD_TEX = (ctx, s) => {
+  ctx.clearRect(0, 0, s, s);
+  const g = ctx.createRadialGradient(s / 2, s / 2, s * 0.04, s / 2, s / 2, s * 0.5);
+  g.addColorStop(0, 'rgba(92,12,14,0.95)');
+  g.addColorStop(0.5, 'rgba(120,20,22,0.62)');
+  g.addColorStop(1, 'rgba(60,8,10,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2); ctx.fill();
+  for (let i = 0; i < 6; i += 1) {
+    const a = Math.random() * Math.PI * 2;
+    const rr = s * (0.18 + Math.random() * 0.3);
+    const px = s / 2 + Math.cos(a) * rr;
+    const py = s / 2 + Math.sin(a) * rr;
+    const r = s * (0.03 + Math.random() * 0.05);
+    ctx.fillStyle = 'rgba(110,16,18,0.7)';
+    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
+  }
+};
+/** P3-C2 地面贴花：弹着焦痕（径向炭黑 + 零星火星焦斑），纯程序化 */
+const SCORCH_TEX = (ctx, s) => {
+  ctx.clearRect(0, 0, s, s);
+  const g = ctx.createRadialGradient(s / 2, s / 2, s * 0.03, s / 2, s / 2, s * 0.5);
+  g.addColorStop(0, 'rgba(22,18,16,0.85)');
+  g.addColorStop(0.42, 'rgba(46,38,32,0.5)');
+  g.addColorStop(1, 'rgba(40,34,28,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2); ctx.fill();
+  for (let i = 0; i < 8; i += 1) {
+    const a = Math.random() * Math.PI * 2;
+    const rr = s * (0.1 + Math.random() * 0.36);
+    const px = s / 2 + Math.cos(a) * rr;
+    const py = s / 2 + Math.sin(a) * rr;
+    const r = s * (0.012 + Math.random() * 0.03);
+    ctx.fillStyle = 'rgba(14,11,9,0.7)';
+    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
+  }
+};
+export function getBloodTexture() { return getTex('blood', BLOOD_TEX, 128); }
+export function getScorchTexture() { return getTex('scorch', SCORCH_TEX, 128); }
+
+/**
+ * P5 烟幕贴图：不是规整的圆，而是若干个偏移的软斑叠出来的"团块"。
+ * 规整圆在 3D 里一眼就能看出是贴片；叠斑能让相邻的几张 Sprite 互相咬合成一片体积。
+ */
+const SMOKE_TEX = (ctx, s) => {
+  ctx.clearRect(0, 0, s, s);
+  const blobs = 7;
+  for (let i = 0; i < blobs; i += 1) {
+    const a = (i / blobs) * Math.PI * 2 + (i % 2) * 0.4;
+    const rr = s * (0.10 + (i % 3) * 0.055);
+    const px = s / 2 + Math.cos(a) * s * 0.17;
+    const py = s / 2 + Math.sin(a) * s * 0.17;
+    const g = ctx.createRadialGradient(px, py, 0, px, py, s * 0.32);
+    g.addColorStop(0, 'rgba(214,222,232,0.52)');
+    g.addColorStop(0.55, 'rgba(186,196,210,0.30)');
+    g.addColorStop(1, 'rgba(170,182,198,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(px, py, s * 0.32 + rr, 0, Math.PI * 2); ctx.fill();
+  }
+  // 中心补一层，避免中间出现"空心环"
+  const core = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s * 0.34);
+  core.addColorStop(0, 'rgba(222,228,238,0.42)');
+  core.addColorStop(1, 'rgba(200,210,224,0)');
+  ctx.fillStyle = core;
+  ctx.beginPath(); ctx.arc(s / 2, s / 2, s * 0.34, 0, Math.PI * 2); ctx.fill();
+};
+export function getSmokeTexture() { return getTex('smoke', SMOKE_TEX, 128); }
+
+/**
+ * P5 火焰地面贴图：橙红核心 + 向外衰减，用作燃烧区的加色圆盘。
+ * 中心不要纯白 —— 纯白在 tone mapping 之后会直接烧成一块死白，看不出火在动。
+ */
+const FIRE_TEX = (ctx, s) => {
+  ctx.clearRect(0, 0, s, s);
+  const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s * 0.5);
+  g.addColorStop(0, 'rgba(255,196,96,0.92)');
+  g.addColorStop(0.34, 'rgba(255,124,40,0.72)');
+  g.addColorStop(0.7, 'rgba(198,54,16,0.34)');
+  g.addColorStop(1, 'rgba(90,20,6,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(s / 2, s / 2, s * 0.5, 0, Math.PI * 2); ctx.fill();
+  for (let i = 0; i < 10; i += 1) {
+    const a = (i / 10) * Math.PI * 2;
+    const rr = s * (0.12 + (i % 4) * 0.07);
+    const px = s / 2 + Math.cos(a) * rr;
+    const py = s / 2 + Math.sin(a) * rr;
+    ctx.fillStyle = `rgba(255,${180 + (i % 3) * 20},90,${0.25 + (i % 3) * 0.08})`;
+    ctx.beginPath(); ctx.arc(px, py, s * 0.05, 0, Math.PI * 2); ctx.fill();
+  }
+};
+export function getFireTexture() { return getTex('fire', FIRE_TEX, 128); }
 
 /* ============================ 地面 ============================ */
 
@@ -279,6 +536,7 @@ export function buildGround(map) {
   const { cols, rows, tile } = map;
   const quads = [];
   const colors = [];
+  const uvs = [];
   const cA = new THREE.Color(PALETTE3D.ground);
   const cB = new THREE.Color(PALETTE3D.groundAlt);
   for (let ty = 0; ty < rows; ty += 1) {
@@ -290,6 +548,8 @@ export function buildGround(map) {
       // 平面躺平：顶点顺序保证法线朝 +Y
       quads.push(x0, 0, z0, x0, 0, z1, x1, 0, z1);
       quads.push(x0, 0, z0, x1, 0, z1, x1, 0, z0);
+      // P12：手写几何原本没有 uv，地面贴图一直采样不到 —— 每格铺一张可平铺贴图。
+      uvs.push(0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0);
       const c = (tx + ty) % 2 === 0 ? cA : cB;
       for (let k = 0; k < 6; k += 1) colors.push(c.r, c.g, c.b);
     }
@@ -297,10 +557,12 @@ export function buildGround(map) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(quads), 3));
   geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
   geo.computeVertexNormals();
   // 地面是画面里面积最大的表面，升级为 Standard 后能吃到环境光与高光，
   // 观感提升最明显；保留顶点色棋盘格与地面贴图。
-  const mesh = new THREE.Mesh(geo, surfaceMat('#FFFFFF', getFloorTexture(), VIEW3D.groundRoughness));
+  const detail = getSurfaceMaps('floor');
+  const mesh = new THREE.Mesh(geo, surfaceMat('#FFFFFF', getFloorTexture(), VIEW3D.groundRoughness, detail));
   mesh.material.vertexColors = true;
   mesh.receiveShadow = true;
   mesh.name = 'ground';
@@ -532,6 +794,39 @@ export function buildTerminalModel() {
 }
 
 /**
+ * M-03 闸刀：底座 + 立柱 + 可扳动拉杆（面朝 -Z）。
+ * 未拉时拉杆自发光琥珀（PALETTE3D.airdrop），拉下后渲染层改成 terminalHacked 绿。
+ * 约 0.6m 宽 × 1.1m 高，原点在底部中心；结构与终端同构，便于共用交互模型。
+ * @returns {THREE.Group} 闸刀模型（userData 暴露 leverMat / _lastColor）
+ */
+export function buildSwitchModel() {
+  const group = new THREE.Group();
+  const metal = lowPolyMat(PALETTE3D.metal);
+  const trim = lowPolyMat(PALETTE3D.safeTrim);
+  const leverMat = lowPolyMat(PALETTE3D.airdrop, { emissive: PALETTE3D.airdrop });
+
+  const base = new THREE.Mesh(new THREE.BoxGeometry(u(0.62), u(0.16), u(0.52)), trim);
+  base.position.y = u(0.08);
+  group.add(base);
+  const post = new THREE.Mesh(new THREE.BoxGeometry(u(0.20), u(0.86), u(0.18)), metal);
+  post.position.y = u(0.16 + 0.43);
+  group.add(post);
+  // 拉杆向上前倾，拉开与终端方盒的轮廓差异（一眼能认出"这是能扳的东西"）
+  const leverGeo = new THREE.BoxGeometry(u(0.13), u(0.52), u(0.12));
+  leverGeo.rotateX(-0.38);
+  const lever = new THREE.Mesh(leverGeo, leverMat);
+  lever.position.set(0, u(0.99), -u(0.16));
+  group.add(lever);
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(u(0.22), u(0.13), u(0.18)), trim);
+  grip.position.set(0, u(1.22), -u(0.26));
+  group.add(grip);
+
+  group.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  group.userData = { leverMat, _lastColor: null };
+  return group;
+}
+
+/**
  * 空投信标：地面光环 + 向上光柱（比撤离点更亮更高，突出"稀有"）。
  * 半径以场景单位传入（与 buildExtractMarker 一致，直接吃逻辑半径、不额外套 u()）。
  * @param {number} radius 半径（场景单位）
@@ -579,7 +874,11 @@ export function buildAirdropBeacon(radius) {
 /**
  * 构建一辆越野载具（车头朝 +X，与逻辑角 0 一致）。
  * 低多边形：底盘 + 驾驶舱 + 货斗 + 4 个轮子 + 挡风玻璃，全部程序化，无外部资源。
- * @returns {THREE.Group} 载具模型（userData 暴露 wheels 便于做转动）
+ *
+ * P1-2 性能：载具是纯静态场景道具（轮子不转，全仓无 wheels 引用），原先 13 个独立 Mesh
+ * = 13 draw；改为**按材质合并几何**，5 种材质各 1 个 Mesh = 5 draw。视觉逐面一致，
+ * 只是少了 8 次 draw call。若将来要轮子滚动，需把 wheel 组拆回独立 Mesh。
+ * @returns {THREE.Group} 载具模型（userData 暴露 mats 供统一改色）
  */
 export function buildVehicleModel() {
   const group = new THREE.Group();
@@ -587,65 +886,50 @@ export function buildVehicleModel() {
   const darkMat = lowPolyMat(PALETTE3D.vehicleDark || '#2A2E33');
   const glassMat = lowPolyMat(PALETTE3D.vehicleGlass || '#7FA8C4');
   const wheelMat = lowPolyMat('#15171A');
+  const lampMat = lowPolyMat('#F2E2B0', { emissive: '#F2E2B0' });
 
   const L = 4.3; // 车长（米）
   const W = 1.95; // 车宽
   const wheelR = 0.42;
-
-  // 底盘
-  const chassis = new THREE.Mesh(new THREE.BoxGeometry(u(L), u(0.55), u(W)), darkMat);
-  chassis.position.y = u(wheelR + 0.12);
-  group.add(chassis);
-
-  // 车身主体（略窄、叠在底盘上）
-  const body = new THREE.Mesh(new THREE.BoxGeometry(u(L * 0.92), u(0.62), u(W * 0.96)), bodyMat);
-  body.position.y = u(wheelR + 0.55);
-  group.add(body);
-
-  // 驾驶舱（偏车头一侧）
   const cabLen = L * 0.42;
-  const cab = new THREE.Mesh(new THREE.BoxGeometry(u(cabLen), u(0.62), u(W * 0.86)), bodyMat);
-  cab.position.set(u(L * 0.16), u(wheelR + 1.15), 0);
-  group.add(cab);
 
-  // 挡风玻璃（贴在驾驶舱前脸）
-  const glass = new THREE.Mesh(new THREE.BoxGeometry(u(0.08), u(0.44), u(W * 0.74)), glassMat);
-  glass.position.set(u(L * 0.16 + cabLen / 2 + 0.02), u(wheelR + 1.15), 0);
-  group.add(glass);
+  // 按材质收集已就位的几何，最后各合并成 1 个 Mesh（视觉不变，draw 13→5）。
+  const byMat = new Map();
+  const add = (mat, geo) => { if (!byMat.has(mat)) byMat.set(mat, []); byMat.get(mat).push(geo); };
+  const box = (sx, sy, sz, x, y, z) => at(new THREE.BoxGeometry(u(sx), u(sy), u(sz)), x, y, z);
 
-  // 货斗围栏（车尾）
+  add(darkMat, box(L, 0.55, W, 0, u(wheelR + 0.12), 0));                 // 底盘
+  add(bodyMat, box(L * 0.92, 0.62, W * 0.96, 0, u(wheelR + 0.55), 0));   // 车身
+  add(bodyMat, box(cabLen, 0.62, W * 0.86, u(L * 0.16), u(wheelR + 1.15), 0)); // 驾驶舱
+  add(glassMat, box(0.08, 0.44, W * 0.74, u(L * 0.16 + cabLen / 2 + 0.02), u(wheelR + 1.15), 0));
   for (const dz of [-1, 1]) {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(u(L * 0.30), u(0.30), u(0.10)), bodyMat);
-    rail.position.set(-u(L * 0.24), u(wheelR + 0.95), dz * u(W * 0.46));
-    group.add(rail);
+    add(bodyMat, box(L * 0.30, 0.30, 0.10, -u(L * 0.24), u(wheelR + 0.95), dz * u(W * 0.46))); // 货斗围栏
   }
-  const tail = new THREE.Mesh(new THREE.BoxGeometry(u(0.10), u(0.30), u(W * 0.92)), bodyMat);
-  tail.position.set(-u(L * 0.38), u(wheelR + 0.95), 0);
-  group.add(tail);
+  add(bodyMat, box(0.10, 0.30, W * 0.92, -u(L * 0.38), u(wheelR + 0.95), 0)); // 尾板
 
-  // 4 个轮子（横向圆柱，绕 Z 轴转 90° 使圆面朝 ±Z）
-  const wheels = [];
-  const wheelGeo = new THREE.CylinderGeometry(u(wheelR), u(wheelR), u(0.26), 10);
-  wheelGeo.rotateX(Math.PI / 2);
+  // 4 个轮子：共享一个已旋转的圆柱原型，每份 clone 后平移到位再合并
+  const wheelProto = new THREE.CylinderGeometry(u(wheelR), u(wheelR), u(0.26), 10);
+  wheelProto.rotateX(Math.PI / 2);
   for (const dx of [1, -1]) {
     for (const dz of [1, -1]) {
-      const w = new THREE.Mesh(wheelGeo, wheelMat);
-      w.position.set(dx * u(L * 0.30), u(wheelR), dz * u(W * 0.50));
-      group.add(w);
-      wheels.push(w);
+      add(wheelMat, at(wheelProto.clone(), dx * u(L * 0.30), u(wheelR), dz * u(W * 0.50)));
     }
   }
+  wheelProto.dispose();
 
   // 车灯（车头两盏，自发光便于远处识别）
-  const lampMat = lowPolyMat('#F2E2B0', { emissive: '#F2E2B0' });
   for (const dz of [-1, 1]) {
-    const lamp = new THREE.Mesh(new THREE.BoxGeometry(u(0.08), u(0.18), u(0.22)), lampMat);
-    lamp.position.set(u(L * 0.47), u(wheelR + 0.62), dz * u(W * 0.30));
-    group.add(lamp);
+    add(lampMat, box(0.08, 0.18, 0.22, u(L * 0.47), u(wheelR + 0.62), dz * u(W * 0.30)));
   }
 
-  group.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  group.userData = { wheels, mats: [bodyMat, darkMat, glassMat, wheelMat, lampMat] };
+  for (const [mat, geos] of byMat) {
+    const merged = mergeGeometries(geos);
+    for (const g of geos) g.dispose();
+    const mesh = new THREE.Mesh(merged, mat);
+    mesh.castShadow = true;
+    group.add(mesh);
+  }
+  group.userData = { mats: [bodyMat, darkMat, glassMat, wheelMat, lampMat] };
   return group;
 }
 
@@ -656,7 +940,7 @@ export function buildVehicleModel() {
  * @param {string} typeId 敌人类型（patrol / elite / marksman / rusher）
  * @returns {THREE.Group} 敌人模型
  */
-export function buildEnemyModel(typeId) {
+export function buildEnemyModel(typeId, opts = {}) {
   // 体型：精英与精确射手用大号，冲锋兵用瘦小号，其余用标准
   const dims = VIEW3D.enemy;
   const dim = (typeId === 'elite' || typeId === 'marksman')
@@ -668,8 +952,12 @@ export function buildEnemyModel(typeId) {
     marksman: PALETTE3D.enemyMarksman,
     rusher: PALETTE3D.enemyRusher,
   };
-  const tint = tints[typeId] || PALETTE3D.enemyPatrol;
+  // opts.tint 允许复用同一套建模逻辑给友军（改色），不改变敌人默认外观。
+  const tint = (opts && opts.tint) || tints[typeId] || PALETTE3D.enemyPatrol;
   const group = new THREE.Group();
+  // P0-3：远距离/低画质可隐藏的小部件（脸、眼、眉、鼻、耳罩、帽檐、弹匣袋、肩甲、背包顶）。
+  // 它们对轮廓识别贡献很小，但每个都是一次 draw；GLB 接管后整组程序化部件会被隐藏。
+  const detailMeshes = [];
 
   const bodyMat = lowPolyMat(tint); // 军服
   const darkMat = lowPolyMat(PALETTE3D.vmDark); // 背心 / 靴 / 手套 / 耳机
@@ -683,11 +971,14 @@ export function buildEnemyModel(typeId) {
 
   // #P0-2 夜战可见性：给敌人全体可见材质加一层轻微自发光，暗处也能看清轮廓
   // （30m 外仍可见）。baseEmissive 会被 renderer3d 的受击闪红逻辑还原，
-  // 空闲帧不会被刷成纯黑而丢失底亮度。
-  const ENEMY_EM = new THREE.Color(VIEW3D.enemyEmissive);
+  // 空闲帧不会被刷成纯黑而丢失底亮度。友军走独立的绿色自发光，便于战场上和敌人区分。
+  const ENEMY_EM = new THREE.Color((opts && opts.emissive) || VIEW3D.enemyEmissive);
+  const ENEMY_EMI = (opts && opts.emissiveIntensity != null)
+    ? opts.emissiveIntensity
+    : VIEW3D.enemyEmissiveIntensity;
   for (const m of mats) {
     m.emissive.copy(ENEMY_EM);
-    m.emissiveIntensity = VIEW3D.enemyEmissiveIntensity;
+    m.emissiveIntensity = ENEMY_EMI;
     m.userData.baseEmissive = ENEMY_EM.clone();
   }
 
@@ -758,6 +1049,7 @@ export function buildEnemyModel(typeId) {
     const pouch = new THREE.Mesh(new THREE.BoxGeometry(u(0.11), u(0.14), u(0.07)), packMat);
     pouch.position.set(side * torsoW * 0.30, torsoH * 0.42, -torsoD * 0.58);
     torso.add(pouch);
+    detailMeshes.push(pouch);
   }
 
   // 腰带
@@ -770,6 +1062,7 @@ export function buildEnemyModel(typeId) {
     const pad = new THREE.Mesh(new THREE.BoxGeometry(u(0.20), u(0.13), torsoD * 0.9), darkMat);
     pad.position.set(side * (torsoW * 0.5 + u(0.06)), torsoH * 0.86, 0);
     torso.add(pad);
+    detailMeshes.push(pad);
   }
 
   /* ---------- 颈 + 头 + 五官 ---------- */
@@ -793,26 +1086,31 @@ export function buildEnemyModel(typeId) {
   const face = new THREE.Mesh(new THREE.BoxGeometry(headW * 0.92, headH2 * 0.72, u(0.02)), skinMat);
   face.position.set(0, -headH2 * 0.04, faceZ);
   head.add(face);
+  detailMeshes.push(face);
 
   for (const side of [-1, 1]) {
     const eye = new THREE.Mesh(new THREE.BoxGeometry(headW * 0.24, u(0.045), u(0.02)), eyeMat);
     eye.position.set(side * headW * 0.24, headH2 * 0.10, faceZ - u(0.012));
     head.add(eye);
+    detailMeshes.push(eye);
     // 眉骨压在眼睛上方，让眼神更有压迫感
     const brow = new THREE.Mesh(new THREE.BoxGeometry(headW * 0.30, u(0.028), u(0.02)), darkMat);
     brow.position.set(side * headW * 0.24, headH2 * 0.19, faceZ - u(0.012));
     head.add(brow);
+    detailMeshes.push(brow);
   }
 
   const nose = new THREE.Mesh(new THREE.BoxGeometry(u(0.05), u(0.06), u(0.05)), skinMat);
   nose.position.set(0, -headH2 * 0.04, faceZ - u(0.03));
   head.add(nose);
+  detailMeshes.push(nose);
 
   // 通讯耳罩
   for (const side of [-1, 1]) {
     const cup = new THREE.Mesh(new THREE.BoxGeometry(u(0.05), u(0.11), u(0.09)), darkMat);
     cup.position.set(side * (headW * 0.5 + u(0.015)), headH2 * 0.04, 0);
     head.add(cup);
+    detailMeshes.push(cup);
   }
 
   // 头盔：盔体 + 帽檐
@@ -823,6 +1121,7 @@ export function buildEnemyModel(typeId) {
   const brim = new THREE.Mesh(new THREE.BoxGeometry(headW * 1.10, u(0.05), u(0.14)), helmetMat);
   brim.position.set(0, headR * 0.34, faceZ - u(0.02));
   head.add(brim);
+  detailMeshes.push(brim);
 
   /* ---------- 背包（模型面朝 -Z，背包在 +Z 侧） ---------- */
   const pack = new THREE.Mesh(
@@ -834,6 +1133,7 @@ export function buildEnemyModel(typeId) {
   const packTop = new THREE.Mesh(new THREE.BoxGeometry(torsoW * 0.40, u(0.10), u(0.14)), darkMat);
   packTop.position.set(0, torsoH * 0.92, torsoD * 0.60);
   torso.add(packTop);
+  detailMeshes.push(packTop);
 
   /* ---------- 手臂：肩 → 上臂 → 肘 → 前臂 → 手 ---------- */
   const arms = [];
@@ -887,12 +1187,20 @@ export function buildEnemyModel(typeId) {
   torso.add(flash);
 
   group.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  // P1-2：关节组内的静态小件按材质合并（?glb=0 路径；GLB 接管后整组隐藏也省内存）。
+  // keep 里必须含 detailMeshes（逐帧 visible）与 flash（枪口火光），否则 P0-3 LOD 会失效。
+  // noMerge 只给单测 A/B 用，默认路径永远合并。
+  const mergedAway = opts && opts.noMerge
+    ? 0
+    : mergeRigidParts(group, [...detailMeshes, flash, gun]);
 
   group.userData = {
     mats,
     flash,
     gun,
     head,
+    detailMeshes,
+    mergedAway,
     baseTint: new THREE.Color(tint),
     // 动画用的可动部件（渲染层按 walkPhase / wantsMove 驱动）
     parts: { torso, head, legs, arms, torsoBaseY: legH },
@@ -900,49 +1208,236 @@ export function buildEnemyModel(typeId) {
   return group;
 }
 
+/**
+ * 构建本地 AI 队友模型（复用敌人建模，改军服为绿色 + 绿色自发光，战场上可被一眼区分）。
+ * @param {string} [color] 干员主色（来自 ally.color），缺省回落到 PALETTE3D.green
+ * @returns {THREE.Group} 队友模型
+ */
+export function buildAllyModel(color) {
+  return buildEnemyModel('patrol', {
+    tint: color || PALETTE3D.green,
+    emissive: '#0e3b2c',
+    emissiveIntensity: VIEW3D.enemyEmissiveIntensity * 1.15,
+  });
+}
+
+/* ======================= 局外：干员展示台模型 ======================= */
+
+/**
+ * 干员军服基色（按编制分工）。
+ *
+ * 展示台**不能**直接拿「干员主色」当军服色：主色是 UI 强调色（亮红 / 亮青 / 亮绿 / 亮橙），
+ * 铺满全身就是一颗发光糖果（实测截图里那名"薄荷绿士兵"）。军服走统一的战术基色，
+ * 干员主色只出现在胸章 / 肩章 / 盔带三个小件上 —— 远看是"一个兵"，近看才认得出是谁。
+ */
+export const OP_UNIFORM = {
+  ASSAULT: '#4E523F', // 突击：橄榄绿
+  RECON: '#3F4A47',   // 侦察：冷灰绿
+  SUPPORT: '#544B3A', // 支援：沙棕
+  CONTROL: '#463F39', // 控场：炭褐
+};
+
+/** 展示台通用装备色（比军服更深，负责"战术"质感与轮廓分层） */
+const SHOWCASE_GEAR = {
+  dark: '#1E2426',   // 板甲 / 靴 / 手套 / 头盔 / 枪身
+  mid: '#2B3331',    // 背包 / 护膝 / 弹匣袋
+  olive: '#39402F',  // 副色装备（枪套 / 侧袋）
+  skin: '#9C7A57',   // 皮肤（比 PALETTE3D.hand 深一档：后者在棚拍灯下会白到发光）
+  lens: '#5E7E86',   // 护目镜片
+  trouser: '#3D4438', // 裤子（比军服深一档，与上衣拉开一个层次）
+};
+
+/**
+ * 构建局外「装备配置」屏的干员展示模型。
+ *
+ * 为什么不复用 `buildEnemyModel`：那套模型是给 **10~40 米外的剪影识别** 设计的 ——
+ * 头盔是一个半径 8.8 单位的二十面体球，把整颗头裹在里面，而脸板只有 6.0×5.5，
+ * 于是深色球面从脸里穿出来，近看是"脸里长了两块黑疙瘩"；头宽 / 肩宽 = 0.53，
+ * 比真人（≈0.34）胖一圈。远看没问题，摆到 226px 的展示台上就成了一颗大头棉花糖。
+ * 展示台是**近景正面**，必须另建一套：真实比例（≈7.2 头身）、方块盔（不再是球）、
+ * 护目镜 + 面罩（近景"有脸"，远景依然是清晰剪影）、低据枪姿态。
+ *
+ * 坐标系约定（与全项目一致）：模型面朝 **-Z**，+Z 是背后（背包侧），+Y 向上，1 单位 = 1/20 米。
+ * 全部尺寸以**米**书写再走 `u()`，方便与 config 里的 VIEW3D 对照。
+ *
+ * @param {object} op 干员档案（operators.js）
+ * @param {object} [opts]
+ * @param {boolean} [opts.rifle=true] 是否持枪（单测/纯人形检查时可关）
+ * @returns {THREE.Group} 展示用模型（调用方负责 dispose）
+ */
+export function buildOperatorShowcase(op, opts = {}) {
+  const accent = (op && op.color) || '#E2574C';
+  const uniform = OP_UNIFORM[(op && op.role)] || OP_UNIFORM.ASSAULT;
+
+  const group = new THREE.Group();
+  const matUniform = lowPolyMat(uniform);
+  // 裤子比上衣深一档：全身只有一个亮度层会糊成一块布，分层才看得出"装备穿在人身上"
+  const matTrouser = lowPolyMat(SHOWCASE_GEAR.trouser);
+  const matDark = lowPolyMat(SHOWCASE_GEAR.dark);
+  const matMid = lowPolyMat(SHOWCASE_GEAR.mid);
+  const matOlive = lowPolyMat(SHOWCASE_GEAR.olive);
+  const matSkin = lowPolyMat(SHOWCASE_GEAR.skin);
+  const matLens = lowPolyMat(SHOWCASE_GEAR.lens);
+  const matAccent = lowPolyMat(accent);
+  const allMats = [matUniform, matTrouser, matDark, matMid, matOlive, matSkin, matLens, matAccent];
+  // 展示台不吃自发光：棚拍灯已经够亮，任何 emissive 都会把方块冲成贴纸
+  for (const m of allMats) {
+    if (m.emissive) m.emissive.setRGB(0, 0, 0);
+    m.emissiveIntensity = 0;
+  }
+
+  /** 放一个方块（尺寸/位置都以米给，y 是**中心**） */
+  const box = (w, h, d, mat, x, y, z, parent) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(u(w), u(h), u(d)), mat);
+    mesh.position.set(u(x), u(y), u(z));
+    (parent || group).add(mesh);
+    mesh.castShadow = true;
+    return mesh;
+  };
+  /** 在两点之间放一根"骨头"（用于手臂：起止点确定，方向由几何自动求） */
+  const UP = new THREE.Vector3(0, 1, 0);
+  const bone = (a, b, w, d, mat, parent) => {
+    const dir = new THREE.Vector3().subVectors(b, a);
+    const len = dir.length();
+    if (len < 1e-4) return null;
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(u(w), len, u(d)), mat);
+    mesh.position.copy(a).addScaledVector(dir, 0.5);
+    mesh.quaternion.setFromUnitVectors(UP, dir.clone().normalize());
+    (parent || group).add(mesh);
+    mesh.castShadow = true;
+    return mesh;
+  };
+
+  /* ---------------- 腿 / 靴 ---------------- */
+  for (const side of [-1, 1]) {
+    const x = side * 0.105;
+    box(0.18, 0.13, 0.31, matDark, x, 0.065, -0.02);      // 靴
+    box(0.185, 0.035, 0.32, matMid, x, 0.018, -0.02);     // 靴底（比靴身亮一档，脚底不会糊成一块）
+    box(0.17, 0.34, 0.185, matTrouser, x, 0.30, 0);       // 小腿
+    box(0.19, 0.055, 0.205, matTrouser, x, 0.155, 0);     // 裤脚压在靴筒上（不压就是"裤管悬空"）
+    box(0.19, 0.115, 0.20, matMid, x, 0.50, -0.01);       // 护膝
+    box(0.195, 0.44, 0.215, matTrouser, x, 0.72, 0);      // 大腿
+    box(0.10, 0.13, 0.03, matTrouser, x, 0.70, -0.125);   // 大腿侧袋（打破裤腿的大色块）
+  }
+  // 右腿枪套（"腿上挂件"是这类硬核射击的标志性记忆点，也是左右不对称的识别特征）
+  box(0.09, 0.16, 0.105, matOlive, 0.168, 0.70, -0.02);
+  box(0.048, 0.08, 0.05, matDark, 0.168, 0.80, -0.03);
+
+  /* ---------------- 髋 / 腰带 ---------------- */
+  box(0.35, 0.15, 0.225, matUniform, 0, 0.985, 0);
+  box(0.365, 0.062, 0.24, matDark, 0, 1.055, 0);
+  box(0.072, 0.09, 0.05, matMid, -0.135, 1.05, -0.118);   // 腰包
+  box(0.072, 0.09, 0.05, matMid, 0.135, 1.05, -0.118);
+
+  /* ---------------- 躯干 + 战术背心 ---------------- */
+  box(0.35, 0.16, 0.225, matUniform, 0, 1.115, 0);        // 腰腹
+  box(0.42, 0.36, 0.245, matUniform, 0, 1.33, 0);         // 胸
+  box(0.36, 0.32, 0.066, matDark, 0, 1.335, -0.142);      // 前板
+  box(0.36, 0.28, 0.066, matDark, 0, 1.325, 0.142);       // 背板
+  box(0.44, 0.16, 0.26, matMid, 0, 1.135, 0);             // 腰封（把胸腹束成一体）
+  for (const side of [-1, 1]) {
+    box(0.09, 0.06, 0.22, matDark, side * 0.135, 1.505, 0);            // 肩带
+    box(0.105, 0.065, 0.235, matMid, side * 0.225, 1.485, 0);          // 肩垫（盖住手臂接缝）
+  }
+  // 前板上的三个弹匣袋（近景细节担当）
+  for (const dx of [-0.095, 0, 0.095]) {
+    box(0.08, 0.10, 0.045, matMid, dx, 1.255, -0.195);
+    box(0.08, 0.02, 0.048, matDark, dx, 1.312, -0.196);
+  }
+  // 干员主色 ①：胸章（前板左上角，军衔/呼号牌的位置）
+  box(0.07, 0.024, 0.008, matAccent, -0.11, 1.425, -0.178);
+  // 干员主色 ②：右肩章
+  box(0.055, 0.016, 0.14, matAccent, 0.225, 1.519, 0);
+
+  /* ---------------- 背包（+Z 侧） ---------------- */
+  box(0.27, 0.22, 0.10, matMid, 0, 1.335, 0.185);
+  box(0.21, 0.045, 0.105, matDark, 0, 1.455, 0.182);
+  box(0.045, 0.10, 0.06, matDark, 0.105, 1.395, 0.195);   // 侧挂电台
+
+  /* ---------------- 颈 + 头 ---------------- */
+  box(0.105, 0.075, 0.105, matSkin, 0, 1.545, 0);
+  box(0.13, 0.085, 0.13, matDark, 0, 1.53, 0);            // 护颈（遮住颈根，避免"头浮在肩上"）
+  box(0.155, 0.22, 0.19, matSkin, 0, 1.68, 0);            // 颅
+  box(0.157, 0.11, 0.192, matDark, 0, 1.598, 0);          // 面罩（下半脸）
+  box(0.161, 0.054, 0.028, matDark, 0, 1.706, -0.098);    // 护目镜框
+  for (const side of [-1, 1]) {
+    box(0.058, 0.038, 0.014, matLens, side * 0.038, 1.706, -0.112); // 镜片
+    box(0.032, 0.066, 0.072, matDark, side * 0.088, 1.69, 0);       // 耳罩
+  }
+  // 头盔：壳 + 顶 + 帽檐 + 夜视支架（四个方块拼一个"现代战术盔"，绝不用球体 —— 球体近看会从脸里穿出来）
+  box(0.187, 0.088, 0.216, matDark, 0, 1.792, 0);
+  box(0.134, 0.032, 0.17, matDark, 0, 1.85, 0);
+  box(0.192, 0.024, 0.064, matDark, 0, 1.756, -0.127);
+  box(0.052, 0.036, 0.042, matMid, 0, 1.806, -0.119);
+  // 干员主色 ③：盔带（颈部以上唯一的高饱和色块 = 一眼认人）
+  box(0.192, 0.014, 0.22, matAccent, 0, 1.833, 0);
+
+  /* ---------------- 手臂（低据枪：手掌落在枪上，不是垂在身侧） ---------------- */
+  // 先摆枪，再由枪上的握点反推手腕位置 —— 顺序反了就会出现"手握空气"。
+  const rifle = new THREE.Group();
+  const RIFLE_AT = { x: 0.03, y: 1.235, z: -0.235 };
+  const RIFLE_ROT = { x: 0.16, y: 0.34, z: 0.04 };
+  rifle.position.set(u(RIFLE_AT.x), u(RIFLE_AT.y), u(RIFLE_AT.z));
+  rifle.rotation.set(RIFLE_ROT.x, RIFLE_ROT.y, RIFLE_ROT.z);
+  if (opts.rifle !== false) {
+    group.add(rifle);
+    box(0.055, 0.09, 0.40, matDark, 0, 0, 0, rifle);            // 机匣
+    box(0.05, 0.062, 0.20, matMid, 0, 0.004, -0.26, rifle);     // 护木
+    box(0.028, 0.028, 0.26, matDark, 0, 0.014, -0.33, rifle);   // 枪管
+    box(0.042, 0.042, 0.05, matDark, 0, 0.014, -0.47, rifle);   // 制退器
+    box(0.045, 0.075, 0.17, matMid, 0, -0.004, 0.275, rifle);   // 枪托
+    box(0.04, 0.10, 0.055, matDark, 0, -0.085, 0.075, rifle);   // 握把
+    box(0.036, 0.13, 0.072, matDark, 0, -0.10, -0.03, rifle);   // 弹匣
+    box(0.04, 0.042, 0.115, matDark, 0, 0.072, -0.03, rifle);   // 瞄具
+  }
+  group.updateMatrixWorld(true);
+  // 握点（枪的局部坐标 → 世界坐标；group 还在原点，所以世界系 = 模型系）
+  const toWorld = (x, y, z) => rifle.localToWorld(new THREE.Vector3(u(x), u(y), u(z)));
+  const gripP = toWorld(0, -0.085, 0.075);      // 右手：握把
+  const guardP = toWorld(0, -0.005, -0.26);     // 左手：护木
+
+  for (const side of [-1, 1]) {
+    const shoulder = new THREE.Vector3(u(side * 0.245), u(1.465), 0);
+    const wrist = side > 0 ? gripP : guardP;
+    const mid = new THREE.Vector3().addVectors(shoulder, wrist).multiplyScalar(0.5);
+    // 肘：推到肩腕连线之外、略偏后下方，形成自然弯曲（不是直棍）
+    const elbow = mid.clone().add(new THREE.Vector3(u(side * 0.095), u(-0.085), u(0.075)));
+    bone(shoulder, elbow, 0.105, 0.115, matUniform);
+    bone(elbow, wrist, 0.092, 0.10, matUniform);
+    // 手套：套在腕上并略微超过握点，形成"抓着"的体积
+    const hand = new THREE.Mesh(new THREE.BoxGeometry(u(0.082), u(0.075), u(0.10)), matDark);
+    hand.position.copy(wrist).addScaledVector(new THREE.Vector3().subVectors(wrist, elbow).normalize(), u(0.03));
+    hand.quaternion.setFromUnitVectors(UP, new THREE.Vector3().subVectors(wrist, elbow).normalize());
+    hand.castShadow = true;
+    group.add(hand);
+  }
+
+  group.userData = {
+    mats: allMats,
+    accentColor: accent,
+    uniformColor: uniform,
+    // 供探针/调试读：这套模型不用 renderer3d 的 parts 动画（静态展示）
+    staticShowcase: true,
+  };
+  return group;
+}
+
 /* ============================ 武器视图模型 ============================ */
 
-/** 三种武器的拼装参数（单位：米，挂在相机局部坐标系，建模时 × metersToUnits） */
-const VM_PARAMS = {
-  rifle: {
-    receiver: [0.085, 0.115, 0.62], receiverAt: [0, 0, -0.14],
-    barrel: [0.042, 0.042, 0.42], barrelAt: [0, 0.012, -0.60],
-    mag: [0.062, 0.20, 0.11], magAt: [0, -0.14, -0.02],
-    stock: [0.070, 0.10, 0.28], stockAt: [0, -0.012, 0.26],
-    grip: [0.060, 0.15, 0.075], gripAt: [0, -0.13, 0.12],
-    sight: [0.030, 0.055, 0.13], sightAt: [0, 0.085, -0.16],
-    muzzleAt: [0, 0.012, -0.84],
-  },
-  smg: {
-    receiver: [0.082, 0.105, 0.44], receiverAt: [0, 0, -0.08],
-    barrel: [0.038, 0.038, 0.26], barrelAt: [0, 0.008, -0.40],
-    mag: [0.056, 0.24, 0.10], magAt: [0, -0.16, -0.04],
-    stock: [0.055, 0.075, 0.20], stockAt: [0, -0.01, 0.22],
-    grip: [0.056, 0.14, 0.072], gripAt: [0, -0.12, 0.10],
-    sight: [0.026, 0.045, 0.10], sightAt: [0, 0.075, -0.10],
-    muzzleAt: [0, 0.008, -0.56],
-  },
-  pistol: {
-    receiver: [0.062, 0.10, 0.30], receiverAt: [0, 0, -0.04],
-    barrel: [0.034, 0.034, 0.14], barrelAt: [0, 0.006, -0.24],
-    mag: [0.048, 0.16, 0.085], magAt: [0, -0.14, 0.02],
-    stock: [0.040, 0.055, 0.06], stockAt: [0, -0.03, 0.17],
-    grip: [0.054, 0.17, 0.075], gripAt: [0, -0.13, 0.11],
-    sight: [0.020, 0.030, 0.05], sightAt: [0, 0.062, -0.12],
-    muzzleAt: [0, 0.006, -0.32],
-  },
-};
 
 /**
  * 构建武器视图模型（挂在相机下，故不投影、不参与世界光照阴影）。
  * @param {string} weaponId 武器 id（rifle / smg / pistol）
+ * @param {string[]} [mods] 已装配附件 id 列表（P6 改枪台）；只影响外形，数值在 cmd 层结算
  * @returns {THREE.Group} 视图模型
  */
-export function buildViewmodel(weaponId) {
+export function buildViewmodel(weaponId, mods = []) {
   const p = VM_PARAMS[weaponId] || VM_PARAMS.pistol;
+  const has = (id) => mods.indexOf(id) >= 0;
   const group = new THREE.Group();
-  const bodyMat = lowPolyMat(PALETTE3D.vmBody, { phong: true, shininess: 30, map: getMetalTexture() });
-  const darkMat = lowPolyMat(PALETTE3D.vmDark, { phong: true, shininess: 18 });
+  // 枪模改用 Lambert（无镜面高光）：防止细长的准星/枪管/制退器在专属光源下打出纯白过曝竖条。
+  const bodyMat = lowPolyMat(PALETTE3D.vmBody, { map: getMetalTexture() });
+  const darkMat = lowPolyMat(PALETTE3D.vmDark);
 
   const add = (dims, pos, mat) => {
     const mesh = new THREE.Mesh(
@@ -954,28 +1449,227 @@ export function buildViewmodel(weaponId) {
     return mesh;
   };
 
-  add(p.receiver, p.receiverAt, bodyMat);
-  add(p.barrel, p.barrelAt, darkMat);
-  add(p.mag, p.magAt, darkMat);
-  add(p.stock, p.stockAt, bodyMat);
-  add(p.grip, p.gripAt, darkMat);
-  add(p.sight, p.sightAt, darkMat);
+  const recvMesh = add(p.receiver, p.receiverAt, bodyMat);
+  recvMesh.userData.role = 'body';
+  // 弹匣 / 枪托：装了「替换型」附件就不再画基础件，否则会出现三个弹匣叠一起的怪形
+  if (!has('drum') && !has('dualmag')) add(p.mag, p.magAt, darkMat).userData.role = 'body';
+  if (!has('skeleton')) add(p.stock, p.stockAt, bodyMat).userData.role = 'body';
+  add(p.grip, p.gripAt, darkMat).userData.role = 'body';
+  add(p.sight, p.sightAt, darkMat).userData.role = 'body';
+
+  // ---- 枪管：长度是配件外形的第一真值 ----
+  // 解析逻辑在 vmparams.resolvedBarrel（3D 枪模与 2D 线稿共用同一份），这里只建几何。
+  // 长/短/重型枪管改的是枪管实长，枪口位置必须跟着走：枪口焰、曳光弹起点、
+  // 玩家枪口世界坐标全部读 muzzleZ，长度变了它不动 → 火焰会从枪管中段冒出来。
+  // ⚠ role='base'：这些是"基础枪自带"的几何，换 GLB 外壳后和模型自带的枪管/导轨
+  //   完全重复，留着就是两把枪叠在一起（实测高低错位）。装配配件（消音器/瞄具等）
+  //   不打这个 role，换壳后仍要显示 —— 玩家花钱装的配件不能凭空消失。
+  const bar = resolvedBarrel(p, has);
+  const barrelLen = bar.len;
+  const barrelW = bar.w;
+  const barrelDelta = bar.delta; // 前端净前伸量（>0 为加长）
+  const barrelFrontZ = bar.frontZ;
+  add([barrelW, barrelW, barrelLen],
+    [p.barrelAt[0], p.barrelAt[1], p.barrelAt[2] - barrelDelta / 2], darkMat).userData.role = 'base';
+  if (has('heavybarrel')) {
+    // 重型枪管：两圈散热环，与普通枪管一眼可分
+    for (const dz of [0.09, 0.17]) {
+      add([barrelW * 1.4, barrelW * 1.4, 0.02],
+        [p.barrelAt[0], p.barrelAt[1], barrelFrontZ + dz], darkMat).userData.role = 'base';
+    }
+  }
 
   // 战术细节：顶部导轨（Picatinny）+ 前握把/枪口制退器（仅长枪），贴近现代突击步枪轮廓
   add([p.receiver[0] * 0.95, 0.035, p.receiver[2] * 0.72],
-    [p.receiverAt[0], p.receiverAt[1] + p.receiver[1] / 2 + 0.018, p.receiverAt[2]], darkMat);
+    [p.receiverAt[0], p.receiverAt[1] + p.receiver[1] / 2 + 0.018, p.receiverAt[2]], darkMat).userData.role = 'base';
+
+  // ---- P6 改枪台：装了什么，枪上就要看得见 ----
+  // muzzleZ 是"枪口最前端"的唯一真值 —— 枪口焰跟着它走，装消音器后整枪变长、闪光随之前移。
+  const muzzleBaseZ = bar.muzzleZ; // 装置安装基座（配件几何挂这里）
+  const muzzleZ = bar.tipZ; // 最前端：枪口焰 / 曳光弹起点用它
+  const hasGripMod = has('vgrip') || has('agrip') || has('bipod');
+  const hasMuzzleMod = has('suppressor') || has('compensator') || has('flash') || has('choke');
   if (weaponId !== 'pistol') {
-    add([0.05, 0.12, 0.05], [0, p.barrelAt[1] - 0.065, p.barrelAt[2] + p.barrel[2] * 0.32], darkMat);
-    add([p.barrel[0] * 1.4, p.barrel[0] * 1.4, 0.09], [p.muzzleAt[0], p.muzzleAt[1], p.muzzleAt[2]], darkMat);
+    // 默认前握把（装了战术握把/脚架就换成下面那根，不重复叠两根）
+    if (!hasGripMod) {
+      add([0.05, 0.12, 0.05], [0, p.barrelAt[1] - 0.065, p.barrelAt[2] + p.barrel[2] * 0.32], darkMat).userData.role = 'base';
+    }
+    if (!hasMuzzleMod) {
+      add([p.barrel[0] * 1.4, p.barrel[0] * 1.4, 0.09], [p.muzzleAt[0], p.muzzleAt[1], muzzleBaseZ], darkMat).userData.role = 'base';
+    }
+  }
+
+  if (has('suppressor')) {
+    // 消音器：细长圆柱，明显长过制退器 —— "装没装"第一眼就能看出来
+    const len = 0.26;
+    const can = new THREE.Mesh(
+      new THREE.CylinderGeometry(u(barrelW * 0.95), u(barrelW * 0.95), u(len), 10),
+      darkMat,
+    );
+    can.rotation.x = Math.PI / 2;
+    can.position.set(u(p.muzzleAt[0]), u(p.muzzleAt[1]), u(muzzleBaseZ - len / 2 + 0.03));
+    group.add(can);
+  } else if (has('compensator')) {
+    // 补偿器：一段略粗的方形气室
+    add([barrelW * 1.55, barrelW * 1.55, 0.13],
+      [p.muzzleAt[0], p.muzzleAt[1], muzzleBaseZ - 0.03], darkMat);
+  } else if (has('flash')) {
+    // 消焰器：短粗一圈
+    add([barrelW * 1.5, barrelW * 1.5, 0.075],
+      [p.muzzleAt[0], p.muzzleAt[1], muzzleBaseZ - 0.01], darkMat);
+  } else if (has('choke')) {
+    // 收束器：枪口一段收窄的锥形套筒 + 尾部卡箍环（霰弹枪专属，与制退器形状明显不同）
+    const len = 0.12;
+    const choke = new THREE.Mesh(
+      new THREE.CylinderGeometry(u(barrelW * 0.62), u(barrelW * 0.50), u(len), 12),
+      darkMat,
+    );
+    choke.rotation.x = Math.PI / 2;
+    choke.position.set(u(p.muzzleAt[0]), u(p.muzzleAt[1]), u(muzzleBaseZ - len / 2 + 0.02));
+    group.add(choke);
+    add([barrelW * 1.32, barrelW * 1.32, 0.024],
+      [p.muzzleAt[0], p.muzzleAt[1], muzzleBaseZ + 0.012], bodyMat);
+  }
+
+  if (has('acog')) {
+    // 4x 光学镜：长镜筒 + 前后镜片 + 顶部调焦旋钮（体积最大，一眼看出是"大倍镜"）
+    const bh = 0.075;
+    const oy = p.sightAt[1] + bh / 2 + 0.010;
+    const cz = p.sightAt[2] - 0.02;
+    add([0.056, bh, 0.20], [0, oy, cz], darkMat);
+    // 镜片用深蓝灰（不是高饱和蓝）：这块是场景里唯一的自发光面，太亮会像贴了两颗蓝球
+    const lensMat = new THREE.MeshBasicMaterial({ color: 0x1b3a4d, transparent: true, opacity: 0.92 });
+    for (const dz of [-0.104, 0.098]) {
+      const lens = new THREE.Mesh(
+        new THREE.CylinderGeometry(u(0.031), u(0.031), u(0.008), 12), lensMat,
+      );
+      lens.rotation.x = Math.PI / 2;
+      lens.position.set(u(0), u(oy), u(cz + dz));
+      group.add(lens);
+    }
+    add([0.026, 0.020, 0.026], [0, oy + bh / 2 + 0.010, cz], darkMat);
+    add([0.040, 0.024, 0.030], [0, oy - bh / 2 - 0.010, cz - 0.055], darkMat); // 前支座
+  } else if (has('scope2x')) {
+    // 2x 镜：圆形镜筒 + 两道镜环，比 4x 短一截
+    const bh = 0.056;
+    const oy = p.sightAt[1] + bh / 2 + 0.008;
+    const cz = p.sightAt[2] - 0.02;
+    const tube = new THREE.Mesh(
+      new THREE.CylinderGeometry(u(0.027), u(0.027), u(0.15), 12), darkMat,
+    );
+    tube.rotation.x = Math.PI / 2;
+    tube.position.set(u(0), u(oy), u(cz));
+    group.add(tube);
+    for (const dz of [-0.075, 0.075]) {
+      add([0.036, 0.036, 0.014], [0, oy, cz + dz], darkMat);
+    }
+    const front = new THREE.Mesh(
+      new THREE.CylinderGeometry(u(0.024), u(0.024), u(0.006), 12),
+      new THREE.MeshBasicMaterial({ color: 0x1b3a4d, transparent: true, opacity: 0.9 }),
+    );
+    front.rotation.x = Math.PI / 2;
+    front.position.set(u(0), u(oy), u(cz - 0.080));
+    group.add(front);
+  } else if (has('reddot') || has('holo')) {
+    // 光电瞄具：方形镜体 + 一颗自发光红点（开镜时视线正对它）
+    const big = has('holo');
+    const bw = big ? 0.052 : 0.042;
+    const bh = big ? 0.062 : 0.048;
+    const bd = big ? 0.075 : 0.085;
+    const oy = p.sightAt[1] + bh / 2 + 0.006;
+    add([bw, bh, bd], [0, oy, p.sightAt[2] - 0.01], darkMat);
+    const dot = new THREE.Mesh(
+      new THREE.BoxGeometry(u(0.014), u(0.014), u(0.004)),
+      new THREE.MeshBasicMaterial({ color: 0xff3b30 }),
+    );
+    dot.position.set(u(0), u(oy), u(p.sightAt[2] - 0.052));
+    group.add(dot);
+  }
+
+  if (has('drum')) {
+    // 弹鼓：横置扁圆柱（侧视是圆盘）+ 上方一小段供弹塔，与长条弹匣一眼区分
+    const r = Math.max(p.mag[1] * 0.50, 0.095);
+    const drum = new THREE.Mesh(
+      new THREE.CylinderGeometry(u(r), u(r), u(p.mag[0] * 1.5), 16), darkMat,
+    );
+    drum.rotation.z = Math.PI / 2; // 轴向 X：圆盘面朝侧面，玩家看得见是"鼓"
+    drum.position.set(u(p.magAt[0]), u(p.magAt[1] - p.mag[1] * 0.05), u(p.magAt[2]));
+    group.add(drum);
+    add([p.mag[0] * 0.9, 0.06, p.mag[2] * 0.9],
+      [p.magAt[0], p.magAt[1] + p.mag[1] * 0.42, p.magAt[2]], darkMat);
+  } else if (has('dualmag')) {
+    // 双联弹匣：两支并排弹匣 + 中间卡箍（基础弹匣已跳过，不会叠成三支）
+    for (const dx of [-1, 1]) {
+      add([p.mag[0] * 0.62, p.mag[1] * 1.02, p.mag[2] * 0.92],
+        [p.magAt[0] + dx * p.mag[0] * 0.56, p.magAt[1], p.magAt[2]], darkMat);
+    }
+    add([p.mag[0] * 1.86, 0.024, p.mag[2] * 0.62],
+      [p.magAt[0], p.magAt[1] - p.mag[1] * 0.16, p.magAt[2]], bodyMat);
+  } else if (has('extmag')) {
+    // 扩容弹匣：底部延伸段（容量数值在 cmd 层，这里给可读的外形差）
+    add([p.mag[0] * 0.96, 0.10, p.mag[2] * 0.96],
+      [p.magAt[0], p.magAt[1] - p.mag[1] / 2 - 0.05, p.magAt[2]], darkMat);
+  } else if (has('fastmag')) {
+    // 快拆弹匣：井口一圈亮色卡扣
+    add([p.mag[0] * 1.14, 0.028, p.mag[2] * 1.14],
+      [p.magAt[0], p.magAt[1] + p.mag[1] / 2 + 0.014, p.magAt[2]], bodyMat);
+  }
+
+  if (has('bipod')) {
+    // 折叠脚架：护木下的铰接座 + 两根外撇撑杆，轮廓与任何握把都不同
+    const bz = p.barrelAt[2] + p.barrel[2] * 0.20;
+    const by = p.barrelAt[1] - 0.050;
+    add([0.052, 0.026, 0.05], [0, by, bz], darkMat);
+    for (const sx of [-1, 1]) {
+      const leg = add([0.016, 0.17, 0.016], [sx * 0.055, by - 0.078, bz + 0.012], darkMat);
+      leg.rotation.z = sx * 0.30; // 外撇
+      leg.rotation.x = 0.12; // 略前倾
+    }
+  } else if (has('vgrip')) {
+    add([0.048, 0.13, 0.05], [0, p.barrelAt[1] - 0.10, p.barrelAt[2] + p.barrel[2] * 0.34], darkMat);
+  } else if (has('agrip')) {
+    const ag = add([0.046, 0.115, 0.05],
+      [0, p.barrelAt[1] - 0.095, p.barrelAt[2] + p.barrel[2] * 0.26], darkMat);
+    ag.rotation.x = -0.38; // 斜握把：前倾，与垂直握把一眼可分
+  }
+
+  if (has('skeleton')) {
+    // 骨架枪托：上下两根细杆 + 尾部托板 + 前接件，中间镂空（基础实心托已跳过，不叠影）
+    const sz = p.stockAt[2];
+    const sl = p.stock[2];
+    add([p.stock[0] * 0.52, 0.022, sl], [0, p.stockAt[1] + p.stock[1] * 0.38, sz], darkMat);
+    add([p.stock[0] * 0.42, 0.020, sl * 0.84],
+      [0, p.stockAt[1] - p.stock[1] * 0.40, sz - sl * 0.02], darkMat);
+    add([p.stock[0] * 0.94, p.stock[1] * 0.92, 0.028],
+      [0, p.stockAt[1], sz + sl / 2 - 0.014], bodyMat);
+    add([p.stock[0] * 0.72, p.stock[1] * 0.78, 0.026],
+      [0, p.stockAt[1], sz - sl / 2 + 0.013], darkMat);
+  } else if (has('tacticalstock')) {
+    // 战术枪托：贴腮板
+    add([p.stock[0] * 1.02, 0.032, p.stock[2] * 0.8],
+      [0, p.stockAt[1] + p.stock[1] / 2 + 0.014, p.stockAt[2]], bodyMat);
+  } else if (has('heavystock')) {
+    // 重型枪托：尾部配重块
+    add([p.stock[0] * 1.25, p.stock[1] * 0.9, 0.10],
+      [0, p.stockAt[1], p.stockAt[2] + p.stock[2] / 2 + 0.045], bodyMat);
   }
 
   // 双手（第一人称代入感：右手握把、左手托护目前方）
+  // `role='hands'`：换成 GLB 枪模时要把这两块一并隐藏 —— 外部枪模没有配套手臂，
+  // 程序化的手会悬在枪托旁边，看起来像浮在半空的一块肉色方块（实测就是这么翻车的）。
   const handMat = lowPolyMat(PALETTE3D.hand);
   const handR = new THREE.Mesh(new THREE.BoxGeometry(u(0.12), u(0.12), u(0.22)), handMat);
   handR.position.set(u(0.04), u(-0.15), u(-0.12));
+  handR.userData.role = 'hands';
   group.add(handR);
   const handL = new THREE.Mesh(new THREE.BoxGeometry(u(0.11), u(0.11), u(0.20)), handMat);
-  handL.position.set(u(0.10), u(-0.12), u(-0.42));
+  if (weaponId === 'pistol') {
+    // 手枪双手都握在把手上：沿用长枪的"托护木"位置会让左手飘到枪口前方（存量穿模）
+    handL.position.set(u(-0.040), u(-0.150), u(0.052));
+  } else {
+    handL.position.set(u(0.10), u(-0.12), u(-0.42));
+  }
+  handL.userData.role = 'hands';
   group.add(handL);
 
   const flash = new THREE.Mesh(
@@ -988,17 +1682,20 @@ export function buildViewmodel(weaponId) {
       blending: THREE.AdditiveBlending,
     }),
   );
-  flash.position.set(u(p.muzzleAt[0]), u(p.muzzleAt[1]), u(p.muzzleAt[2]));
+  flash.position.set(u(p.muzzleAt[0]), u(p.muzzleAt[1]), u(muzzleZ));
   flash.visible = false;
   group.add(flash);
 
-  // 视图模型就在相机跟前，投影只会糊住画面；同时关闭视锥裁剪避免出现/消失抖动
+  // 视图模型就在相机跟前，投影只会糊住画面；同时关闭视锥裁剪避免出现/消失抖动。
+  // 归入 layer 1：世界灯（layer 0）不再直接照亮枪模，避免玩家靠近室内点光时枪面被过曝成白色；
+  // renderer3d 会在相机上启用 layer 1 并挂专属光源，保证枪模在任何灯位下都均匀受光。
   group.traverse((o) => {
     if (o.isMesh) {
       o.castShadow = false;
       o.receiveShadow = false;
       o.frustumCulled = false;
       o.renderOrder = 10;
+      o.layers.set(1);
     }
   });
 
@@ -1008,6 +1705,131 @@ export function buildViewmodel(weaponId) {
 
 /** 视图模型参数表（供 renderer3d 做开火/换弹表现时读取） */
 export { VM_PARAMS };
+
+/**
+ * 武器 id → GLB 外壳。缺哪个就保持纯程序化，不会出现"半把枪"。
+ * `lmg` 没有对应模型，映射到外观最接近的 AK 型（弹匣/护木形态同族），
+ * 比"随机套一把冲锋枪"更不容易出戏。
+ */
+/**
+ * 枪模的亮度衰减。枪离相机最近、且有一盏贴着相机的枪口灯，按 0.78 压一点就够，
+ * 压太狠会让枪在阴影里变成黑块（第一人称武器辨识度是玩法资产）。
+ */
+const VM_GLB_GAIN = 0.78;
+
+/**
+ * 武器 id → GLB 枪身路径。
+ * W1 起局外改枪台的 3D 预览也读这张表 —— 局内外共用同一份"这把枪长什么样"的真值，
+ * 避免出现"改枪台看着是 M4、进局内变成另一把"的错位。
+ */
+export const VM_GLB = {
+  rifle: 'models/poly-pizza/weapon-rifle-assault.glb',
+  carbine: 'models/poly-pizza/weapon-carbine-assault-b.glb',
+  smg: 'models/poly-pizza/weapon-smg.glb',
+  pdw: 'models/poly-pizza/weapon-pdw-bullpup.glb',
+  pistol: 'models/poly-pizza/weapon-pistol.glb',
+  shotgun: 'models/poly-pizza/weapon-shotgun.glb',
+  dmr: 'models/poly-pizza/weapon-dmr-sniper.glb',
+  battle: 'models/poly-pizza/weapon-battle-ak47.glb',
+  lmg: 'models/poly-pizza/weapon-battle-ak47.glb',
+};
+
+/**
+ * 给第一人称枪模套一层 GLB 外壳（异步、可失败、只换枪身）。
+ *
+ * 为什么不整枪替换：P14 的契约是「vmparams 是枪模尺寸唯一真值」——
+ * `resolvedBarrel().tipZ` 同时驱动枪口焰位置、曳光弹起点、玩家枪口世界坐标。
+ * 整枪换成外部模型，这三个点会集体失准（火焰从枪管中段冒出来）。
+ * 只换枪身的话，枪管仍然按 vmparams 长出来、配件照旧挂在它上面，
+ * 「装了什么看得见」这条玩法反馈不会丢；外部模型只负责把方块枪身换成有轮廓的枪。
+ *
+ * @param {THREE.Group} group buildViewmodel 的产物
+ * @param {string} weaponId 武器 id
+ * @returns {void}
+ */
+export function upgradeViewmodel(group, weaponId) {
+  const rel = VM_GLB[weaponId];
+  if (!rel || !group || group.userData.glbShell) return;
+  loadGLB(rel).then((gltf) => {
+    if (!gltf || group.userData.glbShell) return;
+    const body = [];
+    const toHide = [];
+    group.traverse((o) => {
+      if (!o.isMesh) return;
+      const role = o.userData.role;
+      if (role === 'body') body.push(o);
+      // body（枪身 5 块）+ base（基础枪管/导轨/前握把/制退器）都要隐藏：
+      // GLB 是完整的枪，自带这些东西；留着程序化版本就是两把枪错位叠在一起。
+      // ⚠ target 包围盒只能用 body 算：base 里的枪管会把 Z 拉长，按它缩放 GLB 会缩成一条缝。
+      if (role === 'body' || role === 'base') toHide.push(o);
+    });
+    if (!body.length) return;
+
+    // 目标区域 = 现有枪身块的包围盒（receiver / mag / stock / grip / sight）
+    // 注意：必须用**组内局部坐标**，不能用 expandByObject —— 那个算的是世界包围盒，
+    // 而枪模挂在相机下，相机的 yaw 会把"枪的长轴"从局部 Z 转到世界 X，
+    // 于是缩放会按枪的厚度去算，结果整把枪缩成一小块。实测踩过这个坑。
+    const target = new THREE.Box3();
+    const one = new THREE.Box3();
+    for (const m of body) {
+      if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+      m.updateMatrix();
+      one.copy(m.geometry.boundingBox).applyMatrix4(m.matrix);
+      target.union(one);
+    }
+    const tSize = target.getSize(new THREE.Vector3());
+    const tCenter = target.getCenter(new THREE.Vector3());
+
+    // ⚠ 必须 clone：loadGLB 缓存的是同一个 gltf.scene 实例，下面是一个会改
+    // rotation/scale/position 的原地换壳。不 clone 的话，同一把枪换两次配件
+    // （或 lmg/battle 共用 ak47.glb）变换会累加，外壳越放越大、越偏越远 ——
+    // 表现就是\"接缝错位\"甚至整把枪飞出画面。角色模型用的是 SkeletonUtils.clone，
+    // 枪模没有骨骼，普通 deep clone 足够。
+    const root = gltf.scene.clone(true);
+    // 与场景统一：GLTF 的 Standard 材质换 Lambert（见 glbLambert 注释）。
+    // 这里**必须保留贴图**：Poly Pizza 的枪靠 albedo 贴图分件（机匣/护木/枪托不同色），
+    // 只留固有色会把整把枪渲染成一块纯色，枪的层次全丢 —— 上一版就是这么翻车的。
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      o.castShadow = false;
+      o.receiveShadow = false;
+      const srcMat = Array.isArray(o.material) ? o.material[0] : o.material;
+      if (!srcMat) return;
+      o.material = glbLambert(srcMat, { gain: VM_GLB_GAIN });
+    });
+
+    // 主轴修正：Kenney / Poly Pizza 的枪都是 X 轴为长轴，要转到相机前向轴 Z。
+    // ⚠ 方向必须是 +90°（不是 -90°）：程序化枪口朝 -Z（相机前向，见 vmparams.js），
+    //   转 -90° 会把 GLB 的枪口送到 +Z（朝玩家屏幕右下），看起来就是整把枪反着拿。
+    //   实测 9 把枪全中，翻 180° 后枪口才与程序化枪管同向（.screenshots/vmcheck-grid*.png）。
+    let bb = new THREE.Box3().setFromObject(root);
+    let size = bb.getSize(new THREE.Vector3());
+    if (size.x > size.z) {
+      root.rotation.y = Math.PI / 2;
+      root.updateMatrixWorld(true);
+      bb = new THREE.Box3().setFromObject(root);
+      size = bb.getSize(new THREE.Vector3());
+    }
+    // 按「枪身长度」等比缩放，而不是按最长轴：枪身区域的 Z 向长度才是可比量
+    const s = (tSize.z || 1) / (size.z || 1);
+    root.scale.multiplyScalar(s);
+    root.updateMatrixWorld(true);
+
+    // 对齐到枪身区域中心（上下左右前后都用包围盒中心，不手调魔数）
+    bb = new THREE.Box3().setFromObject(root);
+    const c = bb.getCenter(new THREE.Vector3());
+    root.position.add(new THREE.Vector3(tCenter.x - c.x, tCenter.y - c.y, tCenter.z - c.z));
+
+    group.add(root);
+    // 枪身的 body + base 块隐藏而非删除：模型加载失败时它们还在（upgradeViewmodel 会提前 return，
+    // 一个都不会隐藏），切枪/换配件重建也会重新显示。装配配件（瞄具/消音器/弹鼓等，无 role）
+    // 保持可见 —— 玩家花钱装的配件不能因为套了外壳就消失。
+    for (const m of toHide) m.visible = false;
+    // 手也一起下线：外部枪模没有配套手臂，留着就是一只悬空的手（见 buildViewmodel 注释）
+    group.traverse((o) => { if (o.userData.role === 'hands') o.visible = false; });
+    group.userData.glbShell = root;
+  });
+}
 
 /**
  * 武器 id → 展示名（HUD 用）。

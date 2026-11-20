@@ -10,13 +10,55 @@
  * - 战局切换（world 变化）时重建关卡与敌人模型，并释放旧资源。
  */
 
-import { VIEW3D, PALETTE3D, POST3D, WORLD_W, WORLD_H, TILE, MATCH, VEHICLE } from './config.js';
-import { buildLevel } from './level3d.js';
 import {
-  buildEnemyModel, buildViewmodel, buildItemModel, yawFromAngle, u,
-  buildTerminalModel, buildAirdropBeacon, buildVehicleModel,
+  VIEW3D, PALETTE3D, POST3D, MATCH, VEHICLE,
+} from './config.js';
+import { buildLevel, glbEnabled } from './level3d.js';
+import { clampGrade, zoneMixAt, gradeTints } from './grade3d.js';
+import {
+  buildEnemyModel, buildAllyModel, buildViewmodel, buildItemModel, yawFromAngle, u,
+  buildTerminalModel, buildSwitchModel, buildAirdropBeacon, buildVehicleModel, upgradeViewmodel,
+  getBloodTexture, getScorchTexture, getSmokeTexture, getFireTexture,
 } from './models.js';
 import { elevationAt } from './mapgen.js';
+import { reloadPose, reloadProgress } from './reload.js';
+import { THROWABLE_TYPES } from './throwable.js';
+import { loadGLB, glbLambert } from './assets.js';
+import { clone as cloneSkinned } from '../vendor/SkeletonUtils.js';
+
+/**
+ * 敌人 / 队友的 GLB 角色（Kenney Mini Characters）。
+ *
+ * 选它而不是 Poly Pizza 的 enemy-soldier：
+ * 1) 单一 colormap 材质 —— 能和容器走同一条 Lambert 转换，不会出现"PBR 在同一套灯光下
+ *    被打亮成惨白"的偏色（对照见 .screenshots/preview-2.png：poly-pizza 的士兵几乎全黑）；
+ * 2) 只有 7 根骨骼、2 个 mesh —— 8 个敌人同屏也不会把 draw call 打爆；
+ *    而 enemy-soldier 是 18 个 mesh，8 个敌人就是 144 次 draw call；
+ * 3) 自带 idle / walk / sprint 等动作，不需要重做动画系统。
+ *
+ * `?glb=0` 时整条链路关闭，敌人回到程序化方块人（与容器同一开关）。
+ */
+const ENEMY_GLB = {
+  patrol: 'models/kenney-mini-characters/character-soldier.glb',
+  assault: 'models/kenney-mini-characters/character-soldier.glb',
+  machinegunner: 'models/kenney-mini-characters/character-soldier.glb',
+  rusher: 'models/kenney-mini-characters/character-worker.glb',
+  shotgunner: 'models/kenney-mini-characters/character-worker.glb',
+  marksman: 'models/kenney-mini-characters/character-raider.glb',
+  carbinger: 'models/kenney-mini-characters/character-raider.glb',
+  elite: 'models/kenney-mini-characters/character-raider.glb',
+  // 医疗兵单独用机器人：全表唯一的机器人剪影，交火中一眼能认出"先打这只"，
+  // 比给它换个颜色更有效（颜色会被受击闪红、距离雾、鹰眼标记一起吃掉）。
+  medic: 'models/kenney-mini-characters/character-robot.glb',
+  // Boss **故意不换**：首领需要与杂兵完全不同的体型/轮廓（血条已在 HUD 上，
+  // 但场上还得靠剪影分辨），换成普通角色骨架会把这个辨识度抹平。
+};
+const ALLY_GLB = 'models/kenney-mini-characters/character-soldier.glb';
+/**
+ * 角色 GLB 的亮度衰减（0~1）。0.62 是实测值：1.0 时军装被冲成薄荷绿、肤色糊成白，
+ * 0.62 时绿色和肤色都能分辨，又不会在暗处看不见人（自发光另有补偿）。
+ */
+const ENEMY_GLB_GAIN = 0.62;
 
 /**
  * 在伤害飘字画布上绘制一次文本（黑色描边 + 彩色填充，保证在任意背景上都可读）。
@@ -92,6 +134,12 @@ uniform float uAORadius;
 uniform float uAOBias;
 uniform float uGrain;
 uniform float uContrast;
+uniform float uSharpen;
+uniform float uDither;
+uniform float uSaturation;
+uniform vec3 uShadowTint;
+uniform vec3 uHighlightTint;
+uniform float uSplitTone;
 uniform int uAOSamples;
 
 float linearizeDepth(float d) {
@@ -108,6 +156,19 @@ void main() {
   float g = texture2D(tDiffuse, vUv).g;
   float b = texture2D(tDiffuse, vUv - dir * ca).b;
   vec3 col = vec3(r, g, b);
+
+  // P12 邻近锐化：ACES 之后贴图细节会被抹平，取 4 个十字邻居做 unsharp，
+  // 只补回边缘对比，不放大颗粒噪声（uSharpen=0 时整段被编译器跳过）。
+  if (uSharpen > 0.0) {
+    vec2 px = 1.0 / uResolution;
+    vec3 blur = (
+      texture2D(tDiffuse, vUv + vec2(px.x, 0.0)).rgb +
+      texture2D(tDiffuse, vUv - vec2(px.x, 0.0)).rgb +
+      texture2D(tDiffuse, vUv + vec2(0.0, px.y)).rgb +
+      texture2D(tDiffuse, vUv - vec2(0.0, px.y)).rgb
+    ) * 0.25;
+    col += (col - blur) * uSharpen;
+  }
 
   // 深度近似 AO（接触阴影）：周围样本更近 → 视为遮挡
   float center = linearizeDepth(texture2D(tDepth, vUv).r);
@@ -132,6 +193,18 @@ void main() {
   // 极轻微提中间调对比（线性空间）
   col = pow(max(col, 0.0), vec3(uContrast));
 
+  // P3-C3 色彩分级（split-tone）：按亮度在冷阴影色与暖高光色之间插值，
+  // 把 tint 归一化到单位亮度后乘回 —— 保持画面亮度不变，只把色相往两端推（电影感）。
+  float gl = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  vec3 tint = mix(uShadowTint, uHighlightTint, smoothstep(0.22, 0.72, gl));
+  float tintLuma = max(dot(tint, vec3(0.2126, 0.7152, 0.0722)), 0.001);
+  col = mix(col, col * (tint / tintLuma), clamp(uSplitTone, 0.0, 1.0));
+
+  // P3 低饱和：在 ACES 之后按亮度混合，1.0 = 原色，<1 = 压掉彩色噪点。
+  // 用 luma 混合而不是逐通道乘法，避免暗部被整体染脏。
+  float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  col = mix(vec3(luma), col, uSaturation);
+
   // 细颗粒，抑制色带
   float n = fract(sin(dot(vUv * (uTime + 1.0), vec2(12.9898, 78.233))) * 43758.5453);
   col += (n - 0.5) * uGrain;
@@ -145,6 +218,9 @@ void main() {
   vec3 encodeLo = col * 12.92;
   vec3 m = 1.0 - step(vec3(0.0031308), col); // col<=阈值 时用线性段
   vec3 srgb = mix(encodeHi, encodeLo, m);
+  // P12 输出前抖动：±0.5/255 的扰动打散 8bit 量化色带，暗场渐变更干净。
+  float dith = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)) + uTime * 0.37) * 43758.5453);
+  srgb += (dith - 0.5) * uDither / 255.0;
   gl_FragColor = vec4(clamp(srgb, 0.0, 1.0), 1.0);
 }
 `;
@@ -202,18 +278,28 @@ export class Renderer3D {
     this.world = null;
     this.level = null;
     this.enemyModels = new Map(); // enemy -> THREE.Group
+    this.allyModels = new Map(); // ally -> THREE.Group
     this.addedContainers = new Set(); // 已加入关卡的容器 id
     this.viewmodel = null;
     this._vmWeaponId = null;
+    this._vmSig = null;
     this._vm = null; // 视图模型基位姿（插值用）
     this._recoil = 0; // 后坐量（0~1）
-    this._reload = 0; // 换弹下沉/侧翻量（0~1，P0-2）
+    // P4-C3 换弹三段姿态：下沉 / 侧翻 / 沿枪轴抖动。
+    // 换弹中直接取曲线值（曲线本身连续），不叠加指数平滑 —— 平滑会把"弹匣落"的峰值抹平，
+    // 那一下是这段动画唯一的节奏锚点。只有被打断时才用 lerp 回正。
+    this._reload = 0;
+    this._reloadRoll = 0;
+    this._reloadPump = 0;
     this._swayX = 0; // 转身惯性：yaw 角速度的低通结果（rad/s，P0-3）
     this._swayY = 0; // 转身惯性：pitch 角速度的低通结果
     this._lastYaw = null;
     this._lastPitch = null;
     this._itemProps = new Map(); // 世界掉落物品模型（container → { count, models }）
+    this._decalPool = null; // 地面贴花对象池（血迹 / 焦痕），懒创建
+    this._decalGeo = null; // 贴花共享几何体
     this._terminalModels = new Map(); // 数据终端对象 → 模型
+    this._switchModels = new Map(); // M-03 闸刀 POI → 模型
     this._airdropBeacon = null; // 空投信标（着陆后隐藏）
     this._crateState = null; // 掩体箱破坏状态缓存（每帧与 map 比对，只更新变化项）
     this._dmgPool = null; // 伤害飘字精灵池（懒创建，无 document 时为空）
@@ -227,12 +313,27 @@ export class Renderer3D {
     this._postEnabled = false;
     this._postBlocked = false; // 被帧率闸门永久关闭（P0-4），不再重试初始化
     this._postVerified = false; // 首帧后是否已校验过着色器编译状态
+    this._prewarmed = false; // P0-1：是否已主动编译过世界材质（避免入视野时懒编译卡顿）
     this._rt = null;
     this._postScene = null;
     this._postCamera = null;
     this._postMat = null;
+    // P3：当前调色（后处理惰性初始化时按它灌 uniform，避免 setGrade 先于 _ensurePost 丢值）
+    this._grade = clampGrade();
     // 相机挂入场景，使武器视图模型（相机子节点）参与渲染
     this.handle.scene.add(this.handle.camera);
+    // 视图模型独立光照层：枪模在 layer 1，世界灯只照 layer 0，避免靠近室内点光时枪面过曝成白。
+    // 这里给相机挂一盏专属半球光 + 方向光（仅 layer 1），让枪模始终均匀受光、观感稳定。
+    // 测试桩可能没有 camera，这里做存在性保护，保证构造不崩。
+    if (this.handle.camera && this.handle.camera.layers) {
+      this.handle.camera.layers.enable(1);
+      const vmHemi = new this.THREE.HemisphereLight(0xffffff, 0x3a3f37, 1.25);
+      vmHemi.layers.set(1);
+      const vmDir = new this.THREE.DirectionalLight(0xffffff, 0.55);
+      vmDir.position.set(0.4, 1, 0.6);
+      vmDir.layers.set(1);
+      this.handle.camera.add(vmHemi, vmDir);
+    }
     this._initFx();
     // 后处理归渲染层所有，scene3d 只负责判断"何时该关"（P0-4）。
     // 注册时若已经降过级，scene3d 会立刻回调一次，避免丢掉这一档。
@@ -361,6 +462,7 @@ export class Renderer3D {
   /* ---------------- 关卡 / 实体构建 ---------------- */
 
   _teardownWorld() {
+    this._prewarmed = false;
     if (this.level) {
       this.level.dispose();
       this.level = null;
@@ -381,6 +483,35 @@ export class Renderer3D {
       }
       this._groundProps.clear();
     }
+    // 释放地面贴花池（换局重建，避免跨局贴花残留）
+    if (this._decalPool) {
+      for (const slot of this._decalPool) {
+        this.handle.scene.remove(slot.mesh);
+        slot.mat.dispose();
+      }
+      this._decalPool = null;
+    }
+    if (this._decalGeo) { this._decalGeo.dispose(); this._decalGeo = null; }
+    // 释放投掷物 / 烟幕 / 火焰池：跨局留着会把上一局的火带进新地图
+    if (this._throwPool) {
+      const dump = (obj) => {
+        this.handle.scene.remove(obj);
+        obj.traverse?.((o) => {
+          if (!o.isMesh && !o.isSprite) return;
+          o.geometry?.dispose?.();
+          const mat = o.material;
+          if (Array.isArray(mat)) mat.forEach((x) => x?.dispose?.()); else mat?.dispose?.();
+        });
+      };
+      for (const s of this._throwPool.grenades) dump(s.mesh);
+      for (const s of this._throwPool.enemyGrenades) dump(s.mesh);
+      for (const cloud of this._throwPool.smokes) for (const s of cloud) dump(s.sp);
+      for (const s of this._throwPool.fires) dump(s.mesh);
+      this._throwPool = null;
+    }
+    if (this._grenadeGeo) { this._grenadeGeo.dispose(); this._grenadeGeo = null; }
+    if (this._enemyGrenadeGeo) { this._enemyGrenadeGeo.dispose(); this._enemyGrenadeGeo = null; }
+    if (this._fireGeo) { this._fireGeo.dispose(); this._fireGeo = null; }
     // 释放载具模型
     if (this._vehicleModels) {
       for (const m of this._vehicleModels.values()) {
@@ -395,6 +526,12 @@ export class Renderer3D {
       m.traverse((o) => { if (!o.isMesh) return; o.geometry?.dispose?.(); const mat = o.material; if (Array.isArray(mat)) mat.forEach((x) => x?.dispose?.()); else mat?.dispose?.(); });
     }
     this._terminalModels.clear();
+    // 释放 M-03 闸刀模型
+    for (const m of this._switchModels.values()) {
+      this.handle.scene.remove(m);
+      m.traverse((o) => { if (!o.isMesh) return; o.geometry?.dispose?.(); const mat = o.material; if (Array.isArray(mat)) mat.forEach((x) => x?.dispose?.()); else mat?.dispose?.(); });
+    }
+    this._switchModels.clear();
     // 释放空投信标
     if (this._airdropBeacon) {
       this.handle.scene.remove(this._airdropBeacon);
@@ -413,16 +550,25 @@ export class Renderer3D {
       model.traverse((o) => { if (!o.isMesh) return; o.geometry?.dispose?.(); const mat = o.material; if (Array.isArray(mat)) mat.forEach((x) => x?.dispose?.()); else mat?.dispose?.(); });
     }
     this.enemyModels.clear();
+    // 释放队友模型（P5-C2）
+    for (const model of this.allyModels.values()) {
+      this.handle.scene.remove(model);
+      model.traverse((o) => { if (!o.isMesh) return; o.geometry?.dispose?.(); const mat = o.material; if (Array.isArray(mat)) mat.forEach((x) => x?.dispose?.()); else mat?.dispose?.(); });
+    }
+    this.allyModels.clear();
     if (this.viewmodel) {
       this.handle.camera.remove(this.viewmodel);
       this.viewmodel.traverse((o) => { if (!o.isMesh) return; o.geometry?.dispose?.(); const mat = o.material; if (Array.isArray(mat)) mat.forEach((x) => x?.dispose?.()); else mat?.dispose?.(); });
       this.viewmodel = null;
     }
     this._vmWeaponId = null;
+    this._vmSig = null;
     this._vm = null;
     this._recoil = 0;
     // 换局/切枪时把枪模附加姿态归零：否则会带着上一局的下沉/甩枪偏移开局
     this._reload = 0;
+    this._reloadRoll = 0;
+    this._reloadPump = 0;
     this._swayX = 0;
     this._swayY = 0;
     this._lastYaw = null;
@@ -439,12 +585,24 @@ export class Renderer3D {
     this.world = world;
     this._crateState = null;
     if (this._rope) this._rope.visible = false; // 换局时收起上一局的绳子
-    this.level = buildLevel(this.handle.scene, world.map, world.rng);
+    this.level = buildLevel(this.handle.scene, world.map, world.rng, this.handle.quality);
     this.addedContainers = new Set(world.map.containers.map((c) => c.id));
     for (const e of world.enemies) {
       const model = buildEnemyModel(e.typeId);
       this.handle.scene.add(model);
       this.enemyModels.set(e, model);
+      // 真实角色模型异步接管；失败则这只敌人一直用程序化方块人。
+      this._upgradeEnemyModel(model, ENEMY_GLB[e.typeId], null);
+    }
+    // P5-C2 本地 AI 队友：沿用敌人建模改色，按实体引用缓存，换局在 _teardownWorld 释放。
+    for (const a of (world.squad || [])) {
+      if (!a || a.isPlayer) continue;
+      const model = buildAllyModel(a.color);
+      this.handle.scene.add(model);
+      this.allyModels.set(a, model);
+      // 队友也要升级成 GLB —— 这一步漏了的话，敌人全是真角色、队友还是方块人，
+      // 而且 _syncAllies 走的是"模型已存在就不再建"的分支，永远不会补上。
+      this._upgradeEnemyModel(model, ALLY_GLB, a.color || null);
     }
 
     // POI：数据终端与空投信标（局内不变，建一次即可）
@@ -453,6 +611,13 @@ export class Renderer3D {
       m.position.set(t.x, 0, t.y);
       this.handle.scene.add(m);
       this._terminalModels.set(t, m);
+    }
+    // M-03：闸刀 POI（与终端同构，局内不重建，只由 _syncPois 改色）
+    for (const sw of (world.map.switches || [])) {
+      const m = buildSwitchModel();
+      m.position.set(sw.x, 0, sw.y);
+      this.handle.scene.add(m);
+      this._switchModels.set(sw, m);
     }
     const a = world.map.airdrop;
     if (a) {
@@ -466,7 +631,7 @@ export class Renderer3D {
   /* ---------------- 每帧同步 ---------------- */
 
   _syncCrates(world) {
-    if (!this.level || !this.level.crateMeshes) return;
+    if (!this.level || !this.level.crateInstances) return;
     const rects = world.map.crateRects || [];
     const hp = world.map.crateRectHp;
     if (!this._crateState || this._crateState.length !== rects.length) {
@@ -569,22 +734,205 @@ export class Renderer3D {
       // 高程：站在架高平台上的敌人要跟着台面抬高，否则会陷进平台里
       model.position.set(e.x, u(elevationAt(world.map, e.x, e.y)), e.y);
       model.rotation.y = yawFromAngle(e.angle);
+      this._syncEnemyDetail(model, e, world);
       // 枪口火光
       model.userData.flash.visible = e.muzzleFlash > 0;
       // 角色动画：走路时迈腿摆臂，静止时呼吸起伏 + 头部小幅扫视
       this._animateEnemy(model, e, world, dt);
-      // 受击闪红（通过自发光）：仅在该值变化时写材质，空闲帧直接跳过
+      // 受击闪红（通过自发光）：仅在该值变化时写材质，空闲帧直接跳过。
+      // P5 鹰眼标记也走这一层：标记态是稳定的红色自发光，与受击短闪共用同一组材质槽，
+      // 但缓存键里带上标记位，两种状态切换时一定重写一次（不会卡在上一态）。
       const hf = e.hurtFlash > 0 ? Math.min(1, e.hurtFlash / 0.25) : 0;
-      if (model.userData._lastHf !== hf) {
-        model.userData._lastHf = hf;
+      const marked = (e.marked || 0) > 0 ? 1 : 0;
+      const fxKey = Math.round(hf * 10) + marked * 100;
+      if (model.userData._lastFx !== fxKey) {
+        model.userData._lastFx = fxKey;
         for (const m of model.userData.mats) {
-          if (hf > 0) m.emissive.copy(flashColor).multiplyScalar(0.6 * hf);
+          if (marked) m.emissive.setHex(0x7a0f12).multiplyScalar(1.8);
+          else if (hf > 0) m.emissive.copy(flashColor).multiplyScalar(0.6 * hf);
           // #P0-2：空闲帧还原到敌人底亮度自发光（而非纯黑），保证暗处可见
           else if (m.userData.baseEmissive) m.emissive.copy(m.userData.baseEmissive);
           else m.emissive.setRGB(0, 0, 0);
         }
       }
     }
+  }
+
+  /**
+   * P0-3：按画质/距离隐藏程序化角色的细节小件。
+   *
+   * 这些部件（脸、眼、眉、鼻、耳罩、帽檐、弹匣袋、肩甲、背包顶）只在近距离可辨；
+   * low 常隐、mid 14m 内保留、high 28m 内保留。GLB 角色接管后程序化部件已整体隐藏，
+   * 这里直接跳过，避免和 GLB 的可见性打架。
+   * @param {THREE.Group} model 角色模型
+   * @param {object} actor 敌人/队友实体
+   * @param {object} world 战局上下文
+   * @returns {void}
+   */
+  _syncEnemyDetail(model, actor, world) {
+    const list = model.userData.detailMeshes;
+    if (!list || !list.length || model.userData.glbRoot) return;
+    const p = world && world.player;
+    if (!p) return;
+    const quality = this.handle.quality || 'high';
+    let show;
+    if (quality === 'low') {
+      show = false;
+    } else {
+      const limit = u(quality === 'mid' ? 14 : 28);
+      const d = Math.hypot(actor.x - p.x, actor.y - p.y);
+      show = d <= limit;
+    }
+    const key = show ? 1 : 0;
+    if (model.userData._detailShown === key) return;
+    model.userData._detailShown = key;
+    for (const m of list) m.visible = show;
+  }
+
+  /**
+   * 同步本地 AI 队友模型（P5-C2）：位置 / 朝向 / 枪口火光 / 受击闪 / 走路动画，
+   * 复用与敌人同一套 _animateEnemy。倒地（dead）的队友隐藏，复活后自动出现。
+   * @param {object} world 战局上下文
+   * @param {number} dt 帧间隔秒
+   * @returns {void}
+   */
+  _syncAllies(world, dt = 0) {
+    const flashColor = this._flashColor;
+    for (const a of (world.squad || [])) {
+      if (!a || a.isPlayer) continue;
+      let model = this.allyModels.get(a);
+      if (!model) {
+        model = buildAllyModel(a.color);
+        this.handle.scene.add(model);
+        this.allyModels.set(a, model);
+        // 队友与敌人用同一套角色模型，靠 a.color 染色区分（绿=友军，与程序化版本同一约定）。
+        this._upgradeEnemyModel(model, ALLY_GLB, a.color || null);
+      }
+      if (a.dead) {
+        model.visible = false;
+        continue;
+      }
+      model.visible = true;
+      model.position.set(a.x, u(elevationAt(world.map, a.x, a.y)), a.y);
+      model.rotation.y = yawFromAngle(a.angle);
+      this._syncEnemyDetail(model, a, world);
+      model.userData.flash.visible = a.muzzleFlash > 0;
+      this._animateEnemy(model, a, world, dt);
+      // 受击闪红（友军不进鹰眼标记逻辑，缓存键只含受击强度）
+      const hf = a.hurtFlash > 0 ? Math.min(1, a.hurtFlash / 0.25) : 0;
+      const fxKey = Math.round(hf * 10);
+      if (model.userData._lastFx !== fxKey) {
+        model.userData._lastFx = fxKey;
+        for (const m of model.userData.mats) {
+          if (hf > 0) m.emissive.copy(flashColor).multiplyScalar(0.6 * hf);
+          else if (m.userData.baseEmissive) m.emissive.copy(m.userData.baseEmissive);
+          else m.emissive.setRGB(0, 0, 0);
+        }
+      }
+    }
+  }
+
+  /**
+   * 把一个已存在的程序化敌人模型升级成骨骼 GLB 角色（异步、可失败、可降级）。
+   *
+   * 为什么是"升级"而不是"直接构建"：程序化模型是同步的，首帧一定存在；
+   * GLB 是网络资源，可能慢、可能 404。先用方块人顶上，资源到了再原地接管，
+   * 这样「弱网 / 资源缺失」永远不会变成空场或白屏。
+   *
+   * @param {THREE.Group} model buildEnemyModel 产出的模型
+   * @param {string} rel 相对 assets/ 的 GLB 路径
+   * @param {string|null} tint 友军染色（敌人传 null）
+   * @returns {void}
+   */
+  _upgradeEnemyModel(model, rel, tint) {
+    if (!rel || model.userData.glbRoot || !glbEnabled()) return;
+    const T = this.THREE;
+    loadGLB(rel).then((gltf) => {
+      if (!gltf || model.userData.glbRoot) return;
+      const root = cloneSkinned(gltf.scene);
+      const mats = [];
+      root.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = true;
+        o.receiveShadow = true;
+        // 骨骼网格做视锥剔除会在动画把四肢撑出静态包围盒时被整块裁掉，直接关掉
+        // （每只角色只有 2 个 mesh，代价可以忽略）。
+        o.frustumCulled = false;
+        const srcMat = Array.isArray(o.material) ? o.material[0] : o.material;
+        if (!srcMat || !srcMat.map) return;
+        // 与容器同一条理由（见 glbLambert 注释）：Standard 在本作灯光下会过曝偏色。
+        // gain 0.62 + 自发光压到 1/8，是为了让军服还是军绿，而不是被自发光染成薄荷绿。
+        const m = glbLambert(srcMat, {
+          color: tint || 0xffffff,
+          gain: ENEMY_GLB_GAIN,
+          emissive: VIEW3D.enemyEmissive,
+          emissiveIntensity: VIEW3D.enemyEmissiveIntensity * 0.12,
+        });
+        m.userData.baseEmissive = m.emissive.clone();
+        o.material = m;
+        mats.push(m);
+      });
+      if (!mats.length) return;
+
+      // 身高对齐程序化模型：直接量现成模型的包围盒，自动继承精英/冲锋兵的体型差异，
+      // 也免得在两处各写一份尺寸表（那正是"改了这边忘了那边"的经典来源）。
+      model.updateMatrixWorld(true);
+      const target = new T.Box3().setFromObject(model).getSize(new T.Vector3()).y || u(1.7);
+      const pre = new T.Box3().setFromObject(root).getSize(new T.Vector3());
+      root.scale.setScalar(target / (pre.y || 1));
+      root.updateMatrixWorld(true);
+      root.position.y -= new T.Box3().setFromObject(root).min.y; // 脚底贴地
+
+      // 程序化部件整体隐藏（保留在树上，不销毁：切回 ?glb=0 时无需重建）
+      for (const c of model.children) c.visible = false;
+
+      // 枪口火光：GLB 没有枪口锚点，按人体比例挂一片加色面片
+      const flash = new T.Mesh(
+        new T.PlaneGeometry(u(0.3), u(0.3)),
+        new T.MeshBasicMaterial({
+          color: 0xffdca0, transparent: true, opacity: 0.95,
+          depthWrite: false, blending: T.AdditiveBlending,
+        }),
+      );
+      flash.position.set(u(0.14), u(1.18), -u(0.62));
+      flash.visible = false;
+      model.add(root, flash);
+
+      const mixer = new T.AnimationMixer(root);
+      const actions = {};
+      for (const clip of gltf.animations || []) actions[clip.name] = mixer.clipAction(clip);
+      model.userData.glbRoot = root;
+      model.userData.mats = mats;
+      model.userData.flash = flash;
+      model.userData.mixer = mixer;
+      model.userData.actions = actions;
+      model.userData.clip = '';
+      model.userData._lastFx = -1; // 换过材质，强制重写一次自发光，别沿用旧缓存键
+    });
+  }
+
+  /**
+   * 骨骼角色的动画：按 wantsMove 在 idle / walk 之间交叉淡入。
+   *
+   * GLB 接管后不再执行关节动画（_animateEnemy）—— 两套同时跑会互相覆盖骨骼。
+   * @param {THREE.Group} model 角色模型
+   * @param {object} e 实体（只读）
+   * @param {number} dt 帧间隔秒
+   * @returns {void}
+   */
+  _animateSkinned(model, e, dt) {
+    const ud = model.userData;
+    const want = e.wantsMove ? 'walk' : 'idle';
+    if (ud.clip !== want) {
+      const next = ud.actions[want] || ud.actions.idle;
+      const prev = ud.actions[ud.clip];
+      if (next) {
+        next.reset().setEffectiveWeight(1).play();
+        if (prev && prev !== next) prev.crossFadeTo(next, 0.2, false);
+        ud.clip = want;
+      }
+    }
+    ud.mixer.update(dt);
   }
 
   /**
@@ -598,6 +946,11 @@ export class Renderer3D {
    * @returns {void}
    */
   _animateEnemy(model, e, world, dt) {
+    // GLB 角色接管后走骨骼动画；两套动画绝不能同时对同一副骨架生效。
+    if (model.userData.mixer) {
+      this._animateSkinned(model, e, dt);
+      return;
+    }
     const p = model.userData.parts;
     if (!p) return;
     const t = world.time || 0;
@@ -682,14 +1035,25 @@ export class Renderer3D {
         world.shake = Math.max(0, world.shake * Math.exp(-VIEW3D.fx.shakeDecay * dt));
       }
     }
-    cam.position.set(player.x + sx, this.eyeHeight + sy, player.y + sz);
+    // P19：探头只改相机横向偏移（命中射线仍从身体中轴发出，判定比视觉更严格）。
+    const leanOff = Number(player.leanT) || 0;
+    cam.position.set(
+      player.x + sx + (-Math.sin(yaw)) * leanOff,
+      this.eyeHeight + sy,
+      player.y + sz + Math.cos(yaw) * leanOff,
+    );
 
     // FOV（ADS 时收窄到 fovAds，否则用玩家可调的 baseFov）
     // 车速越快 FOV 越开（速度感），步行 / ADS 时用基准值
     const driveFov = player.vehicle
       ? this.baseFov + VEHICLE.fovBoost * Math.min(1, Math.abs(player.vehicle.speed || 0) / VEHICLE.maxSpeed)
       : this.baseFov;
-    const targetFov = (player.ads && player.currentWeapon && !player.vehicle) ? VIEW3D.fovAds : driveFov;
+    // P4-C2：按 adsT 插值而不是布尔切换 —— 与枪模/散布/准星共用同一个过渡进度。
+    const adsBlend = Math.max(0, Math.min(1,
+      player.adsT != null ? player.adsT : (player.ads ? 1 : 0)));
+    const targetFov = (player.currentWeapon && !player.vehicle)
+      ? driveFov + (VIEW3D.fovAds - driveFov) * adsBlend
+      : driveFov;
     const fovk = 1 - Math.exp(-VIEW3D.fovLerp * dt);
     this.fov += (targetFov - this.fov) * fovk;
     if (Math.abs(cam.fov - this.fov) > 0.01) {
@@ -699,22 +1063,40 @@ export class Renderer3D {
   }
 
   _syncViewmodel(player, dt) {
-    const T = this.THREE;
-    // 武器切换 → 重建视图模型
-    const wid = player.currentWeapon ? player.currentWeapon.def.id : 'pistol';
-    if (!this.viewmodel || this._vmWeaponId !== wid) {
+    // 武器切换 → 重建视图模型。P6 起附件也改外形，所以签名要带上附件列表：
+    // 同一把枪换/卸配件也要重建，否则枪上永远停着上一局的消音器。
+    const wpn = player.currentWeapon;
+    const wid = wpn ? wpn.def.id : 'pistol';
+    const mods = (wpn && wpn.def && wpn.def.installedMods) || [];
+    const vmSig = wid + '|' + mods.join(',');
+    if (!this.viewmodel || this._vmSig !== vmSig) {
       if (this.viewmodel) this.handle.camera.remove(this.viewmodel);
       this._vmWeaponId = wid;
-      this.viewmodel = buildViewmodel(wid);
+      this._vmSig = vmSig;
+      this.viewmodel = buildViewmodel(wid, mods);
+      // 用 GLB 外壳替换枪身块（只换外形，枪管/配件仍由 vmparams 驱动）。
+      if (glbEnabled()) upgradeViewmodel(this.viewmodel, wid);
+      // 枪模整体缩放（P4）：模型按真实尺寸建，但放到镜头跟前会占满半屏，这里统一缩一档。
+      this.viewmodel.scale.setScalar(VIEW3D.viewmodel.scale || 1);
       this._vm = null;
       this._recoil = 0;
       this.handle.camera.add(this.viewmodel);
     }
     const g = this.viewmodel;
     const vm = VIEW3D.viewmodel;
-    const ads = player.ads && player.currentWeapon;
-    const tgt = ads ? vm.ads : vm.base;
-    const tgtRot = ads ? vm.adsRot : vm.baseRot;
+    // P4-C2：枪模姿态同样按 adsT 插值，保证"抬枪"是连续动作而不是瞬移。
+    const vmBlend = Math.max(0, Math.min(1,
+      player.adsT != null ? player.adsT : (player.ads ? 1 : 0)));
+    const tgt = {
+      x: vm.base.x + (vm.ads.x - vm.base.x) * vmBlend,
+      y: vm.base.y + (vm.ads.y - vm.base.y) * vmBlend,
+      z: vm.base.z + (vm.ads.z - vm.base.z) * vmBlend,
+    };
+    const tgtRot = {
+      x: vm.baseRot.x + (vm.adsRot.x - vm.baseRot.x) * vmBlend,
+      y: vm.baseRot.y + (vm.adsRot.y - vm.baseRot.y) * vmBlend,
+      z: vm.baseRot.z + (vm.adsRot.z - vm.baseRot.z) * vmBlend,
+    };
     const k = 1 - Math.exp(-vm.lerp * dt);
     if (!this._vm) {
       this._vm = { x: u(tgt.x), y: u(tgt.y), z: u(tgt.z), rx: tgtRot.x, ry: tgtRot.y, rz: tgtRot.z };
@@ -733,12 +1115,26 @@ export class Renderer3D {
     const recoilY = u(vm.recoilKick * 0.5) * this._recoil;
     const recoilRot = vm.recoilRot * this._recoil;
 
-    // 换弹（P0-2）：枪身下沉 + 绕 Z 侧翻。reloading 期间 0→1，结束自动 1→0 回正，
-    // 同一套指数平滑因此天然没有跳变；被移动打断 / 切枪时 reloading 立刻变假，也就立刻回正。
-    const reloading = !!(player.currentWeapon && player.currentWeapon.reloading);
-    this._reload += ((reloading ? 1 : 0) - this._reload) * (1 - Math.exp(-vm.reloadLerp * dt));
+    // 换弹（P4-C3 三段节奏）：姿态由 reload.js 的纯函数曲线给出 ——
+    // 退弹匣时枪身沉到最低并侧翻最多，插弹匣回抬一点，拉机柄时沿枪轴抖一记再回正。
+    // 曲线首尾都是 0，所以"开始/结束"本身没有跳变；只有被切枪或进车打断时，
+    // 才用 reloadLerp 把残留姿态衰减回去（那时玩家注意力已不在枪上，平滑即可）。
+    const rw = player.currentWeapon;
+    const reloading = !!(rw && rw.reloading);
+    if (reloading) {
+      const pose = reloadPose(reloadProgress(rw.reloadTimer, rw.reloadTotal));
+      this._reload = pose.drop;
+      this._reloadRoll = pose.roll;
+      this._reloadPump = pose.pump;
+    } else {
+      const rk = 1 - Math.exp(-vm.reloadLerp * dt);
+      this._reload += (0 - this._reload) * rk;
+      this._reloadRoll += (0 - this._reloadRoll) * rk;
+      this._reloadPump += (0 - this._reloadPump) * rk;
+    }
     const reloadDrop = vm.reloadDrop * this._reload;
-    const reloadRoll = vm.reloadRoll * this._reload;
+    const reloadRoll = vm.reloadRoll * this._reloadRoll;
+    const reloadPump = u(vm.reloadPump || 0) * this._reloadPump;
 
     // 转身惯性（P0-3）：把视角的**角速度**低通成"甩枪速度"，再乘 swayAmp 变成枪模滞后位移。
     // 只动枪模、不动相机 —— 相机滞后会直接变成晕屏，这条线不能越。
@@ -772,7 +1168,7 @@ export class Renderer3D {
     g.position.set(
       this._vm.x + bobX * ms + swayX * ms,
       this._vm.y + bobY * ms - recoilY * ms + swayY * ms - u(reloadDrop),
-      this._vm.z - recoilZ * ms,
+      this._vm.z - recoilZ * ms + reloadPump,
     );
     g.rotation.set(this._vm.rx + recoilRot * ms, this._vm.ry, this._vm.rz + (roll * ms) + reloadRoll);
 
@@ -998,6 +1394,25 @@ export class Renderer3D {
       const loot = c.loot || [];
       seen.add(c);
       const rec = this._itemProps.get(c);
+      // P1-0（2026-11-19）：未搜索容器不展示战利品。
+      // 之前开局就给所有容器生成悬浮物品模型，实测占 90/161 draws；
+      // 同时这也是一种「隔空透视」——玩家不该在开箱前看到容器里有什么。
+      if (!c.searched) {
+        if (rec) {
+          for (const m of rec.models) {
+            this.handle.scene.remove(m);
+            m.traverse((o) => {
+              if (!o.isMesh) return;
+              o.geometry?.dispose?.();
+              const mat = o.material;
+              if (Array.isArray(mat)) mat.forEach((x) => x?.dispose?.());
+              else mat?.dispose?.();
+            });
+          }
+          this._itemProps.delete(c);
+        }
+        continue;
+      }
       if (!loot.length) {
         if (rec) {
           for (const m of rec.models) {
@@ -1073,6 +1488,258 @@ export class Renderer3D {
       rec.model.traverse((o) => { if (!o.isMesh) return; o.geometry?.dispose?.(); const mat = o.material; if (Array.isArray(mat)) mat.forEach((x) => x?.dispose?.()); else mat?.dispose?.(); });
       this._groundProps.delete(uid);
     }
+  }
+
+  /* ---------------- 地面贴花（P3-C2） ---------------- */
+
+  /**
+   * 惰性创建地面贴花对象池：血迹 / 弹着焦痕各一组平铺平面。
+   * 共用一个 1×1 共享几何体，按 decal.r 缩放；材质各自独立以便按 kind 切贴图与透明度。
+   * 无 document（Node 无头）时贴图为 null，整体降级为不绘制。
+   * @returns {Array<{mesh:THREE.Mesh,mat:THREE.Material}>|null}
+   */
+  _ensureDecals() {
+    if (this._decalPool) return this._decalPool;
+    const T = this.THREE;
+    const blood = getBloodTexture();
+    const scorch = getScorchTexture();
+    if (!blood && !scorch) { this._decalPool = []; return this._decalPool; }
+    const geo = new T.PlaneGeometry(1, 1);
+    this._decalGeo = geo;
+    const pool = [];
+    const N = 64; // 同屏可见贴花上限（老贴花超出后不再绘制，不影响逻辑）
+    for (let i = 0; i < N; i += 1) {
+      const mat = new T.MeshBasicMaterial({
+        map: blood || scorch,
+        transparent: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+      });
+      const mesh = new T.Mesh(geo, mat);
+      mesh.rotation.x = -Math.PI / 2; // 平铺地面
+      mesh.renderOrder = 1;
+      mesh.visible = false;
+      this.handle.scene.add(mesh);
+      pool.push({ mesh, mat, texBlood: blood, texScorch: scorch });
+    }
+    this._decalPool = pool;
+    return pool;
+  }
+
+  /**
+   * 把 world.decals（死亡血池 / 弹着焦痕）同步到地面贴花池。
+   * 列表只增不减，池容量有限时只画最新的若干张；每帧仅更新可见性/位姿/贴图的变化项。
+   * 高程按 elevationAt 对齐，避免贴花浮在架高平台之外或陷进地里。
+   * @param {object} world 战局上下文
+   * @returns {void}
+   */
+  _syncDecals(world) {
+    const pool = this._ensureDecals();
+    if (!pool || !pool.length) return;
+    const list = world.decals || [];
+    // 只画最新的 pool.length 张，避免老贴花占满池
+    const start = Math.max(0, list.length - pool.length);
+    for (let i = 0; i < pool.length; i += 1) {
+      const slot = pool[i];
+      const d = list[start + i];
+      if (!d) { if (slot.mesh.visible) slot.mesh.visible = false; continue; }
+      const isScorch = d.kind === 'scorch';
+      const tex = isScorch ? slot.texScorch : slot.texBlood;
+      if (!tex) { slot.mesh.visible = false; continue; }
+      slot.mesh.visible = true;
+      const y = u(elevationAt(world.map, d.x, d.y)) + 0.05;
+      slot.mesh.position.set(d.x, y, d.y);
+      // d.r 是逻辑单位（1 米 = metersToUnits = 20），贴花直径即 d.r*2；
+      // 绝不能再乘 u()，否则会放大 20 倍变成铺满屏的红幕。
+      slot.mesh.scale.set(d.r * 2, d.r * 2, 1);
+      if (slot.mat.map !== tex) slot.mat.map = tex;
+      const op = isScorch ? 0.6 : 0.85;
+      if (slot.mat.opacity !== op) slot.mat.opacity = op;
+      slot.mesh.rotation.z = d.rot || 0;
+    }
+  }
+
+
+  /* ---------------- 投掷物 / 烟幕 / 燃烧区（P5） ---------------- */
+
+  /**
+   * 投掷物相关的三类对象池。全部在换局时重建、在拆卸时释放。
+   *
+   * 为什么用 Sprite 而不是粒子：烟是**体积感**的东西，用 Points 画会得到一堆"点"，
+   * 近看像雪花。几张带软边贴图的 Sprite 互相叠加，才有"一团能挡住视线的东西"的读感。
+   * @returns {object} { grenades, smokes, fires }
+   */
+  _ensureThrowables() {
+    if (this._throwPool) return this._throwPool;
+    const T = this.THREE;
+    const pool = { grenades: [], smokes: [], fires: [], enemyGrenades: [] };
+
+    const gGeo = new T.SphereGeometry(u(0.09), 10, 8);
+    this._grenadeGeo = gGeo;
+    for (let i = 0; i < 10; i += 1) {
+      const mat = new T.MeshStandardMaterial({
+        color: 0x2e343c, emissive: 0x000000, roughness: 0.55, metalness: 0.35,
+      });
+      const mesh = new T.Mesh(gGeo, mat);
+      mesh.visible = false;
+      mesh.renderOrder = 3;
+      this.handle.scene.add(mesh);
+      pool.grenades.push({ mesh, mat });
+    }
+
+    // P9 敌方爆裂雷：红色快闪，与玩家的深色手雷一眼可分；单独几何体便于换局释放。
+    const egGeo = new T.SphereGeometry(u(0.11), 10, 8);
+    this._enemyGrenadeGeo = egGeo;
+    for (let i = 0; i < 8; i += 1) {
+      const mat = new T.MeshStandardMaterial({
+        color: 0x8a2b20, emissive: 0xff3b20, emissiveIntensity: 1, roughness: 0.5, metalness: 0.2,
+      });
+      const mesh = new T.Mesh(egGeo, mat);
+      mesh.visible = false;
+      mesh.renderOrder = 3;
+      this.handle.scene.add(mesh);
+      pool.enemyGrenades.push({ mesh, mat });
+    }
+
+    const smokeTex = getSmokeTexture();
+    if (smokeTex) {
+      for (let c = 0; c < 3; c += 1) {
+        const cloud = [];
+        for (let i = 0; i < 9; i += 1) {
+          const mat = new T.SpriteMaterial({
+            map: smokeTex, transparent: true, depthWrite: false, opacity: 0,
+          });
+          const sp = new T.Sprite(mat);
+          sp.visible = false;
+          sp.renderOrder = 4;
+          this.handle.scene.add(sp);
+          cloud.push({ sp, mat, phase: (i * 2.399963) % (Math.PI * 2), k: i });
+        }
+        pool.smokes.push(cloud);
+      }
+    }
+
+    const fireTex = getFireTexture();
+    if (fireTex) {
+      const fGeo = new T.PlaneGeometry(1, 1);
+      this._fireGeo = fGeo;
+      for (let i = 0; i < 4; i += 1) {
+        const mat = new T.MeshBasicMaterial({
+          map: fireTex,
+          transparent: true,
+          depthWrite: false,
+          blending: T.AdditiveBlending,
+          opacity: 0.9,
+        });
+        const mesh = new T.Mesh(fGeo, mat);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.visible = false;
+        mesh.renderOrder = 2;
+        this.handle.scene.add(mesh);
+        pool.fires.push({ mesh, mat });
+      }
+    }
+
+    this._throwPool = pool;
+    return pool;
+  }
+
+  /**
+   * 同步投掷物表现。
+   *
+   * 三件事各自有独立的时间来源：手雷读 `g.t`（引信闪烁）、烟读 `s.t/s.life`（膨胀与淡出）、
+   * 火读 `world.time`（持续跳动）。不要共用一个累加器 —— 共用会让"烟已散尽但火还在按烟的节奏跳"。
+   *
+   * @param {object} world 战局上下文
+   * @returns {void}
+   */
+  _syncThrowables(world) {
+    const pool = this._ensureThrowables();
+    const T = this.THREE;
+    const time = world.time || 0;
+
+    const gs = world.grenades || [];
+    for (let i = 0; i < pool.grenades.length; i += 1) {
+      const slot = pool.grenades[i];
+      const g = gs[i];
+      if (!g) { if (slot.mesh.visible) slot.mesh.visible = false; continue; }
+      slot.mesh.visible = true;
+      slot.mesh.position.set(g.x, g.h, g.y);
+      slot.mesh.rotation.x = g.spin * 0.8;
+      slot.mesh.rotation.z = g.spin;
+      // 引信闪烁：破片/震撼是"快闪"，烟与燃烧是"常亮微光"，让玩家一眼分辨手里是什么
+      const def = THROWABLE_TYPES[g.kind] || THROWABLE_TYPES.frag;
+      const blink = def.trigger === 'fuse'
+        ? (Math.sin(g.t * 22) > 0.2 ? 1 : 0.12)
+        : 0.5;
+      slot.mat.emissive.set(def.color);
+      slot.mat.emissiveIntensity = 0.4 + blink * 1.6;
+    }
+
+    // P9 敌方爆裂雷：沿抛物线从投掷者飞向落点，红色快闪预警；引信耗尽即炸。
+    const egs = world.enemyGrenades || [];
+    for (let i = 0; i < pool.enemyGrenades.length; i += 1) {
+      const slot = pool.enemyGrenades[i];
+      const g = egs[i];
+      if (!g) { if (slot.mesh.visible) slot.mesh.visible = false; continue; }
+      const prog = Math.min(1, Math.max(0, g.t / Math.max(0.01, g.fuse0 || 1.5)));
+      const fx = g.fromX != null ? g.fromX : g.x;
+      const fy = g.fromY != null ? g.fromY : g.y;
+      slot.mesh.visible = true;
+      slot.mesh.position.set(
+        fx + (g.x - fx) * prog,
+        u(0.15) + Math.sin(prog * Math.PI) * u(2.2),
+        fy + (g.y - fy) * prog,
+      );
+      slot.mat.emissiveIntensity = Math.sin(g.t * 26) > 0 ? 2.2 : 0.5;
+    }
+
+    const smokes = world.smokes || [];
+    for (let c = 0; c < pool.smokes.length; c += 1) {
+      const cloud = pool.smokes[c];
+      const s = smokes[c];
+      if (!s) {
+        for (const slot of cloud) if (slot.sp.visible) slot.sp.visible = false;
+        continue;
+      }
+      const fade = Math.min(1, Math.max(0, (s.life - s.t) / 1.5));
+      const grow = Math.min(1, s.t / Math.max(0.01, s.expand));
+      for (const slot of cloud) {
+        slot.sp.visible = true;
+        const ang = slot.phase;
+        // 三圈分布：近心 2 张、中环 4 张、外环 3 张，让烟团有内部浓度差
+        const ring = slot.k < 2 ? 0.22 : (slot.k < 6 ? 0.5 : 0.78);
+        const rr = s.r * ring;
+        const lift = (slot.k % 3) * u(0.55);
+        slot.sp.position.set(
+          s.x + Math.cos(ang) * rr,
+          s.h + u(0.7) + lift,
+          s.y + Math.sin(ang) * rr,
+        );
+        const base = u(2.6) * (0.55 + grow * 0.75) * (0.72 + (slot.k % 4) * 0.11);
+        slot.sp.scale.set(base, base * 0.92, 1);
+        slot.mat.opacity = (slot.k < 2 ? 0.5 : 0.34) * fade;
+      }
+    }
+
+    const fires = (world.zones || []).filter((z) => z.kind === 'fire');
+    for (let i = 0; i < pool.fires.length; i += 1) {
+      const slot = pool.fires[i];
+      const z = fires[i];
+      if (!z) { if (slot.mesh.visible) slot.mesh.visible = false; continue; }
+      slot.mesh.visible = true;
+      const gy = u(elevationAt(world.map, z.x, z.y)) + 0.06;
+      slot.mesh.position.set(z.x, gy, z.y);
+      const r = z.r * (0.96 + 0.04 * Math.sin(time * 7 + i));
+      slot.mesh.scale.set(r * 2, r * 2, 1);
+      const fade = Math.min(1, Math.max(0, (z.life - z.t) / 1.4));
+      slot.mat.opacity = (0.62 + 0.18 * Math.sin(time * 11 + i * 1.7)) * fade;
+      // 慢速自转：避免贴图上的火舌每次都停在同一个角度显成一张静态贴纸
+      slot.mesh.rotation.z = time * 0.35 + i;
+    }
+    void T;
   }
 
   /* ---------------- POI 目标点 ---------------- */
@@ -1158,6 +1825,13 @@ export class Renderer3D {
         m.userData.screenMat.emissive.set(col);
       }
     }
+    for (const [sw, m] of this._switchModels) {
+      const col = sw.pulled ? PALETTE3D.terminalHacked : PALETTE3D.airdrop;
+      if (m.userData._lastColor !== col) {
+        m.userData._lastColor = col;
+        m.userData.leverMat.emissive.set(col);
+      }
+    }
     if (this._airdropBeacon) {
       this._airdropBeacon.visible = Boolean(world.map.airdrop && !world.map.airdrop.landed);
     }
@@ -1174,15 +1848,17 @@ export class Renderer3D {
    */
   render(world, dt, paused) {
     if (!world) return;
-    const T = this.THREE;
     if (world !== this.world) this._buildWorld(world);
 
     const player = world.player;
     this._syncEnemies(world, dt);
+    this._syncAllies(world, dt);
     this._syncCrates(world);
     this._syncVehicles(world);
     this._syncRope(world);
     this._syncItems(world);
+    this._syncDecals(world);
+    this._syncThrowables(world);
     this._syncPois(world);
     if (this.level) {
       this.level.update(world.time);
@@ -1194,9 +1870,28 @@ export class Renderer3D {
     this._syncDamageNumbers(world);
 
     this.handle.focusShadow(player.x, player.y);
+    if (this.handle.setZoneMix) {
+      // P3 光照分区：靠近室内灯位时小幅压低冷色填充光，让暖白点光成为主光。
+      const sites = (this.level && this.level.lampSites) || [];
+      this.handle.setZoneMix(zoneMixAt(player.x, player.y, sites), dt);
+    }
     this.handle.samplePerf(dt);
 
     const r = this.handle.renderer;
+    // P0-1：进图后主动编译所有世界材质，避免敌人/容器第一次进入视野时触发
+    // shader 编译长任务（审计中 getProgramInfoLog + getParameters 约 10% CPU）。
+    // 放在 _syncViewmodel 之后，保证枪模材质也被覆盖；只做一次。
+    if (!this._prewarmed) {
+      this._prewarmed = true;
+      if (r && typeof r.compile === 'function') {
+        try {
+          r.compile(this.handle.scene, this.handle.camera);
+        } catch (err) {
+          // 编译预热失败不应阻断游戏；退回首帧懒编译即可。
+          console.warn('[搜打撤] 材质预编译失败，将退回按需编译：', err);
+        }
+      }
+    }
     if (!this._postTried) this._ensurePost();
     if (this._postEnabled) {
       try {
@@ -1265,6 +1960,7 @@ export class Renderer3D {
       rt.depthTexture.type = T.UnsignedIntType;
       rt.texture.colorSpace = T.NoColorSpace; // 保持线性：后处理阶段手动做 sRGB 编码
       const cam = new T.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      const tints = gradeTints(); // 色彩分级真值（阴影/高光双色 + 强度），来自 config.GRADE3D
       const mat = new T.ShaderMaterial({
         uniforms: {
           tDiffuse: { value: rt.texture },
@@ -1281,7 +1977,13 @@ export class Renderer3D {
           uAOBias: { value: POST3D.ao.bias },
           uAOSamples: { value: POST3D.ao.samples },
           uGrain: { value: POST3D.grain },
-          uContrast: { value: POST3D.contrast },
+          uSharpen: { value: POST3D.sharpen },
+          uDither: { value: POST3D.dither },
+          uContrast: { value: this._grade.contrast },
+          uSaturation: { value: this._grade.saturation },
+          uShadowTint: { value: new T.Vector3(tints.shadow[0], tints.shadow[1], tints.shadow[2]) },
+          uHighlightTint: { value: new T.Vector3(tints.highlight[0], tints.highlight[1], tints.highlight[2]) },
+          uSplitTone: { value: tints.amount },
         },
         vertexShader: POST_VS,
         fragmentShader: POST_FS,
@@ -1331,6 +2033,23 @@ export class Renderer3D {
    * @param {boolean} on true = 允许开启（仍受 WebGL2 / 配置 / 设备档约束）；false = 立刻关闭并释放
    * @returns {void}
    */
+  /**
+   * P3：把钳制后的调色值同时灌进 renderer 曝光与后处理 uniform。
+   * 后处理被帧率闸门关掉时只留曝光（对比/饱和本来就不生效，不假装生效）。
+   * @param {object} grade { exposure, contrast, saturation }
+   * @returns {object} 实际生效的钳制值
+   */
+  setGrade(grade) {
+    const g = clampGrade(grade);
+    this._grade = g;
+    if (this.handle && typeof this.handle.setGrade === 'function') this.handle.setGrade(g);
+    if (this._postMat) {
+      this._postMat.uniforms.uContrast.value = g.contrast;
+      this._postMat.uniforms.uSaturation.value = g.saturation;
+    }
+    return g;
+  }
+
   setPostEnabled(on) {
     if (!on) {
       this._postBlocked = true;

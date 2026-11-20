@@ -1,35 +1,174 @@
-/* ★ 本文件已接入 ming-games 共用设计 token（shared/tokens.css）。
-     圆角 / 阴影 / 间距 / 字阶 / 动效 / 层级 用 var(--mg-*)；
-     主色（--bg / --panel / --amber / --cyan / --danger）保持
-     「搜打撤」自己的战术暗色气质，**不统一**。 */
+/* ★ 中性尺度由 shared/tokens.css 提供（--mg-*：圆角/阴影/间距/字阶/动效/层级）。
+     ★ 按共用 token 自己的边界「主色一律不进这里，每个游戏保留自己的气质」，
+       搜打撤的主色只放在本文件的 --df-* 下，不去改跨游戏共用的 shared/。 */
 
 /* ========================================================================
-   搜打撤 —— 军事战术风 UI
-   深色底 + 琥珀 / 青色高亮，数值统一使用等宽字体
+   搜打撤 —— 战术视觉语言（DF / P0）
+   冷黑底 · 白灰正文 · 信号橙 · 危险红 · 安全绿
+   2px 圆角 / 1px 细线 / 切角 / 四角括号 / 斜线网格 / 轻微扫描线
+   禁止大圆角、彩色渐变、发光、玻璃拟态
    ===================================================================== */
 
+/* ========================================================================
+   本地自托管字体（W0）：Barlow Condensed + JetBrains Mono
+   - 授权：SIL Open Font License 1.1（可商用/可再分发），授权全文见
+     assets/fonts/OFL-BarlowCondensed.txt、OFL-JetBrainsMono.txt
+   - 为什么只用拉丁子集：中文继续走系统字体（PingFang/微软雅黑），
+     数值与英文标签才是"军事数据感"的载体，拉丁子集每个仅 ~20KB，
+     弱网首屏代价可忽略；中文全量 webfont 会带来数 MB 体积，得不偿失。
+   - font-display: swap —— 字体没就位时先用回退字体渲染，绝不白屏等字体。
+   - 路径相对站点根：styles.css 与 assets/ 同级，deploy 后结构一致。
+   ===================================================================== */
+@font-face {
+  font-family: "Barlow Condensed";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/barlow-condensed-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./assets/fonts/barlow-condensed-latin-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/barlow-condensed-latin-700-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/jetbrains-mono-latin-700-normal.woff2") format("woff2");
+}
+
 :root {
-  --bg: #080b10;
-  --bg-2: #0d1219;
-  --panel: rgba(13, 18, 25, 0.96);
-  --panel-soft: rgba(18, 24, 33, 0.86);
-  --line: #1d2632;
-  --line-2: #28323f;
-  --text: #d7dee8;
-  --dim: #7c8899;
-  --amber: #ffb020;
-  --cyan: #35e0d0;
-  --ok: #5ddc7a;
-  --danger: #ff4d4d;
-  --rare: #4fa3ff;
-  --epic: #b45cff;
-  --legendary: #ffb020;
-  --common: #9aa7b8;
+  /* ── 颜色：与 src/config.js 的 DF 逐字一致，tests/theme.test.mjs 锁同步 ── */
+  --df-bg: #07090B;
+  --df-panel: rgba(14,17,20,.92);
+  --df-line: rgba(255,255,255,.10);
+  --df-text: #F2F4F5;
+  --df-dim: #8C9299;
+  --df-accent: #FF5A1F;
+  --df-danger: #FF3B30;
+  --df-ok: #39D98A;
+  --df-info: #4FA3FF;
+
+  /* 六级稀有度：白 / 绿 / 蓝 / 紫 / 金 / 红 */
+  --df-r-white: #F2F4F5;
+  --df-r-green: #39D98A;
+  --df-r-blue: #4FA3FF;
+  --df-r-purple: #B45CFF;
+  --df-r-gold: #FFB020;
+  --df-r-red: #FF3B30;
+
+  /* 字体：Barlow Condensed / JetBrains Mono 为本地自托管（OFL，见文件头 @font-face），
+     中文继续走系统字体 —— 见上方说明，中文全量 webfont 体积不值当 */
+  --df-sans: "Noto Sans SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --df-label: "Barlow Condensed", "Oswald", "Roboto Condensed", "Arial Narrow", var(--df-sans);
+  --df-mono: "JetBrains Mono", "SFMono-Regular", "Consolas", "Courier New", monospace;
+
+  /* 形状 / 动效 */
+  --df-radius: 2px;
+  --df-cut: 8px;
+  --df-t-fast: 120ms;
+  --df-t-base: 180ms;
+  --df-ease-out: cubic-bezier(.22,.61,.36,1);
+
+  /* 半透明档位（由 tools/migrate-p0-theme.mjs 按全站实际 alpha 自动生成） */
+  --df-accent-a10: rgba(255,90,31,0.1);
+  --df-accent-a12: rgba(255,90,31,0.12);
+  --df-accent-a14: rgba(255,90,31,0.14);
+  --df-accent-a20: rgba(255,90,31,0.2);
+  --df-accent-a22: rgba(255,90,31,0.22);
+  --df-accent-a24: rgba(255,90,31,0.24);
+  --df-accent-a25: rgba(255,90,31,0.25);
+  --df-accent-a28: rgba(255,90,31,0.28);
+  --df-accent-a30: rgba(255,90,31,0.3);
+  --df-accent-a32: rgba(255,90,31,0.32);
+  --df-accent-a35: rgba(255,90,31,0.35);
+  --df-accent-a40: rgba(255,90,31,0.4);
+  --df-accent-a45: rgba(255,90,31,0.45);
+  --df-accent-a50: rgba(255,90,31,0.5);
+  --df-accent-a55: rgba(255,90,31,0.55);
+  --df-accent-a6: rgba(255,90,31,0.06);
+  --df-accent-a60: rgba(255,90,31,0.6);
+  --df-accent-a70: rgba(255,90,31,0.7);
+  --df-accent-a8: rgba(255,90,31,0.08);
+  --df-accent-a85: rgba(255,90,31,0.85);
+  --df-accent-a92: rgba(255,90,31,0.92);
+  --df-accent-a95: rgba(255,90,31,0.95);
+  --df-danger-a14: rgba(255,59,48,0.14);
+  --df-danger-a16: rgba(255,59,48,0.16);
+  --df-danger-a22: rgba(255,59,48,0.22);
+  --df-danger-a34: rgba(255,59,48,0.34);
+  --df-danger-a35: rgba(255,59,48,0.35);
+  --df-danger-a50: rgba(255,59,48,0.5);
+  --df-danger-a60: rgba(255,59,48,0.6);
+  --df-info-a30: rgba(79,163,255,0.3);
+  --df-info-a40: rgba(79,163,255,0.4);
+  --df-info-a45: rgba(79,163,255,0.45);
+  --df-info-a7: rgba(79,163,255,0.07);
+  --df-ok-a10: rgba(57,217,138,0.1);
+  --df-ok-a14: rgba(57,217,138,0.14);
+  --df-ok-a35: rgba(57,217,138,0.35);
+  --df-ok-a45: rgba(57,217,138,0.45);
+  --df-ok-a60: rgba(57,217,138,0.6);
+  --df-ok-a65: rgba(57,217,138,0.65);
+  --df-panel-a50: rgba(14,17,20,0.5);
+  --df-panel-a55: rgba(14,17,20,0.55);
+  --df-panel-a60: rgba(14,17,20,0.6);
+  --df-panel-a72: rgba(14,17,20,0.72);
+  --df-panel-a82: rgba(14,17,20,0.82);
+  --df-panel-a90: rgba(14,17,20,0.9);
+
+  /* ── 兼容别名：全站既有的 var(--bg/--amber/--cyan/...) 一次换肤，
+        不必逐条改结构，也不破坏任何选择器。旧名只作映射，不再定义颜色值。 ── */
+  --bg: var(--df-bg);
+  --bg-2: var(--df-panel);
+  --panel: var(--df-panel);
+  --panel-soft: var(--df-panel);
+  --line: var(--df-line);
+  --line-2: var(--df-line);
+  --text: var(--df-text);
+  --dim: var(--df-dim);
+  --amber: var(--df-accent);
+  --cyan: var(--df-info);
+  --ok: var(--df-ok);
+  --danger: var(--df-danger);
+  --rare: var(--df-r-blue);
+  --epic: var(--df-r-purple);
+  --legendary: var(--df-r-gold);
+  --common: var(--df-r-white);
   --cell: 46px;
-  /* 接入 ming-games 共用 token：圆角统一到 md 档（原 10px） */
-  --radius: var(--mg-r-md);
-  --sans: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
-  --mono: "Consolas", "SFMono-Regular", "JetBrains Mono", "Courier New", monospace;
+  --radius: var(--df-radius);
+  --sans: var(--df-sans);
+  --mono: var(--df-mono);
+
+  /* 覆盖共用 token 的圆角档：P0 要求 0~2px。pill 保持圆形 ——
+     触屏开火键 / 换弹进度环是功能性形状，砍成方角会伤可用性，留到 P1/P2 重做。 */
+  --mg-r-xs: 0px;
+  --mg-r-sm: 1px;
+  --mg-r-md: var(--df-radius);
+  --mg-r-lg: var(--df-radius);
+  /* 动效收口到 120~180ms ease-out，禁止长过渡与弹跳 */
+  --mg-t-slow: var(--df-t-base);
+  --mg-t-slower: var(--df-t-base);
+  --mg-ease-out: var(--df-ease-out);
+  --mg-ease-inout: var(--df-ease-out);
 }
 
 * {
@@ -61,9 +200,10 @@ body {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(1200px 520px at 50% -10%, rgba(255, 176, 32, 0.08), transparent 70%),
-    linear-gradient(to right, rgba(255, 255, 255, 0.022) 1px, transparent 1px) 0 0 / 40px 40px,
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.022) 1px, transparent 1px) 0 0 / 40px 40px;
+    repeating-linear-gradient(135deg, rgba(255,255,255,.018) 0 1px, transparent 1px 14px),
+    linear-gradient(to right, rgba(255,255,255,.022) 1px, transparent 1px) 0 0 / 40px 40px,
+    linear-gradient(to bottom, rgba(255,255,255,.022) 1px, transparent 1px) 0 0 / 40px 40px,
+    var(--df-bg);
   pointer-events: none;
 }
 
@@ -85,6 +225,11 @@ body {
   cursor: none;
 }
 
+/* P1 低血量：去饱和交给合成层（一次性 class 切换），不每帧跑全屏后处理。 */
+#game-canvas.low-hp {
+  filter: saturate(0.55) contrast(1.06);
+}
+
 #ui-root {
   position: absolute;
   inset: 0;
@@ -98,9 +243,9 @@ body {
   transform: translate(-50%, -50%);
   padding: 10px 18px;
   border-radius: var(--mg-r-sm);
-  background: rgba(10, 14, 19, 0.82);
-  border: 1px solid rgba(255, 176, 32, 0.45);
-  color: #ffb020;
+  background: var(--df-panel-a82);
+  border: 1px solid var(--df-accent-a45);
+  color: var(--df-accent);
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.4px;
@@ -152,7 +297,6 @@ body {
 
 .screen.overlay {
   background: rgba(5, 8, 12, 0.72);
-  backdrop-filter: blur(3px);
 }
 
 /* ============================ 主菜单 ============================ */
@@ -163,7 +307,7 @@ body {
   padding: 40px 32px 28px;
   border: 1px solid var(--line);
   border-radius: var(--mg-r-lg);
-  background: linear-gradient(180deg, rgba(16, 22, 31, 0.94), rgba(10, 14, 20, 0.94));
+  background: var(--df-panel);
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
@@ -172,7 +316,7 @@ body {
   font-weight: 800;
   letter-spacing: 12px;
   color: var(--amber);
-  text-shadow: 0 0 34px rgba(255, 176, 32, 0.35);
+  text-shadow: 0 0 34px var(--df-accent-a35);
   line-height: 1.1;
 }
 
@@ -200,7 +344,7 @@ body {
 .stat {
   border: 1px solid var(--line);
   border-radius: var(--mg-r-sm);
-  background: rgba(8, 11, 16, 0.6);
+  background: var(--df-panel-a60);
   padding: 10px 8px;
   display: flex;
   flex-direction: column;
@@ -258,7 +402,7 @@ body {
 .btn {
   appearance: none;
   border: 1px solid var(--line-2);
-  background: linear-gradient(180deg, rgba(30, 39, 51, 0.9), rgba(19, 25, 34, 0.9));
+  background: var(--df-panel);
   color: var(--text);
   font-family: var(--sans);
   font-size: 14px;
@@ -284,9 +428,9 @@ body {
 }
 
 .btn.primary {
-  background: linear-gradient(180deg, rgba(255, 176, 32, 0.92), rgba(198, 128, 12, 0.92));
-  border-color: rgba(255, 200, 120, 0.5);
-  color: #1a1205;
+  background: var(--df-accent);
+  border-color: var(--df-accent);
+  color: var(--df-bg);
 }
 
 .btn.ghost {
@@ -295,9 +439,9 @@ body {
 }
 
 .btn.danger {
-  border-color: rgba(255, 77, 77, 0.5);
-  color: #ffb3b3;
-  background: linear-gradient(180deg, rgba(70, 22, 22, 0.9), rgba(40, 14, 14, 0.9));
+  border-color: var(--df-danger-a50);
+  color: var(--df-text);
+  background: var(--df-danger-a14);
 }
 
 .btn.small {
@@ -360,7 +504,7 @@ body {
   gap: 12px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--line);
-  background: linear-gradient(180deg, rgba(255, 176, 32, 0.06), transparent);
+  background: var(--df-accent-a6);
 }
 
 .panel-head h2 {
@@ -392,7 +536,7 @@ body {
   justify-content: flex-end;
   padding: 14px 18px;
   border-top: 1px solid var(--line);
-  background: rgba(8, 11, 16, 0.5);
+  background: var(--df-panel-a50);
 }
 
 .hint {
@@ -410,7 +554,7 @@ body {
 }
 
 .warn-text {
-  color: #ffb3b3;
+  color: var(--df-text);
   font-size: 12px;
   margin: 3px 0;
 }
@@ -463,13 +607,408 @@ body {
 
 .opt.active {
   border-color: var(--amber);
-  background: rgba(255, 176, 32, 0.14);
-  color: #ffe1a8;
+  background: var(--df-accent-a14);
+  color: var(--df-text);
 }
 
 .opt.missing {
   opacity: 0.55;
   border-style: dashed;
+}
+
+/* ============================== P6 改枪台 ============================== */
+/* 独立 section（不是 opt-block）：紧贴装备槽，第一屏就能看到"选完枪就地改枪"。
+   左侧竖条用警告色点明这是会改数值的部件，与只读信息的板块区分开。 */
+.gun-bench-section {
+  border: 1px solid var(--df-line);
+  border-left: 2px solid var(--amber);
+  background: var(--df-panel-a50);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.gun-bench > h3 {
+  margin: 0;
+  font: 600 12px var(--df-label);
+  letter-spacing: .08em;
+  color: var(--amber);
+}
+.gun-bench-card {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--mg-r-sm);
+  background: rgba(8, 11, 16, 0.55);
+}
+.gun-bench-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.gun-bench-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.gun-bench-tag {
+  font-size: 11px;
+  color: var(--dim);
+  border: 1px solid var(--line-2);
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+/* P14 改枪台侧视线稿：装了什么一眼可见（SVG 由 gunsketch.js 纯逻辑生成，与 3D 枪模同源） */
+.gun-bench-preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  /* W1 起这里装实时 3D 枪模：放宽到卡片全宽，展示台才有"产品页"的份量；
+     线稿回退层仍按 320 宽居中，不会因为容器变宽而拉伸。 */
+  width: min(100%, 560px);
+  margin: -2px auto 12px;
+  padding: 6px 6px 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--mg-r-sm);
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 255, 255, 0.05), transparent 70%),
+    rgba(4, 7, 11, 0.55);
+}
+/* 3D 展示台：去掉自己的描边与底色（外层容器已经有），只保留取景与手势 */
+.gun-bench-3d {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  min-height: 150px;
+  max-height: 300px;
+  border: 0;
+  background: transparent;
+}
+.gun-bench-3d .preview3d-hint { right: 6px; bottom: 4px; }
+/* 线稿回退层：3D 就位后隐藏（main.js 给外层加 .has3d） */
+.gun-bench-sketch {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+.gun-bench-preview.has3d .gun-bench-sketch { display: none; }
+.gun-bench-preview svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.gun-bench-preview-tag {
+  font-size: 10.5px;
+  letter-spacing: 0.4px;
+  color: var(--dim);
+}
+
+/* ── W0：局外 3D 预览容器（改枪台 / 装备角色 / 干员共用） ──────────────
+   形态：产品展示台 = 顶部冷光晕 + 底部细网格 + 一圈 1px 描边。
+   不用背景模糊（P0 明确禁止玻璃拟态），质感靠渐变与网格，不靠模糊。
+   尺寸用 aspect-ratio，窄屏自动变矮；触屏靠 touch-action:none 独占手势。 */
+.preview3d-host {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  min-height: 130px;
+  max-height: 340px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--mg-r-sm);
+  cursor: grab;
+  touch-action: none;
+  background:
+    radial-gradient(130% 100% at 50% 16%, rgba(122, 162, 222, 0.16), transparent 62%),
+    radial-gradient(80% 55% at 50% 102%, rgba(255, 255, 255, 0.055), transparent 72%),
+    linear-gradient(180deg, rgba(9, 13, 19, 0.96), rgba(4, 7, 11, 0.99));
+}
+.preview3d-host::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(100% 100% at 50% 52%, #000 38%, transparent 78%);
+  mask-image: radial-gradient(100% 100% at 50% 52%, #000 38%, transparent 78%);
+}
+.preview3d-host:active { cursor: grabbing; }
+.preview3d-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* 无 WebGL / 加载失败时的回退：保持同样尺寸，不塌陷、不留白洞 */
+.preview3d-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--df-label);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-align: center;
+  padding: 8px;
+}
+.preview3d-fallback svg {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+}
+/* 角标：显示"3D / 拖拽旋转"这类操作提示，避免玩家不知道能转 */
+.preview3d-hint {
+  position: absolute;
+  right: 8px;
+  bottom: 7px;
+  z-index: 2;
+  font-family: var(--df-label);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+  pointer-events: none;
+}
+.gun-bench-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.slot-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.slot-name {
+  flex: 0 0 40px;
+  font-size: 12px;
+  color: var(--dim);
+  font-family: var(--mono);
+}
+.slot-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.mod-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 5px 10px;
+  min-width: 56px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--mg-r-sm);
+  background: rgba(10, 14, 20, 0.7);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: var(--sans);
+  line-height: 1.25;
+}
+.mod-chip:hover {
+  border-color: var(--amber);
+}
+.mod-chip.active {
+  border-color: var(--amber);
+  background: var(--df-accent-a14);
+  color: var(--df-text);
+}
+.mod-name {
+  font-weight: 600;
+}
+.mod-weight {
+  font-size: 10px;
+  color: var(--dim);
+}
+.gun-bench-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 8px 12px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-2);
+}
+.stat-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+/* 单位后缀：比数值小一号、压暗，避免"30 发"和"880 m/s"挤成一团 */
+.stat-unit {
+  margin-left: 2px;
+  font-family: var(--df-label);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+}
+/* 枚举型（开火模式）：不走等宽数字，用标签字体 */
+.stat-text {
+  font-family: var(--df-label);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+.stat-label {
+  font-size: 11px;
+  color: var(--dim);
+}
+.stat-val {
+  font-size: 13px;
+  font-family: var(--mono);
+  color: var(--text);
+}
+.stat-base {
+  color: var(--dim);
+}
+.stat-arrow {
+  color: var(--dim);
+}
+.stat-after.better,
+.stat-arrow.better {
+  color: #5DCAA5;
+}
+.stat-after.worse,
+.stat-arrow.worse {
+  color: #F0997B;
+}
+
+/* ============================== P7 弹药与医疗 ============================== */
+/* 与改枪台同构：左侧竖条用信息蓝，和"会改数值"的橙色改枪台区分开。 */
+.ammo-config {
+  border: 1px solid var(--df-line);
+  border-left: 2px solid var(--df-info, #4fa3ff);
+  background: var(--df-panel-a50);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.ammo-block { padding: 0; }
+.ammo-block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.ammo-block-head h3 {
+  margin: 0;
+  font: 600 12px var(--df-label);
+  letter-spacing: .08em;
+  color: var(--df-info, #4fa3ff);
+}
+.ammo-weapon {
+  padding: 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--mg-r-sm);
+  background: rgba(8, 11, 16, 0.55);
+}
+.ammo-weapon + .ammo-weapon { margin-top: 8px; }
+.ammo-weapon-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.ammo-weapon-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.ammo-weapon-grade {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--df-info, #4fa3ff);
+}
+.ammo-grades { display: flex; gap: 6px; flex-wrap: wrap; }
+.ammo-grade-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 5px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--mg-r-sm);
+  background: rgba(10, 14, 20, 0.7);
+  color: var(--text);
+  cursor: pointer;
+  font-family: var(--sans);
+  line-height: 1.25;
+}
+.ammo-grade-chip:hover { border-color: var(--df-info, #4fa3ff); }
+.ammo-grade-chip.active {
+  border-color: var(--df-info, #4fa3ff);
+  background: rgba(79, 163, 255, 0.14);
+}
+.ammo-grade-chip .g-name { font-size: 12px; font-weight: 600; }
+.ammo-grade-chip .g-pen {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--dim);
+}
+.ammo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+.ammo-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--mg-r-sm);
+  background: rgba(10, 14, 20, 0.65);
+}
+.ammo-cell-info {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+.ammo-cell-name { font-size: 12px; font-weight: 600; color: var(--text); }
+.ammo-cell-warehouse {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--dim);
+}
+.ammo-cell-ctrl {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.ammo-helmet-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-2);
+}
+.ammo-helmet-label {
+  flex: 0 0 40px;
+  font: 600 11px var(--mono);
+  letter-spacing: .08em;
+  color: var(--dim);
+}
+.ammo-cell-ctrl .step { width: 24px; height: 24px; font-size: 14px; }
+.ammo-cell-count {
+  font-family: var(--mono);
+  font-size: 14px;
+  min-width: 20px;
+  text-align: center;
+  color: var(--text);
+}
+.ammo-med-line { margin: 10px 0 0; font-size: 11px; color: var(--dim); }
+
+@media (max-width: 760px) {
+  .ammo-grid { grid-template-columns: 1fr; }
+  .ammo-block-head { flex-direction: column; gap: 4px; }
 }
 
 .opt-row.counter {
@@ -516,7 +1055,7 @@ body {
   border: 1px solid var(--line);
   border-radius: var(--mg-r-md);
   padding: 12px;
-  background: rgba(8, 11, 16, 0.55);
+  background: var(--df-panel-a55);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -536,7 +1075,7 @@ body {
 }
 
 .side-block.warn-block.active {
-  border-color: rgba(255, 77, 77, 0.35);
+  border-color: var(--df-danger-a35);
   background: rgba(60, 16, 16, 0.35);
   padding: 10px 12px;
 }
@@ -578,7 +1117,7 @@ body {
   padding: 9px 11px;
   border-radius: var(--mg-r-sm);
   border: 1px solid var(--line-2);
-  background: rgba(6, 9, 13, 0.9);
+  background: var(--df-panel-a90);
   color: var(--text);
   font-family: var(--mono);
   font-size: 13px;
@@ -607,7 +1146,7 @@ body {
   padding: 9px 10px;
   border: 1px solid var(--line-2);
   border-radius: var(--mg-r-sm);
-  background: rgba(6, 9, 13, 0.9);
+  background: var(--df-panel-a90);
   color: var(--text);
   font-family: var(--sans);
   cursor: pointer;
@@ -615,13 +1154,13 @@ body {
 }
 
 .map-card:hover {
-  border-color: rgba(255, 176, 32, 0.45);
+  border-color: var(--df-accent-a45);
 }
 
 .map-card.active {
   border-color: var(--amber);
-  background: rgba(255, 176, 32, 0.1);
-  box-shadow: inset 0 0 0 1px rgba(255, 176, 32, 0.25);
+  background: var(--df-accent-a10);
+  box-shadow: inset 0 0 0 1px var(--df-accent-a25);
 }
 
 .map-card:focus-visible {
@@ -684,7 +1223,7 @@ body {
   background-size: var(--cell) var(--cell);
   border: 1px solid var(--line);
   border-radius: var(--mg-r-sm);
-  background-color: rgba(8, 11, 16, 0.5);
+  background-color: var(--df-panel-a50);
 }
 
 .grid.small {
@@ -710,12 +1249,12 @@ body {
 
 .grid-item:hover {
   border-color: var(--amber);
-  box-shadow: 0 0 0 1px rgba(255, 176, 32, 0.35) inset;
+  box-shadow: 0 0 0 1px var(--df-accent-a35) inset;
 }
 
 .grid-item.selected {
   border-color: var(--cyan);
-  box-shadow: 0 0 0 1px rgba(53, 224, 208, 0.45) inset;
+  box-shadow: 0 0 0 1px var(--df-info-a45) inset;
 }
 
 .grid-item .gi-name {
@@ -750,7 +1289,7 @@ body {
   background: linear-gradient(160deg, rgba(55, 34, 78, 0.95), rgba(24, 20, 38, 0.95));
 }
 .grid-item.rar-legendary {
-  box-shadow: inset 0 0 0 1px rgba(255, 176, 32, 0.7);
+  box-shadow: inset 0 0 0 1px var(--df-accent-a70);
   background: linear-gradient(160deg, rgba(78, 55, 18, 0.95), rgba(32, 24, 12, 0.95));
 }
 
@@ -762,6 +1301,18 @@ body {
   pointer-events: none;
   -webkit-user-drag: none;
   user-select: none;
+}
+
+/* 外部 SVG 图标（game-icons.net，CC BY 3.0）：只取 alpha 作蒙版，
+   颜色由 background-color 给，所以同一张图能跟随稀有度/状态色染色。 */
+.icon-mask {
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  flex: 0 0 auto;
 }
 
 /* ============================ 列表行 ============================ */
@@ -800,9 +1351,9 @@ body {
 }
 
 .item-row.selected {
-  border-color: rgba(255, 176, 32, 0.85);
-  background: rgba(255, 176, 32, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(255, 176, 32, 0.4);
+  border-color: var(--df-accent-a85);
+  background: var(--df-accent-a12);
+  box-shadow: inset 0 0 0 1px var(--df-accent-a40);
 }
 
 .item-main {
@@ -857,7 +1408,7 @@ body {
 }
 
 .howto-body p.danger {
-  color: #ffb3b3;
+  color: var(--df-text);
 }
 
 .howto-body ul {
@@ -871,6 +1422,53 @@ body {
 .howto-body .keys {
   list-style: none;
   padding: 0;
+}
+
+/* ============================ 致谢屏 ============================ */
+
+.credits-note-top {
+  margin: 0 0 18px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--df-accent);
+  background: var(--df-accent-a8);
+  color: var(--df-text);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.credits-body .credits-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.credits-body .credits-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--df-line);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.credits-name {
+  color: var(--df-text);
+  min-width: 0;
+}
+
+.credits-lic {
+  font-family: var(--df-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--df-accent);
+  white-space: nowrap;
+}
+
+.credits-note {
+  grid-column: 1 / -1;
+  color: var(--df-dim);
+  font-size: 11px;
 }
 
 kbd {
@@ -897,11 +1495,11 @@ kbd {
 }
 
 .result-head.ok {
-  background: linear-gradient(180deg, rgba(93, 220, 122, 0.14), transparent);
+  background: var(--df-ok-a14);
 }
 
 .result-head.bad {
-  background: linear-gradient(180deg, rgba(255, 77, 77, 0.16), transparent);
+  background: var(--df-danger-a16);
 }
 
 .result-title {
@@ -933,7 +1531,7 @@ kbd {
   font-size: 44px;
   font-weight: 800;
   color: var(--amber);
-  text-shadow: 0 0 26px rgba(255, 176, 32, 0.4);
+  text-shadow: 0 0 26px var(--df-accent-a40);
   line-height: 1;
 }
 
@@ -968,7 +1566,7 @@ kbd {
   display: flex;
   flex-direction: column;
   background: rgba(10, 14, 20, 0.96);
-  border: 1px solid rgba(255, 176, 32, 0.35);
+  border: 1px solid var(--df-accent-a35);
   border-radius: var(--mg-r-md);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.65);
   overflow: hidden;
@@ -987,7 +1585,7 @@ kbd {
   font-weight: 600;
   color: var(--amber);
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 176, 32, 0.08);
+  background: var(--df-accent-a8);
 }
 
 .battle-panel footer {
@@ -1085,18 +1683,18 @@ body.touch-mode .bp-stat .v {
 }
 
 .toast.ok {
-  border-color: rgba(93, 220, 122, 0.6);
+  border-color: var(--df-ok-a60);
   color: #b9f5c6;
 }
 
 .toast.warn {
-  border-color: rgba(255, 176, 32, 0.6);
+  border-color: var(--df-accent-a60);
   color: #ffdca3;
 }
 
 .toast.danger {
-  border-color: rgba(255, 77, 77, 0.6);
-  color: #ffb3b3;
+  border-color: var(--df-danger-a60);
+  color: var(--df-text);
 }
 
 .toast.out {
@@ -1205,7 +1803,7 @@ body.touch-mode .bp-stat .v {
   margin: 0;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  border: 2px solid rgba(255, 176, 32, 0.32);
+  border: 2px solid var(--df-accent-a32);
   background: radial-gradient(circle, rgba(20, 28, 38, 0.4), rgba(10, 14, 20, 0.18));
   opacity: 0.3;
   transition: opacity 0.12s ease;
@@ -1224,9 +1822,9 @@ body.touch-mode .bp-stat .v {
   height: 52px;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  border: 2px solid rgba(255, 176, 32, 0.7);
-  background: radial-gradient(circle at 35% 30%, rgba(255, 200, 120, 0.45), rgba(255, 176, 32, 0.2));
-  box-shadow: 0 0 12px rgba(255, 176, 32, 0.24);
+  border: 2px solid var(--df-accent-a70);
+  background: radial-gradient(circle at 35% 30%, rgba(255, 200, 120, 0.45), var(--df-accent-a20));
+  box-shadow: none;
 }
 
 /* 左摇杆固定在左下角（手游惯例）。
@@ -1315,7 +1913,7 @@ body.touch-mode .tc-stick-left {
   box-sizing: border-box;
   padding: 2px;
   border-radius: var(--mg-r-md);
-  border: 1px solid rgba(255, 176, 32, 0.4);
+  border: 1px solid var(--df-accent-a40);
   background: linear-gradient(180deg, rgba(30, 39, 51, 0.7), rgba(14, 19, 27, 0.7));
   color: var(--text);
   font-size: 12px;
@@ -1344,7 +1942,7 @@ body.touch-mode .tc-stick-left {
   pointer-events: none;
   display: none;
   background: conic-gradient(
-    rgba(255, 176, 32, 0.95) calc(var(--p, 0) * 1%),
+    var(--df-accent-a95) calc(var(--p, 0) * 1%),
     rgba(255, 255, 255, 0.12) 0
   );
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
@@ -1384,21 +1982,21 @@ body.touch-mode .tc-stick-left {
   position: absolute;
   right: var(--tc-edge);
   bottom: var(--tc-edge);
-  border: 2px solid rgba(255, 77, 77, 0.6);
+  border: 2px solid var(--df-danger-a60);
   background: radial-gradient(circle at 35% 30%, rgba(255, 120, 120, 0.34), rgba(120, 22, 22, 0.5));
-  box-shadow: 0 0 16px rgba(255, 77, 77, 0.22);
+  box-shadow: none;
 }
 
 .tc-btn.tc-on {
   border-color: var(--amber);
-  background: rgba(255, 176, 32, 0.28);
-  color: #ffe1a8;
+  background: var(--df-accent-a28);
+  color: var(--df-text);
 }
 
 .tc-btn.tc-pressed {
   transform: scale(0.95);
   border-color: var(--danger);
-  background: rgba(255, 77, 77, 0.34);
+  background: var(--df-danger-a34);
   color: #ffd9d9;
 }
 
@@ -1406,7 +2004,7 @@ body.touch-mode .tc-stick-left {
 .tc-btn.tc-tapped {
   transform: scale(0.93);
   border-color: var(--amber);
-  background: rgba(255, 176, 32, 0.3);
+  background: var(--df-accent-a30);
 }
 
 /* --- 上下文交互键 --- */
@@ -1445,7 +2043,7 @@ body.touch-mode .tc-stick-left {
   z-index: 50;
   outline-color: var(--danger);
   cursor: grabbing;
-  box-shadow: 0 0 16px rgba(255, 77, 77, 0.5);
+  box-shadow: none;
 }
 
 /* 完成/重置工具条：编辑态浮在最上层居中 */
@@ -1474,7 +2072,6 @@ body.touch-mode .tc-stick-left {
   align-items: center;
   justify-content: center;
   background: rgba(5, 8, 12, 0.88);
-  backdrop-filter: blur(3px);
   padding: 24px;
 }
 
@@ -1583,7 +2180,7 @@ body.touch-mode .tc-zone-top {
   transform: translateY(-50%);
   width: 76px;
   padding: 10px 4px;
-  border: 1px dashed rgba(53, 224, 208, 0.4);
+  border: 1px dashed var(--df-info-a40);
   border-radius: var(--mg-r-md);
   background: rgba(10, 16, 22, 0.4);
   color: var(--cyan);
@@ -1726,9 +2323,9 @@ body.touch-mode .battle-panel:not(.hidden) {
 
 /* 开关按钮的"已开启"状态（装备保险）。老开关只改文案，互不影响。 */
 .btn.on {
-  border-color: rgba(93, 220, 122, 0.65);
+  border-color: var(--df-ok-a65);
   color: var(--ok);
-  background: rgba(93, 220, 122, 0.1);
+  background: var(--df-ok-a10);
 }
 
 /* 军械商声望条（商店顶部）：让玩家知道离下一级还差多少 */
@@ -1739,9 +2336,9 @@ body.touch-mode .battle-panel:not(.hidden) {
   gap: 10px;
   padding: 9px 11px;
   margin-bottom: 6px;
-  border: 1px solid rgba(53, 224, 208, 0.3);
+  border: 1px solid var(--df-info-a30);
   border-radius: var(--mg-r-sm);
-  background: rgba(53, 224, 208, 0.07);
+  background: var(--df-info-a7);
 }
 
 .shop-rep .k {
@@ -1763,7 +2360,7 @@ body.touch-mode .battle-panel:not(.hidden) {
 
 .btn.lock {
   color: var(--amber);
-  border-color: rgba(255, 176, 32, 0.5);
+  border-color: var(--df-accent-a50);
 }
 
 /* 图鉴：按稀有度分组，未发现的格子褪成剪影 */
@@ -1811,7 +2408,7 @@ body.touch-mode .battle-panel:not(.hidden) {
 }
 
 .codex-cell.brought {
-  border-color: rgba(255, 176, 32, 0.55);
+  border-color: var(--df-accent-a55);
 }
 
 .codex-name {
@@ -1858,7 +2455,7 @@ body.touch-mode .codex-grid {
   padding: 10px 14px;
   border: 1px solid var(--line);
   border-radius: var(--mg-r-sm);
-  background: rgba(8, 11, 16, 0.6);
+  background: var(--df-panel-a60);
 }
 
 .upgrade-summary .k {
@@ -1884,7 +2481,7 @@ body.touch-mode .codex-grid {
   border-top: 2px solid var(--branch-color, var(--amber));
   border-radius: var(--mg-r-md);
   padding: var(--mg-sp-3);
-  background: linear-gradient(180deg, rgba(16, 22, 31, 0.72), rgba(8, 11, 16, 0.72));
+  background: linear-gradient(180deg, rgba(16, 22, 31, 0.72), var(--df-panel-a72));
   display: flex;
   flex-direction: column;
   gap: var(--mg-sp-3);
@@ -1935,7 +2532,7 @@ body.touch-mode .codex-grid {
 
 .upgrade-level.max {
   color: var(--ok);
-  border-color: rgba(93, 220, 122, 0.45);
+  border-color: var(--df-ok-a45);
 }
 
 .upgrade-dots {
@@ -1952,7 +2549,7 @@ body.touch-mode .codex-grid {
 
 .upgrade-dot.on {
   background: var(--branch-color, var(--amber));
-  box-shadow: 0 0 8px color-mix(in srgb, var(--branch-color, var(--amber)) 45%, transparent);
+  box-shadow: none;
 }
 
 .upgrade-nodes {
@@ -1972,7 +2569,7 @@ body.touch-mode .codex-grid {
 }
 
 .upgrade-node.owned {
-  border-color: rgba(93, 220, 122, 0.35);
+  border-color: var(--df-ok-a35);
   background: rgba(24, 46, 30, 0.28);
 }
 
@@ -2066,10 +2663,1036 @@ body.touch-mode .codex-grid {
   }
 }
 
-/* 触屏设备最小点击区域（无障碍 WCAG 2.5.5） */
-@media (pointer: coarse) {
-  button, [role="button"], a[href], input[type="submit"], input[type="button"] {
-    min-height: 44px;
-    min-width: 44px;
-  }
+
+
+/* ========================================================================
+   P0 战术形状层（统一令牌，末尾覆盖旧散件）
+   ===================================================================== */
+.panel {
+  position: relative;
+  border-radius: var(--df-radius);
+  background: var(--df-panel);
+  border: 1px solid var(--df-line);
+}
+
+/* 四角括号：用边框画，不用渐变；不裁剪内容，下拉/提示不会被切掉 */
+.panel::before,
+.panel::after {
+  content: '';
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  pointer-events: none;
+  z-index: 2;
+}
+.panel::before {
+  top: 0; left: 0;
+  border-top: 1px solid var(--df-accent);
+  border-left: 1px solid var(--df-accent);
+}
+.panel::after {
+  right: 0; bottom: 0;
+  border-right: 1px solid var(--df-accent);
+  border-bottom: 1px solid var(--df-accent);
+}
+
+/* 切角只给按钮与地图卡：这些元素没有溢出内容，裁掉一角不会丢信息 */
+.btn, .map-card {
+  clip-path: polygon(var(--df-cut) 0, 100% 0, 100% calc(100% - var(--df-cut)), calc(100% - var(--df-cut)) 100%, 0 100%, 0 var(--df-cut));
+  border-radius: var(--df-radius);
+  border: 1px solid var(--df-line);
+  transition: border-color var(--df-t-fast) var(--df-ease-out),
+              background var(--df-t-fast) var(--df-ease-out),
+              color var(--df-t-fast) var(--df-ease-out);
+}
+.btn.small, .btn.tiny { --df-cut: 4px; }
+.btn:hover:not(:disabled) { border-color: var(--df-accent); transform: none; }
+.btn.primary { background: var(--df-accent); color: var(--df-bg); }
+.btn.danger { background: var(--df-danger-a14); color: var(--df-danger); }
+
+/* 拉丁战术标签：大写 + 0.08em 字距；中文不受 text-transform 影响 */
+.tagline, .menu-sub, .panel-head, .btn, .map-card-tag, .tc-label, .step, .kv, .hint {
+  font-family: var(--df-label);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.counter-value, .item-value, .kv, .stat, .bp-stat, .result-stats, .menu-stats,
+.seed-input, .result-grade {
+  font-family: var(--df-mono);
+  font-variant-numeric: tabular-nums;
+}
+body { font-family: var(--df-sans); font-variant-numeric: tabular-nums; }
+
+/* 轻微扫描线：盖在 3D 画面/菜单背景上，不盖 HUD（#ui-root 抬到 z-index 1） */
+#app::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: .16;
+  background: repeating-linear-gradient(to bottom, rgba(0,0,0,.55) 0 1px, transparent 1px 3px);
+}
+#ui-root { z-index: 1; }
+
+/* 菜单溢出兜底：新增「改装」入口后内容变高，flex center 会把超出部分推到
+   视口外被裁（标题被切半截就是这么来的）。align-items:flex-start + margin:auto：
+   内容够矮时仍居中，超高时从顶部开始并可滚。 */
+[data-screen="menu"] { align-items: flex-start; overflow-y: auto; }
+[data-screen="menu"] > .menu { margin: auto; }
+.logo { text-shadow: none; }
+
+@media (max-height: 520px) {
+  .menu { padding: 10px 18px 10px; }
+  .logo { font-size: 26px; letter-spacing: 5px; }
+  .tagline, .menu-sub { display: none; }
+  .menu-stats { gap: 5px; margin: 8px 0 8px; }
+  .stat { padding: 5px 6px; gap: 2px; font-size: 11px; }
+  /* 7 个按钮排两列：主按钮独占整行，其余 6 个三行。
+     横屏 375px 高度下不这么做，「开始战局」会落到视口外要滚动才看得见。 */
+  .menu-actions { grid-template-columns: repeat(2, 1fr); gap: 5px; }
+  .menu-actions .btn.primary { grid-column: 1 / -1; }
+  .menu-actions .btn { padding: 5px 10px; font-size: 12px; }
+  .menu-foot { margin-top: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #app::after { display: none; }
+}
+
+/* ========================================================================
+   P2 局外战术工作台（大厅 / 战前 / 仓库 / 商店 / 结算 共用外壳）
+   末尾覆盖式：不改 P0 令牌与形状层，只重排局外屏。
+   尺寸与 src/config.js 的 HUB.navWidth / topbarHeight / actionbarHeight 对应。
+   ===================================================================== */
+.df-hub { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
+.df-hub > * { pointer-events: auto; }
+#ui-root.hub-off .df-hub,
+#ui-root.in-battle .df-hub { display: none; }
+
+.hub-top {
+  position: absolute; top: 0; left: 0; right: 0; height: 44px;
+  display: flex; align-items: center; gap: 14px; padding: 0 14px;
+  background: var(--df-panel-a90); border-bottom: 1px solid var(--df-line);
+}
+.hub-brand { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.hub-brand-mark { width: 12px; height: 12px; background: var(--df-accent); clip-path: polygon(0 0, 100% 0, 100% 60%, 60% 100%, 0 100%); }
+.hub-brand-cn { font-size: 15px; font-weight: 700; letter-spacing: .14em; color: var(--df-text); }
+.hub-brand-en { font-family: var(--df-label); font-size: 10px; letter-spacing: .12em; color: var(--df-dim); }
+.hub-top-metrics { display: flex; flex: 0 1 auto; }
+.hub-metric { display: flex; flex-direction: column; gap: 1px; padding: 0 12px; border-left: 1px solid var(--df-line); }
+.hub-metric-k { font-family: var(--df-label); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--df-dim); white-space: nowrap; }
+.hub-metric-v { font-family: var(--df-mono); font-size: 13px; font-variant-numeric: tabular-nums; color: var(--df-accent); white-space: nowrap; }
+.hub-season { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--df-dim); white-space: nowrap; }
+.hub-season-id { padding: 2px 7px; border-left: 2px solid var(--df-accent); background: var(--df-accent-a20); color: var(--df-accent); font-family: var(--df-mono); font-size: 11px; }
+.hub-mode { font-family: var(--df-label); letter-spacing: .08em; text-transform: uppercase; }
+
+.hub-nav {
+  position: absolute; top: 44px; bottom: 64px; left: 0; width: 64px;
+  display: flex; flex-direction: column; overflow-y: auto; scrollbar-width: none;
+  background: var(--df-panel-a82); border-right: 1px solid var(--df-line);
+}
+.hub-nav::-webkit-scrollbar { display: none; }
+.hub-nav-item {
+  position: relative; flex: 0 0 auto; width: 100%; height: 58px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  appearance: none; background: transparent; border: 0;
+  border-bottom: 1px solid var(--df-line); border-left: 2px solid transparent;
+  color: var(--df-dim); cursor: pointer;
+  transition: background var(--df-t-fast) var(--df-ease-out),
+              color var(--df-t-fast) var(--df-ease-out),
+              border-color var(--df-t-fast) var(--df-ease-out);
+}
+.hub-nav-item:hover:not(:disabled) { background: var(--df-accent-a8); color: var(--df-text); }
+.hub-nav-item:active:not(:disabled) { background: var(--df-accent-a20); }
+.hub-nav-item.active { color: var(--df-accent); background: var(--df-accent-a12); border-left-color: var(--df-accent); }
+.hub-nav-item:disabled { opacity: .42; cursor: not-allowed; }
+.hub-nav-glyph { display: block; line-height: 0; }
+.hub-nav-label { font-size: 11px; line-height: 1; }
+.hub-nav-en { font-family: var(--df-label); font-size: 9px; letter-spacing: .06em; line-height: 1; opacity: .7; }
+.hub-nav-phase { position: absolute; top: 4px; right: 4px; font-family: var(--df-mono); font-size: 9px; color: var(--df-danger); }
+
+.hub-action {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 64px;
+  display: flex; align-items: center; gap: 14px; padding: 0 14px 0 78px;
+  background: var(--df-panel-a90); border-top: 1px solid var(--df-line);
+}
+.hub-label { font-family: var(--df-label); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--df-dim); white-space: nowrap; }
+.hub-squad { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.hub-squad-slot { padding: 5px 9px; border: 1px solid var(--df-line); font-family: var(--df-mono); font-size: 10px; color: var(--df-dim); white-space: nowrap; }
+.hub-squad-slot.player { border-color: var(--df-accent); color: var(--df-accent); background: var(--df-accent-a12); }
+.hub-loadout-readout { margin-left: auto; display: flex; align-items: center; gap: 16px; font-family: var(--df-mono); font-size: 11px; color: var(--df-dim); white-space: nowrap; }
+.hub-loadout-readout .over { color: var(--df-danger); }
+.hub-offline { color: var(--df-ok); }
+.hub-deploy { flex: 0 0 auto; min-width: 170px; min-height: 40px; }
+
+/* 从「居中白卡片」改为「全屏留白工作台」；pause 是 .overlay，保持原居中不动。
+   ⚠ 必须带 :not(.hidden)：本规则在文件末尾，若写成 .screen:not(.overlay){display:block}，
+   会以同等特异性覆盖前面的 .screen.hidden{display:none}，九张屏会同时叠在视口里。
+   那时 class 仍然正确、按 class 查的探针全绿，只有真实截图能发现。 */
+.screen:not(.overlay):not(.hidden) { display: block; padding: 56px 16px 76px 80px; }
+.screen.hidden { display: none !important; }
+.screen:not(.overlay):not(.hidden) > .panel,
+.screen:not(.overlay):not(.hidden) > .menu { width: 100%; max-width: none; height: 100%; max-height: none; margin: 0; }
+#ui-root.hub-off .screen:not(.overlay) { padding: 16px; }
+
+/* 大厅：主区 + 行动简报 */
+.menu {
+  display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px;
+  padding: 0; border: 0; background: transparent; box-shadow: none; text-align: left;
+}
+.menu-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; min-height: 0; overflow-y: auto; padding-right: 6px; }
+.menu-brand { border-left: 3px solid var(--df-accent); padding-left: 14px; }
+.logo { font-size: 44px; letter-spacing: 8px; line-height: 1.05; }
+.menu-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.menu-actions { grid-template-columns: repeat(auto-fit, minmax(146px, 1fr)); gap: 8px; }
+.menu-actions .btn.primary { grid-column: 1 / -1; min-height: 46px; }
+.menu-foot { margin-top: 0; justify-content: flex-start; }
+
+.menu-brief { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--df-line); background: var(--df-panel-a60); overflow: auto; }
+.menu-brief::before { content: ''; position: absolute; top: 0; left: 0; width: 12px; height: 12px; border-top: 1px solid var(--df-accent); border-left: 1px solid var(--df-accent); }
+.brief-head, .brief-label { font-family: var(--df-label); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--df-dim); }
+.brief-label { margin-top: 4px; }
+.brief-map { font-size: 22px; font-weight: 700; letter-spacing: 2px; color: var(--df-text); }
+.brief-tag { font-size: 12px; color: var(--df-accent); }
+.brief-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.brief-row { display: flex; flex-direction: column; gap: 2px; padding: 7px 9px; border: 1px solid var(--df-line); background: var(--df-panel-a50); }
+.brief-row .k { font-size: 10px; color: var(--df-dim); }
+.brief-row .v { font-family: var(--df-mono); font-size: 14px; color: var(--df-text); }
+.brief-row.ok .v { color: var(--df-ok); }
+.brief-pois, .brief-squad { display: flex; flex-wrap: wrap; gap: 5px; }
+.brief-poi { padding: 3px 6px; border: 1px solid var(--df-line); font-family: var(--df-mono); font-size: 10px; color: var(--df-dim); }
+.brief-slot { padding: 5px 8px; border: 1px solid var(--df-line); font-family: var(--df-mono); font-size: 10px; color: var(--df-dim); }
+.brief-slot.on { border-color: var(--df-accent); color: var(--df-accent); background: var(--df-accent-a12); }
+.menu-brief .hint { margin-top: auto; }
+
+/* 战前：地图卡拓扑 + 风险分级 */
+.map-card { display: flex; flex-direction: column; gap: 6px; padding: 12px; text-align: left; }
+.map-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.map-card-risk { padding: 2px 7px; border: 1px solid var(--df-accent); color: var(--df-accent); font-family: var(--df-label); font-size: 10px; letter-spacing: .08em; }
+.map-card-topo {
+  position: relative; display: block; height: 54px; border: 1px solid var(--df-line);
+  background: repeating-linear-gradient(0deg, transparent 0 12px, var(--df-line) 12px 13px),
+              repeating-linear-gradient(90deg, transparent 0 12px, var(--df-line) 12px 13px);
+}
+.map-card-pin { position: absolute; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 3px; font-family: var(--df-mono); font-size: 9px; color: var(--df-dim); white-space: nowrap; }
+.map-card-pin i { display: block; width: 5px; height: 5px; background: var(--df-accent); }
+.map-card-foot { font-family: var(--df-mono); font-size: 10px; color: var(--df-dim); }
+.risk-pick { display: flex; gap: 6px; flex-wrap: wrap; }
+.risk-opt { position: relative; display: flex; flex-direction: column; gap: 1px; padding: 6px 10px; border: 1px solid var(--df-line); background: var(--df-panel-a50); color: var(--df-dim); font-size: 12px; text-align: left; }
+.risk-opt small { font-family: var(--df-label); font-size: 9px; letter-spacing: .08em; opacity: .7; }
+.risk-opt em { position: absolute; top: 2px; right: 4px; font-family: var(--df-mono); font-size: 9px; font-style: normal; color: var(--df-danger); }
+.risk-opt.active { border-color: var(--df-accent); color: var(--df-accent); background: var(--df-accent-a12); }
+.risk-opt:disabled { opacity: .45; cursor: not-allowed; }
+
+/* 商店 / 交易行 双页签（交易行内容由 P2 交互提交接入，此处先立骨架） */
+.df-tabs { display: flex; border-bottom: 1px solid var(--df-line); background: var(--df-panel-a50); }
+.df-tab { display: flex; align-items: center; gap: 8px; padding: 10px 18px; border: 0; border-right: 1px solid var(--df-line); background: transparent; color: var(--df-dim); font-size: 13px; }
+.df-tab small { font-family: var(--df-label); font-size: 10px; letter-spacing: .08em; }
+.df-tab em { font-family: var(--df-mono); font-size: 9px; font-style: normal; color: var(--df-danger); }
+.df-tab.active { color: var(--df-accent); border-bottom: 2px solid var(--df-accent); background: var(--df-accent-a8); }
+.df-tab:disabled { opacity: .5; cursor: not-allowed; }
+
+/* 结算大印章 */
+.result-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 22px; }
+.result-copy { min-width: 0; }
+.result-stamp { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 132px; height: 112px; border: 2px solid currentColor; background: var(--df-panel-a50); transform: rotate(-6deg); }
+.result-head.ok .result-stamp { color: var(--df-ok); border-color: var(--df-ok); }
+.result-head.bad .result-stamp { color: var(--df-danger); border-color: var(--df-danger); }
+.result-stamp-en { font-family: var(--df-label); font-size: 12px; letter-spacing: .18em; }
+.result-stamp-cn { font-size: 11px; letter-spacing: .1em; }
+.result-stamp .result-grade { font-size: 38px; line-height: 1; }
+.result-head.ok .result-stamp .result-grade { color: var(--df-ok); }
+.result-head.bad .result-stamp .result-grade { color: var(--df-danger); }
+
+/* 667×375 手机横屏：顶栏 / 导航 / 底栏整体瘦身，简报让位给主区 */
+@media (max-height: 520px), (max-width: 760px) {
+  .hub-top { height: 32px; padding: 0 8px; gap: 8px; }
+  .hub-brand-en, .hub-season, .hub-metric-k { display: none; }
+  .hub-brand-cn { font-size: 12px; }
+  .hub-metric { padding: 0 8px; }
+  .hub-metric-v { font-size: 11px; }
+  .hub-nav { top: 32px; bottom: 44px; width: 44px; }
+  .hub-nav-item { height: 38px; }
+  .hub-nav-en, .hub-nav-phase { display: none; }
+  .hub-nav-label { font-size: 10px; }
+  .hub-action { height: 44px; padding: 0 8px 0 52px; gap: 8px; }
+  .hub-squad .hub-label, .hub-loadout-readout, .hub-squad-slot.standby, .hub-squad-slot.ai { display: none; }
+  .hub-deploy { min-width: 120px; min-height: 32px; padding: 6px 12px; font-size: 12px; }
+  .screen:not(.overlay):not(.hidden) { padding: 40px 8px 52px 52px; }
+  .menu { grid-template-columns: 1fr; }
+  .menu-brief { display: none; }
+  .logo { font-size: 26px; letter-spacing: 5px; }
+  .tagline, .menu-sub { display: none; }
+  .menu-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  .menu-actions .btn { padding: 5px 10px; font-size: 12px; }
+  .menu-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  .stat { padding: 5px 6px; }
+  .result-stamp { width: 96px; height: 82px; }
+  .result-stamp .result-grade { font-size: 26px; }
+  .map-card-topo { height: 36px; }
+}
+
+/* ========================================================================
+   P2 视觉复核修正（真浏览器截图里暴露、数字断言查不出的四件事）
+   ===================================================================== */
+
+/* 1. panel-body 必须 flex:1 + min-height:0 才会真的滚动。
+      否则战前 / 仓库下半截被裁在视口外，玩家够不到「部署」与「保险」。 */
+.screen:not(.overlay):not(.hidden) > .panel > .panel-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+
+/* 2. 结算页透出局内计时与 HUD 残留：给屏与面板不透明底，并抬到 HUD canvas 之上。 */
+[data-screen="result"] { background: var(--df-bg); z-index: 5; }
+[data-screen="result"] > .panel { background: var(--df-bg); }
+
+/* 3. 战前地图卡移到主区（见 ui.js 的 mission-pick），侧栏只放读数。
+      宽屏只改这一屏，900px 以下仍走原有单列适配，不能覆盖掉。 */
+.mission-pick { padding: 12px; border: 1px solid var(--df-line); background: var(--df-panel-a50); }
+.mission-pick > h3 { margin: 0 0 10px; font-family: var(--df-label); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--df-dim); }
+@media (min-width: 901px) {
+  [data-screen="loadout"] .loadout-grid { grid-template-columns: minmax(0, 1fr) 320px; }
+}
+[data-screen="loadout"] .map-pick { gap: 12px; }
+[data-screen="loadout"] .map-card-topo { height: 72px; }
+
+/* 4. 菜单主区与简报的淡战术网格：把大片空白变成工作台底纹，而不是空黑块。 */
+.menu-main, .menu-brief {
+  background-image:
+    repeating-linear-gradient(0deg, transparent 0 31px, var(--df-line) 31px 32px),
+    repeating-linear-gradient(90deg, transparent 0 31px, var(--df-line) 31px 32px);
+}
+.menu-main { padding: 8px 10px; }
+.menu-main::-webkit-scrollbar, .panel-body::-webkit-scrollbar, .menu-brief::-webkit-scrollbar { width: 6px; }
+.menu-main::-webkit-scrollbar-thumb, .panel-body::-webkit-scrollbar-thumb, .menu-brief::-webkit-scrollbar-thumb { background: var(--df-accent-a20); }
+
+/* 5. 667×375：把 7 个菜单按钮压进首屏，不再需要滚动才看见「玩法说明」。 */
+@media (max-height: 520px), (max-width: 760px) {
+  .menu-main { gap: 6px; padding: 4px 6px; }
+  /* 7 项统计由 3 列改 4 列 → 少一行，把最后一行菜单按钮从底栏下面救回来。 */
+  .menu-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .menu-stats .stat { padding: 3px 5px; }
+  .menu-stats .stat .v { font-size: 12px; }
+  .menu-actions { gap: 4px; }
+  .menu-actions .btn { min-height: 30px; padding: 3px 8px; font-size: 11px; }
+  .menu-actions .btn.primary { min-height: 34px; }
+  .menu-foot { margin-top: 2px; }
+  [data-screen="loadout"] .map-card-topo { height: 36px; }
+}
+
+/* 6. 21:9 超宽：顶栏/导航/底栏保持全宽，内容收窄居中，
+      否则统计卡散成一整行、主按钮横跨 2000px、下半屏空成黑块。 */
+@media (min-width: 1600px) {
+  .screen:not(.overlay):not(.hidden) > .menu { max-width: 1480px; margin: 0 auto; }
+  .screen:not(.overlay):not(.hidden) > .panel { max-width: 1760px; margin: 0 auto; }
+}
+
+/* ============================================================
+   P2 交互层：交易行本地报价 / 仓库工具栏 / 装备槽 / 二次确认
+   追加在末尾，不触碰 P0 令牌层与 P2 布局骨架的屏显隐规则。
+   ============================================================ */
+
+/* 1. 面板与弹层不是 .screen，隐藏规则要自己写；别碰 .screen.hidden 铁律。 */
+.panel-body.hidden, .market-body.hidden, .df-modal.hidden, .df-ctx-menu.hidden { display: none !important; }
+
+/* 2. 仓库分类 / 排序工具栏 */
+.df-toolbar { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; padding: 7px 16px; border-bottom: 1px solid var(--df-line); background: var(--df-panel-a50); }
+.tool-group { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.tool-label { font: 600 10px var(--df-label); letter-spacing: .08em; color: var(--df-dim); margin-right: 4px; }
+.tool-chip { padding: 4px 9px; border: 1px solid var(--df-line); background: transparent; color: var(--df-dim); font-size: 11px; cursor: pointer; clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px); }
+.tool-chip:hover:not(:disabled) { color: var(--df-text); border-color: var(--df-accent-a35); }
+.tool-chip:active:not(:disabled) { background: var(--df-accent-a14); }
+.tool-chip.active { color: var(--df-accent); border-color: var(--df-accent); background: var(--df-accent-a8); }
+.tool-hint { margin-left: auto; font-size: 10px; color: var(--df-dim); }
+.btn:focus-visible, .df-tab:focus-visible, .tool-chip:focus-visible,
+.equip-slot:focus-visible, .equip-chip:focus-visible, .map-card:focus-visible,
+.ctx-item:focus-visible { outline: 1px solid var(--df-accent); outline-offset: 1px; }
+
+/* 3. 交易行：本地 NPC 报价单（只用于购买物资，无共享库存） */
+.market-body { display: block; padding: 14px 18px; overflow-y: auto; }
+.market-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--df-line); }
+.market-head h3 { font: 600 12px var(--df-label); letter-spacing: .08em; margin: 0 0 4px; color: var(--df-text); }
+.market-head .hint { margin: 0; font-size: 11px; line-height: 1.5; }
+.market-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; padding-top: 12px; }
+.market-card { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--df-line); background: var(--df-panel); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+.market-card.sold { opacity: .55; }
+.market-main { flex: 1; min-width: 0; }
+.market-name { font-size: 13px; color: var(--df-text); }
+.market-meta { font: 10px var(--df-mono); color: var(--df-dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.market-price { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
+.market-price-v { font: 600 15px var(--df-mono); color: var(--df-text); }
+.market-trend { font: 11px var(--df-mono); }
+.market-trend.up { color: var(--df-danger); }
+.market-trend.down { color: var(--df-ok); }
+.market-trend.flat { color: var(--df-dim); }
+.market-buy { min-width: 64px; }
+.df-tab:hover:not(:disabled) { color: var(--df-text); }
+.df-tab:active:not(:disabled) { background: var(--df-accent-a14); }
+
+/* 4. 战前装备配置板 / 托盘（W2：角色 3D + 8 槽位） */
+.equip-bay { border: 1px solid var(--df-line); background: var(--df-panel-a50); padding: 10px 12px; margin-bottom: 12px; }
+.bay-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.bay-head h3 { font: 600 12px var(--df-label); letter-spacing: .08em; margin: 0; }
+.bay-head .hint { font-size: 10px; }
+/* 左角色 / 右槽位：窄屏（<720px）改成上下堆，角色台压到 150px 高 */
+.bay-body { display: grid; grid-template-columns: 226px minmax(0, 1fr); gap: 10px; margin: 8px 0; align-items: stretch; }
+.bay-char { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.bay-char-3d { position: relative; height: 190px; border: 1px solid var(--df-line); background: radial-gradient(120% 90% at 50% 12%, var(--df-accent-a8), transparent 62%), var(--df-bg); overflow: hidden; }
+/* 模型没就位时的占位：一行小字提示，不画假人 */
+.bay-char-3d:not(.has3d)::after { content: '角色模型载入中…'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 10px var(--df-mono); color: var(--df-dim); letter-spacing: .1em; }
+.bay-char-sheet { display: flex; flex-direction: column; gap: 3px; }
+.cs-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.cs-code { font: 700 11px var(--df-mono); letter-spacing: .1em; color: var(--op-color, var(--df-accent)); }
+.cs-name { font-size: 11px; color: var(--df-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 负重大字：这一屏的核心决策变量，刻意做得比标题大 */
+.cs-weight { display: flex; flex-direction: column; gap: 3px; padding: 4px 0 2px; }
+.cs-w-num { font: 700 22px var(--df-mono); line-height: 1; color: var(--df-text); display: flex; align-items: baseline; gap: 3px; }
+.cs-w-sep { font-size: 14px; color: var(--df-dim); }
+.cs-w-lim { font-size: 14px; color: var(--df-dim); }
+.cs-w-unit { font: 600 9px var(--df-label); letter-spacing: .12em; color: var(--df-dim); margin-left: 2px; }
+.cs-weight.over .cs-w-num { color: var(--df-danger, #ff5a1f); }
+.cs-w-bar { height: 3px; background: var(--df-line); overflow: hidden; }
+.cs-w-bar i { display: block; height: 100%; background: var(--df-accent); }
+.cs-weight.over .cs-w-bar i { background: var(--df-danger, #ff5a1f); }
+.cs-kv { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font-size: 10px; }
+.cs-kv .k { color: var(--df-dim); }
+.cs-kv .v { font-family: var(--df-mono); color: var(--df-text); }
+.equip-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; align-content: start; }
+.equip-slot { display: grid; grid-template-columns: 20px minmax(0, 1fr) 26px; align-items: center; gap: 6px; padding: 6px 8px; min-height: 40px; border: 1px dashed var(--df-line); background: transparent; color: var(--df-dim); text-align: left; cursor: pointer; }
+.equip-slot:hover { border-color: var(--df-accent-a35); }
+.equip-slot.dropping { border-color: var(--df-accent); background: var(--df-accent-a8); }
+.equip-slot.filled { border-style: solid; }
+.es-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.es-label { font: 600 9px var(--df-label); letter-spacing: .08em; color: var(--df-dim); }
+.es-value { font-size: 12px; color: var(--df-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.equip-slot.filled .es-value { color: var(--df-accent); }
+/* 逐格自重：右对齐等宽数字，方便一眼扫出"哪一格吃了重量" */
+.es-w { font: 10px var(--df-mono); color: var(--df-dim); text-align: right; }
+.equip-slot.filled .es-w { color: var(--df-text); }
+.equip-tray { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.equip-chip { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--df-line); background: var(--df-panel); color: var(--df-dim); font-size: 11px; cursor: grab; }
+.equip-chip:active { cursor: grabbing; }
+.equip-chip:hover { border-color: var(--df-accent-a35); color: var(--df-text); }
+.equip-chip.selected { border-color: var(--df-accent); color: var(--df-accent); background: var(--df-accent-a8); }
+.ec-count { font: 10px var(--df-mono); }
+
+/* 5. 二次确认与仓库右键（长按）菜单 */
+.df-modal { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; background: rgba(3, 5, 7, .78); }
+.df-modal-card { width: min(420px, calc(100vw - 32px)); border: 1px solid var(--df-accent-a35); background: var(--df-bg); padding: 18px 20px; clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+.df-modal-head { font: 600 14px var(--df-label); letter-spacing: .08em; color: var(--df-accent); }
+.df-modal-text { font-size: 13px; line-height: 1.6; color: var(--df-text); margin: 12px 0 8px; }
+.df-modal-note { font: 10px var(--df-mono); color: var(--df-dim); }
+.df-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.df-ctx-menu { position: fixed; z-index: 70; width: 178px; border: 1px solid var(--df-line); background: var(--df-bg); padding: 4px; }
+.ctx-head { font: 600 11px var(--df-label); letter-spacing: .06em; color: var(--df-dim); padding: 6px 8px; border-bottom: 1px solid var(--df-line); }
+.ctx-item { display: block; width: 100%; text-align: left; padding: 7px 8px; border: 0; background: transparent; color: var(--df-text); font-size: 12px; cursor: pointer; }
+.ctx-item:hover { background: var(--df-accent-a8); color: var(--df-accent); }
+.ctx-item:active { background: var(--df-accent-a20); }
+
+/* 6. 667×375 横屏降级：工具栏与装备台都不许吃掉整屏高度。 */
+@media (max-height: 520px), (max-width: 760px) {
+  .df-toolbar { padding: 4px 8px; gap: 4px 10px; }
+  .tool-chip { padding: 2px 6px; font-size: 10px; }
+  .tool-hint, .tool-label { display: none; }
+  .market-list { grid-template-columns: 1fr; gap: 6px; }
+  .market-body { padding: 8px 10px; }
+  .market-card { padding: 6px 8px; }
+  .equip-bay { padding: 6px 8px; margin-bottom: 8px; }
+  /* 窄屏把角色台压到 132px，槽位仍保持两列 —— 8 格一屏能扫完是这一区的前提 */
+  .bay-body { grid-template-columns: 150px minmax(0, 1fr); gap: 8px; }
+  .bay-char-3d { height: 132px; }
+  /* 132px 高的台子上，"拖拽旋转·滚轮缩放" 会压在角色腿上 —— 这块地方太小，
+     提示的收益（教玩家能拖）远不如"腿被盖住"的代价，直接收掉。触屏本来也没滚轮。 */
+  .bay-char-3d .preview3d-hint { display: none; }
+  .cs-w-num { font-size: 18px; }
+  .cs-kv { font-size: 9px; }
+  .equip-slot { min-height: 34px; padding: 3px 6px; }
+  .equip-chip { padding: 2px 6px; }
+}
+/* 超窄竖屏（<560px）：角色台与槽位改成上下堆，避免两列各 120px 挤成一条 */
+@media (max-width: 560px) {
+  .bay-body { grid-template-columns: minmax(0, 1fr); }
+  .bay-char { flex-direction: row; gap: 8px; }
+  .bay-char-3d { width: 96px; height: 118px; flex: 0 0 auto; }
+  .bay-char-sheet { flex: 1 1 auto; justify-content: center; }
+}
+
+/* 7. 视觉复核修正：toast 离开内容中央、菜单不被底栏切、报价卡补信息密度。 */
+#ui-root:not(.in-battle) .toasts {
+  left: auto; right: 18px; top: 56px; bottom: auto;
+  transform: none; align-items: flex-end; z-index: 30; pointer-events: none;
+}
+#ui-root:not(.in-battle) .toast {
+  max-width: 260px; font-size: 11px; padding: 5px 10px; text-align: left;
+  background: rgba(14, 17, 20, .9);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.market-card { min-height: 98px; }
+.market-card > .icon { flex: 0 0 auto; margin-top: 6px; }
+.market-desc { font-size: 10px; color: var(--df-dim); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.market-head > div { min-width: 0; }
+.market-head .btn { flex: 0 0 auto; white-space: nowrap; }
+.market-foot { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 14px; padding: 10px 12px; border-top: 1px solid var(--df-line); font: 10px var(--df-mono); color: var(--df-dim); }
+.df-ctx-menu { max-height: calc(100vh - 96px); overflow-y: auto; }
+@media (max-height: 520px), (max-width: 760px) {
+  #ui-root:not(.in-battle) .toasts { top: 38px; right: 8px; }
+  #ui-root:not(.in-battle) .toast { font-size: 11px; padding: 5px 9px; max-width: 230px; }
+  .market-head .hint, .market-desc, .market-foot { display: none; }
+  .market-head { padding-bottom: 6px; }
+  .market-list { padding-top: 6px; }
+  .market-card { min-height: 0; padding: 3px 7px; }
+  .market-meta { font-size: 9px; margin-top: 0; }
+  .market-name { font-size: 11px; }
+  .market-price { margin-top: 1px; }
+  .market-price-v { font-size: 13px; }
+  .market-head h3 { font-size: 11px; }
+  .market-head { padding-bottom: 3px; }
+}
+
+/* ============================================================
+   P2 数值层：真实读数联动（装备价值 / 保费 / 仓库估值 / 机动 / 行动等级）
+   全部由 src/gear.js 推导，不新增存档字段、不伪造赛季进度。
+   ============================================================ */
+.hub-season-track { width: 92px; height: 4px; background: var(--df-line); }
+.hub-season-track i { display: block; height: 100%; width: 0; background: var(--df-accent); transition: width 160ms var(--df-ease-out); }
+.hub-season-xp { font: 10px var(--df-mono); color: var(--df-dim); min-width: 76px; text-align: right; }
+.econ-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--df-line); font-size: 12px; }
+.econ-row .k { color: var(--df-dim); }
+.econ-row .v { font-family: var(--df-mono); color: var(--df-text); }
+.econ-season { margin-top: 8px; font: 10px var(--df-label); letter-spacing: .06em; color: var(--df-dim); }
+.econ-bar, .rs-track { height: 4px; background: var(--df-line); margin-top: 5px; }
+.econ-bar i, .rs-track i { display: block; height: 100%; background: var(--df-accent); }
+/* .result-body 是 2 列 grid：等级条必须横跨整行，否则会被塞进左列把统计与清单挤乱。 */
+.result-season { grid-column: 1 / -1; align-self: start; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--df-line); background: var(--df-panel-a50); }
+.rs-label { font: 600 10px var(--df-label); letter-spacing: .08em; color: var(--df-dim); }
+.rs-value { font: 12px var(--df-mono); color: var(--df-accent); }
+.result-season .rs-track { flex: 1 1 160px; margin: 0; }
+@media (max-height: 520px), (max-width: 760px) {
+  .hub-season-track, .hub-season-xp { display: none; }
+  .econ-row { padding: 1px 0; font-size: 11px; }
+  .result-season { padding: 4px 8px; margin-bottom: 6px; gap: 8px; }
+}
+
+/* ============================================================
+   P3 色彩与光照分区：暂停面板调色组
+   与既有 .setting-row 同构，不引入新的形状语言（切角 / 细线 / 0~2px 圆角）。
+   ============================================================ */
+.grade-block { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--df-line); }
+.grade-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px; font: 600 11px var(--df-label); letter-spacing: .08em; text-transform: uppercase; color: var(--df-text); }
+.grade-head span { font: 10px var(--df-mono); letter-spacing: 0; text-transform: none; color: var(--df-dim); }
+.grade-block .setting-row { padding: 2px 0; }
+.grade-block input[type="range"] { accent-color: var(--df-accent); }
+.grade-block .setting-val { min-width: 42px; text-align: right; color: var(--df-accent); }
+.grade-reset { width: 100%; margin-top: 6px; font-size: 11px; }
+@media (max-height: 520px), (max-width: 760px) {
+  .grade-block { margin-top: 6px; padding-top: 5px; }
+  .grade-head span { display: none; }
+  .grade-reset { margin-top: 3px; }
+}
+
+/* ============================================================
+   P5 干员：战前配置的干员档案卡
+   四张卡横排，每张用干员主色做左侧竖条 + 悬停描边。
+   只复用既有形状语言（1px 细线 / 2px 圆角 / 大写小字号标签），不引入新的视觉体系。
+   ============================================================ */
+.operator-block { margin-bottom: 4px; }
+.operator-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.operator-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 10px 9px 13px;
+  text-align: left;
+  border: 1px solid var(--df-line);
+  border-radius: var(--mg-r-sm);
+  background: rgba(10, 14, 20, 0.72);
+  color: var(--df-text);
+  cursor: pointer;
+  font-family: var(--df-sans, var(--sans));
+  overflow: hidden;
+  transition: border-color 140ms var(--df-ease-out), background 140ms var(--df-ease-out);
+}
+.operator-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--op-color, var(--df-accent));
+  opacity: 0.55;
+}
+.operator-card:hover { border-color: var(--op-color, var(--df-accent)); }
+.operator-card.active {
+  border-color: var(--op-color, var(--df-accent));
+  background: rgba(255, 255, 255, 0.045);
+}
+.operator-card.active::before { opacity: 1; }
+.operator-card .op-code {
+  font: 700 13px var(--df-mono);
+  letter-spacing: 0.06em;
+  color: var(--df-text);
+}
+.operator-card.active .op-code { color: var(--op-color, var(--df-accent)); }
+.operator-card .op-name {
+  font: 500 11px var(--df-sans, var(--sans));
+  color: var(--df-dim);
+}
+.operator-card .op-tactical,
+.operator-card .op-ult {
+  font: 10px var(--df-mono);
+  line-height: 1.5;
+  color: var(--df-dim);
+}
+.operator-card .op-tactical { color: var(--op-color, var(--df-accent)); opacity: 0.85; }
+/* 窄屏：两列，卡片高度自然撑开，不挤压下方武器选择 */
+@media (max-width: 760px), (max-height: 560px) {
+  .operator-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .operator-card { padding: 7px 8px 7px 11px; }
+  .operator-card .op-tactical, .operator-card .op-ult { font-size: 9px; }
+}
+
+/* ============================ P10 局外生涯 ============================ */
+.career-body { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.career-col { min-width: 0; display: flex; flex-direction: column; }
+.career-col h3 { margin: 0 0 10px; font-size: 13px; letter-spacing: 1px; color: var(--amber); }
+.career-list { display: flex; flex-direction: column; gap: 8px; max-height: 54vh; overflow: auto; padding-right: 4px; }
+.career-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--mg-r-sm); background: rgba(10, 14, 20, 0.65); }
+.career-row.claimable { border-color: var(--df-accent-a85); box-shadow: inset 0 0 0 1px var(--df-accent-a40); }
+.career-row.claimed { opacity: 0.62; }
+.career-main { flex: 1; min-width: 0; }
+.career-name { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.career-desc { font-size: 11px; color: var(--df-dim); margin-top: 2px; }
+.career-bar { height: 4px; margin: 7px 0 4px; border-radius: 2px; background: var(--df-line); overflow: hidden; }
+.career-fill { display: block; height: 100%; background: var(--df-accent); }
+.career-progress { font: 10px var(--df-mono); color: var(--df-dim); }
+.career-badge { display: none; margin-left: 10px; padding: 2px 8px; border-radius: var(--mg-r-sm); font: 10px var(--df-mono); background: var(--df-danger); color: #fff; vertical-align: middle; }
+.career-badge.on { display: inline-block; }
+.consign-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.market-index { font: 700 15px var(--df-mono); color: var(--amber); white-space: nowrap; }
+@media (max-width: 900px), (max-height: 560px) {
+  .career-body { grid-template-columns: 1fr; }
+  .career-list { max-height: 30vh; }
+  .consign-grid { grid-template-columns: 1fr; }
+}
+
+/* ============================ P11 演出层 ============================ */
+/* 屏切换淡入：只叠装饰动画，不改 .screen.hidden{display:none !important} 铁律，
+   也不改任何 data-screen / class 真值；减少动态效果在末尾统一关掉。 */
+@keyframes sdc-screen-in { from { opacity: 0; } to { opacity: 1; } }
+.screen.screen-enter { animation: sdc-screen-in 180ms ease-out both; }
+
+/* 结算逐条入场：只改 opacity / transform，DOM 文本与子节点数量保持原样。
+   from 保留 0.45 可见度：纯透明会让延迟中的行看起来像「列表只渲染了一半」，
+   那是渲染中断的观感，不是演出。 */
+@keyframes sdc-row-in {
+  from { opacity: .45; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+.result-stats > .stat,
+.result-loot > .item-row { animation: sdc-row-in 260ms ease-out both; }
+
+@keyframes sdc-stamp-in {
+  from { opacity: 0; transform: rotate(-6deg) scale(.82); }
+  to { opacity: 1; transform: rotate(-6deg) scale(1); }
+}
+.result-stamp { animation: sdc-stamp-in 320ms cubic-bezier(.2,1.3,.4,1) both; }
+
+/* 连杀横幅：DOM 浮标，pointer-events:none 不抢局内输入；28% 让开 Boss 血条。 */
+.streak-banner {
+  position: absolute; left: 50%; top: 28%; transform: translateX(-50%);
+  z-index: 6; pointer-events: none; opacity: 0;
+  padding: 7px 20px; border: 1px solid var(--df-accent);
+  background: var(--df-panel); color: var(--df-accent);
+  font: 13px var(--df-label); letter-spacing: .14em;
+  white-space: nowrap; transition: opacity .16s ease-out;
+}
+.streak-banner.on { opacity: 1; }
+
+/* 撤离 / 阵亡过场：贴顶窄横幅 + 极淡遮罩。结算标题在左、印章在右，
+   顶部中央本就是空白，横幅放这里不遮挡任何网格内容；动画结束自动摘 on。 */
+.raid-transition {
+  position: absolute; inset: 0; z-index: 8; display: none;
+  align-items: flex-start; justify-content: center; padding-top: 2%;
+  pointer-events: none; background: rgba(5, 8, 12, .12);
+}
+.raid-transition.on { display: flex; animation: sdc-transition-out 320ms ease-in 420ms forwards; }
+.raid-transition-inner {
+  min-width: 260px; padding: 8px 22px 10px; text-align: center;
+  border: 1px solid var(--df-ok); background: var(--df-panel);
+  animation: sdc-transition-in 240ms cubic-bezier(.2,1.2,.4,1) both;
+}
+.raid-transition[data-tone="bad"] .raid-transition-inner { border-color: var(--df-danger); }
+.raid-transition-tag { font: 12px var(--df-label); letter-spacing: .2em; color: var(--df-ok); }
+.raid-transition[data-tone="bad"] .raid-transition-tag { color: var(--df-danger); }
+.raid-transition-cn { margin-top: 2px; font-size: 16px; font-weight: 800; letter-spacing: .3em; color: var(--df-text); }
+.raid-transition-score { margin-top: 2px; font: 13px var(--df-mono); color: var(--df-dim); }
+.raid-transition-score::before { content: 'SCORE '; }
+@keyframes sdc-transition-in { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+@keyframes sdc-transition-out { from { opacity: 1; } to { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .screen.screen-enter,
+  .result-stats > .stat,
+  .result-loot > .item-row,
+  .result-stamp,
+  .raid-transition-inner,
+  .raid-transition.on { animation: none !important; animation-delay: 0ms !important; }
+}
+
+/* ============================ P15 干员档案屏 ============================ */
+/* 原先 nav 里的「干员」是 locked / P5 占位；转正后需要一屏能读完四名干员的
+   被动 / 战术道具 / 终结技，而不是只有战前那四张挤在一起的小卡。 */
+.operators-intro { margin: 0 0 14px; }
+.opdex-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(292px, 1fr));
+  gap: 14px;
+}
+.opdex-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px 16px 21px;
+  border: 1px solid var(--df-line);
+  border-radius: var(--mg-r-sm);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.035), rgba(10, 14, 20, 0.72) 58%);
+  color: var(--df-text);
+}
+.opdex-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 4px;
+  border-radius: var(--mg-r-sm) 0 0 var(--mg-r-sm);
+  background: var(--op-color, var(--df-accent));
+  opacity: 0.45;
+}
+.opdex-card.active {
+  border-color: var(--op-color, var(--df-accent));
+  box-shadow: inset 0 0 0 1px var(--op-color, var(--df-accent));
+}
+.opdex-card.active::before { opacity: 1; }
+.opdex-head { display: flex; align-items: flex-start; gap: 10px; }
+.opdex-code {
+  font: 800 21px var(--df-mono);
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  color: var(--op-color, var(--df-accent));
+}
+.opdex-names { display: flex; flex-direction: column; gap: 2px; }
+.opdex-callsign { font-size: 16px; font-weight: 700; }
+.opdex-role {
+  font-family: var(--df-label);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--df-dim);
+}
+.opdex-badge {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--op-color, var(--df-accent));
+  color: var(--op-color, var(--df-accent));
+  font-family: var(--df-label);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+.opdex-bio {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--df-dim);
+}
+.opdex-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid var(--df-line);
+  border-bottom: 1px solid var(--df-line);
+}
+.opdex-row { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 8px; font-size: 12px; }
+.opdex-row .k {
+  font-family: var(--df-label);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--df-dim);
+  padding-top: 2px;
+}
+.opdex-row .v { color: var(--df-text); line-height: 1.5; }
+.opdex-card .btn { align-self: flex-start; }
+.opdex-card .btn:disabled { opacity: 0.7; cursor: default; }
+
+/* ============================ P15 小队编成 ============================ */
+/* 战前左栏：两席 AI 队友，每席三个候选按钮（排除玩家当前干员）。
+   原先这里是 STANDBY 占位，现在选择真实写进 save.squad 并在部署时生成。 */
+.squad-pick .opt-block { margin-top: 10px; }
+.squad-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.squad-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.squad-seat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid var(--df-line);
+  border-left: 2px solid var(--op-color, var(--df-line));
+  background: rgba(10, 14, 20, 0.6);
+}
+.squad-seat-head { display: flex; align-items: baseline; gap: 6px; }
+.squad-slot {
+  font: 700 10px var(--df-mono);
+  letter-spacing: 0.06em;
+  color: var(--df-dim);
+}
+.squad-name { font-size: 12px; color: var(--df-text); }
+.squad-opts { display: flex; flex-wrap: wrap; gap: 4px; }
+.squad-opt {
+  padding: 2px 7px;
+  border: 1px solid var(--df-line);
+  background: transparent;
+  color: var(--df-dim);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.squad-opt:hover { border-color: var(--op-color, var(--df-accent)); color: var(--df-text); }
+.squad-opt.active {
+  border-color: var(--op-color, var(--df-accent));
+  color: var(--op-color, var(--df-accent));
+  background: rgba(255, 255, 255, 0.045);
+}
+.hub-squad-slot.ai { border-color: var(--op-color, var(--df-line)); color: var(--df-text); }
+
+/* ============================ P18 双栏搜刮界面 ============================
+   深色战术面板，左=来源容器 / 右=玩家装备与背包。所有颜色走 --df-* 令牌，
+   不引入外部素材。格位用 CSS grid + 背景格线，拖拽预览用一层绝对定位网格。 */
+.lg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(3, 5, 7, .82);
+  font-family: var(--df-sans);
+  color: var(--df-text);
+}
+.lg-overlay.hidden { display: none; }
+
+.lg-frame {
+  width: min(1180px, 100%);
+  max-height: min(92vh, 900px);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(18,22,26,.98), rgba(10,13,16,.98));
+  border: 1px solid var(--df-accent-a35);
+  border-radius: var(--df-radius);
+  box-shadow: 0 28px 90px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.02) inset;
+  overflow: hidden;
+}
+.lg-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--df-line);
+  background: linear-gradient(90deg, var(--df-accent-a12), transparent 60%);
+}
+.lg-head-l { display: flex; flex-direction: column; gap: 2px; }
+.lg-kicker { font: 600 10px/1 var(--df-label); letter-spacing: 2.4px; color: var(--df-accent); }
+.lg-head h2 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: .5px; }
+.lg-head-r { display: flex; align-items: center; gap: 22px; }
+.lg-stat { display: flex; flex-direction: column; gap: 3px; text-align: right; }
+.lg-stat .k { font-size: 10px; color: var(--df-dim); letter-spacing: 1px; }
+.lg-stat .v { font: 700 17px/1 var(--df-mono); color: var(--df-text); }
+.lg-stat .v.accent { color: var(--df-accent); }
+.lg-x {
+  width: 32px; height: 32px; border: 1px solid var(--df-line);
+  background: transparent; color: var(--df-dim); font-size: 20px; line-height: 1;
+  cursor: pointer; border-radius: var(--df-radius);
+}
+.lg-x:hover { border-color: var(--df-danger); color: var(--df-danger); }
+
+.lg-body { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--df-line); flex: 1; min-height: 0; }
+.lg-col { display: flex; flex-direction: column; min-height: 0; background: rgba(12,15,18,.96); }
+.lg-col-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 14px; border-bottom: 1px solid var(--df-line); min-height: 48px;
+}
+.lg-col-title { font: 600 13px/1 var(--df-label); letter-spacing: 1.4px; color: var(--df-text); white-space: nowrap; }
+.lg-tabs { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.lg-tab {
+  padding: 4px 9px; font: 500 11px/1 var(--df-sans);
+  border: 1px solid var(--df-line); background: transparent; color: var(--df-dim);
+  cursor: pointer; border-radius: var(--df-radius); white-space: nowrap;
+}
+.lg-tab:hover { color: var(--df-text); border-color: var(--df-accent-a35); }
+.lg-tab.active { color: var(--df-bg); background: var(--df-accent); border-color: var(--df-accent); font-weight: 700; }
+
+.lg-slots { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--df-line); }
+.lg-slots.empty { display: none; }
+.lg-slot {
+  position: relative; min-width: 96px; flex: 1 1 96px; max-width: 150px;
+  border: 1px dashed var(--df-line); border-radius: var(--df-radius);
+  padding: 6px 8px; background: rgba(255,255,255,.018);
+}
+.lg-slot.filled { border-style: solid; border-color: var(--rar, var(--df-line)); }
+.lg-slot-name { font: 600 9px/1.2 var(--df-label); letter-spacing: 1.2px; color: var(--df-dim); margin-bottom: 4px; }
+.lg-slot-item { font-size: 11px; color: var(--df-text); }
+.lg-slot-item.empty { color: var(--df-dim); opacity: .6; }
+.lg-slot-chip { margin-top: 4px; position: relative; }
+.lg-slot-chip .lg-name { font-size: 11px; }
+.lg-slot-chip .lg-meta { font-size: 9px; }
+
+.lg-grid-scroll { flex: 1; min-height: 180px; overflow: auto; padding: 14px; display: flex; justify-content: center; align-items: flex-start; }
+.lg-grid {
+  --cell: 46px;
+  --cols: 5; --rows: 6;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--cols), var(--cell));
+  grid-template-rows: repeat(var(--rows), var(--cell));
+  gap: 1px;
+  background:
+    repeating-linear-gradient(0deg, transparent 0, transparent calc(var(--cell) - 1px), var(--df-line) calc(var(--cell) - 1px), var(--df-line) var(--cell)),
+    repeating-linear-gradient(90deg, transparent 0, transparent calc(var(--cell) - 1px), var(--df-line) calc(var(--cell) - 1px), var(--df-line) var(--cell)),
+    rgba(255,255,255,.025);
+  background-size: var(--cell) var(--cell);
+  border: 1px solid var(--df-line);
+  box-shadow: 0 0 0 4px rgba(0,0,0,.25) inset;
+}
+.lg-grid.lg-empty { opacity: .35; }
+.lg-grid.lg-target-ok { outline: 1px solid var(--df-ok); outline-offset: 3px; }
+.lg-grid.lg-target-bad { outline: 1px solid var(--df-danger); outline-offset: 3px; }
+.lg-previews {
+  position: absolute; inset: 0; pointer-events: none;
+  display: grid;
+  grid-template-columns: repeat(var(--cols), var(--cell));
+  grid-template-rows: repeat(var(--rows), var(--cell));
+  gap: 1px; z-index: 4;
+}
+.lg-prev { border-radius: 2px; }
+.lg-prev.ok { background: var(--df-ok-a14); border: 1px solid var(--df-ok); box-shadow: 0 2px 0 1px var(--df-ok-a35) inset; }
+.lg-prev.bad { background: var(--df-danger-a16); border: 1px solid var(--df-danger); box-shadow: 0 2px 0 1px var(--df-danger-a35) inset; }
+
+.lg-item {
+  position: relative; z-index: 2;
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 4px 5px; overflow: hidden;
+  border: 1px solid var(--rar, var(--df-line));
+  border-left: 3px solid var(--rar, var(--df-line));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--rar) 18%, transparent), rgba(10,13,16,.9));
+  border-radius: var(--df-radius);
+  cursor: grab; user-select: none;
+  transition: box-shadow var(--df-t-fast), transform var(--df-t-fast);
+}
+.lg-item:hover { box-shadow: 0 0 0 1px var(--rar) inset, 0 6px 18px rgba(0,0,0,.5); z-index: 3; }
+.lg-item.selected { box-shadow: 0 0 0 2px var(--df-accent) inset; z-index: 3; }
+.lg-item.hi-value { border-top: 2px solid var(--df-r-gold); animation: lg-hi 2.4s ease-in-out infinite; }
+@keyframes lg-hi { 0%,100% { box-shadow: 0 0 0 1px var(--df-r-gold) inset, 0 2px 6px var(--df-danger-a14); } 50% { box-shadow: 0 0 0 2px var(--df-r-gold) inset, 0 2px 10px var(--df-accent-a35); } }
+.lg-item.locked::after { content: '🔒'; position: absolute; right: 3px; top: 2px; font-size: 9px; }
+.lg-item.rotated::before { content: '↻'; position: absolute; right: 3px; bottom: 2px; font-size: 9px; color: var(--df-dim); }
+.lg-ico { display: none; }
+.lg-name { font: 600 11px/1.2 var(--df-sans); color: var(--df-text); word-break: break-all; }
+.lg-meta { display: flex; justify-content: space-between; gap: 2px; font: 500 9px/1.2 var(--df-mono); color: var(--df-dim); }
+.lg-vpc { color: var(--df-r-gold); }
+.lg-qty {
+  position: absolute; right: 3px; top: 3px; padding: 1px 4px;
+  font: 700 10px/1 var(--df-mono); color: var(--df-bg); background: var(--rar); border-radius: 2px;
+}
+.lg-slot-chip.lg-item { padding: 3px 5px; cursor: grab; }
+.lg-slot-chip.lg-item .lg-meta { display: block; }
+
+.lg-col-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 14px; border-top: 1px solid var(--df-line);
+  font: 500 11px/1.3 var(--df-mono); color: var(--df-dim); min-height: 42px;
+}
+.lg-col-foot.over, .lg-col-foot .over { color: var(--df-danger); }
+.lg-foot-actions { flex-wrap: wrap; }
+.lg-btns { display: flex; gap: 6px; }
+.lg-btn {
+  padding: 6px 12px; font: 600 11px/1 var(--df-sans);
+  border: 1px solid var(--df-line); background: rgba(255,255,255,.03); color: var(--df-text);
+  cursor: pointer; border-radius: var(--df-radius);
+}
+.lg-btn:hover { border-color: var(--df-accent-a35); background: var(--df-accent-a10); }
+.lg-btn.primary { background: var(--df-accent); border-color: var(--df-accent); color: var(--df-bg); font-weight: 700; }
+.lg-btn.primary:hover { filter: brightness(1.12); }
+.lg-btn.danger { color: var(--df-danger); border-color: var(--df-danger); }
+
+.lg-hint {
+  display: flex; flex-wrap: wrap; gap: 14px; justify-content: center;
+  padding: 9px 16px; border-top: 1px solid var(--df-line);
+  font-size: 10px; color: var(--df-dim); background: rgba(0,0,0,.25);
+}
+.lg-hint b { color: var(--df-text); font-weight: 600; }
+
+.lg-tip {
+  position: fixed; z-index: 90; width: 232px; pointer-events: none;
+  padding: 10px 12px; background: rgba(10,13,16,.98);
+  border: 1px solid var(--rar, var(--df-line)); border-top: 3px solid var(--rar, var(--df-accent));
+  border-radius: var(--df-radius); box-shadow: 0 14px 40px rgba(0,0,0,.7);
+}
+.lg-tip.hidden { display: none; }
+.lg-tip-title { font: 700 13px/1.3 var(--df-sans); color: var(--rar, var(--df-text)); margin-bottom: 8px; }
+.lg-tip-row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; font-size: 11px; }
+.lg-tip-row .k { color: var(--df-dim); }
+.lg-tip-row .v { color: var(--df-text); font-family: var(--df-mono); }
+.lg-tip-desc { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--df-line); font-size: 10px; color: var(--df-dim); line-height: 1.5; }
+
+.lg-ghost {
+  position: fixed; z-index: 100; pointer-events: none; transform: translate(-50%, -50%);
+  padding: 6px 10px; font: 600 11px/1 var(--df-sans);
+  background: rgba(255,90,31,.9); color: #fff; border-radius: var(--df-radius);
+  box-shadow: 0 8px 24px rgba(0,0,0,.6); white-space: nowrap; opacity: .92;
+}
+.lg-ghost.hidden { display: none; }
+
+.lg-dialog {
+  position: fixed; inset: 0; z-index: 95; display: flex; align-items: center; justify-content: center;
+  background: rgba(2,4,6,.72);
+}
+.lg-dialog.hidden { display: none; }
+.lg-dialog-card {
+  width: min(340px, 90vw); padding: 18px 20px;
+  background: rgba(16,20,24,.99); border: 1px solid var(--df-accent-a35);
+  border-radius: var(--df-radius); box-shadow: 0 20px 60px rgba(0,0,0,.8);
+}
+.lg-dialog-title { font: 700 15px/1.3 var(--df-sans); margin-bottom: 6px; }
+.lg-dialog-sub { font-size: 11px; color: var(--df-dim); line-height: 1.5; margin-bottom: 14px; }
+.lg-input {
+  width: 100%; box-sizing: border-box; padding: 8px 10px;
+  background: rgba(0,0,0,.4); border: 1px solid var(--df-line); color: var(--df-text);
+  font: 600 14px/1 var(--df-mono); border-radius: var(--df-radius); outline: none;
+}
+.lg-input:focus { border-color: var(--df-accent); }
+.lg-dialog-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* 小屏：双栏改上下堆叠，格位缩小，保证 390×844 无横向溢出 */
+@media (max-width: 860px) {
+  .lg-overlay { padding: 8px; }
+  .lg-frame { max-height: 96vh; }
+  .lg-body { grid-template-columns: 1fr; overflow: auto; }
+  .lg-grid { --cell: 34px; }
+  .lg-grid-scroll { min-height: 120px; }
+  .lg-head { padding: 10px 12px; }
+  .lg-head-r { gap: 12px; }
+  .lg-stat .v { font-size: 14px; }
+  .lg-hint { gap: 8px; font-size: 9px; }
+  .lg-col-foot { font-size: 10px; }
+}
+@media (max-height: 560px) {
+  .lg-grid { --cell: 30px; }
+  .lg-hint { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lg-item, .lg-item.hi-value, .lg-prev { animation: none !important; }
+  .lg-item { transition: none; animation-delay: 0ms !important; }
 }

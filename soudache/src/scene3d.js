@@ -6,7 +6,8 @@
  */
 
 import * as THREE from '../vendor/three.module.js';
-import { VIEW3D, PALETTE3D, WORLD_W, WORLD_H } from './config.js';
+import { VIEW3D, PALETTE3D, GRADE3D, LIGHT_ZONES, WORLD_W, WORLD_H } from './config.js';
+import { clampGrade, defaultGrade, smoothZoneMix } from './grade3d.js';
 
 /**
  * 检测 WebGL 是否可用。
@@ -81,7 +82,8 @@ export function createScene3D(canvas, device) {
   // 整体对比与色彩层次立刻上一个台阶（这一步的观感收益最大）。
   if ('toneMapping' in renderer) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = VIEW3D.toneMappingExposure;
+    // P3：曝光改由 GRADE3D 供给初值，运行时可经 handle.setGrade() 调整。
+    renderer.toneMappingExposure = GRADE3D.exposure;
   }
 
   const scene = new THREE.Scene();
@@ -332,6 +334,35 @@ export function createScene3D(canvas, device) {
     dust.geometry.attributes.position.needsUpdate = true;
   }
 
+  /* ---------------- P3 调色 / 光照分区 ---------------- */
+
+  /** 当前生效的调色值（钳制后的副本，避免外部改引用把真值带跑） */
+  let grade = defaultGrade();
+  let zoneMix = 0;
+
+  /**
+   * 应用调色。曝光属于 renderer 层；对比 / 饱和属于后处理 uniform，
+   * 由 renderer3d.setGrade() 一并灌入，这里不重复持有第二份真值。
+   */
+  function setGrade(next) {
+    grade = clampGrade(next);
+    if ('toneMappingExposure' in renderer) renderer.toneMappingExposure = grade.exposure;
+    return { ...grade };
+  }
+
+  /**
+   * 室内灯区混合：靠近灯具时把冷色全局填充光**小幅**压低，让暖白点光成为主光。
+   * 幅度被 LIGHT_ZONES.interior 的 mul 钳在 10% 内，不动夜战可见性标定。
+   * 用帧率无关指数平滑，避免走过灯区边界时亮度硬切。
+   */
+  function setZoneMix(target, dt = 0) {
+    zoneMix = smoothZoneMix(zoneMix, target, dt);
+    const z = LIGHT_ZONES.interior;
+    hemi.intensity = VIEW3D.hemiIntensity * (1 - (1 - z.zoneHemiMul) * zoneMix);
+    ambient.intensity = VIEW3D.ambientIntensity * (1 - (1 - z.zoneAmbientMul) * zoneMix);
+    return zoneMix;
+  }
+
   function resize() {
     const w = Math.max(1, window.innerWidth);
     const h = Math.max(1, window.innerHeight);
@@ -353,6 +384,17 @@ export function createScene3D(canvas, device) {
     quality,
     reducedMotion: reduced,
     resize,
+    setGrade,
+    setZoneMix,
+    get grade() {
+      return { ...grade };
+    },
+    get zoneMix() {
+      return zoneMix;
+    },
+    get toneMappingExposure() {
+      return renderer.toneMappingExposure;
+    },
     /** 把阴影视锥（与平行光）聚焦到玩家周围，换取更清晰的近处阴影 */
     focusShadow(x, z) {
       placeSun(x, z);

@@ -43,6 +43,13 @@ const BUTTONS = [
   { a: 'fire', t: '开火', size: 'core', hold: true, fire: true },
   { a: 'reload', t: '换弹', size: 'combat' },
   { a: 'heal', t: '治疗', size: 'combat' },
+  // W2：近战。给 combat 档而不是 minor —— 贴脸缠斗时是"救命的最后一下"，
+  // 位置必须一把按得到；它不触发开火，所以不会暴露位置。
+  { a: 'melee', t: '近战', size: 'combat' },
+  // P5：战术道具与终结技。战术给 combat 档（交火中要能一把按到），
+  // 终结技是低频高价值动作，降到 minor 档，避免挤压开火拇指区。
+  { a: 'tactical', t: '战术', size: 'combat' },
+  { a: 'ultimate', t: '大招', size: 'minor' },
   { a: 'ads', t: '瞄准', size: 'minor', toggle: 'ads' },
   { a: 'switch', t: '切枪', size: 'minor' },
   // 任务：底部一键调出当前任务清单（P1-4）。落在左下机动区，不占右侧火力区。

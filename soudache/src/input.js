@@ -23,6 +23,7 @@ export function createInput() {
     right: false,
     sprint: false,
     crouch: false,
+    lean: 0, // 探头方向：-1 左 / 0 不探 / +1 右（P19，键位 Z / C）
     fire: false,
     firePressed: false,
     ads: false, // 瞄准（右键）

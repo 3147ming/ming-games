@@ -3,15 +3,51 @@
  */
 
 import {
-  PLAYER, MATCH, ITEMS, WEAPONS, ARMORS, COMBAT, ROPE, VEHICLE, VIEW3D,
+  PLAYER, MATCH, ITEMS, WEAPONS, ARMORS, BACKPACKS, COMBAT, ROPE, VEHICLE, VIEW3D, HUD, AMMO_IDS,
 } from './config.js';
+import { loadoutAmmoBoxes } from './ammo.js';
 import { moveWithCollision, hasLineOfSight, elevationAt, isSolidAt } from './mapgen.js';
 import {
   createInventory, createItem, autoPlace, totalWeight, totalValue,
-  countById, consumeById, weightSpeedMultiplier, weightStaminaMultiplier,
+  itemValue, countById, consumeById, weightSpeedMultiplier, weightStaminaMultiplier,
   isOverweight, weightLimitFor, findItems,
 } from './inventory.js';
-import { createWeaponState, updateWeapon, startReload, fireWeapon } from './combat.js';
+import { createWeaponState, updateWeapon, startReload, fireWeapon, meleeAttack } from './combat.js';
+// P19：动作状态机与手感参数（冲刺抬枪 / 蹲伏收益 / 探头 / 切枪计时）
+import {
+  canReload, canSprint, canSwitchWeapon, canLean, deriveCombatState, sprintRaiseDelay,
+  switchDuration,
+} from './combatstate.js';
+import {
+  defaultConditions, applyInjury, bleedDps, fractureMaxHp,
+  conditionSpeedMul, conditionSprintMul, itemUsable, pickMedical, medicalProfile,
+} from './medical.js';
+// P22：玩家压制衰减（纯逻辑，数值来自 COMBAT.playerSuppression）
+import { decayPlayerSuppression } from './suppression.js';
+
+/**
+ * V-02：把 `world.lastDamage` 压成一个 HUD/音频共用的命中档位。
+ *
+ * 优先级：击杀 > 爆头 > 弹开 > 完全击穿 > 半穿 > 普通。
+ * 只有「护甲/头盔真的吸收了伤害」才可能报击穿/半穿/弹开，
+ * 打无甲目标或打腿一律回到 normal，避免把肉体命中误报成护甲反馈。
+ * @param {object|null} info world.lastDamage
+ * @param {boolean} dead 目标是否被这一发打死
+ * @returns {'normal'|'armor'|'blocked'|'partial'|'penetrated'|'head'|'kill'}
+ */
+export function hitKindFor(info, dead) {
+  if (dead) return 'kill';
+  if (!info) return 'normal';
+  if (info.zone === 'head') return 'head';
+  const hitArmor = Boolean(info.armorAbsorbed || info.helmetAbsorbed);
+  if (info.blocked && hitArmor) return 'blocked';
+  // 「击穿」只认离散表给出的完全穿透；旧连续路径没有穿透比，不能凭减伤高低猜，
+  // 否则低耐久护甲（mitigation < 0.5）会被误报成击穿。
+  if (info.penetrationRatio != null && info.penetrated && hitArmor) return 'penetrated';
+  if (info.partial && hitArmor) return 'partial';
+  if (hitArmor) return 'armor';
+  return 'normal';
+}
 
 /**
  * 玩家类。
@@ -36,23 +72,68 @@ export class Player {
     this.yaw = 0; // 第一人称水平朝向（与 angle 同步）
     this.pitch = 0; // 俯仰（正为上）
     this.ads = false; // 是否正在瞄准（由输入层设置）
+    this.adsT = 0; // 开镜过渡进度 0→1（P4：FOV/枪模/散布/准星共用这一个进度）
+    // P22 玩家压制 0~1：敌方子弹擦过 / 命中时累加，逐帧衰减。
+    // 只放大扩散 + 驱动 HUD 边缘血色，不改伤害也不给敌方坐标（见 suppression.js）。
+    this.suppression = 0;
+    // P19 动作状态机：冲刺后抬枪锁、探头偏移、切枪计时。三者都只影响手感，不改数值表。
+    this.sprintLock = 0;
+    this.wasSprinting = false;
+    this.leanT = 0;
+    this.leanInput = 0;
+    this.switchTimer = 0;
+    this.switchTotal = 0;
+    this.switchPhase = 'equip';
+    this.combatState = null;
     this.radius = PLAYER.radius;
 
-    this.maxHp = typeof cfg.maxHp === 'number' ? cfg.maxHp : PLAYER.maxHp;
+    this.maxHpBase = typeof cfg.maxHp === 'number' ? cfg.maxHp : PLAYER.maxHp;
+    this.maxHp = this.maxHpBase;
     this.hp = this.maxHp;
     this.armorDef = opts.armorDef || ARMORS.none;
     this.armor = this.armorDef.armor;
     this.maxArmor = this.armorDef.armor;
+    this.armorLevel = this.armorDef.level || 0;
+    // W2：背包只影响负重上限；缺省 'none' → 加成 0，旧路径逐位不变。
+    this.backpackDef = opts.backpackDef || BACKPACKS.none;
+    // W2：胸挂只决定局内胸挂容器尺寸（容器本身由 main 在 startRaid 里建）。
+    // 这里存一份定义是为了结算时能把它回仓（见 main.endRaid 的 gear 清单）。
+    this.rigDef = opts.rigDef || null;
+    // W2 近战：匕首槽。没有装备时为 null，meleeAttack 直接返回 false（不报错、不占用按键反馈）。
+    this.meleeDef = opts.meleeDef || null;
+    this.meleeCd = 0; // 近战冷却（秒）
+    this.meleeSwing = 0; // 挥击动作进度 1→0（渲染层读它做枪模前甩）
+    // P7：头盔是独立耐久池，只覆盖爆头；无头盔时爆头倍率全额生效。
+    this.helmetDef = opts.helmetDef || ARMORS.none;
+    this.helmet = this.helmetDef.armor || 0;
+    this.maxHelmet = this.helmetDef.armor || 0;
+    this.helmetLevel = this.helmetDef.level || 0;
+    // 医疗状态：流血 / 骨折。每局重置，不写存档。
+    this.conditions = defaultConditions();
+    this.bleedSfxCd = 0;
     this.maxStamina = typeof cfg.maxStamina === 'number' ? cfg.maxStamina : PLAYER.maxStamina;
     this.stamina = this.maxStamina;
     this.staminaCooldown = 0;
     this.exhausted = false; // 体力耗尽后的疲惫状态（锁冲刺 + 移速下降）
 
     this.inventory = createInventory(PLAYER.backpack.cols, PLAYER.backpack.rows);
+    // P18：胸挂 / 口袋 / 安全容器是主背包之外的并行格位容器。
+    // 关键铁律：所有聚合读取（负重/估值/换弹/医疗/丢弃/结算带出）都必须经 containers，
+    // 否则放进额外容器的物品会"凭空消失"或"白嫖重量"。默认空数组时行为与旧版逐位一致。
+    this.extraContainers = [];
+    // 装备槽（备用武器 / 备用护甲 / 备用头盔）：局内搜刮拾取的备用装备，撤离后入库。
+    // 不即时改变战斗数值（8 分钟模式不鼓励中途换甲），但结算必须一并带出。
+    this.equipmentSlots = [];
     const defs = Array.isArray(opts.weaponDefs) && opts.weaponDefs.length
       ? opts.weaponDefs
       : [WEAPONS.pistol];
     this.weapons = defs.map((d) => createWeaponState(d));
+    // P7：战前选定的弹种写进武器状态（初始弹匣也按该弹种结算伤害）。
+    if (Array.isArray(opts.ammoIds)) {
+      this.weapons.forEach((w, i) => {
+        if (opts.ammoIds[i]) w.ammoId = opts.ammoIds[i];
+      });
+    }
     this.weaponIndex = 0;
 
     if (Array.isArray(opts.items)) {
@@ -74,6 +155,17 @@ export class Player {
     this.noiseTimer = 0;
     this.recoilPitch = 0; // 开火抬枪（视角上抬），仅视觉，自动回落
 
+    // 干员（P5）：被动乘数 + 技能状态 + 终结技增益。
+    // 全部给默认值，测试手搓的 Player 与旧存档路径都不会读到 undefined。
+    this.operatorId = null;
+    this.callsign = '你 / PLAYER';
+    this.reloadMul = 1;   // 换弹时长乘数（火神 0.86）
+    this.stealthMul = 1;  // 敌人发现距离乘数（帷幕 0.82）
+    this.healMul = 1;     // 医疗品恢复乘数（脉冲 1.3）
+    this.tacCdMul = 1;    // 战术道具冷却乘数（余烬 0.8）
+    this.abilities = null; // 由 main.startRaid 填入 createAbilityState()
+    this.combatMods = null; // 终结技激活期间的 散布/后坐/伤害 乘数
+
     this.search = null; // { container, progress, total }
     this.extract = null; // { point, progress }
     this.heal = null; // { uid, progress, total, def }
@@ -89,6 +181,7 @@ export class Player {
     this.vehicleCd = 0; // 上下车冷却
 
     this.kills = 0;
+    this.headshots = 0;
     this.searchedCount = 0;
     this.shotsFired = 0;
     this.hits = 0;
@@ -100,19 +193,93 @@ export class Player {
     return this.weapons[this.weaponIndex] || null;
   }
 
-  /** 背包 + 护甲 + 武器的总重量（kg） */
+  /** 全部格位容器（主背包 + 胸挂 / 口袋 / 安全容器）。唯一聚合真值。 */
+  get containers() {
+    return [this.inventory, ...(this.extraContainers || [])];
+  }
+
+  /** 结算带出清单：所有格位容器内的物品（不含装备槽展示件，避免与护甲/武器重复计数）。 */
+  carriedItems() {
+    const out = [];
+    for (const c of this.containers) out.push(...c.items);
+    return out;
+  }
+
+  /** 全部随身物品（含装备槽内的备用装备），用于结算带出与查找。 */
+  allItems() {
+    const out = [];
+    for (const c of this.containers) out.push(...c.items);
+    for (const s of this.equipmentSlots || []) if (s.item) out.push(s.item);
+    return out;
+  }
+
+  /**
+   * 在全部容器中按 id 计数（备用弹药 / 医疗物资的唯一真值）。
+   * 只读主背包会让"放进胸挂的弹匣打不出来"，这是 P18 的硬约束。
+   * @param {string} itemId 物品 id
+   * @returns {number} 数量
+   */
+  countAll(itemId) {
+    let n = 0;
+    for (const c of this.containers) n += countById(c, itemId);
+    return n;
+  }
+
+  /**
+   * 在全部容器里消耗指定物品；跨容器时按顺序扣减。
+   * @param {string} itemId 物品 id
+   * @param {number} amount 需要消耗的数量
+   * @returns {number} 实际消耗数量
+   */
+  consumeAll(itemId, amount) {
+    let need = Math.max(0, amount);
+    let used = 0;
+    for (const c of this.containers) {
+      if (need <= 0) break;
+      const got = consumeById(c, itemId, need);
+      used += got;
+      need -= got;
+    }
+    return used;
+  }
+
+  /** 在当前所有容器中按 uid 查找物品（含所在容器）。 */
+  findAnywhere(uid) {
+    for (const c of this.containers) {
+      const it = c.items.find((x) => x.uid === uid);
+      if (it) return { item: it, container: c };
+    }
+    for (const s of this.equipmentSlots || []) {
+      if (s.item && s.item.uid === uid) return { item: s.item, container: null, slot: s };
+    }
+    return null;
+  }
+
+  /**
+   * 背包 + 护甲 + 武器 + 近战 + 胸挂的总重量（kg）。W2 起背包/近战/胸挂自重也计入。
+   *
+   * ⚠ 头盔自重**刻意不加**：局内一直没算过，现在补进来会直接把戴头盔的玩家推进超重档
+   * （移速/体力惩罚），属于隐性削弱数值。战前 estimateWeight 里头盔是算的，
+   * 这处「战前偏高、局内偏低」的不一致作为已知项留到 W6 数值对齐一起处理。
+   */
   get weight() {
-    let w = totalWeight(this.inventory) + (this.armorDef.weight || 0);
+    let w = 0;
+    for (const c of this.containers) w += totalWeight(c);
+    w += (this.armorDef.weight || 0);
+    w += (this.backpackDef && this.backpackDef.weight) || 0;
+    w += (this.rigDef && this.rigDef.weight) || 0;
+    w += (this.meleeDef && this.meleeDef.weight) || 0;
     for (const weapon of this.weapons) w += weapon.def.weight || 0;
     return Math.round(w * 10) / 10;
   }
 
-  /** 当前负重上限（kg）= 基础 28 + 护甲加成 + 局外改装加成 */
+  /** 当前负重上限（kg）= 基础 28 + 护甲加成 + 背包加成 + 局外改装加成 */
   get weightLimit() {
     const cfg = this.playerCfg || PLAYER;
     const base = typeof cfg.weightBaseLimit === 'number' ? cfg.weightBaseLimit : PLAYER.weightBaseLimit;
-    // weightLimitFor 内部读的是基础配置；这里只补上改装带来的额外基础值，护甲加成仍走同一函数。
-    return weightLimitFor(this.armorDef.id) + Math.max(0, base - PLAYER.weightBaseLimit);
+    // weightLimitFor 内部读的是基础配置；这里只补上改装带来的额外基础值，护甲/背包加成仍走同一函数。
+    return weightLimitFor(this.armorDef.id, this.backpackDef && this.backpackDef.id)
+      + Math.max(0, base - PLAYER.weightBaseLimit);
   }
 
   /** 是否硬性超重（超重即禁跑，见 update） */
@@ -120,9 +287,12 @@ export class Player {
     return isOverweight(this.weight, this.weightLimit);
   }
 
-  /** 随身物资估值 */
+  /** 随身物资估值（含所有格位容器与装备槽） */
   get carriedValue() {
-    return totalValue(this.inventory);
+    let sum = 0;
+    for (const c of this.containers) sum += totalValue(c);
+    for (const s of this.equipmentSlots || []) if (s.item) sum += itemValue(s.item);
+    return Math.round(sum);
   }
 
   /** 是否正在读条（搜索 / 撤离 / 治疗） */
@@ -136,7 +306,7 @@ export class Player {
    * @returns {number} 数量
    */
   reserveAmmo(itemId) {
-    return countById(this.inventory, itemId);
+    return this.countAll(itemId);
   }
 
   /**
@@ -146,7 +316,7 @@ export class Player {
    * @returns {number} 实际消耗
    */
   consumeReserve(itemId, amount) {
-    return consumeById(this.inventory, itemId, amount);
+    return this.consumeAll(itemId, amount);
   }
 
   /* ============================ 绳索速降 ============================ */
@@ -363,8 +533,17 @@ export class Player {
    */
   update(dt, input, world) {
     if (this.dead) return;
+    // P7：流血在绳索/载具期间也照样掉血 —— 伤口不会因为你上车就愈合。
+    // 放在所有 early-return 之前，保证任何移动状态都吃同一份持续伤害。
+    this.updateInjuries(dt, world);
+    if (this.dead) return;
     // 绳索速降期间接管移动：不能开火 / 交互，沿绳滑到落点
     if (this.ropeCd > 0) this.ropeCd = Math.max(0, this.ropeCd - dt);
+    // 切枪计时：到点后进入 ready（期间 canFire 为 false，杜绝"切枪顺发"）。
+    if (this.switchTimer > 0) {
+      this.switchTimer = Math.max(0, this.switchTimer - dt);
+      if (this.switchTimer <= 0) this.switchPhase = 'ready';
+    }
     if (this.ropelling) {
       this.updateRope(dt, world);
       return;
@@ -376,6 +555,11 @@ export class Player {
     }
     this.hurtFlash = Math.max(0, this.hurtFlash - dt);
     this.muzzleFlash = Math.max(0, this.muzzleFlash - dt);
+    // W2 近战：冷却与挥击动作进度。放在 early-return 之后 —— 绳索/驾驶期间不该偷偷转冷却。
+    if (this.meleeCd > 0) this.meleeCd = Math.max(0, this.meleeCd - dt);
+    if (this.meleeSwing > 0) this.meleeSwing = Math.max(0, this.meleeSwing - dt * 3.4);
+    // P22：压制衰减放在 early-return 之后，绳索/驾驶期间不额外刷新（那时也没人在打你）。
+    this.suppression = decayPlayerSuppression(this.suppression, dt);
     this.recoilOffset *= Math.max(0, 1 - dt * 7);
     // 抬枪回落：开火后视角自动回到原俯仰（不惩罚玩家，避免必须手动压枪）
     this.recoilPitch = Math.max(0, (this.recoilPitch || 0) * Math.max(0, 1 - dt * COMBAT.recoilRecover));
@@ -393,9 +577,29 @@ export class Player {
       this.angle = Math.atan2(aim.y - this.y, aim.x - this.x);
     }
     this.ads = Boolean(input && input.ads);
+    // 开镜过渡（P4-C2）：指数逼近而非布尔跳变，抬枪/散布/准星/视场才能同步渐变。
+    // 开镜期间受伤打断由 hurtFlash 之外的状态负责，这里只做纯插值，不引入惩罚。
+    const adsRate = COMBAT.adsRate || 9;
+    this.adsT = (this.adsT || 0) + ((this.ads ? 1 : 0) - (this.adsT || 0)) * (1 - Math.exp(-adsRate * dt));
+    if (this.adsT < 1e-4) this.adsT = 0;
+    if (this.adsT > 1 - 1e-4) this.adsT = 1;
 
     // ---- 姿态 ----
     this.crouching = Boolean(input && input.crouch);
+
+    // ---- 探头（P19）----
+    // 只影响相机/枪模的横向偏移：命中射线仍从身体中轴发出，
+    // 因此「贴墙探头」绝不会变成穿墙射击（判定比视觉更严格）。
+    this.leanInput = canLean(this) ? (Number(input && input.lean) || 0) : 0;
+    const leanOff = ((COMBAT.lean && COMBAT.lean.offsetM) || 0.42) * VIEW3D.metersToUnits;
+    let leanTarget = Math.sign(this.leanInput) * leanOff;
+    if (leanTarget !== 0) {
+      const rx = -Math.sin(this.angle);
+      const ry = Math.cos(this.angle);
+      if (isSolidAt(world.map, this.x + rx * leanTarget, this.y + ry * leanTarget)) leanTarget = 0;
+    }
+    this.leanT += (leanTarget - this.leanT) * (1 - Math.exp(-11 * dt));
+    if (Math.abs(this.leanT) < 1e-3) this.leanT = 0;
 
     // ---- 移动向量 ----
     // 存在 yaw（第一人称视角）时相对朝向移动：W=前、S=后、A=左、D=右；
@@ -440,12 +644,20 @@ export class Player {
 
     // 硬性超重：**不再禁止奔跑**，只是移速会按超重比例下降（减速，见下方 weightMul）。
     // 与超重减速同时生效 —— 玩家超重时"跑得慢但还能跑"，逃命手段依旧可用。
-    const overweight = isOverweight(this.weight, this.weightLimit);
-    const wantSprint = Boolean(input.sprint) && !this.crouching && !this.busy
-      && !this.exhausted;
+    // P19：冲刺判据收敛到 canSprint（含载具/疲惫/蹲伏/读条），不再各处手写取反。
+    const wantSprint = Boolean(input.sprint) && canSprint(this);
     // 注意：冲刺可一直消耗到体力为 0（不再用 >1 的门槛提前截断），
     // 体力归零时进入 exhausted 锁定冲刺，直至恢复到 staminaExhaustRecovery 阈值才解除。
     this.sprinting = wantSprint && this.moving;
+    // 冲刺结束后必须先「抬枪」才能开火：冲刺期间锁一直重置，松手后按枪种衰减。
+    if (this.sprinting) {
+      this.sprintLock = sprintRaiseDelay(this.currentWeapon && this.currentWeapon.def);
+    } else if (this.sprintLock > 0) {
+      // 开镜会同时举枪贴腮，抬枪更快（但不会瞬间归零）。
+      const speedUp = this.ads && COMBAT.raiseAdsSpeedMul ? COMBAT.raiseAdsSpeedMul : 1;
+      this.sprintLock = Math.max(0, this.sprintLock - dt * speedUp);
+    }
+    this.wasSprinting = this.sprinting;
 
     // ---- 体力 ----
     if (this.sprinting) {
@@ -477,7 +689,22 @@ export class Player {
     let speed = baseSpeed * weightMul;
     if (this.crouching) speed *= PLAYER.crouchMul;
     else if (this.sprinting) speed *= PLAYER.sprintMul;
+    // 开镜 / 换弹 / 探头三档移速惩罚（按 adsT 插值，收镜过程不会突然变快）。
+    if (this.adsT > 0.02) {
+      const adsMul = COMBAT.adsMoveMul != null ? COMBAT.adsMoveMul : 1;
+      speed *= 1 - (1 - adsMul) * this.adsT;
+    }
+    const cw = this.currentWeapon;
+    if (cw && cw.reloading) speed *= COMBAT.reloadMoveMul != null ? COMBAT.reloadMoveMul : 1;
+    if (Math.abs(this.leanT) > 0.02) {
+      speed *= (COMBAT.lean && COMBAT.lean.speedMul) || 1;
+    }
     if (this.exhausted) speed *= PLAYER.staminaExhaustSpeedMul;
+    // 骨折：移速下降，冲刺再额外打折（不硬禁奔跑，避免残血时完全失去逃生手段）
+    if (this.conditions.fracture) {
+      speed *= conditionSpeedMul(this.conditions);
+      if (this.sprinting) speed *= conditionSprintMul(this.conditions);
+    }
     if (this.busy) speed = 0;
     this.moveSpeed = this.moving ? speed : 0;
 
@@ -540,7 +767,9 @@ export class Player {
     }
     if (this.extract) {
       this.extract.progress += dt;
-      if (this.extract.progress >= MATCH.extractChannel) {
+      // P20：读条总长由撤离点决定（高危点更久）；缺省回落到配置值，兼容旧状态对象。
+      const need = this.extract.total || MATCH.extractChannel;
+      if (this.extract.progress >= need) {
         const point = this.extract.point;
         this.extract = null;
         world.onExtract(point);
@@ -551,11 +780,7 @@ export class Player {
       if (this.heal.progress >= this.heal.total) {
         const done = this.heal;
         this.heal = null;
-        this.hp = Math.min(this.maxHp, this.hp + (done.def.heal || 0));
-        if (done.def.stamina) this.stamina = Math.min(this.maxStamina, this.stamina + done.def.stamina);
-        consumeById(this.inventory, done.def.id, 1);
-        if (world.audio) world.audio.heal();
-        if (world.toast) world.toast(`已使用 ${done.def.name}`);
+        this.finishHeal(done, world);
       }
     }
     if (this.hack) {
@@ -572,6 +797,8 @@ export class Player {
         if (world.onTerminalComplete) world.onTerminalComplete(terminal);
       }
     }
+    // P19：动作状态快照（HUD/探针读这里，纯归纳不改任何状态）。
+    this.combatState = deriveCombatState(this);
   }
 
   /**
@@ -585,9 +812,61 @@ export class Player {
       this.shotsFired += 1;
       if (result.entity) {
         this.hits += 1;
-        world.hitMarker = 0.18;
+        world.hitMarker = COMBAT.hitMarkerLife;
+        // 命中反馈分级：P7 起由 applyDamage 写下的 world.lastDamage 决定；
+        // V-02 起再按穿透比细分出 弹开 / 半穿 / 击穿 三档。
+        const e = result.entity;
+        const info = world.lastDamage;
+        const kind = hitKindFor(info, e.dead);
+        if (info && info.zone === 'head') this.headshots = (this.headshots || 0) + 1;
+        world.hitKind = kind;
+        world.hitKindT = HUD.hit.life;
+        // P4-C3：命中音按分级播（准星标记、短码、音色三者同一档），
+        // 玩家不盯准星也能靠耳朵分辨"打穿护甲"和"打死"。
+        if (world.audio && typeof world.audio.hitConfirm === 'function') world.audio.hitConfirm(kind);
+        // 终结技能量（P5）：命中给零头、击杀给大头。放在这里而不是 applyDamage，
+        // 是因为只有"玩家打出去的这一发"才该充能，敌人互射不应该给玩家攒大。
+        if (world.addPlayerUlt) {
+          world.addPlayerUlt('hit');
+          if (kind === 'kill') world.addPlayerUlt('kill');
+        }
       }
     }
+  }
+
+  /**
+   * 近战挥击（W2）。
+   *
+   * 与开火互斥：读条/绳索/驾驶/换弹期间不能挥刀（`busy` 与 `ropelling` 挡在最前面）。
+   * 命中反馈走和枪击同一套（world.lastDamage / hitKind），所以准星标记、
+   * 命中分级短码、命中音在这条路径上自动生效，不需要第二套表现。
+   *
+   * @param {object} world 战局上下文
+   * @returns {boolean} 是否真的挥出这一下
+   */
+  meleeAttack(world) {
+    if (this.dead || !world) return false;
+    if (!this.meleeDef) return false;
+    if (this.busy || this.ropelling || this.vehicle) return false;
+    if (this.meleeCd > 0) return false;
+    const res = meleeAttack(world, this);
+    this.meleeSwings = (this.meleeSwings || 0) + 1;
+    if (res.hit && res.entity) {
+      this.meleeHits = (this.meleeHits || 0) + 1;
+      world.hitMarker = COMBAT.hitMarkerLife;
+      const info = world.lastDamage;
+      const kind = hitKindFor(info, res.entity.dead);
+      if (info && info.zone === 'head') this.headshots = (this.headshots || 0) + 1;
+      world.hitKind = kind;
+      world.hitKindT = HUD.hit.life;
+      if (world.audio && typeof world.audio.hitConfirm === 'function') world.audio.hitConfirm(kind);
+      // 近战击杀同样给终结技能量（与枪击口径一致，玩家不会因为换刀就攒不到大）
+      if (world.addPlayerUlt) {
+        world.addPlayerUlt('hit');
+        if (kind === 'kill') world.addPlayerUlt('kill');
+      }
+    }
+    return true;
   }
 
   /**
@@ -598,7 +877,9 @@ export class Player {
    */
   switchWeapon(index, world) {
     if (index < 0 || index >= this.weapons.length || index === this.weaponIndex) return false;
+    if (!canSwitchWeapon(this)) return false;
     const current = this.currentWeapon;
+    const fromDef = current ? current.def : null;
     if (current) {
       current.reloading = false;
       current.reloadTimer = 0;
@@ -606,6 +887,13 @@ export class Player {
     }
     this.weaponIndex = index;
     this.recoilOffset = 0;
+    // P19：切枪不是瞬移 —— 副武器更快、主武器互换最慢（数值见 COMBAT.switchTime）。
+    const nextDef = this.currentWeapon ? this.currentWeapon.def : null;
+    this.switchTotal = switchDuration(fromDef, nextDef);
+    this.switchTimer = this.switchTotal;
+    this.switchPhase = 'equip';
+    // 同步刷新快照：动作是同步发生的，HUD/探针不该等到下一帧才看到新状态。
+    this.combatState = deriveCombatState(this);
     if (world && world.audio) world.audio.ui(0.5);
     return true;
   }
@@ -613,7 +901,10 @@ export class Player {
   /** 换弹 */
   reload(world) {
     if (this.busy) return false;
-    return startReload(this, world);
+    if (!canReload(this)) return false;
+    const started = startReload(this, world);
+    if (started) this.combatState = deriveCombatState(this);
+    return started;
   }
 
   /**
@@ -626,27 +917,144 @@ export class Player {
       this.interrupt('cancel');
       return false;
     }
-    if (this.hp >= this.maxHp && this.stamina >= this.maxStamina * 0.95) {
-      if (world.toast) world.toast('状态良好，无需治疗');
-      return false;
+    const items = [];
+    for (const c of this.containers) {
+      items.push(...findItems(c, (it) => it.category === 'consumable' && it.qty > 0));
     }
-    const items = findItems(this.inventory, (it) => it.category === 'consumable' && it.qty > 0);
     if (!items.length) {
       if (world.toast) world.toast('没有可用的医疗物资');
       return false;
     }
-    // 优先选择不会溢出的：血少时优先医疗包，血多时优先止痛药
-    items.sort((a, b) => {
-      const needA = Math.abs((a.heal || 0) - (this.maxHp - this.hp));
-      const needB = Math.abs((b.heal || 0) - (this.maxHp - this.hp));
-      return needA - needB;
-    });
-    const item = items[0];
+    // P7：择优逻辑收敛在 medical.pickMedical —— 出血先止血、骨折先手术、
+    // 血少用医疗包、血多避免过量治疗。点击物品与 Q 键共用同一份可用性判定。
+    const defs = items.map((it) => (this.itemCfg && this.itemCfg[it.id]) || ITEMS[it.id] || it);
+    const best = pickMedical(defs, this.medicalState());
+    if (!best) {
+      if (world.toast) world.toast('状态良好，无需治疗');
+      return false;
+    }
+    const item = items.find((it) => it.id === best.id) || items[0];
+    return this.startUseItem(item, world);
+  }
+
+  /** 当前医疗判定所需的只读快照（不传引用，避免 UI 误改状态）。 */
+  medicalState() {
+    return medicalProfile(this);
+  }
+
+  /**
+   * 开始使用一件医疗物品（Q 键择优与背包点击共用）。
+   * @param {object|string} itemOrUid 物品实例或其 uid
+   * @param {object} world 战局
+   * @returns {boolean} 是否开始读条
+   */
+  startUseItem(itemOrUid, world) {
+    const item = typeof itemOrUid === 'string'
+      ? (this.findAnywhere(itemOrUid) || {}).item
+      : itemOrUid;
+    if (!item || item.category !== 'consumable' || (item.qty || 0) <= 0) return false;
+    if (this.busy) {
+      this.interrupt('cancel');
+      return false;
+    }
     // 改装后的医疗定义：heal / useTime 都从注入的 itemCfg 取，避免只买改装却仍按基础值回血。
     const def = (this.itemCfg && this.itemCfg[item.id]) || ITEMS[item.id] || item;
+    const use = itemUsable(def, this.medicalState());
+    if (!use.ok) {
+      if (world && world.toast) world.toast(use.reason);
+      return false;
+    }
     this.heal = { uid: item.uid, progress: 0, total: def.useTime || 1.5, def };
-    if (world.audio) world.audio.ui(0.4);
+    if (world && world.audio) world.audio.ui(0.4);
+    if (world && world.toast) world.toast(`开始使用 ${def.name}`);
     return true;
+  }
+
+  /**
+   * 读条完成：按物品字段结算。字段驱动，新增医疗品不需要改这里的分支。
+   * @param {{def: object}} done 完成的读条
+   * @param {object} world 战局
+   */
+  finishHeal(done, world) {
+    const def = (done && done.def) || {};
+    const parts = [];
+    // 先修复上限再回血，否则手术包的 30 点会被骨折后的低上限截掉
+    if (def.cureFracture && this.conditions.fracture) {
+      this.conditions.fracture = 0;
+      this.maxHp = fractureMaxHp(this.maxHpBase, this.conditions);
+      parts.push('骨折已复位');
+    }
+    if (def.stopBleed && this.conditions.bleed > 0) {
+      parts.push(`止血 ×${this.conditions.bleed}`);
+      this.conditions.bleed = 0;
+    }
+    if (def.repairArmor) {
+      const frac = Number(def.repairArmor) || 0;
+      const vestGain = this.maxArmor > 0
+        ? Math.min(this.maxArmor, this.armor + this.maxArmor * frac) - this.armor : 0;
+      const helmetGain = this.maxHelmet > 0
+        ? Math.min(this.maxHelmet, this.helmet + this.maxHelmet * frac) - this.helmet : 0;
+      this.armor += vestGain;
+      this.helmet += helmetGain;
+      if (vestGain + helmetGain > 0) parts.push(`护甲 +${Math.round(vestGain + helmetGain)}`);
+    }
+    if (def.heal) {
+      const before = this.hp;
+      this.hp = Math.min(this.maxHp, this.hp + def.heal * (this.healMul || 1));
+      if (this.hp > before) parts.push(`生命 +${Math.round(this.hp - before)}`);
+    }
+    if (def.stamina) {
+      const before = this.stamina;
+      this.stamina = Math.min(this.maxStamina, this.stamina + def.stamina);
+      if (this.stamina > before) parts.push(`体力 +${Math.round(this.stamina - before)}`);
+    }
+    this.consumeAll(def.id, 1);
+    if (world && world.audio) world.audio.heal();
+    if (world && world.toast) {
+      world.toast(parts.length ? `已使用 ${def.name} · ${parts.join(' · ')}` : `已使用 ${def.name}`);
+    }
+  }
+
+  /**
+   * 被命中回调（由 combat.applyDamage 调用）。
+   * 只做"伤害之后"的状态判定：流血 / 骨折，不参与伤害数字本身。
+   */
+  onHit(info = {}) {
+    if (this.dead || this.hp <= 0) return;
+    const world = info.world;
+    const beforeBleed = this.conditions.bleed;
+    const res = applyInjury(this.conditions, {
+      raw: info.raw,
+      zone: info.zone,
+      hpAfter: this.hp,
+      maxHpBase: this.maxHpBase,
+    });
+    if (res.fractureAdded) {
+      this.maxHp = fractureMaxHp(this.maxHpBase, this.conditions);
+      this.hp = Math.min(this.hp, this.maxHp);
+      if (world && world.toast) world.toast('骨折 — 生命上限下降，需要手术包');
+      if (world && world.audio && world.audio.warn) world.audio.warn();
+      return;
+    }
+    if (res.bleedAdded > 0 && beforeBleed === 0) {
+      // 只在"从无到有"时提示一次；叠加层数交给 HUD 状态图标，避免每发刷屏
+      if (world && world.toast) world.toast('流血 — 用绷带或医疗包止血');
+    }
+  }
+
+  /** 流血每帧结算：持续掉血，掉到 0 由主循环统一判死。 */
+  updateInjuries(dt, world) {
+    const dps = bleedDps(this.conditions);
+    if (dps <= 0) return;
+    this.hp = Math.max(0, this.hp - dps * dt);
+    if (this.hp <= 0) {
+      this.dead = true;
+      if (world) {
+        if (world.onDeath) world.onDeath(this, null);
+        // onDeath 对 null 来源会把 killedBy 清空，这里补上"流血致死"的复盘信息
+        world.killedBy = { type: 'bleed', dist: 0 };
+      }
+    }
   }
 
   /**
@@ -667,11 +1075,24 @@ export class Player {
       if (world.audio) world.audio.searchStart();
       return true;
     }
+    // M-03 / E-03：闸刀是独立 POI，优先级高于撤离点 —— 站在圈里也能先拉闸。
+    // 广播与窗口开启由 world.pullExtractSwitch 统一处理（音效 + AI 听觉 + toast）。
+    const sw = this.nearestSwitch(world);
+    if (sw) {
+      const ex = (world.map.extracts || []).find((e) => e.id === sw.extractId);
+      const r = world.pullExtractSwitch ? world.pullExtractSwitch(ex) : { ok: false };
+      if (!r.ok && world.toast) world.toast('闸刀已拉下，或撤离窗口已结束');
+      return r.ok;
+    }
     const extract = this.nearestExtract(world);
     if (extract) {
-      if (world.canAffordExtract && !world.canAffordExtract(extract)) return false;
-      this.extract = { point: extract, progress: 0, warned: false };
-      if (world.toast) world.toast(`开始撤离：${extract.name} — ${MATCH.extractChannel} 秒`);
+      // P20：能不能撤由状态机统一裁决（未开放 / 条件不足 / 资金不足 / 窗口已过）。
+      // 兼容旧入口：没有 canExtract 的测试桩退回原来的付费判断。
+      const gate = world.canExtract || world.canAffordExtract;
+      if (gate && !gate.call(world, extract)) return false;
+      const channel = world.extractChannelTime ? world.extractChannelTime(extract) : MATCH.extractChannel;
+      this.extract = { point: extract, progress: 0, total: channel, warned: false };
+      if (world.toast) world.toast(`开始撤离：${extract.name} — ${channel} 秒`);
       if (world.audio) world.audio.extractStart();
       return true;
     }
@@ -739,6 +1160,26 @@ export class Player {
   }
 
   /**
+   * M-03：找到范围内可见、尚未拉下的闸刀。与终端同模型（含视线检查，不能隔墙拉）。
+   * @param {object} world 战局上下文
+   * @returns {object|null} 闸刀 POI
+   */
+  nearestSwitch(world) {
+    let best = null;
+    let bestDist = Infinity;
+    for (const sw of ((world && world.map && world.map.switches) || [])) {
+      if (sw.pulled) continue;
+      const d = Math.hypot(sw.x - this.x, sw.y - this.y);
+      if (d <= sw.r + PLAYER.radius && d < bestDist
+        && hasLineOfSight(world.map, this.x, this.y, sw.x, sw.y)) {
+        bestDist = d;
+        best = sw;
+      }
+    }
+    return best;
+  }
+
+  /**
    * 找到范围内最近的可交互容器。
    * @param {object} world 战局上下文
    * @returns {object|null} 容器
@@ -776,6 +1217,9 @@ export class Player {
    */
   onDamaged(source, world) {
     this.damageTaken += 1;
+    // 终结技能量：只有"被别人打到"才给，自己扔的燃烧弹（source.isPlayer）不算，
+    // 否则玩家能靠站在自己火里刷能量。
+    if (world && world.addPlayerUlt && !(source && source.isPlayer)) world.addPlayerUlt('hurt');
     if (this.heal) {
       this.interrupt('damage');
       if (world && world.toast) world.toast('治疗被打断！');
@@ -796,7 +1240,10 @@ export class Player {
    * @returns {boolean} 是否成功
    */
   pickUp(item) {
-    return Boolean(autoPlace(this.inventory, item));
+    for (const c of this.containers) {
+      if (autoPlace(c, item)) return true;
+    }
+    return false;
   }
 
   /**
@@ -835,7 +1282,7 @@ export class Player {
    */
   pickUpGroundItem(world, item) {
     if (!item || item.taken) return false;
-    if (!autoPlace(this.inventory, item)) {
+    if (!this.pickUp(item)) {
       if (world.toast) world.toast(`背包空间不足：${item.name}`);
       if (world.audio) world.audio.error();
       return false;
@@ -849,9 +1296,16 @@ export class Player {
   }
 
   dropItem(uid) {
-    const idx = this.inventory.items.findIndex((it) => it.uid === uid);
+    const found = this.findAnywhere(uid);
+    if (!found) return null;
+    if (!found.container) {
+      // 装备槽里的备用装备：直接摘下
+      found.slot.item = null;
+      return found.item;
+    }
+    const idx = found.container.items.findIndex((it) => it.uid === uid);
     if (idx < 0) return null;
-    const [item] = this.inventory.items.splice(idx, 1);
+    const [item] = found.container.items.splice(idx, 1);
     item.col = -1;
     item.row = -1;
     return item;
@@ -862,7 +1316,7 @@ export class Player {
    * @returns {Array<object>} 物品数组
    */
   exportItems() {
-    return this.inventory.items.slice();
+    return this.allItems();
   }
 }
 
@@ -876,11 +1330,18 @@ export function buildLoadoutItems(loadout, itemDefs = ITEMS) {
   const defs = itemDefs || ITEMS;
   const defOf = (id) => defs[id] || ITEMS[id];
   const items = [];
-  const ammoBoxes = Math.max(0, loadout.ammo556Boxes || 0);
-  for (let i = 0; i < ammoBoxes; i += 1) items.push(createItem(defOf('ammo556'), defOf('ammo556').stack));
-  const smgBoxes = Math.max(0, loadout.ammo9mmBoxes || 0);
-  for (let i = 0; i < smgBoxes; i += 1) items.push(createItem(defOf('ammo9mm'), defOf('ammo9mm').stack));
+  // P7：六型弹药都按「盒」带入；旧档字段由 loadoutAmmoBoxes 统一回落读取。
+  for (const id of AMMO_IDS) {
+    const def = defOf(id);
+    if (!def) continue;
+    const boxes = loadoutAmmoBoxes(loadout, id);
+    for (let i = 0; i < boxes; i += 1) {
+      items.push(createItem(def, def.ammoQty || def.stack || 1));
+    }
+  }
   for (let i = 0; i < Math.max(0, loadout.medkits || 0); i += 1) items.push(createItem(defOf('medkit'), 1));
   for (let i = 0; i < Math.max(0, loadout.bandages || 0); i += 1) items.push(createItem(defOf('bandage'), 1));
+  for (let i = 0; i < Math.max(0, loadout.surgeries || 0); i += 1) items.push(createItem(defOf('surgery'), 1));
+  for (let i = 0; i < Math.max(0, loadout.armorKits || 0); i += 1) items.push(createItem(defOf('armorKit'), 1));
   return items;
 }

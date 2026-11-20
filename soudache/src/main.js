@@ -3,28 +3,74 @@
  */
 
 import {
-  TILE, MATCH, PLAYER, ITEMS, WEAPONS, ARMORS, CONTAINERS, SHOP, SCORING, POI, AMMO_STACK, COLORS,
+  TILE, MATCH, PLAYER, ITEMS, WEAPONS, ARMORS, CONTAINERS, SHOP, SCORING, COLORS,
   ENEMY_TYPES, KILLFEED, COMBAT, INSURANCE, REP, SHOP_TIER, ITEM_IDS, VIEW3D, MAPS, DEFAULT_MAP_ID,
+  ABILITY, WEAPON_MOD_SLOTS, WEAPON_MODS, AMMO_IDS, CALIBERS, CAREER,
+  BACKPACKS, MELEE, RIGS,
 } from './config.js';
-import { pickContracts, updateContracts, settleExtractContracts } from './contracts.js';
-import { createRng, randomSeed } from './rng.js';
-import { generateMap, hasLineOfSight } from './mapgen.js';
+import { updateContracts, settleExtractContracts } from './contracts.js';
 import {
-  createItem, autoPlace, hasSpace, totalValue, totalWeight, consumeById, removeItemByUid,
-  itemValue, itemWeight, displayUnits,
+  getRisk, DEFAULT_RISK_ID, applyRiskToEnemies, riskLootLuck, riskScore, riskPayout, riskSummary,
+} from './risk.js';
+import { syncBossPhase } from './boss.js';
+import { createRng, randomSeed } from './rng.js';
+import { generateMap, hasLineOfSight, finalizeExtractLayout } from './mapgen.js';
+import {
+  containerTierOf, lootLuckAt, hotspotAt, hotspotInfo, dangerLabel, spawnHint,
+} from './areas.js';
+import { buildObjectives, settleObjectives } from './objectives.js';
+import { buildReview } from './review.js';
+import {
+  buildExtractPlan, modifierLabel, EXTRACT_TUNING, EXTRACT_MOD,
+} from './extract.js';
+import {
+  createItem, createInventory, autoPlace, hasSpace, totalWeight, consumeById,
+  removeItemByUid, itemValue, displayUnits, rigSizeFor,
 } from './inventory.js';
+import { splitCarried, SECURE_TIERS, DEFAULT_SECURE_TIER } from './secure.js';
+import { gearValue } from './gear.js';
 import * as Loot from './loot.js';
+import { makePlayerGear, containerFromType, entityContainers } from './lootable.js';
 import { Player, buildLoadoutItems } from './player.js';
-import { spawnEnemies } from './enemy.js';
+import { spawnEnemies, updateEnemyGrenades } from './enemy.js';
+import { decayTraces } from './perception.js';
+import { spawnSquad, updateSquad } from './ally.js';
 import { isWebGLAvailable, createScene3D } from './scene3d.js';
 import { Renderer3D, NoopRenderer3D } from './renderer3d.js';
 import { createInput, setupMouseLook } from './input.js';
 import { detectDeviceTier } from './device.js';
+import { resolveGrade, clampGrade } from './grade3d.js';
+
 import { createTouchControls } from './touch-controls.js';
 import { createAudio } from './audio.js';
 import { createUI, hudLayout } from './ui.js';
+import { createPerfMonitor } from './perf.js';
+import { createPreview, PREVIEW3D, fitDistance } from './preview3d.js';
+import { VM_GLB, buildOperatorShowcase } from './models.js';
+import { installPerfHud } from './perf-hud.js';
 import * as Storage from './storage.js';
+import { installGuard, frameError, resetFrameStreak, clearFatal } from './guard.js';
 import { applyMods, buy as purchaseUpgrade, checkBuy, getNode as getUpgradeNode } from './upgrades.js';
+import { applyWeaponMods, normalizeWeaponMods, computeEffectiveWeapon, attachmentOptions, loadoutModWeight, effectiveStatsPreview } from './gunbench.js';
+import {
+  ammoIdsForWeapon, loadoutAmmoBoxes, ammoBoxSize, resolveAmmoGrade, normalizeLoadoutAmmo, setAmmoBoxes,
+} from './ammo.js';
+import { findListing } from './market.js';
+import {
+  settleRaidCareer, claimAchievement, claimAllAchievements, claimQuest, claimAllQuests,
+  claimRepReward, claimAllRepRewards, createOrder, cancelOrder, settleOrders,
+  shopRemaining, consumeShopStock,
+} from './economy.js';
+import {
+  getOperator, createAbilityState, tickAbilities,
+  canThrowTactical, consumeTactical, addUltCharge, consumeUltimate, applyOperator,
+  resolveSquadIds, assignSquadSlot,
+} from './operators.js';
+import {
+  createGrenade, updateThrowables, throwOrigin, throwableDef,
+} from './throwable.js';
+import { makeCreateWorld } from './world.js';
+import { assetStatus } from './assets.js';
 
 const canvas = document.getElementById('game-canvas');
 const uiRoot = document.getElementById('ui-root');
@@ -37,11 +83,19 @@ const touchMode = device.isTouch;
 const PARTICLE_CAP = Math.max(1, VIEW3D.fx.maxParticles | 0);
 const sceneHandle = isWebGLAvailable() ? createScene3D(canvas, device) : null;
 const renderer = sceneHandle ? new Renderer3D(sceneHandle, canvas, device) : new NoopRenderer3D();
+// V-05：性能采样器（只读观测，不改画质）。手机走 mobile 预算，桌面走 desktop。
+const perfMonitor = createPerfMonitor({ budget: device.quality === 'low' || device.isTouch ? 'mobile' : 'desktop' });
 
 let save = Storage.loadSave();
+// P3：旧档没有 settings.grade 时 resolveGrade 会补齐默认值；只灌一次，
+// 之后由暂停面板的 set-grade / reset-grade 增量更新，不进主循环。
+const initialGrade = resolveGrade(save);
+if (typeof renderer.setGrade === 'function') renderer.setGrade(initialGrade);
+else if (sceneHandle && typeof sceneHandle.setGrade === 'function') sceneHandle.setGrade(initialGrade);
 let world = null;
 let screen = 'menu';
 let paused = false;
+let faulted = false; // P0-1：致命故障熔断标志，置位后主循环跳过更新与渲染，直到玩家选择恢复
 let lastTs = 0;
 let openContainer = null;
 
@@ -87,8 +141,13 @@ function handleTouchAction(action, value) {
   switch (action) {
     case 'reload': p.reload(world); break;
     case 'interact': if (!p.ropelling) p.interact(world); break;
-    case 'switch': p.switchWeapon(p.weaponIndex === 0 ? 1 : 0, world); break;
+    // W2：三把枪之后不能再写死 0↔1 的来回切，改成循环（手枪也能被切到）
+    case 'switch': p.switchWeapon((p.weaponIndex + 1) % Math.max(1, p.weapons.length), world); break;
+    // W2：近战。独立按钮（不占开火键，避免近身缠斗时误开火暴露位置）
+    case 'melee': if (!p.ropelling) p.meleeAttack(world); break;
     case 'heal': p.useMedkit(world); break;
+    case 'tactical': throwTactical(); break;
+    case 'ultimate': releaseUltimate(); break;
     case 'rope': p.startRope(world); break;
     case 'vehicle': if (p.vehicle) p.exitVehicle(world); else p.enterVehicle(world); break;
     case 'bag': toggleBackpack(); break;
@@ -163,6 +222,10 @@ function refreshTouchContext() {
     touchControls.setContext({ text: '破解' });
     return;
   }
+  if (p.nearestSwitch && p.nearestSwitch(world)) {
+    touchControls.setContext({ text: '拉闸' });
+    return;
+  }
   if (p.nearestExtract && p.nearestExtract(world)) {
     touchControls.setContext({ text: '撤离' });
     return;
@@ -230,11 +293,6 @@ function money(n) {
   return `¥${Math.round(n).toLocaleString('en-US')}`;
 }
 
-function formatTime(seconds) {
-  const s = Math.max(0, Math.floor(seconds));
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-}
-
 /* ====================== 指针锁定（输入模式）管理 ====================== */
 
 /**
@@ -249,9 +307,9 @@ function wantsMouseLock() {
   // 视角改由右摇杆驱动。桌面端完全走原逻辑。
   if (touchMode) return false;
   if (screen !== 'battle' || paused || !world || world.over) return false;
-  // 战利品面板是键盘驱动的侧边抽屉，打开时**不**释放指针锁定 —— 玩家仍能转动视角、保持战斗姿态，
-  // 这正是"搜物资时被迫切到自由鼠标、体验很差"的根因。只有背包（需要鼠标精细操作）才释放锁定。
-  return !ui.isBackpackOpen();
+  // 战利品双栏界面需要鼠标拖拽，必须把鼠标还给玩家；旧的键盘侧边抽屉仍保留给其他入口。
+  // 这正是"搜物资时被迫切到自由鼠标、体验很差"的根因，双栏界面上是刻意接受的代价。
+  return !ui.isBackpackOpen() && !ui.isLootGridOpen();
 }
 
 /** 面板打开时清空移动与开火，避免松开鼠标后角色还在走 */
@@ -366,229 +424,7 @@ function completeContract(w, c) {
   if (audio && audio.cash) audio.cash();
 }
 
-function createWorld(map, seed, rng, player, enemies) {
-  const w = {
-    seed,
-    map,
-    rng,
-    player,
-    enemies,
-    time: 0,
-    timeLeft: MATCH.duration,
-    kills: 0,
-    searchedCount: 0,
-    particles: [],
-    damageNumbers: [],
-    killFeed: [],
-    tracers: [],
-    shells: [],
-    decals: [],
-    explored: new Uint8Array(map.cols * map.rows),
-    hitMarker: 0,
-    // P1-6 受击方向：hitDir = 「玩家 → 伤害来源」的方位角（弧度），hitDirT 是剩余淡出时间
-    hitDir: 0,
-    hitDirT: 0,
-    shake: 0,
-    over: false,
-    result: null,
-    terminalsHacked: 0,
-    cratesBroken: 0,
-    items: [], // 地面掉落物：{ uid, id, name, def, qty, x, y, taken }
-    itemsSpawned: 0, // 仅用于生成稳定的 uid
-    scoreBonus: 0,
-    extractFeePaid: 0,
-    contracts: pickContracts(rng),
-    contractsDone: 0,
-    audio,
-    exploreTimer: 0,
-    insured: false, // 本局是否投保（由 startRaid 的 opts 显式传入，不从存档现读）
-    killedBy: null, // 死亡来源：{ type, dist }，用于结算页复盘
-    get carriedValue() {
-      return player.carriedValue;
-    },
-    toast(message) {
-      ui.toast(message);
-    },
-    emitNoise(x, y, radius) {
-      for (const e of enemies) {
-        if (e.dead) continue;
-        e.hearNoise(w, x, y, radius);
-      }
-    },
-    alertNearby(source, x, y, radius) {
-      for (const e of enemies) {
-        if (e === source || e.dead) continue;
-        if (Math.hypot(e.x - x, e.y - y) <= radius) e.onAllyAlert(w, x, y);
-      }
-    },
-    addDamageNumber(x, y, text, color, height) {
-      w.damageNumbers.push({ x, y, text: String(text), color, t: 0, life: 0.85, size: 15, h: height });
-      if (w.damageNumbers.length > 70) w.damageNumbers.shift();
-    },
-    /**
-     * 击杀信息流：由 combat.js applyDamage 在目标死亡时调用（同时持有受害者与击杀者）。
-     * 玩家显示为「你」，敌人按 ENEMY_TYPES 取中文名；source 为空时归因为环境。
-     */
-    addKill(victim, killer) {
-      const nameOf = (e) => {
-        if (!e) return '环境';
-        if (e.isPlayer) return '你';
-        const def = ENEMY_TYPES[e.typeId];
-        return (def && def.name) || '敌人';
-      };
-      const wdef = killer && killer.currentWeapon ? killer.currentWeapon.def : null;
-      w.killFeed.push({
-        killer: nameOf(killer),
-        victim: nameOf(victim),
-        weapon: wdef ? (wdef.short || wdef.name || '') : '',
-        byPlayer: !!(killer && killer.isPlayer),
-        ofPlayer: !!(victim && victim.isPlayer),
-        t: 0,
-      });
-      if (w.killFeed.length > KILLFEED.max) w.killFeed.shift();
-    },
-    spawnBlood(x, y, angle, count, height) {
-      for (let i = 0; i < count; i += 1) {
-        const a = angle + w.rng.float(-0.9, 0.9);
-        const sp = w.rng.float(40, 170);
-        w.particles.push({
-          x, y,
-          vx: Math.cos(a) * sp,
-          vy: Math.sin(a) * sp,
-          t: 0, life: w.rng.float(0.25, 0.6), size: w.rng.float(1.4, 3),
-          color: 'rgba(178,32,32,ALPHA)',
-          h: height,
-        });
-      }
-      if (w.particles.length > PARTICLE_CAP) w.particles.splice(0, w.particles.length - PARTICLE_CAP);
-    },
-    spawnImpact(x, y, angle, height) {
-      for (let i = 0; i < 5; i += 1) {
-        const a = angle + Math.PI + w.rng.float(-1, 1);
-        const sp = w.rng.float(30, 120);
-        w.particles.push({
-          x, y,
-          vx: Math.cos(a) * sp,
-          vy: Math.sin(a) * sp,
-          t: 0, life: w.rng.float(0.15, 0.35), size: w.rng.float(1, 2.2),
-          color: 'rgba(210,200,170,ALPHA)',
-          h: height,
-        });
-      }
-      if (audio) audio.impact();
-    },
-    /**
-     * 跳弹火花：子弹打在硬表面（墙 / 箱）上溅起的明亮火星。
-     * 比 spawnImpact 的尘土更"炽热"——白热与橙红交替、初速更快、带向上的竖直弹跳（vh），
-     * 渲染层按命中高度 h 放置，于是火星会沿墙面/箱顶真实地向上迸溅再落下。
-     * @param {number} x 世界 x
-     * @param {number} y 世界 y
-     * @param {number} angle 子弹水平入射角（弧度）
-     * @param {number} height 命中高度（场景单位）
-     * @returns {void}
-     */
-    spawnSpark(x, y, angle, height) {
-      const n = 9 + Math.floor(w.rng.float(0, 6));
-      for (let i = 0; i < n; i += 1) {
-        // 反弹方向以"朝射手反向"为主、带大角度散射，模拟弹道折返溅射
-        const a = angle + Math.PI + w.rng.float(-1.15, 1.15);
-        const sp = w.rng.float(70, 230);
-        w.particles.push({
-          x, y,
-          vx: Math.cos(a) * sp,
-          vy: Math.sin(a) * sp,
-          // 竖直弹跳（场景单位/秒）：火星向上迸起后受重力回落
-          vh: w.rng.float(50, 190) * (0.35 + w.rng.float(0, 1)),
-          t: 0, life: w.rng.float(0.12, 0.34), size: w.rng.float(0.5, 1.5),
-          color: w.rng.float(0, 1) < 0.5 ? 'rgba(255,242,205,ALPHA)' : 'rgba(255,150,55,ALPHA)',
-          h: height,
-        });
-      }
-      if (audio) audio.impact();
-    },
-    shakeCamera(amount) {
-      w.shake = Math.min(16, w.shake + amount);
-    },
-    containerSearchTime(container) {
-      return CONTAINERS[container.type].searchTime;
-    },
-    onSearchComplete(container) {
-      container.searched = true;
-      w.searchedCount += 1;
-      if (audio) audio.searchDone();
-      if (container.loot && container.loot.length) {
-        openContainer = container;
-        // 打开战利品面板但**不**释放指针锁定：面板是键盘驱动侧边抽屉，
-        // 玩家保持锁定状态、可继续转动视角，避免"搜物资被切身切自由鼠标"的割裂感。
-        ui.openLoot(container, container.loot);
-        clearMovementKeys();
-      } else {
-        ui.toast('什么都没找到');
-      }
-    },
-    openLootPanel(container) {
-      openContainer = container;
-      ui.openLoot(container, container.loot || []);
-      clearMovementKeys();
-    },
-    canAffordExtract(point) {
-      if (!point || point.kind !== 'paid') return true;
-      const cost = point.cost || MATCH.extractFee;
-      if (save.currency >= cost) return true;
-      ui.toast(`资金不足：该撤离点需支付 ${money(cost)}`);
-      if (audio) audio.error();
-      return false;
-    },
-    onTerminalComplete(terminal) {
-      if (!terminal || terminal.hacked) return;
-      terminal.hacked = true;
-      w.terminalsHacked += 1;
-      w.scoreBonus += SCORING.terminalBonus;
-      save.currency += POI.terminalReward;
-      Storage.saveGame(save);
-      ui.toast(`终端破解成功 · 情报费 +${money(POI.terminalReward)}`);
-      if (audio) audio.searchDone();
-    },
-    onExtract(point) {
-      if (point && point.kind === 'paid') {
-        const cost = point.cost || MATCH.extractFee;
-        save.currency = Math.max(0, save.currency - cost);
-        w.extractFeePaid = cost;
-      }
-      endRaid('extract');
-    },
-    onDeath(entity, source) {
-      if (entity.isPlayer) {
-        // 记下击杀来源：结算页要把「被什么、从多远打死」写出来，玩家下一把才知道怎么改。
-        // source 可能是 null（环境伤害），必须容错。
-        w.killedBy = source
-          ? {
-            type: source.typeId || 'unknown',
-            dist: Math.round(Math.hypot(source.x - entity.x, source.y - entity.y)),
-          }
-          : null;
-        return; // 玩家死亡由主循环统一结算
-      }
-      w.kills += 1;
-      if (audio) audio.death();
-      w.decals.push({
-        x: entity.x, y: entity.y, r: 15 + w.rng.float(0, 9), life: 1, maxLife: 1,
-      });
-      w.spawnBlood(entity.x, entity.y, w.rng.float(0, Math.PI * 2), 16);
-      const body = {
-        id: w.map.containers.length,
-        type: 'body',
-        x: Math.round(entity.x),
-        y: Math.round(entity.y),
-        r: CONTAINERS.body.radius,
-        searched: false,
-        loot: Loot.rollEnemyLoot(entity.typeId, w.rng),
-      };
-      w.map.containers.push(body);
-    },
-  };
-  return w;
-}
+// P1 拆分：createWorld 已移到 world.js（工厂注入见 startRaid 内组装）。
 
 /* ============================ 界面切换 ============================ */
 
@@ -607,7 +443,132 @@ function go(name) {
   // 进战（来自"部署"点击，属于用户手势）立即抢指针锁定，视角/右键立刻可用；
   // 离开战斗则释放，把鼠标还给菜单。
   syncPointerLock();
+  // W1：改枪台的 3D 预览只在战前屏存在；离开就释放 WebGL 上下文，别让它在后台空转。
+  // W2：同一屏还挂着角色 3D（装备配置板左侧），生命周期一起管。
+  if (name === 'loadout') {
+    syncGunPreviews();
+    syncCharPreview();
+  } else {
+    disposeGunPreviews();
+    disposeCharPreview();
+  }
 }
+
+/* ---------------- W1：改枪台 3D 预览（局外唯一一块 WebGL） ---------------- */
+
+/**
+ * 元素 → 预览控制器。
+ * 必须按**元素**而不是按武器 id 记账：改枪台每次改配件都会整块重渲染，
+ * 旧卡片会被摘掉、新卡片重新插入；只按 id 记账会把已经脱离文档的 canvas 当成"已挂载"，
+ * 结果就是玩家改了配件却看不到模型变化。
+ */
+const gunPreviews = new Map();
+
+function disposeGunPreviews() {
+  for (const api of gunPreviews.values()) api.dispose();
+  gunPreviews.clear();
+  // 回退层要恢复可见：下次若 WebGL 不可用，线稿仍然要在
+  for (const box of document.querySelectorAll('.gun-bench-preview.has3d')) {
+    box.classList.remove('has3d');
+  }
+}
+
+function syncGunPreviews() {
+  if (typeof document === 'undefined') return;
+  if (screen !== 'loadout') {
+    disposeGunPreviews();
+    return;
+  }
+  // 先回收已脱离文档的旧实例（重渲染会替换整块 DOM）
+  for (const [node, api] of gunPreviews) {
+    if (!node.isConnected) {
+      api.dispose();
+      gunPreviews.delete(node);
+    }
+  }
+  const hosts = document.querySelectorAll('[data-role="gun-preview-3d"]');
+  for (const hostEl of hosts) {
+    if (gunPreviews.has(hostEl)) continue;
+    const rel = VM_GLB[hostEl.dataset.weapon];
+    if (!rel) continue; // 未知武器：保留线稿
+    const api = createPreview(hostEl, { autoSpin: true, shadow: true });
+    if (!api) continue; // 无 WebGL：保留线稿回退，不报错、不白屏
+    gunPreviews.set(hostEl, api);
+    api.loadModel(rel, { gain: 0.95 }).then((ok) => {
+      if (!ok) return;
+      // 模型就位才隐藏线稿：否则加载失败会只剩一块空台子
+      const box = hostEl.closest && hostEl.closest('.gun-bench-preview');
+      if (box) box.classList.add('has3d');
+    });
+  }
+}
+
+// ui.js 只负责渲染 DOM 并广播事件，不 import three；挂载由这里接管。
+document.addEventListener('gunbench:rendered', () => syncGunPreviews());
+
+/* ---------------- W2：装备屏角色 3D ---------------- */
+
+/**
+ * 角色台的灯光标定（**与枪台不同**，别共用一套）。
+ *
+ * `studioLights()` 的默认档（ambient12/hemi24/key5.5 + 曝光1.4）是给 GLB 枪模扫参扫出来的：
+ * 那些材质走 `glbLambert` 时乘了 gain0.8，本身是压暗过的。程序化士兵用的是**满亮度**
+ * Lambert（军服 #6A6A55、皮肤 #C8A07A），直接套同一档会被顶到 ACES 的肩部以上 ——
+ * 实测整具模型冲成浅白/薄荷绿，脸和手变成粉白色块，正是"发光棉花糖"的成因。
+ *
+ * 这里把三件事一起调：主光压到 3.0（仍是最强光源、定明暗关系）、环境/半球砍到 1/3
+ * （留暗部但不发灰）、曝光降到 1.0（不再靠曝光兜亮度）。数值是像素亮度实测选的，
+ * 不是猜的：目标是人形中间调落在 0.35~0.55 区间、盔/背心暗部 ≥0.12（不糊死）。
+ */
+const CHAR_LIGHTS = {
+  ambient: 3.6, hemi: 8.0, key: 3.8, fill: 1.0, rim: 3.0, exposure: 1.05,
+};
+
+let charPreview = null;
+let charPreviewHost = null;
+let charPreviewRel = '';
+
+function disposeCharPreview() {
+  if (charPreview) charPreview.dispose();
+  charPreview = null;
+  charPreviewHost = null;
+  charPreviewRel = '';
+  if (typeof document !== 'undefined') {
+    for (const box of document.querySelectorAll('[data-role="char-preview"].has3d')) {
+      box.classList.remove('has3d');
+    }
+  }
+}
+
+function syncCharPreview() {
+  if (typeof document === 'undefined') return;
+  if (screen !== 'loadout') { disposeCharPreview(); return; }
+  const hostEl = document.querySelector('[data-role="char-preview"]');
+  if (!hostEl) { disposeCharPreview(); return; }
+  // 重渲染会把整块容器换掉，旧实例必须跟着宿主一起回收（否则白烧一个 WebGL context）
+  if (charPreview && charPreviewHost !== hostEl) disposeCharPreview();
+  if (!charPreview) {
+    // targetMax 1.75：人形站姿是"最高维 = 身高"，归一化到 1.75m 后取景刚好撑满 226×190 的台子
+    charPreview = createPreview(hostEl, { autoSpin: true, shadow: true, targetMax: 1.75 });
+    if (!charPreview) return; // 无 WebGL：容器留空，不报错也不白屏
+    if (charPreview.setLights) charPreview.setLights(CHAR_LIGHTS);
+    charPreviewHost = hostEl;
+    charPreviewRel = '';
+  }
+  const op = getOperator((save && save.operator) || 'vulcan');
+  const sig = `op:${op.id}`;
+  if (charPreviewRel === sig) return;
+  charPreviewRel = sig;
+  hostEl.classList.remove('has3d');
+  // 程序化模型是同步构建的，但 setModel 会重算包围盒/取景，放到下一帧再亮 has3d 更稳
+  // ⚠ yaw=π 不是随便定的：buildEnemyModel 造出来的人**面朝 -Z**（背包在 +Z），
+  //   而预览相机永远站在 +Z 看原点 —— yaw=0 时展示台上是一个后脑勺对着玩家的人。
+  charPreview.setModel(buildOperatorShowcase(op), { rel: sig, yaw: Math.PI });
+  hostEl.classList.add('has3d');
+  charPreview.frame(1);
+}
+
+document.addEventListener('equip:rendered', () => syncCharPreview());
 
 function setPaused(value) {
   if (screen !== 'battle' || !world || world.over) return;
@@ -618,6 +579,7 @@ function setPaused(value) {
     if (ui.updateFovLabel) ui.updateFovLabel(save.settings.fov);
     if (ui.updateSensLabel) ui.updateSensLabel(save.settings.mouseSens);
     if (ui.updateTouchSensLabel) ui.updateTouchSensLabel(save.settings.touchLookSens || 1);
+    if (ui.updateGradeLabels) ui.updateGradeLabels(resolveGrade(save));
     input.fire = false;
     input.firePressed = false;
     input.up = false;
@@ -652,13 +614,11 @@ function deploy() {
   }
   const lo = save.loadout;
   // 保费要在扣装备之前算：consumeById 之后仓库里已经没有那把枪了。
+  // ⚠ 口径唯一真值在 gear.js 的 gearValue()（8 槽位全覆盖），这里绝不再写第二份 ——
+  // 两处各算一遍就是"UI 显示保费 ¥900、实际扣 ¥1200"这类事故的来源。
   const insured = Boolean(save.insurance && save.insurance.enabled && INSURANCE.enabled);
   if (insured) {
-    const gearValue = [lo.primary, lo.secondary]
-      .filter((id) => id && WEAPONS[id])
-      .reduce((s, id) => s + WEAPONS[id].value, 0)
-      + (lo.armor && lo.armor !== 'none' && ARMORS[lo.armor] ? ARMORS[lo.armor].value : 0);
-    const premium = Math.round(gearValue * INSURANCE.rate);
+    const premium = Math.round(gearValue(lo) * INSURANCE.rate);
     if (premium > save.currency) {
       ui.toast(`资金不足：保费 ${money(premium)}`);
       audio.error();
@@ -666,20 +626,39 @@ function deploy() {
     }
     save.currency -= premium;
   }
-  const weapons = [lo.primary, lo.secondary].filter((id) => id && WEAPONS[id]);
-  for (const id of weapons) consumeById(save.stash, id, 1);
+  // W2：8 个槽位逐个扣仓（含手枪 / 匕首 / 背包 / 胸挂）。
+  // 与 endRaid 的 gear 回仓列表严格一一对应 —— 扣了不还 = 玩家白送，还了不扣 = 白嫖。
+  for (const id of [lo.primary, lo.secondary, lo.sidearm]) {
+    if (id && WEAPONS[id]) consumeById(save.stash, id, 1);
+  }
+  for (const [slot, table] of [['melee', MELEE], ['backpack', BACKPACKS], ['rig', RIGS]]) {
+    const id = lo[slot];
+    if (id && id !== 'none' && table[id]) consumeById(save.stash, id, 1);
+  }
   if (lo.armor && lo.armor !== 'none' && ARMORS[lo.armor]) consumeById(save.stash, lo.armor, 1);
-  consumeById(save.stash, 'ammo556', (lo.ammo556Boxes || 0) * AMMO_STACK);
-  consumeById(save.stash, 'ammo9mm', (lo.ammo9mmBoxes || 0) * AMMO_STACK);
+  if (lo.helmet && lo.helmet !== 'none' && ARMORS[lo.helmet]) consumeById(save.stash, lo.helmet, 1);
+  // P7：按弹种逐项扣仓库，标准弹与 AP/亚音速/空尖各自独立
+  for (const id of AMMO_IDS) {
+    consumeById(save.stash, id, loadoutAmmoBoxes(lo, id) * ammoBoxSize(id));
+  }
   consumeById(save.stash, 'medkit', lo.medkits || 0);
   consumeById(save.stash, 'bandage', lo.bandages || 0);
+  consumeById(save.stash, 'surgery', lo.surgeries || 0);
+  consumeById(save.stash, 'armorKit', lo.armorKits || 0);
   Storage.saveGame(save);
-  startRaid(ui.getSeed(), { insured, mapId: ui.getMap() });
+  startRaid(ui.getSeed(), { insured, mapId: ui.getMap(), riskId: save.risk });
 }
 
 function buy(id) {
   const def = ITEMS[id];
   if (!def) return;
+  // P10 每日额度：旧档没有 supply 字段时由 ensureSupply 就地补默认，不影响老玩家。
+  const todayStr = String(Storage.dailySeed());
+  if (shopRemaining(save, id, todayStr) < 1) {
+    ui.toast('今日该物资已售罄，明日自动刷新');
+    audio.error();
+    return;
+  }
   // 声望门槛：UI 只是展示锁，判定必须在逻辑层。
   const needLv = SHOP_TIER[id] || 1;
   if (Storage.repLevel((save.rep && save.rep.xp) || 0) < needLv) {
@@ -699,11 +678,58 @@ function buy(id) {
     return;
   }
   save.currency -= def.value;
+  consumeShopStock(save, id, todayStr);
   autoPlace(save.stash, item);
   Storage.saveGame(save);
   ui.renderShop(save);
   audio.cash();
   ui.toast(`已购买 ${def.name}`);
+}
+
+/**
+ * 交易行本地报价买入（P2 交互）。
+ *
+ * 用户明确边界：交易行目前只用于物资购买，不做共享物资总数、跨局库存账本、
+ * 全局限购额度，也不往存档里写任何市场字段。报价由 market.js 用种子复算，
+ * DOM 上的价格一律不信任；返回 true 时 UI 才把这张报价标成已成交（仅内存）。
+ * @param {{seed:string,key:string}} data 报价种子与条目 key
+ * @returns {boolean} 是否成交
+ */
+function buyListing(data) {
+  const seed = Number(data && data.seed) >>> 0;
+  const listing = findListing(seed, data && data.key);
+  if (!listing) {
+    ui.toast('报价已失效，请刷新');
+    audio.error();
+    return false;
+  }
+  const def = ITEMS[listing.id];
+  if (!def) return false;
+  const needLv = SHOP_TIER[listing.id] || 1;
+  if (Storage.repLevel((save.rep && save.rep.xp) || 0) < needLv) {
+    ui.toast(`需声望 Lv.${needLv}`);
+    audio.error();
+    return false;
+  }
+  if (save.currency < listing.price) {
+    ui.toast('资金不足');
+    audio.error();
+    return false;
+  }
+  const item = createItem(def, def.stack || 1);
+  if (!hasSpace(save.stash, item)) {
+    ui.toast('仓库空间不足');
+    audio.error();
+    return false;
+  }
+  save.currency -= listing.price;
+  autoPlace(save.stash, item);
+  Storage.saveGame(save);
+  ui.renderShop(save);
+  ui.renderStash(save);
+  audio.cash();
+  ui.toast(`已按本地报价买入 ${def.name} · ${money(listing.price)}`);
+  return true;
 }
 
 /**
@@ -728,7 +754,7 @@ function buyUpgrade(nodeId) {
     audio.error();
     return;
   }
-  Storage.saveGame(save);
+  Storage.scheduleSave(save);
   ui.renderUpgrades(save);
   audio.cash();
   ui.toast(`已解锁「${node.name}」· ${node.effectText}`);
@@ -765,6 +791,79 @@ function sellAll() {
   ui.toast(`全部出售完毕 → ${money(gained)}`);
 }
 
+/* ============================ P10 局外生涯交互 ============================ */
+
+function careerToday() {
+  return String(Storage.dailySeed());
+}
+
+/** 委托单到期结算：进大厅屏、挂新单、结算前都推一次，重复调用不会二次入账。 */
+function advanceOrders() {
+  const settled = settleOrders(save, Date.now());
+  if (settled.length) {
+    Storage.saveGame(save);
+    const total = settled.reduce((sum, o) => sum + Math.max(0, Number(o.price) || 0), 0);
+    ui.toast(`${settled.length} 笔委托已成交 → ${money(total)}`);
+  }
+  return settled;
+}
+
+function listItem(uid) {
+  advanceOrders();
+  const res = createOrder(save, uid, Date.now(), careerToday());
+  if (!res.ok) {
+    ui.toast(res.reason);
+    audio.error();
+    return;
+  }
+  Storage.saveGame(save);
+  ui.renderShop(save);
+  ui.renderStash(save);
+  audio.cash();
+  ui.toast(`已委托 ${res.order.name} · 预计 ${money(res.order.price)} · ${Math.round(CAREER.consign.settleMs / 1000)}s 后成交`);
+}
+
+function cancelOrderHandler(key) {
+  const res = cancelOrder(save, key);
+  if (!res.ok) {
+    ui.toast(res.reason);
+    return;
+  }
+  Storage.saveGame(save);
+  ui.renderShop(save);
+  ui.renderStash(save);
+  ui.toast(res.returned ? '委托已撤销，物资退回仓库' : `委托已撤销，仓库已满折现 ${money(res.refund)}`);
+}
+
+function claimCareerReward(kind, id) {
+  let got = 0;
+  if (kind === 'achievement') got = claimAchievement(save, id);
+  else if (kind === 'quest') got = claimQuest(save, id, careerToday());
+  else if (kind === 'rep') got = claimRepReward(save, Number(id));
+  if (!got) {
+    ui.toast('该奖励尚未达成或已领取');
+    return;
+  }
+  Storage.saveGame(save);
+  ui.renderCareer(save);
+  audio.cash();
+  ui.toast(`奖励已入账 ${money(got)}`);
+}
+
+function claimAllCareerRewards() {
+  const got = claimAllAchievements(save)
+    + claimAllQuests(save, careerToday())
+    + claimAllRepRewards(save);
+  if (!got) {
+    ui.toast('暂时没有可领取的奖励');
+    return;
+  }
+  Storage.saveGame(save);
+  ui.renderCareer(save);
+  audio.cash();
+  ui.toast(`已领取全部奖励 ${money(got)}`);
+}
+
 /* ============================ 战局生命周期 ============================ */
 
 function startRaid(seedInput, opts) {
@@ -772,34 +871,131 @@ function startRaid(seedInput, opts) {
   // 地图只在"部署"这一刻定格：暂停/恢复不会重新生成，界面选图也不会中途换图。
   // 缺省回落到旧图，保证控制台 SOUDACHE.startRaid(1) 等既有调试入口行为不变。
   const mapId = (opts && opts.mapId) || DEFAULT_MAP_ID;
-  const map = generateMap(seed, mapId);
+  // P15 风险分级：优先用本次部署显式传入的 id，其次读存档（战前选择），最后回落常规。
+  // 与保险同一原则 —— 控制台 startRaid(1) 不会白嫖上一局选的高难度。
+  const risk = getRisk((opts && opts.riskId) || save.risk || DEFAULT_RISK_ID);
+  const map = generateMap(seed, mapId, { enemyCountMul: risk.enemyCountMul });
   const rng = createRng((seed ^ 0x9e3779b9) >>> 0);
 
+  const lootLuck = riskLootLuck(risk);
   for (const container of map.containers) {
     container.searched = false;
-    container.loot = Loot.rollContainer(container.type, rng);
+    // P20：把区域价值分层乘进 luck —— 核心区的木箱比外围的木箱更容易出好东西。
+    // luck 只改稀有度权重，不增减 rng 调用次数，因此同 seed 的抽取序列仍逐位一致。
+    container.tier = containerTierOf(map, container);
+    container.loot = Loot.rollContainer(container.type, rng, {
+      luck: lootLuckAt(map, container.x, container.y, lootLuck),
+    });
+    // P20 价值预算：核心区的箱子不该开出一根螺栓。保底零随机（静态填充物），
+    // 所以不会改变上面那次 rollContainer 已经消耗的随机序列。
+    Loot.applyTierFloor(container.loot, container.tier, CONTAINERS[container.type]);
   }
+  // P20：局内三目标（短 / 中 / 高风险）。纯函数，只读几何，不动 rng。
+  map.objectives = buildObjectives(map);
+  // P20：给撤离点补「附加条件」（限时 / 需携带物资 / 轻装 / 高危读条）。
+  // 只写修饰字段，不动 kind / openAt / 坐标 → 不进入 GOLDEN 快照。
+  // M-03：layout:true 启用出口网络（常规 / 付费 / 拉闸），随后生成闸刀 POI 并校验可达性。
+  // 两步都在 generateMap 之后 —— GOLDEN 口径逐位不变。
+  buildExtractPlan(map, { duration: MATCH.duration, layout: true });
+  finalizeExtractLayout(map);
 
   // 局外改装在这里一次性结算成**本局专用**配置（applyMods 返回新对象，绝不改 config.js 常量）。
   // 武器 / 护甲 / 医疗 / 玩家数值都从这份 cfg 取，保证四处强化的口径一致。
   const cfg = applyMods({ PLAYER, WEAPONS, ARMORS, ITEMS }, save);
+  // P6 改枪台：在局外改装（upgrades）之上，再叠加改枪台附件数值到本局 cfg.WEAPONS。
+  // 必须放在 defs 计算之前，否则武器状态会指向未改装的旧 def。
+  applyWeaponMods(cfg, save);
   const lo = save.loadout;
-  const defs = [lo.primary, lo.secondary]
+  // W2：三个武器槽 —— 主武器 / 副武器 / 手枪。顺序即快捷栏 1/2/3 的顺序（空槽自动跳过）。
+  const defs = [lo.primary, lo.secondary, lo.sidearm]
     .filter((id) => id && cfg.WEAPONS[id])
     .map((id) => cfg.WEAPONS[id]);
   const armorDef = cfg.ARMORS[lo.armor] || cfg.ARMORS.none;
+  const helmetDef = cfg.ARMORS[lo.helmet] || cfg.ARMORS.none;
+  // W2：背包只改负重上限，胸挂只改局内胸挂容器尺寸（两者的定义都在 config.js；
+  // 不进 applyMods —— 改装树里没有一项作用于它们，硬塞进去只会多一层空转）。
+  const backpackDef = BACKPACKS[lo.backpack] || BACKPACKS.none;
+  const meleeDef = MELEE[lo.melee] || null;
+  const finalDefs = defs.length ? defs : [cfg.WEAPONS.pistol];
+  // P7：弹种与武器口径绑定。主/副槽各选各的；同一把枪重复装备时按槽位取，
+  // 口径不符（例如把 SMG 放主武器却选了 5.56）自动回落该武器的标准弹。
+  // W2：手枪槽与副武器槽共用 `ammoSecondary`（两槽都是 9mm 家族，分两套配置只会让玩家多绕一步）。
+  const slotPicks = [lo.ammoPrimary, lo.ammoSecondary, lo.ammoSecondary];
+  const ammoIds = finalDefs.map((d, i) => {
+    const list = ammoIdsForWeapon(d.id, cfg.WEAPONS);
+    const picked = slotPicks[i];
+    return list.includes(picked) ? picked : (d.ammoItem || list[0] || null);
+  });
   const player = new Player({
     x: map.playerSpawn.x,
     y: map.playerSpawn.y,
     armorDef,
-    weaponDefs: defs.length ? defs : [cfg.WEAPONS.pistol],
+    helmetDef,
+    backpackDef,
+    meleeDef,
+    weaponDefs: finalDefs,
+    ammoIds,
     items: buildLoadoutItems(lo, cfg.ITEMS),
     playerCfg: cfg.PLAYER,
     itemCfg: cfg.ITEMS,
   });
-  const enemies = spawnEnemies(map, rng);
+  const enemies = applyRiskToEnemies(spawnEnemies(map, rng), risk);
 
+  // P1：运行时组装依赖，惰性读 save（resetSave 后不陈旧）、ui 此刻已完成初始化。
+  const createWorld = makeCreateWorld({
+    audio, ui, money, openLootStash, endRaid, PARTICLE_CAP,
+    getSave: () => save,
+  });
   world = createWorld(map, seed, rng, player, enemies);
+  // P9：记录本局 Boss 引用，供 HUD 首领血条读取（每图最多一个）。
+  world.boss = enemies.find((e) => e.isBoss) || null;
+  // P15：本局风险档 —— 结算/HUD/调试口读这里，不再回查存档（中途改存档不会篡改本局）。
+  world.risk = risk;
+  // P20：补货用的基准幸运倍率（风险档），区域层级倍率在触发时再乘上去。
+  world.lootLuck = lootLuck;
+
+  // P18：随身并行容器（胸挂 / 口袋 / 安全容器）。尺寸只从 config.PLAYER 取，不在这里写死。
+  // 负重、估值、换弹备弹、医疗、丢弃、结算带出全部按「全部容器」聚合（见 Player.containers）。
+  // E-05：安全箱尺寸按存档档位取（旧档 s1=2×2 与改动前逐位一致），坏值回落 s1。
+  const secureTier = SECURE_TIERS[save.secureTier] ? save.secureTier : DEFAULT_SECURE_TIER;
+  const secureSize = SECURE_TIERS[secureTier];
+  // W2：胸挂尺寸由装备的胸挂决定（默认 rig_lv1 = 4×2，与改动前写死的 PLAYER.rig 逐位一致）。
+  const rigDef = RIGS[lo.rig] || RIGS.rig_lv1;
+  const rigSize = rigSizeFor(lo.rig);
+  player.rigDef = rigDef;
+  player.extraContainers = [
+    createInventory(rigSize.cols, rigSize.rows, { name: '胸挂', kind: 'rig' }),
+    createInventory(PLAYER.pocket.cols, PLAYER.pocket.rows, { name: '口袋', kind: 'pocket' }),
+    createInventory(secureSize.cols, secureSize.rows, { name: '安全容器', kind: 'secure' }),
+  ];
+  // 双栏界面的左侧「我的装备」：槽位只是当前穿戴的展示位，局内不可替换
+  // （换枪/换甲不改战斗数值，允许替换会造出"换了却没换"的假象）。
+  // ⚠ 只喂 makePlayerGear 支持的四种槽位（SLOT 枚举）。W2 新增的手枪/匕首/背包/胸挂
+  //   不在这里展示：它们的价值已经由 player.weight / 结算口径覆盖，再加一份会重复计入。
+  player.gear = makePlayerGear(player.inventory, {
+    primary: lo.primary, secondary: lo.secondary, armor: lo.armor, helmet: lo.helmet,
+  }, {
+    rig: player.extraContainers[0],
+    pocket: player.extraContainers[1],
+    secure: player.extraContainers[2],
+  });
+  for (const s of player.gear.slots) s.readonly = true;
+
+  // P5-C2 本地 AI 小队：在玩家身后编队位生成两名队友（与敌人同款纯逻辑 AI）。
+  // P15：编成改为读存档（战前可选两席），旧档 squad=[] 时由 resolveSquadIds
+  // 按干员表补默认 —— 结果与 P14 的「取非玩家前两名」逐位一致。
+  // 注意：op 在下方才声明，这里用 save.operator 取玩家当前干员 id 以避免 TDZ。
+  const allyOps = resolveSquadIds(save.squad, save.operator);
+  const squad = spawnSquad(player, map, rng, allyOps, defs[0] || cfg.WEAPONS.rifle);
+  world.squad = squad;
+
+  // 干员（P5）：被动乘数写进玩家，技能状态是**本局专用**对象。
+  // 选择只从存档读一次，之后整局不再变 —— 中途改存档不会让技能凭空换人。
+  const op = getOperator(save.operator);
+  applyOperator(player, op);
+  player.abilities = createAbilityState(op);
+  world.abilities = player.abilities;
+  world.operator = op;
   // 战局内“点击医疗物资直接使用”也要走改装后的定义，否则该路径会绕过医疗效率强化。
   world.itemCfg = cfg.ITEMS;
   // 保险状态只能从本次部署显式传入：若从 save 现读，控制台调 SOUDACHE.startRaid(1) 会白嫖保险。
@@ -815,7 +1011,49 @@ function startRaid(seedInput, opts) {
   go('battle');
   audio.ensure();
   if (audio.startAmbient) audio.startAmbient();
-  ui.toast(`已部署 · ${map.name} · 种子 ${seed} · ${map.extracts.length} 个撤离点（免费点 2:30 先开，其余剩余 2:00）`);
+  const anchorPoint = map.extracts.find((e) => e.kind === 'standard');
+  ui.toast(`已部署 · ${map.name} · 种子 ${seed} · ${map.extracts.length} 个撤离点`
+    + `${anchorPoint ? '（常规点开局即开）' : ''}`);
+  // M-03：进图情报 —— 只报出口类型与开放时间，不透露敌人部署。
+  if (map.extractLayout && map.extractLayout.ok) {
+    const kindText = { standard: '常规', free: '免费', paid: '付费', guarded: '守卫' };
+    const openText = (ex) => {
+      const t = Math.max(0, Math.round(Number(ex.openAt) || 0));
+      if (t === 0) return '开局开放';
+      return `T+${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')} 开放`;
+    };
+    const lines = map.extracts.map((ex) => {
+      const k = kindText[ex.kind] || '免费';
+      const fee = ex.kind === 'paid' ? ` ${money(ex.cost || MATCH.extractFee)}` : '';
+      const mod = modifierLabel(ex);
+      const extra = mod && mod !== '常规' ? ` · ${mod}` : '';
+      return `${ex.name} ${k}${fee}${extra} ${openText(ex)}`;
+    });
+    ui.toast(`出口情报：${lines.join(' / ')}`);
+  }
+  // P20：把「出生点类型」翻译成一句可执行的建议 —— 位置信息不说明白等于没有。
+  const hint = spawnHint(map.spawnKind);
+  if (hint) ui.toast(hint);
+  // 干员操作的发现性：第一次进战直接把两个键告诉玩家，而不是让他们去翻暂停面板
+  ui.toast(`干员 ${op.code} · [G] ${op.ultimate ? throwableDef(op.tactical.id).name : ''} · [X] ${op.ultimate.name}`);
+}
+
+/**
+ * 玩家脚下最近的撤离点（结算兜底用）。
+ * endRaid 可能被"放弃 / 超时 / 调试口"直接调用，此时 world.extractKind 还没被 onExtract 写入，
+ * 结算页就会显示一个光秃秃的"撤离"。这里按站位回填通道类型，不依赖调用顺序。
+ * @param {object} w 战局
+ * @returns {?object} 命中的撤离点
+ */
+function extractUnderPlayer(w) {
+  if (!w || !w.map || !w.player) return null;
+  let best = null;
+  let bd = Infinity;
+  for (const ex of w.map.extracts || []) {
+    const d = Math.hypot(ex.x - w.player.x, ex.y - w.player.y);
+    if (d <= (ex.r || 40) + 10 && d < bd) { bd = d; best = ex; }
+  }
+  return best;
 }
 
 /**
@@ -838,20 +1076,39 @@ function endRaid(reason) {
   const player = world.player;
   const success = reason === 'extract';
 
-  const carried = player.inventory.items.slice();
+  // P18：带出/损失清单必须覆盖全部格位容器（胸挂/口袋/安全容器），
+  // 只读主背包会让玩家搜到的物资在结算页凭空消失。
+  const carried = player.carriedItems();
+  // E-05：把随身物品拆成「安全箱」与「普通」两组。阵亡时只有安全箱回仓，
+  // 这是玩家的损失下限；成功时两组都带出，口径与改动前逐位一致。
+  const { secure: secureItems, loose: looseItems } = splitCarried(player.containers);
   const gear = [];
+  // W2：回仓清单 = 「部署时从仓库扣掉的那 8 个槽位」，一一对应（见 deploy）。
+  // 漏一项的后果：那件装备每局都被静默吞掉 —— 玩家会以为存档坏了。
+  // ⚠ helmet 以前漏在这里（穿了就没收），这次一并补齐，与 deploy 的扣仓列表严格对称。
   if (player.armorDef && player.armorDef.id !== 'none' && ITEMS[player.armorDef.id]) {
     gear.push(createItem(ITEMS[player.armorDef.id], 1));
+  }
+  if (player.helmetDef && player.helmetDef.id !== 'none' && ITEMS[player.helmetDef.id]) {
+    gear.push(createItem(ITEMS[player.helmetDef.id], 1));
   }
   for (const weapon of player.weapons) {
     if (ITEMS[weapon.def.id]) gear.push(createItem(ITEMS[weapon.def.id], 1));
   }
+  if (player.meleeDef && ITEMS[player.meleeDef.id]) {
+    gear.push(createItem(ITEMS[player.meleeDef.id], 1));
+  }
+  for (const def of [player.backpackDef, player.rigDef]) {
+    if (def && def.id && def.id !== 'none' && ITEMS[def.id]) gear.push(createItem(ITEMS[def.id], 1));
+  }
 
-  const broughtOut = success ? carried.concat(gear) : [];
-  let lost = success ? [] : carried.concat(gear);
+  // E-05：失败时安全箱物品照常带出（回仓），普通物品与装备才计损失。
+  // 语序：安全箱 → 保险 → 普通掉落；保险只救装备，不救普通物品。
+  let broughtOut = success ? carried.concat(gear) : secureItems.slice();
+  let lost = success ? [] : looseItems.concat(gear);
   if (!success && world.insured) {
-    // 保险只赔带进去的装备：gear 回仓库（满了折现），随身物资照旧清空。
-    lost = carried.slice();
+    // 保险只赔带进去的装备：gear 回仓库（满了折现），安全箱照旧保留，普通物资照旧清空。
+    lost = looseItems.slice();
     let cash = 0;
     for (const it of gear) cash += placeOrCash(it);
     if (cash > 0) {
@@ -859,7 +1116,9 @@ function endRaid(reason) {
       ui.toast(`保险理赔：仓库已满，折现 ${money(cash)}`);
     }
   }
-  const lootValue = Loot.valueOf(broughtOut);
+  // E-05：失败时安全箱物品虽回仓，但那是"损失下限"而非带出战果 —— 计分/声望/最佳估值
+  // 口径必须与撤离成功前的旧行为一致（失败恒 0）。回仓走 broughtOut，计分走 lootValue，两者解耦。
+  const lootValue = success ? Loot.valueOf(broughtOut) : 0;
   // 「高价值撤离」类合约：只有真正撤离成功才结算（带出估值达标即达成）
   if (success) settleExtractContracts(world, lootValue, (c) => completeContract(world, c));
 
@@ -878,18 +1137,66 @@ function endRaid(reason) {
   // 统计
   const survived = Math.min(MATCH.duration, world.time);
   const accuracy = player.shotsFired ? Math.round((player.hits / player.shotsFired) * 100) : 0;
-  const score = Math.round(
+  // P20：探索度只看可行走格 —— 把墙体算进分母会让"探索 70%"变成永远达不到的指标。
+  let walkableTiles = 0;
+  let seenTiles = 0;
+  const exploredGrid = world.explored;
+  if (exploredGrid && world.map.grid) {
+    for (let i = 0; i < exploredGrid.length; i += 1) {
+      if (world.map.grid[i] !== 0) continue;
+      walkableTiles += 1;
+      if (exploredGrid[i]) seenTiles += 1;
+    }
+  }
+
+  // P20：结算复盘 —— 撤离方式 / 带出价值 / 高价值物 / 击败 / 探索 / 任务 / 目标 / 时长。
+  // 必须在算分之前算完：局内目标加成要进 rawScore（只在文案里写"+" 是假账）。
+  const review = buildReview({
+    reason,
+    success,
+    carriedValue: success ? lootValue : 0,
+    lostValue: success ? 0 : Loot.valueOf(lost),
+    items: success ? broughtOut : lost,
+    kills: world.kills,
+    searched: world.searchedCount,
+    exploredRatio: walkableTiles ? seenTiles / walkableTiles : 0,
+    time: survived,
+    terminals: world.terminalsHacked,
+    contractsDone: world.contractsDone,
+    contractsTotal: (world.contracts || []).length,
+    bossDown: Boolean(world.boss && world.boss.dead),
+    extractKind: world.extractKind || (extractUnderPlayer(world) || {}).kind,
+    extractModifier: world.extractModifier || (extractUnderPlayer(world) || {}).modifier,
+    extractFee: world.extractFeePaid,
+    killedBy: world.killedBy,
+    killerName: world.killedBy && world.killedBy.type
+      ? ((ENEMY_TYPES[world.killedBy.type] && ENEMY_TYPES[world.killedBy.type].name) || '')
+      : '',
+    objectives: world.objectives,
+    hotspotVisits: world.hotspotVisits,
+    world,
+  });
+
+  const raidRisk = world.risk || getRisk(DEFAULT_RISK_ID);
+  const rawScore = Math.round(
     lootValue * SCORING.lootPerPoint
     + world.kills * SCORING.killPoints
     + world.searchedCount * SCORING.searchPoints
     + (success ? SCORING.extractBonus : 0)
     + survived * SCORING.survivalPerSecond
+    // P20：局内目标加成与复盘读的是**同一份**结算结果，不另算一套。
+    + (review.objectives ? review.objectives.bonus : 0)
     + (world.scoreBonus || 0),
   );
+  // P15：风险倍率只作用在最终评分上，不改变击杀/搜索等基础计分口径。
+  // 常规档 ×1 → 与 P14 之前逐位相同。
+  const score = riskScore(rawScore, raidRisk);
   const rating = SCORING.ratings.find((r) => score >= r.min) || SCORING.ratings[SCORING.ratings.length - 1];
 
   // 评级奖励：只在撤离成功时发（S 1500 / A 800 / B 400 / C 150 / D 0）
-  const ratingBonus = success ? ((SCORING.ratingBonus && SCORING.ratingBonus[rating.grade]) || 0) : 0;
+  // P15：奖金同样吃风险倍率，否则「绝密」只有难度没有对应的现金回报。
+  const rawRatingBonus = success ? ((SCORING.ratingBonus && SCORING.ratingBonus[rating.grade]) || 0) : 0;
+  const ratingBonus = riskPayout(rawRatingBonus, raidRisk);
   if (ratingBonus > 0) save.currency += ratingBonus;
 
   save.stats.raids += 1;
@@ -928,14 +1235,30 @@ function endRaid(reason) {
     ? `Lv.${afterLv} · ${REP.levels.find((l) => l.level === afterLv).label}`
     : null;
 
+  // P10 局外生涯：成就 / 今日任务 / 到点委托单，全部落在唯一那次 saveGame 之前。
+  // 奖励只标记「可领取」，玩家回生涯屏幂等领取，避免结算重复入账。
+  const careerTodayStr = String(Storage.dailySeed());
+  const careerResult = settleRaidCareer(save, {
+    success,
+    kills: world.kills,
+    searches: world.searchedCount,
+    terminals: world.terminalsHacked,
+    lootValue,
+    survived,
+    bossDown: world.boss && world.boss.dead ? 1 : 0,
+  }, careerTodayStr, Date.now());
+
   Storage.saveGame(save);
   Storage.ensureMinimumKit(save);
 
   // 死因复盘：只有 dead 的副标题是动态的，其余三条原样
   const killer = world.killedBy;
-  const killedText = killer
-    ? `倒在 ${(ENEMY_TYPES[killer.type] && ENEMY_TYPES[killer.type].name) || '未知目标'} 枪下 · ${killer.dist}m`
-    : '你倒在了战区里，随身物资全部丢失。';
+  // 流血致死没有"枪手"，别把它写成「倒在未知目标枪下 · 0m」
+  const killedText = killer && killer.type === 'bleed'
+    ? '失血过多 —— 中弹后没有及时止血'
+    : (killer
+      ? `倒在 ${(ENEMY_TYPES[killer.type] && ENEMY_TYPES[killer.type].name) || '未知目标'} 枪下 · ${killer.dist}m`
+      : '你倒在了战区里，随身物资全部丢失。');
   const titles = {
     extract: { title: '撤离成功', subtitle: '你活着把东西带了出来。', ok: true },
     dead: { title: '阵亡', subtitle: killedText, ok: false },
@@ -944,18 +1267,16 @@ function endRaid(reason) {
   };
   const info = titles[reason] || titles.dead;
 
-  const stats = [
-    ['存活时长', formatTime(survived)],
-    ['击杀', String(world.kills)],
-    ['搜索容器', String(world.searchedCount)],
-    ['物资总值', money(success ? lootValue : Loot.valueOf(lost))],
-    ['命中率', `${accuracy}%`],
-    ['总负重', `${totalWeight(player.inventory).toFixed(1)} kg`],
-    ['破解终端', String(world.terminalsHacked)],
-  ];
-  if (world.extractFeePaid > 0) {
-    stats.push(['撤离手续费', money(world.extractFeePaid)]);
-  }
+  const stats = review.rows.map((r) => {
+    if (r.key === 'value' || r.key === 'fee') return [r.label, money(Number(r.value) || 0)];
+    return [r.label, r.value];
+  });
+  // 保留复盘之外的操作性指标（命中率 / 负重），它们不属于"这一局发生了什么"。
+  stats.push(['命中率', `${accuracy}%`]);
+  stats.push(['总负重', `${totalWeight(player.inventory).toFixed(1)} kg`]);
+  // P15：非基准档才插这一行（常规局结算行数与 P14 之前完全一致）。
+  const riskLine = riskSummary(raidRisk);
+  if (riskLine) stats.push(['风险系数', riskLine]);
   // 评级奖励与「距下一档还差多少」：让 S 和 C 的收益差别看得见
   if (ratingBonus > 0) stats.push(['评级奖励', money(ratingBonus)]);
   if (success) {
@@ -968,6 +1289,19 @@ function endRaid(reason) {
   }
   // 声望提升（只在真的跨级时出现）
   if (repLine) stats.push(['声望提升', repLine]);
+  // 局外进度只占一行，避免结算页被新系统挤爆（结算行数有屏幕高度约束）。
+  const careerNews = [];
+  if (careerResult.freshAchievements.length) {
+    careerNews.push(`新成就 ${careerResult.freshAchievements.map((a) => a.name).join(' / ')}`);
+  }
+  if (careerResult.freshQuests.length) {
+    careerNews.push(`今日任务 ${careerResult.freshQuests.map((q) => q.name).join(' / ')}`);
+  }
+  if (careerResult.settled.length) {
+    const paid = careerResult.settled.reduce((sum, o) => sum + (Number(o.price) || 0), 0);
+    careerNews.push(`委托成交 ${money(paid)}`);
+  }
+  if (careerNews.length) stats.push(['局外进度', careerNews.join(' · ')]);
   stats.push(['评分', String(score)]);
 
   ui.renderResult({
@@ -981,10 +1315,44 @@ function endRaid(reason) {
     stats,
   });
   world.result = reason;
+  // P11：过场层是纯视觉覆盖，结果屏仍在同一帧同步就位（探针读 result DOM 不受影响）。
+  if (ui.playTransition) ui.playTransition(success ? 'success' : 'failure', score);
   go('result');
 }
 
 /* ============================ 战利品拾取 ============================ */
+
+/**
+ * 把地图容器包成「可搜刮实体」（双栏界面用）。
+ * 关键约束：实体网格的 items 数组与 container.loot 是**同一个数组引用** ——
+ * 关闭面板后旧逻辑（剩余件数、E 键重开）与结算读到的才是同一份账面，绝不出现两套库存。
+ * @param {object} container 地图容器
+ * @returns {object} LootableEntity
+ */
+function lootEntityOf(container) {
+  if (container._entity) return container._entity;
+  const ent = containerFromType(container.type, container.loot || [], { id: container.id });
+  container.loot = entityContainers(ent)[0].items;
+  container._entity = ent;
+  return ent;
+}
+
+/**
+ * 打开双栏搜刮界面（搜索完成、E 键重开共用）。
+ * @param {object} container 地图容器
+ * @returns {void}
+ */
+function openLootStash(container) {
+  if (!world || !container) return;
+  openContainer = container;
+  const def = CONTAINERS[container.type];
+  ui.openLootGrid(lootEntityOf(container), world.player.gear, {
+    title: `${def ? def.name : '物资'} · ${(container.loot || []).length} 件`,
+    weightLimit: world.player.weightLimit,
+  });
+  clearMovementKeys();
+  syncPointerLock();
+}
 
 function takeLootItem(uid) {
   if (!world || !openContainer) return;
@@ -1159,12 +1527,30 @@ function updateAmbient(dt) {
     if (!e.dead && e.state === 'COMBAT') engaged += 1;
   }
   if (audio.setCombatIntensity) audio.setCombatIntensity(Math.min(1, engaged / 4));
+  // P12 混响空间感：按玩家到最近分区中心的距离做纯读近似，
+  // 只驱动室内/室外湿声比例，不新增 world 字段、不抽 rng、不参与光照真值或玩法判定。
+  if (audio.setInterior) {
+    const pois = w.map && w.map.pois;
+    let interior = 0;
+    if (pois && pois.length) {
+      let best = Infinity;
+      for (const p of pois) {
+        const d = (p.x - w.player.x) ** 2 + (p.y - w.player.y) ** 2;
+        if (d < best) best = d;
+      }
+      interior = Math.max(0, Math.min(1, 1 - Math.sqrt(best) / 140));
+    }
+    audio.setInterior(interior);
+  }
   // 首次进入给一个随机延迟，避免一部署就立刻来一发远处枪声
   if (w.ambientShotTimer == null) w.ambientShotTimer = w.rng.float(4, 12);
   w.ambientShotTimer -= dt;
   if (w.ambientShotTimer <= 0) {
     w.ambientShotTimer = w.rng.float(7, 18);
-    if (engaged === 0 && audio.distantShot) audio.distantShot();
+    if (engaged === 0 && audio.distantShot) {
+      // 确定性方位：从战局时间推导，绝不额外消耗 rng（否则同 seed 整局漂移）。
+      audio.distantShot(Math.sin(w.time * 0.83) * 0.85);
+    }
   }
 }
 
@@ -1188,6 +1574,259 @@ function updateAirdrop(w) {
     }
 }
 
+/**
+ * 干员技能与终结技的每帧推进（P5）。
+ *
+ * 这里的取舍：终结技的"效果"全部写成**读状态的乘数**，而不是一次性改玩家的数值。
+ * - 火力全开 → player.combatMods（combat 每发读一次）
+ * - 鹰眼 → enemy.marked（渲染层每帧读一次）
+ * - 战地急救 → 立即结算一次 + world.aegisAcc 的分帧回血
+ * - 火环 → 一个静态 zone（throwable 的燃烧结算统一处理）
+ * 好处是技能结束时不需要"撤销"，只要状态归零，所有系统自然回到基线。
+ *
+ * @param {object} w 世界
+ * @param {number} dt 步长
+ * @returns {void}
+ */
+function updateOperatorState(w, dt) {
+  const st = w.abilities;
+  if (!st) return;
+  const p = w.player;
+  tickAbilities(st, dt);
+  // 自然回能：让"没打起来"的时间也不是纯浪费，8 分钟一局自然回满约 90 秒
+  addUltCharge(st, ABILITY.ultPassive * dt);
+
+  w.flashT = Math.max(0, (w.flashT || 0) - dt);
+  w.bossFlashT = Math.max(0, (w.bossFlashT || 0) - dt);
+  const active = st.ultT > 0;
+  const ultId = st.ultimate.id;
+
+  // 火力全开：乘数每帧重设，技能结束自动归 1（不需要在结束点做清理）
+  p.combatMods = active && ultId === 'overdrive' ? ABILITY.overdrive : null;
+
+  // 鹰眼：标记在场所有活着的敌人。用每帧刷新短时标记，敌人一死标记自然消失。
+  if (active && ultId === 'eagle') {
+    for (const e of w.enemies) if (!e.dead) e.marked = 0.25;
+  } else {
+    for (const e of w.enemies) if (e.marked) e.marked = 0;
+  }
+
+  // 战地急救的持续段：按小数累积，避免每帧取整把 4/s 的回复吞成 3/s
+  if (active && ultId === 'aegis') {
+    w.aegisAcc += ABILITY.aegis.regen * dt;
+    const heal = Math.floor(w.aegisAcc);
+    if (heal > 0) {
+      w.aegisAcc -= heal;
+      p.hp = Math.min(p.maxHp, p.hp + heal);
+    }
+  } else {
+    w.aegisAcc = 0;
+  }
+}
+
+/**
+ * 投掷战术道具（G / 触屏「战术」）。
+ * @returns {boolean} 是否投出
+ */
+function throwTactical() {
+  const w = world;
+  const p = w && w.player;
+  const st = w && w.abilities;
+  if (!w || w.over || !p || p.dead || !st) return false;
+  if (!canThrowTactical(st)) {
+    ui.toast(`战术道具冷却中 · ${Math.ceil(st.tactical.cd)}s`);
+    if (audio) audio.error();
+    return false;
+  }
+  consumeTactical(st);
+  const o = throwOrigin(p);
+  const g = createGrenade(st.tactical.type, o.x, o.y, o.h, p.yaw || 0, p.pitch || 0);
+  w.grenades.push(g);
+  if (audio) audio.throwPin();
+  ui.toast(`${throwableDef(st.tactical.type).name} 已投出 · 剩余 ${st.tactical.charges} 发`);
+  return true;
+}
+
+/**
+ * 释放终结技（X / 触屏「大招」）。
+ * @returns {boolean} 是否释放
+ */
+function releaseUltimate() {
+  const w = world;
+  const p = w && w.player;
+  const st = w && w.abilities;
+  if (!w || w.over || !p || p.dead || !st) return false;
+  if (!st.ultimate.ready) {
+    ui.toast(`终结技充能中 · ${Math.round(st.ultimate.charge)}%`);
+    if (audio) audio.error();
+    return false;
+  }
+  const ultId = st.ultimate.id;
+  consumeUltimate(st);
+  if (ultId === 'overdrive') {
+    p.combatMods = ABILITY.overdrive;
+    ui.toast('火力全开 · 7 秒压制窗口');
+  } else if (ultId === 'eagle') {
+    for (const e of w.enemies) if (!e.dead) e.marked = 0.25;
+    ui.toast('鹰眼 · 敌人位置已标记 9 秒');
+  } else if (ultId === 'aegis') {
+    p.hp = Math.min(p.maxHp, p.hp + ABILITY.aegis.heal);
+    p.armor = Math.min(p.maxArmor, p.armor + ABILITY.aegis.armor);
+    w.aegisAcc = 0;
+    ui.toast('战地急救 · 生命与护甲已修补');
+  } else if (ultId === 'pyre') {
+    w.zones.push({
+      x: p.x, y: p.y, r: ABILITY.pyre.radius * VIEW3D.metersToUnits,
+      dps: ABILITY.pyre.dps, t: 0, life: ABILITY.pyre.dur, kind: 'fire', acc: 0,
+      owner: 'player-safe',
+    });
+    ui.toast('火环 · 区域封锁 8 秒');
+  }
+  if (audio && audio.ultimate) audio.ultimate();
+  if (w.shakeCamera) w.shakeCamera(2.2);
+  return true;
+}
+
+/**
+ * 首领阶段与破甲的两个「一次性播报」（P16）。
+ *
+ * 为什么放在 main 而不是 applyDamage：伤害结算只该算数值，播报需要 ui/audio/shake
+ * 三件套，而且**必须只播一次** —— 每帧检测 `armorBroken` 状态翻转比在伤害函数里
+ * 塞回调更简单，也不会因为霰弹枪一枪多弹丸而重复播 9 次。
+ * @param {object} w 战局上下文
+ * @returns {void}
+ */
+function updateBossPhases(w) {
+  const b = w && w.boss;
+  if (!b) return;
+  if (!b.dead) {
+    const ev = syncBossPhase(b);
+    if (ev) {
+      ui.toast(`首领 · ${b.name} 进入 ${ev.def.label}「${ev.def.name}」`);
+      if (audio && audio.bossPhase) audio.bossPhase(ev.to);
+      if (w.shakeCamera) w.shakeCamera(4.5);
+      w.bossFlashT = 0.55;   // P17：阶段切换的专属红橙闪光（与震撼弹白屏区分，读作"首领暴怒"）
+      w.bossPhaseBanner = { label: ev.def.label, name: ev.def.name, t: 2.6 };
+    }
+  }
+  if (b.armorBroken && !b._armorBreakAnnounced) {
+    b._armorBreakAnnounced = true;
+    ui.toast(`装甲击穿 · ${b.name} 的护甲已失效，承伤提升`);
+    if (audio && audio.armorBreak) audio.armorBreak();
+    if (w.shakeCamera) w.shakeCamera(3.4);
+    w.armorBreakT = 2.4;
+  }
+}
+
+/**
+ * P20：热点进入提示 + 区域进度。
+ * 只在**跨边界的那一刻**发提示（进 / 出各一次），不进每帧刷屏路径。
+ * 顺带维护 lootTaken / carriedPeak —— 这两个值只喂 HUD 与结算复盘，不参与掉落或经济。
+ * @param {object} w 战局
+ * @param {number} dt 帧间隔
+ */
+function updateHotspotVisit(w, dt) {
+  const p = w.player;
+  const here = hotspotAt(w.map, p.x, p.y);
+  const inId = here ? `${here.roomIndex}` : null;
+  if (inId !== w._inHotspot) {
+    if (here) {
+      w.hotspotVisits = (w.hotspotVisits || 0) + 1;
+      const info = hotspotInfo(here);
+      ui.toast(`进入 ${here.name} · ${info.title} · ${dangerLabel(info.danger)}`);
+      if (audio && audio.warn) audio.warn();
+      w.hotspotT = 6;
+      w.hotspotName = `${here.name} · ${info.title}`;
+      w.hotspotHint = info.hint;
+      w.hotspotDanger = info.danger;
+    } else {
+      w.hotspotT = 0;
+    }
+    w._inHotspot = inId;
+  }
+  w.hotspotT = Math.max(0, (w.hotspotT || 0) - dt);
+
+  // 拾取计数：按「携带件数净增」累计，用掉/丢掉会回落，但已拾取过的不会再计一次。
+  const list = p.carriedItems ? p.carriedItems() : [];
+  const now = list.length;
+  const prev = Number.isFinite(w._carriedCount) ? w._carriedCount : now;
+  if (now > prev) w.lootTaken = (w.lootTaken || 0) + (now - prev);
+  w._carriedCount = now;
+  const v = p.carriedValue || 0;
+  if (v > (w.carriedPeak || 0)) w.carriedPeak = v;
+}
+
+/**
+ * P20：补货波次。到点后给排期内的容器补 1~2 件物资，并重置已搜空的容器。
+ * 补货用的是独立的确定性 rng（seed 派生），绝不消耗 world.rng —— 否则同 seed 整局会漂移。
+ * @param {object} w 战局
+ */
+function fireLootWaves(w) {
+  const q = w.lootWaves;
+  if (!q || !q.length) return;
+  while (q.length && w.time >= q[0].at) {
+    const wave = q.shift();
+    const byId = new Map(w.map.containers.map((c) => [c.id, c]));
+    let restocked = 0;
+    for (const id of wave.containerIds) {
+      const c = byId.get(id);
+      if (!c) continue;
+      const def = CONTAINERS[c.type];
+      if (!def) continue;
+      const luck = lootLuckAt(w.map, c.x, c.y, w.lootLuck || 1);
+      const extra = Loot.rollContainer(c.type, w.lootRng, { luck });
+      if (!extra.length) continue;
+      // 与实体同源：面板 / 结算读到的必须是同一个数组
+      if (c._entity) c.loot = entityContainers(c._entity)[0].items;
+      else c.loot = c.loot || [];
+      for (const it of extra) c.loot.push(it);
+      // 已搜空 / 已搜过的容器重新可交互 —— 否则补了货却打不开，等于白补。
+      if (c.searched) {
+        c.searched = false;
+        restocked += 1;
+        // 视觉同源：不点亮回来，箱子在画面上仍是"已搜过"的暗色，玩家不会再去搜。
+        if (renderer && renderer.level && renderer.level.setSearched) {
+          renderer.level.setSearched(c, false);
+        }
+      }
+    }
+    if (wave.containerIds.length) {
+      const label = wave.wave === 'topup' ? '中段补货' : '末段重刷';
+      ui.toast(`${label}：${wave.containerIds.length} 处容器有新物资${restocked ? `（${restocked} 处已重新上锁）` : ''}`);
+      if (audio && audio.pickup) audio.pickup(0.5);
+    }
+  }
+}
+
+/**
+ * P21：痕迹系统每帧推进。
+ * - 衰减过期痕迹（decayTraces 用真实 dt，零随机）。
+ * - 玩家移动时按累计距离落脚印：蹲伏更淡、站立更明显；站定不动不留痕。
+ *   脚印留在玩家"刚走过"的位置，AI 循迹只会扑到旧位置 —— 这是给玩家的反侦察窗口。
+ * @param {object} w 战局
+ * @param {number} dt 帧间隔秒
+ */
+function updateTraces(w, dt) {
+  decayTraces(w.traces, dt);
+  const p = w.player;
+  if (!p || p.dead) return;
+  const px = p.x, py = p.y;
+  const lx = w._traceLastX != null ? w._traceLastX : px;
+  const ly = w._traceLastY != null ? w._traceLastY : py;
+  const moved = Math.hypot(px - lx, py - ly);
+  w._traceAccum = (w._traceAccum || 0) + moved;
+  // 跨过 ~64 逻辑单位落一枚脚印（约两步）；草丛里走不落痕（视觉/听觉都有隐蔽加成）。
+  if (w._traceAccum >= 64) {
+    w._traceAccum = 0;
+    if (!p.inBush) {
+      const strength = p.crouching ? 0.5 : 1;
+      w.leaveTrace('footprint', px, py, { strength });
+    }
+  }
+  w._traceLastX = px;
+  w._traceLastY = py;
+}
+
 function update(dt) {
   const w = world;
   if (!w || w.over) return;
@@ -1195,28 +1834,62 @@ function update(dt) {
   w.time += dt;
   w.timeLeft = Math.max(0, MATCH.duration - w.time);
   w.hitMarker = Math.max(0, w.hitMarker - dt);
+  w.hitKindT = Math.max(0, (w.hitKindT || 0) - dt);
+  // P16：首领阶段横幅 / 破甲高亮的存活时间（纯表现，不参与任何判定）。
+  if (w.bossPhaseBanner) w.bossPhaseBanner.t = Math.max(0, w.bossPhaseBanner.t - dt);
+  w.armorBreakT = Math.max(0, (w.armorBreakT || 0) - dt);
+  w.streakT = Math.max(0, (w.streakT || 0) - dt);
   // 受击方向提示（P1-6）：0.6s 内淡出，超时即视为"忘了从哪挨的枪"
   w.hitDirT = Math.max(0, (w.hitDirT || 0) - dt);
   updateAirdrop(w);
+  updateOperatorState(w, dt);
 
   w.player.update(dt, input, w);
   for (const enemy of w.enemies) enemy.update(dt, w);
+  updateBossPhases(w);
+  updateSquad(dt, w);
+  updateThrowables(w, dt);
+  updateEnemyGrenades(w, dt); // P9：敌方爆裂雷引信 / 范围伤害
   updateEffects(dt);
   updateKillFeed(dt);
   updateAmbient(dt);
   updateContracts(w, (c) => completeContract(w, c));
   updateExplored(dt);
+  updateHotspotVisit(w, dt);
+  updateTraces(w, dt);
+  fireLootWaves(w);
   input.firePressed = false;
 
-  // 撤离点按各自的 openAt 依次开启：免费点先开（"早走"的选项），付费/守点压在局末。
+  // 撤离点按各自的 openAt 依次开启；限时点过了窗口就永久关闭（P20）。
   // 只在状态真的变化时发 toast，不进每帧的刷屏路径。
   // openAt 与 w.time 同为「经过秒数」；缺字段按 0 处理（测试手搓的 map 没有 openAt）。
   for (const ex of w.map.extracts) {
-    if (ex.open || w.time < (ex.openAt || 0)) continue;
+    if (ex.open) {
+      // 拉闸窗口超时：与限时点同口径，只播一次并永久关闭（否则 HUD 仍显示 OPEN）。
+      if (ex.requiresSwitch && ex.switchPulledAt != null
+        && w.time - ex.switchPulledAt > EXTRACT_TUNING.switchDelay) {
+        ex.open = false;
+        ex.closedBySystem = true;
+        ui.toast(`${ex.name} 的闸口窗口已关闭`);
+        if (audio && audio.warn) audio.warn();
+        continue;
+      }
+      // 限时窗口关闭：只播一次，并标记为系统关闭（extractState 会读它）
+      if (ex.window && !ex.closedBySystem && w.time > ex.window.to) {
+        ex.open = false;
+        ex.closedBySystem = true;
+        ui.toast(`${ex.name} 的撤离窗口已关闭`);
+        if (audio && audio.warn) audio.warn();
+      }
+      continue;
+    }
+    if (ex.closedBySystem || w.time < (ex.openAt || 0)) continue;
     ex.open = true;
     const fee = ex.kind === 'paid' ? `（手续费 ${money(ex.cost || MATCH.extractFee)}）` : '';
-    const noMore = w.map.extracts.every((p) => p.open);
-    ui.toast(`${ex.name} 已开放${fee}${noMore ? ' · 最后一处出口' : ''}`);
+    const mod = modifierLabel(ex);
+    const modText = mod && mod !== '常规' ? ` · ${mod}` : '';
+    const noMore = w.map.extracts.every((p) => p.open || p.closedBySystem);
+    ui.toast(`${ex.name} 已开放${fee}${modText}${noMore ? ' · 最后一处出口' : ''}`);
     if (audio && audio.warn) audio.warn();
   }
 
@@ -1228,21 +1901,40 @@ function update(dt) {
 
 function frame(ts) {
   window.requestAnimationFrame(frame);
+  if (faulted) return; // P0-1：熔断后空转，等待玩家在故障浮层里选择「继续尝试 / 重新加载」
   const dt = lastTs ? Math.min(0.05, (ts - lastTs) / 1000) : 0.016;
   lastTs = ts;
 
   // 手机端每帧对齐触屏控制的激活状态（面板开关 / 横竖屏切换都由它统一收敛）
   if (touchMode) updateTouchState();
 
-  if (screen === 'battle' && world && !paused) {
-    updateAim();
-    update(dt);
+  // P0-1：把主循环里会抛错的区段各自包住，错误交给 guard 累计；连续同指纹 3 帧即熔断。
+  let threw = false;
+  try {
+    if (screen === 'battle' && world && !paused) {
+      updateAim();
+      update(dt);
+    }
+  } catch (err) {
+    threw = true;
+    frameError(err);
   }
-
-  if ((screen === 'battle' || screen === 'result') && world) {
-    renderer.render(world, dt, false);
-    ui.renderHud(world, dt, paused || screen === 'result');
+  try {
+    if ((screen === 'battle' || screen === 'result') && world) {
+      renderer.render(world, dt, false);
+      ui.renderHud(world, dt, paused || screen === 'result');
+    }
+  } catch (err) {
+    threw = true;
+    frameError(err);
   }
+  // V-05：帧采样（纯观测）。renderer.info 在渲染后是本帧数据；Noop 渲染器没有 handle，记 0。
+  {
+    const info = sceneHandle && sceneHandle.renderer && sceneHandle.renderer.info
+      ? sceneHandle.renderer.info.render : null;
+    perfMonitor.sample(dt * 1000, info ? info.calls : 0, info ? info.triangles : 0);
+  }
+  if (!threw) resetFrameStreak();
 
   // P1-6 换弹进度环：开火键外圈按换弹进度填充，换弹结束自动消失
   if (touchControls) {
@@ -1255,7 +1947,84 @@ function frame(ts) {
   ui.setLockHint(wantsMouseLock() && !input.locked);
 }
 
+/**
+ * P0-1 致命故障浮层：游戏运行时崩了不再白屏卡死，给玩家可操作的出口。
+ * 只依赖 DOM（无第三方），且在没有 document.body 的环境（Node 测试）下安全降级为 console.error。
+ * @param {object} report buildReport 产出的现场摘要
+ */
+function showFaultOverlay(report) {
+  faulted = true;
+  if (typeof document === 'undefined' || !document.body) {
+    console.error('[搜打撤] 致命错误：', report);
+    return;
+  }
+  const box = document.createElement('div');
+  box.id = 'guard-fault';
+  box.style.cssText = 'position:fixed;inset:0;z-index:9998;display:flex;flex-direction:column;'
+    + 'align-items:center;justify-content:center;gap:12px;background:rgba(8,11,16,.94);'
+    + 'color:#d7dee8;font-family:system-ui,sans-serif;text-align:center;padding:24px';
+  const title = document.createElement('div');
+  title.textContent = '运行出错 · 已暂停';
+  title.style.cssText = 'font-size:18px;font-weight:700;color:#ff6a4d';
+  const msg = document.createElement('div');
+  msg.textContent = (report && report.message) || '未知错误';
+  msg.style.cssText = 'font-size:13px;max-width:34em;line-height:1.6;color:#aeb9c6;word-break:break-word';
+  const fp = document.createElement('div');
+  fp.textContent = '指纹：' + ((report && report.fingerprint) || '-');
+  fp.style.cssText = 'font-size:11px;color:#6b7888;max-width:34em;word-break:break-all';
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:8px';
+  const mk = (label, fn) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.style.cssText = 'min-width:120px;min-height:44px;padding:10px 16px;font-size:14px;'
+      + 'border-radius:10px;border:1px solid #2b3a4d;background:#16202c;color:#d7dee8;cursor:pointer';
+    b.addEventListener('click', fn);
+    row.appendChild(b);
+  };
+  mk('重新加载', () => location.reload());
+  mk('继续尝试', () => {
+    faulted = false;
+    clearFatal();
+    if (box.parentNode) box.parentNode.removeChild(box);
+  });
+  mk('导出存档', () => {
+    const raw = Storage.exportSaveString();
+    const blob = new Blob([raw || '{}'], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'soudache-save-' + Date.now() + '.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  mk('复制错误', () => {
+    const txt = JSON.stringify(report || {}, null, 2);
+    if (navigator.clipboard) navigator.clipboard.writeText(txt).catch(() => {});
+  });
+  box.append(title, msg, fp, row);
+  document.body.appendChild(box);
+}
+
 /* ============================ UI 动作 ============================ */
+
+// P6 改枪台：装配/卸下附件的**唯一实现**——UI 动作与调试入口（window.SOUDACHE.gunbench.setMod）
+// 都走这里，避免两套逻辑漂移。role ∈ {primary, secondary}，slot ∈ WEAPON_MOD_SLOTS，
+// modId 为附件 id 或 ''/null（卸下）。只写存档 + 重绘战前屏，不碰正在进行的战局。
+function applySetMod(role, slot, modId) {
+  const who = role === 'secondary' ? 'secondary' : 'primary';
+  const id = modId || null;
+  if (!slot || !WEAPON_MOD_SLOTS.some((s) => s.id === slot)) return;
+  if (id) {
+    const mod = WEAPON_MODS[id];
+    if (!mod || mod.slot !== slot) return; // 槽位不符的附件拒绝装配
+  }
+  const mods = normalizeWeaponMods(save.loadout.mods);
+  mods[who][slot] = id;
+  save.loadout.mods = mods;
+  Storage.scheduleSave(save);
+  ui.renderLoadout(save);
+  if (audio && audio.ui) audio.ui(0.4);
+}
 
 const ui = createUI(uiRoot, {
   'goto-menu': () => go('menu'),
@@ -1268,15 +2037,29 @@ const ui = createUI(uiRoot, {
     go('stash');
   },
   'goto-shop': () => {
+    advanceOrders();
     ui.renderShop(save);
     go('shop');
+  },
+  // P10 生涯屏：进屏时推进到点委托单，保证「倒计时结束就该到账」。
+  'goto-career': () => {
+    advanceOrders();
+    ui.renderCareer(save);
+    go('career');
   },
   'goto-upgrades': () => {
     ui.renderUpgrades(save);
     go('upgrades');
   },
+  // P15：干员屏（原 nav 里的 locked / P5 占位已转正）。
+  'goto-operators': () => {
+    ui.renderOperators(save);
+    go('operators');
+  },
   'buy-upgrade': (data) => buyUpgrade(data.id),
   'goto-howto': () => go('howto'),
+  // 致谢屏是纯静态面板，不读存档；留成独立动作而不是塞进既有屏，避免误惹渲染逻辑。
+  'goto-credits': () => go('credits'),
   'goto-codex': () => {
     ui.renderCodex(save);
     go('codex');
@@ -1310,26 +2093,89 @@ const ui = createUI(uiRoot, {
     audio.ui(0.4);
     ui.toast(`已选择地图 · ${MAPS[id].name} · ${MAPS[id].tagline}`);
   },
+  // P15 风险分级：写存档 + 重渲染战前屏（选中态由 renderLoadout 统一同步）。
+  // 逻辑层必须再校验一次 id：UI 的 data-risk 可以被手改，不能只靠前端过滤。
+  'set-risk': (data) => {
+    const id = data && data.risk;
+    const r = getRisk(id);
+    if (r.id !== id) {
+      ui.toast('未知风险等级');
+      audio.error();
+      return;
+    }
+    save.risk = r.id;
+    Storage.saveGame(save);
+    ui.renderLoadout(save);
+    audio.ui(0.4);
+    ui.toast(`风险等级 · ${r.label} · ${r.desc}`);
+  },
   deploy,
   'set-loadout': (data) => {
     const slot = data.slot;
     save.loadout[slot] = data.value === '' ? null : data.value;
+    // P7：换枪后口径可能变了（步枪→冲锋枪），把弹种选择重新对齐；
+    // 这样不会出现"选了 5.56 AP 却拿着 9mm 冲锋枪"的错配。
+    if (slot === 'primary' || slot === 'secondary') {
+      normalizeLoadoutAmmo(save.loadout, WEAPONS);
+    }
     Storage.saveGame(save);
     ui.renderLoadout(save);
     audio.ui();
   },
+  // 干员切换（P5）：只写存档 + 重渲染战前屏。技能状态在 startRaid 才创建，
+  // 所以这里不需要（也不应该）碰正在进行的战局。
+  'set-operator': (data) => {
+    const op = getOperator(data.operator);
+    if (save.operator === op.id) return;
+    save.operator = op.id;
+    Storage.saveGame(save);
+    ui.renderLoadout(save);
+    // P15：干员档案屏也读同一份存档 —— 不刷新的话，从档案屏切人会留着旧的「出战」标记。
+    if (ui.renderOperators) ui.renderOperators(save);
+    audio.ui(0.5);
+  },
+  // P15 小队编成：两席各可换人。目标干员已被另一席占用时自动交换，
+  // 绝不出现「两个一模一样的队友代号」。未知 id / 点自己 → 无变化，不写存档。
+  'set-squad': (data) => {
+    const slot = Number(data.slot) === 1 ? 1 : 0;
+    const before = resolveSquadIds(save.squad, save.operator).map((o) => o.id);
+    const after = assignSquadSlot(save.squad, save.operator, slot, data.operator);
+    if (after.join(',') === before.join(',')) return;
+    save.squad = after;
+    Storage.saveGame(save);
+    ui.renderLoadout(save);
+    audio.ui(0.4);
+    const op = after.map((id) => getOperator(id));
+    ui.toast(`小队编成 · ${op.map((o) => o.callsign).join(' / ')}`);
+  },
+  // P6 改枪台：见 applySetMod（唯一实现）。
+  'set-mod': (data) => applySetMod(data.role, data.slot, data.modId || null),
   'step-loadout': (data) => {
-    const kind = data.kind;
+    const kind = String(data.kind || '');
     const delta = Number(data.delta) || 0;
-    const next = Math.max(0, Math.min(6, (save.loadout[kind] || 0) + delta));
-    save.loadout[kind] = next;
+    if (kind.startsWith('ammo:')) {
+      // P7：弹种盒数走 loadout.ammo；上限 6 盒（与旧 UI 的 0~4 上限相比留出混装空间）
+      const id = kind.slice(5);
+      setAmmoBoxes(save.loadout, id, loadoutAmmoBoxes(save.loadout, id) + delta, 6);
+    } else {
+      const next = Math.max(0, Math.min(6, (save.loadout[kind] || 0) + delta));
+      save.loadout[kind] = next;
+    }
     Storage.saveGame(save);
     ui.renderLoadout(save);
     audio.ui(0.4);
   },
   buy: (data) => buy(data.id),
+  'buy-listing': buyListing,
   sell: (data) => sell(data.uid),
   'sell-all': sellAll,
+  // P10：委托单与生涯奖励。发钱幂等由 economy.js 的 claimed 标记保证。
+  'list-item': (data) => listItem(data.uid),
+  'cancel-order': (data) => cancelOrderHandler(data.key),
+  'claim-achievement': (data) => claimCareerReward('achievement', data.id),
+  'claim-quest': (data) => claimCareerReward('quest', data.id),
+  'claim-rep': (data) => claimCareerReward('rep', data.level),
+  'claim-all-career': claimAllCareerRewards,
   'result-stash': () => {
     ui.renderStash(save);
     go('stash');
@@ -1350,8 +2196,33 @@ const ui = createUI(uiRoot, {
   'loot-take-all': takeAllLoot,
   'loot-close': () => {
     ui.closeLoot();
+    if (ui.isLootGridOpen()) ui.closeLootGrid();
     openContainer = null;
+    syncPointerLock();
   },
+  // P18 双栏搜刮的副作用钩子：音效 / 图鉴 / 丢弃全部回到 main，
+  // UI 层不直接碰存档、音频与玩家数据（单向依赖）。
+  'loot-sound': (kind) => {
+    if (!audio) return;
+    if (kind === 'error') audio.error();
+    else if (kind === 'pickup') audio.pickup();
+    else audio.ui(0.4);
+  },
+  'loot-change': () => {
+    if (!world) return;
+    // 图鉴只记 seen；落盘统一在 endRaid 那次 saveGame，避免每拿一件写一次 localStorage。
+    save.codex = save.codex || { seen: {}, brought: {} };
+    for (const c of world.player.containers) {
+      for (const it of c.items) save.codex.seen[it.id] = true;
+    }
+    // 搜空自动收面板，避免玩家对着空箱子继续点。
+    if (openContainer && !(openContainer.loot || []).length) {
+      ui.closeLootGrid();
+      openContainer = null;
+      syncPointerLock();
+    }
+  },
+  'loot-discard': (data) => dropItem(data.uid),
   'backpack-close': () => {
     ui.closeBackpack();
     syncPointerLock();
@@ -1359,19 +2230,9 @@ const ui = createUI(uiRoot, {
   drop: (data) => dropItem(data.uid),
   'use-item': (data) => {
     if (!world || world.over || !world.player) return;
-    const item = world.player.inventory.items.find((it) => it.uid === data.uid);
-    if (!item || item.category !== 'consumable') return;
-    if (world.player.busy) {
-      ui.toast('正在读条，无法使用');
-      return;
-    }
-    // 医疗效率是局外改装：优先取本局注入的定义（恢复量已强化），回退到基础定义。
-    const def = (world.itemCfg && world.itemCfg[item.id]) || ITEMS[item.id] || item;
-    world.player.heal = {
-      uid: item.uid, progress: 0, total: def.useTime || 1.5, def,
-    };
-    if (world.audio) world.audio.ui(0.4);
-    ui.toast(`开始使用 ${item.name}`);
+    // P7：点击使用与 Q 键共用 Player.startUseItem —— 可用性判定（有没有骨折/出血/
+    // 护甲受损）不会出现"Q 不让用、点物品却能读条"的两套口径。
+    world.player.startUseItem(data.uid, world);
   },
   'toggle-invert': () => {
     save.settings.invertMouseX = !save.settings.invertMouseX;
@@ -1433,6 +2294,27 @@ const ui = createUI(uiRoot, {
     Storage.saveGame(save);
     if (ui.updateButtonScaleLabel) ui.updateButtonScaleLabel(v);
   },
+  // P3 调色：数值一律经 clampGrade 钳制，UI 传来的字符串 / 越界值都不会把画面调成全黑。
+  'set-grade': (data) => {
+    const key = data && data.key;
+    if (key !== 'exposure' && key !== 'contrast' && key !== 'saturation') return;
+    const next = { ...resolveGrade(save), [key]: Number(data.value) };
+    const applied = clampGrade(next);
+    save.settings.grade = applied;
+    Storage.saveGame(save);
+    if (typeof renderer.setGrade === 'function') renderer.setGrade(applied);
+    else if (sceneHandle && typeof sceneHandle.setGrade === 'function') sceneHandle.setGrade(applied);
+    if (ui.updateGradeLabels) ui.updateGradeLabels(applied);
+  },
+  'reset-grade': () => {
+    const applied = clampGrade();
+    save.settings.grade = applied;
+    Storage.saveGame(save);
+    if (typeof renderer.setGrade === 'function') renderer.setGrade(applied);
+    else if (sceneHandle && typeof sceneHandle.setGrade === 'function') sceneHandle.setGrade(applied);
+    if (ui.updateGradeLabels) ui.updateGradeLabels(applied);
+    ui.toast('调色已恢复默认');
+  },
   // 触屏按钮布局：拖动结束时由触屏控件回调此处持久化偏移
   'set-layout': (data) => {
     save.layout.touch = data || {};
@@ -1460,6 +2342,8 @@ const ui = createUI(uiRoot, {
 }, {
   // 无障碍（P1-7）：系统开了「减少动态效果」时，HUD 只保留信息、不保留闪烁/弹动
   reducedMotion: device.reducedMotion,
+  // UI 点击音：走音频总线（受音量/静音统一管理），采样没就绪时自动退回合成短音
+  audio,
 });
 
 // 手机端任务面板入口：命中区是 DOM（canvas 是 pointer-events:none，收不到触摸），
@@ -1475,7 +2359,9 @@ if (tasksTap) {
 
 /* ============================ 输入 ============================ */
 
-window.addEventListener('pointerdown', () => audio.ensure(), { once: true });
+// 首次交互才能建 AudioContext（浏览器自动播放策略）。建完顺手预载采样音：
+// 采样是"有就更好"，加载失败只会退回合成音，所以不 await、不报错。
+window.addEventListener('pointerdown', () => { audio.ensure(); audio.preloadSamples(); }, { once: true });
 
 canvas.addEventListener('mousedown', (ev) => {
   if (ev.button !== 0) return;
@@ -1498,9 +2384,11 @@ canvas.addEventListener('mousedown', (ev) => {
   input.firePressed = true;
 });
 
-// 浏览器拒绝锁定（多半是 Esc 之后的限流）时给出提示，避免玩家以为"输入坏了"
+// 浏览器拒绝锁定（多半是 Esc 之后的限流）时不再另发 toast：
+// setLockHint() 每帧按 wantsMouseLock() && !input.locked 兜住同一句提示，
+// 再发一条 toast 会在准星下方叠出两行一样的字（P1 截图复核发现）。
 document.addEventListener('pointerlockerror', () => {
-  if (screen === 'battle' && !paused) ui.toast('点击画面以恢复鼠标控制');
+  if (screen === 'battle' && !paused) ui.setLockHint(true);
 });
 
 window.addEventListener('mouseup', (ev) => {
@@ -1541,8 +2429,12 @@ window.addEventListener('keydown', (ev) => {
     if (key === 'escape' && screen !== 'menu') go('menu');
     return;
   }
-  // 战利品面板打开时：键盘驱动拾取，且保持指针锁定（不切自由鼠标）。
-  // 这一支要最先拦截，避免方向键/空格被当成移动或开火。
+  // 双栏搜刮面板打开时吞掉所有游戏按键（Esc / R / T / G / Delete 由面板自己处理）。
+  // 必须先于移动与开火分支，否则按 W 会在拖拽时把角色带走。
+  if (ui.isLootGridOpen()) {
+    if (ui.lootGridKey(key, ev)) return;
+  }
+  // 旧键盘抽屉：仅在双栏面板关闭时兜底（保留给未接双栏的入口）。
   if (ui.isLootOpen()) {
     handleLootKeys(key, ev);
     return;
@@ -1554,6 +2446,9 @@ window.addEventListener('keydown', (ev) => {
     case 'd': case 'arrowright': input.right = true; break;
     case 'shift': input.sprint = true; break;
     case 'control': input.crouch = true; break;
+    // P19：探头（Z 左 / C 右）。不与 Q 医疗、E 交互、R 换弹冲突。
+    case 'z': if (!ev.repeat) input.lean = -1; break;
+    case 'c': if (!ev.repeat) input.lean = 1; break;
     case 'tab':
       ev.preventDefault();
       if (!ev.repeat) toggleBackpack();
@@ -1563,7 +2458,7 @@ window.addEventListener('keydown', (ev) => {
       if (!ev.repeat) {
         // Esc 优先关掉已打开的面板（浏览器已经顺带解除了指针锁定），
         // 没有面板时才进暂停 —— 否则背包/战利品会卡住关不掉。
-        if (ui.isBackpackOpen() || ui.isLootOpen()) {
+        if (ui.isBackpackOpen() || ui.isLootOpen() || ui.isLootGridOpen()) {
           ui.closeBattlePanels();
           openContainer = null;
           syncPointerLock();
@@ -1578,6 +2473,11 @@ window.addEventListener('keydown', (ev) => {
     case 'r':
       if (!ev.repeat) world.player.reload(world);
       break;
+    // W2：近战。B 键（Blade）—— 与 V 绳索、F 载具、G 战术、X 终结技都不冲突，
+    // 且离左手常用位置近，贴脸缠斗时不用低头发觉按错了键。
+    case 'b':
+      if (!ev.repeat) world.player.meleeAttack(world);
+      break;
     case 'v':
       if (!ev.repeat) world.player.startRope(world);
       break;
@@ -1591,11 +2491,23 @@ window.addEventListener('keydown', (ev) => {
     case 'q':
       if (!ev.repeat) world.player.useMedkit(world);
       break;
+    // P5：G 投掷战术道具、X 终结技。两个键刻意和开火/换弹分开，
+    // 避免在高压交火里误触（R 换弹、F 载具、V 绳索都已占用）。
+    case 'g':
+      if (!ev.repeat) throwTactical();
+      break;
+    case 'x':
+      if (!ev.repeat) releaseUltimate();
+      break;
     case '1':
       if (!ev.repeat) world.player.switchWeapon(0, world);
       break;
     case '2':
       if (!ev.repeat) world.player.switchWeapon(1, world);
+      break;
+    // W2：快捷栏 3 = 手枪（HUD 一直是 4 格布局：三把枪 + 医疗，这里补上第 3 把的入口）
+    case '3':
+      if (!ev.repeat) world.player.switchWeapon(2, world);
       break;
     case 'j':
       // 中层任务面板展开 / 收起（三层信息架构的唯一入口，与触屏「任务」钮同义）
@@ -1618,6 +2530,8 @@ window.addEventListener('keyup', (ev) => {
     case 'd': case 'arrowright': input.right = false; break;
     case 'shift': input.sprint = false; break;
     case 'control': input.crouch = false; break;
+    case 'z': if (input.lean === -1) input.lean = 0; break;
+    case 'c': if (input.lean === 1) input.lean = 0; break;
     default: break;
   }
 });
@@ -1631,6 +2545,12 @@ window.addEventListener('resize', () => {
 /* ============================ 启动 ============================ */
 
 go('menu');
+// P0-1 全局错误边界：任何未捕获错误 / 主循环连续同指纹报错都会进入可恢复浮层，而不是白屏卡死。
+installGuard({ onFatal: showFaultOverlay });
+// P0-2 存档写入失败时不再静默：至少弹一次提示，避免玩家一局白打还不知道。
+Storage.setSaveErrorHandler((info) => {
+  if (ui && ui.toast) ui.toast('存档保存失败：存储空间不足或隐私模式，进度可能未保存', 'error');
+});
 window.requestAnimationFrame(frame);
 
 // 调试：暴露少量上下文
@@ -1644,6 +2564,14 @@ window.SOUDACHE = {
   get input() {
     return input;
   },
+  /**
+   * 局内 three 场景实例（只读调试口）。
+   * 给 A/B 探针用：做材质/光照对照实验时必须在真实场景里换材质再截图，
+   * 否则只能靠"看起来像"，那正是假绿的来源。生产代码不要依赖它。
+   */
+  get scene3d() {
+    return (renderer && renderer.handle && renderer.handle.scene) || null;
+  },
   device,
   touchMode,
   touchControls,
@@ -1651,8 +2579,38 @@ window.SOUDACHE = {
   refreshTouchContext,
   startRaid,
   endRaid,
+  /**
+   * 「如果现在就撤」的局内目标加成。结算页评分里含这一项，探针必须能从同一个口子复算 ——
+   * 手写一个分数区间去逼近，正是假绿的温床。
+   * @returns {number} 加成分数
+   */
+  objectiveBonus() {
+    if (!world || !world.player) return 0;
+    const p = world.player;
+    const carried = p.carriedItems ? p.carriedItems().length : 0;
+    // 与 endRaid 的 broughtOut 口径对齐：随身物资 + 身上装备（护甲 + 每把枪各算一件）。
+    // 少算装备会让「带回 N 件」类目标差 1，探针复算的分数就对不上。
+    const gear = (p.weapons || []).length
+      + (p.armorDef && p.armorDef.id !== 'none' ? 1 : 0);
+    const st = settleObjectives(world.objectives, {
+      world,
+      carriedValue: p.carriedValue || 0,
+      carriedCount: carried + gear,
+      success: true,
+    });
+    return st.bonus;
+  },
+  // P20 调试口：无头软渲染跑不到 3 分钟，探针只能把战局时间「快进」到补货波次。
+  // 只暴露「推一次真实 update」与「把时间设到某秒」，不提供任何跳过判定的后门。
+  tick(dt = 1 / 60) { if (world) update(dt); },
+  seek(sec) { if (world) world.time = Math.max(0, Number(sec) || 0); },
+  // P10 调试口：探针需要主动推进委托单与读取生涯配置常量。
+  advanceOrders,
+  CAREER,
   COLORS,
   PLAYER,
+  // 评分档位表：探针要按同一张表复算「印章等级 / 距下一档」，而不是硬编码一个分数区间。
+  SCORING,
   // 战斗 HUD 布局的单一真值源：tools/check-touch-layout.mjs 读它取禁区矩形，
   // 避免"实拍量取百分比"那种会漏项、会漂移的硬编码。
   hudLayout,
@@ -1660,6 +2618,70 @@ window.SOUDACHE = {
   // 之前只能靠"按完没报错"推断，那是弱证据：按键绑错了也照样不报错。
   isTasksOpen: ui.isTasksOpen,
   toggleTasks: ui.toggleTasks,
+  // P5：探针要真的走到战前配置屏读干员卡 DOM、并点一张卡验证委托事件，
+  // 所以把 ui 与屏幕切换放出来（与 hudDebug 同属只读/调试用途，游戏逻辑不依赖它们）。
+  ui,
+  go,
+  // P6 改枪台：把纯逻辑层函数放出来，探针可直接驱动（不依赖 DOM 点击路径）。
+  // setMod 与 'set-mod' handler 行为一致，便于无头环境下程序化装配并验证本局 cfg 数值。
+  gunbench: {
+    applyWeaponMods,
+    normalizeWeaponMods,
+    computeEffectiveWeapon,
+    attachmentOptions,
+    loadoutModWeight,
+    effectiveStatsPreview,
+    // 与 'set-mod' handler 共用 applySetMod，保证两条入口行为一致。
+    setMod: (role, slot, modId) => applySetMod(role, slot, modId || null),
+  },
+  // P7：弹药配装读口（探针 / 控制台调试），只读查询 + 与 UI 同一个写入口。
+  ammo: {
+    ids: AMMO_IDS,
+    calibers: CALIBERS,
+    boxes: loadoutAmmoBoxes,
+    resolve: (role) => resolveAmmoGrade(save.loadout, role || 'primary', WEAPONS),
+    setBoxes: (id, n) => {
+      setAmmoBoxes(save.loadout, id, n, 6);
+      Storage.saveGame(save);
+      return loadoutAmmoBoxes(save.loadout, id);
+    },
+  },
+  // P1：HUD 调试读口（缩放档 / 命中区 / 低血量），探针用，只读
+  hudDebug: ui.hudDebug,
   // 渲染器句柄（含 .handle.scene / .handle.camera），仅供探针/调试遍历使用。
   renderer,
+  // V-05：性能采样读口（只读快照 + reset），探针用它核对预算
+  perf: {
+    snapshot: () => perfMonitor.snapshot(),
+    reset: () => perfMonitor.reset(),
+  },
+  // P23：外部资源管线的真实状态。探针靠它区分"GLB 真加载了"和"静默降级成程序化模型"——
+  // 只看页面没报错是弱证据，两种情况下页面都不报错。
+  assets: { status: assetStatus },
+  // P3：调色读口与分区混合读口（探针直接读，不必反解 uniform）
+  get grade() {
+    return resolveGrade(save);
+  },
+  get zoneMix() {
+    return sceneHandle ? sceneHandle.zoneMix : 0;
+  },
+  get lampSites() {
+    return (renderer.level && renderer.level.lampSites) || [];
+  },
+  // W0：局外 3D 预览容器（改枪台/装备/干员共用）。挂调试口是为了让探针能
+  // 在真实浏览器里建容器、读 snapshot 真值（draws/triangles/yaw），不靠截图猜。
+  preview3d: { createPreview, PREVIEW3D, fitDistance },
+  /**
+   * W2：装备屏角色预览的真值快照（只读）。
+   * 探针用它证明"模型真的挂上去了、在转、没被裁切"，而不是靠截图猜 ——
+   * 与改枪台读 gunbench 卡片里的 canvas 同一套原则。
+   * @returns {object|null} 无 WebGL / 不在装备屏时为 null
+   */
+  charPreviewSnapshot() {
+    return charPreview ? charPreview.snapshot() : null;
+  },
 };
+
+// P1-1 真机矩阵：?perf=1 时挂页内采集浮层，真机玩一局后一键复制性能报告。
+// 纯调试功能，默认（无该参数）完全不加载 DOM、不建 observer，正常玩家零影响。
+window.SOUDACHE.perfHud = installPerfHud({ perfMonitor, device, getWorld: () => world });

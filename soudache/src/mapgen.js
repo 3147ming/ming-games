@@ -7,11 +7,13 @@
  */
 
 import {
-  TILE, MAP_COLS, MAP_ROWS, WORLD_W, WORLD_H, CELL, MATCH, VIEW3D,
+  TILE, WORLD_W, WORLD_H, CELL, MATCH, VIEW3D,
   CONTAINERS, CONTAINER_SPAWN_WEIGHTS, POI, ENEMY_SPAWN_WEIGHTS, CRATE, VEHICLE,
-  MAPS, DEFAULT_MAP_ID,
+  MAPS, DEFAULT_MAP_ID, POI_NAMES, HUD,
 } from './config.js';
 import { createRng } from './rng.js';
+import { buildAreaPlan } from './areas.js';
+import { EXTRACT_LAYOUT } from './extract.js';
 
 /** 兵种权重表：模块级算一次，避免在敌人生成循环里反复 Object.entries */
 const ENEMY_TYPE_ENTRIES = Object.entries(ENEMY_SPAWN_WEIGHTS);
@@ -101,6 +103,22 @@ export function moveWithCollision(map, x, y, dx, dy, r) {
   let ny = y + dy;
   if (circleHitsSolid(map, nx, ny, r)) ny = y;
   return { x: nx, y: ny };
+}
+
+/**
+ * 该点是否被实体（墙 / 掩体箱）占据。供投掷物的墙面反弹使用：
+ * 视线函数只回答"看不看得见"，投掷物需要的是"能不能穿过"，语义不同，不能复用。
+ * @param {object} map 地图
+ * @param {number} wx 世界 x
+ * @param {number} wy 世界 y
+ * @returns {boolean} 是否实体
+ */
+export function solidAt(map, wx, wy) {
+  const tx = Math.floor(wx / map.tile);
+  const ty = Math.floor(wy / map.tile);
+  if (tx < 0 || ty < 0 || tx >= map.cols || ty >= map.rows) return true;
+  const cell = map.grid[ty * map.cols + tx];
+  return cell === CELL.WALL || cell === CELL.CRATE;
 }
 
 /**
@@ -548,7 +566,6 @@ function mergeCells(grid, cols, rows, value) {
 }
 
 function roomFloorPoint(room, rng, inset = 1.4) {
-  const half = TILE / 2;
   const minX = room.x + inset * TILE;
   const maxX = room.x + room.w - inset * TILE;
   const minY = room.y + inset * TILE;
@@ -584,7 +601,7 @@ function resolveMapDef(mapId) {
  * @param {string|object} [mapId] 地图 id（'depot' / 'conduit'）或地图定义
  * @returns {object} 地图对象
  */
-export function generateMap(seed, mapId) {
+export function generateMap(seed, mapId, opts = {}) {
   const def = resolveMapDef(mapId);
   const rng = createRng(seed >>> 0 || 1);
   const cols = def.cols;
@@ -827,12 +844,20 @@ export function generateMap(seed, mapId) {
   //    （不在此处随机开放，避免早期就能撤离 —— 撤离窗口本来就压在局末。）
   for (const ex of map.extracts) ex.open = false;
 
-  // 8.5) 撤离点类型：free / paid / guarded
-  // 保证第一个撤离点免费（免费通道永远存在），其余随机为付费或守点。
+  // 8.5) 撤离点类型：standard（常规）/ free / paid / guarded
+  // 「常规撤离」= 离出生点最远的一处，从开局就开放 —— 保证任何时刻都有至少一个可用方案，
+  // 否则开局到 2:30 之间一处都不可用，等于把「早走」的选择权收走了。
+  // 其余点里保证再有一个免费点（免费通道永远存在），剩下的随机付费/守点。
   for (const ex of map.extracts) ex.kind = 'free';
-  const kinded = rng.shuffle(map.extracts.slice());
+  const distOf = (ex) => Math.hypot(ex.x - map.playerSpawn.x, ex.y - map.playerSpawn.y);
+  const standard = map.extracts.slice().sort((a, b) => distOf(b) - distOf(a))[0] || null;
+  if (standard) {
+    standard.kind = 'standard';
+    standard.name = standard.name + '（常规）';
+  }
+  const kinded = rng.shuffle(map.extracts.filter((ex) => ex !== standard));
   kinded.forEach((ex, i) => {
-    if (i === 0) return; // 保底免费撤离点
+    if (i === 0) return; // 保底免费撤离点（standard 之外再留一处免费）
     ex.kind = rng.chance(0.5) ? 'paid' : 'guarded';
     if (ex.kind === 'paid') ex.cost = MATCH.extractFee;
   });
@@ -842,11 +867,16 @@ export function generateMap(seed, mapId) {
   // 所以这里必须按 kind 判断，不能按下标判断。
   // openAt 是**经过秒数**（与 world.time 同口径），不是剩余秒数。
   for (const ex of map.extracts) {
-    ex.openAt = ex.kind === 'free' ? MATCH.extractFirstOpen : (MATCH.duration - MATCH.extractOpenAt);
+    if (ex.kind === 'standard') ex.openAt = 0;
+    else if (ex.kind === 'free') ex.openAt = MATCH.extractFirstOpen;
+    else ex.openAt = MATCH.duration - MATCH.extractOpenAt;
   }
 
   // 9) 敌人出生点
-  const enemyCount = rng.int(def.enemyCountMin, def.enemyCountMax);
+  // P15：风险分级只乘「数量」，不改 rng 抽取点。倍率为 1 时 `Math.round(x * 1) === x`，
+  // 循环次数与调用序列逐位不变 —— 这是常规局 GOLDEN 不受影响的前提。
+  const countMul = Number.isFinite(opts.enemyCountMul) && opts.enemyCountMul > 0 ? opts.enemyCountMul : 1;
+  const enemyCount = Math.max(1, Math.round(rng.int(def.enemyCountMin, def.enemyCountMax) * countMul));
   // 敌人不刷在玩家出生房间（按离出生点距离剔除）
   const spawnRooms = rooms.filter(
     (r) => Math.hypot(r.cx - map.playerSpawn.x, r.cy - map.playerSpawn.y) > TILE * 6,
@@ -888,9 +918,8 @@ export function generateMap(seed, mapId) {
     const wanted = Math.max(0, def.platformCount || 0);
     const pad = 18;
     // 注意：room.x / room.w 是**世界坐标**（见 roomFloorPoint），需要先换算成格
-    const bigRooms = map.rooms
-      .filter((r) => r.w >= 5 * TILE && r.h >= 5 * TILE)
-      .sort(() => rng.float(-1, 1));
+    const bigRooms = rng.shuffle(map.rooms
+      .filter((r) => r.w >= 5 * TILE && r.h >= 5 * TILE));
     const fits = (tx, ty, tw, th) => {
       for (let y = ty; y < ty + th; y += 1) {
         for (let x = tx; x < tx + tw; x += 1) {
@@ -952,13 +981,32 @@ export function generateMap(seed, mapId) {
     });
   }
 
+  // 9.55) 首领出生点：每张图一个 Boss（主题各异）。
+  // depot/conduit 放在最大房间中心（开阔据点）；ridge 优先放在架高平台（狙击喜高地）。
+  // 落点做可达性兜底：若算出的点压在墙体里，则回退到最近可站立格。
+  {
+    let bp;
+    if (map.id === 'ridge' && map.platforms.length) {
+      const p = map.platforms[0];
+      bp = { x: p.x + p.w / 2, y: p.y + p.h / 2 };
+    } else {
+      const room = map.rooms.reduce((a, b) => ((b.tw * b.th) > (a.tw * a.th) ? b : a), map.rooms[0]);
+      bp = { x: room.cx, y: room.cy };
+    }
+    if (isSolidAt(map, bp.x, bp.y) || circleHitsSolid(map, bp.x, bp.y, 18)) {
+      const st = nearestWalkableTile(map, Math.floor(bp.x / TILE), Math.floor(bp.y / TILE));
+      bp = { x: st.tx * TILE + TILE / 2, y: st.ty * TILE + TILE / 2 };
+    }
+    map.enemySpawns.push({ type: 'boss', x: Math.round(bp.x), y: Math.round(bp.y), bossId: map.id });
+  }
+
   // 9.6) 机动载具：停在大房间的空地上，用于快速转移。
   // 只要求"周围够空旷能开出去"，不写进 grid（不是静态障碍），碰撞由玩家驾驶时自行处理。
   // def.vehicles 为 false 的图（管廊）完全不消耗这段的随机数，也不生成载具。
   if (def.vehicles && VEHICLE.enabled) {
     const wanted = Math.round(rng.float(VEHICLE.count[0], VEHICLE.count[1]));
     const clear = VEHICLE.radius + 18; // 预留出一圈能开动的余量
-    const rooms = map.rooms.slice().sort(() => rng.float(-1, 1));
+    const rooms = rng.shuffle(map.rooms.slice());
     for (const room of rooms) {
       if (map.vehicles.length >= wanted) break;
       if (room.w < 6 * TILE || room.h < 6 * TILE) continue;
@@ -994,6 +1042,30 @@ export function generateMap(seed, mapId) {
   map.crateRects = mergeCells(grid, cols, rows, CELL.CRATE);
   initCrateState(map); // 为每个掩体箱 rect 初始化可破坏血量
 
+  // 11) 分区命名（POI）：取面积最大的前 N 个房间，稳定贴战术代号。
+  // 纯展示、不影响生成、不改 seed（名字来自固定名称池，按房间面积排序确定）。
+  // 作为小地图分区代号与「当前区域」HUD 的唯一真值源，也便于单测锁定。
+  // 面积并列时按原房间序排序，保证同 seed 结果稳定。
+  {
+    const names = POI_NAMES[map.id] || POI_NAMES.depot;
+    const cap = (HUD && HUD.minimap && HUD.minimap.poiMax) || 6;
+    map.pois = map.rooms
+      .map((r, i) => ({ r, i, area: r.tw * r.th }))
+      .sort((a, b) => b.area - a.area || a.i - b.i)
+      .slice(0, cap)
+      .map(({ r, i }) => ({ x: r.cx, y: r.cy, name: names[i % names.length], area: r.tw * r.th }));
+  }
+
+  // 12) 区域价值分层 / 热点 / 出生点类型（P20）。
+  //     只往 map 上挂**新字段**（areas / hotspots / spawnKind），不动任何几何字段 ——
+  //     所以 GOLDEN 快照（不含这些字段）仍然逐字节可比。
+  {
+    const plan = buildAreaPlan(map);
+    map.areas = plan.areas;
+    map.hotspots = plan.hotspots;
+    map.spawnKind = plan.spawnKind;
+  }
+
   return map;
 }
 
@@ -1024,4 +1096,88 @@ export function reachableCount(map, tx, ty) {
   let n = 0;
   for (let i = 0; i < field.length; i += 1) if (field[i] >= 0) n += 1;
   return n;
+}
+
+/**
+ * M-03：在 buildExtractPlan(map, { layout: true }) 之后落实出口网络的几何侧。
+ *
+ * 为什么不在 generateMap 里做：GOLDEN 快照锁的是 generateMap 直出结果，往里插 POI
+ * 会一次性打翻 5 个种子的哈希。布局层放在生成之后，既拿到真实房间/热点/出生点，
+ * 又不碰任何 rng 序列。
+ *
+ * - 校验每个出口从出生点可达（BFS 流场）、不插在实心里；
+ * - 给拉闸点配一个**圈外、可见、可达**的闸刀 POI（复用终端的交互模型）；
+ * - 只报告问题，不硬挪点 —— 挪点会破坏"出生点离出口最远"的既有口径。
+ *
+ * @param {object} map 地图
+ * @returns {{ok:boolean, switches:Array<object>, issues:Array<string>}}
+ */
+export function finalizeExtractLayout(map) {
+  const layout = map && map.extractLayout;
+  const list = (map && map.extracts) || [];
+  const issues = Array.isArray(layout && layout.issues) ? layout.issues.slice() : [];
+  if (!layout || layout.ok !== true) {
+    issues.push('layout-not-applied');
+    return { ok: false, switches: [], issues };
+  }
+  const stx = Math.floor((map.playerSpawn ? map.playerSpawn.x : 0) / map.tile);
+  const sty = Math.floor((map.playerSpawn ? map.playerSpawn.y : 0) / map.tile);
+  const field = bfsFlowField(map, stx, sty);
+  const cellIndex = (x, y) => {
+    const tx = Math.floor(x / map.tile);
+    const ty = Math.floor(y / map.tile);
+    return (tx >= 0 && ty >= 0 && tx < map.cols && ty < map.rows) ? ty * map.cols + tx : -1;
+  };
+  const reachable = (x, y) => {
+    const i = cellIndex(x, y);
+    return i >= 0 && field[i] >= 0;
+  };
+  for (const ex of list) {
+    if (!reachable(ex.x, ex.y)) issues.push(`unreachable:${ex.id}`);
+    if (isSolidAt(map, ex.x, ex.y)) issues.push(`inside-wall:${ex.id}`);
+  }
+
+  const sw = layout.switchPoint;
+  const switches = [];
+  if (sw) {
+    let placed = null;
+    // 8 个固定方向 × 4 个固定半径，零随机；优先近处，保证闸刀始终在撤离圈边缘外。
+    const radii = [2.8, 3.4, 4.0, 4.6].map((m) => m * EXTRACT_LAYOUT.switchRadius);
+    for (const r of radii) {
+      if (placed) break;
+      for (let k = 0; k < 8 && !placed; k += 1) {
+        const ang = EXTRACT_LAYOUT.switchAngle + (k * Math.PI) / 4;
+        const x = Math.round(sw.x + Math.cos(ang) * r);
+        const y = Math.round(sw.y + Math.sin(ang) * r);
+        if (!reachable(x, y) || isSolidAt(map, x, y) || circleHitsSolid(map, x, y, 18)) continue;
+        if (!hasLineOfSight(map, sw.x, sw.y, x, y)) continue;
+        // 别把闸刀塞进木箱 / 搜刮容器 / 数据终端：几何可达但视觉被挡 = 玩家看不见，
+        // 等于没有交互目标（截图复核实测踩过这个坑）。
+        const crowded = (map.containers || []).some((c) => Math.hypot(c.x - x, c.y - y) < 64)
+          || (map.terminals || []).some((t) => Math.hypot(t.x - x, t.y - y) < 64)
+          || (map.crates || []).some((c) => x > c.x - 26 && x < c.x + c.w + 26
+            && y > c.y - 26 && y < c.y + c.h + 26);
+        if (crowded) continue;
+        placed = { x, y };
+      }
+    }
+    if (!placed) {
+      // 极端种子兜底：宁可放在圈内，也不能没有可拉的闸刀（软锁比位置不美更糟）。
+      placed = { x: Math.round(sw.x), y: Math.round(sw.y) };
+      issues.push('switch-fallback-inside-circle');
+    }
+    switches.push({
+      id: 0,
+      x: placed.x,
+      y: placed.y,
+      r: EXTRACT_LAYOUT.switchRadius,
+      extractId: sw.id,
+      name: `闸刀 · ${sw.name}`,
+      pulled: false,
+    });
+  }
+  map.switches = switches;
+  layout.issues = issues;
+  layout.switches = switches;
+  return { ok: !issues.some((s) => s.startsWith('unreachable:')), switches, issues };
 }

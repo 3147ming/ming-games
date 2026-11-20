@@ -82,6 +82,72 @@ export function rollContainer(containerType, rng, opts = {}) {
 }
 
 /**
+ * 各品类对应的「保底填充物」：只挑永远有用、单价确定的东西。
+ * 刻意不用随机 —— 保底这件事必须可复现，抽随机等于"保底也可能保不到"。
+ */
+// 每个品类给一小把填充物并按顺序轮流用 —— 三件一模一样的东西看着就像程序占位。
+const FLOOR_FILLER = {
+  weapon: ['ammo556', 'ammo556ap'],
+  ammo: ['ammo9mm', 'ammo9mmhp'],
+  medical: ['medkit', 'armorKit'],
+  consumable: ['medkit', 'bandage'],
+  material: ['battery', 'fuel', 'parts'],
+  valuable: ['chip', 'watch'],
+  gear: ['armorKit', 'parts'],
+  armor: ['armorKit', 'lv2'],
+};
+
+/** 各层级的**件数下限**：核心区的箱子不该只有一件货。 */
+export const TIER_MIN_ITEMS = {
+  low: 1,
+  medium: 1,
+  high: 2,
+  hotspot: 3,
+};
+
+/** 容器主品类（取 categoryBias 权重最高的那一类，无偏置时回落 material）。 */
+function primaryCategory(def) {
+  const bias = (def && def.categoryBias) || null;
+  if (!bias) return 'material';
+  let best = 'material';
+  let bv = -Infinity;
+  for (const [k, v] of Object.entries(bias)) {
+    if (Number(v) > bv) { bv = Number(v); best = k; }
+  }
+  return FLOOR_FILLER[best] ? best : 'material';
+}
+
+/** 该品类的填充物轮转序列（永远非空）。 */
+function fillerPool(category) {
+  const pool = FLOOR_FILLER[category] || FLOOR_FILLER.material;
+  return pool.filter((id) => ITEMS[id]);
+}
+
+/**
+ * 区域价值保底：高价值区的容器不该出现"打开只有一根螺栓"。
+ *
+ * 口径是**件数下限**而不是价值目标 —— 拿便宜材料去凑一个价值数字，
+ * 会得到"一个箱子里四块电池"这种既不真实也不好玩的结果。
+ * 全程零随机（填充物按品类静态选），所以不会让同 seed 的掉落序列漂移。
+ *
+ * @param {Array<object>} items 已掷出的物品（原地追加）
+ * @param {string} tier TIER.*
+ * @param {object} def 容器定义
+ * @returns {Array<object>} 同一个数组
+ */
+export function applyTierFloor(items, tier, def) {
+  const list = Array.isArray(items) ? items : [];
+  const minItems = TIER_MIN_ITEMS[tier] || 0;
+  if (minItems <= 0 || list.length >= minItems) return list;
+  const pool = fillerPool(primaryCategory(def));
+  if (!pool.length) return list;
+  for (let i = list.length; i < minItems; i += 1) {
+    list.push(createItem(ITEMS[pool[i % pool.length]], 1));
+  }
+  return list;
+}
+
+/**
  * 敌人掉落：以弹药/消耗品为主，按敌人等级给稀有度加成。
  * @param {string} enemyType 敌人类型 id
  * @param {object} rng 随机数发生器
