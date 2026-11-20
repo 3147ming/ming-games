@@ -23,7 +23,12 @@ export function createInput() {
     right: false,
     sprint: false,
     crouch: false,
-    lean: 0, // 探头方向：-1 左 / 0 不探 / +1 右（P19，键位 Z / C）
+    // 卧倒：布尔**状态**（Z 切换 / 触屏「卧倒」键切换），不是边沿事件。
+    // 蹲伏沿用它同一套语义：Ctrl 按住 / C 切换都写进 crouch，player 只读结果。
+    prone: false,
+    // 跳跃/翻越：边沿事件，由 player 在 update 里消费掉（长按空格不连跳）。
+    jumpPressed: false,
+    lean: 0, // 探头方向：-1 左 / 0 不探 / +1 右（P19；键位 Alt+A / Alt+D）
     fire: false,
     firePressed: false,
     ads: false, // 瞄准（右键）

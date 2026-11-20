@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="description" content="搜打撤 —— 战术撤离类游戏：搜索、打击、撤离" />
+    <!-- 内联空图标：避免移动端浏览器请求 /favicon.ico 产生一条 404 console 错误 -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1219'/%3E%3Cpath d='M8 8h6v3H11v13h3v3H8z' fill='%23FF5A1F'/%3E%3C/svg%3E" />
+    <title>搜打撤 · 端游版</title>
+    <link rel="stylesheet" href="./shared/tokens.css" />
+  <link rel="stylesheet" href="./styles.css" />
+    <!-- 最大的文件先走：surge 的 keep-alive 只有 5s，若 three.js 排在 20+ 个模块请求之后，
+         很可能复用一条已被服务端关掉的空闲连接而被 RST。modulepreload 让它在解析阶段就出发。 -->
+    <link rel="modulepreload" href="./vendor/three.module.js" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game-canvas"></canvas>
+      <div id="ui-root"></div>
+    </div>
+    <noscript>
+      <p style="color: #d7dee8; font-family: sans-serif; padding: 24px">
+        本游戏需要启用 JavaScript 才能运行。
+      </p>
+    </noscript>
+    <!-- 启动看门狗：弱网下单个资源（如 three.js）被中断会让整个 ES 模块图不执行，页面停在白屏。
+         这里检测启动标志，超时先自动重试一次，再失败则给出手动重试入口。 -->
+    <script>
+      (function () {
+        var LIMIT = 12000;
+        var autoUsed = false;
+        try { autoUsed = sessionStorage.getItem('soudache_boot_retried') === '1'; } catch (e) {}
+        function show(msg) {
+          var box = document.createElement('div');
+          box.id = 'boot-watchdog';
+          box.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--df-bg);color:#d7dee8;font-family:system-ui,sans-serif;text-align:center;padding:24px';
+          var t = document.createElement('div');
+          t.textContent = msg;
+          t.style.cssText = 'font-size:15px;line-height:1.7;max-width:32em';
+          box.appendChild(t);
+          var b = document.createElement('button');
+          b.textContent = '重新加载';
+          b.style.cssText = 'min-width:120px;min-height:48px;padding:12px 20px;font-size:16px;border-radius:10px;border:1px solid #2b3a4d;background:#16202c;color:#d7dee8';
+          b.addEventListener('click', function () {
+            try { sessionStorage.removeItem('soudache_boot_retried'); } catch (e) {}
+            location.reload();
+          });
+          box.appendChild(b);
+          document.body.appendChild(box);
+        }
+        setTimeout(function () {
+          if (window.SOUDACHE) return;
+          if (!autoUsed) {
+            try { sessionStorage.setItem('soudache_boot_retried', '1'); } catch (e) {}
+            show('资源加载超时，正在自动重试…');
+            setTimeout(function () { location.reload(); }, 800);
+          } else {
+            show('资源加载失败：网络较慢或连接被中断。请检查网络后重试。');
+          }
+        }, LIMIT);
+
+        /* 正向加载提示（P1-10）：ES 模块 + three.js 在弱网下要几秒，
+           原来这段时间是"纯黑 + 干等"，玩家容易以为白屏而提前关页面。
+           这里只补一个"正在进入战区…"的过渡态，12s 超时重试逻辑完全不动。 */
+        var bootEl = null;
+        (function showLoading() {
+          try {
+            var style = document.createElement('style');
+            style.textContent =
+              '@keyframes sdc-boot-spin{to{transform:rotate(360deg)}}'
+              + '#boot-loading .sdc-ring{animation:sdc-boot-spin .9s linear infinite}'
+              + '@media (prefers-reduced-motion: reduce){#boot-loading .sdc-ring{animation:none}}';
+            document.head.appendChild(style);
+
+            bootEl = document.createElement('div');
+            bootEl.id = 'boot-loading';
+            bootEl.style.cssText = 'position:fixed;inset:0;z-index:9000;display:flex;flex-direction:column;'
+              + 'align-items:center;justify-content:center;gap:16px;background:var(--df-bg);'
+              + 'color:var(--df-dim);font-family:system-ui,sans-serif;pointer-events:none;'
+              + 'transition:opacity .22s ease-out';
+            var ring = document.createElement('div');
+            ring.className = 'sdc-ring';
+            ring.style.cssText = 'width:34px;height:34px;border-radius:50%;'
+              + 'border:3px solid var(--df-accent-a22);border-top-color:var(--df-accent)';
+            var txt = document.createElement('div');
+            txt.textContent = '正在进入战区…';
+            txt.style.cssText = 'font-size:14px;letter-spacing:.08em';
+            bootEl.appendChild(ring);
+            bootEl.appendChild(txt);
+            document.body.appendChild(bootEl);
+          } catch (e) { bootEl = null; }
+        })();
+
+        // 就绪即撤（留两帧给首帧上屏，避免"撤得太快看到黑画布"）；最多挂 4s 兜底。
+        var bootStart = Date.now();
+        function dropLoading() {
+          if (!bootEl) return;
+          var el = bootEl;
+          bootEl = null;
+          el.style.opacity = '0';
+          setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 240);
+        }
+        var bootTimer = setInterval(function () {
+          if (window.SOUDACHE || Date.now() - bootStart > 4000) {
+            clearInterval(bootTimer);
+            setTimeout(dropLoading, 160);
+          }
+        }, 100);
+      })();
+    </script>
+    <script>
+      /* index.desktop.html 入口：强制 desktop，共享同一套 src；用户可用 ?desktop=1/?touch=1 手动覆盖做调试。 */
+      (function(){ try {
+        var u=new URL(location.href);
+        if(!u.searchParams.has('touch') && !u.searchParams.has('desktop')) u.searchParams.set('desktop','1');
+        history.replaceState(null,'',u.pathname+u.search+u.hash);
+      } catch(e){} })();
+    </script>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

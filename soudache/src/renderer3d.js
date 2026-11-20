@@ -850,6 +850,14 @@ export class Renderer3D {
     loadGLB(rel).then((gltf) => {
       if (!gltf || model.userData.glbRoot) return;
       const root = cloneSkinned(gltf.scene);
+      // ⚠ 朝向对齐：程序化模型（models.js 头部约定）一律面朝 -Z，外层每帧写
+      // `model.rotation.y = yawFromAngle(actor.angle)` 也是按 -Z 前向算的。
+      // 但 Kenney 的 GLB 是面朝 +Z 建的（实测：yaw=0 相机看到正脸，yaw=π 看到后脑勺），
+      // 不补这 180° 的话，所有敌人和队友都会**背对玩家**——AI 逻辑朝向明明正确，
+      // 画面上却像全体在逃跑。这里在 GLB 根上转半圈，把它的前向掰到 -Z，
+      // 与程序化模型、枪口火光挂点（-Z 侧）保持同一套约定。
+      // 用 += 而不是 =：保留 glTF 作者可能写在根节点上的初始旋转。
+      root.rotation.y += Math.PI;
       const mats = [];
       root.traverse((o) => {
         if (!o.isMesh) return;
@@ -1001,12 +1009,15 @@ export class Renderer3D {
 
   _syncCamera(player, dt, world) {
     const cam = this.handle.camera;
-    // 眼高插值（蹲下降低）
-    // 眼高 = 姿态眼高 + 所处平台高程（站上架高平台时视点随之抬高）
-    // 驾驶时坐进驾驶室（眼高更高），否则按姿态 + 平台高程
+    // 眼高插值（蹲下/卧倒降低，跳跃抬高）
+    // 眼高 = 姿态眼高 + 所处平台高程 + 离地高度（跳跃/翻越）− 落地瞬间的下沉
+    // 驾驶时坐进驾驶室（眼高更高），其余情况一律按姿态算 —— 三档姿态共用同一公式。
+    const stanceEye = player.prone
+      ? VIEW3D.eyeProne
+      : (player.crouching ? VIEW3D.eyeCrouch : VIEW3D.eyeStand);
     const targetEye = player.vehicle
       ? u(VEHICLE.eyeHeight + (player.elevation || 0))
-      : u((player.crouching ? VIEW3D.eyeCrouch : VIEW3D.eyeStand) + (player.elevation || 0));
+      : u(stanceEye + (player.elevation || 0) + (player.jumpZ || 0) - (player.landDip || 0));
     const eyek = 1 - Math.exp(-VIEW3D.eyeLerp * dt);
     this.eyeHeight += (targetEye - this.eyeHeight) * eyek;
 

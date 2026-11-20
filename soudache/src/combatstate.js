@@ -25,7 +25,7 @@ export const MOVEMENT_STATE = {
   RELOAD_MOVE: 'reloadMove',
 };
 
-/** 姿态。趴下按指令书暂缓，这里保留枚举位但 derive 永不产出 prone。 */
+/** 姿态。三档阶梯：站立 / 蹲伏 / 卧倒（卧倒＝蹲的更强一档，crouching 恒真）。 */
 export const STANCE_STATE = {
   STAND: 'stand',
   CROUCH: 'crouch',
@@ -134,7 +134,9 @@ export function switchDuration(fromDef, toDef) {
 export function deriveCombatState(p) {
   const w = p && p.currentWeapon ? p.currentWeapon : null;
   const adsT = clamp01(p && p.adsT != null ? p.adsT : (p && p.ads ? 1 : 0));
-  const stance = p && p.crouching ? STANCE_STATE.CROUCH : STANCE_STATE.STAND;
+  const stance = p && p.prone
+    ? STANCE_STATE.PRONE
+    : (p && p.crouching ? STANCE_STATE.CROUCH : STANCE_STATE.STAND);
   const reloading = Boolean(w && w.reloading);
   const switching = Number(p && p.switchTimer) > 0;
   const sprintLock = Math.max(0, Number(p && p.sprintLock) || 0);
@@ -198,6 +200,9 @@ export function deriveCombatState(p) {
     canCrouch: canCrouch(p),
     raiseT: sprintLock,
     adsT,
+    // 滞空与翻越：HUD 用来压低准星提示，探针用来断言"跳起来打不准"。
+    airborne: !!(p && p.airborne),
+    vaulting: !!(p && p.vault),
     weaponId: w && w.def ? w.def.id : null,
     weaponClass: w && w.def ? weaponClassOf(w.def) : null,
   };
@@ -214,6 +219,8 @@ export function canFire(p) {
   // 冲刺退出后必须先把枪抬起来：这是「冲刺不能瞬间精准开火」的唯一实现点。
   if (Number(p.sprintLock) > 0) return false;
   if (p.vehicle) return false;
+  // 翻越中双手都在撑箱子，打不了枪（也让"跳跃无敌帧+反杀"不成立）。
+  if (p.vault) return false;
   return true;
 }
 
@@ -236,6 +243,7 @@ export function canReload(p) {
 export function canSprint(p) {
   if (!p || p.dead || p.busy || p.vehicle) return false;
   if (p.crouching) return false;
+  if (p.prone) return false; // 卧倒必须先生起（起身还有 standLock 硬直）
   if (p.exhausted) return false;
   return true;
 }
@@ -254,6 +262,8 @@ export function canLean(p) {
   if (!p || p.dead || p.vehicle || p.busy) return false;
   // 冲刺中不允许探头（指令书 MOVE-04），否则会造出贴墙高速平移的怪动作。
   if (p.sprinting) return false;
+  // 趴着没有"探头"这个概念：卧倒的收益已经在散布与视距里给过了。
+  if (p.prone) return false;
   return true;
 }
 
@@ -274,6 +284,7 @@ export const STATE_LABEL = {
   reloadMove: '换弹移动',
   stand: '站立',
   crouch: '蹲伏',
+  prone: '卧倒',
   hip: '腰射',
   adsStart: '开镜中',
   adsFull: '已开镜',

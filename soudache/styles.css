@@ -561,6 +561,36 @@ body {
 
 /* ============================ 战前配置 ============================ */
 
+/* W3 层叠化：战前面板 tab 栏。一次只显示一层，不再是所有配置堆成长卷。
+   隐藏用 display:none（与 .screen.hidden 铁律同理），保证 3D 预览的
+   canvas 不在隐藏层里空转，tab 切回来时 DOM/滚动位置都还在。 */
+.loadout-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 4px;
+  border: 1px solid var(--df-line);
+  background: var(--df-panel-a50);
+}
+.loadout-tab {
+  flex: 1 1 0;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--df-dim);
+  font: 600 12px/1 var(--df-label);
+  letter-spacing: .08em;
+  cursor: pointer;
+}
+.loadout-tab:hover { color: var(--df-text); }
+.loadout-tab.active {
+  color: var(--df-accent);
+  border-color: var(--df-accent-a40);
+  background: var(--df-accent-a10);
+}
+[data-loadout-panel].loadout-panel-hidden { display: none !important; }
+
 .loadout-grid {
   display: grid;
   grid-template-columns: 1fr 300px;
@@ -3053,6 +3083,19 @@ body { font-family: var(--df-sans); font-variant-numeric: tabular-nums; }
 .bay-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .bay-head h3 { font: 600 12px var(--df-label); letter-spacing: .08em; margin: 0; }
 .bay-head .hint { font-size: 10px; }
+.bay-quick { margin-left: auto; }
+/* W3 快捷配装：三套预设一行排开，点一下套用；窄屏自动换行不挤压 */
+.quick-presets { display: flex; gap: 6px; flex-wrap: wrap; margin: 2px 0 6px; }
+.quick-preset {
+  min-height: 26px; padding: 3px 12px;
+  border: 1px solid var(--df-line);
+  background: var(--df-panel-a50);
+  color: var(--df-dim);
+  font: 600 11px/1 var(--df-label);
+  letter-spacing: .08em;
+  cursor: pointer;
+}
+.quick-preset:hover { color: var(--df-accent); border-color: var(--df-accent-a40); }
 /* 左角色 / 右槽位：窄屏（<720px）改成上下堆，角色台压到 150px 高 */
 .bay-body { display: grid; grid-template-columns: 226px minmax(0, 1fr); gap: 10px; margin: 8px 0; align-items: stretch; }
 .bay-char { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -3614,6 +3657,11 @@ body { font-family: var(--df-sans); font-variant-numeric: tabular-nums; }
 }
 .lg-item:hover { box-shadow: 0 0 0 1px var(--rar) inset, 0 6px 18px rgba(0,0,0,.5); z-index: 3; }
 .lg-item.selected { box-shadow: 0 0 0 2px var(--df-accent) inset; z-index: 3; }
+/* 键盘焦点：在选中环外再套一圈 + 轻微的呼吸光，保证"方向键选了哪一格"一眼可见 */
+.lg-item.kb-focus {
+  box-shadow: 0 0 0 2px var(--df-accent) inset, 0 0 0 2px var(--df-accent-a8), 0 6px 20px rgba(0,0,0,.55);
+  z-index: 4;
+}
 .lg-item.hi-value { border-top: 2px solid var(--df-r-gold); animation: lg-hi 2.4s ease-in-out infinite; }
 @keyframes lg-hi { 0%,100% { box-shadow: 0 0 0 1px var(--df-r-gold) inset, 0 2px 6px var(--df-danger-a14); } 50% { box-shadow: 0 0 0 2px var(--df-r-gold) inset, 0 2px 10px var(--df-accent-a35); } }
 .lg-item.locked::after { content: '🔒'; position: absolute; right: 3px; top: 2px; font-size: 9px; }

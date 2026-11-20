@@ -4,6 +4,7 @@ import { EXTRACT_TUNING } from './extract.js';
 // 位图图标：HUD 画在 canvas 上（位图优先 + 矢量回退），物品/DOM 侧懒加载。
 import { drawGlyph } from './glyphs.js';
 import { drawHudIcon, itemIconEl, prefetchItemIcons } from './icon-bitmap.js';
+import { QUICK_PRESETS } from './quickloadout.js';
 
 // M-03：拉闸点即使到点开放也仍是"条件未满足"，不能画成绿色误导玩家。
 const extractReady = (ex) => Boolean(ex && ex.open) && (!ex.requiresSwitch || ex.switchPulledAt != null);
@@ -258,17 +259,28 @@ export function createUI(root, handlers, opts) {
           </div>
         </header>
         <div class="panel-body">
+          <!-- W3 层叠化：战前不再把所有配置堆成一页长卷。顶部 tab 切换各面板，
+               每个 tab 是一层独立 UI；部署栏与负重/经济读数常驻右侧，随时可见。 -->
+          <nav class="loadout-tabs" data-role="loadout-tabs">
+            <button class="loadout-tab active" data-loadout-tab="gear">配装</button>
+            <button class="loadout-tab" data-loadout-tab="operator">干员</button>
+            <button class="loadout-tab" data-loadout-tab="weapon">改枪</button>
+            <button class="loadout-tab" data-loadout-tab="ammo">弹药</button>
+            <button class="loadout-tab" data-loadout-tab="map">地图</button>
+          </nav>
           <div class="loadout-grid">
             <div class="loadout-col">
-              <!-- W2：装备配置板提到最顶部 —— 它是这一屏的主任务（环 3）。
-                   实测 1280×720 下，把它排在干员/小队之后会让第 4 行槽位（背包/胸挂）
-                   掉到底栏下面，8 个槽位得滚动才能看全；提前 200px 后整块一次看齐。
-                   干员卡不再承担"这一局带谁"的唯一入口：角色台本身就印着干员码/名。 -->
-              <section class="equip-bay" data-role="equip-bay">
+              <!-- 每个 section 用 data-loadout-panel 归层；切 tab 只切可见性，DOM 全保留，
+                   3D 预览与滚动位置不丢。gear 层默认显示。 -->
+              <section class="equip-bay" data-role="equip-bay" data-loadout-panel="gear">
                 <div class="bay-head">
                   <h3>装备配置 / LOADOUT</h3>
                   <span class="hint">拖入物品，或先点物品再点槽位</span>
+                  <span class="bay-quick">
+                    <button class="btn ghost tiny" data-action="auto-equip" title="从仓库现有装备里自动挑最优">一键配装</button>
+                  </span>
                 </div>
+                <div class="quick-presets" data-role="quick-presets"></div>
                 <div class="bay-body">
                   <div class="bay-char">
                     <div class="bay-char-3d preview3d-host" data-role="char-preview"></div>
@@ -280,19 +292,19 @@ export function createUI(root, handlers, opts) {
               </section>
               <!-- P5：干员选择紧跟装备板。第一屏照样看得见"这一局带谁"，
                    塞进底部的 options 容器会掉到滚动区外（上一版就是这样被截图抓到的）。 -->
-              <section class="operator-pick" data-role="operator-pick"></section>
+              <section class="operator-pick" data-role="operator-pick" data-loadout-panel="operator"></section>
               <!-- P15：小队编成紧随其后 —— 先选自己，再选两名 AI 队友。
                    两席各三个候选（排除玩家当前干员），点一下即换。 -->
-              <section class="squad-pick" data-role="squad-pick"></section>
+              <section class="squad-pick" data-role="squad-pick" data-loadout-panel="operator"></section>
               <!-- P6 改枪台：紧贴装备槽下方（选完枪就地改枪）。绝不塞进底部的
                    loadout-options —— 那一片在滚动区外，P5 的干员卡已经栽过一次。 -->
-              <section class="gun-bench-section" data-role="gun-bench"></section>
+              <section class="gun-bench-section" data-role="gun-bench" data-loadout-panel="weapon"></section>
               <!-- P7 弹药与医疗：弹种选择 + 各弹种盒数 + 头盔/药品。紧贴改枪台，
                    选完枪就地决定"这一局带什么弹、带几盒"。 -->
-              <section class="ammo-config" data-role="ammo-config"></section>
+              <section class="ammo-config" data-role="ammo-config" data-loadout-panel="ammo"></section>
               <!-- P2 视觉复核：地图卡原先塞在 300px 侧栏里、两列各 120px，
                    POI 图钉与描述挤成一团。移到主区后每张约 400px，图钉才读得清。 -->
-              <section class="mission-pick">
+              <section class="mission-pick" data-loadout-panel="map">
                 <h3>作战地图 / OPERATION AREA</h3>
                 <div class="map-pick" data-role="map-pick">${mapCards}</div>
               </section>
@@ -516,8 +528,10 @@ export function createUI(root, handlers, opts) {
               <li><kbd>鼠标</kbd> 瞄准 · <kbd>左键</kbd> 射击</li>
               <li><kbd>R</kbd> 换弹 · <kbd>Q</kbd> 使用医疗物资</li>
               <li><kbd>E</kbd> 搜索 / 撤离 / 交互</li>
-              <li><kbd>Ctrl</kbd> 蹲行（更安静、更难被发现）</li>
-              <li class="touch-only">双击左摇杆 蹲行（更安静、更难被发现）</li>
+              <li><kbd>空格</kbd> 跳跃 · 正对掩体箱时自动<b>翻越</b></li>
+              <li><kbd>C</kbd> 蹲下切换 · <kbd>Ctrl</kbd> 按住蹲下 · <kbd>Z</kbd> 卧倒切换</li>
+              <li class="touch-only">双击左摇杆 蹲/起 · 右侧「跳跃」「卧倒」键</li>
+              <li><kbd>Alt</kbd>+<kbd>A</kbd><kbd>D</kbd> 左右探头（探头会牺牲精度）</li>
               <li><kbd>Shift</kbd> 冲刺（消耗体力，体力耗尽无法冲刺，静止快速恢复）</li>
               <li><kbd>1</kbd><kbd>2</kbd> 切换武器 · <kbd>Tab</kbd> 背包 · <kbd>Esc</kbd> 暂停</li>
               <li><kbd>V</kbd> 绳索速降（从高地快速下滑）</li>
@@ -811,8 +825,28 @@ export function createUI(root, handlers, opts) {
 
   let transitionTimer = null;
 
+  // W3 层叠化：战前配置的当前面板层。DOM 全部保留，切层只切可见性，
+  // 这样 3D 预览（枪模/角色）与滚动位置不会因为重建而丢失。
+  let loadoutTab = 'gear';
+  function setLoadoutTab(name) {
+    const tabs = root.querySelectorAll('[data-loadout-tab]');
+    if (!tabs.length) return;
+    const valid = [...tabs].some((n) => n.dataset.loadoutTab === name);
+    loadoutTab = valid ? name : 'gear';
+    for (const node of tabs) node.classList.toggle('active', node.dataset.loadoutTab === loadoutTab);
+    for (const node of root.querySelectorAll('[data-loadout-panel]')) {
+      node.classList.toggle('loadout-panel-hidden', node.dataset.loadoutPanel !== loadoutTab);
+    }
+  }
+  root.addEventListener('click', (ev) => {
+    const tab = ev.target.closest && ev.target.closest('[data-loadout-tab]');
+    if (tab) { ev.preventDefault(); setLoadoutTab(tab.dataset.loadoutTab); }
+  });
+
   function show(name) {
     current = name;
+    // 每次进入战前屏都从「配装」层起步（上一次停在改枪层，下次进来会懵）。
+    if (name === 'loadout') setLoadoutTab('gear');
     for (const [key, node] of Object.entries(screens)) {
       node.classList.toggle('hidden', key !== name);
     }
@@ -2468,6 +2502,20 @@ export function createUI(root, handlers, opts) {
 
     renderCharSheet(save, lo);
 
+    // W3 快捷配装：三套预设按钮，点一下套用（处理在 main.js 的 action 委托里）。
+    const presetHost = q('quick-presets');
+    if (presetHost) {
+      presetHost.innerHTML = '';
+      for (const p of QUICK_PRESETS) {
+        const b = el('button', 'quick-preset', `${p.name}`);
+        b.type = 'button';
+        b.dataset.action = 'apply-preset';
+        b.dataset.preset = p.id;
+        b.title = p.desc;
+        presetHost.appendChild(b);
+      }
+    }
+
     // W2：角色 3D 的挂载同样由 main.js 负责（它持有渲染器生命周期）。
     // ui.js 只广播一个事件，不 import three —— 与改枪台的 gunbench:rendered 同一套约定。
     if (typeof CustomEvent === 'function' && typeof slotsHost.dispatchEvent === 'function') {
@@ -2874,6 +2922,9 @@ export function createUI(root, handlers, opts) {
     if (current !== 'battle') return;
     const r = hudState.lastLayout && hudState.lastLayout.minimap;
     if (!r || e.clientX < r.x || e.clientX > r.x + r.w || e.clientY < r.y || e.clientY > r.y + r.h) return;
+    // 小地图吃掉这次滚轮：main.js 的目标切换监听看到这个标记就不再切交互目标，
+    // 否则在小地图上缩放顺手把搜索目标切了。
+    e.__mmHandled = true;
     adjustMmZoom(e.deltaY < 0 ? 1 : -1);
   }, { passive: true });
   window.addEventListener('pointerdown', (e) => {
@@ -3763,12 +3814,12 @@ export function createUI(root, handlers, opts) {
     ctx.fillStyle = COLORS.text; ctx.font = `600 ${M.compact ? 12 : 13}px ${SANS}`;
     ctx.fillText(`击杀 ${world.kills}`, tx, M.y + M.rowY[0]);
     ctx.fillText(`搜刮 ${world.searchedCount}`, tx + M.col2, M.y + M.rowY[0]);
-    // 读数条第 1 行右端：蹲伏状态优先（只在蹲着时出现），否则显示最近已开放撤离点的距离。
+    // 读数条第 1 行右端：姿态优先（只在蹲/卧时出现），否则显示最近已开放撤离点的距离。
     // 两者共用同一格并互斥，永不重叠。
     if (player.crouching) {
       ctx.textAlign = 'right';
       ctx.fillStyle = COLORS.ok; ctx.font = `600 ${M.compact ? 10 : 11}px ${SANS}`;
-      ctx.fillText('蹲伏', M.x + M.w - 8, M.y + M.rowY[0]);
+      ctx.fillText(player.prone ? '卧倒' : '蹲伏', M.x + M.w - 8, M.y + M.rowY[0]);
     } else {
       // 只遍历 map.extracts（2 个），绝不顺手遍历 map.containers。
       let nearest = Infinity;
@@ -4131,7 +4182,7 @@ export function createUI(root, handlers, opts) {
         { on: hpRatio <= HUD.vitals.lowHp, label: '!', color: DF.danger, tip: '重伤' },
         { on: !!player.exhausted, label: '×', color: DF.danger, tip: '疲惫' },
         { on: !!over, label: '▲', color: DF.accent, tip: '超重' },
-        { on: !!player.crouching, label: '⌄', color: DF.ok, tip: '蹲伏' },
+        { on: !!player.crouching, label: player.prone ? '卧' : '⌄', color: DF.ok, tip: player.prone ? '卧倒' : '蹲伏' },
         { on: cond.bleed > 0, label: '血', color: DF.danger, tip: `流血 ×${cond.bleed}` },
         { on: !!cond.fracture, label: '骨', color: DF.rarity.gold, tip: '骨折' },
       ];
@@ -4220,10 +4271,8 @@ export function createUI(root, handlers, opts) {
     } else if (!player.busy) {
       const t = player.nearestTerminal ? player.nearestTerminal(world) : null;
       const e = player.nearestExtract(world);
-      const ni = player.nearestItem ? player.nearestItem(world) : null;
-      const c = player.nearestContainer(world);
       if (t) {
-        prompt = { title: '按 E 破解数据终端', sub: '破解可得情报费与评分加成' };
+        prompt = { title: '按 E 破解数据终端', sub: '破解可得情报费与情报加成' };
       } else if (e) {
         // 撤离点按类型给出不同提示
         const kind = e.kind || 'free';
@@ -4231,13 +4280,24 @@ export function createUI(root, handlers, opts) {
         if (kind === 'paid') sub = `付费撤离 · 手续费 ${money(e.cost || 0)}`;
         else if (kind === 'guarded') sub = '守点撤离 · 有精英守卫';
         prompt = { title: '按 E 撤离', sub };
-      } else if (ni) {
-        // 地面掉落物：排在撤离点之后、容器之前，与 player.interact 优先级一致
-        const disp = displayUnits(ni);
-        const qty = ni.qty > 1 ? ` ×${disp.count}${disp.unit}` : '';
-        prompt = { title: `按 E 拾取 ${ni.name}${qty}`, sub: `${money(itemValue(ni))} · ${itemWeight(ni).toFixed(1)}kg` };
-      } else if (c) {
-        prompt = { title: c.searched ? '已搜刮' : '按 E 搜索', sub: c.searched ? '' : '搜刮容器' };
+      } else {
+        // 多目标堆叠：容器 + 散落物堆合成一张表，滚轮切换高亮，E 确认搜当前项。
+        // 与 player.interact 读同一份 availableTargets，绝不出现"高亮 A 搜了 B"。
+        const targets = player.availableTargets ? player.availableTargets(world) : [];
+        if (targets.length) {
+          const idx = Math.min(player.targetIndex || 0, targets.length - 1);
+          const cur = targets[idx];
+          const sealed = cur.searchTime > 0;
+          prompt = {
+            title: `按 E ${sealed ? '解锁' : '搜刮'} ${cur.name}`,
+            sub: targets.length > 1
+              ? `滚轮切换 ${idx + 1}/${targets.length} · 已高亮`
+              : (sealed ? `需 ${cur.searchTime}s · 高价值` : '直接打开'),
+            targets: targets.length > 1 ? targets.map((tg, i) => ({
+              name: tg.name, active: i === idx, sealed: tg.searchTime > 0,
+            })) : null,
+          };
+        }
       }
       if (!prompt && player.ropeLanding && player.ropeLanding(world)) {
         prompt = { title: '按 V 绳索速降', sub: '快速脱离高地 · 下滑中更难被命中' };
@@ -4269,6 +4329,31 @@ export function createUI(root, handlers, opts) {
       if (prompt.sub) {
         ctx.fillStyle = COLORS.dim; ctx.font = `10px ${SANS}`;
         ctx.fillText(prompt.sub, cxP, P.y + P.subDY);
+      }
+      // 多目标列表：画在 prompt 面板上方的独立浮层，不改 hudLayout 真值。
+      // 最多 4 行（再多玩家也记不住），高亮项用青绿描边 + 左侧指示条。
+      if (prompt.targets && prompt.targets.length > 1) {
+        const rows = prompt.targets.slice(0, 4);
+        const rowH = P.compact ? 14 : 16;
+        const listH = rows.length * rowH + 8;
+        const listY = P.y - listH - 6;
+        const listW = P.w + 40;
+        const listX = P.x - 20;
+        panel(listX, listY, listW, listH, { bracketColor: dfAlpha(DF.accent, 0.5) });
+        ctx.textAlign = 'left';
+        rows.forEach((tg, i) => {
+          const yy = listY + 6 + i * rowH + rowH / 2;
+          if (tg.active) {
+            ctx.fillStyle = dfAlpha(DF.accent, 0.16);
+            ctx.fillRect(listX + 2, yy - rowH / 2, listW - 4, rowH);
+            ctx.fillStyle = DF.accent;
+            ctx.fillRect(listX + 2, yy - rowH / 2, 2, rowH);
+          }
+          ctx.fillStyle = tg.active ? COLORS.text : COLORS.dim;
+          ctx.font = `${tg.active ? 600 : 400} ${P.compact ? 10 : 11}px ${SANS}`;
+          ctx.fillText(`${tg.sealed ? '[锁] ' : ''}${tg.name}`, listX + 10, yy);
+        });
+        ctx.textAlign = 'center';
       }
     }
 
@@ -4567,6 +4652,9 @@ export function createUI(root, handlers, opts) {
     toast,
     toggleTasks,
     isTasksOpen,
+    // W3 层叠化：探针/调试口读取与切换当前战前面板层
+    setLoadoutTab,
+    getLoadoutTab: () => loadoutTab,
     renderCodex,
     renderOperators,
     updateFovLabel(v) {

@@ -709,6 +709,10 @@ export function fireWeapon(world, shooter, opts = {}) {
     firstShot: !!step && step.index === 0,
     isPlayer: !!shooter.isPlayer,
     crouching: !!shooter.crouching,
+    // 卧倒（比蹲更稳）与滞空（必须打不准）——两个新姿态因子，
+    // 缺字段时 spreadAt 里是恒等乘数 1，旧局与敌人逐位不变。
+    prone: !!shooter.prone,
+    airborne: !!shooter.airborne,
     raiseT,
     leaning: Math.abs(Number(shooter.leanT) || 0) > 0.02,
   }) * spreadMul;
@@ -722,8 +726,10 @@ export function fireWeapon(world, shooter, opts = {}) {
   // 仍然照常抽一次 rng —— 既作为曲线之上的微量噪声，也保证同 seed 的随机流长度不变。
   const recoilRand = world.rng.float(-1, 1);
   // 蹲伏降低后坐（指令书 5%~15%）：只作用于玩家，敌人数值完全不变。
-  const stanceRecoil = shooter.isPlayer && shooter.crouching
-    ? (COMBAT.crouchRecoilMul != null ? COMBAT.crouchRecoilMul : 1) : 1;
+  // 卧倒在蹲伏之后再乘一档（架枪最稳），同样只作用于玩家。
+  let stanceRecoil = shooter.isPlayer
+    ? (shooter.crouching ? (COMBAT.crouchRecoilMul != null ? COMBAT.crouchRecoilMul : 1) : 1) : 1;
+  if (shooter.isPlayer && shooter.prone) stanceRecoil *= COMBAT.proneRecoilMul != null ? COMBAT.proneRecoilMul : 1;
   shooter.recoilOffset = (shooter.recoilOffset || 0)
     + (step
       ? def.recoil * (step.yawMul + recoilRand * RECOIL.noise) * recoilMul * stanceRecoil

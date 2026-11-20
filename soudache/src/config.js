@@ -210,10 +210,13 @@ export const PLAYER = {
   weightOverStaminaFloor: 0.4, // 体力恢复下限（比移速更早触底：体力是逃命的底线）
   staminaExhaustSpeedMul: 0.55, // 疲惫时移速倍率（体力耗尽后）
   staminaExhaustRecovery: 0.3, // 体力恢复到该比例（maxStamina）才解除疲惫
+  noiseProne: 42, // 卧倒匍匐：比蹲行还轻，代价是移速几乎砍到 1/4
   noiseCrouch: 70,
   noiseWalk: 150,
   noiseSprint: 340,
   noiseSearch: 220, // 搜刮 / 破解读条期间周期性发出的响动
+  proneMul: 0.26, // 卧倒移速倍率（三角洲里趴着挪动就是"爬"）
+  proneStandCost: 0.35, // 卧倒→起身的硬直（秒）：趴下不是零风险，起身要花时间
   backpack: { cols: 5, rows: 6 },
   // P18 并行格位容器：胸挂 / 口袋 / 安全容器。三者与主背包一起构成随身容量，
   // 负重与结算都按「全部容器」聚合，不允许只读主背包。
@@ -225,6 +228,35 @@ export const PLAYER = {
 
 export const BACKPACK = PLAYER.backpack;
 export const STASH_SIZE = PLAYER.stash;
+
+/* ============================== 跳跃 / 翻越 ============================== */
+
+/**
+ * 跳跃与翻越（Space）。单位：米 / 秒 —— 与 `player.elevation` 同一套量纲，
+ * 渲染层再乘 VIEW3D.metersToUnits。逻辑坐标是场景单位，翻越距离用米写，
+ * 在 player 里用 metersToUnits 换算，避免"跳跃高度"和"翻越距离"两套单位混用。
+ */
+export const JUMP = {
+  // 原地起跳：0.45m 的战术小跳（三角洲的跳不是蹦床，是用来跨门槛/躲子弹的）
+  speed: 3.8, // 起跳竖直速度 m/s
+  gravity: 16, // 重力 m/s²（比真实 9.8 重，落地干脆，不拖手感）
+  apex: 0.45, // 峰值参考值（speed²/(2g)），仅用于注释与探针断言容差
+  landNoise: 130, // 落地响动（介于蹲行 70 与走路 150 之间：跑跳落地会暴露）
+
+  // 翻越：正前方有掩体箱时，Space 变成"翻过去"而不是原地跳
+  vaultRange: 4.6, // 最远翻越距离（米）——一个 2m 掩体箱 + 两侧身位
+  vaultDur: 0.46, // 翻越全程时长（秒）
+  vaultApex: 1.15, // 翻越最高点（米，要高于 1.5m 掩体箱的中心视觉线）
+  vaultSpeedMul: 0.5, // 翻越期间的水平推进曲线用 easeInOut，这个值只用于镜头前冲感
+  minClear: 0.55, // 落点周围需要的最小净空（米），防止翻进墙缝
+
+  // 滞空惩罚：空中开枪必须打不准，否则跳跃会变成"躲子弹 + 精准反杀"的最优解
+  airSpreadMul: 2.4,
+  airMoveMul: 0.82, // 空中水平操控（保留一点空控，不做完全不可控）
+};
+
+/** 姿态枚举（与 combatstate.STANCE_STATE 同源，这里是本地短名）。 */
+export const STANCE = { STAND: 'stand', CROUCH: 'crouch', PRONE: 'prone' };
 
 /* ============================== 稀有度 ============================== */
 
@@ -1732,6 +1764,10 @@ export const COMBAT = {
   raiseSpreadK: 2.2, // 抬枪未完成时的额外扩散倍率（抬枪进度 0→1 线性）
   crouchSpreadMul: 0.85, // 蹲伏腰射扩散系数（0.8~0.9）
   crouchRecoilMul: 0.90, // 蹲伏后坐系数（0.85~0.95）
+  // 卧倒：架枪最稳的一档（真枪有脚架/肘撑），但代价是移速 0.26 + 起身硬直 0.35s，
+  // 所以不需要再叠额外惩罚，否则卧倒会变成"没人用"的摆设。
+  proneSpreadMul: 0.68,
+  proneRecoilMul: 0.78,
   adsMoveMul: 0.55, // 开镜完成后的移速系数（0.45~0.65）
   reloadMoveMul: 0.80, // 换弹中移速系数（0.7~0.9）
   // 探头：侧移量（米）、移速系数与探出时的散布惩罚（防止零成本对枪）。
@@ -2190,6 +2226,7 @@ export const VIEW3D = {
   // --- 相机 ---
   eyeStand: 1.65, // 站立眼高
   eyeCrouch: 1.0, // 蹲下眼高
+  eyeProne: 0.34, // 卧倒眼高（贴地，视角几乎与掩体箱底部齐平）
   // 玩家受击竖直包围体（单位：米）。敌人 3D 弹道以它判定能否命中玩家；
   // 不随蹲伏收缩（蹲下只改玩家自身视点，不改受击盒），避免蹲伏变成水平火力的「绝对护盾」。
   playerHitboxH: 1.8, // 受击盒总高（地面到头顶）

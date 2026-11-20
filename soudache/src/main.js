@@ -38,6 +38,9 @@ import { spawnSquad, updateSquad } from './ally.js';
 import { isWebGLAvailable, createScene3D } from './scene3d.js';
 import { Renderer3D, NoopRenderer3D } from './renderer3d.js';
 import { createInput, setupMouseLook } from './input.js';
+import {
+  createStanceState, setCrouchHold, toggleCrouch, toggleProne, releaseStanceHolds, resetStance,
+} from './stance.js';
 import { detectDeviceTier } from './device.js';
 import { resolveGrade, clampGrade } from './grade3d.js';
 
@@ -50,6 +53,7 @@ import { createPreview, PREVIEW3D, fitDistance } from './preview3d.js';
 import { VM_GLB, buildOperatorShowcase } from './models.js';
 import { installPerfHud } from './perf-hud.js';
 import * as Storage from './storage.js';
+import { autoEquip, applyPreset, QUICK_PRESETS } from './quickloadout.js';
 import { installGuard, frameError, resetFrameStreak, clearFatal } from './guard.js';
 import { applyMods, buy as purchaseUpgrade, checkBuy, getNode as getUpgradeNode } from './upgrades.js';
 import { applyWeaponMods, normalizeWeaponMods, computeEffectiveWeapon, attachmentOptions, loadoutModWeight, effectiveStatsPreview } from './gunbench.js';
@@ -105,6 +109,13 @@ input.invertMouseX = save.settings.invertMouseX;
 input.invertY = save.settings.invertY;
 input.sensitivityMul = save.settings.mouseSens;
 input.touchLookSens = save.settings.touchLookSens || 1.0;
+
+/**
+ * 蹲伏的两条来源（Ctrl 按住 / C 切换）必须先各自记账，再合成为 input.crouch，
+ * 否则「按着 Ctrl 时按一下 C，松 Ctrl 就把蹲伏一起松掉」。
+ * 合成规则收在 stance.js（纯逻辑、可单测），main 只负责把键位事件转成三类调用。
+ */
+const stanceState = createStanceState();
 COMBAT.aimAssist.enabled = save.settings.aimAssist; // 辅助瞄准开关随存档恢复
 if (renderer && 'baseFov' in renderer) renderer.baseFov = save.settings.fov;
 const mouseLook = setupMouseLook(canvas, input, { touchMode });
@@ -154,6 +165,9 @@ function handleTouchAction(action, value) {
     case 'bag': toggleBackpack(); break;
     case 'tasks': ui.toggleTasks(); break;
     case 'pause': setPaused(!paused); break;
+    // 姿态：触屏没有 Ctrl/C/Z 三个物理键，全部收敛成"请求切换"再走同一套合成逻辑。
+    case 'crouch': toggleCrouch(stanceState, input); break;
+    case 'prone': toggleProne(stanceState, input); break;
     default: break;
   }
 }
@@ -557,14 +571,21 @@ function syncCharPreview() {
     charPreviewRel = '';
   }
   const op = getOperator((save && save.operator) || 'vulcan');
-  const sig = `op:${op.id}`;
+  // W3：配装变化时实时换模型 —— 头盔/背包等级直接体现在 3D 人形上。
+  // sig 带上这三槽，换装后 equip:rendered 事件触发重建；只换弹药不改 sig，避免无谓重建。
+  const lo = (save && save.loadout) || {};
+  const sig = `op:${op.id}|h:${lo.helmet || 'none'}|b:${lo.backpack || 'none'}|a:${lo.armor || 'none'}`;
   if (charPreviewRel === sig) return;
   charPreviewRel = sig;
   hostEl.classList.remove('has3d');
   // 程序化模型是同步构建的，但 setModel 会重算包围盒/取景，放到下一帧再亮 has3d 更稳
   // ⚠ yaw=π 不是随便定的：buildEnemyModel 造出来的人**面朝 -Z**（背包在 +Z），
   //   而预览相机永远站在 +Z 看原点 —— yaw=0 时展示台上是一个后脑勺对着玩家的人。
-  charPreview.setModel(buildOperatorShowcase(op), { rel: sig, yaw: Math.PI });
+  charPreview.setModel(buildOperatorShowcase(op, {
+    helmet: lo.helmet || 'none',
+    backpack: lo.backpack || 'none',
+    armor: lo.armor || 'none',
+  }), { rel: sig, yaw: Math.PI });
   hostEl.classList.add('has3d');
   charPreview.frame(1);
 }
@@ -583,6 +604,7 @@ function setPaused(value) {
     if (ui.updateGradeLabels) ui.updateGradeLabels(resolveGrade(save));
     input.fire = false;
     input.firePressed = false;
+    input.jumpPressed = false;
     input.up = false;
     input.down = false;
     input.left = false;
@@ -1008,7 +1030,10 @@ function startRaid(seedInput, opts) {
   paused = false;
   input.fire = false;
   input.firePressed = false;
+  input.jumpPressed = false;
   input.ads = false; // 进战不默认开镜（右键点击切换）
+  // 姿态归零：上局趴着死的人，这局不该一睁眼就趴在地上
+  resetStance(stanceState, input);
   input.aim.x = player.x + 60;
   input.aim.y = player.y;
 
@@ -1358,6 +1383,18 @@ function openLootStash(container) {
   syncPointerLock();
 }
 
+/**
+ * 从当前搜刮容器取走一件后，同步「容器外」的那份账面。
+ * 普通地图容器只有 container.loot 一份；散落物堆的 loot 是从 world.items 聚合来的，
+ * 取走后必须按 uid 把地面本体也删掉，否则地上会留下捡不走的幽灵物品。
+ * @param {object} item 被取走的物品
+ */
+function consumeGroundCopy(item) {
+  if (!world || !openContainer || !openContainer._scatter || !item) return;
+  const gi = (world.items || []).findIndex((it) => it.uid === item.uid);
+  if (gi >= 0) world.items.splice(gi, 1);
+}
+
 function takeLootItem(uid) {
   if (!world || !openContainer) return;
   const list = openContainer.loot || [];
@@ -1375,6 +1412,7 @@ function takeLootItem(uid) {
   save.codex = save.codex || { seen: {}, brought: {} };
   save.codex.seen[item.id] = true;
   list.splice(idx, 1);
+  consumeGroundCopy(item);
   audio.pickup();
   if (list.length) ui.refreshLoot();
   else ui.closeLoot();
@@ -1392,6 +1430,7 @@ function takeAllLoot() {
     save.codex.seen[item.id] = true;
     const idx = openContainer.loot.indexOf(item);
     if (idx >= 0) openContainer.loot.splice(idx, 1);
+    consumeGroundCopy(item);
     taken += 1;
   }
   if (taken) audio.pickup();
@@ -1863,6 +1902,8 @@ function update(dt) {
   updateTraces(w, dt);
   fireLootWaves(w);
   input.firePressed = false;
+  // 跳跃是边沿事件：player.update 消费后这里再兜一次底（死亡/绳索/驾驶期间没人消费）。
+  input.jumpPressed = false;
 
   // 撤离点按各自的 openAt 依次开启；限时点过了窗口就永久关闭（P20）。
   // 只在状态真的变化时发 toast，不进每帧的刷屏路径。
@@ -2128,6 +2169,33 @@ const ui = createUI(uiRoot, {
   },
   // 干员切换（P5）：只写存档 + 重渲染战前屏。技能状态在 startRaid 才创建，
   // 所以这里不需要（也不应该）碰正在进行的战局。
+  // W3 一键配装：从仓库现有装备里挑最优，替换 loadout 的 8 槽（弹药不动）。
+  // 只写存档 + 重渲染；改装/扣仓都在 deploy/endRaid 时按新 loadout 走，无需额外同步。
+  'auto-equip': () => {
+    const { loadout, changed, missing } = autoEquip(save.stash, save.loadout);
+    save.loadout = loadout;
+    normalizeLoadoutAmmo(save.loadout, WEAPONS);
+    Storage.saveGame(save);
+    ui.renderLoadout(save);
+    const msg = missing.length
+      ? `一键配装完成（${changed.length} 槽更新，${missing.length} 槽仓库无货）`
+      : `一键配装完成（${changed.length} 槽更新）`;
+    ui.toast(msg);
+    audio.ui();
+  },
+  // W3 快捷配装：套用三套预设之一。预设里若含仓库没有的装备，仍允许套用，
+  // 但 validateLoadout 会在部署时拦下（与手动拖错槽同一条校验），不会白送装备。
+  'apply-preset': (data) => {
+    const preset = QUICK_PRESETS.find((p) => p.id === data.preset);
+    if (!preset) return;
+    const { loadout, changed } = applyPreset(save.loadout, preset.gear);
+    save.loadout = loadout;
+    normalizeLoadoutAmmo(save.loadout, WEAPONS);
+    Storage.saveGame(save);
+    ui.renderLoadout(save);
+    ui.toast(`${preset.name}方案已套用（${changed.length} 槽）`);
+    audio.ui();
+  },
   'set-operator': (data) => {
     const op = getOperator(data.operator);
     if (save.operator === op.id) return;
@@ -2423,7 +2491,10 @@ window.addEventListener('blur', () => {
   input.right = false;
   input.fire = false;
   input.sprint = false;
-  input.crouch = false;
+  input.jumpPressed = false;
+  input.lean = 0;
+  // 蹲伏：按住态必须清（键松了但事件丢了）；切换态与卧倒是玩家意图，保留。
+  releaseStanceHolds(stanceState, input);
   input.ads = false;
 });
 
@@ -2446,13 +2517,39 @@ window.addEventListener('keydown', (ev) => {
   switch (key) {
     case 'w': case 'arrowup': input.up = true; break;
     case 's': case 'arrowdown': input.down = true; break;
-    case 'a': case 'arrowleft': input.left = true; break;
-    case 'd': case 'arrowright': input.right = true; break;
+    // 探头（P19 的能力）挪到 Alt 修饰键：Z/C 这两个位置必须让给"卧倒/蹲下"，
+    // 否则三角洲肌肉记忆（Z 趴下、C 蹲下）全部落空。
+    case 'a':
+      if (ev.altKey) {
+        ev.preventDefault();
+        if (!ev.repeat) input.lean = -1;
+      } else input.left = true;
+      break;
+    case 'arrowleft': input.left = true; break;
+    case 'd':
+      if (ev.altKey) {
+        ev.preventDefault();
+        if (!ev.repeat) input.lean = 1;
+      } else input.right = true;
+      break;
+    case 'arrowright': input.right = true; break;
     case 'shift': input.sprint = true; break;
-    case 'control': input.crouch = true; break;
-    // P19：探头（Z 左 / C 右）。不与 Q 医疗、E 交互、R 换弹冲突。
-    case 'z': if (!ev.repeat) input.lean = -1; break;
-    case 'c': if (!ev.repeat) input.lean = 1; break;
+    // 蹲伏：Ctrl 按住（老习惯）/ C 切换（三角洲键位）。两条路都只改原值，由 stance.js 合成。
+    case 'control':
+      if (!ev.repeat) setCrouchHold(stanceState, input, true);
+      break;
+    case 'c':
+      if (!ev.repeat) toggleCrouch(stanceState, input);
+      break;
+    // Z：卧倒切换（三角洲 Z = 趴下）
+    case 'z':
+      if (!ev.repeat) toggleProne(stanceState, input);
+      break;
+    // 空格：跳跃 / 翻越（正前方有掩体箱时自动变成翻越）
+    case ' ':
+      ev.preventDefault();
+      if (!ev.repeat) input.jumpPressed = true;
+      break;
     case 'tab':
       ev.preventDefault();
       if (!ev.repeat) toggleBackpack();
@@ -2525,17 +2622,30 @@ window.addEventListener('keydown', (ev) => {
   }
 });
 
+// 多目标堆叠：滚轮切换当前高亮的可搜目标（ui.js 的小地图缩放监听先注册并打 __mmHandled，
+// 命中小地图时这里跳过）。方向键上下被移动占用，所以用滚轮作为主控方式。
+window.addEventListener('wheel', (ev) => {
+  if (screen !== 'battle' || !world || ev.__mmHandled) return;
+  if (ui.isLootGridOpen() || ui.isLootOpen() || world.player.busy) return;
+  const targets = world.player.availableTargets(world);
+  if (targets.length < 2) return; // 只有一个目标时没必要切，保持游标不动
+  world.player.cycleInteraction(world, ev.deltaY > 0 ? 1 : -1);
+  ev.preventDefault();
+}, { passive: false });
+
 window.addEventListener('keyup', (ev) => {
   const key = ev.key.toLowerCase();
   switch (key) {
     case 'w': case 'arrowup': input.up = false; break;
     case 's': case 'arrowdown': input.down = false; break;
-    case 'a': case 'arrowleft': input.left = false; break;
-    case 'd': case 'arrowright': input.right = false; break;
+    case 'a': input.left = false; if (input.lean === -1) input.lean = 0; break;
+    case 'arrowleft': input.left = false; break;
+    case 'd': input.right = false; if (input.lean === 1) input.lean = 0; break;
+    case 'arrowright': input.right = false; break;
     case 'shift': input.sprint = false; break;
-    case 'control': input.crouch = false; break;
-    case 'z': if (input.lean === -1) input.lean = 0; break;
-    case 'c': if (input.lean === 1) input.lean = 0; break;
+    case 'control': setCrouchHold(stanceState, input, false); break;
+    // 松 Alt 一律收探头：Alt 是姿态修饰键，松开就回到中立位。
+    case 'alt': input.lean = 0; break;
     default: break;
   }
 });
@@ -2682,7 +2792,9 @@ window.SOUDACHE = {
    * @returns {object|null} 无 WebGL / 不在装备屏时为 null
    */
   charPreviewSnapshot() {
-    return charPreview ? charPreview.snapshot() : null;
+    const snap = charPreview ? charPreview.snapshot() : null;
+    if (snap) snap.rel = charPreviewRel; // 探针用它判断"换装后模型是否真的重建"
+    return snap;
   },
 };
 

@@ -12,6 +12,7 @@ import {
   MATCH, CONTAINERS, SCORING, POI, ENEMY_TYPES, KILLFEED,
 } from './config.js';
 import { pickContracts } from './contracts.js';
+import { searchTimeFor } from './loot-interact.js';
 import { PRESENTATION, advanceStreak } from './presentation.js';
 import { createRng } from './rng.js';
 import { planLootWaves } from './areas.js';
@@ -306,7 +307,8 @@ export function makeCreateWorld(deps) {
         addUltCharge(w.abilities, ultGain('hit'));
       },
       containerSearchTime(container) {
-        return CONTAINERS[container.type].searchTime;
+        // 秒开判定唯一真值在 loot-interact.js：普通容器 0，保险箱走配置读条。
+        return searchTimeFor(container);
       },
       onSearchComplete(container) {
         container.searched = true;

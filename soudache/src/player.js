@@ -4,15 +4,22 @@
 
 import {
   PLAYER, MATCH, ITEMS, WEAPONS, ARMORS, BACKPACKS, COMBAT, ROPE, VEHICLE, VIEW3D, HUD, AMMO_IDS,
+  JUMP, STANCE, CELL,
 } from './config.js';
 import { loadoutAmmoBoxes } from './ammo.js';
-import { moveWithCollision, hasLineOfSight, elevationAt, isSolidAt } from './mapgen.js';
+import {
+  moveWithCollision, hasLineOfSight, elevationAt, isSolidAt, circleHitsSolid, cellAt,
+} from './mapgen.js';
 import {
   createInventory, createItem, autoPlace, totalWeight, totalValue,
   itemValue, countById, consumeById, weightSpeedMultiplier, weightStaminaMultiplier,
   isOverweight, weightLimitFor, findItems,
 } from './inventory.js';
 import { createWeaponState, updateWeapon, startReload, fireWeapon, meleeAttack } from './combat.js';
+// P18/W3：战利品交互唯一真值（秒开判定 / 散落物聚合 / 多目标游标），零 three / 零 DOM
+import {
+  collectInteractables, cycleTarget, searchTimeFor, TARGET_KIND,
+} from './loot-interact.js';
 // P19：动作状态机与手感参数（冲刺抬枪 / 蹲伏收益 / 探头 / 切枪计时）
 import {
   canReload, canSprint, canSwitchWeapon, canLean, deriveCombatState, sprintRaiseDelay,
@@ -144,6 +151,17 @@ export class Player {
 
     this.dead = false;
     this.crouching = false;
+    // ★ 姿态阶梯（stand / crouch / prone）与跳跃。
+    // crouching 保留原语义（受击散布、噪音、视距全部读它），prone 是它的更强一档：
+    // 卧倒时 crouching 恒为 true，这样所有"低姿态收益"自动继承，不需要逐处改判定。
+    this.prone = false;
+    this.stance = STANCE.STAND;
+    this.standLock = 0; // 起身硬直（秒），卧倒→站立要花时间
+    this.jumpZ = 0; // 离地高度（米，与 elevation 同量纲）
+    this.jumpVy = 0; // 竖直速度（米/秒）
+    this.airborne = false;
+    this.landDip = 0; // 落地镜头下沉（米，纯视觉，指数回落）
+    this.vault = null; // { t, dur, x0, y0, x1, y1, apex }
     this.sprinting = false;
     this.moving = false;
     this.moveSpeed = 0;
@@ -553,6 +571,14 @@ export class Player {
       this.updateDrive(dt, input, world);
       return;
     }
+    // 翻越全程 0.46s 由脚本接管：这段时间不接受摇杆、不开火、不改姿态。
+    // 和绳索同一套 early-return 语义 —— 半自动动作要么全程接管，要么根本不做。
+    if (this.vault) {
+      if (input) input.jumpPressed = false; // 吞掉这期间的空格，避免落地瞬间二段跳
+      this.updateVault(dt, world);
+      this.combatState = deriveCombatState(this);
+      return;
+    }
     this.hurtFlash = Math.max(0, this.hurtFlash - dt);
     this.muzzleFlash = Math.max(0, this.muzzleFlash - dt);
     // W2 近战：冷却与挥击动作进度。放在 early-return 之后 —— 绳索/驾驶期间不该偷偷转冷却。
@@ -584,8 +610,17 @@ export class Player {
     if (this.adsT < 1e-4) this.adsT = 0;
     if (this.adsT > 1 - 1e-4) this.adsT = 1;
 
-    // ---- 姿态 ----
-    this.crouching = Boolean(input && input.crouch);
+    // ---- 姿态（stand / crouch / prone）----
+    // 三档阶梯收敛在一处：卧倒是蹲的更强一档（crouching 恒真），
+    // 这样散布/噪音/视距/后坐所有"低姿态收益"自动继承，不需要逐处加分支。
+    this.updateStance(dt, input);
+
+    // ---- 跳跃 / 翻越（Space）----
+    // 输入是边沿触发（jumpPressed），在 player 侧消费掉：长按空格不会连跳。
+    if (input && input.jumpPressed) {
+      input.jumpPressed = false;
+      this.tryJump(world);
+    }
 
     // ---- 探头（P19）----
     // 只影响相机/枪模的横向偏移：命中射线仍从身体中轴发出，
@@ -687,8 +722,15 @@ export class Player {
     const cfg = this.playerCfg || PLAYER;
     const baseSpeed = typeof cfg.speed === 'number' ? cfg.speed : PLAYER.speed;
     let speed = baseSpeed * weightMul;
-    if (this.crouching) speed *= PLAYER.crouchMul;
+    // 姿态优先级：卧倒 > 蹲 > 冲刺。卧倒恒为低姿态，不再吃 crouchMul，
+    // 否则两档叠乘会变成 0.14 倍速（等于原地不动），手感上是"卡住"而不是"爬"。
+    if (this.prone) speed *= PLAYER.proneMul;
+    else if (this.crouching) speed *= PLAYER.crouchMul;
     else if (this.sprinting) speed *= PLAYER.sprintMul;
+    // 起身硬直：刚从卧倒爬起来的那 0.35s 腿是软的（冲刺另有 canSprint 拦截）。
+    if (this.standLock > 0) speed *= 0.5;
+    // 滞空：保留一点空控（0.82），不做完全不可控 —— 否则跳起来就是任人宰割。
+    if (this.airborne) speed *= JUMP.airMoveMul;
     // 开镜 / 换弹 / 探头三档移速惩罚（按 adsT 插值，收镜过程不会突然变快）。
     if (this.adsT > 0.02) {
       const adsMul = COMBAT.adsMoveMul != null ? COMBAT.adsMoveMul : 1;
@@ -716,6 +758,24 @@ export class Player {
       this.y = next.y;
       this.walkPhase += dt * (speed / baseSpeed) * 9;
     }
+    // ---- 竖直运动（跳跃）----
+    // jumpZ / elevation 同为"米"，相机层直接相加再乘 metersToUnits。
+    // 落地统一在这里发一次响动：跳一下不是免费的，落点会暴露位置。
+    if (this.airborne) {
+      this.jumpVy -= JUMP.gravity * dt;
+      this.jumpZ += this.jumpVy * dt;
+      if (this.jumpZ <= 0) {
+        this.jumpZ = 0;
+        this.jumpVy = 0;
+        this.airborne = false;
+        this.landDip = 0.07;
+        world.emitNoise(this.x, this.y, JUMP.landNoise, 'player');
+        if (world.audio && world.audio.step) world.audio.step(0.5);
+      }
+    }
+    // 落地镜头下沉：纯视觉，指数回落，不影响任何判定。
+    if (this.landDip > 0) this.landDip = Math.max(0, this.landDip * Math.max(0, 1 - dt * 9));
+
     // 高程：站在架高平台上时抬高视点（供相机高度与「越过掩体」的视线判定使用）。
     // 用指数插值平滑过渡，走上 / 走下平台时不会瞬移。
     const targetElev = elevationAt(world.map, this.x, this.y);
@@ -725,7 +785,9 @@ export class Player {
     // ---- 噪音 ----
     let noise = 0;
     if (this.moving) {
-      noise = this.crouching ? PLAYER.noiseCrouch : (this.sprinting ? PLAYER.noiseSprint : PLAYER.noiseWalk);
+      noise = this.prone
+        ? PLAYER.noiseProne
+        : (this.crouching ? PLAYER.noiseCrouch : (this.sprinting ? PLAYER.noiseSprint : PLAYER.noiseWalk));
     }
     this.noiseTimer -= dt;
     if (noise > 0 && this.noiseTimer <= 0) {
@@ -799,6 +861,134 @@ export class Player {
     }
     // P19：动作状态快照（HUD/探针读这里，纯归纳不改任何状态）。
     this.combatState = deriveCombatState(this);
+  }
+
+  /**
+   * 姿态阶梯：把 input 的两个布尔量收敛成 stance / prone / crouching。
+   *
+   * 设计（三角洲对齐）：
+   * - `C` 切换蹲、`Z` 切换卧倒、`Ctrl` 按住蹲 —— 三条路径都写进这里，
+   *   UI/触屏/键盘不各判一套，HUD 读数与判定永远同源。
+   * - 卧倒时 `crouching` 恒为 true：散布/噪音/视距/后坐全部自动继承低姿态收益。
+   * - 起身有 0.35s 硬直（`standLock`）：趴着不是零成本，否则人人都躺着打。
+   * @param {number} dt 帧间隔秒
+   * @param {object} input 输入状态
+   * @returns {void}
+   */
+  updateStance(dt, input) {
+    const wantProne = Boolean(input && input.prone);
+    const wantCrouch = Boolean(input && input.crouch);
+    if (this.prone && !wantProne) this.standLock = PLAYER.proneStandCost;
+    this.prone = wantProne;
+    this.crouching = wantProne || wantCrouch;
+    this.stance = wantProne
+      ? STANCE.PRONE
+      : (wantCrouch ? STANCE.CROUCH : STANCE.STAND);
+    if (this.standLock > 0) this.standLock = Math.max(0, this.standLock - dt);
+  }
+
+  /**
+   * 起跳 / 翻越。正前方有掩体箱时优先翻越（三角洲的 Space 就是"跳+翻越"一个键）。
+   * @param {object} world 战局上下文
+   * @returns {boolean} 是否真的起跳 / 开始翻越
+   */
+  tryJump(world) {
+    if (this.dead || this.busy || this.vehicle || this.ropelling || this.vault) return false;
+    if (this.airborne) return false;
+    // 刚起身那一下腿软，跳不起来（和 standLock 的移速惩罚同一套语义）
+    if (this.standLock > 0.12) return false;
+    const plan = this.planVault(world);
+    if (plan) {
+      this.vault = {
+        t: 0,
+        dur: JUMP.vaultDur,
+        x0: this.x,
+        y0: this.y,
+        x1: plan.x,
+        y1: plan.y,
+        apex: JUMP.vaultApex,
+      };
+      this.prone = false;
+      this.crouching = false;
+      this.stance = STANCE.STAND;
+      this.jumpZ = 0;
+      this.airborne = true;
+      if (world && world.audio && world.audio.step) world.audio.step(0.35);
+      return true;
+    }
+    this.jumpVy = JUMP.speed;
+    this.jumpZ = 0;
+    this.airborne = true;
+    this.prone = false;
+    this.crouching = false;
+    this.stance = STANCE.STAND;
+    return true;
+  }
+
+  /**
+   * 正前方能否翻越：必须真的有一道掩体箱挡路，且它后面有能站住的空地。
+   * 墙（CELL.WALL）永远翻不过去 —— 3.2m 的墙不是 Space 能解决的。
+   * @param {object} world 战局上下文
+   * @returns {{x:number,y:number}|null} 落点
+   */
+  planVault(world) {
+    const map = world && world.map;
+    if (!map || !map.tile) return null;
+    const dx = Math.cos(this.angle);
+    const dy = Math.sin(this.angle);
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) return null;
+    const step = map.tile * 0.25;
+    const range = JUMP.vaultRange * VIEW3D.metersToUnits;
+    const r = this.radius;
+    let hit = false;
+    for (let d = r; d <= range; d += step) {
+      const x = this.x + dx * d;
+      const y = this.y + dy * d;
+      const cell = cellAt(map, x, y);
+      if (cell === CELL.WALL) return null; // 墙后面的事不归跳跃管
+      if (cell === CELL.CRATE) { hit = true; continue; }
+      if (!hit) continue;
+      // 已经越过掩体：落在第一个"圆心净空"的位置（半径 12 + 余量由 circleHitsSolid 保证）
+      if (!circleHitsSolid(map, x, y, r + JUMP.minClear * VIEW3D.metersToUnits * 0.25)) {
+        return { x, y };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 翻越推进：位置沿起点→落点做 easeInOut 插值，高度走 sin 弧线。
+   * 期间完全接管移动（不接受摇杆/键盘），也不允许开火（canFire 读 this.vault）。
+   * @param {number} dt 帧间隔秒
+   * @param {object} world 战局上下文
+   * @returns {void}
+   */
+  updateVault(dt, world) {
+    const v = this.vault;
+    v.t = Math.min(v.dur, v.t + dt);
+    const k = v.dur > 0 ? v.t / v.dur : 1;
+    // easeInOut：起跳前段慢、过箱瞬间快、落地前收住，读起来才像"跨"而不是"滑"
+    const e = k < 0.5 ? 2 * k * k : 1 - ((-2 * k + 2) ** 2) / 2;
+    const prevX = this.x;
+    const prevY = this.y;
+    this.x = v.x0 + (v.x1 - v.x0) * e;
+    this.y = v.y0 + (v.y1 - v.y0) * e;
+    this.jumpZ = Math.sin(Math.PI * k) * v.apex;
+    this.moving = Math.hypot(this.x - prevX, this.y - prevY) > 1e-4;
+    this.moveMag = 0;
+    this.moveSpeed = this.moving ? (Math.hypot(v.x1 - v.x0, v.y1 - v.y0) / v.dur) * (1 - Math.abs(0.5 - k)) : 0;
+    this.walkPhase += dt * 6;
+    if (k >= 1) {
+      this.x = v.x1;
+      this.y = v.y1;
+      this.jumpZ = 0;
+      this.airborne = false;
+      this.vault = null;
+      this.landDip = 0.07;
+      this.elevation = elevationAt(world.map, this.x, this.y);
+      world.emitNoise(this.x, this.y, JUMP.landNoise, 'player');
+      if (world.audio && world.audio.step) world.audio.step(0.55);
+    }
   }
 
   /**
@@ -1096,26 +1286,82 @@ export class Player {
       if (world.audio) world.audio.extractStart();
       return true;
     }
-    // 地面掉落物：排在终端 / 撤离点之后、容器之前 —— 既能在撤离点正常读条，
-    // 又不会被脚下的容器抢走"捡东西"的机会。
-    const ground = this.nearestItem(world);
-    if (ground) return this.pickUpGroundItem(world, ground);
-
-    const container = this.nearestContainer(world);
-    if (!container) {
+    // 多目标堆叠：容器与散落物堆合成一张目标表，E 搜当前高亮项，滚轮/方向键切。
+    // 终端/闸刀/撤离的优先级仍在上面（它们是"能不能活"的决策，不该被顺手捡东西抢走）。
+    const targets = this.availableTargets(world);
+    if (!targets.length) {
       if (world.toast) world.toast('附近没有可交互目标');
       return false;
     }
+    const target = targets[Math.min(this.targetIndex || 0, targets.length - 1)];
+    return this.interactTarget(world, target);
+  }
+
+  /**
+   * 附近可交互的容器 / 散落物堆列表（唯一真值在 loot-interact.js）。
+   * HUD 用它画多目标提示，interact 用它决定 E 搜谁 —— 两边读同一份，不会高亮 A 搜了 B。
+   * @param {object} world
+   * @returns {Array<object>}
+   */
+  availableTargets(world) {
+    return collectInteractables(world, this, {
+      range: MATCH.interactRange,
+      scatterRange: MATCH.itemPickupRange,
+      los: (x1, y1, x2, y2) => hasLineOfSight(world.map, x1, y1, x2, y2),
+    });
+  }
+
+  /**
+   * 切换当前高亮目标（滚轮上/下一、方向键）。有界循环，目标变化时游标自动夹回。
+   * @param {object} world
+   * @param {number} delta +1 下一个 / -1 上一个
+   * @returns {number} 新游标
+   */
+  cycleInteraction(world, delta) {
+    const n = this.availableTargets(world).length;
+    this.targetIndex = cycleTarget(this.targetIndex || 0, delta, n);
+    return this.targetIndex;
+  }
+
+  /**
+   * 对一个具体目标执行交互。
+   * 普通物资（drawer/crate/weaponbox/body/airdrop/boss）+ 散落物堆：直接开双栏搜刮；
+   * 保险箱：走读条 + 特殊解锁界面（searchTimeFor 返回配置秒数）。
+   */
+  interactTarget(world, target) {
+    if (!target) return false;
+    if (target.kind === TARGET_KIND.scatter) {
+      // 散落物堆 = 一个临时容器：loot 直接引用 world.items 里的本体，
+      // 取走时用 world.removeGroundItem 同步移除，绝不复制出第二份账面。
+      const pile = target.ref;
+      const container = {
+        id: `scatter:${pile.items.map((i) => i.uid).join(',')}`,
+        type: 'scatter', name: '散落物堆', x: pile.x, y: pile.y,
+        loot: pile.items, searched: false, _scatter: true,
+      };
+      if (world.openLootPanel) world.openLootPanel(container);
+      return true;
+    }
+    const container = target.ref;
+    if (!container) return false;
     if (container.searched) {
       const remain = (container.loot || []).length;
       if (remain > 0) {
-        world.openLootPanel(container);
+        if (world.openLootPanel) world.openLootPanel(container);
         return true;
       }
       if (world.toast) world.toast('这个容器已经空了');
       return false;
     }
-    this.search = { container, progress: 0, total: world.containerSearchTime(container) };
+    const total = searchTimeFor(container);
+    if (total <= 0) {
+      // 秒开：与读条完成走**同一个回调**（唯一真值），它负责 searched / 计分 / 开面板。
+      // 不在这里重复设 searched，否则两条路径各写一份，早晚会漂移。
+      if (world.onSearchComplete) world.onSearchComplete(container);
+      else if (world.openLootPanel) world.openLootPanel(container);
+      return true;
+    }
+    this.search = { container, progress: 0, total };
     if (world.audio) world.audio.searchStart();
     return true;
   }

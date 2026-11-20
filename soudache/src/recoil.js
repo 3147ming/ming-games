@@ -12,7 +12,7 @@
  * - 所有数值以「单发基础后坐 def.recoil 的倍数」表达，改 recoil 即整条曲线等比缩放。
  */
 
-import { RECOIL, COMBAT } from './config.js';
+import { RECOIL, COMBAT, JUMP } from './config.js';
 
 const clamp01 = (v) => Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0));
 
@@ -63,7 +63,7 @@ export function recoilStep(id, index, sinceShot) {
  *
  * @param {object} def 武器定义
  * @param {number} acc 连射累积的额外扩散（w.spread）
- * @param {object} o { adsT, moveMag, sprinting, firstShot, isPlayer }
+ * @param {object} o { adsT, moveMag, sprinting, firstShot, isPlayer, crouching, prone, airborne }
  * @returns {number} 扩散弧度
  */
 export function spreadAt(def, acc, o = {}) {
@@ -78,6 +78,10 @@ export function spreadAt(def, acc, o = {}) {
   if (o.firstShot) s *= COMBAT.firstShotMul ?? 1;
   // P19：蹲伏有稳定性收益（0.8~0.9），但换来的移速损失已经很大，不需要再叠别的惩罚。
   if (o.crouching) s *= COMBAT.crouchSpreadMul ?? 1;
+  // 卧倒：架枪最稳的一档。prone 时 crouching 也恒为真，所以这里在蹲伏之后再乘一次。
+  if (o.prone) s *= COMBAT.proneSpreadMul ?? 1;
+  // 滞空：跳起来必须打不准，否则"跳跃躲子弹 + 空中精准反杀"会成为唯一最优解。
+  if (o.airborne) s *= JUMP.airSpreadMul ?? 1;
   // P19：抬枪未完成（冲刺刚结束）时枪口还在晃，按剩余比例放大扩散。
   if (o.raiseT > 0) s *= 1 + (COMBAT.raiseSpreadK ?? 0) * clamp01(o.raiseT);
   // P19：探出掩体时暴露面更大，给一点散布惩罚，避免「零成本探头对枪」。

@@ -41,10 +41,18 @@ import { attachGhostTraces } from './ghostTracesRender.js';
  * - `drawer` → `crate-small` 小箱，抽屉类容器在小场景里最接近"柜子"的体量。
  * `airdrop` / `body` 故意不换：空投箱的橙色信标与时装尸体的可读性是玩法资产，不能动。
  */
+/**
+ * 容器 GLB 映射（P23 起）。
+ * W3 美术升级：crate/weaponbox 换成 Poly Haven CC0 写实道具（albedo+normal+
+ * metalrough+AO 四通道；ammo_box 三通道），淘汰只有 124 面的 Kenney 塑料方块。
+ * ⚠ 不直接用三角洲素材；这些都是 CC0 公共领域资产，来源见 CREDITS。
+ * glbLambert 是唯一材质出口（会丢 normal/AO，但几何倒角/铆钉保留，
+ * 且 A/B 实验证明本作观感瓶颈在光照而非材质，见 docs/art/ASSET-UPGRADE.md）。
+ */
 export const GLB_CONTAINERS = {
   drawer: 'models/kenney-blaster-kit/crate-small.glb',
-  crate: 'models/kenney-survival-kit/box-large.glb',
-  weaponbox: 'models/kenney-blaster-kit/crate-medium.glb',
+  crate: 'models/polyhaven/wooden_crate_01.glb',
+  weaponbox: 'models/polyhaven/ammo_box.glb',
   safe: 'models/kenney-survival-kit/chest.glb',
 };
 

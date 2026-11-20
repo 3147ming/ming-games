@@ -11,6 +11,11 @@
  * 快捷键：F 交互（由 main 接线）· 双击 快速拾取 · Ctrl+左键 快速转移 ·
  * Alt+左键 快速装备 · R 旋转 · Shift+左键 拆分 · Delete 丢弃 · T 自动整理 · Esc 关闭 ·
  * G 全部拾取。文本输入框聚焦时全部禁用（防误触）。
+ *
+ * ★ 纯键盘可用（不给鼠标玩家的专属界面）：
+ *   方向键 在当前栏内按"方向 + 距离"挑下一件（不是格子步进，大件不会被跳过）、
+ *   Tab / Shift+Tab 换栏、Enter 快速拾取/入库、F 装备、Shift+Enter 拆分、Delete 丢弃。
+ *   焦点物会被滚进视野，所以整页不用碰鼠标也能搜完一个容器。
  */
 
 import {
@@ -23,6 +28,8 @@ import {
   findItemInEntity, findGearItem,
 } from './lootable.js';
 import { RARITY } from './config.js';
+// 方向键挑物：几何规则单独放纯逻辑层，单测锁死"大件不会被跳过"
+import { pickByDirection } from './lootnav.js';
 
 const HIGH_VALUE = 6000; // 高价值边框阈值（单件总值）
 const TOAST_MS = 1100; // 相同失败原因合并窗口
@@ -81,13 +88,10 @@ export function createLootUI(host, hooks = {}) {
         </section>
       </div>
       <footer class="lg-hint">
-        <span>双击 / <b>Ctrl+左键</b> 快速拾取</span>
-        <span><b>Alt+左键</b> 装备</span>
-        <span><b>R</b> 旋转</span>
-        <span><b>Shift+左键</b> 拆分</span>
-        <span><b>T</b> 整理</span>
-        <span><b>Delete</b> 丢弃</span>
-        <span><b>Esc</b> 关闭</span>
+        <span><b>↑↓←→</b> 选择 · <b>Enter</b> 拾取/入库 · <b>Tab</b> 换栏</span>
+        <span><b>F</b> 装备 · <b>Shift+Enter</b> 拆分</span>
+        <span><b>Ctrl+左键</b> 快速转移 · <b>双击</b> 快速拾取</span>
+        <span><b>R</b> 旋转 · <b>T</b> 整理 · <b>Delete</b> 丢弃 · <b>Esc</b> 关闭</span>
       </footer>
     </div>
     <div class="lg-tip hidden" data-role="lg-tip"></div>
@@ -104,6 +108,8 @@ export function createLootUI(host, hooks = {}) {
   let srcCid = null;
   let dstCid = null;
   let selected = null; // uid
+  let focusSide = 'src'; // 键盘焦点所在栏（Tab 切换）
+  let kbFocus = false; // 焦点是否来自键盘（决定是否自动滚进视野）
   let drag = null; // { uid, rotated, grabX, grabY, w, h, active }
   let suppressClick = false; // 拖拽结束后浏览器补发的 click 必须吞掉
   let lastFail = { reason: '', t: 0 };
@@ -137,6 +143,7 @@ export function createLootUI(host, hooks = {}) {
     if (r.ok) {
       sound(action.kind === 'equip' || action.kind === 'quickPickup' ? 'pickup' : 'ui');
       changed();
+      reselectAfterAct(); // 先修焦点再重绘，避免 Enter 连按落到已消失的物品上
       render();
       if (opts.okToast) toast(opts.okToast, 'info');
     } else {
@@ -180,6 +187,54 @@ export function createLootUI(host, hooks = {}) {
     return (RARITY[it.rarity] || RARITY.common).color;
   }
 
+  /* ---------------- 键盘焦点 ---------------- */
+
+  /** 当前栏里能当焦点的物品（排除没有落格的） */
+  function selectableItems(side) {
+    const c = activeContainer(side);
+    if (!c) return [];
+    return c.items.filter((it) => it.col >= 0 && it.row >= 0);
+  }
+
+  // 方向键几何规则见 lootnav.js（纯逻辑、可单测；这里只是接线）
+  /** 把焦点格子滚进视野（键盘导航必需：大容器一屏放不下） */
+  function revealSelected() {
+    if (!kbFocus || !selected) return;
+    // 用遍历比对 dataset 而不是拼属性选择器：uid 是数据层生成的，不赌它一定能安全进 CSS。
+    const nodes = root.querySelectorAll ? root.querySelectorAll('.lg-item') : [];
+    for (const node of nodes) {
+      if (node.dataset && node.dataset.uid === selected) {
+        if (typeof node.scrollIntoView === 'function') {
+          node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+        return;
+      }
+    }
+  }
+
+  /** 焦点落到某栏第一件（栏内为空则清空） */
+  function focusFirst(side) {
+    const list = selectableItems(side);
+    focusSide = side;
+    selected = list.length ? list[0].uid : null;
+    return selected;
+  }
+
+  /** 操作后焦点自愈：拿走的物品没了就顺位落到同栏第一件，别让 Enter 变成空按 */
+  function reselectAfterAct() {
+    if (!selected) return;
+    // 只认"当前栏的当前容器里还在不在"。物品被搬进胸挂/口袋（不在画面上）时，
+    // 焦点必须留在来源栏继续搜 —— 去追一件已经装进别的容器的物品，等于按一次 Enter 焦点就消失。
+    const list = selectableItems(focusSide);
+    if (list.some((it) => it.uid === selected)) return;
+    selected = list.length ? list[0].uid : null;
+    if (!selected) {
+      const other = focusSide === 'src' ? 'dst' : 'src';
+      const list2 = selectableItems(other);
+      if (list2.length) { focusSide = other; selected = list2[0].uid; }
+    }
+  }
+
   function itemNode(it, side, cid) {
     const n = el('div', `lg-item rar-${it.rarity || 'common'}`);
     n.dataset.uid = it.uid;
@@ -192,7 +247,10 @@ export function createLootUI(host, hooks = {}) {
     if (total >= HIGH_VALUE) n.classList.add('hi-value');
     if (it.locked) n.classList.add('locked');
     if (it.rotated) n.classList.add('rotated');
-    if (selected === it.uid) n.classList.add('selected');
+    if (selected === it.uid) {
+      n.classList.add('selected');
+      if (kbFocus) n.classList.add('kb-focus'); // 键盘焦点：外圈再加一层，鼠标玩家看不到
+    }
     const icon = el('div', 'lg-ico');
     icon.style.setProperty('--rar', rarityColor(it));
     icon.appendChild(el('span', 'lg-ico-glyph', (it.name || '?').slice(0, 1)));
@@ -237,7 +295,9 @@ export function createLootUI(host, hooks = {}) {
       if (c.cid === cid) b.classList.add('active');
       b.addEventListener('click', () => {
         if (side === 'src') srcCid = c.cid; else dstCid = c.cid;
-        selected = null;
+        // 键盘玩家换容器后焦点要落在新容器的第一件上，否则 Enter 会按到旧容器的位置
+        if (kbFocus) focusFirst(side);
+        else { selected = null; focusSide = side; }
         render();
       });
       host.appendChild(b);
@@ -305,6 +365,7 @@ export function createLootUI(host, hooks = {}) {
     renderGrid('src');
     renderGrid('dst');
     renderStats();
+    revealSelected();
   }
 
   /* ---------------- 详情浮层 ---------------- */
@@ -510,6 +571,9 @@ export function createLootUI(host, hooks = {}) {
     if (!node) return;
     const uid = node.dataset.uid;
     selected = uid;
+    // 鼠标接管焦点：不再自动滚动（会跟玩家的拖拽抢滚动条）
+    kbFocus = false;
+    focusSide = node.dataset.side === 'dst' ? 'dst' : 'src';
     startDrag(uid, ev);
     // 只在真正移动超过阈值后才算拖拽，避免单击被吞
     drag.active = false;
@@ -637,6 +701,61 @@ export function createLootUI(host, hooks = {}) {
     if (isTextInput()) return false;
     switch (key) {
       case 'escape': ev.preventDefault(); close(); return true;
+      // ---- 键盘导航：不给鼠标玩家的专属界面 ----
+      case 'arrowleft':
+      case 'arrowright':
+      case 'arrowup':
+      case 'arrowdown': {
+        ev.preventDefault();
+        kbFocus = true;
+        const dx = key === 'arrowleft' ? -1 : (key === 'arrowright' ? 1 : 0);
+        const dy = key === 'arrowup' ? -1 : (key === 'arrowdown' ? 1 : 0);
+        const list = selectableItems(focusSide);
+        if (!list.length) {
+          // 当前栏空了就自动跳到另一栏，别让方向键变成死键
+          const other = focusSide === 'src' ? 'dst' : 'src';
+          if (selectableItems(other).length) focusFirst(other);
+          render();
+          return true;
+        }
+        const next = pickByDirection(list, selected, dx, dy) || list[0];
+        selected = next.uid;
+        render();
+        return true;
+      }
+      case 'tab': {
+        ev.preventDefault();
+        kbFocus = true;
+        const other = focusSide === 'src' ? 'dst' : 'src';
+        focusFirst(other);
+        render();
+        return true;
+      }
+      case 'enter': {
+        ev.preventDefault();
+        if (!selected) { focusFirst(focusSide); render(); return true; }
+        const f = findItemByUid(selected);
+        if (!f) { reselectAfterAct(); render(); return true; }
+        // Shift+Enter：拆堆（与 Shift+左键同一入口）
+        if (ev.shiftKey) {
+          if (f.item.stack > 1 && f.item.qty > 1) openSplit(f.item);
+          else fail({ reason: 'NOT_STACKABLE' });
+          return true;
+        }
+        act(selected, { kind: focusSide === 'src' ? 'quickPickup' : 'quickStore' });
+        return true;
+      }
+      case 'f': {
+        // 装备：目标槽位由 findEquipSlot 判定，装不上就给出可读原因（不是静默失败）
+        ev.preventDefault();
+        if (!selected) { focusFirst(focusSide); render(); return true; }
+        const f = findItemByUid(selected);
+        if (!f) { reselectAfterAct(); render(); return true; }
+        const sid = findEquipSlot(ctx.gear, f.item);
+        if (sid) { kbFocus = true; act(selected, { kind: 'equip', sid }); }
+        else fail({ reason: 'SLOT_NOT_ALLOWED' });
+        return true;
+      }
       case 'r': {
         ev.preventDefault();
         if (drag && drag.active && drag.rotatable) {
@@ -677,6 +796,7 @@ export function createLootUI(host, hooks = {}) {
     ctx.weightLimit = opts.weightLimit || 28;
     open = true;
     selected = null;
+    kbFocus = false;
     drag = null;
     const srcs = entityContainers(entity);
     srcCid = (srcs[0] && srcs[0].cid) || null;
@@ -685,6 +805,8 @@ export function createLootUI(host, hooks = {}) {
     dstCid = bp ? bp.cid : null;
     q('lg-title').textContent = opts.title || entity.name || '物资';
     q('lg-src-name').textContent = entity.name || '来源';
+    // 开箱即选中来源第一件：键盘玩家可以直接 Enter 拿，鼠标玩家也能一眼看到焦点圈。
+    focusFirst('src');
     root.classList.remove('hidden');
     render();
   }

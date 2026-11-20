@@ -47,13 +47,18 @@ const BUTTONS = [
   // 位置必须一把按得到；它不触发开火，所以不会暴露位置。
   { a: 'melee', t: '近战', size: 'combat' },
   // P5：战术道具与终结技。战术给 combat 档（交火中要能一把按到），
-  // 终结技是低频高价值动作，降到 minor 档，避免挤压开火拇指区。
+  // 终结技是低频高价值动作，降到 minor 档并移到顶部系统条，避免挤压左下的移动/姿态簇。
   { a: 'tactical', t: '战术', size: 'combat' },
-  { a: 'ultimate', t: '大招', size: 'minor' },
+  { a: 'ultimate', t: '大招', size: 'minor', slot: 'top' },
   { a: 'ads', t: '瞄准', size: 'minor', toggle: 'ads' },
   { a: 'switch', t: '切枪', size: 'minor' },
-  // 任务：底部一键调出当前任务清单（P1-4）。落在左下机动区，不占右侧火力区。
-  { a: 'tasks', t: '任务', size: 'minor' },
+  // 姿态与位移：跳跃/卧倒是三角洲手机端的基础键，不能只留给桌面。
+  // 跳跃给 combat 档（翻越掩体是高频逃跑手段），卧倒给 minor（低频但必须有）。
+  { a: 'jump', t: '跳跃', size: 'combat' },
+  { a: 'prone', t: '卧倒', size: 'minor', toggle: 'prone' },
+  // 任务：底部一键调出当前任务清单（P1-4）。低频，跟背包/暂停一起放顶部系统条，
+  // 不占左下的移动/姿态簇（加了跳跃/卧倒之后那里已经排满）。
+  { a: 'tasks', t: '任务', size: 'minor', slot: 'top' },
   // 贴顶部边缘的系统钮：背包 / 暂停（远离两个拇指作业区）
   // 灵敏度**不放这里**：玩家反馈"暂停后调不了灵敏度"，所以改到暂停面板里用滑块调。
   { a: 'bag', t: '背包', size: 'minor', slot: 'top' },
@@ -124,7 +129,7 @@ export function createTouchControls(opts) {
     b.appendChild(label);
     btnEls.set(def.a, b);
     b.addEventListener('pointerdown', onBtnPointerDown);
-    (def.slot === 'top' ? zoneTop : def.fire ? zoneL : (['reload', 'heal', 'ads'].includes(def.a) ? zoneR : zoneL)).appendChild(b);
+    (def.slot === 'top' ? zoneTop : def.fire ? zoneL : (['reload', 'heal', 'ads', 'jump'].includes(def.a) ? zoneR : zoneL)).appendChild(b);
   }
   // 开火键必须是「右下火力区」的主键，而不是左下机动区
   zoneR.appendChild(btnEls.get('fire'));
@@ -389,16 +394,15 @@ export function createTouchControls(opts) {
         left.base.classList.remove('tc-live');
         stopSprint();
         resetMove();
-        // 双击左摇杆 = 蹲/起。不新增按钮：局内按钮已被玩家反馈精简到 7 个
-        // （tests/touch-controls.test.mjs L165-172 锁死），蹲伏改走手势。
-        // 判定条件：本次轻点 ≤260ms 且位移 ≤14px，且距上一次轻点 ≤320ms。
+        // 双击左摇杆 = 蹲/起。判定条件：本次轻点 ≤260ms 且位移 ≤14px，且距上一次轻点 ≤320ms。
+        // ⚠ 这里只发"请求切换"事件，不再自己改 input.crouch：
+        // 蹲伏是三档姿态（站/蹲/卧）合成出来的派生量，直接写会让 main 侧的原值记录失真。
         const tap = tapStart;
         tapStart = null;
         if (tap && now() - tap.t <= 260 && Math.hypot(touch.clientX - tap.x, touch.clientY - tap.y) <= 14) {
           if (now() - lastTapAt <= 320) {
             lastTapAt = 0;
-            input.crouch = !input.crouch;
-            onAction('crouch', input.crouch);
+            onAction('crouch');
           } else {
             lastTapAt = now();
           }
@@ -453,8 +457,17 @@ export function createTouchControls(opts) {
         if (btnEl) btnEl.classList.toggle('tc-on', input.ads);
         break;
       case 'crouch':
-        input.crouch = !input.crouch;
+        // 蹲/卧都是三档姿态的"请求切换"，由 main 侧合成 input.crouch，不由控件自己写。
+        onAction('crouch');
         if (btnEl) btnEl.classList.toggle('tc-on', input.crouch);
+        break;
+      case 'prone':
+        onAction('prone');
+        if (btnEl) btnEl.classList.toggle('tc-on', input.prone);
+        break;
+      case 'jump':
+        // 边沿事件，与桌面空格同一条路：player.update 消费一次就清掉。
+        input.jumpPressed = true;
         break;
       case 'sprint':
         input.sprint = !input.sprint;
