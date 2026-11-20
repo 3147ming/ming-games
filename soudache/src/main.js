@@ -44,6 +44,7 @@ import { resolveGrade, clampGrade } from './grade3d.js';
 import { createTouchControls } from './touch-controls.js';
 import { createAudio } from './audio.js';
 import { createUI, hudLayout } from './ui.js';
+import { preloadHudIcons } from './icon-bitmap.js';
 import { createPerfMonitor } from './perf.js';
 import { createPreview, PREVIEW3D, fitDistance } from './preview3d.js';
 import { VM_GLB, buildOperatorShowcase } from './models.js';
@@ -867,6 +868,9 @@ function claimAllCareerRewards() {
 /* ============================ 战局生命周期 ============================ */
 
 function startRaid(seedInput, opts) {
+  // HUD 位图开局前预取（不 await，失败自动回退矢量，绝不阻断开局）。
+  // 放在这里而不是模块启动：大厅可能停留很久，物品图标也走各自的面板懒加载。
+  preloadHudIcons();
   const seed = seedInput && seedInput > 0 ? (Number(seedInput) >>> 0) : randomSeed();
   // 地图只在"部署"这一刻定格：暂停/恢复不会重新生成，界面选图也不会中途换图。
   // 缺省回落到旧图，保证控制台 SOUDACHE.startRaid(1) 等既有调试入口行为不变。

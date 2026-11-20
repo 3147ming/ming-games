@@ -1277,20 +1277,40 @@ body {
   color: var(--amber);
 }
 
+/* 稀有度边框：位图贴在格子**容器背景**上，绝不做成 <img> 子元素 ——
+   子元素会命中 elementFromPoint，把格子的点击/触摸整个吃掉（ICON 铁律）。
+   映射见 icon-bitmap.js：代码 common/rare/epic/legendary 按档位顺序对应
+   素材 common/uncommon/rare/legend，四档各有独立边框。 */
+.grid-item[class*="rar-"] {
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+  background-size: 100% 100%, 100% 100%;
+}
 .grid-item.rar-common {
   box-shadow: inset 0 0 0 1px rgba(154, 167, 184, 0.35);
+  background-image: url("assets/art/icons/rarity/rarity-common.png"),
+    linear-gradient(160deg, rgba(38, 48, 62, 0.95), rgba(20, 26, 35, 0.95));
 }
 .grid-item.rar-rare {
   box-shadow: inset 0 0 0 1px rgba(79, 163, 255, 0.5);
-  background: linear-gradient(160deg, rgba(30, 52, 78, 0.95), rgba(18, 26, 38, 0.95));
+  background-image: url("assets/art/icons/rarity/rarity-uncommon.png"),
+    linear-gradient(160deg, rgba(30, 52, 78, 0.95), rgba(18, 26, 38, 0.95));
 }
 .grid-item.rar-epic {
   box-shadow: inset 0 0 0 1px rgba(180, 92, 255, 0.55);
-  background: linear-gradient(160deg, rgba(55, 34, 78, 0.95), rgba(24, 20, 38, 0.95));
+  background-image: url("assets/art/icons/rarity/rarity-rare.png"),
+    linear-gradient(160deg, rgba(55, 34, 78, 0.95), rgba(24, 20, 38, 0.95));
 }
 .grid-item.rar-legendary {
   box-shadow: inset 0 0 0 1px var(--df-accent-a70);
-  background: linear-gradient(160deg, rgba(78, 55, 18, 0.95), rgba(32, 24, 12, 0.95));
+  background-image: url("assets/art/icons/rarity/rarity-legend.png"),
+    linear-gradient(160deg, rgba(78, 55, 18, 0.95), rgba(32, 24, 12, 0.95));
+}
+
+/* 位图物品图标：pointer-events:none 已在 .icon 与内联样式双写，断网时 onerror 回退矢量 */
+.icon-bitmap {
+  object-fit: contain;
+  image-rendering: -webkit-optimize-contrast;
 }
 
 .icon {

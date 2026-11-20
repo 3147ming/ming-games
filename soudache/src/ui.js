@@ -1,6 +1,9 @@
 import { hudLayout } from './ui-hud.js';
 export { hudLayout };
 import { EXTRACT_TUNING } from './extract.js';
+// 位图图标：HUD 画在 canvas 上（位图优先 + 矢量回退），物品/DOM 侧懒加载。
+import { drawGlyph } from './glyphs.js';
+import { drawHudIcon, itemIconEl, prefetchItemIcons } from './icon-bitmap.js';
 
 // M-03：拉闸点即使到点开放也仍是"条件未满足"，不能画成绿色误导玩家。
 const extractReady = (ex) => Boolean(ex && ex.open) && (!ex.requiresSwitch || ex.switchPulledAt != null);
@@ -929,7 +932,9 @@ export function createUI(root, handlers, opts) {
       node.style.gridColumn = `${item.col + 1} / span ${item.w}`;
       node.style.gridRow = `${item.row + 1} / span ${item.h}`;
       node.dataset.uid = item.uid;
-      node.appendChild(iconEl(item.icon, RARITY[item.rarity].color, Math.min(30, 15 * Math.min(item.w, item.h) + 12)));
+      const iconSize = Math.min(30, 15 * Math.min(item.w, item.h) + 12);
+      node.appendChild(itemIconEl(item.id, iconSize,
+        () => iconEl(item.icon, RARITY[item.rarity].color, iconSize)));
       const name = el('div', 'gi-name', item.name);
       node.appendChild(name);
       if (item.qty > 1) node.appendChild(el('div', 'gi-qty', String(item.qty)));
@@ -944,7 +949,8 @@ export function createUI(root, handlers, opts) {
 
   function itemRow(item, extra) {
     const row = el('div', 'item-row');
-    row.appendChild(iconEl(item.icon, RARITY[item.rarity].color, 24));
+    row.appendChild(itemIconEl(item.id, 24,
+      () => iconEl(item.icon, RARITY[item.rarity].color, 24)));
     const disp = displayUnits(item);
     const main = el('div', 'item-main');
     main.appendChild(el('div', 'item-name', item.qty > 1 ? `${item.name} ×${disp.count}${disp.unit}` : item.name));
@@ -1724,6 +1730,8 @@ export function createUI(root, handlers, opts) {
 
   function renderStash(save) {
     syncHub(save);
+    // 物品位图懒加载：只有真的打开仓库才拉图，不占开局带宽
+    prefetchItemIcons(save.stash.items.map((it) => it.id));
     q('stash-currency').textContent = money(save.currency);
     renderGrid(q('stash-grid'), save.stash, renderStashDetail, stashView);
     syncStashToolbar(viewItems(save.stash.items, stashView).length, save.stash.items.length);
@@ -1906,6 +1914,8 @@ export function createUI(root, handlers, opts) {
 
   function renderShop(save) {
     syncHub(save);
+    // 商店位图同样按面板懒加载，和仓库/战利品共用一份缓存
+    prefetchItemIcons(SHOP.items);
     q('shop-currency').textContent = money(save.currency);
     // 声望等级：决定哪些货架上锁（真正判定在 main.js 的 buy()，这里只负责显示）
     const lv = repLevel((save.rep && save.rep.xp) || 0);
@@ -1962,7 +1972,8 @@ export function createUI(root, handlers, opts) {
     }
     for (const item of sellable) {
       const row = el('div', 'item-row');
-      row.appendChild(iconEl(item.icon, RARITY[item.rarity].color, 24));
+      row.appendChild(itemIconEl(item.id, 24,
+      () => iconEl(item.icon, RARITY[item.rarity].color, 24)));
       const disp = displayUnits(item);
       const main = el('div', 'item-main');
       main.appendChild(el('div', 'item-name', item.qty > 1 ? `${item.name} ×${disp.count}${disp.unit}` : item.name));
@@ -2143,7 +2154,8 @@ export function createUI(root, handlers, opts) {
     for (const [j, item] of result.items.entries()) {
       const row = el('div', 'item-row');
       row.style.animationDelay = `${staggerDelay(result.stats.length + j)}ms`;
-      row.appendChild(iconEl(item.icon, RARITY[item.rarity].color, 22));
+      row.appendChild(itemIconEl(item.id, 22,
+        () => iconEl(item.icon, RARITY[item.rarity].color, 22)));
       const disp = displayUnits(item);
       const main = el('div', 'item-main');
       main.appendChild(el('div', 'item-name', item.qty > 1 ? `${item.name} ×${disp.count}${disp.unit}` : item.name));
@@ -2163,6 +2175,7 @@ export function createUI(root, handlers, opts) {
    * @returns {void}
    */
   function openLoot(container, items) {
+    prefetchItemIcons(items.map((it) => it.id));
     lootContainer = container;
     lootItems = items;
     lootSel = 0;
@@ -2187,7 +2200,8 @@ export function createUI(root, handlers, opts) {
     lootItems.forEach((item, i) => {
       const row = el('div', 'item-row');
       if (i === lootSel) row.classList.add('selected');
-      row.appendChild(iconEl(item.icon, RARITY[item.rarity].color, 22));
+      row.appendChild(itemIconEl(item.id, 22,
+        () => iconEl(item.icon, RARITY[item.rarity].color, 22)));
       const disp = displayUnits(item);
       const main = el('div', 'item-main');
       main.appendChild(el('div', 'item-name', item.qty > 1 ? `${item.name} ×${disp.count}${disp.unit}` : item.name));
@@ -3762,6 +3776,9 @@ export function createUI(root, handlers, opts) {
         if (ex.open) nearest = Math.min(nearest, Math.hypot(ex.x - player.x, ex.y - player.y));
       }
       if (Number.isFinite(nearest)) {
+        const esz = M.compact ? 12 : 16;
+        drawHudIcon(ctx, 'hud-extract', M.x + M.w - (M.compact ? 72 : 84), M.y + M.rowY[0] - esz + 2,
+          esz, COLORS.ok, drawGlyph);
         ctx.textAlign = 'right';
         ctx.fillStyle = COLORS.ok;
         ctx.font = `${M.compact ? 9 : 10}px ${MONO}`;
@@ -3771,6 +3788,9 @@ export function createUI(root, handlers, opts) {
     const weight = player.weight;
     const wLimit = player.weightLimit;
     const over = weight > wLimit;
+    const bsz = M.compact ? 12 : 16;
+    drawHudIcon(ctx, 'hud-backpack', tx - bsz + 2, M.y + M.rowY[1] - bsz + 2, bsz,
+      over ? COLORS.danger : COLORS.dim, drawGlyph);
     ctx.fillStyle = over ? COLORS.danger : COLORS.dim;
     ctx.font = `600 ${M.compact ? 11 : 12}px ${MONO}`;
     // 超重时直接写出后果，不让玩家猜为什么"跑不动了"
@@ -3823,12 +3843,32 @@ export function createUI(root, handlers, opts) {
     ctx.font = `700 ${T.compact ? 28 : 30}px ${MONO}`;
     const tCx = T.x + T.w / 2; // 触屏中列并不在屏幕正中，写 W/2 会把时间推到武器卡底下
     ctx.fillText(`${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`, tCx, T.timeY);
+    // 计时器位图：贴在读数左侧；图标不进 hudLayout，布局真值不变
+    const tsz = T.compact ? 12 : 18;
+    drawHudIcon(ctx, 'hud-timer', T.x + 8, T.y + 8, tsz,
+      urgent ? urgentColor : COLORS.dim, drawGlyph);
     ctx.font = `11px ${SANS}`; ctx.fillStyle = COLORS.dim;
     ctx.fillText('剩余时间', tCx, T.labelY);
     if (urgent && !world.over) {
       ctx.fillStyle = urgentColor; ctx.font = `700 ${T.compact ? 12 : 15}px ${SANS}`;
       // 触屏横屏顶部没有空隙了，紧急提示改挂在计时条下方 6px 处（不越出 h）
       ctx.fillText('撤离点即将关闭', tCx, T.compact ? T.y + T.h + 14 : T.y + T.h + 38);
+    }
+    // 战术状态图标带：剩余 HUD 位图集中在这里。位置与 killfeed/紧急提示错开，
+    // 且不进 hudLayout —— 布局体检读的真值一个字节都没动。
+    {
+      const chips = T.compact
+        ? ['hud-vision', 'hud-radio', 'hud-sneak', 'hud-plate', 'hud-helmet', 'hud-crosshair']
+        : ['hud-vision', 'hud-radio', 'hud-sneak', 'hud-plate', 'hud-helmet',
+          'hud-medkit', 'hud-grenade', 'hud-crosshair'];
+      const sz = T.compact ? 12 : 18;
+      const gap = T.compact ? 3 : 5;
+      const total = chips.length * (sz + gap) - gap;
+      const sx = T.x + Math.max(0, (T.w - total) / 2);
+      const sy = T.y + T.h + (T.compact ? 22 : 10);
+      chips.forEach((key, i) => {
+        drawHudIcon(ctx, key, sx + i * (sz + gap), sy, sz, COLORS.dim, drawGlyph);
+      });
     }
 
     // 顶部中央罗盘（仿三角洲）
@@ -3876,6 +3916,10 @@ export function createUI(root, handlers, opts) {
       ctx.textAlign = 'right';
       ctx.fillStyle = ammoColor; ctx.font = `700 ${G.compact ? 20 : 28}px ${MONO}`;
       ctx.fillText(String(weapon.ammo), G.ammoX, G.y + G.ammoY);
+      // 弹药位图贴在读数左侧；没预取到时 drawHudIcon 回退矢量 'ammo'
+      const asz = G.compact ? 12 : 18;
+      drawHudIcon(ctx, 'hud-ammo', G.ammoX - (G.compact ? 34 : 42), G.y + G.ammoY - asz + 2,
+        asz, ammoColor, drawGlyph);
       ctx.fillStyle = COLORS.dim; ctx.font = `600 ${G.compact ? 12 : 14}px ${MONO}`;
       ctx.fillText(`/ ${player.reserveAmmo(weapon.ammoId || weapon.def.ammoItem)}`, G.reserveX, G.y + G.ammoY);
       // 弹格：把弹匣余量画成可数的格，比一条进度条更"弹匣"
@@ -4056,9 +4100,13 @@ export function createUI(root, handlers, opts) {
     ];
     rows.forEach(([label, ratio, color, valueText], i) => {
       const y = firstY + i * rowH;
+      // 位图状态图标：画在标签左侧的小空档，不进 hudLayout（布局真值保持不变）
+      const rowIcon = ['hud-health', 'hud-armor', 'hud-footstep'][i];
+      const isz = L.touch ? 12 : 18;
+      drawHudIcon(ctx, rowIcon, barX - 2, y - isz + 1, isz, color, drawGlyph);
       ctx.textAlign = 'left';
       ctx.fillStyle = COLORS.dim; ctx.font = `600 ${compactBars ? 9 : 10}px ${MONO}`;
-      ctx.fillText(label, barX, y);
+      ctx.fillText(label, barX + 16, y);
       ctx.textAlign = 'right';
       ctx.fillStyle = color;
       ctx.fillText(valueText, barX + barW, y);
