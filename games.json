@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "updated": "2026-11-19",
-  "note": "P2c 清单（已移除 future-light）。CARDS=16 / ENTRIES=16 / INDEPENDENT_LOGIC=16（lab 与 lab-sandbox 同源共用逻辑，经 logicFrom 别名）。ready=已接入构建链可离线试玩；pending=enlisten 待 P5 网页版。3D 项目由 makeVendorPlan 自动把 three classic 化为 globalThis.THREE。",
+  "updated": "2026-11-20",
+  "note": "P2d 清单（新增 archer/jigsaw/sleeper/legion 四款 classic 单文件游戏）。CARDS=32 / ENTRIES=32 / READY=31。ready=已接入构建链可离线试玩；pending=enlisten 待 P5 网页版。3D 项目由 makeVendorPlan 自动把 three classic 化为 globalThis.THREE。",
   "games": [
     {
       "id": "wild",
@@ -274,6 +274,42 @@
       "dir": "metro-runner",
       "cover": "covers/metro-runner.png",
       "tag": "街机",
+      "status": "ready",
+      "renderer": "classic"
+    },
+    {
+      "id": "archer",
+      "name": "影弓对决",
+      "dir": "archer",
+      "cover": "covers/archer.webp",
+      "tag": "射击",
+      "status": "ready",
+      "renderer": "classic"
+    },
+    {
+      "id": "jigsaw",
+      "name": "喵篮拼图",
+      "dir": "jigsaw",
+      "cover": "covers/jigsaw.webp",
+      "tag": "益智",
+      "status": "ready",
+      "renderer": "classic"
+    },
+    {
+      "id": "sleeper",
+      "name": "躺平守夜",
+      "dir": "sleeper",
+      "cover": "covers/sleeper.webp",
+      "tag": "塔防",
+      "status": "ready",
+      "renderer": "classic"
+    },
+    {
+      "id": "legion",
+      "name": "雪国军团",
+      "dir": "legion",
+      "cover": "covers/legion.webp",
+      "tag": "策略",
       "status": "ready",
       "renderer": "classic"
     }

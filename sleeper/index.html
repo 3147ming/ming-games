@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#181d24">
+<title>躺平守夜 · Sleepy Defense</title>
+<style>
+/* ming-games 共享设计令牌 · 新增四款游戏基线
+ * 注意：classic 单文件产物必须自包含，本文件内容由 _dev/inline.py 原样内联进各 index.html 的 <style>，
+ * 因此这里不能出现任何外部资源引用。
+ */
+:root {
+  --mg-font: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --mg-bg: #14121f;
+  --mg-surface: rgba(20, 18, 32, .82);
+  --mg-surface-2: rgba(38, 34, 58, .9);
+  --mg-line: rgba(255, 255, 255, .14);
+  --mg-text: #f4f1ea;
+  --mg-text-dim: rgba(244, 241, 234, .68);
+  --mg-text-mute: rgba(244, 241, 234, .42);
+
+  --mg-gold: #f3c14b;
+  --mg-gold-2: #ffdf8e;
+  --mg-green: #6fd48b;
+  --mg-blue: #5fa8ff;
+  --mg-red: #ff6b6b;
+  --mg-purple: #a97bff;
+
+  --mg-q-common: #cfd4dc;
+  --mg-q-good: #5ec97a;
+  --mg-q-rare: #4f9dff;
+  --mg-q-epic: #b072ff;
+  --mg-q-legend: #ff9f3a;
+
+  --mg-r-sm: 8px;
+  --mg-r-md: 12px;
+  --mg-r-lg: 18px;
+  --mg-r-xl: 26px;
+
+  --mg-shadow-1: 0 2px 10px rgba(0, 0, 0, .28);
+  --mg-shadow-2: 0 10px 34px rgba(0, 0, 0, .42);
+
+  --mg-safe-b: env(safe-area-inset-bottom, 0px);
+  --mg-safe-t: env(safe-area-inset-top, 0px);
+  --mg-safe-l: env(safe-area-inset-left, 0px);
+  --mg-safe-r: env(safe-area-inset-right, 0px);
+}
+
+.mg-btn {
+  font-family: var(--mg-font, inherit);
+  border: 0;
+  border-radius: var(--mg-r-md, 12px);
+  padding: 11px 20px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #1d1726;
+  background: linear-gradient(180deg, var(--mg-gold-2, #ffdf8e), var(--mg-gold, #f3c14b));
+  box-shadow: var(--mg-shadow-1, 0 2px 10px rgba(0, 0, 0, .28)), inset 0 -2px 0 rgba(0, 0, 0, .16);
+  cursor: pointer;
+  transition: transform .12s ease, filter .12s ease;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.mg-btn:hover { filter: brightness(1.06); }
+.mg-btn:active { transform: translateY(1px) scale(.985); }
+.mg-btn[disabled] { filter: grayscale(.7) brightness(.7); cursor: not-allowed; }
+
+.mg-btn--ghost {
+  background: rgba(255, 255, 255, .08);
+  color: var(--mg-text, #f4f1ea);
+  box-shadow: inset 0 0 0 1px var(--mg-line, rgba(255, 255, 255, .14));
+}
+
+.mg-panel {
+  background: var(--mg-surface, rgba(20, 18, 32, .82));
+  border: 1px solid var(--mg-line, rgba(255, 255, 255, .14));
+  border-radius: var(--mg-r-lg, 18px);
+  box-shadow: var(--mg-shadow-2, 0 10px 34px rgba(0, 0, 0, .42));
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}
+</style>
+<style>
+  :root{ --stone:#232830; --ghost:#8fe3c8; --gold2:#f3c14b; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:#11141a;
+    font-family:var(--mg-font);color:#e9eef6;user-select:none;-webkit-user-select:none}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(120% 90% at 50% 0%,#1d232c,#0d1015)}
+  #cv{display:block;touch-action:none;border-radius:0}
+
+  #hud-layer{position:fixed;left:0;top:0;width:420px;height:720px;transform-origin:0 0;pointer-events:none;z-index:10}
+  .pshow{pointer-events:auto}
+  #hud-layer .ov.on{pointer-events:auto}
+  #hud-layer .ov.on *{pointer-events:auto}
+
+  /* 顶部按钮（叠在 canvas HUD 上） */
+  .topbtns{position:absolute;right:10px;top:8px;display:flex;gap:6px}
+  .ibtn{width:34px;height:34px;border-radius:10px;border:1px solid rgba(255,255,255,.16);
+    background:rgba(30,36,46,.9);color:#dbe6f5;font-size:13px;font-weight:800;font-family:inherit;
+    display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .ibtn:active{transform:scale(.94)}
+  .ibtn.wide{width:46px;color:#ffd47a;border-color:rgba(243,193,75,.4)}
+
+  /* 建造/升级面板 */
+  #panel{position:absolute;left:0;right:0;bottom:0;transform:translateY(102%);transition:transform .22s ease;
+    background:linear-gradient(180deg,rgba(28,34,44,.97),rgba(18,22,29,.99));
+    border-top:1px solid rgba(255,255,255,.12);border-radius:18px 18px 0 0;
+    padding:12px 12px calc(12px + env(safe-area-inset-bottom,0px));box-shadow:0 -14px 40px rgba(0,0,0,.6);
+    max-height:58%;overflow:auto}
+  #panel.on{transform:translateY(0)}
+  .phead{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .phead b{font-size:16px}
+  .pcell{font-size:11px;color:rgba(233,238,246,.5)}
+  .xbtn{margin-left:auto;width:28px;height:28px;border-radius:9px;border:1px solid rgba(255,255,255,.16);
+    background:rgba(255,255,255,.06);color:#cfd9e8;font-family:inherit;cursor:pointer}
+  .ptabs{display:flex;gap:6px;margin-bottom:10px}
+  .ptab{flex:1;padding:8px;border-radius:9px;border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.05);color:rgba(233,238,246,.7);font-family:inherit;font-size:13px;cursor:pointer}
+  .ptab.on{background:rgba(120,220,170,.16);border-color:rgba(120,220,170,.5);color:#9df0c6;font-weight:700}
+  .pbody{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+  .bcard{display:flex;flex-direction:column;gap:3px;padding:10px;border-radius:11px;text-align:left;
+    border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#e9eef6;
+    font-family:inherit;cursor:pointer}
+  .bcard b{font-size:13px}
+  .bcard em{font-style:normal;font-size:11px;color:rgba(233,238,246,.6)}
+  .bcard i{font-style:normal;font-size:12px;color:#ffd47a;font-weight:700}
+  .bcard small{font-size:10px;color:rgba(233,238,246,.42)}
+  .bcard.dis{opacity:.44;cursor:not-allowed}
+  .prow{display:flex;justify-content:space-between;align-items:baseline;padding:9px 11px;border-radius:10px;
+    background:rgba(255,255,255,.05);font-size:13px;grid-column:1/-1}
+  .prow em{font-style:normal;color:rgba(233,238,246,.6)}
+  .prow b{font-size:14px;color:#9df0c6}
+  .pbtn{grid-column:1/-1;padding:12px;border-radius:11px;border:0;font-family:inherit;font-size:14px;font-weight:800;
+    color:#132018;background:linear-gradient(180deg,#8fe8bb,#58c48f);cursor:pointer}
+  .pbtn[disabled]{filter:grayscale(.7) brightness(.7);cursor:not-allowed}
+  .pbtn.ghost{background:rgba(255,255,255,.08);color:#cfd9e8;border:1px solid rgba(255,255,255,.14)}
+  .phint{grid-column:1/-1;font-size:11px;line-height:1.7;color:rgba(233,238,246,.5);margin:4px 0 0}
+
+  /* 覆盖层 */
+  .ov{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;
+    padding:20px;background:radial-gradient(120% 90% at 50% 0%,rgba(28,36,48,.96),rgba(9,12,16,.98));
+    overflow:auto;z-index:20}
+  .ov.on{display:flex}
+  h1{margin:0;font-size:30px;letter-spacing:3px;color:#dff0ff;text-align:center;
+    text-shadow:0 0 24px rgba(120,220,170,.35)}
+  .en{font-size:10px;letter-spacing:4px;color:rgba(223,240,255,.42);margin:6px 0 0}
+  .sub{font-size:13px;color:rgba(223,240,255,.62);text-align:center;line-height:1.8;margin:10px 0 0}
+  .gbtn{border:0;border-radius:13px;padding:12px 24px;font-family:inherit;font-size:15px;font-weight:800;
+    color:#12211a;background:linear-gradient(180deg,#9df0c6,#5ec98f);box-shadow:0 6px 18px rgba(94,201,143,.3);
+    cursor:pointer;letter-spacing:1px}
+  .gbtn.ghost{background:rgba(255,255,255,.08);color:#dbe6f5;box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}
+  .gbtn:active{transform:translateY(1px)}
+  .card{width:100%;max-width:380px;background:rgba(22,28,37,.92);border:1px solid rgba(255,255,255,.12);
+    border-radius:18px;padding:18px}
+  .stat{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+  .stat div{display:flex;justify-content:space-between;align-items:baseline;padding:10px 12px;border-radius:10px;
+    background:rgba(255,255,255,.05);font-size:12px}
+  .stat em{font-style:normal;color:rgba(233,238,246,.55)}
+  .stat b{font-size:15px;color:#ffd47a}
+  .roomlist{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}
+  .roomchip{display:flex;flex-direction:column;gap:3px;padding:11px;border-radius:12px;cursor:pointer;
+    border:1px solid rgba(120,220,170,.3);background:rgba(40,58,54,.7);color:#e9f4ff;
+    font-family:inherit;text-align:left}
+  .roomchip b{font-size:11px;color:#9df0c6}
+  .roomchip span{font-size:14px;font-weight:800}
+  .roomchip i{font-style:normal;font-size:10px;color:rgba(233,244,255,.5)}
+  .roomchip.locked{opacity:.4;cursor:not-allowed;filter:grayscale(.7)}
+  #toast{position:absolute;left:50%;top:120px;transform:translate(-50%,-8px);opacity:0;transition:all .24s ease;
+    padding:9px 18px;border-radius:999px;background:rgba(20,26,34,.94);border:1px solid rgba(120,220,170,.4);
+    color:#9df0c6;font-size:13px;font-weight:700;pointer-events:none;z-index:25;white-space:nowrap}
+  #toast.on{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv"></canvas></div>
+
+<div id="hud-layer">
+  <div class="topbtns pshow">
+    <button class="ibtn wide" id="btn-speed">1×</button>
+    <button class="ibtn" id="btn-pause">Ⅱ</button>
+    <button class="ibtn" id="btn-home">🏠</button>
+  </div>
+
+  <div id="panel"></div>
+
+  <!-- 标题 -->
+  <div class="ov on pshow" id="ov-title">
+    <h1>躺平守夜</h1>
+    <p class="en">SLEEPY DEFENSE</p>
+    <p class="sub">上床躺平产金币，升级床与门，建炮台与功能建筑<br>守住 3 个房间共 15 波猎梦者</p>
+    <div class="card" style="margin-top:14px">
+      <div class="stat">
+        <div><em>最高房间</em><b id="t-room">1 / 3</b></div>
+        <div><em>最高波次</em><b id="t-wave">0 / 15</b></div>
+        <div><em>胜场</em><b id="t-wins">0</b></div>
+        <div><em>总对局</em><b id="t-runs">0</b></div>
+      </div>
+      <div class="roomlist" id="room-list"></div>
+      <p class="sub" style="font-size:11px;margin:0;text-align:left;line-height:1.8">
+        · 点<b>床/门</b>升级，点<b>空地</b>建造，点<b>建筑</b>查看与回收<br>
+        · 鬼先攻门，破门后冲向床上的你<br>
+        · 右上角切换 <b>1× / 2× / 4×</b> 倍速
+      </p>
+    </div>
+  </div>
+
+  <!-- 结算 -->
+  <div class="ov" id="ov-end">
+    <div class="card">
+      <h1 id="end-title" style="font-size:24px">结算</h1>
+      <p class="sub" id="end-sub"></p>
+      <div id="end-body"></div>
+      <div style="display:flex;gap:10px;margin-top:14px">
+        <button class="gbtn" id="end-retry" style="flex:1">重试本房间</button>
+        <button class="gbtn ghost" id="end-home" style="flex:1">回标题</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 暂停 -->
+  <div class="ov" id="ov-pause">
+    <div class="card" style="max-width:300px">
+      <h1 style="font-size:20px;margin-bottom:12px">暂停</h1>
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <button class="gbtn" id="pause-resume">继续</button>
+        <button class="gbtn ghost" id="pause-restart">重开本房间</button>
+        <button class="gbtn ghost" id="pause-mute">🔊 音效开启</button>
+        <button class="gbtn ghost" id="pause-home">回标题</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var CONFIG = {
+    W: 420, H: 720,
+    HUD_H: 104,
+    FOOT_H: 96,
+    ECON: {
+      startGold: 20, startBolt: 0,
+      coinPerSec: 1, boltPer: 2
+    },
+    BED: [
+      { lv: 1, gold: 1, cost: 0, hp: 100 },
+      { lv: 2, gold: 2, cost: 30, hp: 140 },
+      { lv: 3, gold: 4, cost: 80, hp: 190 },
+      { lv: 4, gold: 7, cost: 180, hp: 250 },
+      { lv: 5, gold: 12, cost: 360, hp: 320 }
+    ],
+    DOOR: [
+      { lv: 1, hp: 100, cost: 0 },
+      { lv: 2, hp: 220, cost: 40 },
+      { lv: 3, hp: 400, cost: 100 },
+      { lv: 4, hp: 650, cost: 220 },
+      { lv: 5, hp: 900, cost: 400 }
+    ],
+    ROOMS: [
+      { id: 1, name: '卧室', cols: 5, rows: 4, doorHp: 100, hpScale: 1.0 },
+      { id: 2, name: '走廊', cols: 6, rows: 4, doorHp: 160, hpScale: 1.2 },
+      { id: 3, name: '阁楼', cols: 5, rows: 5, doorHp: 220, hpScale: 1.4 }
+    ],
+    BUILDINGS: {
+      broom: { name: '笤帚炮台', cat: 'base', cost: 8, cur: 'gold', atk: 4, range: 4, rate: 0.8, max: 6, shell: 'bullet' },
+      ice: { name: '冰晶炮', cat: 'base', cost: 60, cur: 'gold', atk: 3, range: 3.5, rate: 1.0, max: 3, slow: 0.3, shell: 'ice' },
+      hammer: { name: '重锤炮', cat: 'base', cost: 120, cur: 'gold', atk: 14, range: 3, rate: 1.6, max: 2, shell: 'hammer' },
+      arcade: { name: '游戏机', cat: 'money', cost: 200, cur: 'gold', max: 3, gen: 'bolt' },
+      repair: { name: '维修台', cat: 'tech', cost: 65, cur: 'bolt', max: 2, heal: 0.02 },
+      rateup: { name: '攻速台', cat: 'tech', cost: 90, cur: 'bolt', max: 1, aura: 0.2 },
+      box: { name: '修勾魔盒', cat: 'item', cost: 10, cur: 'gold', max: 3 }
+    },
+    GHOSTS: {
+      normal: { hp: 1, spd: 1, atk: 1, color: '#cfd8e6' },
+      fast: { hp: 0.7, spd: 1.4, atk: 0.8, color: '#8fe3e0' },
+      tank: { hp: 2.2, spd: 0.75, atk: 1.3, color: '#e0a0a0' },
+      boss: { hp: 5, spd: 0.8, atk: 1.6, color: '#b58cf0' }
+    },
+    WAVES_PER_ROOM: 5
+  };
+
+  var SAVE_KEY = 'mg_sleeper.v1';
+  function defaultSave() { return { maxRoom: 1, maxWave: 0, wins: 0, runs: 0, muted: false }; }
+  var save = (function () {
+    var d = defaultSave();
+    try {
+      var raw = localStorage.getItem(SAVE_KEY);
+      if (raw) { var o = JSON.parse(raw); for (var k in d) if (o[k] !== undefined) d[k] = o[k]; }
+    } catch (e) { }
+    return d;
+  })();
+  function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { } }
+
+  /* ---------- 音频 ---------- */
+  var AC = null;
+  function actx() { if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { } } return AC; }
+  function tone(f, dur, type, vol, to, delay) {
+    if (save.muted) return;
+    var ac = actx(); if (!ac) return;
+    if (ac.state === 'suspended') ac.resume();
+    var t0 = ac.currentTime + (delay || 0);
+    var o = ac.createOscillator(), g = ac.createGain();
+    o.type = type || 'sine'; o.frequency.setValueAtTime(f, t0);
+    if (to) o.frequency.exponentialRampToValueAtTime(Math.max(40, to), t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol || 0.09, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0 + dur + 0.03);
+  }
+  var SFX = {
+    coin: function () { tone(1046, 0.06, 'sine', 0.05); },
+    build: function () { tone(320, 0.1, 'triangle', 0.08, 200); },
+    shoot: function () { tone(620, 0.05, 'square', 0.03, 400); },
+    hurt: function () { tone(180, 0.08, 'sawtooth', 0.05, 110); },
+    alarm: function () { tone(220, 0.5, 'sawtooth', 0.1, 140); },
+    boss: function () { tone(80, 0.8, 'sine', 0.14, 50); },
+    speed: function () { tone(760, 0.05, 'sine', 0.05); },
+    win: function () { [523, 659, 784].forEach(function (f, i) { tone(f, 0.2, 'sine', 0.07, null, i * 0.12); }); },
+    lose: function () { [330, 262, 196].forEach(function (f, i) { tone(f, 0.26, 'triangle', 0.08, null, i * 0.15); }); },
+    click: function () { tone(480, 0.04, 'sine', 0.04); }
+  };
+
+  /* ---------- 工具 ---------- */
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+  function el(id) { return document.getElementById(id); }
+
+  var cv, ctx, W = CONFIG.W, H = CONFIG.H, dpr = 1;
+  var stage = { x0: 0, y0: 0, scale: 1 };
+
+  /* ---------- 游戏状态 ---------- */
+  var G = null;
+  var UI = { screen: 'title', panel: null, sel: null, t: 0, toast: '', toastUntil: 0, speed: 1 };
+
+  function newRun(roomId) {
+    var room = CONFIG.ROOMS[roomId - 1];
+    var bed = CONFIG.BED[0], door = CONFIG.DOOR[0];
+    G = {
+      roomId: roomId, room: room,
+      wave: 1, totalWave: 20,
+      gold: CONFIG.ECON.startGold, bolt: CONFIG.ECON.startBolt,
+      bedLv: 1, doorLv: 1, doorMax: room.doorHp, doorHp: room.doorHp,
+      humanHp: bed.hp, humanMax: bed.hp,
+      buildings: [], ghosts: [], bullets: [], texts: [], coins: [],
+      kills: 0, totalKills: 0, totalGold: 0,
+      waveActive: false, waveTimer: 0, spawnQueue: [], spawnT: 0,
+      paused: false, over: false, win: false,
+      taskIdx: 0, t: 0, speed: 1,
+      grid: null, acc: { coin: 0, bolt: 0, heal: 0 },
+      cell: 0, ox: 0, oy: 0
+    };
+    layoutGrid();
+    save.runs++; persist();
+    UI.screen = 'play';
+    UI.panel = null; UI.sel = null;
+    hideAll();
+    startWave();
+  }
+
+  function layoutGrid() {
+    var r = G.room;
+    var availW = W - 40;
+    var availH = H - CONFIG.HUD_H - CONFIG.FOOT_H - 30;
+    var cell = Math.min(availW / r.cols, availH / r.rows);
+    cell = Math.floor(cell);
+    G.cell = cell;
+    G.ox = (W - cell * r.cols) / 2;
+    G.oy = CONFIG.HUD_H + (availH - cell * r.rows) / 2 + 6;
+  }
+  function cellRect(c, r) {
+    return { x: G.ox + c * G.cell, y: G.oy + r * G.cell, w: G.cell, h: G.cell };
+  }
+  function bedCell() { return { c: 0, r: G.room.rows - 1 }; }
+  function doorPos() {
+    var r = G.room;
+    return { x: G.ox + 4, y: G.oy + (r.rows / 2 - 0.5) * G.cell };
+  }
+
+  /* ---------- 波次 ---------- */
+  function waveConfig(n, roomId) {
+    var scale = CONFIG.ROOMS[roomId - 1].hpScale;
+    var hp = (40 + n * 25) * scale;
+    var atk = 5 + n * 3;
+    var spd = 40 + n * 4;
+    var count = 1 + Math.floor(n / 2) + (roomId - 1);
+    var list = [];
+    for (var i = 0; i < count; i++) {
+      var type = 'normal';
+      if (n >= 4 && i % 4 === 3) type = 'tank';
+      else if (n >= 3 && i % 3 === 2) type = 'fast';
+      list.push({ type: type, hp: hp, atk: atk, spd: spd });
+    }
+    var isBoss = (roomId === 3 && n === 5);
+    if (isBoss) {
+      list.push({ type: 'boss', hp: hp * 5, atk: atk * 1.6, spd: spd * 0.8, shield: hp * 1.2 });
+    }
+    return { list: list, isBoss: isBoss, waveIndex: (roomId - 1) * 5 + n };
+  }
+
+  function startWave() {
+    if (!G) return;
+    var cfg = waveConfig(G.wave, G.roomId);
+    G.waveActive = true;
+    G.spawnQueue = cfg.list.slice();
+    G.spawnT = 1.2;
+    G.isBossWave = cfg.isBoss;
+    if (cfg.isBoss) { SFX.boss(); toast('猎梦者登场！'); }
+    if (cfg.waveIndex > (save.maxWave || 0)) { save.maxWave = cfg.waveIndex; persist(); }
+  }
+
+  function spawnGhost(def) {
+    var g = CONFIG.GHOSTS[def.type];
+    var d = doorPos();
+    var gh = {
+      type: def.type,
+      hp: def.hp, maxHp: def.hp,
+      shield: def.shield || 0, maxShield: def.shield || 0,
+      atk: def.atk, spd: def.spd,
+      x: d.x - 10, y: d.y + rnd(-10, 10),
+      tx: 0, ty: 0, state: 'door',
+      slowT: 0, flash: 0, phase: 1, wob: rnd(0, 6)
+    };
+    var doorY = d.y + G.cell / 2;
+    gh.tx = d.x - 4; gh.ty = doorY;
+    G.ghosts.push(gh);
+  }
+
+  function updateWave(dt) {
+    if (!G.waveActive) return;
+    if (G.spawnQueue.length) {
+      G.spawnT -= dt;
+      if (G.spawnT <= 0) {
+        spawnGhost(G.spawnQueue.shift());
+        G.spawnT = rnd(0.7, 1.3);
+      }
+    } else if (!G.ghosts.some(function (g) { return g.hp > 0; })) {
+      waveClear();
+    }
+  }
+
+  function waveClear() {
+    G.waveActive = false;
+    if (G.wave >= CONFIG.WAVES_PER_ROOM) {
+      roomClear();
+    } else {
+      G.wave++;
+      G.waveTimer = 1.6;
+      toast('第 ' + G.wave + ' 波来袭');
+    }
+  }
+
+  function roomClear() {
+    if (G.roomId >= 3) { finish(true); return; }
+    var nextRoom = G.roomId + 1;
+    if (save.maxRoom < nextRoom) { save.maxRoom = nextRoom; persist(); }
+    // 房间继承规则
+    var keepGold = Math.floor(G.gold * 0.5);
+    var keepBolt = Math.floor(G.bolt * 0.5);
+    var bedLv = Math.max(1, G.bedLv - 1);
+    var refund = 0;
+    G.buildings.forEach(function (b) { refund += CONFIG.BUILDINGS[b.type].cost * 0.3; });
+    var kills = G.kills, total = G.totalKills;
+    newRun(nextRoom);
+    G.gold = keepGold + Math.floor(refund);
+    G.bolt = keepBolt;
+    G.bedLv = bedLv;
+    G.humanMax = CONFIG.BED[bedLv - 1].hp;
+    G.humanHp = G.humanMax;
+    G.totalKills = total;
+    toast('进入 ' + CONFIG.ROOMS[nextRoom - 1].name + '（金币/闪电保留 50%，床降 1 级）');
+    void kills;
+  }
+
+  /* ---------- 主循环 ---------- */
+  var last = 0;
+  function loop(ts) {
+    requestAnimationFrame(loop);
+    if (!last) last = ts;
+    var real = Math.min(0.05, (ts - last) / 1000);
+    last = ts;
+    UI.t += real;
+    if (G && !G.paused && !G.over && UI.screen === 'play') {
+      var dt = real * G.speed;
+      update(dt, real);
+    }
+    render();
+  }
+
+  function update(dt, real) {
+    G.t += dt;
+    var room = G.room;
+
+    /* 资源产出 */
+    var bedGold = CONFIG.BED[G.bedLv - 1].gold;
+    G.acc.coin += bedGold * dt;
+    if (G.acc.coin >= 1) {
+      var add = Math.floor(G.acc.coin);
+      G.acc.coin -= add; G.gold += add;
+    }
+    var arcades = G.buildings.filter(function (b) { return b.type === 'arcade'; }).length;
+    if (arcades > 0) {
+      G.acc.bolt += arcades * dt / CONFIG.ECON.boltPer;
+      if (G.acc.bolt >= 1) {
+        var b2 = Math.floor(G.acc.bolt); G.acc.bolt -= b2; G.bolt += b2;
+      }
+    }
+    /* 维修台 */
+    var repairs = G.buildings.filter(function (b) { return b.type === 'repair'; }).length;
+    if (repairs > 0 && G.doorHp > 0 && G.doorHp < G.doorMax) {
+      G.doorHp = Math.min(G.doorMax, G.doorHp + G.doorMax * 0.02 * repairs * dt);
+    }
+
+    /* 波次 */
+    if (G.waveActive) {
+      updateWave(dt);
+    } else if (G.waveTimer > 0) {
+      G.waveTimer -= dt;
+      if (G.waveTimer <= 0) startWave();
+    } else if (!G.over) {
+      /* 兜底：没有鬼也没有待生成时自动推进 */
+      if (!G.ghosts.some(function (g) { return g.hp > 0; }) && !G.spawnQueue.length) {
+        if (G.wave >= CONFIG.WAVES_PER_ROOM) roomClear(); else { G.wave++; startWave(); }
+      }
+    }
+
+    /* 鬼 */
+    for (var i = G.ghosts.length - 1; i >= 0; i--) {
+      var g = G.ghosts[i];
+      g.flash = Math.max(0, g.flash - dt);
+      g.slowT = Math.max(0, g.slowT - dt);
+      g.wob += dt * 3;
+      var spd = g.spd * (g.slowT > 0 ? 0.7 : 1);
+      if (g.type === 'boss' && g.hp < g.maxHp * 0.5) { g.phase = 2; spd *= 1.35; }
+      var target = targetPoint(g);
+      var dx = target.x - g.x, dy = target.y - g.y;
+      var dist = Math.hypot(dx, dy);
+      /* 门还在时，鬼不得穿过门进入房间 */
+      if (G.doorHp > 0 && g.x > doorPos().x + 2) {
+        g.x = doorPos().x + 2;
+      }
+      if (dist > 2) {
+        g.x += dx / dist * spd * dt;
+        g.y += dy / dist * spd * dt;
+        g.atkCd = (g.atkCd || 0);
+      } else {
+        /* 到达目标：攻击 */
+        g.atkCd = (g.atkCd || 0) - dt;
+        if (g.atkCd <= 0) {
+          g.atkCd = 1.0;
+          damageHome(g.atk, g);
+        }
+      }
+      /* 状态切换 */
+      if (g.state === 'door' && G.doorHp <= 0) g.state = 'room';
+    }
+
+    /* 炮台开火 */
+    G.buildings.forEach(function (b) {
+      var cfg = CONFIG.BUILDINGS[b.type];
+      if (!cfg.atk) return;
+      b.cd -= dt;
+      var aura = G.buildings.some(function (o) {
+        if (o.type !== 'rateup') return false;
+        return Math.hypot(o.cx - b.cx, o.cy - b.cy) <= G.cell * 3.2;
+      }) ? 1.2 : 1;
+      if (b.cd > 0) return;
+      var range = (cfg.range + (b.lv - 1) * 0.5) * G.cell;
+      var best = null, bd = 1e9;
+      G.ghosts.forEach(function (g) {
+        if (g.hp <= 0) return;
+        var d = Math.hypot(g.x - b.cx, g.y - b.cy);
+        if (d < range && d < bd) { bd = d; best = g; }
+      });
+      if (best) {
+        b.cd = cfg.rate / aura;
+        var dmg = cfg.atk + (b.lv - 1) * (b.type === 'hammer' ? cfg.atk * 0.05 : 3);
+        G.bullets.push({
+          x: b.cx, y: b.cy, tx: best.x, ty: best.y, target: best,
+          spd: 420, dmg: dmg, shell: cfg.shell, slow: cfg.slow || 0
+        });
+        SFX.shoot();
+      }
+    });
+
+    /* 子弹 */
+    for (var bi = G.bullets.length - 1; bi >= 0; bi--) {
+      var bl = G.bullets[bi];
+      if (bl.target && bl.target.hp > 0) { bl.tx = bl.target.x; bl.ty = bl.target.y; }
+      var bdx = bl.tx - bl.x, bdy = bl.ty - bl.y;
+      var bdist = Math.hypot(bdx, bdy);
+      if (bdist < 8) {
+        if (bl.target && bl.target.hp > 0) {
+          hits(bl.target, bl.dmg, bl.slow);
+        }
+        G.bullets.splice(bi, 1);
+        continue;
+      }
+      bl.x += bdx / bdist * bl.spd * dt;
+      bl.y += bdy / bdist * bl.spd * dt;
+    }
+
+    /* 清理死亡鬼 */
+    for (var gi = G.ghosts.length - 1; gi >= 0; gi--) {
+      var gg = G.ghosts[gi];
+      if (gg.hp <= 0) {
+        var near = (typeof g !== 'undefined') ? g : null;
+        void near;
+        if (!gg.counted) {
+          gg.counted = true;
+          G.kills++; G.totalKills++;
+          var gcoin = 5 + G.wave * 2;
+          G.coins.push({ x: gg.x, y: gg.y, life: 6, val: gcoin });
+          SFX.hurt();
+        }
+      }
+    }
+
+    /* 金币拾取（自动） */
+    for (var ci = G.coins.length - 1; ci >= 0; ci--) {
+      var co = G.coins[ci];
+      co.life -= dt;
+      if (co.life <= 0) {
+        G.gold += co.val; G.totalGold += co.val;
+        G.coins.splice(ci, 1);
+        continue;
+      }
+      // 自动吸附到资源条位置
+      var tX = 60, tY = 26;
+      var cdx = tX - co.x, cdy = tY - co.y;
+      var cd = Math.hypot(cdx, cdy);
+      if (cd < 24) {
+        G.gold += co.val; G.totalGold += co.val; SFX.coin();
+        G.coins.splice(ci, 1);
+      } else if (co.life < 4.6) {
+        co.x += cdx / cd * 260 * dt;
+        co.y += cdy / cd * 260 * dt;
+      }
+    }
+
+    /* 飘字 */
+    for (var ti = G.texts.length - 1; ti >= 0; ti--) {
+      var tx = G.texts[ti];
+      tx.y -= 26 * dt; tx.life -= dt;
+      if (tx.life <= 0) G.texts.splice(ti, 1);
+    }
+
+    /* 任务 */
+    updateTask();
+
+    /* 小人血量=床承伤 */
+    if (G.humanHp <= 0) finish(false);
+  }
+
+  function targetPoint(g) {
+    if (G.doorHp > 0 && g.state === 'door') {
+      var d = doorPos();
+      return { x: d.x + G.cell * 0.16, y: d.y + G.cell / 2 };
+    }
+    /* 破门后攻床 */
+    var bc = bedCell();
+    var r = cellRect(bc.c, bc.r);
+    return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+  }
+
+  function damageHome(atk, g) {
+    if (G.doorHp > 0) {
+      G.doorHp -= atk;
+      G.texts.push({ x: doorPos().x + 10, y: doorPos().y + 40, txt: '-' + Math.round(atk), life: 0.8, color: '#ff8a8a' });
+      if (G.doorHp <= 0) {
+        G.doorHp = 0;
+        SFX.alarm();
+        toast('门被破了！鬼冲进房间');
+        G.ghosts.forEach(function (x) { if (x.state === 'door') x.state = 'room'; });
+      }
+    } else {
+      G.humanHp -= atk;
+      G.texts.push({ x: 90, y: 120, txt: '-' + Math.round(atk), life: 0.9, color: '#ff6b6b' });
+      g.flash = 0.1;
+    }
+  }
+
+  function hits(g, dmg, slow) {
+    if (g.shield > 0) {
+      g.shield -= dmg;
+      if (g.shield < 0) { g.hp += g.shield; g.shield = 0; }
+    } else {
+      g.hp -= dmg;
+    }
+    g.flash = 0.1;
+    if (slow) g.slowT = 1.5;
+    G.texts.push({ x: g.x + rnd(-6, 6), y: g.y - 12, txt: String(Math.round(dmg)), life: 0.6, color: '#ffe6a8' });
+    if (G.texts.length > 30) G.texts.shift();
+  }
+
+  /* ---------- 任务 ---------- */
+  var TASKS = [
+    { txt: '升级破旧小床（床到 Lv2）', done: function () { return G.bedLv >= 2; } },
+    { txt: '升级简陋的门（门到 Lv2）', done: function () { return G.doorLv >= 2; } },
+    { txt: '建造两座笤帚炮台', done: function () { return G.buildings.filter(function (b) { return b.type === 'broom'; }).length >= 2; } },
+    { txt: '建造一台游戏机', done: function () { return G.buildings.some(function (b) { return b.type === 'arcade'; }); } },
+    { txt: '升级床到 Lv4', done: function () { return G.bedLv >= 4; } },
+    { txt: '守住本房间第 5 波', done: function () { return G.wave >= 5 && !G.waveActive; } }
+  ];
+  function updateTask() {
+    if (G.taskIdx < TASKS.length && TASKS[G.taskIdx].done()) G.taskIdx++;
+  }
+
+  /* ---------- 建造 ---------- */
+  function countOf(type) {
+    return G.buildings.filter(function (b) { return b.type === type; }).length;
+  }
+  function canBuild(type) {
+    var cfg = CONFIG.BUILDINGS[type];
+    if (countOf(type) >= cfg.max) return false;
+    return cfg.cur === 'gold' ? G.gold >= cfg.cost : G.bolt >= cfg.cost;
+  }
+  function doBuild(type, c, r) {
+    var cfg = CONFIG.BUILDINGS[type];
+    if (!canBuild(type)) return false;
+    if (cfg.cur === 'gold') G.gold -= cfg.cost; else G.bolt -= cfg.cost;
+    var rect = cellRect(c, r);
+    if (type === 'box') {
+      /* 魔盒开出随机奖励后消失 */
+      var roll = Math.random();
+      if (roll < 0.5) {
+        var g = Math.round(rnd(30, 80));
+        G.gold += g; toast('魔盒：+' + g + ' 金币');
+      } else if (roll < 0.85) {
+        var b = Math.round(rnd(3, 8));
+        G.bolt += b; toast('魔盒：+' + b + ' 闪电');
+      } else {
+        G.buildings.push({ type: 'broom', c: c, r: r, lv: 1, cd: 0, cx: rect.x + rect.w / 2, cy: rect.y + rect.h / 2, temp: true });
+        toast('魔盒：召唤一座临时笤帚炮台');
+      }
+      SFX.build();
+      return true;
+    }
+    G.buildings.push({ type: type, c: c, r: r, lv: 1, cd: 0, cx: rect.x + rect.w / 2, cy: rect.y + rect.h / 2 });
+    SFX.build();
+    return true;
+  }
+
+  function upCost(b) {
+    var cfg = CONFIG.BUILDINGS[b.type];
+    return Math.round(cfg.cost * (1.6 + b.lv * 0.4));
+  }
+
+  function recycle(b) {
+    var cfg = CONFIG.BUILDINGS[b.type];
+    var idx = G.buildings.indexOf(b);
+    if (idx < 0) return;
+    G.buildings.splice(idx, 1);
+    var refund = Math.round(cfg.cost * 0.5);
+    if (cfg.cur === 'gold') G.gold += refund; else G.bolt += refund;
+    UI.panel = null;
+  }
+
+  /* ---------- 胜负 ---------- */
+  function finish(win) {
+    if (G.over) return;
+    G.over = true;
+    G.win = win;
+    if (win) {
+      save.wins++; SFX.win();
+    } else {
+      SFX.lose();
+    }
+    if (save.maxWave < G.wave) save.maxWave = G.wave;
+    persist();
+    el('end-title').textContent = win ? '守夜成功！' : '守不住了…';
+    el('end-sub').textContent = win ? '你击退了猎梦者，睡了个好觉。' :
+      ('坚持到 ' + G.room.name + ' 第 ' + G.wave + ' 波');
+    el('end-body').innerHTML =
+      '<div class="stat"><div><em>击杀</em><b>' + G.totalKills + '</b></div>' +
+      '<div><em>累计金币</em><b>' + Math.round(G.totalGold) + '</b></div>' +
+      '<div><em>最高波次</em><b>' + (save.maxWave || 0) + ' / 15</b></div>' +
+      '<div><em>胜场</em><b>' + save.wins + '</b></div></div>';
+    show('ov-end');
+  }
+
+  /* ---------- 渲染 ---------- */
+  function resize() {
+    var aw = window.innerWidth, ah = window.innerHeight;
+    var sc = Math.min(aw / W, ah / H);
+    cv.style.width = (W * sc) + 'px';
+    cv.style.height = (H * sc) + 'px';
+    stage.scale = sc;
+    stage.x0 = (aw - W * sc) / 2;
+    stage.y0 = (ah - H * sc) / 2;
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = W * dpr; cv.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    syncLayer();
+  }
+  function syncLayer() {
+    var lay = el('hud-layer');
+    if (!lay) return;
+    lay.style.left = stage.x0 + 'px';
+    lay.style.top = stage.y0 + 'px';
+    lay.style.width = W + 'px';
+    lay.style.height = H + 'px';
+    lay.style.transform = 'scale(' + stage.scale + ')';
+  }
+  function toStage(cx, cy) { return { x: (cx - stage.x0) / stage.scale, y: (cy - stage.y0) / stage.scale }; }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function render() {
+    if (!ctx) return;
+    bg();
+    if (!G || (UI.screen !== 'play' && UI.screen !== 'title')) { return; }
+    if (UI.screen === 'play') {
+      drawFloor();
+      drawDoor();
+      drawBed();
+      drawBuildings();
+      drawGhosts();
+      drawBullets();
+      drawCoins();
+      drawTexts();
+      drawHUD();
+    }
+  }
+
+  function bg() {
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#191d24');
+    g.addColorStop(1, '#11141a');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawFloor() {
+    var r = G.room;
+    var rectW = r.cols * G.cell, rectH = r.rows * G.cell;
+    /* 房间地面 */
+    ctx.save();
+    ctx.fillStyle = '#2b323c';
+    roundRect(G.ox - 10, G.oy - 10, rectW + 20, rectH + 20, 14); ctx.fill();
+    /* 砖块 */
+    for (var rr = 0; rr < r.rows; rr++) {
+      for (var cc = 0; cc < r.cols; cc++) {
+        var cr = cellRect(cc, rr);
+        var isBed = (cc === bedCell().c && rr === bedCell().r);
+        ctx.fillStyle = isBed ? '#343d49' : (((cc + rr) % 2) ? '#2f3641' : '#333b47');
+        ctx.fillRect(cr.x + 1, cr.y + 1, cr.w - 2, cr.h - 2);
+        /* 石砖纹理 */
+        ctx.fillStyle = 'rgba(255,255,255,.025)';
+        ctx.fillRect(cr.x + 3, cr.y + 3, cr.w - 6, 3);
+        /* 空地 + 号 */
+        var occupied = G.buildings.some(function (b) { return b.c === cc && b.r === rr; }) || isBed;
+        if (!occupied && !REDUCED) {
+          ctx.fillStyle = 'rgba(180,200,225,.12)';
+          ctx.font = '300 ' + Math.round(G.cell * 0.4) + 'px sans-serif';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('+', cr.x + cr.w / 2, cr.y + cr.h / 2);
+        }
+      }
+    }
+    /* 选中格子高亮 */
+    if (UI.sel) {
+      var sr = cellRect(UI.sel.c, UI.sel.r);
+      ctx.strokeStyle = 'rgba(120,220,170,.9)';
+      ctx.lineWidth = 3;
+      roundRect(sr.x + 2, sr.y + 2, sr.w - 4, sr.h - 4, 8); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawDoor() {
+    var d = doorPos();
+    var w = G.cell * 0.4, h = G.cell * 1.0;
+    var x = d.x - w / 2 - 2, y = d.y + G.cell / 2 - h / 2;
+    /* 门体 */
+    ctx.save();
+    var ratio = G.doorHp > 0 ? G.doorHp / G.doorMax : 0;
+    ctx.fillStyle = '#4a3a2a';
+    roundRect(x, y, w, h, 6); ctx.fill();
+    ctx.fillStyle = G.doorHp > 0 ? 'rgba(90,220,150,' + (0.25 + ratio * 0.5).toFixed(2) + ')' : '#3a2a2a';
+    roundRect(x + 3, y + 3, w - 6, h - 6, 4); ctx.fill();
+    ctx.strokeStyle = 'rgba(140,255,190,.5)'; ctx.lineWidth = 2;
+    roundRect(x + 3, y + 3, w - 6, h - 6, 4); ctx.stroke();
+    /* 门血条 */
+    var bw = G.cell * 1.5;
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    roundRect(d.x - bw / 2, y + h + 6, bw, 7, 3); ctx.fill();
+    ctx.fillStyle = ratio > 0.5 ? '#5ed48b' : ratio > 0.2 ? '#e8b64b' : '#e2564b';
+    roundRect(d.x - bw / 2, y + h + 6, Math.max(0, bw * ratio), 7, 3); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.75)';
+    ctx.font = '700 9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('门 Lv' + G.doorLv, d.x, y - 6);
+    ctx.restore();
+  }
+
+  function drawBed() {
+    var bc = bedCell();
+    var r = cellRect(bc.c, bc.r);
+    ctx.save();
+    /* 床 */
+    ctx.fillStyle = '#6b4a33';
+    roundRect(r.x + 6, r.y + r.h * 0.34, r.w - 12, r.h * 0.56, 8); ctx.fill();
+    ctx.fillStyle = '#8fb0d8';
+    roundRect(r.x + 9, r.y + r.h * 0.4, r.w - 18, r.h * 0.44, 6); ctx.fill();
+    /* 枕头 */
+    ctx.fillStyle = '#eef3fa';
+    roundRect(r.x + 12, r.y + r.h * 0.36, r.w * 0.3, r.h * 0.16, 5); ctx.fill();
+    /* 小人 */
+    var hx = r.x + r.w * 0.42, hy = r.y + r.h * 0.46;
+    ctx.fillStyle = '#f3c9a4';
+    ctx.beginPath(); ctx.arc(hx, hy, G.cell * 0.13, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = '#5b3a22';
+    ctx.beginPath(); ctx.arc(hx, hy - G.cell * 0.05, G.cell * 0.13, Math.PI, 0); ctx.fill();
+    /* 闭眼 */
+    ctx.strokeStyle = '#7a5a44'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(hx - 5, hy); ctx.lineTo(hx - 1, hy); ctx.moveTo(hx + 2, hy); ctx.lineTo(hx + 6, hy); ctx.stroke();
+    /* 呼吸被子 */
+    var br = 1 + Math.sin(UI.t * 1.6) * 0.03;
+    ctx.fillStyle = 'rgba(190,215,240,.85)';
+    roundRect(r.x + r.w * 0.3, r.y + r.h * 0.5, r.w * 0.62, r.h * 0.32 * br, 8); ctx.fill();
+    /* 等级 */
+    ctx.fillStyle = '#f3c14b';
+    ctx.font = '800 11px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('床 Lv' + G.bedLv, r.x + r.w / 2, r.y + r.h * 0.26);
+    ctx.restore();
+  }
+
+  function drawBuildings() {
+    G.buildings.forEach(function (b) {
+      var r = cellRect(b.c, b.r);
+      ctx.save();
+      ctx.translate(r.x + r.w / 2, r.y + r.h / 2);
+      var s = G.cell / 100;
+      ctx.scale(s, s);
+      /* 底座 */
+      ctx.fillStyle = '#3b4350';
+      ctx.beginPath(); ctx.ellipse(0, 26, 32, 12, 0, 0, 6.2832); ctx.fill();
+      if (b.type === 'broom') {
+        ctx.fillStyle = '#6b5334';
+        roundRect(-10, -14, 20, 40, 6); ctx.fill();
+        ctx.fillStyle = '#d9b06a';
+        for (var i = -3; i <= 3; i++) {
+          ctx.save(); ctx.translate(i * 3, -18); ctx.rotate(i * 0.16);
+          ctx.fillRect(-1.6, -26, 3.2, 28);
+          ctx.restore();
+        }
+        ctx.fillStyle = 'rgba(140,255,190,.8)';
+        ctx.beginPath(); ctx.arc(0, 8, 5, 0, 6.2832); ctx.fill();
+      } else if (b.type === 'ice') {
+        ctx.fillStyle = '#7fc9e8';
+        ctx.beginPath(); ctx.moveTo(0, -34); ctx.lineTo(16, 0); ctx.lineTo(0, 26); ctx.lineTo(-16, 0); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.6)';
+        ctx.beginPath(); ctx.moveTo(0, -28); ctx.lineTo(7, -2); ctx.lineTo(0, 12); ctx.closePath(); ctx.fill();
+      } else if (b.type === 'hammer') {
+        ctx.fillStyle = '#4a4a52';
+        roundRect(-16, -8, 32, 34, 5); ctx.fill();
+        ctx.fillStyle = '#8a8a96';
+        roundRect(-20, -28, 40, 22, 6); ctx.fill();
+        ctx.fillStyle = '#5f5f6a';
+        roundRect(-20, -12, 40, 6, 3); ctx.fill();
+      } else if (b.type === 'arcade') {
+        ctx.fillStyle = '#2e3a52';
+        roundRect(-22, -34, 44, 62, 6); ctx.fill();
+        ctx.fillStyle = '#5fd3ff';
+        roundRect(-16, -28, 32, 22, 4); ctx.fill();
+        ctx.fillStyle = '#ffd45e';
+        ctx.beginPath(); ctx.arc(-8, 4, 5, 0, 6.2832); ctx.fill();
+        ctx.fillStyle = '#ff7a7a';
+        ctx.beginPath(); ctx.arc(4, 4, 5, 0, 6.2832); ctx.fill();
+      } else if (b.type === 'repair') {
+        ctx.fillStyle = '#5a6270';
+        roundRect(-24, -6, 48, 30, 6); ctx.fill();
+        ctx.fillStyle = '#c9d3e0';
+        roundRect(-6, -30, 12, 26, 4); ctx.fill();
+        ctx.fillStyle = '#5ed48b';
+        ctx.beginPath(); ctx.arc(0, -32, 7, 0, 6.2832); ctx.fill();
+      } else if (b.type === 'rateup') {
+        ctx.strokeStyle = 'rgba(120,220,255,.75)'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(0, 6, 26, 0, 6.2832); ctx.stroke();
+        ctx.fillStyle = '#78dcff';
+        ctx.beginPath(); ctx.moveTo(-6, -22); ctx.lineTo(8, -4); ctx.lineTo(0, -4); ctx.lineTo(6, 14); ctx.lineTo(-8, -2); ctx.lineTo(0, -2); ctx.closePath(); ctx.fill();
+      }
+      /* 等级点 */
+      if (b.lv > 1) {
+        ctx.fillStyle = '#f3c14b';
+        ctx.beginPath(); ctx.arc(22, -30, 9, 0, 6.2832); ctx.fill();
+        ctx.fillStyle = '#2a2118'; ctx.font = '800 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(b.lv), 22, -29);
+      }
+      ctx.restore();
+    });
+  }
+
+  function drawGhosts() {
+    G.ghosts.forEach(function (g) {
+      if (g.hp <= 0) return;
+      var base = CONFIG.GHOSTS[g.type];
+      var scale = g.type === 'boss' ? 1.9 : g.type === 'tank' ? 1.2 : 1;
+      var size = G.cell * 0.34 * scale;
+      ctx.save();
+      /* 影子 */
+      ctx.fillStyle = 'rgba(0,0,0,.3)';
+      ctx.beginPath(); ctx.ellipse(g.x, g.y + size * 0.9, size * 0.9, size * 0.3, 0, 0, 6.2832); ctx.fill();
+      /* 身体 */
+      var wob = Math.sin(g.wob) * 0.06;
+      ctx.translate(g.x, g.y);
+      ctx.scale(1 + wob, 1 - wob);
+      ctx.fillStyle = g.flash > 0 ? '#fff' : base.color;
+      ctx.globalAlpha = 0.92;
+      ctx.beginPath();
+      ctx.arc(0, -size * 0.2, size, Math.PI, 0);
+      ctx.lineTo(size, size * 0.7);
+      for (var k = 0; k < 3; k++) {
+        ctx.quadraticCurveTo(size * (0.66 - k * 0.66), size * 1.0, size * (0.33 - k * 0.66), size * 0.7);
+      }
+      ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 1;
+      /* 眼睛 */
+      ctx.fillStyle = '#2a1f38';
+      ctx.beginPath(); ctx.ellipse(-size * 0.32, -size * 0.25, size * 0.16, size * 0.22, 0, 0, 6.2832); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(size * 0.32, -size * 0.25, size * 0.16, size * 0.22, 0, 0, 6.2832); ctx.fill();
+      if (g.slowT > 0) {
+        ctx.strokeStyle = 'rgba(140,220,255,.8)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, size * 1.2, 0, 6.2832); ctx.stroke();
+      }
+      ctx.restore();
+      /* 血条 */
+      var bw = size * 2.2;
+      ctx.fillStyle = 'rgba(0,0,0,.55)';
+      roundRect(g.x - bw / 2, g.y - size * 1.9, bw, 4, 2); ctx.fill();
+      ctx.fillStyle = g.type === 'boss' ? '#c98bff' : '#ff6b6b';
+      roundRect(g.x - bw / 2, g.y - size * 1.9, Math.max(0, bw * (g.hp / g.maxHp)), 4, 2); ctx.fill();
+      if (g.maxShield > 0) {
+        ctx.fillStyle = 'rgba(0,0,0,.55)';
+        roundRect(g.x - bw / 2, g.y - size * 1.9 - 7, bw, 4, 2); ctx.fill();
+        ctx.fillStyle = '#5fa8ff';
+        roundRect(g.x - bw / 2, g.y - size * 1.9 - 7, Math.max(0, bw * (g.shield / g.maxShield)), 4, 2); ctx.fill();
+      }
+    });
+  }
+
+  function drawBullets() {
+    G.bullets.forEach(function (b) {
+      ctx.save();
+      if (b.shell === 'ice') {
+        ctx.fillStyle = '#9fe0ff';
+        ctx.beginPath(); ctx.arc(b.x, b.y, 4.5, 0, 6.2832); ctx.fill();
+      } else if (b.shell === 'hammer') {
+        ctx.fillStyle = '#ffd48a';
+        ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, 6.2832); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,212,138,.45)'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(b.x, b.y, 9, 0, 6.2832); ctx.stroke();
+      } else {
+        ctx.fillStyle = '#e8eef8';
+        ctx.beginPath(); ctx.arc(b.x, b.y, 3.4, 0, 6.2832); ctx.fill();
+      }
+      ctx.restore();
+    });
+  }
+
+  function drawCoins() {
+    G.coins.forEach(function (c) {
+      ctx.save();
+      ctx.globalAlpha = c.life < 1 ? Math.abs(Math.sin(UI.t * 10)) : 1;
+      ctx.fillStyle = '#f3c14b';
+      ctx.beginPath(); ctx.arc(c.x, c.y, 6, 0, 6.2832); ctx.fill();
+      ctx.strokeStyle = '#a8761a'; ctx.lineWidth = 1.4; ctx.stroke();
+      ctx.restore();
+    });
+  }
+
+  function drawTexts() {
+    ctx.textAlign = 'center';
+    G.texts.forEach(function (t) {
+      ctx.globalAlpha = Math.min(1, t.life * 2);
+      ctx.fillStyle = t.color;
+      ctx.font = '800 13px sans-serif';
+      ctx.fillText(t.txt, t.x, t.y);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  function drawHUD() {
+    ctx.save();
+    /* 顶部资源条 */
+    ctx.fillStyle = 'rgba(16,20,26,.92)';
+    ctx.fillRect(0, 0, W, CONFIG.HUD_H);
+    ctx.fillStyle = '#f3c14b';
+    ctx.beginPath(); ctx.arc(24, 26, 8, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '800 14px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(Math.floor(G.gold)), 38, 27);
+    ctx.fillStyle = '#6fd6ff';
+    ctx.beginPath();
+    ctx.moveTo(112, 17); ctx.lineTo(103, 30); ctx.lineTo(109, 30); ctx.lineTo(105, 37); ctx.lineTo(117, 25); ctx.lineTo(110, 25); ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(String(Math.floor(G.bolt)), 123, 27);
+    /* 波次 */
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#cfe0f5';
+    ctx.font = '700 13px sans-serif';
+    ctx.fillText('第 ' + G.wave + '/' + CONFIG.WAVES_PER_ROOM + ' 波', W / 2 + 40, 27);
+    /* 小人血量 */
+    ctx.fillStyle = 'rgba(255,255,255,.16)';
+    roundRect(24, 48, W - 48, 8, 4); ctx.fill();
+    var hpR = clamp(G.humanHp / G.humanMax, 0, 1);
+    ctx.fillStyle = hpR > 0.4 ? '#5ed48b' : '#e2564b';
+    roundRect(24, 48, (W - 48) * hpR, 8, 4); ctx.fill();
+    /* 任务条 */
+    var task = TASKS[Math.min(G.taskIdx, TASKS.length - 1)];
+    var done = G.taskIdx >= TASKS.length;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = done ? '#5ed48b' : 'rgba(230,240,255,.86)';
+    ctx.font = '600 12px sans-serif';
+    ctx.fillText(done ? '全部任务完成 ✓' : '任务：' + task.txt, 24, 76);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = done ? '#5ed48b' : 'rgba(255,255,255,.4)';
+    ctx.fillText(done ? '已完成' : '未完成', W - 24, 76);
+    ctx.restore();
+  }
+
+  /* ---------- 交互 ---------- */
+  function bind() {
+    cv = el('cv'); ctx = cv.getContext('2d');
+    resize();
+    window.addEventListener('resize', function () { resize(); });
+
+    cv.addEventListener('pointerdown', function (ev) {
+      if (UI.screen !== 'play' || !G || G.over) return;
+      var p = toStage(ev.clientX, ev.clientY);
+      if (p.y < CONFIG.HUD_H) return;
+      /* 命中建筑 */
+      var hitB = null;
+      G.buildings.forEach(function (b) {
+        var r = cellRect(b.c, b.r);
+        if (p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) hitB = b;
+      });
+      if (hitB) { UI.panel = { kind: 'building', b: hitB }; UI.sel = null; renderPanel(); return; }
+      /* 床 */
+      var bc = bedCell(), br = cellRect(bc.c, bc.r);
+      if (p.x >= br.x && p.x <= br.x + br.w && p.y >= br.y && p.y <= br.y + br.h) {
+        UI.panel = { kind: 'bed' }; UI.sel = null; renderPanel(); return;
+      }
+      /* 门 */
+      var d = doorPos();
+      if (Math.abs(p.x - d.x) < G.cell * 0.5 && Math.abs(p.y - (d.y + G.cell / 2)) < G.cell * 0.7) {
+        UI.panel = { kind: 'door' }; UI.sel = null; renderPanel(); return;
+      }
+      /* 空地 */
+      var c = Math.floor((p.x - G.ox) / G.cell);
+      var r2 = Math.floor((p.y - G.oy) / G.cell);
+      if (c >= 0 && c < G.room.cols && r2 >= 0 && r2 < G.room.rows) {
+        var occupied = G.buildings.some(function (b) { return b.c === c && b.r === r2; }) || (c === bc.c && r2 === bc.r);
+        if (!occupied) {
+          UI.sel = { c: c, r: r2 };
+          UI.panel = { kind: 'build' };
+          renderPanel();
+          return;
+        }
+      }
+      UI.panel = null; UI.sel = null; renderPanel();
+      SFX.click();
+    });
+
+    /* 关闭遮罩 */
+
+    /* 顶部按钮 */
+    el('btn-speed').onclick = function () {
+      G.speed = G.speed === 1 ? 2 : G.speed === 2 ? 4 : 1;
+      UI.speed = G.speed;
+      el('btn-speed').textContent = G.speed + '×';
+      SFX.speed();
+    };
+    el('btn-pause').onclick = function () {
+      if (!G) return; G.paused = true; show('ov-pause');
+    };
+    el('pause-resume').onclick = function () { G.paused = false; hide('ov-pause'); };
+    el('pause-restart').onclick = function () {
+      hide('ov-pause');
+      var rid = G.roomId; newRun(rid);
+    };
+    el('pause-home').onclick = function () { hide('ov-pause'); hideAll(); G = null; showTitle(); };
+    el('pause-mute').onclick = function () {
+      save.muted = !save.muted; persist();
+      el('pause-mute').textContent = save.muted ? '🔇 音效已关' : '🔊 音效开启';
+    };
+    el('btn-home').onclick = function () { hideAll(); G = null; showTitle(); };
+    el('end-retry').onclick = function () { hide('ov-end'); var rid = G.roomId; newRun(rid); };
+    el('end-home').onclick = function () { hide('ov-end'); G = null; showTitle(); };
+
+  }
+
+  /* ---------- 面板 DOM ---------- */
+  function renderPanel() {
+    var pn = el('panel');
+    if (!UI.panel || !G) { pn.classList.remove('on'); return; }
+    pn.classList.add('on');
+    var html = '';
+    var k = UI.panel.kind;
+    if (k === 'build') {
+      html += '<div class="phead"><b>建造</b><span class="pcell">格子 ' + (UI.sel.c + 1) + ',' + (UI.sel.r + 1) + '</span>' +
+        '<button class="xbtn" id="p-x">✕</button></div>';
+      var cats = [['base', '基础'], ['money', '赚钱'], ['tech', '科技'], ['item', '道具']];
+      html += '<div class="ptabs">' + cats.map(function (c, i) {
+        return '<button class="ptab' + (i === 0 ? ' on' : '') + '" data-cat="' + c[0] + '">' + c[1] + '</button>';
+      }).join('') + '</div><div class="pbody" id="p-body"></div>';
+    } else if (k === 'bed') {
+      var nb = CONFIG.BED[G.bedLv - 1];
+      var nx = CONFIG.BED[G.bedLv] || null;
+      html += '<div class="phead"><b>床 Lv' + G.bedLv + '</b><button class="xbtn" id="p-x">✕</button></div>' +
+        '<div class="pbody"><div class="prow"><em>当前产出</em><b>' + nb.gold + ' 金币 / 秒</b></div>' +
+        (nx ? '<div class="prow"><em>下一级</em><b>' + nx.gold + ' 金币 / 秒</b></div>' +
+          '<button class="pbtn" ' + (G.gold >= nx.cost ? '' : 'disabled') + ' id="p-bedup">升级 · ' + nx.cost + ' 💰</button>'
+          : '<div class="prow"><em>已满级</em><b>Lv5</b></div>') +
+        '</div>';
+    } else if (k === 'door') {
+      var nd = CONFIG.DOOR[G.doorLv - 1];
+      var ndx = CONFIG.DOOR[G.doorLv] || null;
+      html += '<div class="phead"><b>门 Lv' + G.doorLv + '</b><button class="xbtn" id="p-x">✕</button></div>' +
+        '<div class="pbody"><div class="prow"><em>当前血量</em><b>' + Math.round(G.doorHp) + ' / ' + Math.round(G.doorMax) + '</b></div>' +
+        (ndx ? '<div class="prow"><em>升级后</em><b>' + ndx.hp + ' 血</b></div>' +
+          '<button class="pbtn" ' + (G.gold >= ndx.cost ? '' : 'disabled') + ' id="p-doorup">升级 · ' + ndx.cost + ' 💰</button>'
+          : '<div class="prow"><em>已满级</em><b>Lv5</b></div>') +
+        '<p class="phint">门不可重建，只可升级。门破后鬼会直接攻击床上的小人。</p></div>';
+    } else if (k === 'building') {
+      var b = UI.panel.b;
+      var cfg = CONFIG.BUILDINGS[b.type];
+      html += '<div class="phead"><b>' + cfg.name + ' Lv' + b.lv + '</b><button class="xbtn" id="p-x">✕</button></div><div class="pbody">';
+      if (cfg.atk) {
+        html += '<div class="prow"><em>攻击</em><b>' + (cfg.atk + (b.lv - 1) * (b.type === 'hammer' ? Math.round(cfg.atk * 0.05) : 3)) + '</b></div>' +
+          '<div class="prow"><em>射程</em><b>' + (cfg.range + (b.lv - 1) * 0.5).toFixed(1) + ' 格</b></div>' +
+          '<div class="prow"><em>射速</em><b>1 发 / ' + cfg.rate + 's</b></div>';
+        var uc = upCost(b);
+        html += '<button class="pbtn" ' + (G.gold >= uc ? '' : 'disabled') + ' id="p-bup">升级 · ' + uc + ' 💰</button>';
+      } else if (cfg.gen === 'bolt') {
+        html += '<div class="prow"><em>产出</em><b>1 闪电 / 2s</b></div>';
+      } else if (cfg.heal) {
+        html += '<div class="prow"><em>效果</em><b>每秒恢复门 2% 最大血量</b></div>';
+      } else if (cfg.aura) {
+        html += '<div class="prow"><em>效果</em><b>范围内炮台射速 +20%</b></div>';
+      }
+      html += '<button class="pbtn ghost" id="p-recycle">回收（返还 ' + Math.round(cfg.cost * 0.5) + '）</button></div>';
+    }
+    pn.innerHTML = html;
+    var x = el('p-x'); if (x) x.onclick = function () { UI.panel = null; UI.sel = null; renderPanel(); };
+    var bu = el('p-bedup');
+    if (bu) bu.onclick = function () {
+      var nx2 = CONFIG.BED[G.bedLv];
+      if (!nx2 || G.gold < nx2.cost) return;
+      G.gold -= nx2.cost; G.bedLv++;
+      G.humanMax = nx2.hp;
+      G.humanHp = Math.min(G.humanMax, G.humanHp + (nx2.hp - CONFIG.BED[G.bedLv - 2].hp));
+      SFX.build(); renderPanel();
+    };
+    var du = el('p-doorup');
+    if (du) du.onclick = function () {
+      var nx3 = CONFIG.DOOR[G.doorLv];
+      if (!nx3 || G.gold < nx3.cost) return;
+      G.gold -= nx3.cost; G.doorLv++;
+      var delta = nx3.hp - G.doorMax;
+      G.doorMax = nx3.hp;
+      G.doorHp = Math.max(0, G.doorHp + delta);
+      SFX.build(); renderPanel();
+    };
+    var bup = el('p-bup');
+    if (bup) bup.onclick = function () {
+      var b2 = UI.panel.b, uc2 = upCost(b2);
+      if (G.gold < uc2) return;
+      G.gold -= uc2; b2.lv++; SFX.build(); renderPanel();
+    };
+    var rec = el('p-recycle');
+    if (rec) rec.onclick = function () { recycle(UI.panel.b); renderPanel(); };
+
+    /* 建造分类 */
+    if (k === 'build') {
+      var cur = 'base';
+      function fill(cat) {
+        var body = el('p-body');
+        if (!body) return;
+        var list = Object.keys(CONFIG.BUILDINGS).filter(function (t) { return CONFIG.BUILDINGS[t].cat === cat; });
+        body.innerHTML = list.map(function (t) {
+          var c2 = CONFIG.BUILDINGS[t];
+          var have = countOf(t);
+          var afford = c2.cur === 'gold' ? G.gold >= c2.cost : G.bolt >= c2.cost;
+          var full = have >= c2.max;
+          var disabled = !afford || full;
+          var attr = c2.atk ? ('攻击 ' + c2.atk + ' · 射程 ' + c2.range + ' 格') :
+            c2.gen ? '产出 1 闪电 / 2s' : c2.heal ? '每秒恢复门 2%' : c2.aura ? '炮台射速 +20%' : '随机奖励';
+          (void attr);
+          return '<button class="bcard' + (disabled ? ' dis' : '') + '" data-t="' + t + '">' +
+            '<b>' + c2.name + '</b>' +
+            '<em>' + (c2.atk ? '攻击 ' + c2.atk + ' · 射程 ' + c2.range + ' 格' : c2.gen ? '产出闪电' : c2.heal ? '维修门' : c2.aura ? '攻速光环' : '随机奖励') + '</em>' +
+            '<i>' + c2.cost + (c2.cur === 'gold' ? ' 💰' : ' ⚡') + '</i>' +
+            '<small>已建 ' + have + '/' + c2.max + (full ? ' · 达上限' : !afford ? ' · 资源不足' : '') + '</small>' +
+            '</button>';
+        }).join('');
+        body.querySelectorAll('.bcard').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var t2 = btn.dataset.t;
+            if (doBuild(t2, UI.sel.c, UI.sel.r)) {
+              UI.panel = null; UI.sel = null; renderPanel();
+            }
+          });
+        });
+      }
+      pn.querySelectorAll('.ptab').forEach(function (b3) {
+        b3.addEventListener('click', function () {
+          pn.querySelectorAll('.ptab').forEach(function (o) { o.classList.remove('on'); });
+          b3.classList.add('on');
+          fill(b3.dataset.cat);
+        });
+      });
+      fill(cur);
+    }
+  }
+
+  /* ---------- 覆盖层 ---------- */
+  function show(id) { el(id).classList.add('on'); }
+  function hide(id) { el(id).classList.remove('on'); }
+  function hideAll() { ['ov-title', 'ov-end', 'ov-pause'].forEach(hide); el('panel').classList.remove('on'); }
+  var tT = null;
+  function toast(msg) {
+    var t = el('toast');
+    t.textContent = msg; t.classList.add('on');
+    clearTimeout(tT);
+    tT = setTimeout(function () { t.classList.remove('on'); }, 1900);
+  }
+
+  function showTitle() {
+    UI.screen = 'title';
+    hideAll();
+    show('ov-title');
+    el('t-room').textContent = save.maxRoom + ' / 3';
+    el('t-wave').textContent = (save.maxWave || 0) + ' / 15';
+    el('t-wins').textContent = String(save.wins);
+    el('t-runs').textContent = String(save.runs);
+    var box = el('room-list');
+    box.innerHTML = '';
+    CONFIG.ROOMS.forEach(function (r, i) {
+      var unlocked = r.id <= save.maxRoom;
+      var b = document.createElement('button');
+      b.className = 'roomchip' + (unlocked ? '' : ' locked');
+      b.innerHTML = '<b>' + (i + 1) + '</b><span>' + r.name + '</span><i>' + (unlocked ? r.cols + '×' + r.rows + ' 地块' : '🔒 未解锁') + '</i>';
+      if (unlocked) b.onclick = function () { SFX.click(); newRun(r.id); };
+      box.appendChild(b);
+    });
+  }
+
+  function init() {
+    bind();
+    showTitle();
+    requestAnimationFrame(loop);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+
+  window.sleeper = {
+    CONFIG: CONFIG, get state() { return G; }, save: save,
+    newRun: newRun, showTitle: showTitle, UI: UI,
+    build: function (t, c, r) { return doBuild(t, c, r); }
+  };
+})();
+</script>
+<script>
+  window.addEventListener('scroll', function(){}, true);
+</script>
+</body>
+</html>
