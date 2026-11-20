@@ -666,9 +666,12 @@ export function buildLevel(scene, map, rng, quality = 'high') {
    * draw 固定在 3，几何顶点和世界坐标逐点不变。撤离环 / 高亮 / 掩体箱不在本块内。 */
   const platformMeshes = [];
   {
-    const platMat = lowPolyMat(PALETTE3D.platform);
-    const trimMat = lowPolyMat(PALETTE3D.platformTrim);
-    const stepMat = lowPolyMat(PALETTE3D.platformStep);
+    // 平台是画面里第二大的连续平面（仅次于地面）。原来用纯色 + flatShading，
+    // 在强主光下就是一块均匀发亮的白板 —— 观感上比"没有平台"更廉价。
+    // 换成带混凝土贴图的 Standard 材质并整体压暗，才和墙体站在同一个世界尺度上。
+    const platMat = surfaceMat(shade(PALETTE3D.platform, 0.26), getConcreteTexture(), VIEW3D.wallRoughness, surfaceDetail);
+    const trimMat = surfaceMat(shade(PALETTE3D.platformTrim, 0.34), getConcreteTexture(), VIEW3D.wallRoughness, surfaceDetail);
+    const stepMat = surfaceMat(shade(PALETTE3D.platformStep, 0.8), getConcreteTexture(), VIEW3D.wallRoughness, surfaceDetail);
     const ph = u(VIEW3D.platformHeight);
     const platGeos = [];
     const trimGeos = [];

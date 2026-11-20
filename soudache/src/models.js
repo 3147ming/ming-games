@@ -63,6 +63,9 @@ export function lowPolyMat(color, opts = {}) {
     params.opacity = opts.opacity != null ? opts.opacity : 1;
   }
   if (opts.map) params.map = opts.map;
+  // 顶点色必须在**构造时**声明：先 new 再赋 material.vertexColors 不会重建 program，
+  // USE_COLOR 宏永远不定义，顶点色被静默忽略（地面斑驳曾经整批失效就是这个原因）。
+  if (opts.vertexColors) params.vertexColors = true;
 
   if (opts.standard) {
     params.roughness = opts.roughness != null ? opts.roughness : 0.85;
@@ -322,6 +325,25 @@ export function getSurfaceMaps(kind) {
   return maps;
 }
 
+/**
+ * 贴图专用的确定性随机（mulberry32）。
+ *
+ * 贴图只烘焙一次、之后一直复用，但它决定的是**画面本身**。用 Math.random 的话，
+ * 同一个 commit 每次启动画出来的污渍/裂纹都不一样，像素统计与 A/B 截图就没法对比了。
+ * 固定种子让"改了什么"变成可归因的差异。
+ * @param {number} seed 种子
+ * @returns {() => number} [0,1) 随机数
+ */
+function texRng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 /** 在画布上撒噪点，营造材质颗粒感 */
 function speckle(ctx, size, base, spread, count) {
   for (let i = 0; i < count; i += 1) {
@@ -338,27 +360,95 @@ function speckle(ctx, size, base, spread, count) {
 
 // 各贴图绘制函数（仅在浏览器中执行）
 const FLOOR_TEX = (ctx, s) => {
-  ctx.fillStyle = '#aeb6c0'; ctx.fillRect(0, 0, s, s);
-  speckle(ctx, s, [150, 160, 175], 0.5, 260);
-  ctx.strokeStyle = 'rgba(40,48,60,0.35)'; ctx.lineWidth = 2;
+  const rnd = texRng(0x51f00d);
+  ctx.fillStyle = '#9fa8b3'; ctx.fillRect(0, 0, s, s);
+
+  // 大尺度污渍：这是"地面不像塑料板"的关键。只撒细噪点在缩略/远处会被 mipmap 抹平，
+  // 剩下一个纯灰面；直径 20%~45% 的柔和斑块才能在中距离保住。
+  for (let i = 0; i < 9; i += 1) {
+    const cx = rnd() * s; const cy = rnd() * s;
+    const r = s * (0.16 + rnd() * 0.28);
+    const dark = rnd() < 0.62;
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    const col = dark ? '60,68,78' : '196,203,212';
+    g.addColorStop(0, `rgba(${col},${dark ? 0.20 : 0.14})`);
+    g.addColorStop(1, `rgba(${col},0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  }
+
+  speckle(ctx, s, [150, 160, 175], 0.62, 420);
+
+  // 分仓缝：2m 一格的混凝土板缝，加内侧高光做出"缝有深度"的错觉
+  ctx.strokeStyle = 'rgba(38,46,58,0.55)'; ctx.lineWidth = Math.max(2, s / 64);
   ctx.strokeRect(0, 0, s, s);
   ctx.beginPath(); ctx.moveTo(s / 2, 0); ctx.lineTo(s / 2, s); ctx.moveTo(0, s / 2); ctx.lineTo(s, s / 2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(205,212,222,0.16)'; ctx.lineWidth = Math.max(1, s / 128);
+  ctx.beginPath(); ctx.moveTo(0, s / 2 + 2); ctx.lineTo(s, s / 2 + 2); ctx.stroke();
+
+  // 细裂纹：几条折线，只在近处可见，但能让地面在脚下"有内容"
+  ctx.strokeStyle = 'rgba(46,54,66,0.42)'; ctx.lineWidth = Math.max(1, s / 160);
+  for (let c = 0; c < 3; c += 1) {
+    let x = rnd() * s; let y = rnd() * s;
+    ctx.beginPath(); ctx.moveTo(x, y);
+    for (let k = 0; k < 5; k += 1) {
+      x += (rnd() - 0.5) * s * 0.34;
+      y += (rnd() - 0.5) * s * 0.34;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
 };
 const CONCRETE_TEX = (ctx, s) => {
-  ctx.fillStyle = '#7c8794'; ctx.fillRect(0, 0, s, s);
-  speckle(ctx, s, [110, 122, 138], 0.7, 320);
-  // 预制板缝：横竖各两道，模拟浇筑混凝土分块，避免大面死板
-  ctx.strokeStyle = 'rgba(40,48,60,0.30)'; ctx.lineWidth = 1.5;
-  for (const f of [s * 0.34, s * 0.68]) {
+  const rnd = texRng(0xc0de11);
+  ctx.fillStyle = '#6e7884'; ctx.fillRect(0, 0, s, s);
+
+  // 大块色差：同一面墙也要有"这段新、那段旧"的观感，否则大面积单色一眼假
+  for (let i = 0; i < 7; i += 1) {
+    const cx = rnd() * s; const cy = rnd() * s;
+    const r = s * (0.2 + rnd() * 0.3);
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    const light = rnd() < 0.45;
+    const col = light ? '146,158,172' : '52,60,72';
+    g.addColorStop(0, `rgba(${col},${light ? 0.16 : 0.22})`);
+    g.addColorStop(1, `rgba(${col},0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  }
+
+  speckle(ctx, s, [110, 122, 138], 0.7, 420);
+
+  // 预制板缝：每 1/3 一道，缝下带一条浅色反光，读起来才有厚度
+  for (const f of [s * 0.33, s * 0.66]) {
+    ctx.strokeStyle = 'rgba(34,42,54,0.52)'; ctx.lineWidth = Math.max(1.5, s / 96);
     ctx.beginPath(); ctx.moveTo(0, f); ctx.lineTo(s, f); ctx.stroke();
+    ctx.strokeStyle = 'rgba(190,200,212,0.14)'; ctx.lineWidth = Math.max(1, s / 200);
+    ctx.beginPath(); ctx.moveTo(0, f + 2); ctx.lineTo(s, f + 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(34,42,54,0.42)'; ctx.lineWidth = Math.max(1.5, s / 96);
     ctx.beginPath(); ctx.moveTo(f, 0); ctx.lineTo(f, s); ctx.stroke();
   }
-  // 竖向污渍：底部略深的潮气痕，增加材质层次
+
+  // 竖向雨痕：从缝往下淌，宽窄不一
+  for (let i = 0; i < 5; i += 1) {
+    const x = rnd() * s;
+    const w = s * (0.02 + rnd() * 0.05);
+    const top = rnd() * s * 0.35;
+    const g = ctx.createLinearGradient(0, top, 0, s);
+    g.addColorStop(0, 'rgba(30,38,48,0)');
+    g.addColorStop(0.35, `rgba(30,38,48,${0.1 + rnd() * 0.12})`);
+    g.addColorStop(1, 'rgba(30,38,48,0.04)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, top, w, s - top);
+  }
+
+  // 底部潮气：从下往上加深，与地面接触处不再"浮"着
   const grd = ctx.createLinearGradient(0, 0, 0, s);
-  grd.addColorStop(0, 'rgba(30,38,48,0)');
-  grd.addColorStop(1, 'rgba(30,38,48,0.22)');
+  grd.addColorStop(0, 'rgba(28,36,46,0)');
+  grd.addColorStop(0.7, 'rgba(28,36,46,0.10)');
+  grd.addColorStop(1, 'rgba(28,36,46,0.30)');
   ctx.fillStyle = grd; ctx.fillRect(0, 0, s, s);
-  speckle(ctx, s, [70, 80, 92], 0.4, 90);
+
+  speckle(ctx, s, [70, 80, 92], 0.45, 140);
 };
 const WOOD_TEX = (ctx, s) => {
   ctx.fillStyle = '#8a5a2a'; ctx.fillRect(0, 0, s, s);
@@ -537,8 +627,30 @@ export function buildGround(map) {
   const quads = [];
   const colors = [];
   const uvs = [];
-  const cA = new THREE.Color(PALETTE3D.ground);
-  const cB = new THREE.Color(PALETTE3D.groundAlt);
+  // 地面基色由贴图 + 顶点亮度调制共同决定；PALETTE3D.ground/groundAlt 仍留给 2D 层与图例使用。
+
+  /**
+   * 地面斑驳：**按格顶点色**做低频噪声，而不是整片一个色或严格棋盘格。
+   *
+   * 为什么不用贴图解决：2m 一格的贴图在 20m 外就被 mipmap 平均成纯灰，
+   * 大地面立刻变成一块塑料板。顶点色是几何属性，缩多远都不会被抹掉。
+   * 噪声用 5 格一个波长的平滑插值，读起来是"沥青补丁/积水痕"，不是棋盘。
+   */
+  const hash2 = (x, y) => {
+    let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+  const smooth2 = (x, y) => {
+    const gx = x / 5; const gy = y / 5;
+    const x0 = Math.floor(gx); const y0 = Math.floor(gy);
+    const fx = gx - x0; const fy = gy - y0;
+    const sm = (t) => t * t * (3 - 2 * t);
+    const u = sm(fx); const v = sm(fy);
+    const a = hash2(x0, y0); const b = hash2(x0 + 1, y0);
+    const c = hash2(x0, y0 + 1); const d = hash2(x0 + 1, y0 + 1);
+    return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+  };
   for (let ty = 0; ty < rows; ty += 1) {
     for (let tx = 0; tx < cols; tx += 1) {
       const x0 = tx * tile;
@@ -550,8 +662,16 @@ export function buildGround(map) {
       quads.push(x0, 0, z0, x1, 0, z1, x1, 0, z0);
       // P12：手写几何原本没有 uv，地面贴图一直采样不到 —— 每格铺一张可平铺贴图。
       uvs.push(0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0);
-      const c = (tx + ty) % 2 === 0 ? cA : cB;
-      for (let k = 0; k < 6; k += 1) colors.push(c.r, c.g, c.b);
+      // 顶点色在这里是**亮度调制**，不是最终反照率：
+      // 贴图已经是浅灰混凝土，再乘一个接近 0 的深色会把地面压成死黑。
+      // 0.5 附近让地面落到"夜间沥青/旧混凝土"的区间，斑块与逐格抖动负责打散均匀感。
+      const patch = smooth2(tx, ty);
+      // 0.045 是"夜间旧混凝土"的线性反照率：贴图本身是浅灰（≈0.34 线性），
+      // 乘 0.05 后落到 0.017，配月光/路灯刚好读成深灰而不是白板。
+      // 顶点色**必须**在 lowPolyMat 里声明才生效（见那里的注释），这组数才成立。
+      const k = 0.036 + patch * 0.018 + (hash2(tx * 7 + 1, ty * 13 + 3) - 0.5) * 0.007;
+      // 轻微色偏：偏冷（蓝多一点）读起来像潮湿混凝土，而不是纯灰塑料
+      for (let j = 0; j < 6; j += 1) colors.push(k * 0.96, k, k * 1.04);
     }
   }
   const geo = new THREE.BufferGeometry();
@@ -562,8 +682,18 @@ export function buildGround(map) {
   // 地面是画面里面积最大的表面，升级为 Standard 后能吃到环境光与高光，
   // 观感提升最明显；保留顶点色棋盘格与地面贴图。
   const detail = getSurfaceMaps('floor');
-  const mesh = new THREE.Mesh(geo, surfaceMat('#FFFFFF', getFloorTexture(), VIEW3D.groundRoughness, detail));
-  mesh.material.vertexColors = true;
+  // 顶点色走构造参数（见 lowPolyMat 注释），不能事后赋值
+  const groundMat = lowPolyMat('#FFFFFF', {
+    standard: true,
+    map: getFloorTexture(),
+    roughness: VIEW3D.groundRoughness,
+    metalness: VIEW3D.metalness,
+    flat: false,
+    vertexColors: true,
+    bumpMap: detail ? detail.bumpMap : null,
+    roughnessMap: detail ? detail.roughnessMap : null,
+  });
+  const mesh = new THREE.Mesh(geo, groundMat);
   mesh.receiveShadow = true;
   mesh.name = 'ground';
   return mesh;

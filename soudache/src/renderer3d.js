@@ -106,7 +106,13 @@ void main() {
 `;
 
 /**
- * 后处理片元着色器（在 ACES 色调映射之后、sRGB 编码之前作用于线性空间）：
+ * 后处理片元着色器（在对数域：ACES 之前是线性光，之后是显示参考值）：
+ *
+ * ⚠ 这里**必须自己做色调映射**。three 在渲染到 render target 时会把
+ * `renderer.toneMapping` 强制成 NoToneMapping（见 WebGLPrograms.getParameters），
+ * 所以整条后处理链原本是"线性 → 直接 sRGB 编码"，等于没有 HDR 压缩：
+ * 高光一律削平、曝光滑杆调了完全不动（实测曝光 1.0/1.7/2.2 出图均值都是 0.377）。
+ * ACES 放在 AO / 暗角之后、对比与调色之前 —— 与"先压回显示区间再分级"的常规顺序一致。
  * - 轻微色差（径向 RGB 分离）：金属 / 高光边缘的彩色镶边，质感立刻"贵"一点。
  * - 深度近似 AO（接触阴影）：用深度纹理做小核采样，周围更近 → 暗化，模拟 SSAO。
  * - 暗角（vignette）：收拢视线到中心。
@@ -137,10 +143,35 @@ uniform float uContrast;
 uniform float uSharpen;
 uniform float uDither;
 uniform float uSaturation;
+uniform float uExposure;
 uniform vec3 uShadowTint;
 uniform vec3 uHighlightTint;
 uniform float uSplitTone;
 uniform int uAOSamples;
+
+// ACES Filmic（与 three 内置实现同一组矩阵与 RRT/ODT 拟合，避免两条渲染路径色调不一致）
+const mat3 ACES_INPUT = mat3(
+  vec3(0.59719, 0.07600, 0.02840),
+  vec3(0.35458, 0.90834, 0.13383),
+  vec3(0.04823, 0.01566, 0.83777)
+);
+const mat3 ACES_OUTPUT = mat3(
+  vec3(1.60475, -0.10208, -0.00327),
+  vec3(-0.53108, 1.10813, -0.07276),
+  vec3(-0.07367, -0.00605, 1.07602)
+);
+vec3 rrtOdtFit(vec3 v) {
+  vec3 a = v * (v + 0.0245786) - 0.000090537;
+  vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;
+  return a / b;
+}
+vec3 acesFilmic(vec3 color) {
+  color *= uExposure / 0.6; // 与 three 的 ACESFilmicToneMapping 同一口径
+  color = ACES_INPUT * color;
+  color = rrtOdtFit(color);
+  color = ACES_OUTPUT * color;
+  return clamp(color, 0.0, 1.0);
+}
 
 float linearizeDepth(float d) {
   float z = d * 2.0 - 1.0;
@@ -190,7 +221,11 @@ void main() {
   float vig = 1.0 - uVignette * pow(length(dir) * 1.32, 2.3);
   col *= vig;
 
-  // 极轻微提中间调对比（线性空间）
+  // 色调映射：把线性 HDR 压回 0~1。没有这一步，后面的对比/调色/饱和全在"已经削平"的
+  // 画面上做，等于给死白上色 —— 这是后处理开启时画面发灰、曝光滑杆失效的根因。
+  col = acesFilmic(col);
+
+  // 轻微提中间调对比（显示参考空间，>1 提对比）
   col = pow(max(col, 0.0), vec3(uContrast));
 
   // P3-C3 色彩分级（split-tone）：按亮度在冷阴影色与暖高光色之间插值，
@@ -1961,12 +1996,33 @@ export class Renderer3D {
       if (!POST3D.enabled) return; // 配置层总开关
       if (!cap || !cap.isWebGL2) return; // 深度纹理采样需 WebGL2
       const sz = this._postSize();
-      const rt = new T.WebGLRenderTarget(sz.w, sz.h, {
+      // 缓冲必须是浮点，否则线性光在 1.0 处就被 8bit 削平，ACES 拿到的是一张已经
+      // 丢掉全部高光层次的图（"高光糊成一块白"）。半浮点 16F 足够，显存翻倍可控。
+      // 老设备 / 无扩展时退回 8bit：色调曲线仍然生效，只是高光回不来。
+      // 扩展字符串靠不住（headless / 某些驱动不报 EXT_color_buffer_half_float 但实际可用，
+      // 反过来也有）。直接建好再查一次 framebuffer 完整性，不完整就退回 8bit。
+      const mkRT = (type) => new T.WebGLRenderTarget(sz.w, sz.h, {
         minFilter: T.LinearFilter,
         magFilter: T.LinearFilter,
-        type: T.UnsignedByteType,
+        type,
         depthBuffer: true,
       });
+      const gl = r.getContext();
+      const rtFull = (target) => {
+        try {
+          r.setRenderTarget(target);
+          const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+          r.setRenderTarget(null);
+          return ok;
+        } catch { return false; }
+      };
+      let rt = null;
+      for (const type of [T.HalfFloatType, T.UnsignedByteType]) {
+        const cand = mkRT(type);
+        if (rtFull(cand)) { rt = cand; break; }
+        cand.dispose();
+      }
+      if (!rt) rt = mkRT(T.UnsignedByteType);
       rt.depthTexture = new T.DepthTexture(sz.w, sz.h);
       rt.depthTexture.type = T.UnsignedIntType;
       rt.texture.colorSpace = T.NoColorSpace; // 保持线性：后处理阶段手动做 sRGB 编码
@@ -1992,6 +2048,7 @@ export class Renderer3D {
           uDither: { value: POST3D.dither },
           uContrast: { value: this._grade.contrast },
           uSaturation: { value: this._grade.saturation },
+          uExposure: { value: this._grade.exposure },
           uShadowTint: { value: new T.Vector3(tints.shadow[0], tints.shadow[1], tints.shadow[2]) },
           uHighlightTint: { value: new T.Vector3(tints.highlight[0], tints.highlight[1], tints.highlight[2]) },
           uSplitTone: { value: tints.amount },
@@ -2057,6 +2114,8 @@ export class Renderer3D {
     if (this._postMat) {
       this._postMat.uniforms.uContrast.value = g.contrast;
       this._postMat.uniforms.uSaturation.value = g.saturation;
+      // 曝光同时喂给后处理：开后处理时 three 的 toneMappingExposure 不生效（见 POST_FS 注释）
+      this._postMat.uniforms.uExposure.value = g.exposure;
     }
     return g;
   }

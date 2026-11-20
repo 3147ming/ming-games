@@ -2208,7 +2208,7 @@ export const PALETTE3D = {
   ceiling: '#343B35', // 天花板基色：明显暗于墙（#5C5F52）。原来与墙几乎同亮，
   // 抬头看分不出"有顶"还是"天空"——染红做 A/B 才确认顶一直在，只是配色读不出来。
   ceilingBeam: '#5C655A', // 结构横梁：略亮于天花板（原 #33392F 太暗，沿视线那根会投影成深色巨楔）
-  hemiSky: '#93C5FD',
+  hemiSky: '#A7BBD1', // 天光颜色：原来 #93C5FD 饱和度过高，主光一压过填充光，水平面就整片发蓝
   hemiGround: '#475569',
   dirLight: '#FFF7ED',
   ambient: '#3C4C66',
@@ -2276,15 +2276,22 @@ export const VIEW3D = {
   minPixelRatioFallback: 1, // 自适应降级第 3 级：帧率仍不足时把像素比压到 1
 
   // --- 光照与氛围 ---
-  fogDensityPerMeter: 0.012, // 设计文档的 FogExp2 密度（每米），换算到每单位见 scene3d
+  // 0.005/m：0.012 时 60m 外就被雾吃掉（192×144m 的图只剩眼前一团），
+  // 缩到 0.005 后 100m 仍能辨认轮廓 —— 大地图的"远"必须看得见才成立。
+  fogDensityPerMeter: 0.005,
   // #24 暗色光照小幅调优：夜战氛围不变，但暗部不再死黑、可读性更稳。
   // hemi 抬天光填充、ambient 抬阴影底色、dir 维持主光不变量；三值均小幅上调。
   // #P0-2（2026-10-31）夜战可见性：原暗部过黑导致 30m 外敌人/物资难辨。
   // ambient/hemi 大幅抬升（已接近并超过主光 dir 的 2.1），让天花板遮挡主光后的室内
   // 仍有充分填充光；仍保留夜战氛围（暗调、冷色环境光）。
-  hemiIntensity: 26, // #P0-2 夜战可见性：由 3.0 大幅抬升，室内天花板遮挡主光后仍有充分填充光（已标定：26 仍保留夜战氛围且不发灰）
-  dirIntensity: 2.1,
-  ambientIntensity: 17, // #P0-2 夜战可见性：由 2.0 大幅抬升（已标定：17/26 为"可导航又不发糊"的甜区）
+  // W5 光照重标定：填充光必须让位给主光。
+  // 旧值 ambient 17 / hemi 26 是"没有色调映射"那条链路下的夜战可读性补丁：环境光把所有面的
+  // 入射光拉平，N·L 失去意义，墙面、箱体、加强筋全变成同一亮度 —— 这才是"塑料玩具感"的根因。
+  // 现在 ACES 真正生效（曝光可调），暗部靠曝光而不是靠环境光托，方向性才回得来。
+  // 6/4/9 是 A/B 实测定档：广场 mean 0.278、死黑 5%，室内 mean 0.24、死黑 8.8%（夜战该有暗角）。
+  hemiIntensity: 3,
+  ambientIntensity: 2.2,
+  dirIntensity: 5.2, // 主光：唯一产生明暗与投影的光源，必须压过填充光
   dirLightOffset: { x: 620, y: 760, z: 420 }, // 平行光相对聚焦点的偏移（单位）
   shadowRadius: 32, // 阴影视锥半径（米）
   shadowNear: 1,
@@ -2313,7 +2320,7 @@ export const VIEW3D = {
   // --- 画面质量（色调映射 / 环境反射 / 气氛） ---
   // ACES 色调映射是"从能看变成能看"的关键一步：没有它，Standard 材质在强光下会直接
   // 过曝成一片死白，整体观感发灰发平。
-  toneMappingExposure: 1.7, // 色调映射曝光（>1 提亮，配合 ACES 使用；P0-2 由 1.12 提至 1.7 改善夜战暗部）
+  toneMappingExposure: 0.78, // ACES 曝光基准（与 GRADE3D.exposure 同口径，两条渲染路径必须一致）
   envIntensity: 0.85, // 程序化环境贴图强度（给 Standard 材质提供天光反射）
   envMapSize: 128, // 环境贴图（PMREM）分辨率，越大越细腻但生成越慢
   skyTop: '#26344A', // 天空渐变顶部（P0-2 提亮：夜空不再是死黑，env 贴图随之变亮）
@@ -2397,7 +2404,7 @@ export const VIEW3D = {
 
   // --- 关卡构建 ---
   level: {
-    wallColorJitter: 0.09, // 墙面明暗扰动幅度（走 rng 子流，保证同 seed 一致）
+    wallColorJitter: 0.14, // 墙面明暗扰动幅度（走 rng 子流，保证同 seed 一致）；0.09 时相邻建筑几乎同色
     crateColorJitter: 0.10,
     bushClusters: 3, // 每个灌木丛的团块数
     highlightPulseSpeed: 3.2, // 可交互高亮呼吸速度
@@ -2685,14 +2692,16 @@ export const SURFACE3D = {
  * 曝光 / 对比 / 饱和三值可在暂停面板调，经 `src/grade3d.js` 钳制后写入存档。
  */
 export const GRADE3D = {
-  exposure: VIEW3D.toneMappingExposure, // 1.7，沿用既有夜战可读性标定
+  exposure: 0.78, // ACES 下的夜战基准（1.0 = 中性；>1 偏白天）
   contrast: POST3D.contrast, // 单一来源：对比的真值仍在 POST3D，这里只是默认读口
   saturation: 0.88, // <1 = 低饱和；1 = 不改色
   splitTone: 0.45, // P3-C3 色彩分级强度：暗部推向冷阴影色、亮部推向暖高光色（保亮度只改色相）
   shadowTint: '#6E93BE', // 冷蓝阴影色（后处理 split-tone 的暗部读口）
   highlightTint: '#FFD9A6', // 暖琥珀高光色（后处理 split-tone 的亮部读口，呼应 C1 暖白灯）
   ranges: {
-    exposure: { min: 1.10, max: 2.20, step: 0.05 },
+    // ACES 上线后曝光才真正生效（旧区间是给"没有色调映射"那条链路定的，
+    // 1.10 的下限在 ACES 下等于把整帧乘 1.8，怎么调都是过曝）。
+    exposure: { min: 0.35, max: 1.60, step: 0.05 },
     contrast: { min: 0.80, max: 1.15, step: 0.01 },
     saturation: { min: 0.60, max: 1.10, step: 0.02 },
   },

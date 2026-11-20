@@ -39,7 +39,15 @@ export function clampGrade(input) {
  */
 export function resolveGrade(save) {
   const raw = save && save.settings && save.settings.grade;
-  return clampGrade({ ...defaultGrade(), ...(raw && typeof raw === 'object' ? raw : {}) });
+  const merged = { ...defaultGrade(), ...(raw && typeof raw === 'object' ? raw : {}) };
+  // 迁移：ACES 上线前的曝光刻度是 1.10~2.20（那条链路根本没有色调映射，只能靠曝光硬提亮）。
+  // 旧档里存着 1.7 很常见，直接钳到新上限 1.6 会让老玩家一进游戏就是过曝的白天。
+  // 判定用"超出当前上限"而不是"等于旧默认值"：只有真的越界才说明刻度不同。
+  const e = Number(merged.exposure);
+  if (Number.isFinite(e) && e > GRADE3D.ranges.exposure.max) {
+    merged.exposure = GRADE3D.exposure;
+  }
+  return clampGrade(merged);
 }
 
 /** '#RRGGBB' → [r,g,b]（0..1）。坏值 / 非字符串回落中性白，保证纯函数可测、不抛异常 */
