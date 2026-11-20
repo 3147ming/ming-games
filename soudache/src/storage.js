@@ -4,7 +4,8 @@
 
 import {
   ITEMS, START_CURRENCY, PLAYER, BAILOUT, REP, GRADE3D, WEAPONS, CAREER, HUB, AMMO_IDS,
-} from './config.js';import { defaultUpgrades, normalizeUpgrades } from './upgrades.js';
+} from './config.js';
+import { defaultUpgrades, normalizeUpgrades } from './upgrades.js';
 import { normalizeLoadoutAmmo, loadoutAmmoBoxes, setAmmoBoxes, ammoBoxSize } from './ammo.js';
 import {
   createInventory, createItem, autoPlace, countById, serializeInventory, deserializeInventory,

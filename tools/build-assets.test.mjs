@@ -23,7 +23,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { buildAssetLayer } from './build-assets.mjs';
 
-const ROOT = 'D:/Projects/_github_pages/ming-games';
+const ROOT = process.cwd();
 const TOOLS = path.join(ROOT, 'tools');
 const GAMES = [
   { id: 'night-shift', src: path.join(ROOT, 'night-shift') },
@@ -288,7 +288,7 @@ async function main() {
 
     // 用 Request 风格对象 + 绝对 file:// URL（还原 FileLoader 的真实入参）
     const fakeRequest = {
-      url: 'file:///D:/Projects/_github_pages/ming-games/warehouse-strike/public/assets/models/weapon_arms.fbx',
+      url: 'file:///' + ROOT.replace(/\\/g,'/') + '/warehouse-strike/public/assets/models/weapon_arms.fbx',
       method: 'GET',
     };
     const res = await sandbox.window.fetch(fakeRequest);

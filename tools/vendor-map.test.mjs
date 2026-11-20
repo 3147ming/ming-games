@@ -14,7 +14,7 @@ import vm from 'node:vm';
 import { pathToFileURL } from 'node:url';
 import { threeToClassic, analyzeFeatures } from './vendor-map.mjs';
 
-const ROOT = 'D:/Projects/_github_pages/ming-games';
+const ROOT = process.cwd();
 const FILES = [
   `${ROOT}/soudache/vendor/three.module.js`,
   `${ROOT}/warehouse-strike/vendor/three/three.module.js`,
