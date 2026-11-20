@@ -8,7 +8,7 @@ import {
 } from './config.js';
 import { loadoutAmmoBoxes } from './ammo.js';
 import {
-  moveWithCollision, hasLineOfSight, elevationAt, isSolidAt, circleHitsSolid, cellAt,
+  moveWithCollision, hasLineOfSight, elevationAt, isSolidAt, circleHitsSolid, cellAt, ceilingHeightAt,
 } from './mapgen.js';
 import {
   createInventory, createItem, autoPlace, totalWeight, totalValue,
@@ -764,6 +764,21 @@ export class Player {
     if (this.airborne) {
       this.jumpVy -= JUMP.gravity * dt;
       this.jumpZ += this.jumpVy * dt;
+      // 撞头：室内把视线夹在楼板下方（留 15cm 给头顶），顶到就立刻开始下落。
+      // 这条不是为了"手感"，而是为了让 4.2m 层高下的跳跃不会穿出屋顶 ——
+      // 尤其是站在 1.25m 架高平台上跳的时候。
+      const ceil = ceilingHeightAt(world.map, this.x, this.y);
+      if (Number.isFinite(ceil)) {
+        // 减去平台高程：站在 1.25m 架高平台上时，可用跳跃空间本来就更少。
+        const cap = Math.max(0, ceil - (this.elevation || 0) - VIEW3D.eyeStand - 0.15);
+        if (this.jumpZ > cap) {
+          this.jumpZ = cap;
+          if (this.jumpVy > 0) {
+            this.jumpVy = 0;
+            world.emitNoise(this.x, this.y, JUMP.landNoise * 0.4, 'player');
+          }
+        }
+      }
       if (this.jumpZ <= 0) {
         this.jumpZ = 0;
         this.jumpVy = 0;

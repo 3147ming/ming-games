@@ -144,6 +144,15 @@ export function buildAreaPlan(map) {
     };
   });
 
+  // 兜底：整张图一个 HIGH 都没有时，把面积最大的分区提为 HIGH。
+  // 为什么会没有：距离/面积归一化后被"撤离缓冲区"降级（新图 3 个出口 + 更大半径，
+  // 覆盖率显著上升），于是热点直接消失 —— 而热点是物资与交火的核心，不能因为地图变大就没了。
+  if (!areas.some((a) => a.tier === TIER.HIGH) && areas.length) {
+    const top = areas.slice().sort((a, b) => b.area - a.area)[0];
+    top.tier = TIER.HIGH;
+    top.label = TIER_LABEL[TIER.HIGH];
+  }
+
   // 3) 热点：内环里面积最大的一间做主热点，其余高分房间取两个次热点。
   //    主热点必须至少有 3 条进入路径（由房间连通性保证，见 mapgen 的 corridorWidth / loopCorridors）。
   const ranked = areas.slice().sort((a, b) => {

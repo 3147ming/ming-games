@@ -12,7 +12,7 @@
 
 import * as THREE from '../vendor/three.module.js';
 import {
-  VIEW3D, PALETTE3D, LIGHT_ZONES, MATCH, CONTAINERS, RNG_SALT_3D, WORLD_W, WORLD_H,
+  VIEW3D, PALETTE3D, LIGHT_ZONES, MATCH, CONTAINERS, RNG_SALT_3D, TILE,
 } from './config.js';
 import { lampSites } from './grade3d.js';
 import {
@@ -216,29 +216,48 @@ export function buildLevel(scene, map, rng, quality = 'high') {
   group.add(solids);
   disposables.push(solidsGeo, solidsMat);
 
-  /* ---------------- 天花板 + 结构横梁（封闭空间 P2 增强） ----------------
-   * 设计文档原定"本轮不做整体天花板"，列为 P2。本次补做：
-   * - 单个水平面覆盖整张地图（1 个 draw call），DoubleSide 使玩家从下可见，
-   *   castShadow=false 以免平行光被挡、地面整体变暗；
-   * - 略高于墙顶（ceilingGap）避免与墙顶共面 z-fighting；
-   * - 结构横梁沿 X / Z 按间距排布，合并为单网格（1 个 draw call），不投影阴影；
-   * - 天花板与横梁均带轻微自发光，保证从下方观看不会发黑。
+  /* ---------------- 天花板 + 结构横梁（按建筑分栋覆盖） ----------------
+   * ★ 不再是一整片盖住全图的顶：那会把"室外大地图"变成"更大的室内迷宫"。
+   * 现在按 map.rooms 里 `indoor !== false` 的分区逐栋盖板，露天广场与街巷抬头就是天空，
+   * 于是同一张图里有了"建筑内 CQB"和"街巷对枪"两种交火距离。
+   *
+   * 做法要点：
+   * - 每栋用 BoxGeometry（不是 Plane）：薄楼板有厚度，从街上斜看屋顶不是一张纸；
+   * - 全部合并成**一个** geometry，仍然 1 个 draw call，扩图不会增加批次；
+   * - 板面比房间外扩半格多一点，盖住墙顶缝，避免从室内看到一线天；
+   * - castShadow=false：屋顶挡主光会让室内全黑，室内亮度仍由 ambient/hemi 与暖白灯分区负责。
    */
 
   const ceilGap = u(VIEW3D.level.ceilingGap);
   const ceilY = u(VIEW3D.wallHeight) + ceilGap;
+  const slabThick = u(0.18);
+  // 板面必须盖住整圈墙顶（房间是从叶子里内缩 1 格挖出来的，墙厚正好 1 格）。
+  // 之前只外扩 0.35m，街上一抬头就是"墙顶与楼板之间的一条缝"，能看到天空。
+  const slabPad = TILE * 1.02;
+  const indoorRooms = (map.rooms || []).filter((r) => r.indoor !== false);
 
-  const ceilGeo = new THREE.PlaneGeometry(WORLD_W, WORLD_H);
-  ceilGeo.rotateX(-Math.PI / 2);
-  ceilGeo.translate(WORLD_W / 2, ceilY, WORLD_H / 2);
-  ceilGeo.computeBoundingBox();
-  ceilGeo.computeBoundingSphere();
   const ceilColor = new THREE.Color(PALETTE3D.ceiling);
   const ceilMat = new THREE.MeshLambertMaterial({
     color: ceilColor,
     side: THREE.DoubleSide,
     emissive: ceilColor.clone().multiplyScalar(VIEW3D.level.ceilingEmissive),
   });
+
+  const slabBoxes = [];
+  for (const room of indoorRooms) {
+    const w = room.w + slabPad * 2;
+    const h = room.h + slabPad * 2;
+    slabBoxes.push(new THREE.BoxGeometry(w, slabThick, h)
+      .translate(room.x + room.w / 2, ceilY - slabThick / 2, room.y + room.h / 2));
+  }
+  const ceilGeo = slabBoxes.length
+    ? mergeGeometries(slabBoxes)
+    // 极端情况（整张图没有一栋室内建筑）：给一个零面积的退化几何，保持 scene 里
+    // 始终有 ceiling 这个对象，探针/测试不需要写"可能不存在"的分支。
+    : new THREE.BufferGeometry();
+  for (const b of slabBoxes) b.dispose();
+  ceilGeo.computeBoundingBox();
+  ceilGeo.computeBoundingSphere();
   const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
   ceiling.castShadow = false;
   ceiling.receiveShadow = false;
@@ -251,15 +270,18 @@ export function buildLevel(scene, map, rng, quality = 'high') {
   const beamY = ceilY - beamH / 2 - u(0.02);
   const beamSpacing = u(VIEW3D.level.ceilingBeamSpacing);
   const beamBoxes = [];
-  for (let z = beamSpacing; z < WORLD_H; z += beamSpacing) {
-    beamBoxes.push(new THREE.BoxGeometry(WORLD_W, beamH, beamW).translate(WORLD_W / 2, beamY, z));
+  for (const room of indoorRooms) {
+    for (let z = room.y + beamSpacing; z < room.y + room.h; z += beamSpacing) {
+      beamBoxes.push(new THREE.BoxGeometry(room.w, beamH, beamW)
+        .translate(room.x + room.w / 2, beamY, z));
+    }
+    for (let x = room.x + beamSpacing; x < room.x + room.w; x += beamSpacing) {
+      beamBoxes.push(new THREE.BoxGeometry(beamW, beamH, room.h)
+        .translate(x, beamY, room.y + room.h / 2));
+    }
   }
-  for (let x = beamSpacing; x < WORLD_W; x += beamSpacing) {
-    beamBoxes.push(new THREE.BoxGeometry(beamW, beamH, WORLD_H).translate(x, beamY, WORLD_H / 2));
-  }
-  const beamGeo = mergeGeometries(beamBoxes);
-  // 合并后的几何体不会自动计算包围盒，显式计算以便正确进行视锥剔除，
-  // 也供需要 boundingBox 的校验逻辑使用。
+  const beamGeo = beamBoxes.length ? mergeGeometries(beamBoxes) : new THREE.BufferGeometry();
+  // 合并后的几何体不会自动计算包围盒，显式计算以便正确进行视锥剔除。
   beamGeo.computeBoundingBox();
   beamGeo.computeBoundingSphere();
   for (const b of beamBoxes) b.dispose();
@@ -267,8 +289,7 @@ export function buildLevel(scene, map, rng, quality = 'high') {
   const beamMat = new THREE.MeshLambertMaterial({
     color: beamColor,
     emissive: beamColor.clone().multiplyScalar(VIEW3D.level.ceilingEmissive),
-    // 横梁是贯穿全图的长条：沿视线方向那一根在近处会投影成一整块深色斜楔，
-    // 正好压在准星上方（真浏览器逐对象隐藏诊断确认是 ceilingBeams）。
+    // 横梁是长条：沿视线方向那一根在近处会投影成一整块深色斜楔，正好压在准星上方。
     // 改成半透明浅色结构线：保留工业感，但不再是一块实心遮挡。
     transparent: true,
     opacity: 0.42,
@@ -820,6 +841,7 @@ export function buildLevel(scene, map, rng, quality = 'high') {
     ground,
     solids,
     ceiling,
+    ceilingRooms: indoorRooms,
     beams,
     lampSites: lampPoints,
     lampLights,

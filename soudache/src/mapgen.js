@@ -7,7 +7,7 @@
  */
 
 import {
-  TILE, WORLD_W, WORLD_H, CELL, MATCH, VIEW3D,
+  TILE, CELL, MATCH, VIEW3D,
   CONTAINERS, CONTAINER_SPAWN_WEIGHTS, POI, ENEMY_SPAWN_WEIGHTS, CRATE, VEHICLE,
   MAPS, DEFAULT_MAP_ID, POI_NAMES, HUD,
 } from './config.js';
@@ -48,6 +48,30 @@ export function cellAt(map, wx, wy) {
   const ty = Math.floor(wy / map.tile);
   if (tx < 0 || ty < 0 || tx >= map.cols || ty >= map.rows) return CELL.WALL;
   return map.grid[ty * map.cols + tx];
+}
+
+/**
+ * 该点上方是否有屋顶，有就返回层高（米）；露天返回 Infinity。
+ *
+ * 用途：跳跃/翻越时把离地高度夹在天花板以下。没有这条约束时，
+ * 站在架高平台（1.25m）上一跳，相机直接穿出楼板 —— 室内会看到"从屋顶里穿出去"的破面。
+ * 判定只读 map.rooms 的 indoor 标记，与渲染层盖顶用的是同一份数据，不会出现
+ * "看着有顶、撞不到"或"看着露天、却被夹住"的错位。
+ *
+ * @param {object} map 地图
+ * @param {number} x 世界 x
+ * @param {number} y 世界 y
+ * @returns {number} 层高（米）或 Infinity
+ */
+export function ceilingHeightAt(map, x, y) {
+  const rooms = map && map.rooms;
+  if (!rooms) return Infinity;
+  for (let i = 0; i < rooms.length; i += 1) {
+    const r = rooms[i];
+    if (r.indoor === false) continue;
+    if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return VIEW3D.wallHeight;
+  }
+  return Infinity;
 }
 
 /** 世界坐标 → 格索引 */
@@ -490,6 +514,32 @@ function carveRoom(grid, cols, rows, leaf, rng, fillMin = 0.62) {
     tx: x, ty: y, tw: w, th: h,
     x: x * TILE, y: y * TILE, w: w * TILE, h: h * TILE,
     cx: (x + w / 2) * TILE, cy: (y + h / 2) * TILE,
+    indoor: true,
+  };
+}
+
+/**
+ * 露天广场：把整个叶子挖空，**不留四周围墙**。
+ *
+ * 这是"大地图"和"大号室内迷宫"的分界线：BSP 只切分区，不切建筑；
+ * 被抽中做广场的叶子整块变成可行走地面，相邻广场会连成一片开阔地，
+ * 建筑只出现在剩下的叶子里 —— 于是有了"街区 / 货场 / 停车场"，
+ * 而不是"更大的走廊网"。渲染层按 `indoor:false` 决定不给它盖屋顶。
+ *
+ * @returns {object} 与 carveRoom 同构的 room 记录（indoor=false）
+ */
+function carvePlaza(grid, cols, rows, leaf) {
+  const x = leaf.x;
+  const y = leaf.y;
+  const w = leaf.w;
+  const h = leaf.h;
+  carveRect(grid, cols, rows, x, y, w, h);
+  return {
+    tx: x, ty: y, tw: w, th: h,
+    x: x * TILE, y: y * TILE, w: w * TILE, h: h * TILE,
+    cx: (x + w / 2) * TILE, cy: (y + h / 2) * TILE,
+    indoor: false,
+    plaza: true,
   };
 }
 
@@ -612,7 +662,20 @@ export function generateMap(seed, mapId, opts = {}) {
   const root = { x: 1, y: 1, w: cols - 2, h: rows - 2 };
   buildTree(root, rng, def.bspDepth, def.leafMin);
   const leaves = collectLeaves(root, []);
-  for (const leaf of leaves) leaf.room = carveRoom(grid, cols, rows, leaf, rng, def.roomFillMin);
+  // 抽签决定哪些叶子是"露天广场"（不盖顶、不留围墙）。抽签用独立子流，
+  // 不动主 rng 序列：改了 roomSkipChance 也不该让房间尺寸/容器位置跟着漂。
+  const plazaRng = rng.fork(0x9e3779b1);
+  for (const leaf of leaves) {
+    const skip = def.roomSkipChance || 0;
+    // 先取随机数再判尺寸：抽签顺序与叶子大小无关，改尺寸阈值不会让整图 rng 漂移。
+    const roll = plazaRng.chance(skip);
+    // 小叶子不做广场：屋顶要外扩盖住墙顶（约 1 格），太小的空地会被两侧屋檐挤成天窗，
+    // 既不像广场也不像院子，反而把"能看见天空"的面积浪费掉。
+    leaf.plaza = roll && skip > 0 && leaf.w >= 6 && leaf.h >= 5;
+    leaf.room = leaf.plaza
+      ? carvePlaza(grid, cols, rows, leaf)
+      : carveRoom(grid, cols, rows, leaf, rng, def.roomFillMin);
+  }
   connectTree(root, grid, cols, rows, rng, def.corridorWidth);
   // 只对窄图额外加环路：disconnected 的树状走廊在 1 格宽时太容易变成死胡同。
   if (def.loopCorridors > 0) {
@@ -628,7 +691,8 @@ export function generateMap(seed, mapId, opts = {}) {
     desc: def.desc,
     seed: seed >>> 0,
     cols, rows, tile: TILE,
-    width: WORLD_W, height: WORLD_H,
+    // 尺寸由 cols/rows 派生：换画面尺寸时不再需要同步改全局常量。
+    width: cols * TILE, height: rows * TILE,
     grid,
     rooms,
     crates: [],
@@ -646,9 +710,12 @@ export function generateMap(seed, mapId, opts = {}) {
 
   // 2) 房间内掩体箱（实心，值 2）
   for (const room of rooms) {
+    // 露天广场单独给上限：按房间那套（上限 3）会让几十米的空地只剩两个箱子，
+    // 室外对枪就成了"谁先跑谁死"的裸奔。货场/停车场本来该堆满集装箱。
+    const crateCap = room.plaza ? (def.plazaCrateMax || 8) : def.crateCountMax;
     const count = rng.int(
       def.crateCountMin,
-      Math.max(def.crateCountMin, Math.min(def.crateCountMax, Math.floor((room.tw * room.th) / def.crateAreaDiv))),
+      Math.max(def.crateCountMin, Math.min(crateCap, Math.floor((room.tw * room.th) / def.crateAreaDiv))),
     );
     for (let i = 0; i < count; i += 1) {
       const wTiles = rng.chance(def.crateWideChance) ? 1 : 2;
@@ -706,7 +773,13 @@ export function generateMap(seed, mapId, opts = {}) {
   const typeEntries = Object.entries(CONTAINER_SPAWN_WEIGHTS);
   let cid = 0;
   for (const room of rooms) {
-    const count = Math.max(1, Math.min(def.containerMax, Math.round((room.tw * room.th) / def.containerAreaDiv)));
+    // 房间有容器的概率（默认 1）。蜂窝式地图（管廊 49 个小隔间）如果不给这个折扣，
+    // 光容器就是 49 个写实木箱 ≈ 24 万三角形，直接把手机预算打穿。
+    const roomRate = def.containerRoomRate == null ? 1 : def.containerRoomRate;
+    const want = roomRate >= 1 || rng.chance(roomRate);
+    const count = want
+      ? Math.max(1, Math.min(def.containerMax, Math.round((room.tw * room.th) / def.containerAreaDiv)))
+      : 0;
     for (let i = 0; i < count; i += 1) {
       const type = rng.weighted(typeEntries);
       let placed = null;
@@ -730,7 +803,7 @@ export function generateMap(seed, mapId, opts = {}) {
   }
 
   // 6) 撤离点：优先靠近地图边缘且彼此分散的房间
-  const edgeScore = (room) => Math.min(room.cx, room.cy, WORLD_W - room.cx, WORLD_H - room.cy);
+  const edgeScore = (room) => Math.min(room.cx, room.cy, cols * TILE - room.cx, rows * TILE - room.cy);
   const candidates = rooms.slice().sort((a, b) => edgeScore(a) - edgeScore(b));
   const picked = [];
   for (const room of candidates) {
@@ -751,7 +824,14 @@ export function generateMap(seed, mapId, opts = {}) {
       if (isSolidAt(map, p.x, p.y)) continue;
       point = p;
     }
-    if (!point) point = { x: room.cx, y: room.cy };
+    // 兜底也不能直接落房间中心：房间是从叶子里内缩挖出来的，中心可能正好压在墙上
+    // （地图放大 + 填充率 0.62 后真的踩到了，撤离点插进实心格 = 那处出口永远撤不了）。
+    if (!point) {
+      const t = nearestWalkableTile(map, Math.floor(room.cx / TILE), Math.floor(room.cy / TILE));
+      point = t
+        ? { x: (t.tx + 0.5) * TILE, y: (t.ty + 0.5) * TILE }
+        : { x: room.cx, y: room.cy };
+    }
     map.extracts.push({
       id: i,
       name: names[i] || `撤离点 ${i + 1}`,
@@ -1141,12 +1221,15 @@ export function finalizeExtractLayout(map) {
   const switches = [];
   if (sw) {
     let placed = null;
-    // 8 个固定方向 × 4 个固定半径，零随机；优先近处，保证闸刀始终在撤离圈边缘外。
-    const radii = [2.8, 3.4, 4.0, 4.6].map((m) => m * EXTRACT_LAYOUT.switchRadius);
+    // 固定方向 × 固定半径，零随机；优先近处，保证闸刀始终在撤离圈边缘外。
+    // ⚠ 候选集必须够宽：地图放大后箱子/容器/终端密度上升，旧的 4 半径 × 8 方向
+    // 在 ridge 的某些种子上会全部被挡，于是兜底把闸刀塞进撤离圈（等于"拉闸点在撤离圈里"，
+    // 玩家一进圈就能顺手拉闸，博弈消失）。这里加到 7 半径 × 16 方向 = 112 个候选。
+    const radii = [2.8, 3.4, 4.0, 4.6, 5.4, 6.4, 7.6].map((m) => m * EXTRACT_LAYOUT.switchRadius);
     for (const r of radii) {
       if (placed) break;
-      for (let k = 0; k < 8 && !placed; k += 1) {
-        const ang = EXTRACT_LAYOUT.switchAngle + (k * Math.PI) / 4;
+      for (let k = 0; k < 16 && !placed; k += 1) {
+        const ang = EXTRACT_LAYOUT.switchAngle + (k * Math.PI) / 8;
         const x = Math.round(sw.x + Math.cos(ang) * r);
         const y = Math.round(sw.y + Math.sin(ang) * r);
         if (!reachable(x, y) || isSolidAt(map, x, y) || circleHitsSolid(map, x, y, 18)) continue;

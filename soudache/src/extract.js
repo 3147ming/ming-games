@@ -141,13 +141,17 @@ export function buildExtractPlan(map, opts = {}) {
     ex.channelTime = null;
     // M-03：拉闸提前解锁标记。缺省 false → 旧地图逐位不变。
     ex.unlockedEarly = false;
-    if (ex === anchor) continue;
+    ex.unlockedEarly = false;
     // 守点本身就是"高风险"，不再叠修饰 —— 否则一处出口同时限时+轻装，实际等于不存在。
+    // ⚠ 必须先于 anchor 判定：锚点是"list.find(STANDARD) || list[0]"，当地图没抽到
+    // standard 点时锚点会落到 guarded 上，旧顺序会让这个守点拿 NONE + highRisk=false，
+    // 于是"守点必须是高危"这条契约当场破掉（大地图种子下真的踩到了）。
     if (ex.kind === EXTRACT_KIND.GUARDED) {
       ex.modifier = EXTRACT_MOD.HIGH_RISK;
       ex.highRisk = true;
       continue;
     }
+    if (ex === anchor) continue;
     const pick = pool[Math.floor(hashExtract(ex.x, ex.y, 5) * pool.length) % pool.length];
     ex.modifier = pick;
     if (pick === EXTRACT_MOD.TEMP) {
@@ -161,10 +165,13 @@ export function buildExtractPlan(map, opts = {}) {
   }
 
   // 3) 兜底：若所有非锚点出口都被挂上 hard 条件，撤销其中一个，保证"总有一条硬路"。
+  //    ⚠ 放松范围必须排除守点：守点的 HIGH_RISK 是它的身份（守卫小队就在那儿），
+  //    把它改成 NONE 会造出"有守卫但界面显示无风险"的假出口（大地图种子下真的踩到）。
   const others = list.filter((e) => e !== anchor);
   const openable = others.filter((e) => e.modifier === EXTRACT_MOD.NONE || e.modifier === EXTRACT_MOD.TEMP);
-  if (others.length && !openable.length) {
-    const relax = others.find((e) => e.modifier === EXTRACT_MOD.CONDITIONAL) || others[0];
+  const relaxable = others.filter((e) => e.kind !== EXTRACT_KIND.GUARDED);
+  if (others.length && !openable.length && relaxable.length) {
+    const relax = relaxable.find((e) => e.modifier === EXTRACT_MOD.CONDITIONAL) || relaxable[0];
     relax.modifier = EXTRACT_MOD.NONE;
     relax.require = null;
     relax.weightCap = 0;

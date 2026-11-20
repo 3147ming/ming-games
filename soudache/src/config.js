@@ -8,10 +8,20 @@
 /* ============================== 地图 ============================== */
 
 export const TILE = 40;
-export const MAP_COLS = 60;
-export const MAP_ROWS = 45;
-export const WORLD_W = TILE * MAP_COLS; // 2400
-export const WORLD_H = TILE * MAP_ROWS; // 1800
+/**
+ * 世界尺寸。TILE=2m，所以 96×72 格 = **192m × 144m**（旧值 60×45 = 120×90m）。
+ *
+ * 为什么是 1.6 倍边长而不是一步到"三角洲那味"的 500m 见方：
+ * - 单局 8 分钟，按 6.2 m/s 的战术移动速度，横穿 192m 要 31 秒，斜穿 45 秒 ——
+ *   再大就变成"全程在跑路、遇不到人"，8 分钟的局撑不起 500m 的地图；
+ * - 渲染与寻路都是**整图一次性**建好（合并几何 + 全图流场），没有分区流式加载，
+ *   面积再翻倍会让显存/首帧/AI 遍历同时越预算。
+ * 真要上 500m，前置条件是"分区分块加载 + 地形高度场"，那是 W4 之后的事。
+ */
+export const MAP_COLS = 96;
+export const MAP_ROWS = 72;
+export const WORLD_W = TILE * MAP_COLS; // 3840（192m）
+export const WORLD_H = TILE * MAP_ROWS; // 2880（144m）
 
 /** 网格取值：0=地面, 1=墙体, 2=掩体箱 */
 export const CELL = { FLOOR: 0, WALL: 1, CRATE: 2 };
@@ -37,18 +47,21 @@ export const MATCH = {
   extractRadius: 64,
   interactRange: 56,
   itemPickupRange: 38, // 地面掉落物的拾取距离（比容器/终端更近，避免误触）
-  enemyCountMin: 8,
-  enemyCountMax: 11,
+  // 面积从 120×90m 扩到 192×144m（2.56 倍）后，敌人数量同步上调，
+  // 否则"跑一分钟遇不到一个人"就成了空旷散步。密度仍低于旧图（旧图 8/10800m²，新图 13/27648m²），
+  // 因为大地图要靠距离制造"要不要开这一枪"的取舍。
+  enemyCountMin: 13,
+  enemyCountMax: 17,
   eliteChance: 0.26,
   // --- POI 目标点 ---
-  terminalCount: 3, // 每局数据终端数量（破解给评分 + 情报费）
+  terminalCount: 4, // 每局数据终端数量（破解给评分 + 情报费）；地图翻 2.5 倍后多给一个目标
   terminalHackTime: 3.5, // 破解读条秒数
   airdropDelay: 95, // 开局多少秒后空投着陆
   // --- 撤离点机制 ---
   extractFee: 800, // 付费撤离点手续费
   guardLeash: 150, // 守点敌人离撤离点超过该距离会被拉回
   contractCount: 3, // 每局随机抽取的局内合约条数
-  platformCount: 3, // 每局架高平台数量上限（占高地：抬高视点 + 越过掩体观察）
+  platformCount: 4, // 每局架高平台数量上限（占高地：抬高视点 + 越过掩体观察）
 };
 
 /* ============================== 地图定义 ============================== */
@@ -81,9 +94,12 @@ export const MAPS = {
     cols: MAP_COLS,
     rows: MAP_ROWS,
     // --- 房间切分 ---
-    bspDepth: 4, // 4 层切分 ≈ 12~15 个房间，单间够大，形成长枪线
-    leafMin: 9, // 叶子最小 9 格：保证房间有 5 格以上的净宽
+    bspDepth: 5, // 96×72 的图深 5 层 ≈ 22~28 个分区，单区仍有 12×9 格
+    leafMin: 10, // 叶子最小 10 格：保证房间有 6 格以上的净宽
     roomFillMin: 0.62, // 房间至少占叶子的 62%：大房间、墙少，视野通透
+    // 露天广场比例：库区要有"货场/停车场"这种一眼望穿的空地，
+    // 否则扩图只是把室内迷宫做大，仍然是室内战。
+    roomSkipChance: 0.3,
     corridorWidth: 2, // 2 格宽走廊：双向都能绕，交火有回旋余地
     loopCorridors: 0, // 开阔图不额外加环路：绕后靠房间本身的空间
     // --- 掩体 / 植被 ---
@@ -92,12 +108,16 @@ export const MAPS = {
     crateAreaDiv: 12,
     crateWideChance: 0.5, // 一半是 2 格宽的箱子：更耐打、能当半身掩体
     crateTallChance: 0.7,
+    plazaCrateMax: 12, // 露天货场：集装箱越多，室外转移越有掩护
     bushMax: 2, // 库区角落的杂草：贴边潜行的选择
     // --- 物资 ---
-    containerAreaDiv: 13, // 每 13 格面积约 1 个容器（原值）
-    containerMax: 3,
+    // 每 20 格面积约 1 个容器。地图翻 2.56 倍后按旧密度会堆到 80+ 个，
+    // 单是容器 GLB 就把三角形顶到 226k（预算 160k），而且 8 分钟根本搜不完 —— 密度降回来反而每个箱子更值钱。
+    containerAreaDiv: 90, // 房间平均 ~79 格 → 每房 1 个：写实木箱 6576 面/个，密了就是拿三角形换后悔
+    containerRoomRate: 1,
+    containerMax: 2,
     // --- 撤离 / 出生 ---
-    extractSpread: 430, // 两个撤离点至少隔 430：别让"选哪个出口"失去意义
+    extractSpread: 720, // 新图边长 1.6 倍，出口间距同步拉开，"选哪个口"才有意义
     spawnMinExtractDist: 0, // 旧图不额外推远出生点
     // --- 立体 / 机动 ---
     platformCount: MATCH.platformCount, // 3 处架高平台：高地视野是本图的核心博弈
@@ -114,9 +134,12 @@ export const MAPS = {
     cols: MAP_COLS,
     rows: MAP_ROWS,
     // --- 房间切分 ---
-    bspDepth: 5, // 更深一层 → 房间数量约为旧图两倍，形成"蜂窝"式小隔间
+    bspDepth: 6, // 更深两层 → "蜂窝"式小隔间，密度全图最高
     leafMin: 7, // 叶子最小 7 格：房间 3~8 格，刚好够一场近身遭遇
     roomFillMin: 0.72, // 小房间填得更满：把空间挤给走廊，逼出"门框对枪"
+    // 地下管廊刻意几乎不留露天（0.04）：三张图必须有"室内战"的那一张，
+    // 否则差异化没了 —— 想打 CQB 的人应该能选到这张。
+    roomSkipChance: 0.04,
     corridorWidth: 1, // 1 格宽：只能单列通过，无法并肩，烟/雷/卡点价值陡增
     loopCorridors: 10, // 额外 10 条环路：窄图最怕死胡同，多出口才敢往里走
     // --- 掩体 / 植被 ---
@@ -125,13 +148,15 @@ export const MAPS = {
     crateAreaDiv: 8, // 每 8 格就尝试 1 个箱子（旧图是 12）
     crateWideChance: 0.3, // 以 1×1 立柱为主：窄空间里大箱子会把路堵死
     crateTallChance: 0.35,
+    plazaCrateMax: 4, // 管廊几乎没有露天区，给个保底值
     bushMax: 0, // 地下管廊没有植被：隐蔽只靠墙角和箱子
     // --- 物资 ---
-    containerAreaDiv: 11, // 每 11 格约 1 个容器（旧图 13），单间上限 3：总量约旧图 1.6 倍
-    containerMax: 3,
+    containerAreaDiv: 60, // 小隔间面积小，用每间 1 个会变 49 个；靠下面的比例折扣降下来
+    containerRoomRate: 0.85, // 85% 的隔间有容器：仍是三张图里最密的 // 每 16 格约 1 个容器：仍是三张图里最密的，但不再撑爆三角形预算
+    containerMax: 2,
     // --- 撤离 / 出生 ---
-    extractSpread: 560, // 两个出口拉得更开：不要出现"顺手就能撤"的局
-    spawnMinExtractDist: 850, // 出生点优先选离最近出口 ≥850（约 21 格）的房：收益要背回去
+    extractSpread: 940, // 两个出口拉得更开：不要出现"顺手就能撤"的局
+    spawnMinExtractDist: 1400, // 出生点优先选离最近出口 ≥1400（约 35 格）的房：收益要背回去
     // --- 立体 / 机动 ---
     platformCount: 1, // 只留一处检修高台：立体优势稀薄，主要博弈在地面拐角
     vehicles: false, // 管廊开不进车：撤离只能靠腿，进一步放大"满载后长距离转移"的风险
@@ -155,9 +180,11 @@ export const MAPS = {
     cols: MAP_COLS,
     rows: MAP_ROWS,
     // --- 房间切分 ---
-    bspDepth: 4, // 中等房间数（介于库区与管廊之间）
-    leafMin: 8,
+    bspDepth: 5, // 中等房间数（介于库区与管廊之间）
+    leafMin: 9,
     roomFillMin: 0.6, // 较开阔、视线长
+    // 观测站是室外为主的一张图：露天比例最高，建筑只是散落的观测点
+    roomSkipChance: 0.36,
     corridorWidth: 2,
     loopCorridors: 5, // 中等环路，保证立体机动有回旋余地
     // --- 掩体 / 植被 ---
@@ -166,15 +193,16 @@ export const MAPS = {
     crateAreaDiv: 11,
     crateWideChance: 0.4, // 以立柱为主，但比管廊多点宽箱当半身掩体
     crateTallChance: 0.6,
+    plazaCrateMax: 9, // 观测站外场：碎石堆与货箱
     bushMax: 4, // 山地碎石与灌木：贴边潜行的选择
     // --- 物资 ---
-    containerAreaDiv: 12,
-    containerMax: 3,
+    containerAreaDiv: 70,
+    containerMax: 2,
     // --- 撤离 / 出生 ---
-    extractSpread: 500, // 两个出口适中距离
-    spawnMinExtractDist: 400, // 出生点略推离出口，但不像管廊那么极端
+    extractSpread: 820, // 两个出口适中距离
+    spawnMinExtractDist: 640, // 出生点略推离出口，但不像管廊那么极端
     // --- 立体 / 机动 ---
-    platformCount: 6, // 立体重点：平台最多，高低差是本图核心博弈
+    platformCount: 9, // 立体重点：面积翻 2.5 倍，平台数等比跟上
     vehicles: true, // 室外开阔，可以开车
     // --- 敌人（与既有图同区间：不靠改数值做难度）---
     enemyCountMin: MATCH.enemyCountMin,
@@ -191,9 +219,11 @@ export const PLAYER = {
   radius: 12,
   maxHp: 100,
   maxStamina: 100,
-  speed: 196,
-  sprintMul: 1.5,
-  crouchMul: 0.55,
+  // 移速按米制标定（1 m = metersToUnits = 20 单位）：124 = 6.2 m/s 战术移动。
+  // 旧值 196（9.8 m/s）比博尔特还快，跑起来像"飞"，压枪/停步全靠反应而不是走位。
+  speed: 124,
+  sprintMul: 1.45, // 冲刺 180 = 9.0 m/s，仍是全场最快（最快的猎犬 168），逃生契约不变
+  crouchMul: 0.5, // 蹲行 62 = 3.1 m/s
   staminaSprintDrain: 24,
   staminaRegen: 18,
   staminaRegenDelay: 0.8,
@@ -2175,7 +2205,8 @@ export const PALETTE3D = {
   sky: '#1A2430',
   fog: '#33465C', // P0-2 提亮雾色：远处不再被压成死黑（与提亮后的天空协调）
   dust: '#C9D6E4', // 空气尘埃颜色
-  ceiling: '#4A524A', // 天花板基色（略亮于墙，配合自发光避免从下看发黑）
+  ceiling: '#343B35', // 天花板基色：明显暗于墙（#5C5F52）。原来与墙几乎同亮，
+  // 抬头看分不出"有顶"还是"天空"——染红做 A/B 才确认顶一直在，只是配色读不出来。
   ceilingBeam: '#5C655A', // 结构横梁：略亮于天花板（原 #33392F 太暗，沿视线那根会投影成深色巨楔）
   hemiSky: '#93C5FD',
   hemiGround: '#475569',
@@ -2206,10 +2237,10 @@ export const PALETTE3D = {
  * ⚠ 单位说明（对设计文档的一处必要校正，见 docs/design-3d-fps.md 3.6）：
  * 设计文档给出的高度（眼高 1.65 / 墙高 3.2 / 容器 0.8~1.2）是**米**，
  * 而 XZ 平面沿用的是逻辑单位（tile=40、玩家碰撞半径 12、敌人半径 11）。
- * 若按字面把 3.2 当作 3.2 个场景单位，墙会比敌人的碰撞直径（22 单位）还矮，场景完全不成立。
+ * 若按字面把 4.2 当作 4.2 个场景单位，墙会比敌人的碰撞直径（22 单位）还矮，场景完全不成立。
  * 因此统一引入换算：1 米 = metersToUnits 个逻辑单位。
  * 该系数由既有逻辑数值反推：玩家碰撞半径 12 单位 ≈ 0.6 m ⇒ 1 m = 20 单位。
- * 换算后：tile=2m、地图=120×90m、墙高=3.2m、眼高=1.65m —— 与 2D 版的手感完全一致。
+ * 换算后：tile=2m、地图=192×144m、墙高=4.2m、眼高=1.65m —— 与 2D 版的手感完全一致。
  * 逻辑坐标与全部纯逻辑模块**不受影响**。
  */
 export const VIEW3D = {
@@ -2217,7 +2248,9 @@ export const VIEW3D = {
   metersToUnits: 20,
 
   // --- 高度与尺寸（单位：米，使用时 × metersToUnits） ---
-  wallHeight: 3.2, // 墙体高度
+  // 层高：旧值 3.2m 是"住宅层高"，放在仓库/厂房里显得压抑，跳一下头顶就快贴板了。
+  // 4.2m 是轻工业厂房/物流仓的实际层高，跳跃（0.45m）+ 站上平台（1.25m）都还有余量。
+  wallHeight: 4.2,
   crateHeight: 1.5, // 掩体箱高度
   platformHeight: 1.25, // 架高平台高度（米）：站上去抬高视点，并能越过掩体箱观察
   extractBeamHeight: 22, // 撤离点光柱高度
