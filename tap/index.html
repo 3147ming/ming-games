@@ -20,7 +20,7 @@ body{background:radial-gradient(120% 80% at 50% -10%,#1d1236 0%,var(--bg) 64%);c
 .lane{position:absolute;top:0;bottom:0;width:25%;border-right:1px solid rgba(255,255,255,.06)}
 .lane:nth-child(4){border-right:none}
 .judge-line{position:absolute;left:0;right:0;bottom:58px;height:2px;background:linear-gradient(90deg,transparent,var(--ac),transparent);box-shadow:0 0 12px var(--ac)}
-.note{position:absolute;width:20%;height:20px;border-radius:6px;transform:translateX(-50%);pointer-events:none}
+.note{position:absolute;width:20%;height:20px;border-radius:6px;transform:translateX(-50%);pointer-events:none;display:flex;align-items:center;justify-content:center}.note svg{width:15px;height:15px;color:#fff;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
 .pad{position:absolute;bottom:0;left:0;right:0;height:58px;display:flex}
 .key{flex:1;border:none;border-right:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--dim);font:inherit;font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none}
 .key:last-child{border-right:none}.key.hit{background:rgba(255,255,255,.16);color:var(--paper)}
@@ -65,6 +65,7 @@ function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()
 function rng(seed){var x=seed>>>0||1;return function(){x^=x<<13;x^=x>>>17;x^=x<<5;return (x>>>0)/4294967296}}
 function seedFrom(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
 var stage=$('stage'),pad=$('pad'),notes=[],score=0,combo=0,maxCombo=0,running=false,raf=null,startT=0,daily=false;
+var NOTEICON="<svg viewBox='2.31 2.31 5.38 5.38' fill='currentColor' aria-hidden='true'><path d='M7 2.313a.5.5 0 0 1 .5.5v4a.875.875 0 0 1-.875.875h-.25a.875.875 0 1 1 0-1.75.125.125 0 0 0 .125-.125v-1.93c0-.254 0-.381-.072-.465l-.033-.034c-.084-.071-.211-.071-.465-.071h-.86c-.254 0-.38 0-.465.071l-.033.034c-.072.084-.072.21-.072.464v2.93a.875.875 0 0 1-.875.875h-.25a.875.875 0 1 1 0-1.75.125.125 0 0 0 .125-.125v-3a.5.5 0 0 1 .5-.5z'/></svg>";
 var COLORS=['#ff6b9d','#a89ae6','#4db8ff','#5cc08a'];
 var JUDGE_Y=()=>stage.clientHeight-58,SPEED=0.32; // px per ms
 function HUD(){$('score').textContent=score;$('combo').textContent=combo;$('comboBig').textContent=combo>1?combo:'';$('best').textContent=S.best}
@@ -79,7 +80,7 @@ function startChart(isDaily){
   // 清理旧音符
   Array.prototype.forEach.call(stage.querySelectorAll('.note'),function(n){n.remove()});
   notes.forEach(function(n){
-    var el=document.createElement('div');el.className='note';el.style.background=COLORS[n.lane];
+    var el=document.createElement('div');el.className='note';el.style.background=COLORS[n.lane];el.style.boxShadow='0 0 12px '+COLORS[n.lane];el.innerHTML=NOTEICON;
     el.style.left=(n.lane*25+12.5)+'%';stage.appendChild(el);n.el=el;
   });
   $('overlay').hidden=true;HUD();startT=performance.now();loop();
