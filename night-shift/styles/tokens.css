@@ -2031,7 +2031,7 @@ html, body {
 .set-enum .mini-btn.on { border-color: var(--info); box-shadow: inset 0 0 0 1px var(--info); }
 
 /* 窄于 900px：左下窄列改底部单行横向滚动，彻底离开中心 50% 视区。 */
-@media (max-width: 899px) {
+@media (max-width: 900px) {
   .toasts {
     top: auto;
     bottom: calc(46px + env(safe-area-inset-bottom));

@@ -82,6 +82,8 @@ import { ZONES, STORE, POND, POS, TASKBOARD, DELIVERY, GARBAGE, IDENTITIES } fro
 import { NPC, DAYNIGHT } from './art.mjs';
 /* 需求J：店员系统（采购员 / 上货员 + 维修员 / 保洁员）+ 仓库面板 API */
 import { createStaff } from './staff.mjs';
+/* 任务块 H-2：店员 3D 表现层（纯逻辑的 staff.mjs 在场景里没有实体，补这一层让"店员智能"可截图验证） */
+import { createStaffView } from './staff-view.mjs';
 /* 员工培训树：HUD 的培训详情与下单入口。AI/结算侧的消费分别在 staff.mjs / economy.mjs，
  * 这里只把"看"和"买"接到店员分页上（展示层不直接 import 培训规则数据）。 */
 import { snapshotFor as trainingSnapshotFor, train as trainStaffNode } from './training.mjs';
@@ -856,6 +858,10 @@ window.__NS_H__ = {
   fire: (id) => hEvents.start(id, state.wallElapsed),
   handle: (ok = true) => hEvents.handle(ok),
   store: hShiftStore,
+  /** 任务块 H-2：店员 3D 表现诊断（实体数 / 状态 / 气泡 / 路径），供 SwiftShader 截图验收 */
+  staffView: () => staffView.stats(),
+  /** 任务块 H-3：事件三段推进（warning→window→result），探针可直接 tick 到窗口期再 handle */
+  tickEvent: (sec = 5) => hEvents.tick(sec, state.wallElapsed),
 };
 
 const inventory = createInventory({ state });
@@ -921,6 +927,13 @@ const staff = createStaff({
         break;
     }
   },
+});
+
+/* 任务块 H-2：店员 3D 表现层实例。只读 staffApi / worldState，不改逻辑状态。 */
+const staffView = createStaffView({
+  scene: world.scene,
+  staffApi: () => staffApi().snapshot(),
+  worldState,
 });
 
 /** 店员管理分页 API（HUD 只读快照，执行动作后面板就地重绘） */
@@ -3263,6 +3276,8 @@ function step(now) {
   if (!state.paused && state.phase === 'running') updateClerk(state, dt, player);
   // 需求J：店员 AI（维修/清洁/采购/上货 + 薪资计时），与店员四状态互不干扰
   if (!state.paused && state.phase === 'running') staff.update(dt, { now: state.wallElapsed });
+  /* 任务块 H-2：店员 3D 表现（读快照驱动角色/气泡/路径，不写逻辑状态；暂停时仍渲染但不推进移动） */
+  if (typeof staffView?.update === 'function') staffView.update(state.paused ? 0 : dt);
   interaction.update();
   world.updateSlotVisual(state);
   world.updateHands(state);
