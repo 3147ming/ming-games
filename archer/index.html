@@ -98,6 +98,12 @@
   #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
     background:radial-gradient(120% 100% at 50% 0%,#241a44 0%,#0f0b1c 70%)}
   #cv{display:block;touch-action:none;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  /* 竖屏时画面只有中间一条，提示一下横屏（不强制、不挡操作） */
+  #rot-tip{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + var(--mg-safe-b));
+    display:none;padding:7px 16px;border-radius:999px;font-size:12px;letter-spacing:.06em;
+    color:rgba(255,255,255,.72);background:rgba(14,10,26,.72);border:1px solid rgba(255,255,255,.14);
+    pointer-events:none;z-index:13}
+  @media (orientation:portrait) and (max-width:640px){ #rot-tip{display:block} }
   #stage{--w:960px;--h:600px;--hp:268px}
   /* HUD 层必须钉在画布同一个矩形上：画布是 flex 居中的，而 .lay 若只有 display:block
      会落到页面左上角，HUD 就和画面错位（手机上直接压住主角） */
@@ -258,7 +264,9 @@
 </style>
 </head>
 <body>
-<div id="stage"><canvas id="cv" width="960" height="600"></canvas></div>
+<div id="stage"><canvas id="cv" width="960" height="600"></canvas>
+  <div id="rot-tip">↻ 横屏玩更爽</div>
+</div>
 
 <div id="joy-base"><div id="joy-knob"></div></div>
 
@@ -304,8 +312,11 @@
       <button class="mg-btn mg-btn--ghost" id="btn-record">纪录</button>
     </div>
     <p class="tips">
-      <b>拖动</b>舞台任意处瞄准，白色虚线为弹道预览，松手射箭 · <b>左下拖动</b>走位<br>
-      键盘：← → / A D 移动，空格射箭，Esc 暂停
+      <b>主角站桩不移动</b>，只靠瞄准和出手时机活下来。<br>
+      · <b>地面兵</b>会顺着地面逼近、蓄力后冲刺近战：脚下红色虚线就是它要冲的方向，
+        带盾的正面能弹开你的箭，打爆盾它会踉跄；<br>
+      · <b>空中兵</b>悬在你头顶前方，用弓箭吊射。<br>
+      <b>按住拖动</b>瞄准，金色准星指哪打哪，白色虚线是弹道预览，松手射箭 · 键盘空格射箭，Esc 暂停
     </p>
   </div>
 </div>
