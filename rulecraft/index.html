@@ -37,6 +37,20 @@ pre{background:#12101f;border:1px solid var(--line);border-radius:10px;padding:1
 .good{color:#8be0a8}.bad{color:#ff9c8f}.muted{color:var(--muted)}
 .vers{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 .vers button{min-height:36px;font-size:12px}
+.art-strip{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px;margin:8px 0}
+.art-strip figure{margin:0;background:#161329;border:1px solid var(--line);border-radius:9px;padding:5px;text-align:center}
+.art-strip canvas{width:100%;height:auto;display:block}
+.art-strip figcaption{font-size:10px;color:var(--muted);line-height:1.3;margin-top:3px}
+.rulepage{width:100%;height:280px;border:1px solid var(--line);border-radius:10px;background:#12101f}
+.play-panel{margin:10px 0;padding:10px;border:1px solid var(--line);border-radius:10px;background:#161329}
+.hand{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}
+.hand-card{min-width:38px;min-height:52px;padding:3px 5px;background:#f7f3ea;color:#1c1c28;border:2px solid transparent;border-radius:6px;font-weight:700;font-size:13px}
+.hand-card.red{color:#c62f3b}.hand-card.sel{border-color:var(--gold);box-shadow:0 0 0 2px #d9b66a55}
+.hand-card:disabled{min-height:52px}
+.check{display:flex;gap:7px;align-items:center;padding:5px 8px;margin:4px 0;border-radius:8px;background:#1c1830;font-size:13px}
+.check.pass{color:#8be0a8}.check.fail{color:#ff9c8f}.check.todo{color:var(--muted)}
+.check b{margin-left:auto;font-size:12px}
+@media(max-width:560px){.art-strip{grid-template-columns:repeat(4,minmax(0,1fr))}.rulepage{height:240px}}
 @media(pointer:coarse){button,select{min-height:48px}}
 @media(max-width:430px){h1{font-size:17px}.steps span{min-width:0;font-size:11px;padding:7px 3px}.panel{padding:12px}}
 </style>
@@ -65,7 +79,13 @@ pre{background:#12101f;border:1px solid var(--line);border-radius:10px;padding:1
   <div id="preview" hidden>
     <h2>生成结果</h2>
     <div class="grid" id="artGrid"></div>
+    <h2>美术参数实拍对照（8 张）</h2>
+    <p class="muted" style="font-size:12px;margin:0">棋类看棋子纹样，牌类看花色 / 点数 / 牌背；一眼认不出就回第 2 步改描述。</p>
+    <div class="art-strip" id="artCompare"></div>
     <div class="row" id="health"></div>
+    <h2>自动生成的规则页（由规则卡原样渲染）</h2>
+    <iframe class="rulepage" id="rulePage" title="自动生成的规则页"></iframe>
+    <div class="row"><button id="downloadPage">下载规则页 HTML</button><span class="muted" style="font-size:12px">规则页不含手抄内容，每次生成随规则卡同步刷新。</span></div>
     <details><summary>规则书 Markdown（可复制）</summary><pre id="book"></pre><button id="copyBook">复制规则书</button></details>
     <details><summary>RuleSet JSON</summary><pre id="json"></pre></details>
     <div class="row"><button class="primary" id="toStep3">下一步：试玩验收</button></div>
@@ -75,8 +95,22 @@ pre{background:#12101f;border:1px solid var(--line);border-radius:10px;padding:1
 <!-- 第 3 步 -->
 <section class="panel" id="step3" hidden>
   <h2>第 3 步 · 验收与迭代</h2>
-  <div class="row"><button class="primary" id="play5">AI 自对弈 5 局</button><span class="muted" id="playNote">每局显示步数与终局原因</span></div>
+  <div class="row">
+    <button class="primary" id="playHuman">试玩 3–5 手</button>
+    <button id="play20">跑 20 局自对弈</button>
+    <span class="muted" id="playNote">人机试玩看牌型 / 轮转 / 手牌数；自对弈抓卡死</span>
+  </div>
+  <div class="play-panel" id="humanPlay" hidden></div>
   <pre id="playLog">尚未试玩。</pre>
+  <h2>对照规则卡勾检（7 项）</h2>
+  <div id="checklist"></div>
+  <div class="row" id="rankInputs">
+    <span class="muted" style="font-size:12px">5 / 10 / K 点数待你定：</span>
+    <input type="number" id="rank5" placeholder="5=待定" style="width:92px;min-height:36px">
+    <input type="number" id="rank10" placeholder="10=待定" style="width:92px;min-height:36px">
+    <input type="number" id="rankK" placeholder="K=待定" style="width:92px;min-height:36px">
+    <button id="saveRanks">记下点数</button>
+  </div>
   <h2>提点改动</h2>
   <div class="chips" id="quickTags"></div>
   <textarea id="feedback" style="min-height:72px" placeholder="例如：棋盘太小，改 9×9；或者：先手太强"></textarea>
@@ -99,13 +133,16 @@ pre{background:#12101f;border:1px solid var(--line);border-radius:10px;padding:1
 import {
   TEMPLATE_TYPES, templateByType, parseDescription, answerQuestions, validateRuleSet,
   ruleBook, applyBookEdits, createEngine, healthCheck, encodeShort, decodeShort,
-  diffBooks, makeVersion, artParams,
+  diffBooks, makeVersion, artParams, CARD_PATTERN_SETS, CARD_PATTERN_DEFAULT,
+  CARD_Q_DEFS, pendingQuestions, artSamples, rulePageHtml, buildDeck,
+  identifyPattern, beatsPattern, rankLabel,
 } from '../shared/rule-engine.mjs';
 
 const $ = (id) => document.getElementById(id);
 const STORE = 'mg_rulecraft.v1';
 const ARTCACHE = 'mg_rulecraft.art.v1';
 let type = null, rs = null, currentQ = [], versions = [], curVersion = 0, baseRs = null, answered = {};
+let human = null, lastRun = null;
 
 function step(n) {
   for (let i = 1; i <= 3; i++) {
@@ -158,6 +195,35 @@ function artData(params) {
   return url;
 }
 
+/** 牌面渲染器：花色 / 点数 / 牌背三套绘制，与棋子渲染器彻底分开 */
+function cardArtData(spec) {
+  const cv = document.createElement('canvas'); cv.width = 180; cv.height = 252;
+  const c = cv.getContext('2d');
+  c.fillStyle = '#f7f3ea'; c.beginPath(); c.roundRect(3, 3, 174, 246, 12); c.fill();
+  c.strokeStyle = '#c8bfa8'; c.lineWidth = 2; c.stroke();
+  if (spec.kind === 'back') {
+    c.fillStyle = '#2a2340'; c.beginPath(); c.roundRect(11, 11, 158, 230, 9); c.fill();
+    c.strokeStyle = '#d9b66a66'; c.lineWidth = 2;
+    for (let i = -260; i < 260; i += 16) { c.beginPath(); c.moveTo(i, 0); c.lineTo(i + 252, 252); c.stroke(); }
+    c.strokeStyle = '#d9b66a'; c.lineWidth = 3; c.beginPath(); c.arc(90, 126, 34, 0, Math.PI * 2); c.stroke();
+    c.fillStyle = '#d9b66a'; c.font = 'bold 30px "Songti SC",serif';
+    c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('牌', 90, 126);
+    return cv.toDataURL('image/png');
+  }
+  const suit = { S: '♠', H: '♥', C: '♣', D: '♦', JOKER: '★' }[spec.suit] || '♠';
+  const color = { S: '#1c1c28', H: '#c62f3b', C: '#1c1c28', D: '#c62f3b', JOKER: '#c62f3b' }[spec.suit];
+  const label = spec.suit === 'JOKER' ? (spec.rank === 17 ? '大王' : '小王') : rankLabel(spec.rank);
+  c.fillStyle = color; c.textAlign = 'left'; c.textBaseline = 'top';
+  c.font = 'bold 26px "Songti SC",serif'; c.fillText(label, 14, 12);
+  c.font = '20px serif'; c.fillText(suit, 14, 40);
+  c.save(); c.translate(166, 240); c.rotate(Math.PI);
+  c.font = 'bold 26px "Songti SC",serif'; c.fillText(label, 0, 0); c.restore();
+  c.font = 'bold 86px serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(suit, 90, 122);
+  if (spec.suit === 'JOKER') { c.font = 'bold 20px "Songti SC",serif'; c.fillText(label, 90, 182); }
+  return cv.toDataURL('image/png');
+}
+const sampleArtData = (spec) => (spec.kind === 'piece' ? artData(spec) : cardArtData(spec));
+
 /* 第 1 步 */
 $('typeCards').innerHTML = TEMPLATE_TYPES.map((t) => {
   const n = templateByType(t.key).length;
@@ -168,6 +234,10 @@ $('typeCards').addEventListener('click', (e) => {
   if (!card) return;
   type = card.dataset.type;
   [...$('typeCards').children].forEach((c) => c.classList.toggle('sel', c === card));
+  const isCard = type === 'card' || type === 'mahjong' || type === 'custom';
+  $('desc').placeholder = isCard
+    ? '例如：三人斗地主，牌堆 108 张，每人 10 张，赢家补 6 张其余 3 张，洗回最多 3 次，先出完获胜，斗地主式牌型'
+    : '例如：7×7 棋盘，两人各放 9 子，走一步占掉对方的格子，三子连成一线赢，60 回合无吃子判和';
   $('toStep2').disabled = false;
 });
 $('toStep2').addEventListener('click', () => step(2));
@@ -209,7 +279,13 @@ function answer(key, option) {
   const list = Object.entries(answered).map(([k, v]) => ({ key: k, option: v }));
   rs = answerQuestions(baseRs || rs, list);
   rs.version = Object.keys(answered).length + 1;
-  currentQ = [];
+  currentQ = pendingQuestions(rs);
+  if (currentQ.length) {
+    $('askBox').innerHTML = `<div class="q">还差 ${currentQ.length} 项没问清，牌类参数不会自动填默认值。</div>`;
+    renderQuestions($('askBox'), currentQ);
+    $('preview').hidden = true;
+    return;
+  }
   $('askBox').innerHTML = '';
   showPreview();
 }
@@ -218,16 +294,34 @@ function showPreview() {
   const v = validateRuleSet(rs);
   $('preview').hidden = false;
   $('json').textContent = JSON.stringify(rs, null, 2);
-  $('book').textContent = ruleBook(rs);
+  const book = ruleBook(rs);
+  $('book').textContent = book;
+  const isCard = rs?.mode === 'card';
   $('artGrid').innerHTML = rs.pieces.map((p) => {
     const a = artParams(p, rs.type);
-    return `<div><img class="art" src="${artData(a)}" alt="${p.name}"><div style="text-align:center;font-size:12px">${p.name} · ${a.motif}</div></div>`;
+    const src = isCard ? cardArtData({ kind: 'card', suit: 'S', rank: 14 }) : artData(a);
+    return `<div><img class="art" src="${src}" alt="${p.name}"><div style="text-align:center;font-size:12px">${p.name} · ${a.renderer === 'piece' ? a.motif : '牌面渲染器'}</div></div>`;
   }).join('');
+  const samples = artSamples(rs);
+  $('artCompare').innerHTML = samples.map((s) =>
+    `<figure><canvas width="180" height="252"></canvas><figcaption>${s.label}</figcaption></figure>`).join('');
+  [...$('artCompare').querySelectorAll('canvas')].forEach((cv, i) => {
+    const img = new Image();
+    img.onload = () => cv.getContext('2d').drawImage(img, 0, 0, 180, 252);
+    img.src = sampleArtData(samples[i]);
+  });
+  const pageHtml = rulePageHtml(rs);
+  $('rulePage').srcdoc = pageHtml;
+  $('rulePage').dataset.html = pageHtml;
   const h = healthCheck(rs, 20);
+  lastRun = h;
   $('health').innerHTML = `<span class="tag ${v.ok ? 'good' : 'bad'}">${v.ok ? '规则自检通过' : '规则有缺口'}</span>`
+    + `<span class="tag">${isCard ? '牌类' : '棋类'} · v${rs.version || 1}</span>`
     + `<span class="tag">先手胜率 ${Math.round(h.firstRate * 100)}%</span>`
     + `<span class="tag">平均 ${h.avgSteps} 步</span>`
+    + (isCard ? `<span class="tag">卡死 ${h.stalled}/20 · 洗回 ${h.shuffles} 次</span>` : '')
     + h.notes.map((n) => `<span class="tag bad">${n}</span>`).join('');
+  if (isCard) renderChecklist();
   persist();
 }
 
@@ -249,7 +343,12 @@ $('copyBook').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText($('book').textContent); $('copyBook').textContent = '已复制'; }
   catch { $('copyBook').textContent = '请手动复制上方文本'; }
 });
-$('toStep3').addEventListener('click', () => { step(3); reloadVersions(); });
+$('downloadPage').addEventListener('click', () => {
+  const blob = new Blob([$('rulePage').dataset.html || rulePageHtml(rs)], { type: 'text/html;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `${rs.id}-规则页-v${rs.version || 1}.html`; a.click(); URL.revokeObjectURL(a.href);
+});
+$('toStep3').addEventListener('click', () => { step(3); reloadVersions(); renderChecklist(); });
 
 /* 第 3 步 */
 $('quickTags').innerHTML = ['吃法不对', '棋盘太小', '先手太强', '胜负条件错', '美术风格换']
@@ -258,14 +357,142 @@ $('quickTags').addEventListener('click', (e) => {
   const b = e.target.closest('[data-tag]');
   if (b) $('feedback').value = b.dataset.tag;
 });
-$('play5').addEventListener('click', () => {
-  if (!rs) return;
-  const eng = createEngine(rs);
-  const games = Array.from({ length: 5 }, (_, i) => {
-    const r = eng.selfPlay();
-    return `第 ${i+1} 局 · ${r.steps} 步 · 终局：${r.reason === 'eliminate' ? '吃光' : r.reason === 'lineup' ? '连成一线' : r.reason === 'reach' ? '到达目标区' : r.reason === 'score' ? '达到分数' : r.reason === 'no-capture' ? '无吃子判和' : r.reason}（${r.winner === 'draw' ? '和局' : (r.winner === 'a' ? '先手' : '后手') + '胜'}）`;
+/* ---- 第 4 批验收 1：人机试玩（出 3–5 手，看牌型 / 轮转 / 手牌数） ---- */
+const cardText = (c) => `${c.label}${c.suitLabel || ''}`;
+function renderHuman(note = '') {
+  if (!human) return;
+  const s = human.s, me = human.me;
+  const myTurn = !s.winner && s.turn === me;
+  const legal = myTurn ? human.eng.moves(s, me) : [];
+  const plays = legal.filter((m) => !m.pass);
+  const selected = s.hands[me].filter((c) => human.sel.includes(c.id));
+  const setId = rs.card?.patternSet || 'doudizhu';
+  const pat = selected.length ? identifyPattern(selected, setId) : null;
+  const canPlay = !!pat && (!s.lastPlay || s.lastPlay.side === me || beatsPattern(pat, s.lastPlay.pattern, setId));
+  $('humanPlay').innerHTML = `
+    <div class="row"><b>第 ${s.round} 轮 · ${s.winner ? '终局 ' + s.winner : s.turn === me ? '轮到你' : 'AI 出牌中'}</b>
+      <span class="tag">手牌 ${s.ids.map((id) => `${id}:${s.hands[id].length}`).join(' ')}</span>
+      <span class="tag">牌堆 ${s.pile.length}</span><span class="tag">弃牌 ${s.discard.length}</span>
+      <span class="tag">洗回 ${s.shuffles}</span></div>
+    <div class="muted" style="font-size:12px">${note || ''} 上家：${s.lastPlay ? `${s.lastPlay.side} 出 ${s.lastPlay.pattern.name}` : '自由出牌'} · 合法走法 ${legal.length} 个（可出 ${plays.length}）</div>
+    <div class="hand">${s.hands[me].map((c) => `<button class="hand-card ${String(c.color).includes('c62f3b') ? 'red' : ''} ${human.sel.includes(c.id) ? 'sel' : ''}" data-card="${c.id}" ${myTurn ? '' : 'disabled'}>${cardText(c)}</button>`).join('')}</div>
+    <div class="row"><button id="hPlay" ${myTurn && canPlay ? '' : 'disabled'}>出牌${pat ? ' · ' + pat.name : ''}</button>
+      <button id="hPass" ${myTurn && s.lastPlay && s.lastPlay.side !== me ? '' : 'disabled'}>过牌</button>
+      <button id="hHint" ${myTurn && plays.length ? '' : 'disabled'}>提示一手</button>
+      <button id="hNext">让 AI 走到我</button></div>
+    <pre style="max-height:130px">${s.log.slice(-12).join('\n')}</pre>`;
+  $('humanPlay').querySelectorAll('[data-card]').forEach((b) => b.addEventListener('click', () => {
+    const id = b.dataset.card;
+    human.sel = human.sel.includes(id) ? human.sel.filter((x) => x !== id) : [...human.sel, id];
+    renderHuman();
+  }));
+  $('hPlay').addEventListener('click', () => {
+    const before = s.steps;
+    human.eng.apply(s, { cards: human.sel.slice() });
+    if (s.steps === before) { renderHuman('这手牌不成立，或压不过上家。'); return; }
+    human.checks.push('出牌成功'); human.sel = []; renderHuman(); setTimeout(advanceAI, 240);
   });
-  $('playLog').textContent = games.join('\n');
+  $('hPass').addEventListener('click', () => {
+    const before = s.steps;
+    human.eng.apply(s, { pass: true });
+    if (s.steps === before) { renderHuman('自由出牌时不能过。'); return; }
+    human.checks.push('过牌后轮转正常'); human.sel = []; renderHuman(); setTimeout(advanceAI, 240);
+  });
+  $('hHint').addEventListener('click', () => { human.sel = plays[0].cards.slice(); renderHuman('已选一手合法牌，点「出牌」确认。'); });
+  $('hNext').addEventListener('click', advanceAI);
+}
+function advanceAI() {
+  if (!human || human.s.winner || human.s.turn === human.me) { renderHuman(); return; }
+  let guard = 0;
+  while (!human.s.winner && human.s.turn !== human.me && guard++ < 200) {
+    const m = human.eng.aiMove(human.s);
+    if (!m) { human.s.winner = 'draw'; human.s.reason = 'stalemate'; break; }
+    human.eng.apply(human.s, m);
+  }
+  renderHuman(guard >= 200 ? 'AI 轮转超过 200 手，疑似卡死。' : '');
+}
+function startHuman() {
+  if (!rs || rs.pending?.length) return null;
+  human = { eng: createEngine(rs), s: null, me: 'a', sel: [], checks: [] };
+  human.s = human.eng.start(0);
+  $('humanPlay').hidden = false;
+  renderHuman('点手牌选牌，再按「出牌」或「过牌」。');
+  return human;
+}
+function playHumanDemo(hands = 5) {
+  if (!startHuman()) return null;
+  const s = human.s, eng = human.eng, me = human.me;
+  let moved = 0, guard = 0;
+  while (!s.winner && moved < hands && guard++ < 600) {
+    if (s.turn !== me) {
+      const m = eng.aiMove(s);
+      if (!m) { s.winner = 'draw'; s.reason = 'stalemate'; break; }
+      eng.apply(s, m); continue;
+    }
+    const m = eng.moves(s, me).filter((x) => !x.pass)[0] || { pass: true };
+    const before = s.steps; eng.apply(s, m);
+    if (s.steps === before) break;
+    moved++; human.checks.push(m.pass ? '过牌' : `出牌 ${m.pattern?.name || ''}`);
+  }
+  renderHuman();
+  return { hands: moved, steps: s.steps, winner: s.winner, checks: human.checks.slice(),
+    handCounts: Object.fromEntries(s.ids.map((id) => [id, s.hands[id].length])), log: s.log.slice(-12) };
+}
+$('playHuman').addEventListener('click', () => {
+  if (!startHuman()) { $('playLog').textContent = '还有牌类参数没问清，先回第 2 步补齐。'; return; }
+  $('playLog').textContent = '人机试玩已开始，在上方出 3–5 手。';
+});
+
+/* ---- 第 4 批验收 2：跑 20 局自对弈，专抓卡死 ---- */
+const REASONS = { 'empty-hand': '先出完', score: '达到分数', eliminate: '吃光', lineup: '连成一线',
+  reach: '到达目标区', 'no-capture': '无吃子判和', stall: '卡死', 'step-limit': '步数上限', stalemate: '无棋可走' };
+function run20() {
+  if (!rs) return null;
+  const eng = createEngine(rs);
+  const games = Array.from({ length: 20 }, (_, i) => (rs.mode === 'card' ? eng.selfPlay(500, i) : eng.selfPlay()));
+  const stalled = games.filter((g) => g.stall);
+  const lines = games.map((g, i) =>
+    `第 ${i + 1} 局 · ${g.steps} 步 · 洗回 ${g.shuffles || 0} 次 · ${REASONS[g.reason] || g.reason} · ${g.winner === 'draw' ? '和局' : g.winner + ' 胜'}${g.stall ? ' ⚠卡死' : ''}`);
+  const detail = stalled.length ? '\n卡死局日志（看第几手停）：\n' + stalled.slice(0, 3).map((g) =>
+    `${g.steps} 手停止\n${g.log.join('\n')}`).join('\n---\n') : '\n20 局均无卡死。';
+  $('playLog').textContent = lines.join('\n') + detail;
+  lastRun = { ...(lastRun || {}), games, stalled: stalled.length,
+    shuffles: games.reduce((a, g) => a + (g.shuffles || 0), 0) };
+  if (rs.mode === 'card') renderChecklist();
+  return { games: games.length, stalled: stalled.length, shuffles: lastRun.shuffles,
+    reasons: games.map((g) => g.reason) };
+}
+$('play20').addEventListener('click', run20);
+
+/* ---- 第 4 批验收 3：规则卡 7 项勾检 ---- */
+function renderChecklist() {
+  if (rs?.mode !== 'card') {
+    $('checklist').innerHTML = '<div class="check todo">棋类规则不参与牌类 7 项勾检</div>';
+    return;
+  }
+  const c = rs.card || {}, rep = c.replenish || {};
+  const items = [
+    ['发 10 张', c.handSize === 10, `实际 ${c.handSize ?? '待定'}`],
+    ['牌堆 126 张', c.size === 126, `实际 ${c.size ?? '待定'}`],
+    ['赢家 6 其余 3', rep.winner === 6 && rep.others === 3,
+      rep.rank ? `名次 ${rep.rank.join('/')}` : `${rep.winner ?? '待定'} / ${rep.others ?? '待定'}`],
+    ['牌堆空洗回', (lastRun?.shuffles || 0) > 0, `20 局共 ${lastRun?.shuffles ?? '未跑'} 次`],
+    ['最多 3 次', c.shuffleLimit === 3, `实际 ${c.shuffleLimit ?? '待定'}`],
+    ['先出完胜', c.winBy === 'empty', c.winBy || '待定'],
+    ['5/10/K 点数', !!c.rankValues,
+      c.rankValues ? `${c.rankValues[5] ?? '待定'} / ${c.rankValues[10] ?? '待定'} / ${c.rankValues.K ?? '待定'}` : '待你定'],
+  ];
+  $('checklist').innerHTML = items.map(([t, ok, note]) =>
+    `<div class="check ${ok ? 'pass' : 'todo'}"><span>${ok ? '✓' : '○'} ${t}</span><b>${note}</b></div>`).join('');
+}
+$('saveRanks').addEventListener('click', () => {
+  if (!rs) return;
+  const vals = { 5: $('rank5').value.trim(), 10: $('rank10').value.trim(), K: $('rankK').value.trim() };
+  rs.card = rs.card || {};
+  rs.card.rankValues = Object.values(vals).some(Boolean)
+    ? Object.fromEntries(Object.entries(vals).filter(([, v]) => v).map(([k, v]) => [k, Number(v)])) : null;
+  rs.version = (rs.version || 1) + 1;
+  showPreview(); renderChecklist();
 });
 
 $('applyFeedback').addEventListener('click', () => {
@@ -363,9 +590,29 @@ $('restoreCode').addEventListener('click', () => {
 reloadVersions();
 if (rs) showPreview();
 window.__RULECRAFT__ = {
-  snapshot: () => ({ type, id: rs?.id, version: rs?.version, name: rs?.name,
-    pieces: rs?.pieces?.length, versions: versions.length, questions: currentQ.length }),
+  snapshot: () => ({ type, id: rs?.id, version: rs?.version, name: rs?.name, mode: rs?.mode,
+    pieces: rs?.pieces?.length, versions: versions.length, questions: currentQ.length,
+    pending: rs?.pending || [], card: rs?.card || null }),
   generate: (text, t = 'board') => { type = t; $('desc').value = text; $('generate').click(); },
+  answerAll: (pick = {}) => {
+    let guard = 0;
+    while (currentQ.length && guard++ < 12) {
+      const q0 = currentQ[0];
+      const pref = pick[q0.key];
+      const opt = q0.options.find((o) => pref && o.includes(pref)) || q0.default;
+      answer(q0.key, opt);
+    }
+    return { pending: rs?.pending || [], version: rs?.version };
+  },
+  playDemo: (hands = 5) => playHumanDemo(hands),
+  run20,
+  checklist: () => [...$('checklist').querySelectorAll('.check')].map((el) => el.textContent.trim()),
+  rulePage: () => ({ length: ($('rulePage').dataset.html || '').length,
+    hasBook: ($('rulePage').srcdoc || '').includes('##') === false,
+    text: ($('rulePage').srcdoc || '').slice(0, 120) }),
+  art: () => [...$('artCompare').querySelectorAll('canvas')].length,
+  patterns: () => CARD_PATTERN_SETS.map((s) => s.id),
+  deck: (spec) => buildDeck(spec).length,
 };
 </script>
 </body>
