@@ -99,7 +99,9 @@
     background:radial-gradient(120% 100% at 50% 0%,#241a44 0%,#0f0b1c 70%)}
   #cv{display:block;touch-action:none;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
   #stage{--w:960px;--h:600px;--hp:268px}
-  .lay{display:none;pointer-events:none;z-index:12}
+  /* HUD 层必须钉在画布同一个矩形上：画布是 flex 居中的，而 .lay 若只有 display:block
+     会落到页面左上角，HUD 就和画面错位（手机上直接压住主角） */
+  .lay{display:none;position:fixed;pointer-events:none;z-index:12}
   .lay.on{display:block}
 
   /* ---------- 覆盖层通用 ---------- */
@@ -216,7 +218,7 @@
     background:rgba(255,255,255,.36);box-shadow:0 4px 14px rgba(0,0,0,.4)}
 
   /* ---------- HUD 浮层按钮 ---------- */
-  .laybox{position:relative;width:var(--w);height:var(--h)}
+  .laybox{position:relative;width:var(--w);height:var(--h);transform-origin:0 0}
   .hudTop{position:absolute;top:10px;left:0;right:0;
     display:flex;justify-content:space-between;padding:0 18px;gap:10px;align-items:flex-start}
   .hudCard{pointer-events:auto;background:rgba(14,10,26,.78);border:1px solid rgba(255,255,255,.12);
@@ -256,7 +258,7 @@
 </style>
 </head>
 <body>
-<div id="stage"><canvas id="cv"></canvas></div>
+<div id="stage"><canvas id="cv" width="960" height="600"></canvas></div>
 
 <div id="joy-base"><div id="joy-knob"></div></div>
 
@@ -368,7 +370,8 @@
     <h3>怎么玩</h3>
     <p class="sub" style="text-align:left;line-height:1.9">
       · 在舞台任意处 <b>按住拖动</b>，出现白色虚线抛物线，松手按预览弹道射箭，拖动越远箭越远。<br>
-      · <b>左下区域拖动</b>出现虚拟摇杆控制走位，活动范围限左半场。<br>
+      · 主角是<b>站桩弓手</b>，不会走位：靠瞄准和出手时机活下来。<br>
+      · 敌人两种：<b>地面兵</b>会顺着地面逼近、蓄力后冲刺近战（脚下红色虚线就是它要冲的方向，带盾的正面能弹开你的箭，打爆盾它会踉跄）；<b>空中兵</b>悬在你头顶前方用弓箭吊射。<br>
       · 击杀敌人掉落金币，走过自动拾取；击杀攒经验，升级弹词条三选一。<br>
       · 没被命中的 4 秒后护盾会缓慢回复。<br>
       · 每大关 4 波，末波为精英或 Boss；通关弹局间层：战绩 → 装备三选一 → 商店。<br>
@@ -389,18 +392,23 @@
   var CONFIG = {
     W: 960, H: 600, GROUND: 520,
     PLAYER_MIN_X: 60, PLAYER_MAX_X: 480,
+    PLAYER_HOME: 200,
     ENEMY_MIN_X: 600, ENEMY_MAX_X: 860,
+    /* 近战冲刺型：落地移动 → 蓄力 → 冲刺，冲过头要回头 */
+    RUSH: { speed: 74, windup: 0.55, dashSpeed: 520, dashTime: 0.55, atkCd: 1.15, hitR: 34, backOff: 240 },
+    /* 空中远程型：在玩家头顶前方悬停，越界自动回位，贴着也打得到 */
+    FLY: { min: 300, max: 420, enterSpeed: 260, drift: 58, offsetX: 230 },
 
     PLAYER: {
       hp: 100, shield: 30, speed: 260,
-      arrowSpeed: 620, gravity: 1400,
+      arrowSpeed: 620, gravity: 1150,
       attack: 12, cooldown: 0.55,
       crit: 0.05, critDmg: 1.5,
       shieldRegen: 5, shieldDelay: 4,
       radius: 16
     },
 
-    AIR: { min: 380, max: 680, dragMax: 210 },
+    AIR: { min: 380, max: 980, dragMax: 210, chargeTime: 0.45 },
 
     QUALITY: [
       { id: 0, name: '普通', color: '#cfd4dc', mult: 1.0 },
@@ -434,14 +442,14 @@
     STAT_NAME: {
       attack: '攻击力', arrowSpeed: '箭初速', multi: '多重箭', pierce: '穿透',
       crit: '暴击率', critDmg: '暴击伤害', maxHp: '最大生命', shieldMax: '护盾上限',
-      shieldRegen: '护盾回复', dr: '伤害减免', speed: '移动速度', pickup: '拾取范围',
+      shieldRegen: '护盾回复', dr: '伤害减免', speed: '拉弓速度', pickup: '拾取范围',
       regen: '每秒回血', goldGain: '金币获取', cooldown: '射箭冷却'
     },
 
     TRAITS: [
       { id: 'atk', name: '利刃', tier: 0, desc: '攻击 +6', apply: function (s) { s.attack += 6; } },
       { id: 'rate', name: '快弦', tier: 0, desc: '射箭冷却 −10%', apply: function (s) { s.cooldown *= 0.9; } },
-      { id: 'spd', name: '轻身', tier: 0, desc: '移速 +8%', apply: function (s) { s.speed *= 1.08; } },
+      { id: 'spd', name: '快手', tier: 0, desc: '拉弓速度 +10%', apply: function (s) { s.speed *= 1.1; } },
       { id: 'hp', name: '体魄', tier: 0, desc: '最大生命 +20', apply: function (s) { s.maxHp += 20; s.hp += 20; } },
       { id: 'sh', name: '坚壳', tier: 0, desc: '护盾 +15', apply: function (s) { s.shieldMax += 15; s.shield += 15; } },
       { id: 'aspd', name: '长矢', tier: 0, desc: '箭初速 +8%', apply: function (s) { s.arrowSpeed *= 1.08; } },
@@ -459,30 +467,33 @@
     ],
 
     /* 5 大关 × 4 波 */
+    /* 波次表：arch/wave 只用于展示与结算，enemies 决定编成
+     * 兵种：normal/fast/double/elite = 空中远程（弓），tank/boss = 地面近战冲刺（带盾）
+     * 两种交替出场，保证每一波都得换打法：抬头吊射空中、回头打断地面冲刺 */
     WAVES: [
       { arch: 1, wave: 1, enemies: [{ type: 'normal', hp: 40, atk: 6, arrowSpeed: 380, x: 780 }] },
-      { arch: 1, wave: 2, enemies: [{ type: 'normal', hp: 45, atk: 6, arrowSpeed: 390, x: 700 }, { type: 'normal', hp: 45, atk: 6, arrowSpeed: 390, x: 860 }] },
-      { arch: 1, wave: 3, enemies: [{ type: 'normal', hp: 55, atk: 7, arrowSpeed: 400, x: 660 }, { type: 'normal', hp: 55, atk: 7, arrowSpeed: 400, x: 800 }, { type: 'normal', hp: 55, atk: 7, arrowSpeed: 400, x: 890 }] },
-      { arch: 1, wave: 4, elite: true, enemies: [{ type: 'elite', hp: 150, atk: 9, arrowSpeed: 520, x: 780 }] },
+      { arch: 1, wave: 2, enemies: [{ type: 'fast', hp: 40, atk: 6, arrowSpeed: 470, x: 790 }, { type: 'tank', hp: 70, shield: 40, atk: 6, arrowSpeed: 380, x: 660 }] },
+      { arch: 1, wave: 3, enemies: [{ type: 'tank', hp: 80, shield: 40, atk: 7, arrowSpeed: 390, x: 640 }, { type: 'normal', hp: 45, atk: 6, arrowSpeed: 390, x: 800 }, { type: 'normal', hp: 45, atk: 6, arrowSpeed: 390, x: 900 }] },
+      { arch: 1, wave: 4, elite: true, enemies: [{ type: 'elite', hp: 150, atk: 8, arrowSpeed: 520, x: 800 }, { type: 'tank', hp: 90, shield: 50, atk: 7, arrowSpeed: 390, x: 650 }] },
 
-      { arch: 2, wave: 5, enemies: [{ type: 'normal', hp: 70, atk: 9, arrowSpeed: 420, x: 720 }, { type: 'normal', hp: 70, atk: 9, arrowSpeed: 420, x: 860 }] },
-      { arch: 2, wave: 6, enemies: [{ type: 'fast', hp: 50, atk: 8, arrowSpeed: 560, x: 700 }, { type: 'normal', hp: 75, atk: 9, arrowSpeed: 420, x: 820 }, { type: 'normal', hp: 75, atk: 9, arrowSpeed: 420, x: 900 }] },
-      { arch: 2, wave: 7, enemies: [{ type: 'fast', hp: 55, atk: 9, arrowSpeed: 580, x: 640 }, { type: 'fast', hp: 55, atk: 9, arrowSpeed: 580, x: 780 }, { type: 'normal', hp: 85, atk: 10, arrowSpeed: 440, x: 890 }] },
-      { arch: 2, wave: 8, elite: true, enemies: [{ type: 'tank', hp: 220, shield: 120, atk: 11, arrowSpeed: 430, x: 790 }, { type: 'normal', hp: 70, atk: 9, arrowSpeed: 430, x: 900 }] },
+      { arch: 2, wave: 5, enemies: [{ type: 'tank', hp: 120, shield: 60, atk: 9, arrowSpeed: 410, x: 680 }, { type: 'fast', hp: 50, atk: 8, arrowSpeed: 560, x: 820 }] },
+      { arch: 2, wave: 6, enemies: [{ type: 'fast', hp: 50, atk: 8, arrowSpeed: 560, x: 700 }, { type: 'normal', hp: 70, atk: 9, arrowSpeed: 420, x: 830 }, { type: 'tank', hp: 130, shield: 60, atk: 9, arrowSpeed: 410, x: 620 }] },
+      { arch: 2, wave: 7, enemies: [{ type: 'tank', hp: 150, shield: 70, atk: 10, arrowSpeed: 420, x: 640 }, { type: 'fast', hp: 55, atk: 9, arrowSpeed: 580, x: 780 }, { type: 'fast', hp: 55, atk: 9, arrowSpeed: 580, x: 890 }] },
+      { arch: 2, wave: 8, elite: true, enemies: [{ type: 'tank', hp: 220, shield: 120, atk: 11, arrowSpeed: 430, x: 720 }, { type: 'normal', hp: 70, atk: 9, arrowSpeed: 430, x: 890 }] },
 
-      { arch: 3, wave: 9, enemies: [{ type: 'normal', hp: 100, atk: 12, arrowSpeed: 450, x: 680 }, { type: 'fast', hp: 75, atk: 11, arrowSpeed: 600, x: 800 }, { type: 'normal', hp: 100, atk: 12, arrowSpeed: 450, x: 900 }] },
-      { arch: 3, wave: 10, enemies: [{ type: 'fast', hp: 80, atk: 12, arrowSpeed: 610, x: 640 }, { type: 'tank', hp: 200, shield: 60, atk: 13, arrowSpeed: 440, x: 780 }, { type: 'normal', hp: 110, atk: 12, arrowSpeed: 460, x: 890 }] },
-      { arch: 3, wave: 11, enemies: [{ type: 'tank', hp: 230, shield: 80, atk: 14, arrowSpeed: 450, x: 700 }, { type: 'fast', hp: 85, atk: 13, arrowSpeed: 620, x: 810 }, { type: 'fast', hp: 85, atk: 13, arrowSpeed: 620, x: 900 }] },
-      { arch: 3, wave: 12, elite: true, enemies: [{ type: 'double', hp: 320, shield: 80, atk: 14, arrowSpeed: 500, x: 790 }] },
+      { arch: 3, wave: 9, enemies: [{ type: 'normal', hp: 90, atk: 11, arrowSpeed: 450, x: 680 }, { type: 'tank', hp: 170, shield: 80, atk: 12, arrowSpeed: 430, x: 600 }, { type: 'fast', hp: 70, atk: 10, arrowSpeed: 600, x: 850 }] },
+      { arch: 3, wave: 10, enemies: [{ type: 'fast', hp: 75, atk: 11, arrowSpeed: 610, x: 640 }, { type: 'tank', hp: 200, shield: 90, atk: 13, arrowSpeed: 440, x: 730 }, { type: 'normal', hp: 100, atk: 12, arrowSpeed: 460, x: 890 }] },
+      { arch: 3, wave: 11, enemies: [{ type: 'tank', hp: 230, shield: 100, atk: 14, arrowSpeed: 450, x: 620 }, { type: 'fast', hp: 80, atk: 12, arrowSpeed: 620, x: 780 }, { type: 'tank', hp: 210, shield: 80, atk: 13, arrowSpeed: 440, x: 900 }] },
+      { arch: 3, wave: 12, elite: true, enemies: [{ type: 'double', hp: 280, atk: 13, arrowSpeed: 500, x: 800 }, { type: 'tank', hp: 240, shield: 110, atk: 14, arrowSpeed: 450, x: 650 }] },
 
-      { arch: 4, wave: 13, enemies: [{ type: 'normal', hp: 130, atk: 15, arrowSpeed: 470, x: 660 }, { type: 'tank', hp: 280, shield: 90, atk: 16, arrowSpeed: 460, x: 790 }, { type: 'fast', hp: 100, atk: 14, arrowSpeed: 640, x: 900 }] },
-      { arch: 4, wave: 14, enemies: [{ type: 'tank', hp: 300, shield: 100, atk: 17, arrowSpeed: 470, x: 650 }, { type: 'fast', hp: 105, atk: 15, arrowSpeed: 650, x: 760 }, { type: 'fast', hp: 105, atk: 15, arrowSpeed: 650, x: 870 }, { type: 'normal', hp: 140, atk: 16, arrowSpeed: 480, x: 920 }] },
-      { arch: 4, wave: 15, enemies: [{ type: 'double', hp: 210, atk: 16, arrowSpeed: 520, x: 680 }, { type: 'double', hp: 210, atk: 16, arrowSpeed: 520, x: 820 }, { type: 'tank', hp: 320, shield: 110, atk: 18, arrowSpeed: 480, x: 910 }] },
-      { arch: 4, wave: 16, elite: true, enemies: [{ type: 'elite', hp: 520, shield: 160, atk: 24, arrowSpeed: 700, x: 800 }, { type: 'fast', hp: 100, atk: 14, arrowSpeed: 640, x: 690 }] },
+      { arch: 4, wave: 13, enemies: [{ type: 'normal', hp: 110, atk: 14, arrowSpeed: 470, x: 660 }, { type: 'tank', hp: 260, shield: 120, atk: 15, arrowSpeed: 460, x: 590 }, { type: 'fast', hp: 90, atk: 13, arrowSpeed: 640, x: 880 }] },
+      { arch: 4, wave: 14, enemies: [{ type: 'tank', hp: 290, shield: 130, atk: 16, arrowSpeed: 470, x: 620 }, { type: 'fast', hp: 95, atk: 14, arrowSpeed: 650, x: 760 }, { type: 'tank', hp: 260, shield: 110, atk: 15, arrowSpeed: 460, x: 880 }, { type: 'normal', hp: 120, atk: 15, arrowSpeed: 480, x: 930 }] },
+      { arch: 4, wave: 15, enemies: [{ type: 'double', hp: 200, atk: 16, arrowSpeed: 520, x: 680 }, { type: 'double', hp: 200, atk: 16, arrowSpeed: 520, x: 830 }, { type: 'tank', hp: 320, shield: 140, atk: 18, arrowSpeed: 480, x: 580 }] },
+      { arch: 4, wave: 16, elite: true, enemies: [{ type: 'elite', hp: 460, atk: 20, arrowSpeed: 700, x: 810 }, { type: 'tank', hp: 340, shield: 160, atk: 19, arrowSpeed: 480, x: 620 }] },
 
-      { arch: 5, wave: 17, enemies: [{ type: 'tank', hp: 380, shield: 140, atk: 20, arrowSpeed: 500, x: 660 }, { type: 'double', hp: 260, atk: 19, arrowSpeed: 540, x: 780 }, { type: 'fast', hp: 120, atk: 17, arrowSpeed: 680, x: 900 }] },
-      { arch: 5, wave: 18, enemies: [{ type: 'double', hp: 280, atk: 20, arrowSpeed: 550, x: 650 }, { type: 'tank', hp: 400, shield: 150, atk: 21, arrowSpeed: 500, x: 780 }, { type: 'double', hp: 280, atk: 20, arrowSpeed: 550, x: 900 }] },
-      { arch: 5, wave: 19, enemies: [{ type: 'tank', hp: 430, shield: 170, atk: 23, arrowSpeed: 510, x: 640 }, { type: 'fast', hp: 130, atk: 18, arrowSpeed: 700, x: 740 }, { type: 'fast', hp: 130, atk: 18, arrowSpeed: 700, x: 840 }, { type: 'double', hp: 300, atk: 21, arrowSpeed: 560, x: 920 }] },
+      { arch: 5, wave: 17, enemies: [{ type: 'tank', hp: 380, shield: 150, atk: 20, arrowSpeed: 500, x: 600 }, { type: 'double', hp: 250, atk: 18, arrowSpeed: 540, x: 780 }, { type: 'fast', hp: 110, atk: 16, arrowSpeed: 680, x: 900 }] },
+      { arch: 5, wave: 18, enemies: [{ type: 'double', hp: 270, atk: 19, arrowSpeed: 550, x: 650 }, { type: 'tank', hp: 400, shield: 160, atk: 21, arrowSpeed: 500, x: 560 }, { type: 'double', hp: 270, atk: 19, arrowSpeed: 550, x: 900 }] },
+      { arch: 5, wave: 19, enemies: [{ type: 'tank', hp: 430, shield: 180, atk: 23, arrowSpeed: 510, x: 580 }, { type: 'fast', hp: 120, atk: 17, arrowSpeed: 700, x: 720 }, { type: 'fast', hp: 120, atk: 17, arrowSpeed: 700, x: 850 }, { type: 'tank', hp: 400, shield: 150, atk: 21, arrowSpeed: 500, x: 930 }] },
       { arch: 5, wave: 20, boss: true, enemies: [{ type: 'boss', hp: 1400, shield: 400, atk: 26, arrowSpeed: 620, x: 790 }] }
     ],
 
@@ -672,7 +683,7 @@
       arch: arch || 1,
       waveIdx: (arch - 1) * 4,          /* 指向 CONFIG.WAVES 下标 */
       phase: 'intro',                    /* intro | fight | interlude | upgrade | shop | over */
-      player: { x: 180, dir: 1, hp: s.hp, shield: s.shield, flash: 0, lastHit: 0, cooldown: 0, aim: null },
+      player: { x: CONFIG.PLAYER_HOME, anchorX: CONFIG.PLAYER_HOME, dir: 1, hp: s.hp, shield: s.shield, flash: 0, lastHit: 0, cooldown: 0, aim: null, meleeCd: 0 },
       stats: s,
       enemies: [], arrows: [], coins: [], parts: [], texts: [],
       kills: 0, gold: 0, runGold: 0,
@@ -701,18 +712,31 @@
   function currentWave() { return (G && CONFIG.WAVES[G.waveIdx]) || null; }
   function archOfWaveIdx(i) { var w = CONFIG.WAVES[i]; return w ? w.arch : 5; }
 
-  /* ---------- 敌人 ---------- */
+  /* ---------- 敌人 ----------
+   * 两种形态：
+   *   rush —— 地面上左右游走逼近，蓄力后向主角冲刺，只有近战判定，可带盾
+   *   fly  —— 悬在空中用弓箭远程抛物线射击，悬停点跟着主角走
+   * 其余 type（fast / tank / double / elite / boss）都是 rush 的变体。 */
+  var FLY_TYPES = { normal: 1, fast: 1, double: 1, elite: 1 };
+
   function spawnEnemy(def) {
+    var fly = FLY_TYPES[def.type] === 1;
+    var y = fly ? rnd(CONFIG.FLY.min, CONFIG.FLY.max) : (CONFIG.GROUND - 30);
+    /* 空中兵直接在高空侧翼滑入（飞行单位本来就该从天上进来），地面兵踩地起步 */
+    var spawnY = fly ? rnd(CONFIG.FLY.min, CONFIG.FLY.max) : y;
     var e = {
       type: def.type, hp: def.hp, maxHp: def.hp,
       shield: def.shield || 0, maxShield: def.shield || 0,
       atk: def.atk, arrowSpeed: def.arrowSpeed,
-      x: def.x, y: CONFIG.GROUND - 30,
+      mode: fly ? 'fly' : 'rush',
+      x: def.x, y: spawnY, targetY: y,
       homeX: def.x, dir: -1, walk: 0,
-      cd: rnd(0.3, 1.0), aimT: 0, flash: 0,
-      dead: false, deathT: 0
+      cd: fly ? rnd(0.8, 1.6) : rnd(0.4, 0.9), aimT: 0, flash: 0,
+      state: fly ? 'enter' : 'approach', stT: 0, cdAtk: 0,
+      near: false, dead: false, deathT: 0
     };
     if (def.type === 'boss') { e.hp = def.hp; e.phase = 1; }
+    e.highArc = !fly;  /* 空中兵直落吊射（低弧），地面兵抛物高弧越过半场 */
     G.enemies.push(e);
     return e;
   }
@@ -793,7 +817,7 @@
   function shoot(vx, vy) {
     var p = G.player, s = G.stats;
     if (p.cooldown > 0) return;
-    p.cooldown = s.cooldown;
+    p.cooldown = s.cooldown / Math.max(0.2, s.speed);   /* speed = 拉弓速度倍率 */
     var ox = p.x + 18 * p.dir, oy = CONFIG.GROUND - 58;
     var spread = s.multi > 1 ? (s.multi - 1) : 0;
     for (var k = 0; k <= spread; k++) {
@@ -878,21 +902,19 @@
     p.cooldown = Math.max(0, p.cooldown - dt);
     p.flash = Math.max(0, p.flash - dt);
 
-    /* 移动 */
-    var mv = Input.moveAxis();
-    if (mv !== 0) {
-      p.x = clamp(p.x + mv * s.speed * dt, CONFIG.PLAYER_MIN_X, CONFIG.PLAYER_MAX_X);
-      p.dir = mv > 0 ? 1 : -1;
-    }
+    /* 主角固定站位：只有弓手一个，靠瞄准与出手时机取胜 */
+    p.x = p.anchorX;
+    p.dir = 1;
 
-    /* 护盾回复 */
-    if (G.t - p.lastHit > s.shieldDelay && p.shield < s.shieldMax) {
+    /* 护盾回复：脱战 shieldDelay 秒后开始回，speed 词条也加成（原「移动速度」位置已由拉弓速度占用） */
+    if (p.shield < s.shieldMax && (G.t - p.lastHit) > s.shieldDelay) {
       p.shield = Math.min(s.shieldMax, p.shield + s.shieldRegen * dt);
     }
     if (s.regen > 0 && p.hp < s.maxHp) p.hp = Math.min(s.maxHp, p.hp + s.regen * dt);
 
     /* 瞄准预览 */
     if (Input.aiming) {
+      Input.aimHold = (Input.aimHold || 0) + dt;
       updateAim();
     } else if (p.aim) {
       if (p.cooldown <= 0) shoot(p.aim.vx, p.aim.vy);
@@ -902,7 +924,15 @@
     /* 敌人 */
     for (var i = 0; i < G.enemies.length; i++) {
       var e = G.enemies[i];
-      if (e.dead) { e.deathT += dt; continue; }
+      if (e.dead) {
+        e.deathT += dt;
+        /* 空中单位被击落后坠地 */
+        if (e.mode === 'fly' && e.y < (e.groundY || CONFIG.GROUND - 30)) {
+          e.vy = (e.vy || 0) + 1500 * dt;
+          e.y = Math.min(e.groundY || CONFIG.GROUND - 30, e.y + e.vy * dt);
+        }
+        continue;
+      }
       e.flash = Math.max(0, e.flash - dt);
       huntEnemy(e, dt, s);
     }
@@ -920,15 +950,25 @@
         for (var k = 0; k < G.enemies.length; k++) {
           var en = G.enemies[k];
           if (en.dead) continue;
-          var rr = en.type === 'boss' ? 46 : (en.type === 'tank' ? 26 : 20);
-          if (dist2(ar.x, ar.y, en.x, CONFIG.GROUND - 40) < rr * rr) {
+          var rr = en.type === 'boss' ? 46 : (en.type === 'tank' ? 26 : (en.mode === 'fly' ? 24 : 20));
+          var eh = enemyHitY(en);
+          var hx0 = ar.x - ar.vx * dt, hy0 = ar.y - ar.vy * dt, hh = false;
+          for (var f2 = 0; f2 <= 1.001; f2 += 0.34) {
+            if (dist2(hx0 + (ar.x - hx0) * f2, hy0 + (ar.y - hy0) * f2, en.x, eh) < rr * rr) { hh = true; break; }
+          }
+          if (hh) {
             hitEnemy(en, ar);
             if (ar.pierce > 0) ar.pierce--; else hit = true;
             break;
           }
         }
       } else {
-        if (dist2(ar.x, ar.y, p.x, CONFIG.GROUND - 70) < 26 * 26) { damagePlayer(ar.dmg); hit = true; }
+        /* 连续检测：一帧飞过 20px 以上，只在落点判会从主角身上穿过去 */
+        var ax0 = ar.x - ar.vx * dt, ay0 = ar.y - ar.vy * dt;
+        for (var f = 0; f <= 1; f += 0.25) {
+          var sx = ax0 + (ar.x - ax0) * f, sy = ay0 + (ar.y - ay0) * f;
+          if (dist2(sx, sy, p.x, CONFIG.GROUND - 70) < 30 * 30) { damagePlayer(ar.dmg); hit = true; break; }
+        }
       }
       if (hit || ar.life <= 0 || ar.y > CONFIG.H + 20 || ar.x < -40 || ar.x > W + 40) G.arrows.splice(a, 1);
     }
@@ -944,7 +984,8 @@
       if (md < G.stats.pickup && md > 1) {
         co.x += (mdx / md) * 260 * dt; co.y += (mdy / md) * 260 * dt;
       }
-      if (dist2(co.x, co.y, G.player.x, CONFIG.GROUND - 40) < 24 * 24) {
+      /* 主角站桩，靠拾取范围把身上的金币吸过来；吸不到的最后 1.2 秒自动入账 */
+      if (dist2(co.x, co.y, G.player.x, CONFIG.GROUND - 40) < 24 * 24 || co.life < 1.2) {
         gainGold(co.val);
         G.coins.splice(c, 1); SFX.coin(); continue;
       }
@@ -968,16 +1009,20 @@
     }
   }
   function alive(e) { return !e.dead; }
+  /* 受击判定高度：空中单位按自身高度，地面单位按躯干高度 */
+  function enemyHitY(e) { return e.mode === 'fly' ? e.y : CONFIG.GROUND - 40; }
+  /* 受击闪白与飘字的基准高度 */
+  function enemyTextY(e) { return e.mode === 'fly' ? e.y - 54 : CONFIG.GROUND - 110; }
   function dist2(x1, y1, x2, y2) { var dx = x1 - x2, dy = y1 - y2; return dx * dx + dy * dy; }
 
   function hitEnemy(e, ar) {
     var dmg = ar.dmg * (ar.crit ? G.stats.critDmg : 1);
-    if (e.type === 'tank' && e.shield > 0) {
+    if (e.mode !== 'fly' && e.shield > 0) {   /* 地面带盾兵的盾接正面，空中兵没有盾 */
       e.shield -= dmg;
       if (e.shield < 0) { e.hp += e.shield; e.shield = 0; }
     } else e.hp -= dmg;
     e.flash = 0.12;
-    addText(e.x, CONFIG.GROUND - 110, '-' + fmt(dmg), ar.crit ? '#ffd24a' : '#ffffff', ar.crit ? 20 : 15);
+    addText(e.x, enemyTextY(e), '-' + fmt(dmg), ar.crit ? '#ffd24a' : '#ffffff', ar.crit ? 20 : 15);
     burst(ar.x, ar.y, '#ffd8a8', 4);
     SFX.hit();
     if (ar.split > 0) {
@@ -985,57 +1030,173 @@
         G.arrows.push({ x: ar.x, y: ar.y, vx: ar.vx * 0.5 + sgn * 160, vy: -180, owner: 'p', dmg: ar.dmg * 0.5, crit: false, pierce: 0, trail: [], life: 2 });
       }
     }
-    if (e.hp <= 0 && !e.dead) {
-      e.dead = true; e.deathT = 0;
-      G.kills++;
-      if (G.stats.vamp > 0) G.player.hp = Math.min(G.stats.maxHp, G.player.hp + G.stats.vamp);
-      var g = CONFIG.ECON.killGold(currentWave().wave);
-      var n = 1 + Math.floor(g * (1 + G.stats.goldGain) / 22);
-      for (var i = 0; i < n; i++) {
-        G.coins.push({ x: e.x + rnd(-16, 16), y: CONFIG.GROUND - 60, vx: rnd(-70, 70), vy: rnd(-200, -90), life: CONFIG.ECON.goldLife, val: g / n });
-      }
-      burst(e.x, CONFIG.GROUND - 50, '#b8a4e8', 8);
+    if (e.hp <= 0 && !e.dead) killEnemy(e);
+  }
+
+  /* 击杀结算：经验 / 吸血 / 掉金币（空中单位在自己高度掉，落地靠重力） */
+  function killEnemy(e) {
+    e.dead = true; e.deathT = 0;
+    G.kills++;
+    if (G.stats.vamp > 0) G.player.hp = Math.min(G.stats.maxHp, G.player.hp + G.stats.vamp);
+    var g = CONFIG.ECON.killGold(currentWave().wave);
+    var n = e.mode === 'fly' ? 3 : (1 + Math.floor(g * (1 + G.stats.goldGain) / 22));
+    var cy = e.mode === 'fly' ? e.y : CONFIG.GROUND - 60;
+    for (var i = 0; i < n; i++) {
+      G.coins.push({ x: e.x + rnd(-16, 16), y: cy, vx: rnd(-70, 70), vy: rnd(-200, -90), life: CONFIG.ECON.goldLife, val: g / n });
     }
+    burst(e.x, e.mode === 'fly' ? e.y : CONFIG.GROUND - 50, '#b8a4e8', 8);
+    if (e.mode === 'fly') { e.groundY = CONFIG.GROUND - 30; }
   }
 
   function huntEnemy(e, dt, s) {
+    if (e.mode === 'fly') updateFlyer(e, dt, s);
+    else updateRusher(e, dt, s);
+  }
+
+  /* ===== 空中远程：悬停在主角头顶前方，抛物线吊射 ===== */
+  function updateFlyer(e, dt, s) {
+    var p = G.player;
     e.walk += dt;
-    /* 游走 */
-    e.x = e.homeX + Math.sin(e.walk * 0.9) * 40;
-    e.dir = Math.cos(e.walk * 0.9) > 0 ? 1 : -1;
+    /* 目标悬停点：主角正上方偏右一段距离，越界自动拉回，所以主角站哪都躲不掉 */
+    var wantX = clamp(p.x + CONFIG.FLY.offsetX + Math.sin(e.walk * 0.7) * 34, p.x + 230, W - 90);
+    var step = (e.state === 'enter' ? CONFIG.FLY.enterSpeed : CONFIG.FLY.drift) * dt;
+    e.x += clamp(wantX - e.x, -step, step);
+    /* 起飞/降落：入场时从地面升空，之后上下小幅浮动 */
+    var bob = Math.sin(e.walk * 1.6 + e.homeX) * 26;
+    var target = (e.state === 'enter' ? CONFIG.GROUND - 90 : e.targetY) + bob;
+    e.y += clamp(target - e.y, -CONFIG.FLY.enterSpeed * dt, CONFIG.FLY.enterSpeed * dt);
+    if (e.state === 'enter' && Math.abs(e.y - target) < 14 && Math.abs(wantX - e.x) < 20) e.state = 'hover';
+    e.dir = p.x >= e.x ? 1 : -1;
+
     e.cd -= dt;
     var speedUp = 1;
     if (e.type === 'boss' && e.hp < e.maxHp * 0.5) { e.phase = 2; speedUp = 0.62; }
-    if (e.cd <= 0) {
-      var p = G.player;
-      var tx = p.x, ty = CONFIG.GROUND - 70;
-      var g = s.gravity;
-      var dist = Math.abs(tx - e.x);
-      /* 按距离反推所需初速（留 4% 余量），速度不足时提升到足够值 */
-      var need = Math.sqrt(g * Math.max(120, dist) * 1.04);
-      var base = Math.max(e.arrowSpeed, need);
-      base = Math.min(base, 1500);
-      if (e.type === 'boss' && e.phase === 2) base *= 1.08;
-      var ang = solveAngle(e.x, CONFIG.GROUND - 62, tx, ty, base, g);
-      if (ang === null) ang = solveAngle(e.x, CONFIG.GROUND - 62, tx, ty, 1350, g);
-      if (ang !== null) {
-        var shots = [];
-        if (e.type === 'double') shots = [ang - 0.12, ang + 0.12];
-        else if (e.type === 'boss') shots = [ang - 0.2, ang, ang + 0.2];
-        else shots = [ang];
-        shots.forEach(function (a) {
-          G.arrows.push({ x: e.x, y: CONFIG.GROUND - 62, vx: Math.cos(a) * base, vy: Math.sin(a) * base, owner: 'e', dmg: e.atk, trail: [], life: 5 });
-        });
-        SFX.bow();
-      }
-      var baseCd = e.type === 'fast' ? rnd(0.5, 0.9) : e.type === 'boss' ? rnd(1.1, 1.5) : rnd(0.8, 1.4);
-      e.cd = baseCd * speedUp;
+    if (e.cd > 0) return;
+    var tx = p.x, ty = CONFIG.GROUND - 70;
+    var g = s.gravity;
+    var need = Math.sqrt(g * Math.max(90, Math.abs(tx - e.x)) * 1.06);
+    var base = Math.min(Math.max(e.arrowSpeed, need), 1500);
+    if (e.type === 'boss' && e.phase === 2) base *= 1.08;
+    var ang = solveAngle(e.x, e.y, tx, ty, base, g, e.highArc);
+    if (ang === null) ang = solveAngle(e.x, e.y, tx, ty, 1350, g, e.highArc);
+    if (ang !== null) {
+      var shots = e.type === 'double' ? [ang - 0.12, ang + 0.12]
+        : e.type === 'boss' ? [ang - 0.2, ang, ang + 0.2] : [ang];
+      shots.forEach(function (a) {
+        G.arrows.push({ x: e.x, y: e.y, vx: Math.cos(a) * base, vy: Math.sin(a) * base, owner: 'e', dmg: e.atk, trail: [], life: 5 });
+      });
+      SFX.bow();
     }
+    var baseCd = e.type === 'fast' ? rnd(0.7, 1.1) : e.type === 'boss' ? rnd(1.1, 1.5) : rnd(1.1, 1.7);
+    e.cd = baseCd * speedUp;
+  }
+
+  /* ===== 地面近战：游走逼近 → 蓄力 → 冲刺 → 近身砍 ===== */
+  function updateRusher(e, dt, s) {
+    var p = G.player, R = CONFIG.RUSH;
+    e.walk += dt;
+    e.stT += dt;
+    var dxToP = p.x - e.x;
+    var distToP = Math.abs(dxToP);
+    var bodyY = CONFIG.GROUND - 50;
+    var ahead = e.x + 36;                       /* 挥击伸出的位置 */
+    var sc = e.type === 'boss' ? 1.55 : e.type === 'tank' ? 1.14 : e.type === 'elite' ? 1.08 : 1;
+    e.dir = dxToP >= 0 ? 1 : -1;
+
+    /* 蓄力期被打破盾：踉跄一下，冲刺作废 */
+    if (e.state === 'windup' && e.maxShield > 0 && e.shield <= 0) {
+      e.state = 'stunned'; e.stT = 0;
+      addText(e.x, bodyY - 84, '破盾踉跄', '#ffd24a', 15);
+      SFX.hit();
+    }
+
+    /* 顺带挡掉飞过来的箭：举盾期间正面来箭被弹开（盾牌真正有用） */
+    if (e.state !== 'stunned' && e.maxShield > 0) {
+      for (var i = G.arrows.length - 1; i >= 0; i--) {
+        var ar = G.arrows[i];
+        if (ar.owner !== 'p') continue;
+        if (dist2(ar.x, ar.y, e.x + 26 * e.dir, bodyY) > (30 * sc) * (30 * sc)) continue;
+        if ((ar.vx > 0 ? 1 : -1) !== e.dir) continue;   /* 只挡正面 */
+        var dmg = ar.dmg * (ar.crit ? G.stats.critDmg : 1);
+        e.shield -= dmg;
+        addText(e.x, bodyY - 70, '格挡', '#9fd0ff', 14);
+        e.flash = 0.08;
+        burst(ar.x, ar.y, '#9fd0ff', 6);
+        if (e.shield < 0) { e.hp += e.shield; e.shield = 0; }
+        G.arrows.splice(i, 1);
+        SFX.hit();
+        if (e.hp <= 0 && !e.dead) killEnemy(e);
+      }
+    }
+
+    switch (e.state) {
+      case 'approach':
+        /* 贴太近就先退开做助跑距离（贴身蓄力没威胁也不好看），
+           到了 backOff 附近就停下等冷却，冷却好了才蓄力 */
+        if (distToP > R.backOff) {
+          e.x += e.dir * R.speed * sc * dt;
+        } else if (distToP < R.backOff * 0.62) {
+          e.x -= e.dir * R.speed * sc * dt;
+        }
+        e.cdAtk -= dt;
+        if (distToP <= R.backOff && distToP >= R.backOff * 0.58 && e.cdAtk <= 0) {
+          e.state = 'windup'; e.stT = 0;
+        }
+        break;
+
+      case 'windup':
+        /* 蓄力时略微下蹲后撤半步，冲刺距离更好看也更公平 */
+        e.x -= e.dir * 18 * dt;
+        if (e.stT >= R.windup) {
+          e.state = 'dash'; e.stT = 0;
+          e.slashed = false;
+          SFX.bow && SFX.bow();
+        }
+        break;
+
+      case 'dash': {
+        /* 冲刺：一路刷到主角身前才收刀，冲过头只会擦到不额外加伤 */
+        var step = e.dir * R.dashSpeed * dt;
+        e.x += step;
+        /* 身体扫过的区间与「挥击点」都算命中，站桩主角该吃的伤害躲不掉 */
+        var reach = 34 * sc;                    /* 刀刃伸出距离 */
+        var lo = Math.min(e.x, e.x + step) - reach;
+        var hi = Math.max(e.x, e.x + step) + reach;
+        if (p.x >= lo - R.hitR && p.x <= hi + R.hitR) {
+          damagePlayer(e.atk * (e.type === 'boss' ? 1.25 : 1));
+          burst(p.x - 10, CONFIG.GROUND - 60, '#ff8a8a', 8);
+          e.state = 'recover'; e.stT = 0;
+          e.slashed = true;
+          break;
+        }
+        /* 到达/越过主角身前就结束，避免无限冲刺 */
+        var passed = (e.dir > 0 && e.x >= p.x - 46) || (e.dir < 0 && e.x <= p.x + 46);
+        if (passed || e.stT >= R.dashTime) { e.state = 'recover'; e.stT = 0; }
+        break;
+      }
+
+      case 'recover':
+        /* 收刀后一定要退出主角身位（否则会一直贴在脸上反复蓄力），
+           退到 backOff 外侧一点点，下一轮才能重新助跑冲刺 */
+        var want = p.x + e.dir * (R.backOff * 0.9);
+        var d2 = want - e.x;
+        if (Math.abs(d2) > 3 && e.stT < 1.1) e.x += clamp(d2, -300 * dt, 300 * dt);
+        if (e.stT >= 1.1) { e.state = 'approach'; e.stT = 0; e.cdAtk = R.atkCd; }
+        break;
+
+      /* 蓄力被打断（盾被打爆 / 掉血过猛）时的踉跄，给玩家喘息 */
+      case 'stunned':
+        if (e.stT >= 0.7) { e.state = 'approach'; e.cdAtk = R.atkCd * 0.6; }
+        break;
+    }
+
+    /* 冲刺撞墙：贴着主角站也不会被穿过去 */
+    e.x = clamp(e.x, Math.max(CONFIG.PLAYER_MIN_X - 40, p.x - 150), W - 70);
   }
 
   /* 已知初速与目标点，求能命中目标的最小仰角（屏幕坐标 y 向下）
    * 返回发射角度（弧度）；速度不足返回 null */
-  function solveAngle(x0, y0, x1, y1, v, g) {
+  function solveAngle(x0, y0, x1, y1, v, g, high) {
     var dx = x1 - x0, dy = y1 - y0;
     var dir = dx >= 0 ? 1 : -1;
     var X = Math.abs(dx);
@@ -1045,7 +1206,8 @@
     var h = -dy;
     var disc = v2 * v2 - g * (g * X * X + 2 * h * v2);
     if (disc < 0) return null;
-    var ang = Math.atan((v2 - Math.sqrt(disc)) / (g * X));   /* 低弧 */
+    var sq = Math.sqrt(disc);
+    var ang = high ? Math.atan((v2 + sq) / (g * X)) : Math.atan((v2 - sq) / (g * X));
     var a = ang;
     if (dir > 0) return -a;                                   /* 屏幕坐标：仰角为负 */
     return -(Math.PI - a);
@@ -1212,8 +1374,16 @@
       ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.moveTo(10, -75); ctx.lineTo(10, -41); ctx.stroke();
     }
+    /* 近战武器：蓄力抬刀 / 冲刺横劈 */
+    if (opts.blade) {
+      var lift = opts.bladeLift || 0;
+      ctx.strokeStyle = flash || '#cfd8e3'; ctx.lineWidth = 3.2; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(8, -44); ctx.lineTo(26, -44 - lift * 26); ctx.stroke();
+      ctx.strokeStyle = flash || '#8a6a3a'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(4, -44); ctx.lineTo(9, -44); ctx.stroke();
+    }
     /* 盾 */
-    if (opts.shield) {
+    if (opts.shield && !opts.flying) {
       ctx.fillStyle = flash || '#8a5a34'; ctx.strokeStyle = '#5c3a20'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(-10, -50, 13, 0, 6.2832); ctx.fill(); ctx.stroke();
       ctx.fillStyle = 'rgba(255,255,255,.18)';
@@ -1244,24 +1414,36 @@
   }
 
   function drawAimPreview() {
-    if (!Input.aiming || !G.player.aim) return;
+    if (!Input.aiming || !G.player.aim || !Input.aimCur) return;
     var av = G.player.aim;
     var ox = G.player.x + 18, oy = CONFIG.GROUND - 58;
     var vx = av.vx, vy = av.vy, g = G.stats.gravity;
     ctx.save();
     ctx.setLineDash([7, 9]);
-    ctx.strokeStyle = 'rgba(255,255,255,.82)';
+    ctx.strokeStyle = 'rgba(255,255,255,.8)';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    var t0 = 0, px = ox, py = oy;
-    ctx.moveTo(px, py);
-    for (var i = 1; i <= 18; i++) {
-      var t = i * 0.075;
+    ctx.moveTo(ox, oy);
+    var hitX = null, hitY = null;
+    for (var i = 1; i <= 40; i++) {
+      var t = i * 0.04;
       var x = ox + vx * t, y = oy + vy * t + 0.5 * g * t * t;
       ctx.lineTo(x, y);
-      if (y > CONFIG.GROUND) break;
+      if (y > CONFIG.GROUND || x > W + 30 || x < -30) break;
+      hitX = x; hitY = y;
     }
     ctx.stroke();
+    /* 准星：拖动时手指/鼠标点就是落点目标，画个圆圈让人看得见在瞄哪 */
+    if (Input.aimCur) {
+      ctx.setLineDash([]);
+      ctx.strokeStyle = 'rgba(255,214,120,.95)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(Input.aimCur.x, Input.aimCur.y, 15, 0, 6.2832); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(Input.aimCur.x - 22, Input.aimCur.y); ctx.lineTo(Input.aimCur.x - 8, Input.aimCur.y);
+      ctx.moveTo(Input.aimCur.x + 8, Input.aimCur.y); ctx.lineTo(Input.aimCur.x + 22, Input.aimCur.y);
+      ctx.moveTo(Input.aimCur.x, Input.aimCur.y - 22); ctx.lineTo(Input.aimCur.x, Input.aimCur.y - 8);
+      ctx.moveTo(Input.aimCur.x, Input.aimCur.y + 8); ctx.lineTo(Input.aimCur.x, Input.aimCur.y + 22);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
@@ -1288,28 +1470,62 @@
       var e = G.enemies[i];
       if (e.dead) {
         ctx.save(); ctx.globalAlpha = Math.max(0, 1 - e.deathT / 0.6);
-        ctx.translate(e.x, CONFIG.GROUND + e.deathT * 20); ctx.rotate(e.deathT * 1.2);
-        drawStick(0, 0, 1, { cape: eColor(e.type)[1], color: eColor(e.type)[0], yes: true });
+        var deadFeet = e.mode === 'fly' ? (e.y + 70) : (CONFIG.GROUND + e.deathT * 20);
+        ctx.translate(e.x, deadFeet); ctx.rotate(e.deathT * 1.2);
+        drawStick(0, 0, 1, { cape: eColor(e.type)[1], color: eColor(e.type)[0], yes: true, bow: e.mode === 'fly' });
         ctx.restore();
         continue;
       }
       var cols = eColor(e.type);
       var sc = e.type === 'boss' ? 1.55 : e.type === 'tank' ? 1.14 : e.type === 'elite' ? 1.1 : 1;
-      /* 影子 */
-      ctx.fillStyle = 'rgba(0,0,0,.28)';
-      ctx.beginPath(); ctx.ellipse(e.x, CONFIG.GROUND + 2, 22 * sc, 6 * sc, 0, 0, 6.28); ctx.fill();
-      ctx.save(); ctx.translate(e.x, CONFIG.GROUND);
-      drawStick(0, 0, e.dir, { color: cols[0], cape: cols[1], scale: sc, flash: e.flash > 0, angry: true, bow: true, shield: e.type === 'tank' || e.type === 'boss' || e.type === 'double' });
-      ctx.restore();
-      /* 血条 */
-      var bw = 54 * sc;
-      bar(e.x - bw / 2, CONFIG.GROUND - 108 * sc, bw, 6, e.hp / e.maxHp, '#ff5d5d');
-      if (e.maxShield > 0) {
-        bar(e.x - bw / 2, CONFIG.GROUND - 98 * sc, bw, 5, e.shield / e.maxShield, '#5fa8ff');
+      var flying = e.mode === 'fly';
+      var feetY = flying ? e.y + 70 * sc : CONFIG.GROUND;   /* drawStick 的 y 是脚底 */
+      var lift = flying ? clamp((CONFIG.GROUND - feetY) / 260, 0, 1) : 0;
+
+      /* 地面影子：越高越淡越小 */
+      ctx.fillStyle = 'rgba(0,0,0,' + (0.28 * (1 - lift * 0.72)).toFixed(3) + ')';
+      ctx.beginPath(); ctx.ellipse(e.x, CONFIG.GROUND + 2, 22 * sc * (1 - lift * 0.4), 6 * sc * (1 - lift * 0.4), 0, 0, 6.28); ctx.fill();
+
+      /* 冲刺前的蓄力预警：脚下一道即将发出的红色轨迹 */
+      if (e.state === 'windup') {
+        var prog = clamp(e.stT / CONFIG.RUSH.windup, 0, 1);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,80,80,' + (0.25 + prog * 0.5).toFixed(2) + ')';
+        ctx.lineWidth = 3 + prog * 3; ctx.setLineDash([10, 8]);
+        ctx.beginPath(); ctx.moveTo(e.x + 20 * e.dir, CONFIG.GROUND - 1);
+        ctx.lineTo(e.x + (60 + 150 * prog) * e.dir, CONFIG.GROUND - 1); ctx.stroke();
+        ctx.restore();
       }
+
+      ctx.save(); ctx.translate(e.x, feetY);
+      if (flying) {
+        /* 悬空：微微后仰，脚下拖一条气流 */
+        ctx.rotate(-0.06 * e.dir);
+        ctx.strokeStyle = 'rgba(200,220,255,.35)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-8, 6); ctx.lineTo(-26, 14); ctx.stroke();
+      }
+      drawStick(0, 0, e.dir, {
+        color: cols[0], cape: cols[1], scale: sc, flash: e.flash > 0, angry: true,
+        bow: flying, flying: flying,
+        shield: !flying && (e.type === 'tank' || e.type === 'boss' || e.type === 'double'),
+        blade: !flying, bladeLift: e.state === 'windup' ? 1 : (e.state === 'dash' ? 0.15 : 0.4)
+      });
+      ctx.restore();
+
+      /* 血条：贴在自己头顶 */
+      var bw = 54 * sc;
+      var barY = flying ? feetY - 96 * sc : CONFIG.GROUND - 108 * sc;
+      bar(e.x - bw / 2, barY, bw, 6, e.hp / e.maxHp, '#ff5d5d');
+      if (e.maxShield > 0) {
+        bar(e.x - bw / 2, barY + 10, bw, 5, e.shield / e.maxShield, '#5fa8ff');
+      }
+      /* 兵种标：地面 / 空中一眼分辨 */
+      ctx.font = '800 10px "PingFang SC", sans-serif'; ctx.textAlign = 'center';
+      ctx.fillStyle = flying ? 'rgba(168,214,255,.9)' : 'rgba(255,196,170,.9)';
+      ctx.fillText(flying ? '空 · 远程' : (e.maxShield > 0 ? '地 · 冲刺带盾' : '地 · 冲刺'), e.x, barY - 6);
       if (e.type === 'boss') {
-        ctx.fillStyle = '#ffd2d2'; ctx.font = '700 13px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText('主将 · P' + e.phase, e.x, CONFIG.GROUND - 118);
+        ctx.fillStyle = '#ffd2d2'; ctx.font = '700 13px sans-serif';
+        ctx.fillText('主将 · P' + e.phase, e.x, barY - 20);
       }
     }
 
@@ -1320,6 +1536,9 @@
     ctx.save(); ctx.translate(p.x, CONFIG.GROUND);
     drawStick(0, 0, p.dir, { color: '#1a1524', cape: '#e03b3b', flash: p.flash > 0, shield: true, bow: true });
     ctx.restore();
+    /* 站位圈：主角固定在锚点，提示"站桩输出" */
+    ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(p.x, CONFIG.GROUND + 2, 30, 9, 0, 0, 6.28); ctx.stroke();
 
     /* 箭 & 预览 */
     for (var j = 0; j < G.arrows.length; j++) drawArrow(G.arrows[j]);
@@ -1609,8 +1828,19 @@
   }
   function applyTrait(t) {
     G.traits[t.id] = (G.traits[t.id] || 0) + 1;
+    G.traitApplied = G.traitApplied || {};
     G.traitApplied[t.id] = t;
-    t.apply({ get attack() { return G.stats.attack; }, set attack(v) { G.stats.attack = v; }, get cooldown() { return G.stats.cooldown; }, set cooldown(v) { G.stats.cooldown = v; }, get speed() { return G.stats.speed; }, set speed(v) { G.stats.speed = v; }, get maxHp() { return G.stats.maxHp; }, set maxHp(v) { G.stats.maxHp = v; }, get hp() { return G.player.hp; }, set hp(v) { G.player.hp = v; }, get shield() { return G.player.shield; }, set shield(v) { G.player.shield = v; }, get shieldMax() { return G.stats.shieldMax; }, set shieldMax(v) { G.stats.shieldMax = v; }, get arrowSpeed() { return G.stats.arrowSpeed; }, set arrowSpeed(v) { G.stats.arrowSpeed = v; }, get multi() { return G.stats.multi; }, set multi(v) { G.stats.multi = v; }, get pierce() { return G.stats.pierce; }, set pierce(v) { G.stats.pierce = v; }, get crit() { return G.stats.crit; }, set crit(v) { G.stats.crit = v; }, get critDmg() { return G.stats.critDmg; }, set critDmg(v) { G.stats.critDmg = v; }, get pickup() { return G.stats.pickup; }, set pickup(v) { G.stats.pickup = v; }, get regen() { return G.stats.regen; }, set regen(v) { G.stats.regen = v; }, get shieldRegen() { return G.stats.shieldRegen; }, set shieldRegen(v) { G.stats.shieldRegen = v; }, get split() { return G.stats.split; }, set split(v) { G.stats.split = v; }, get vamp() { return G.stats.vamp; }, set vamp(v) { G.stats.vamp = v; } });
+    /* 用一个轻量代理把词条写入落到 G.stats / G.player 上；
+       以前这里手写 getter/setter，漏一个属性（比如 shieldMax）整条词条就抛异常 */
+    var proxy = {
+      get: function (k) { return (k in G.stats) ? G.stats[k] : G.player[k]; },
+      set: function (k, v) {
+        if (k in G.stats) G.stats[k] = v;
+        if (k in G.player) G.player[k] = v;
+        if (!(k in G.stats) && !(k in G.player)) G.stats[k] = v;
+      }
+    };
+    t.apply(proxy);
   }
 
   /* ---------- 局间 ---------- */
@@ -1679,6 +1909,7 @@
         '<button class="mg-btn" id="inter-go">进入第 ' + Math.min(5, w.arch + 1) + ' 大关</button></div>';
       var row2 = el('shoprow');
       G.shopOffers.forEach(function (it, i) {
+        if (!it) return;                       /* 已买走的格子留 null 占位，渲染时跳过 */
         var price = it.price || (it.quality >= 4 ? 220 : it.quality >= 3 ? 150 : it.quality >= 2 ? 95 : 55);
         var c = document.createElement('button');
         c.className = 'itemcard q' + (it.quality || 0);
@@ -1783,6 +2014,7 @@
       }
       activePointer = ev.pointerId;
       Input.aiming = true;
+      Input.aimHold = 0;
       Input.aimStart = p;
       Input.aimCur = p;
       Input.lastStage = p;
@@ -1819,7 +2051,7 @@
         if (!G || G.phase !== 'fight') return;
         if (G.player.aim && G.player.cooldown <= 0) {
           shoot(G.player.aim.vx, G.player.aim.vy);
-          G.player.cooldown = G.stats.cooldown;
+          G.player.cooldown = G.stats.cooldown / Math.max(0.2, G.stats.speed);
         }
         G.player.aim = null;
       }
@@ -1880,16 +2112,51 @@
     };
   }
 
+  /* 拖动瞄准：方向 = 拉弓方向，
+   * 力度按「按住时长」涨到满（不用拖够 210px 才满力），
+   * 同时也在弹道抛物线上找是否正好穿过准星，能对上就顺带缩短力度——这样高处的空中兵也打得中 */
+  /* 准星反解：给定弓口与目标点，求一组能在目标点穿过的初速度。
+   * 横向按「准星横距 / 飞行时间」算，纵向按「落点高度 / 同一时间」反推，
+   * 速度超出 [min,max] 视为打不到，返回 null —— 玩家据此知道该把准星移近一点。 */
+  function solveShot(x0, y0, tx, ty, g, dirX) {
+    var gx = dirX >= 0 ? Math.max(0.14, Math.min(1, dirX)) : Math.max(-1, Math.min(-0.14, dirX));
+    for (var t = 0.12; t <= 1.4; t += 0.02) {
+      var vx = (tx - x0) / t;
+      if (vx * gx <= 0) continue;                        /* 方向要跟准星一致 */
+      var vy = ((ty - y0) - 0.5 * g * t * t) / t;
+      var mag = Math.sqrt(vx * vx + vy * vy);
+      if (mag < CONFIG.AIR.min || mag > CONFIG.AIR.max) continue;
+      /* 校验：这条弹道在 t 时刻确实落在准星上，且中途不先撞地 */
+      var okY = true;
+      for (var k = 0.1; k < t; k += 0.06) {
+        if (y0 + vy * k + 0.5 * g * k * k > CONFIG.GROUND) { okY = false; break; }
+      }
+      if (!okY) continue;
+      return { vx: vx, vy: vy, t: t };
+    }
+    return null;
+  }
+
   function updateAim() {
     if (!G || !Input.aimStart || !Input.aimCur) return;
     var ox = G.player.x, oy = CONFIG.GROUND - 58;
     var dx = Input.aimCur.x - ox, dy = Input.aimCur.y - oy;
     var len = Math.sqrt(dx * dx + dy * dy);
     if (len < 12) { G.player.aim = null; return; }
-    len = Math.sqrt(dx * dx + dy * dy);
-    var power = clamp(len / CONFIG.AIR.dragMax, 0, 1);
-    var sp = CONFIG.AIR.min + (CONFIG.AIR.max - CONFIG.AIR.min) * power;
-    G.player.aim = { vx: dx / len * sp, vy: dy / len * sp };
+    Input.aimHold = (Input.aimHold || 0);
+    var holdPower = clamp(Input.aimHold / CONFIG.AIR.chargeTime, 0, 1);
+    var sp = CONFIG.AIR.min + (CONFIG.AIR.max - CONFIG.AIR.min) * Math.max(holdPower, 0.35);
+    var ux = dx / len, uy = dy / len;
+    /* 准星校力：准星指向「要打中哪里」，就反解一组穿过该点的初速度（横向取准星距离）。
+     * 竖直分量由解算给出，所以把准星移到空中兵身上就能把仰角压到够得着；
+     * 解不出可行速度（太近/太远）时退回按「按住时长」蓄出的力度。 */
+    var bt = solveShot(ox + 18, oy, Input.aimCur.x, Input.aimCur.y, G.stats.gravity, ux);
+    if (bt) {
+      G.player.aim = { vx: bt.vx, vy: bt.vy };
+      if (Math.abs(dx) > 24) G.player.dir = dx >= 0 ? 1 : -1;
+      return;
+    }
+    G.player.aim = { vx: ux * sp, vy: uy * sp };
     if (Math.abs(dx) > 24) G.player.dir = dx >= 0 ? 1 : -1;
   }
 
@@ -1931,6 +2198,7 @@
   /* 调试挂载 */
   window.archer = { get state() { return G; }, get input() { return Input; }, CONFIG: CONFIG, save: function () { return save; } };
 })();
+
 </script>
 </body>
 </html>
