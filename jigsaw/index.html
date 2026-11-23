@@ -779,11 +779,13 @@ function edge(ctx, x1, y1, x2, y2, dir, k) {
       ctx.restore();
     }
 
-    /* 托盘底板 */
-    ctx.save();
-    ctx.fillStyle = 'rgba(140,105,70,.12)';
-    roundRect(8, H - G.trayH, W - 16, G.trayH - 8, 16); ctx.fill();
-    ctx.restore();
+    /* 托盘底板：碎片都上板后就不再留一条空槽 */
+    if (G.tray.some(function (p) { return !p.placed; })) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(140,105,70,.12)';
+      roundRect(8, H - G.trayH, W - 16, G.trayH - 8, 16); ctx.fill();
+      ctx.restore();
+    }
 
     /* 托盘碎片（未拖动） */
     G.tray.forEach(function (p) {
