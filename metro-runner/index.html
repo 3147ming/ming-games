@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#0b1420">
-<meta name="description" content="地铁跑酷 METRO RUSH —— 三轨切换、跳跃滑铲、躲障碍收集金币的无限跑酷。">
+<meta name="description" content="地铁跑酷 METRO RUSH —— 2.5D 透视三轨跑酷：切轨、跳跃、滑铲，躲列车、收金币。">
 <title>地铁跑酷 · METRO RUSH</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b1420'/%3E%3Cpath d='M8 22V12a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v10z' fill='%23ffb142'/%3E%3Ccircle cx='12' cy='24' r='2' fill='%230b1420'/%3E%3Ccircle cx='20' cy='24' r='2' fill='%230b1420'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="../shared/tokens.css">
@@ -16,13 +16,13 @@ body{background:radial-gradient(120% 85% at 50% -10%,#132437 0%,var(--ink) 62%);
 .head{text-align:center;margin-bottom:6px}.logo{font-size:21px;letter-spacing:.2em;margin:0;color:var(--gold)}.sub{font-size:9px;letter-spacing:.14em;color:var(--dim);margin:3px 0 0}
 .bar{display:flex;justify-content:space-between;align-items:center;gap:6px;background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:12px;padding:7px 11px;margin-bottom:8px;font-size:11px}
 .bar b{color:var(--gold);font-size:15px}
-.stage{position:relative;width:min(100%,360px);height:min(66vh,520px);margin:0 auto;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#0b1420;touch-action:none}
+.stage{position:relative;width:min(100%,380px);height:min(70vh,560px);margin:0 auto;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#08111c;touch-action:none;user-select:none}
 canvas{display:block;width:100%;height:100%}
-.hud{position:absolute;top:8px;left:0;right:0;display:flex;justify-content:space-between;padding:0 12px;font-size:11px;color:var(--dim);pointer-events:none}
-.hud b{color:var(--gold);font-size:15px}
+.hud{position:absolute;top:9px;left:0;right:0;display:flex;justify-content:space-between;padding:0 14px;font-size:11px;color:var(--dim);pointer-events:none;text-shadow:0 1px 4px #000}
+.hud b{color:var(--gold);font-size:16px;font-variant-numeric:tabular-nums}
 .overlay{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(6,12,20,.9);text-align:center;padding:18px}
 .overlay[hidden]{display:none}.overlay h2{margin:0;font-size:20px;letter-spacing:.16em;color:var(--gold)}
-.overlay p{margin:0;font-size:11px;color:var(--dim);line-height:1.8;max-width:260px}
+.overlay p{margin:0;font-size:11px;color:var(--dim);line-height:1.8;max-width:270px}
 .controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
 .btn{border:none;border-radius:12px;min-height:42px;padding:0 18px;font:inherit;font-size:13px;cursor:pointer;background:var(--gold);color:#1a1206;font-weight:600}
 .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--paper);font-weight:400}
@@ -34,277 +34,645 @@ canvas{display:block;width:100%;height:100%}
 </head>
 <body>
 <div class="wrap">
-  <div class="head"><h1 class="logo">METRO RUSH</h1><p class="sub">地 铁 跑 酷 · 三 轨 穿 行</p></div>
+  <div class="head"><h1 class="logo">METRO RUSH</h1><p class="sub">地 铁 跑 酷 · 2.5D 三 轨 穿 行</p></div>
   <div class="bar"><div><span>最高 <b id="best">0</b></span> · <span>金币 <b id="coinBest">0</b></span></div><button class="btn ghost" id="btn-info" style="min-height:28px;padding:0 8px">规则</button></div>
   <div class="stage" id="stage">
     <canvas id="cv"></canvas>
     <div class="hud"><span>距离 <b id="dist">0</b>m</span><span>金币 <b id="coins">0</b></span></div>
-    <div class="overlay" id="overlay"><h2 id="ovTitle">地铁跑酷</h2><p id="ovText">左右切换轨道，上滑跳跃、下滑滑铲，躲开列车与障碍，收集金币。撞车即结束。</p><div class="controls"><button class="btn" id="ovBtn">开始跑酷</button></div></div>
+    <div class="overlay" id="overlay"><h2 id="ovTitle">地铁跑酷</h2><p id="ovText">左右切轨、上滑跳跃、下滑滑铲，躲开迎面列车与障碍，收集金币。速度会越来越快。</p><div class="controls"><button class="btn" id="ovBtn">开始跑酷</button></div></div>
   </div>
-  <div class="msg" id="msg">← → 切轨 · ↑ 跳 · ↓ 滑 · 手机可滑动</div>
+  <div class="msg" id="msg">← → 切轨 · ↑ 跳 · ↓ 滑 · 手机滑动 / 双指</div>
   <div class="keyhint"><span>← → / A D 切轨</span><span>↑ / W / 空格 跳</span><span>↓ / S 滑铲</span></div>
   <div class="controls"><button class="btn" id="btn-start">开始</button><button class="btn ghost" id="btn-pause">暂停</button></div>
 </div>
-<div class="overlay" id="info" hidden style="position:fixed;z-index:60"><div style="width:min(90%,360px);background:#132437;border:1px solid var(--line);border-radius:16px;padding:22px"><h2 style="margin:0 0 10px;color:var(--gold);font-size:18px">玩法</h2><p style="font-size:12px;line-height:1.9;color:var(--dim);margin:0">角色在三条轨道上自动前进。<b>左右切换</b>轨道避开障碍，<b>上滑跳跃</b>越过矮障，<b>下滑滑铲</b>穿过高障。撞上列车或障碍即结束；收集金币加分。速度随距离逐渐提升。键盘方向键 / WASD / 空格，或手机滑动操作。纯本地存档。</p><div class="controls" style="margin-top:16px"><button class="btn" id="infoClose">知道了</button></div></div></div>
+<div class="overlay" id="info" hidden style="position:fixed;z-index:60"><div style="width:min(90%,360px);background:#132437;border:1px solid var(--line);border-radius:16px;padding:22px"><h2 style="margin:0 0 10px;color:var(--gold);font-size:18px">玩法</h2><p style="font-size:12px;line-height:1.9;color:var(--dim);margin:0">角色在三条轨道上自动前进。<b>左右切换</b>轨道避开障碍，<b>上滑跳跃</b>越过矮障，<b>下滑滑铲</b>穿过高闸，<b>列车</b>必须换轨绕开。撞上即结束；金币连击有额外加成。速度随距离提升。键盘方向键 / WASD / 空格，或手机滑动操作。纯本地存档。</p><div class="controls" style="margin-top:16px"><button class="btn" id="infoClose">知道了</button></div></div></div>
 <script>
 (function(){
 'use strict';
-var KEY='mg_metro.v1',$=function(i){return document.getElementById(i)};
+var KEY='mg_metro.v2',$=function(i){return document.getElementById(i)};
 var S=(function(){try{var o=JSON.parse(localStorage.getItem(KEY));if(o&&typeof o==='object')return o}catch(e){}return {best:0,coinBest:0}})();
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 var cv=$('cv'),ctx=cv.getContext('2d'),stage=$('stage');
 var W=0,H=0,DPR=1;
 function resize(){
   var r=stage.getBoundingClientRect();DPR=Math.min(2,window.devicePixelRatio||1);
-  W=r.width;H=r.height;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+  W=r.width;H=r.height;cv.width=Math.round(W*DPR);cv.height=Math.round(H*DPR);ctx.setTransform(DPR,0,0,DPR,0,0);
 }
 window.addEventListener('resize',resize);resize();
 
-var LANES=3,GEO={};
-function geom(){var laneW=W/3,horizon=H*0.28,ground=H*0.82;return {laneW,horizon,ground,laneX:[laneW*0.5,laneW*1.5,laneW*2.5]}}
-var G=null,raf=null,lastT=0,paused=false;
-function newGame(){
-  G={t:0,dist:0,coins:0,lane:1,targetLane:1,px:geom().laneX[1],jumpY:0,jumpV:0,slide:false,slideT:0,
-     speed:6.2,obstacles:[],spawnT:0,running:true,over:false,stars:[],
-     laneTilt:0,              // 换轨侧倾（-1..1），0.18s 回正
-     camShift:0,              // 镜头横向跟随
-     warnT:0,                 // 列车预警剩余秒数
-     staggerT:0,              // 撞车踉跄倒计时：>0 时先踉跄，归零才判定死亡
-     staggerLane:-1,          // 踉跄起始轨，期间换轨可脱身
-     magnetT:0,shield:0,boostT:0,
-     nearT:0};
-  for(var i=0;i<26;i++)G.stars.push({x:Math.random()*W,y:Math.random()*H*0.5,s:Math.random()*1.5+0.3});
-  lastT=performance.now();loop();
+/* ── 2.5D 投影 ────────────────────────────────────────────────────────────
+ * 世界坐标：x 横向（米，0 = 中轨中心）、y 竖直（米，0 = 地面）、z 纵深（米，0 = 相机处，越大越远）
+ * 透视：f = FOC / (FOC + z)，屏幕坐标 (cx + x*f*SX, horizon + (ground-horizon)*f - y*f*SX)
+ * 关键点：z→∞ 时 f→0，所有点（含地面上的）都收敛到地平线——这才是真 2.5D，
+ *        旧版 proj() 的 y 与 z 无关，等于把远近物体贴在同一条水平线上，所以没有纵深。
+ */
+var CAM = { FOC: 6.6, SX: 132, HORIZON: 0.235, GROUND: 0.965 };
+var LANE_X = [-1.28, 0, 1.28];      // 三轨横向位置（米）
+var TRACK_W = 1.15;                  // 单轨可视宽度
+function proj(x, y, z) {
+  var f = CAM.FOC / (CAM.FOC + Math.max(0.02, z));
+  var hz = H * CAM.HORIZON, gy = H * CAM.GROUND;
+  return {
+    x: W / 2 + x * f * CAM.SX,
+    y: hz + (gy - hz) * f - y * f * CAM.SX,
+    s: f * CAM.SX                       // 每米对应的屏幕像素
+  };
 }
-function spawn(){
-  // 障碍按"段"编排：连续几段递增，不纯随机
-  G.segCount=(G.segCount||0)+1;
-  var lane=Math.floor(Math.random()*LANES),kind=Math.random()<0.30?'train':(Math.random()<0.5?'low':'high');
-  var coinLane=Math.random()<0.5?(lane+1)%LANES:(lane+2)%LANES;
-  // 列车预警：提前 1.2s 亮灯/警示条
-  if(kind==='train'){G.warnLane=lane;G.warnT=1.2;sfx('warn')}
-  G.obstacles.push({lane:lane,kind:kind,z:1,hit:false});
-  // 金币弧线：z 推进时 y 走抛物线
-  for(var i=0;i<6;i++)G.obstacles.push({lane:coinLane,kind:'coin',z:1+i*0.055,got:false,arc:i});
-  // 偶尔放道具
-  if(Math.random()<0.22){var kinds=['magnet','shield','boost'];var pk=kinds[Math.floor(Math.random()*3)];
-    G.obstacles.push({lane:(lane+2)%LANES,kind:'power',power:pk,z:1+0.2,got:false});}
-}
-function act(dir){
-  if(!G||G.over)return;
-  if(dir==='left'&&G.targetLane>0){G.targetLane--;G.laneTilt=-1}
-  else if(dir==='right'&&G.targetLane<LANES-1){G.targetLane++;G.laneTilt=1}
-  else if(dir==='jump'&&G.jumpY===0){G.jumpV=9.5;}
-  else if(dir==='slide'){G.slide=true;G.slideT=0.55;}
-}
-/* 程序化音效（零外部资源） */
-var AC=null;
-function sfx(type){
-  try{
-    if(!AC)AC=new (window.AudioContext||window.webkitAudioContext)();
-    if(AC.state==='suspended')AC.resume();
-    var o=AC.createOscillator(),g=AC.createGain(),now=AC.currentTime;
-    var f=type==='warn'?440:type==='coin'?1046:type==='hit'?140:type==='power'?784:660;
-    o.type=type==='hit'?'sawtooth':'square';o.frequency.setValueAtTime(f,now);
-    if(type==='warn')o.frequency.setValueAtTime(660,now+0.25);
-    g.gain.setValueAtTime(0.06,now);g.gain.exponentialRampToValueAtTime(0.001,now+(type==='warn'?0.5:0.14));
-    o.connect(g);g.connect(AC.destination);o.start(now);o.stop(now+(type==='warn'?0.5:0.14));
-  }catch(e){}
-}
-function loop(now){
-  if(!G||!G.running)return;
-  now=now||performance.now();var dt=Math.min(0.04,(now-lastT)/1000);lastT=now;
-  if(!paused)update(dt);
-  draw();
-  if(!G.over)raf=requestAnimationFrame(loop);
-}
-function update(dt){
-  G.t+=dt;
-  var base=6.2+Math.min(6,G.dist/260);G.speed=base+(G.boostT>0?2.4:0)-(G.staggerT>0?2.2:0);
-  G.dist+=G.speed*dt*6;
-  // 换轨：0.18s 侧倾回正 + 镜头跟随
-  G.px+=(geom().laneX[G.targetLane]-G.px)*Math.min(1,dt*11);
-  G.laneTilt*=Math.max(0,1-dt/0.18);
-  G.camShift+=(G.targetLane-1)*8*dt*6-G.camShift*Math.min(1,dt*3);
-  G.lane=G.targetLane;
-  // 跳跃物理
-  if(G.jumpV!==0||G.jumpY>0){G.jumpY+=G.jumpV;G.jumpV-=30*dt;if(G.jumpY<=0){G.jumpY=0;G.jumpV=0}}
-  if(G.slideT>0){G.slideT-=dt;if(G.slideT<=0)G.slide=false}
-  if(G.magnetT>0)G.magnetT-=dt;
-  if(G.boostT>0)G.boostT-=dt;
-  if(G.warnT>0)G.warnT-=dt;
-  if(G.nearT>0)G.nearT-=dt;
-  // 生成障碍
-  G.spawnT-=dt;if(G.spawnT<=0){spawn();G.spawnT=Math.max(0.5,1.35-G.dist/1600)}
-  // 踉跄倒计时：期间换轨到安全轨可脱身，否则归零判死
-  if(G.staggerT>0){
-    G.staggerT-=dt;
-    if(G.staggerLane!==G.lane){G.staggerT=0;G.nearT=0.5;sfx('power')} // 换轨脱身
-    else if(G.staggerT<=0){gameOver();return}
+
+var G = null, raf = null, lastT = 0, paused = false;
+
+function newGame() {
+  G = {
+    t: 0, dist: 0, coins: 0, combo: 0, comboT: 0,
+    lane: 1, targetLane: 1, px: LANE_X[1], lean: 0,
+    jumpY: 0, jumpV: 0, slide: false, slideT: 0,
+    speed: 11, baseSpeed: 11, runPhase: 0,
+    items: [], scenery: [], spawnZ: 30, lastRow: -1,
+    running: true, over: false, shake: 0, flash: 0,
+    stars: [], banner: '', bannerT: 0
+  };
+  for (var i = 0; i < 40; i++) G.stars.push({ x: Math.random() * W, y: Math.random() * H * CAM.HORIZON * 0.9, s: Math.random() * 1.6 + 0.4, p: Math.random() * 6 });
+  for (var z = 6; z < 160; z += 7) G.scenery.push({ z: z, side: Math.random() < 0.5 ? -1 : 1, h: 0.9 + Math.random() * 1.4, w: 2 + Math.random() * 3, kind: Math.random() < 0.35 ? 'sign' : 'pillar' });
+  /* 开局铺三组近距离金币，避免前 8 秒空跑无目标 */
+  for (var g0 = 0; g0 < 3; g0++) {
+    var gl = g0 === 0 ? 1 : (g0 === 1 ? 1 : 2);
+    for (var c0 = 0; c0 < 5; c0++) G.items.push({ kind: 'coin', lane: gl, z: 14 + g0 * 16 - c0 * 1.35, y: 0.55, got: false, spin: Math.random() * 6 });
   }
-  // 更新障碍（z 从 1 到 -0.1）
-  for(var i=G.obstacles.length-1;i>=0;i--){
-    var o=G.obstacles[i];o.z-=dt*G.speed*0.36;
-    if(o.z<-0.15){G.obstacles.splice(i,1);continue}
-    if(!o.hit&&!o.got&&Math.abs(o.z)<0.06){
-      var sameLane=o.lane===G.lane;
-      if(o.kind==='coin'){
-        // 磁铁：跨轨吸附
-        if(sameLane||G.magnetT>0){o.got=true;G.coins++;sfx('coin')}
-      }else if(o.kind==='power'){
-        if(sameLane){o.got=true;if(o.power==='magnet')G.magnetT=6;else if(o.power==='shield')G.shield++;else if(o.power==='boost')G.boostT=5;sfx('power')}
-      }else if(sameLane&&G.staggerT<=0){
-        var safe=false;
-        if(o.kind==='low'&&G.jumpY>18)safe=true;
-        if(o.kind==='high'&&G.slide)safe=true;
-        if(o.kind==='train')safe=false;
-        if(safe){o.hit=true;G.nearT=0.4}
-        else if(G.shield>0){G.shield--;o.hit=true;G.nearT=0.5;sfx('power')} // 护盾抵挡
-        else{o.hit=true;G.staggerT=1.0;G.staggerLane=G.lane;sfx('hit')}    // 先踉跄 1s
+  lastT = performance.now(); loop();
+}
+
+/* ── 关卡生成：以「行」为单位，保证任何时刻至少留一条可通行轨道 ────────── */
+function spawnRow(z) {
+  var lanes = [0, 1, 2];
+  var blocked = [];
+  var diff = Math.min(1, G.dist / 1200);
+  // 列车（必须换轨）
+  if (Math.random() < 0.34) {
+    var n = Math.random() < 0.25 ? 2 : 1;              // 后期可能出现双列车
+    for (var k = 0; k < n; k++) {
+      var li = lanes[Math.floor(Math.random() * lanes.length)];
+      if (blocked.indexOf(li) >= 0) continue;
+      blocked.push(li);
+      G.items.push({ kind: 'train', lane: li, z: z, len: 5.5, hit: false, hue: Math.random() < 0.5 ? 0 : 1 });
+    }
+  }
+  // 矮障（跳）/ 高闸（滑）
+  lanes.forEach(function (li) {
+    if (blocked.indexOf(li) >= 0) return;
+    if (Math.random() < 0.26 + diff * 0.12) {
+      G.items.push({ kind: Math.random() < 0.55 ? 'low' : 'gate', lane: li, z: z + Math.random() * 3, hit: false });
+    }
+  });
+  // 金币串：放在未被封锁的轨道上，偶尔排成弧形（跳跃收集）
+  var freeLanes = lanes.filter(function (l) { return blocked.indexOf(l) < 0; });
+  if (freeLanes.length) {
+    /* 60% 的概率把金币铺在玩家当前轨道上（顺路可吃），其余随机分散，避免空跑 */
+    var cl = (Math.random() < 0.6 && freeLanes.indexOf(1) >= 0) ? 1 : freeLanes[Math.floor(Math.random() * freeLanes.length)];
+    var arc = Math.random() < 0.22;
+    for (var j = 0, cn = 4 + Math.floor(Math.random() * 4); j < cn; j++) {
+      G.items.push({ kind: 'coin', lane: cl, z: z - j * 1.35, got: false, y: arc ? 0.55 + Math.sin(j / Math.max(1, cn - 1) * Math.PI) * 1.05 : 0.55, spin: Math.random() * 6 });
+    }
+  }
+}
+
+function act(dir) {
+  if (!G || G.over || paused) return;
+  if (dir === 'left' && G.targetLane > 0) G.targetLane--;
+  else if (dir === 'right' && G.targetLane < 2) G.targetLane++;
+  else if (dir === 'jump' && G.jumpY === 0 && !G.slide) { G.jumpV = 5.4; }
+  else if (dir === 'slide' && G.jumpY === 0) { G.slide = true; G.slideT = 0.62; G.combo = 0; }
+}
+
+function loop(now) {
+  if (!G || !G.running) return;
+  now = now || performance.now();
+  var dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
+  if (!paused) update(dt);
+  draw();
+  if (!G.over) raf = requestAnimationFrame(loop);
+}
+
+function update(dt) {
+  G.t += dt;
+  G.baseSpeed = 11 + Math.min(15, G.dist / 90);
+  G.speed += (G.baseSpeed - G.speed) * Math.min(1, dt * 1.6);
+  G.dist += G.speed * dt;
+  G.runPhase += dt * (4.6 + G.speed * 0.42);
+
+  // 横向平滑切换 + 车身倾斜
+  var tx = LANE_X[G.targetLane];
+  var d = (tx - G.px);
+  G.px += d * Math.min(1, dt * 11);
+  G.lean = Math.max(-0.34, Math.min(0.34, d * 0.55));
+  G.lane = G.targetLane;
+
+  // 跳跃
+  if (G.jumpV !== 0 || G.jumpY > 0) {
+    G.jumpY += G.jumpV * dt; G.jumpV -= 19 * dt;
+    if (G.jumpY <= 0) { G.jumpY = 0; G.jumpV = 0; }
+  }
+  if (G.slideT > 0) { G.slideT -= dt; if (G.slideT <= 0) G.slide = false; }
+  if (G.comboT > 0) { G.comboT -= dt; if (G.comboT <= 0) G.combo = 0; }
+  if (G.shake > 0) G.shake = Math.max(0, G.shake - dt * 3);
+  if (G.flash > 0) G.flash = Math.max(0, G.flash - dt * 2.4);
+  if (G.bannerT > 0) G.bannerT -= dt;
+
+  // 生成行：spawnZ 随车前进按里程补给
+  var need = 92;
+  var maxZ = 0;
+  for (var i = 0; i < G.items.length; i++) if (G.items[i].z > maxZ) maxZ = G.items[i].z;
+  if (maxZ < need) {
+    var z = Math.max(need, maxZ + 8);
+    spawnRow(z);
+  }
+
+  // 物体逼近：z 减少 = 向相机移动
+  for (var k = G.items.length - 1; k >= 0; k--) {
+    var o = G.items[k];
+    o.z -= G.speed * dt;
+    if (o.z < -6) { G.items.splice(k, 1); continue; }
+    if (o.kind === 'coin') {
+      /* 用「穿越」判定：上一帧还在面前、这一帧已到身边，避免高速时跳过窗口。
+         弧线币（y 高）需要跳跃；贴地币直接吃。 */
+      var passed = (o.pz === undefined) ? false : (o.pz > 1.1 && o.z <= 1.1);
+      o.pz = o.z;
+      if (!o.got && passed && o.lane === G.lane) {
+        var high = o.y > 1.0;
+        if (!high || G.jumpY > 0.5) {
+          o.got = true; G.coins++; G.combo++; G.comboT = 1.6; G.flash = 0.35;
+          if (G.combo % 10 === 0) { G.banner = '连击 ×' + G.combo; G.bannerT = 1.1; }
+        }
+      }
+      continue;
+    }
+    if (o.hit) continue;
+    var near = o.kind === 'train' ? (o.z < 1.4 && o.z > -o.len) : (o.z < 1.5 && o.z > -0.4);
+    if (!near || o.lane !== G.lane) continue;
+    if (o.kind === 'low' && G.jumpY > 0.55) { o.hit = true; continue; }         // 跳过矮障
+    if (o.kind === 'gate' && G.slide) { o.hit = true; continue; }                // 滑过高闸
+    if (o.kind === 'train') { o.hit = true; crash(o); return; }
+    o.hit = true; crash(o); return;
+  }
+
+  // 路边景物回收
+  for (var m = G.scenery.length - 1; m >= 0; m--) {
+    G.scenery[m].z -= G.speed * dt;
+    if (G.scenery[m].z < 1) {
+      G.scenery[m].z = 150 + Math.random() * 12;
+      G.scenery[m].side = Math.random() < 0.5 ? -1 : 1;
+      G.scenery[m].h = 0.9 + Math.random() * 1.4;
+      G.scenery[m].w = 2 + Math.random() * 3;
+      G.scenery[m].kind = Math.random() < 0.35 ? 'sign' : 'pillar';
+    }
+  }
+}
+
+function crash(o) {
+  G.shake = 1; G.flash = 1;
+  gameOver();
+}
+
+function gameOver() {
+  G.over = true; G.running = false;
+  var score = Math.floor(G.dist) + G.coins * 12;
+  var isBest = score > S.best;
+  if (isBest) S.best = score;
+  if (G.coins > S.coinBest) S.coinBest = G.coins;
+  save(); $('best').textContent = S.best; $('coinBest').textContent = S.coinBest;
+/* 调试接口（自动化测试用，不影响玩法） */
+window.__METRO__ = {
+  get g() { return G; },
+  snapshot: function () {
+    if (!G) return null;
+    var coins = G.items.filter(function (o) { return o.kind === 'coin'; });
+    return { dist: Math.floor(G.dist), coins: G.coins, lane: G.lane, target: G.targetLane,
+      jump: +G.jumpY.toFixed(2), speed: +G.speed.toFixed(2), items: G.items.length,
+      coinN: coins.length, coinZ: coins.map(function (o) { return +o.z.toFixed(1); }).slice(0, 8),
+      coinLane: coins.map(function (o) { return o.lane; }).slice(0, 8), over: G.over };
+  },
+  force: function (kind, lane, z, y) { G.items.push({ kind: kind, lane: lane, z: z, y: y || 0.55, got: false, hit: false, len: 5.5 }); },
+  setSpeed: function (v) { G.speed = v; G.baseSpeed = v; }
+};
+  $('ovTitle').textContent = '撞上了！';
+  $('ovText').textContent = '本局 ' + Math.floor(G.dist) + ' m · 金币 ' + G.coins + ' · 得分 ' + score + (isBest ? ' · 新纪录！' : '');
+  $('ovBtn').textContent = '再跑一局'; $('overlay').hidden = false;
+}
+
+/* ── 渲染 ──────────────────────────────────────────────────────────────── */
+function draw() {
+  var hz = H * CAM.HORIZON, gy = H * CAM.GROUND;
+  var t = G ? G.t : 0;
+
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  if (G && G.shake > 0) {
+    ctx.translate((Math.random() - 0.5) * 9 * G.shake, (Math.random() - 0.5) * 9 * G.shake);
+  }
+
+  // 天空：夜景渐变
+  var sky = ctx.createLinearGradient(0, 0, 0, hz + 4);
+  sky.addColorStop(0, '#07101c'); sky.addColorStop(0.62, '#12243a'); sky.addColorStop(1, '#2b4463');
+  ctx.fillStyle = sky; ctx.fillRect(-20, -20, W + 40, hz + 24);
+
+  // 星与远处霓虹
+  if (G) {
+    for (var i = 0; i < G.stars.length; i++) {
+      var s = G.stars[i];
+      ctx.globalAlpha = 0.28 + 0.45 * Math.abs(Math.sin(t * 1.7 + s.p));
+      ctx.fillStyle = '#cfe6ff'; ctx.fillRect(s.x, s.y, s.s, s.s);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // 远处天际线：两层视差
+  drawSkyline(hz, t * 0.35, 0.55, '#101d2e');
+  drawSkyline(hz, t * 0.75, 0.32, '#0c1622');
+
+  // 地平线辉光
+  var glow = ctx.createLinearGradient(0, hz - 26, 0, hz + 10);
+  glow.addColorStop(0, 'rgba(72,219,251,0)'); glow.addColorStop(0.7, 'rgba(72,219,251,.16)'); glow.addColorStop(1, 'rgba(72,219,251,0)');
+  ctx.fillStyle = glow; ctx.fillRect(0, hz - 26, W, 36);
+
+  // 地面：从地平线到底部，用透视格子铺出速度感
+  var gr = ctx.createLinearGradient(0, hz, 0, H);
+  gr.addColorStop(0, '#16273a'); gr.addColorStop(1, '#0d1725');
+  ctx.fillStyle = gr; ctx.fillRect(0, hz, W, H - hz);
+
+  // 三轨轨道：透视梯形 + 枕木
+  drawTracks(hz, gy);
+
+  // 路边景物（远的先画）
+  if (G) {
+    var sc = G.scenery.slice().sort(function (a, b) { return b.z - a.z; });
+    for (var q = 0; q < sc.length; q++) drawScenery(sc[q]);
+  }
+
+  // 隧道拱架：等距 z 的拱形轮廓（近大远小的强纵深提示）
+  drawTunnel(t);
+
+  if (!G) return;
+
+  // 障碍与金币：远 → 近
+  var items = G.items.slice().sort(function (a, b) { return b.z - a.z; });
+  for (var k = 0; k < items.length; k++) {
+    var o = items[k];
+    if (o.z < -o.len - 1 || o.z > 62) continue;
+    if (o.kind === 'coin') { if (!o.got) drawCoin(o, t); }
+    else if (o.kind === 'train') drawTrain(o);
+    else if (o.kind === 'low') drawLow(o);
+    else drawGate(o);
+  }
+
+  // 角色
+  drawRunner(gy, t);
+
+  // 屏幕效果
+  if (G.flash > 0) { ctx.fillStyle = 'rgba(255,177,66,' + (0.22 * G.flash) + ')'; ctx.fillRect(0, 0, W, H); }
+  if (G.bannerT > 0) {
+    ctx.globalAlpha = Math.min(1, G.bannerT);
+    ctx.fillStyle = '#ffb142'; ctx.font = 'bold 22px "PingFang SC",system-ui,sans-serif';
+    ctx.textAlign = 'center'; ctx.fillText(G.banner, W / 2, H * 0.42);
+    ctx.globalAlpha = 1;
+  }
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  $('dist').textContent = Math.floor(G.dist);
+  $('coins').textContent = G.coins;
+}
+
+function drawSkyline(hz, scroll, alpha, color) {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  var base = 46;
+  for (var i = -1; i < 14; i++) {
+    var bx = ((i * 58 - (scroll * 26) % 58) + 58) % (W + 120) - 60;
+    var bh = base + ((i * 41) % 66);
+    var bw = 30 + ((i * 17) % 20);
+    ctx.fillRect(bx, hz - bh, bw, bh);
+    // 窗光
+    ctx.fillStyle = 'rgba(120,190,255,.13)';
+    for (var wy = hz - bh + 6; wy < hz - 6; wy += 9) {
+      for (var wx = bx + 4; wx < bx + bw - 4; wx += 8) {
+        if (((wx + wy) | 0) % 3) ctx.fillRect(wx, wy, 3, 4);
       }
     }
+    ctx.fillStyle = color;
   }
+  ctx.globalAlpha = 1;
 }
-function gameOver(){
-  G.over=true;G.running=false;
-  var score=Math.floor(G.dist)+G.coins*15;var isBest=score>S.best;
-  if(isBest)S.best=score;if(G.coins>S.coinBest)S.coinBest=G.coins;save();
-  $('ovTitle').textContent='撞车了！';
-  $('ovText').textContent='本局 '+(Math.floor(G.dist))+'m · 金币 '+G.coins+' · 得分 '+score+(isBest?' · 新纪录！':'');
-  $('ovBtn').textContent='再跑一局';$('overlay').hidden=false;
-}
-function draw(){
-  var g=geom(),t=G?G.t:0;
-  // 天空
-  var sky=ctx.createLinearGradient(0,0,0,g.ground);sky.addColorStop(0,'#162942');sky.addColorStop(1,'#0b1420');
-  ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
-  // 星星
-  ctx.fillStyle='rgba(180,210,240,.5)';
-  (G?G.stars:[]).forEach(function(s){ctx.globalAlpha=0.3+0.4*Math.abs(Math.sin(t*2+s.x));ctx.fillRect(s.x,s.y,s.s,s.s)});ctx.globalAlpha=1;
-  // 远景楼群（视差）
-  ctx.fillStyle='#13233a';
-  for(var i=0;i<8;i++){var bw=W/7,bx=((i*83 - t*8)%(W+120))-60,bh=40+((i*37)%70);ctx.fillRect(bx,g.ground-bh,bw*0.8,bh)}
-  // 轨道透视
-  ctx.fillStyle='#111d2e';ctx.fillRect(0,g.ground,W,H-g.ground);
-  // 轨道线
-  ctx.strokeStyle='#2a3d56';ctx.lineWidth=1;
-  for(var k=0;k<=LANES;k++){var lx=k*g.laneW;ctx.beginPath();ctx.moveTo(W/2+(lx-W/2)*0.4,g.horizon);ctx.lineTo(lx,H);ctx.stroke()}
-  ctx.strokeStyle='#3a5170';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,g.ground);ctx.lineTo(W,g.ground);ctx.stroke();
-  if(!G)return;
-  // 障碍（按 z 排序，远的先画）
-  var obs=G.obstacles.slice().sort(function(a,b){return b.z-a.z});
-  obs.forEach(function(o){drawObstacle(o,g)});
-  // 角色
-  drawRunner(g);
-  // HUD
-  $('dist').textContent=Math.floor(G.dist);$('coins').textContent=G.coins;
-}
-function proj(laneX,z,g){var f=1/(1+z*2.2);return {x:W/2+(laneX-W/2)*f,y:g.ground-(g.ground-g.horizon)*0+(1-f)*20,s:f}}
-function drawObstacle(o,g){
-  if(o.got)return;var lx=g.laneX[o.lane],p=proj(lx,o.z,g),s=Math.max(0.25,p.s);
-  p.x+=(G?G.camShift:0);   // 镜头侧移
-  var size=42*s;
-  if(o.kind==='coin'){
-    // 金币弧线：z 推进时高度走抛物线
-    var arcH=Math.sin((o.arc||0)/6*Math.PI)*26*s;
-    ctx.save();ctx.translate(p.x,g.ground-30*s-arcH);
-    ctx.fillStyle='#ffb142';ctx.shadowColor='#ffb142';ctx.shadowBlur=10*s;
-    ctx.beginPath();ctx.arc(0,0,size*0.28,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='#fff3c4';ctx.beginPath();ctx.arc(0,0,size*0.12,0,Math.PI*2);ctx.fill();
-    ctx.restore();return;
-  }
-  if(o.kind==='power'){
-    var col=o.power==='magnet'?'#ff6b9d':o.power==='shield'?'#7bed9f':'#ffa502';
-    var icon=o.power==='magnet'?'🧲':o.power==='shield'?'🛡':'⚡';
-    ctx.save();ctx.translate(p.x,g.ground-34*s);
-    ctx.fillStyle=col;ctx.shadowColor=col;ctx.shadowBlur=14*s;
-    ctx.beginPath();ctx.arc(0,0,size*0.4,0,Math.PI*2);ctx.fill();
-    ctx.font=(size*0.5|0)+'px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(icon,0,1);
-    ctx.restore();return;
-  }
-  if(o.kind==='train'){
-    var warning=(G&&G.warnT>0&&G.warnLane===o.lane);
-    if(warning){
-      // 预警：轨道边缘警示条 + 车灯闪烁
-      var blink=0.4+0.6*Math.abs(Math.sin(G.t*18));
-      ctx.save();ctx.globalAlpha=blink;ctx.fillStyle='#ff4757';
-      ctx.fillRect(g.laneX[o.lane]-g.laneW*0.42,g.horizon,4,g.ground-g.horizon);
-      ctx.fillRect(g.laneX[o.lane]+g.laneW*0.42-4,g.horizon,4,g.ground-g.horizon);
-      ctx.restore();
+
+function drawTracks(hz, gy) {
+  var FARZ = 58;
+  // 路基：整块梯形（含三条轨道 + 道砟）
+  var bl = proj(-2.55, 0, 0.25), br = proj(2.55, 0, 0.25);
+  var fl = proj(-2.55, 0, FARZ), fr = proj(2.55, 0, FARZ);
+  var base = ctx.createLinearGradient(0, fr.y, 0, bl.y);
+  base.addColorStop(0, '#1b2b3d'); base.addColorStop(0.55, '#20334a'); base.addColorStop(1, '#26394f');
+  ctx.fillStyle = base;
+  ctx.beginPath(); ctx.moveTo(fl.x, fl.y); ctx.lineTo(fr.x, fr.y); ctx.lineTo(br.x, br.y); ctx.lineTo(bl.x, bl.y); ctx.closePath(); ctx.fill();
+
+  // 逐条轨道：轨间阴槽 + 双侧钢轨 + 轨枕
+  for (var i = 0; i < 3; i++) {
+    var cx = LANE_X[i];
+    // 轨道凹槽（比路基暗）
+    var a1 = proj(cx - 0.52, 0, 0.3), a2 = proj(cx + 0.52, 0, 0.3);
+    var a3 = proj(cx + 0.52, 0, FARZ), a4 = proj(cx - 0.52, 0, FARZ);
+    var gr2 = ctx.createLinearGradient(0, a4.y, 0, a1.y);
+    gr2.addColorStop(0, 'rgba(14,24,36,.9)'); gr2.addColorStop(1, 'rgba(12,20,30,.95)');
+    ctx.fillStyle = gr2;
+    ctx.beginPath(); ctx.moveTo(a4.x, a4.y); ctx.lineTo(a3.x, a3.y); ctx.lineTo(a2.x, a2.y); ctx.lineTo(a1.x, a1.y); ctx.closePath(); ctx.fill();
+
+    // 轨枕（每 1.5m 一根，随里程滚动）
+    var off = G ? (G.dist % 1.5) : 0;
+    for (var z = 0.6; z < FARZ; z += 1.5) {
+      var zz = z - off;
+      if (zz < 0.45) continue;
+      var f = CAM.FOC / (CAM.FOC + zz);
+      var yy = hz + (gy - hz) * f;
+      var l = proj(cx - 0.5, 0, zz), r = proj(cx + 0.5, 0, zz);
+      var al = Math.max(0, Math.min(0.5, 0.5 - (zz / FARZ) * 0.5)) * Math.min(1, (zz - 0.4) * 2.4);
+      if (al < 0.02) continue;
+      ctx.strokeStyle = 'rgba(120,146,176,' + al + ')';
+      ctx.lineWidth = Math.max(1, 0.13 * f * CAM.SX);
+      ctx.beginPath(); ctx.moveTo(l.x, yy); ctx.lineTo(r.x, yy); ctx.stroke();
     }
-    ctx.save();ctx.fillStyle='#e84118';ctx.fillRect(p.x-size*1.1,g.ground-size*1.9,size*2.2,size*1.9);
-    ctx.fillStyle='#7f8fa6';ctx.fillRect(p.x-size*0.85,g.ground-size*1.6,size*0.7,size*0.6);
-    ctx.fillRect(p.x+size*0.15,g.ground-size*1.6,size*0.7,size*0.6);
-    // 车灯
-    ctx.fillStyle=(warning||Math.sin(G.t*10)>0)?'#fff3b0':'#aa8b2a';ctx.shadowColor='#fff3b0';ctx.shadowBlur=8*s;
-    ctx.fillRect(p.x-size*0.75,g.ground-size*1.5,size*0.25,size*0.15);
-    ctx.fillRect(p.x+size*0.5,g.ground-size*1.5,size*0.25,size*0.15);ctx.shadowBlur=0;
-    ctx.fillStyle='#353b48';ctx.fillRect(p.x-size*1.1,g.ground-size*0.35,size*2.2,size*0.35);
-    ctx.restore();
-  }else if(o.kind==='low'){
-    ctx.fillStyle='#fbc531';ctx.fillRect(p.x-size*0.9,g.ground-size*0.6,size*1.8,size*0.6);
-  }else{
-    ctx.fillStyle='#718093';ctx.fillRect(p.x-size*0.9,g.ground-size*1.7,size*1.8,size*0.28);
-    ctx.fillRect(p.x-size*0.85,g.ground-size*0.5,size*0.18,size*1.2);
-    ctx.fillRect(p.x+size*0.67,g.ground-size*0.5,size*0.18,size*1.2);
+
+    // 双侧钢轨（带高光）
+    [-0.34, 0.34].forEach(function (dx) {
+      var pA = proj(cx + dx, 0.07, 0.3), pB = proj(cx + dx, 0.07, FARZ);
+      ctx.strokeStyle = 'rgba(178,208,236,.9)';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath(); ctx.moveTo(pA.x, pA.y); ctx.lineTo(pB.x, pB.y); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,.42)';
+      ctx.lineWidth = 0.9;
+      ctx.beginPath(); ctx.moveTo(pA.x - 0.6, pA.y); ctx.lineTo(pB.x - 0.3, pB.y); ctx.stroke();
+    });
+  }
+
+  // 路基两侧边石（近处高亮，强化纵深）
+  [-2.55, 2.55].forEach(function (x) {
+    var pA = proj(x, 0, 0.3), pB = proj(x, 0, FARZ);
+    ctx.strokeStyle = 'rgba(72,219,251,.5)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(pA.x, pA.y); ctx.lineTo(pB.x, pB.y); ctx.stroke();
+  });
+
+  // 侧壁（左右各一，抬高地面投影高度）——真正的 2.5D「通道」感
+  [-1, 1].forEach(function (sg) {
+    var x = sg * 2.55;
+    var nB = proj(x, 0, 0.3), nT = proj(x, 1.5, 0.3);
+    var fB = proj(x, 0, FARZ), fT = proj(x, 1.5, FARZ);
+    var wg = ctx.createLinearGradient(nB.x, 0, fB.x, 0);
+    wg.addColorStop(0, 'rgba(28,44,62,.92)'); wg.addColorStop(1, 'rgba(18,30,44,.4)');
+    ctx.fillStyle = wg;
+    ctx.beginPath(); ctx.moveTo(nT.x, nT.y); ctx.lineTo(fT.x, fT.y); ctx.lineTo(fB.x, fB.y); ctx.lineTo(nB.x, nB.y); ctx.closePath(); ctx.fill();
+    // 侧壁顶部灯带
+    ctx.strokeStyle = 'rgba(255,177,66,.34)'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(nT.x, nT.y); ctx.lineTo(fT.x, fT.y); ctx.stroke();
+  });
+}
+
+function drawTunnel(t) {
+  var hz = H * CAM.HORIZON, gy = H * CAM.GROUND;
+  var off = G ? (G.dist % 7) : 0;
+  var RW = 3.05, RH = 3.9;                 // 隧道半宽 / 拱顶高（米）
+  for (var z = 84; z > 1; z -= 7) {
+    var zz = z - off;
+    if (zz < 1.2) continue;
+    var f = CAM.FOC / (CAM.FOC + zz);
+    if (f < 0.075) continue;
+    var a = Math.max(0, Math.min(0.42, (1 - zz / 84) * 0.5));
+    ctx.strokeStyle = 'rgba(72,219,251,' + a + ')';
+    ctx.lineWidth = Math.max(0.7, 0.05 * f * CAM.SX);
+    var bl = proj(-RW, 0, zz), br = proj(RW, 0, zz);
+    var tl = proj(-RW, 1.9, zz), tr = proj(RW, 1.9, zz);
+    var apex = proj(0, RH, zz);
+    ctx.beginPath();
+    ctx.moveTo(bl.x, bl.y); ctx.lineTo(tl.x, tl.y);
+    ctx.quadraticCurveTo(tl.x, apex.y, (tl.x + tr.x) / 2, apex.y);
+    ctx.quadraticCurveTo(tr.x, apex.y, tr.x, tr.y);
+    ctx.lineTo(br.x, br.y);
+    ctx.stroke();
+    // 拱顶灯
+    if (zz < 34 && (Math.round((zz + off) / 7) % 2 === 0)) {
+      ctx.fillStyle = 'rgba(255,225,150,' + (a * 0.9) + ')';
+      ctx.beginPath(); ctx.arc(apex.x, apex.y, Math.max(0.7, 0.05 * f * CAM.SX), 0, 7); ctx.fill();
+    }
   }
 }
-function drawRunner(g){
-  var x=G.px+G.camShift,y=g.ground-G.jumpY*0.55;
-  var bob=G.jumpY===0?Math.abs(Math.sin(G.t*14))*3:0;
-  y-=bob;
-  var s=1.15;
-  ctx.save();ctx.translate(x,y);
-  // 接地阴影
-  ctx.globalAlpha=0.3*(1-Math.min(1,G.jumpY/120));ctx.fillStyle='#000';ctx.beginPath();ctx.ellipse(0,bob,16*s,4*s,0,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
-  // 踉跄：闪烁 + 左右摇晃
-  if(G.staggerT>0){ctx.globalAlpha=0.4+0.6*Math.abs(Math.sin(G.t*24));ctx.rotate(Math.sin(G.t*30)*0.18)}
-  // boost 拖尾
-  if(G.boostT>0){ctx.save();ctx.globalAlpha=0.25;ctx.fillStyle='#ffa502';
-    for(var k=1;k<=3;k++)ctx.fillRect(-9*s-k*7,-26*s,18*s,26*s);ctx.restore()}
-  // 身体：换轨侧倾（0.18s）+ 跳跃/滑铲姿态
-  var lean=(G.jumpY>0?-0.15:-0.06)+G.laneTilt*0.32;
-  ctx.rotate(lean);
-  var bodyCol=G.staggerT>0?'#ff6b6b':(G.boostT>0?'#ffa502':'#48dbfb');
-  ctx.fillStyle=bodyCol;ctx.shadowColor=bodyCol;ctx.shadowBlur=12;
-  var hh=G.slide?14*s:26*s;
-  ctx.fillRect(-9*s,-hh,18*s,hh);
-  ctx.fillStyle='#0be881';ctx.fillRect(-6*s,-hh-10*s,12*s,12*s); // 头
-  ctx.fillStyle='#0b1420';ctx.fillRect(-3*s,-hh-7*s,2*s,2*s);ctx.fillRect(2*s,-hh-7*s,2*s,2*s); // 眼
-  if(!G.slide){var lp=Math.sin(G.t*14)*4;ctx.fillStyle=bodyCol;ctx.fillRect(-7*s,-2*s,5*s,7*s+lp);ctx.fillRect(2*s,-2*s,5*s,7*s-lp)}
-  // 护盾环
-  for(var q=0;q<(G.shield||0);q++){ctx.strokeStyle='#7bed9f';ctx.lineWidth=2.5-q*0.5;ctx.globalAlpha=0.6+0.3*Math.sin(G.t*6+q);
-    ctx.beginPath();ctx.arc(0,-hh*0.5,hh*(0.95+q*0.18),0,Math.PI*2);ctx.stroke()}
-  ctx.restore();
-  // 道具状态 HUD（画在角色上方）
-  var pw=[];if(G.magnetT>0)pw.push('🧲'+G.magnetT.toFixed(0)+'s');if(G.shield>0)pw.push('🛡×'+G.shield);if(G.boostT>0)pw.push('⚡'+G.boostT.toFixed(0)+'s');
-  if(pw.length){ctx.save();ctx.globalAlpha=0.9;ctx.fillStyle='#fff';ctx.font='11px system-ui';ctx.textAlign='center';ctx.fillText(pw.join(' '),x,bob+42);ctx.restore()}
+
+function drawScenery(sc) {
+  if (sc.z < 3 || sc.z > 90) return;
+  var f = CAM.FOC / (CAM.FOC + sc.z);
+  if (f < 0.06) return;
+  var baseX = sc.side * (3.4 + sc.w * 0.16);
+  var p = proj(baseX, 0, sc.z);
+  var top = proj(baseX, sc.h * 1.6, sc.z);
+  var w = Math.min(70, sc.w * f * CAM.SX * 0.34);
+  var hgt = p.y - top.y;
+  var alpha = Math.min(0.55, 0.06 + f * 0.7);
+  if (sc.kind === 'pillar') {
+    ctx.fillStyle = 'rgba(30,48,68,' + alpha + ')';
+    ctx.fillRect(p.x - w * 0.18, top.y, w * 0.36, hgt);
+    ctx.fillStyle = 'rgba(72,219,251,' + (alpha * 0.5) + ')';
+    ctx.fillRect(p.x - w * 0.18, top.y, w * 0.36, Math.max(1, hgt * 0.06));
+  } else {
+    ctx.fillStyle = 'rgba(255,177,66,' + (alpha * 0.75) + ')';
+    ctx.fillRect(p.x - w * 0.5, top.y, w, Math.max(2, hgt * 0.5));
+    ctx.fillStyle = 'rgba(20,32,48,' + alpha + ')';
+    ctx.fillRect(p.x - w * 0.06, top.y + Math.max(2, hgt * 0.5), w * 0.12, hgt - Math.max(2, hgt * 0.5));
+  }
 }
-$('ovBtn').addEventListener('click',function(){$('overlay').hidden=true;paused=false;$('btn-pause').textContent='暂停';newGame()});
-$('btn-start').addEventListener('click',function(){$('overlay').hidden=true;paused=false;$('btn-pause').textContent='暂停';newGame()});
-$('btn-pause').addEventListener('click',function(){if(!G||G.over)return;paused=!paused;this.textContent=paused?'继续':'暂停';if(!paused)lastT=performance.now()});
-$('btn-info').addEventListener('click',function(){$('info').hidden=false});
-$('infoClose').addEventListener('click',function(){$('info').hidden=true});
-// 键盘
-window.addEventListener('keydown',function(e){
-  var k=e.key.toLowerCase();
-  if(k==='arrowleft'||k==='a')act('left');
-  else if(k==='arrowright'||k==='d')act('right');
-  else if(k==='arrowup'||k==='w'||k===' ')act('jump');
-  else if(k==='arrowdown'||k==='s')act('slide');
-  else return;e.preventDefault();
+
+function drawCoin(o, t) {
+  if (o.z < 0.6) return;
+  var p = proj(LANE_X[o.lane], o.y, o.z);
+  var r = Math.max(1.2, 0.26 * p.s);
+  var spin = Math.abs(Math.cos(t * 5 + o.spin));
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, 1.6 - o.z / 60);
+  ctx.translate(p.x, p.y);
+  ctx.shadowColor = '#ffb142'; ctx.shadowBlur = r * 1.4;
+  ctx.fillStyle = '#ffd166';
+  ctx.beginPath(); ctx.ellipse(0, 0, r * (0.25 + spin * 0.75), r, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#b87d18'; ctx.lineWidth = Math.max(0.6, r * 0.16); ctx.stroke();
+  ctx.restore();
+}
+
+function drawTrain(o) {
+  var f = CAM.FOC / (CAM.FOC + Math.max(0.4, o.z));
+  var nearZ = Math.max(0.4, o.z), farZ = o.z + o.len;
+  var L = LANE_X[o.lane] - 0.62, R = LANE_X[o.lane] + 0.62;
+  var nl = proj(L, 0, nearZ), nr = proj(R, 0, nearZ);
+  var fl = proj(L, 0, farZ), fr = proj(R, 0, farZ);
+  var nlt = proj(L, 2.35, nearZ), nrt = proj(R, 2.35, nearZ);
+  var flt = proj(L, 2.35, farZ), frt = proj(R, 2.35, farZ);
+  var col = o.hue ? ['#2b6cb0', '#1d4e86'] : ['#c0392b', '#8e2a20'];
+
+  // 车顶
+  ctx.fillStyle = col[1];
+  ctx.beginPath(); ctx.moveTo(nlt.x, nlt.y); ctx.lineTo(nrt.x, nrt.y); ctx.lineTo(frt.x, frt.y); ctx.lineTo(flt.x, flt.y); ctx.closePath(); ctx.fill();
+  // 左侧面
+  var sg = (nl.x + nr.x) / 2 < W / 2 ? -1 : 1;
+  ctx.fillStyle = '#16222f';
+  ctx.beginPath();
+  if (sg < 0) { ctx.moveTo(nl.x, nl.y); ctx.lineTo(nlt.x, nlt.y); ctx.lineTo(flt.x, flt.y); ctx.lineTo(fl.x, fl.y); }
+  else { ctx.moveTo(nr.x, nr.y); ctx.lineTo(nrt.x, nrt.y); ctx.lineTo(frt.x, frt.y); ctx.lineTo(fr.x, fr.y); }
+  ctx.closePath(); ctx.fill();
+  // 车头正面
+  ctx.fillStyle = col[0];
+  ctx.beginPath(); ctx.moveTo(nl.x, nl.y); ctx.lineTo(nlt.x, nlt.y); ctx.lineTo(nrt.x, nrt.y); ctx.lineTo(nr.x, nr.y); ctx.closePath(); ctx.fill();
+  // 挡风玻璃
+  var wy = nlt.y + (nl.y - nlt.y) * 0.18, wh = (nl.y - nlt.y) * 0.34;
+  ctx.fillStyle = 'rgba(160,215,255,.82)';
+  ctx.fillRect(nl.x + (nr.x - nl.x) * 0.12, wy, (nr.x - nl.x) * 0.76, wh);
+  // 车头灯
+  var lr = Math.max(1.5, 0.09 * f * CAM.SX);
+  ctx.fillStyle = '#fff6d5'; ctx.shadowColor = '#ffe9a8'; ctx.shadowBlur = lr * 3;
+  ctx.beginPath(); ctx.arc(nl.x + (nr.x - nl.x) * 0.2, nl.y - wh * 0.35, lr, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(nr.x - (nr.x - nl.x) * 0.2, nl.y - wh * 0.35, lr, 0, 7); ctx.fill();
+  ctx.shadowBlur = 0;
+  // 车顶灯带
+  ctx.fillStyle = 'rgba(255,225,150,.55)';
+  ctx.fillRect(nlt.x, nlt.y, Math.max(1, nrt.x - nlt.x), Math.max(1, (nl.y - nlt.y) * 0.05));
+}
+
+function drawLow(o) {
+  var p = proj(LANE_X[o.lane], 0, Math.max(0.4, o.z));
+  var h = 0.62 * p.s, w = 0.95 * p.s;
+  ctx.fillStyle = '#f6c445';
+  ctx.fillRect(p.x - w / 2, p.y - h, w, h);
+  ctx.fillStyle = '#3a2c0b';
+  for (var i = 0; i < 3; i++) ctx.fillRect(p.x - w / 2 + i * w / 3, p.y - h, w / 6, h);
+  ctx.fillStyle = 'rgba(255,255,255,.18)';
+  ctx.fillRect(p.x - w / 2, p.y - h, w, Math.max(1, h * 0.12));
+}
+
+function drawGate(o) {
+  var z = Math.max(0.4, o.z);
+  var pl = proj(LANE_X[o.lane] - 0.62, 0, z), pr = proj(LANE_X[o.lane] + 0.62, 0, z);
+  var tl = proj(LANE_X[o.lane] - 0.62, 2.0, z);
+  var barTop = proj(LANE_X[o.lane] - 0.62, 1.5, z);
+  ctx.fillStyle = '#51667c';
+  ctx.fillRect(pl.x - 3, barTop.y, 6, pl.y - barTop.y);
+  ctx.fillRect(pr.x - 3, barTop.y, 6, pr.y - barTop.y);
+  var bw = pr.x - pl.x;
+  ctx.fillStyle = '#7c93ab';
+  ctx.fillRect(pl.x, barTop.y, bw, Math.max(2, (pl.y - barTop.y) * 0.34));
+  ctx.fillStyle = '#e04a3a';
+  for (var i = 0; i < 4; i++) ctx.fillRect(pl.x + i * bw / 4, barTop.y, bw / 8, Math.max(2, (pl.y - barTop.y) * 0.34));
+}
+
+function drawRunner(gy, t) {
+  var p = proj(G.px, 0, 1.75);
+  var sc = Math.max(0.62, p.s / 128);        // 角色统一尺寸，但随透视略缩放
+  var bob = G.jumpY === 0 ? Math.abs(Math.sin(G.runPhase)) * 3.2 : 0;
+  var y = p.y - G.jumpY * p.s * 0.92 - bob;
+
+  ctx.save();
+  // 影子
+  var sh = Math.max(0.08, 1 - G.jumpY / 2.2);
+  ctx.globalAlpha = 0.38 * sh;
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(p.x, p.y + 2, 15 * sc * sh, 4.4 * sc * sh, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  ctx.translate(p.x, y);
+  ctx.rotate(G.lean * 0.5);
+  var s = 1.02 * sc + 0.25;
+  var squash = G.slide ? 0.58 : 1;
+
+  // 腿（跑步交替）
+  var lp = G.slide ? 0 : Math.sin(G.runPhase) * 7;
+  if (!G.slide) {
+    ctx.strokeStyle = '#1e7fa8'; ctx.lineWidth = 5 * s; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-4 * s, -6 * s); ctx.lineTo(-4 * s + lp * s, 6 * s); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(4 * s, -6 * s); ctx.lineTo(4 * s - lp * s, 6 * s); ctx.stroke();
+  }
+  // 躯干
+  var bh = 24 * s * squash;
+  ctx.fillStyle = '#48dbfb'; ctx.shadowColor = '#48dbfb'; ctx.shadowBlur = 14;
+  ctx.beginPath();
+  var bw = 11 * s * (G.slide ? 1.35 : 1);
+  roundRect(-bw / 2, -bh - (G.slide ? 4 * s : 0), bw, bh, 4 * s); ctx.fill();
+  // 背包
+  ctx.shadowBlur = 0; ctx.fillStyle = '#ffb142';
+  roundRect(-bw / 2 - 3 * s, -bh + 5 * s, 4 * s, bh * 0.5, 2 * s); ctx.fill();
+  // 手臂
+  if (!G.slide) {
+    ctx.strokeStyle = '#48dbfb'; ctx.lineWidth = 4 * s; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, -bh + 4 * s); ctx.lineTo(-lp * 0.9 * s, -bh + 12 * s); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -bh + 4 * s); ctx.lineTo(lp * 0.9 * s, -bh + 12 * s); ctx.stroke();
+  }
+  // 头
+  var hy = -bh - (G.slide ? 2 * s : 8 * s);
+  ctx.fillStyle = '#0be881';
+  ctx.beginPath(); ctx.arc(0, hy, 7.4 * s, 0, Math.PI * 2); ctx.fill();
+  // 耳机 + 眼睛
+  ctx.fillStyle = '#0b1420'; ctx.fillRect(-5.5 * s, hy - 1.5 * s, 2.4 * s, 2.4 * s); ctx.fillRect(3 * s, hy - 1.5 * s, 2.4 * s, 2.4 * s);
+  ctx.strokeStyle = '#ffb142'; ctx.lineWidth = 1.8 * s;
+  ctx.beginPath(); ctx.arc(0, hy, 8.4 * s, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+  ctx.restore();
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+$('ovBtn').addEventListener('click', function () { $('overlay').hidden = true; paused = false; $('btn-pause').textContent = '暂停'; newGame(); });
+$('btn-start').addEventListener('click', function () { $('overlay').hidden = true; paused = false; $('btn-pause').textContent = '暂停'; newGame(); });
+$('btn-pause').addEventListener('click', function () { if (!G || G.over) return; paused = !paused; this.textContent = paused ? '继续' : '暂停'; if (!paused) lastT = performance.now(); });
+$('btn-info').addEventListener('click', function () { $('info').hidden = false });
+$('infoClose').addEventListener('click', function () { $('info').hidden = true });
+window.addEventListener('keydown', function (e) {
+  var k = e.key.toLowerCase();
+  if (k === 'arrowleft' || k === 'a') act('left');
+  else if (k === 'arrowright' || k === 'd') act('right');
+  else if (k === 'arrowup' || k === 'w' || k === ' ') act('jump');
+  else if (k === 'arrowdown' || k === 's') act('slide');
+  else return;
+  e.preventDefault();
 });
-// 触摸滑动
-var tsx=null,tsy=null;
-stage.addEventListener('touchstart',function(e){var t=e.touches[0];tsx=t.clientX;tsy=t.clientY},{passive:true});
-stage.addEventListener('touchend',function(e){if(tsx==null)return;var t=e.changedTouches[0],dx=t.clientX-tsx,dy=t.clientY-tsy;
-  if(Math.abs(dx)>Math.abs(dy)){act(dx>0?'right':'left')}else{act(dy<0?'jump':'slide')}tsx=null;tsy=null;},{passive:true});
-$('best').textContent=S.best;$('coinBest').textContent=S.coinBest;
-/* 诊断出口（供 headless 验收） */
-window.__METRO__={get G(){return G},act:act,newGame:newGame,spawn:spawn,
-  snapshot:function(){if(!G)return null;return {dist:G.dist,coins:G.coins,lane:G.lane,targetLane:G.targetLane,
-    laneTilt:G.laneTilt,magnetT:G.magnetT,shield:G.shield,boostT:G.boostT,staggerT:G.staggerT,warnT:G.warnT,
-    over:G.over,speed:G.speed,obstacles:G.obstacles.length}}};
+// 触摸：滑动 + 点按分屏
+var tsx = null, tsy = null, tst = 0;
+stage.addEventListener('touchstart', function (e) {
+  var t = e.touches[0]; tsx = t.clientX; tsy = t.clientY; tst = Date.now();
+}, { passive: true });
+stage.addEventListener('touchend', function (e) {
+  if (tsx == null) return;
+  var t = e.changedTouches[0], dx = t.clientX - tsx, dy = t.clientY - tsy;
+  var dist = Math.hypot(dx, dy);
+  if (dist < 22 && Date.now() - tst < 260) {
+    // 轻点：左半屏切左轨，右半屏切右轨，上半屏跳
+    var r = stage.getBoundingClientRect();
+    if (tsy - r.top < r.height * 0.32) act('jump');
+    else act(tsx - r.left < r.width / 2 ? 'left' : 'right');
+  } else if (Math.abs(dx) > Math.abs(dy)) act(dx > 0 ? 'right' : 'left');
+  else act(dy < 0 ? 'jump' : 'slide');
+  tsx = null; tsy = null;
+}, { passive: true });
+
+$('best').textContent = S.best; $('coinBest').textContent = S.coinBest;
+/* 调试接口（自动化测试用，不影响玩法） */
+window.__METRO__ = {
+  get g() { return G; },
+  snapshot: function () {
+    if (!G) return null;
+    var coins = G.items.filter(function (o) { return o.kind === 'coin'; });
+    return { dist: Math.floor(G.dist), coins: G.coins, lane: G.lane, target: G.targetLane,
+      jump: +G.jumpY.toFixed(2), speed: +G.speed.toFixed(2), items: G.items.length,
+      coinN: coins.length, coinZ: coins.map(function (o) { return +o.z.toFixed(1); }).slice(0, 8),
+      coinLane: coins.map(function (o) { return o.lane; }).slice(0, 8), over: G.over };
+  },
+  force: function (kind, lane, z, y) { G.items.push({ kind: kind, lane: lane, z: z, y: y || 0.55, got: false, hit: false, len: 5.5 }); },
+  setSpeed: function (v) { G.speed = v; G.baseSpeed = v; }
+};
+// 首屏先画一帧静态场景
+G = null; draw();
 })();
 </script>
 </body>
