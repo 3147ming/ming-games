@@ -452,6 +452,8 @@ function preferStockerSku() {
           /* 任务块 H-1：连续工作时长（秒），供 HUD / 诊断确认疲惫降效确实生效 */
           workSec: entry ? Math.round(entry.workSec ?? 0) : 0,
           status: entry ? entry.status : 'idle',
+          /* 任务块 H-2：当前动作目标（故障设备 id 等），供 3D 表现层定位工作点 */
+          targetId: entry ? (entry.targetId ?? null) : null,
           /* 培训：等级 / 总数 / 当前累计的夜产出与关键倍率（HUD 直接展示） */
           training: training ? {
             level: training.level,

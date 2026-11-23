@@ -12,7 +12,10 @@
  */
 import * as THREE from 'three';
 import { createCharacter } from './character.mjs';
-import { POS, STAFF, STORE, SHELF_ROWS } from './config.mjs';
+import { POS, STAFF, STORE, SHELF_ROWS, FACILITIES } from './config.mjs';
+
+/** 按设施 id 查 3D 世界坐标（设备坐标在 FACILITIES，不在 worldState 的 device 对象上） */
+const FACILITY_POS = new Map(FACILITIES.map((f) => [f.id, { x: f.x, z: f.z }]));
 
 /* 头顶气泡文案：与 staff-decision.BUBBLE 对齐，另补 staff.mjs 的实际 status */
 const BUBBLE = {
@@ -96,16 +99,23 @@ export function createStaffView(opts = {}) {
     line.visible = true;
   }
 
-  /** 根据 status 决定 3D 工作点 */
+  /** 根据 status + targetId 决定 3D 工作点。
+   *  extra.keepTarget：working（动作冷却）阶段沿用上一次的具体任务目标，
+   *  否则店员修到一半会"瞬移回待命点"，看起来像没在干活。 */
   function targetOf(status, type, extra = {}) {
     const home = HOME[type] ?? HOME.repairer;
+    if (extra.keepTarget && extra.lastTarget) return extra.lastTarget;
     switch (status) {
       case 'resting': case 'off': return REST_POINT;
       case 'errand': return DOOR_POINT;
-      case 'repair': {
-        const d = worldState?.deviceList?.().find((x) => x.id === extra.targetId) || worldState?.deviceList?.().find((x) => x.broken);
-        if (d && Number.isFinite(d.x) && Number.isFinite(d.z)) return { x: d.x, z: d.z };
-        return home;
+      case 'repair': case 'working': {
+        // targetId 来自 staff.snapshot().roster[].targetId；坐标在 FACILITIES（不是 device 对象）
+        let p = FACILITY_POS.get(extra.targetId);
+        if (!p) {
+          const broken = worldState?.deviceList?.().find((x) => x.broken);
+          p = broken && FACILITY_POS.get(broken.id);
+        }
+        return p ? { x: p.x, z: p.z } : home;
       }
       case 'clean': return { x: 2.0 + nextSeed, z: -2.0 };
       case 'stock-shelf': case 'stock-vending': case 'stock-claw': case 'restock': {
@@ -138,7 +148,7 @@ export function createStaffView(opts = {}) {
 
     e = { id, type, char, bubble, tex: bubble.tex, line,
       pos: { x: home.x, z: home.z }, target: { x: home.x, z: home.z },
-      status: 'idle', text: null };
+      status: 'idle', text: null, lastTarget: null };
     entries.set(id, e);
     return e;
   }
@@ -166,7 +176,15 @@ export function createStaffView(opts = {}) {
       liveIds.add(id);
       const e = ensureEntry(id, r.type);
       const status = r.status || 'idle';
-      const t = targetOf(status, r.type, { targetId: r.targetId });
+      // working 是动作的冷却态：沿用上一次具体任务目标，别让店员"修一半瞬移回待命点"
+      const keepTarget = status === 'working' && !!e.lastTarget;
+      const t = targetOf(status, r.type, {
+        targetId: r.targetId,
+        keepTarget,
+        lastTarget: e.lastTarget,
+      });
+      // 只有具体动作态才更新缓存目标（working 不覆盖，保留真实工作点）
+      if (status !== 'working' && status !== 'idle') e.lastTarget = t;
       // 目标变化才更新路径（避免每帧重算）
       if (!e.text || e.status !== status || !e.target || Math.abs(e.target.x - t.x) > 0.3 || Math.abs(e.target.z - t.z) > 0.3) {
         setPath(e.line, e.pos, t);
@@ -206,6 +224,7 @@ export function createStaffView(opts = {}) {
       list.push({ id, type: e.type, status: e.status, text: e.text,
         pos: { x: +e.pos.x.toFixed(2), z: +e.pos.z.toFixed(2) },
         target: { x: +e.target.x.toFixed(2), z: +e.target.z.toFixed(2) },
+        lastTarget: e.lastTarget ? { x: +e.lastTarget.x.toFixed(2), z: +e.lastTarget.z.toFixed(2) } : null,
         hasMesh: !!e.char.group, hasBubble: !!e.bubble.sprite, hasPath: !!e.line });
     }
     return { enabled, count: entries.size, staff: list };
