@@ -60,7 +60,7 @@ body{background:radial-gradient(120% 85% at 50% -10%,#2c2038 0%,var(--ink) 62%);
 </div>
 <div class="sheet" id="info" hidden><div class="panel">
   <h2>玩法 · 510K</h2>
-  <p>三人各发 17 张牌，<b>5=5分、10=10分、K=10分</b>，其余牌 0 分。谁先攒够 <b>100 分</b>获胜。</p>
+  <p>三人各发 17 张牌，<b>5=5分、10=10分、K=10分</b>，其余牌 0 分，一副牌共 100 分。谁先攒够 <b>100 分</b>获胜；若有人先出完手牌也立即结算，分数最高者胜。</p>
   <p>由拿黑桃3者先出。可出单张、对子、三张、顺子（≥3 连续），须压过上家同牌型；不要则过，两家都过后重新出。</p>
   <p><b>每一轮结束时，赢下那墩（最后出牌未被压）的人获得本墩里所有的分牌分数</b>。金色边框的是分牌，留意收集！</p>
   <p>纯本地、无真钱。</p>
@@ -128,10 +128,12 @@ function takeCards(p,cards){
   G.trickCards=G.trickCards.concat(cards);pot+=cards.reduce(function(a,c){return a+c.sc},0);
   G.last={cards:cards,parse:parse(cards)};G.lastP=p;G.passes=0;
   if(G.hands[p].length===0){
-    // 手里出完，剩余墩分归自己
+    // 出完手牌：本墩剩余分归自己，立即终局（不再轮转空手牌，否则 AI 会reduce空数组卡死）
     var rest=G.trickCards.reduce(function(a,c){return a+c.sc},0);G.pts[p]+=rest;
     G.trickCards=[];pot=0;
-    if(G.pts[p]>=100){endGame(p);return}
+    var top=Math.max(G.pts[0],G.pts[1],G.pts[2]);
+    var byScore=G.pts[0]===top?0:(G.pts[1]===top?1:2);
+    endGame(byScore);return;
   }
   G.turn=(p+1)%3;
 }
@@ -139,18 +141,31 @@ function aiTurn(){
   if(G.over)return;var p=G.turn,h=G.hands[p],choice=null;
   if(G.last){
     var gr={};h.forEach(function(c){(gr[c.v]=gr[c.v]||[]).push(c)});
+    // 先试同型压牌，再试顺子；不重试直接不要
     for(var v in gr){if(canBeat(parse(gr[v]),G.last.parse)){choice=gr[v];break}}
+    if(!choice){
+      var seen={},sorted=h.slice().sort(function(a,b){return a.v-b.v});
+      for(var i=0;i<sorted.length;i++){
+        for(var j=i+1;j<sorted.length&&sorted[j].v===sorted[i].v+1;j++){
+          var run=sorted.slice(i,j+1);var pk=run.map(function(c){return c.v}).join(',');
+          if(run.length>=3&&!seen[pk]){seen[pk]=1;var pp=parse(run);if(canBeat(pp,G.last.parse)){choice=run;break}}
+        }
+        if(choice)break;
+      }
+    }
   }else{
     var min=h.reduce(function(a,b){return a.v<b.v?a:b});choice=[min];
   }
   if(choice){takeCards(p,choice);$('msg').className='msg';$('msg').textContent=['','AI·左','AI·右'][p]+' 出了 '+choice.length+' 张'}
-  else{G.passes++;G.turn=(p+1)%3;if(G.passes>=2){G.last=null;G.lastP=-1;G.passes=0;awardTrick(p);$('msg').textContent='两家不要 · 本墩结算'}else $('msg').textContent=['','AI·左','AI·右'][p]+' 不要';}
+  else{G.passes++;G.turn=(p+1)%3;if(G.passes>=2){var win=G.lastP<0?p:G.lastP;G.last=null;G.lastP=-1;G.passes=0;var over=awardTrick(win);if(!over){G.turn=win;$('msg').textContent=['你','AI·左','AI·右'][win]+'赢下本墩 · 两家不要'}}else $('msg').textContent=['','AI·左','AI·右'][p]+' 不要';}
   render();if(!G.over&&G.turn!==0)setTimeout(aiTurn,600);else if(!G.over)render();
 }
 function endGame(w){
   G.over=true;var iWin=w===0;
   if(iWin){S.wins++;S.coin+=20;S.best=Math.max(S.best,S.coin)}else S.coin=Math.max(0,S.coin-10);
-  save();$('msg').className='msg '+(iWin?'win':'lose');$('msg').textContent=(iWin?'你赢了！+20':'你没抢到 100 分 -10')+' · '+['你','AI·左','AI·右'][w]+' 获胜 · 点新局再来';
+  save();$('msg').className='msg '+(iWin?'win':'lose');
+  var why=G.pts[w]>=100?'攒够100分':'分数最高('+G.pts[w]+'分)';
+  $('msg').textContent=(iWin?'你赢了！+20':'你没赢 -10')+' · '+['你','AI·左','AI·右'][w]+' 以'+why+'获胜 · 点新局再来';
   $('playbar').hidden=true;render();
 }
 $('btn-play').addEventListener('click',function(){
@@ -162,7 +177,7 @@ $('btn-play').addEventListener('click',function(){
 });
 $('btn-pass').addEventListener('click',function(){
   if(G.turn!==0||!G.last)return;G.passes++;G.turn=(G.turn+1)%3;
-  if(G.passes>=2){G.last=null;G.lastP=-1;G.passes=0;awardTrick(0);if(!G.over)$('msg').textContent='都不要 · 你赢下本墩'}
+  if(G.passes>=2){var win=G.lastP<0?0:G.lastP;G.last=null;G.lastP=-1;G.passes=0;var over=awardTrick(win);if(!over){G.turn=win;$('msg').textContent='都不要 · '+['你','AI·左','AI·右'][win]+'赢下本墩'}}
   else $('msg').textContent='你不要';
   render();if(!G.over&&G.turn!==0)setTimeout(aiTurn,600);
 });
