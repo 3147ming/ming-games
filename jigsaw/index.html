@@ -711,27 +711,39 @@ function edge(ctx, x1, y1, x2, y2, dir, k) {
   function renderPlay() {
     woodBG();
     var b = G.board;
-    /* 拼板底板 */
+    /* 拼板底板：做成一块有厚度的空木托，格子只是「槽」，不带任何画面信息 */
     ctx.save();
     ctx.fillStyle = 'rgba(120,90,60,.14)';
     roundRect(b.x - 6, b.y - 6, b.size + 12, b.size + 12, 16); ctx.fill();
-    ctx.fillStyle = '#d9cdb8';
+    var bg = ctx.createLinearGradient(b.x, b.y, b.x, b.y + b.size);
+    bg.addColorStop(0, '#d5c8b1');
+    bg.addColorStop(1, '#c9bba2');
+    ctx.fillStyle = bg;
     roundRect(b.x, b.y, b.size, b.size, 12); ctx.fill();
+    /* 每格：极浅的棋盘错色 + 内凹阴影，空槽一眼能看出位置，但看不出图案 */
+    for (var gy = 0; gy < G.n; gy++) {
+      for (var gx = 0; gx < G.n; gx++) {
+        var cx0 = b.x + gx * b.cell, cy0 = b.y + gy * b.cell;
+        if ((gx + gy) % 2 === 0) {
+          ctx.fillStyle = 'rgba(120,90,60,.045)';
+          ctx.fillRect(cx0 + 1, cy0 + 1, b.cell - 2, b.cell - 2);
+        }
+        ctx.strokeStyle = 'rgba(90,66,40,.10)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx0 + 1, cy0 + b.cell - 1.5); ctx.lineTo(cx0 + 1, cy0 + 1); ctx.lineTo(cx0 + b.cell - 1.5, cy0 + 1);
+        ctx.stroke();
+      }
+    }
     /* 未拼槽位网格 */
-    ctx.strokeStyle = 'rgba(255,255,255,.55)';
+    ctx.strokeStyle = 'rgba(255,255,255,.5)';
     ctx.lineWidth = 1;
     for (var i = 1; i < G.n; i++) {
       ctx.beginPath(); ctx.moveTo(b.x + i * b.cell, b.y); ctx.lineTo(b.x + i * b.cell, b.y + b.size); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(b.x, b.y + i * b.cell); ctx.lineTo(b.x + b.size, b.y + i * b.cell); ctx.stroke();
     }
-    /* 半透明底图提示 */
-    var im = getImage(G.imgKey);
-    if (im && im.complete && im.naturalWidth) {
-      ctx.save();
-      ctx.globalAlpha = 0.16;
-      ctx.drawImage(im, b.x, b.y, b.size, b.size);
-      ctx.restore();
-    }
+    /* 拼板只留空白槽位，不放原图底影：
+       底影等于把答案摊在桌上，玩家照着轮廓找位就行，拼图本身就没难度了 */
     ctx.restore();
 
     /* 已归位碎片（含飞入中的） */
