@@ -1,68 +1,190 @@
-# ming-games · 游戏合集
 
-个人开发的 H5 游戏合集，全部为纯前端静态网页，托管于 GitHub Pages。
+## ✅ 上线状态（2026-11-20 已推送并部署）
 
-## 🎮 在线地址
+| 项 | 结果 |
+|---|---|
+| 提交 | 四款与修复随 `8566bd0` / `4154bb7` 进 `3147ming/ming-games` master；后续仓库仍在迭代，四款保持在线（复核于 `3ea224d6`） |
+| 线上入口 | https://ming-games.pages.dev/ （canonical，Cloudflare Pages 自动构建） |
+| 镜像 | https://3147ming.github.io/ming-games/ （GitHub Pages，同源镜像，已验证同步） |
+| 快速直达 | `/archer/` `/jigsaw/` `/sleeper/` `/legion/` 四个目录均可直接访问 |
+| 大厅卡片 | 32 张（本批新增 4 张；仓库后来重排过顺序，现为 mahjong / sleeper / rulecraft / legion 收尾），封面全部正常显示 |
+| 构建 | `node tools/build.mjs --target=all`：31 款 ready 全量出包 |
+| 门禁 | `node tools/verify-all.mjs --unit`：6/6 通过 |
+| 复核 | 2026-11-22 复验：两站大厅 32 张卡片、「影弓对决 / 喵篮拼图 / 躺平守夜 / 雪国军团」四款直达均 200，首屏无控制台报错 |
+| 影弓对决改版 | 2026-11-23 `eaee7fd` / `c7b7881`：主角站桩 + 地面冲刺兵 / 空中远程兵双兵种，两站 `/archer/` 均 99272 B、开局跑通（主角恒在 x=200，空兵入场悬停并吊射扣盾），竖屏补横屏提示 |
 
-**游戏大厅（主入口）**：https://3147ming.github.io/ming-games/
+### 影弓对决 · 战斗设计（2026-11-23 改版）
 
-| 游戏 | 说明 | 地址 |
+- **主角站桩**：锚定在 `PLAYER_HOME = 200`，A/D 与摇杆不再改位置，胜负全看瞄准与出手时机。
+- **地面冲刺兵**（tank / boss，可带盾）：地面推进 → 到 `backOff` 外停住蓄力（脚下红色虚线预警）
+  → 高速冲刺近战（冲到主角身前才收刀）→ 收刀后退回助跑距离再冲。盾牌正面弹箭、盾破会踉跄。
+- **空中远程兵**（normal / fast / double / elite）：从高空侧翼滑入，悬停主角头顶前方吊射，
+  被击落后有坠地动画；它们没有盾，怕的是把准星抬起来打。
+- **波次重编**：两种兵种交替编成，每波都要在地面与空中之间切换打法。
+- **弹道**：重力 1400 → 1150，玩家初速上限 680 → 980，拖动瞄准时按准星反解初速度（指哪打哪）。
+
+### 本次一并修掉的既有缺陷
+
+1. **大厅脚本语法错误**：`index.html` 里 `en: 'Liar's Bar',` 单引号提前终止字符串，
+   整个大厅 `<script>` 抛 `SyntaxError`，所有卡片都渲染不出来（线上三个形态全中）。
+2. **`soudache/src/storage.js`**：两条 import 之间丢换行（`};import {`），
+   `esm-to-classic` 打包抛"非法绑定名"，**全量构建直接失败**。
+3. **两个单测 ROOT 写死** `D:/Projects/_github_pages/ming-games`，异地环境必失败，改 `process.cwd()`。
+
+### 本批四款游戏自身的回归修复
+
+jigsaw / legion / sleeper 的全屏弹层缺 `pointer-events`，被 420×720 画布覆盖层拦截，
+菜单点不动（自动化点击只落在 canvas 上）。已在 `.ov` 上加 `.pe` 并对 `.ov.on` 加兜底规则。
+
+截图见 `_verify/`。
+
+> 备注：`jigsaw/index.html` 单文件 1.23 MB（12 张插画全内联 base64）。走 GitHub Pages（Fastly）
+> 首次拉取约 60 s 且有截断重试，国内网络可能体感"打不开"；走 Cloudflare Pages 正常。
+> 想让镜像也秒开，可把底图改为外链文件（每张 ~90 KB），代价是丢掉"单文件双击可玩"。
+
+# ming-games 新增四款游戏 · 资源包与指令总览（完整版 v3）
+
+> 本包用于把视频里的四款小游戏复刻进 `D:\Projects\_github_pages\ming-games\` 大厅。
+> 指令按游戏拆成独立块，分别粘贴给 WorkBuddy，**不要合并**。
+> 复刻口径：玩法照搬参考视频，美术为本包原创生成素材；不复制原游戏任何贴图、音频、文案代码。
+> **本批为完整版**：关卡推进 + 成长系统 + 局外长期存档；四款开始层均有局外面板（解锁进度 / 最佳纪录 / 图鉴），影弓额外做装备跨局背包。
+
+## 一、四款一览
+
+| 序号 | ID / 目录 | 中文名 | 英文 | 标签 | 方向 | 封面 | 完整版内容 |
+|---|---|---|---|---|---|---|---|
+| 01 | `archer` | 影弓对决 | Shadow Archer | 射击 | 横屏 landscape | `covers/archer.webp` | 5 大关共 20 波，第 20 波终局 Boss；三槽装备**跨局保留** + 词条升级池 + 局外钱包/图鉴/商店 |
+| 02 | `jigsaw` | 喵篮拼图 | Cat Basket Jigsaw | 益智 | 竖屏 portrait | `covers/jigsaw.webp` | 12 张底图 × 3 档片数 = 36 关，计步计时评星，图鉴点亮 |
+| 03 | `sleeper` | 躺平守夜 | Sleepy Defense | 塔防 | 竖屏 portrait | `covers/sleeper.webp` | 3 房间 × 5 波 = 15 波，末波猎梦者 Boss；**1/2/4 三档倍速**，建筑与炮台扩充 |
+| 04 | `legion` | 雪国军团 | Snow Legion | 策略 | 竖屏 portrait | `covers/legion.webp` | 6 关递进，第 3、6 关 Boss 中场；三类敌军，9 项技能池，大招成长 |
+
+## 二、资源落位（WorkBuddy 开工前先放好）
+
+| 包内路径 | 落位到仓库 | 说明 |
 |---|---|---|
-| 荒野 WILD | 十分钟单局生存割草，四把武器、三系职业、剑气进化、长期成长与转生 | https://3147ming.github.io/ming-games/wild/ |
-| 搜打撤 | 3D 第一人称撤离射击：搜刮物资 → 交火突围 → 活着撤离 | https://3147ming.github.io/ming-games/soudache/ |
-| 一世一牌 | 每一世只带回一张牌的卡牌肉鸽，轮回不止 | https://3147ming.github.io/ming-games/one-card/ |
-| 脑力训练场 | 53 款脑力小游戏：记忆 / 反应 / 视觉 / 数学 / 益智，九大类每日开练 | https://3147ming.github.io/ming-games/brain-gym/ |
-| 夜班便利店 | 深夜营业的 3D 模拟经营：补货、收银、应付夜客，撑过七个夜班 | https://3147ming.github.io/ming-games/night-shift/ |
-| 传统割草游戏 | 3D 战场原型：地形、光照、摄像机、战斗系统与敌人分层 AI | https://3147ming.github.io/ming-games/grass-cutter/ |
-| 知识问答 | 书架式分类刷题：719 道人工题 + 8 个生成器，选择题 / 补全 / 手写三板块，支持离线与 AI 建题 | https://ming-games.pages.dev/games/quiz/index.html |
-| 电路实验模拟器 | 面包板 / 数字实验箱上搭电路，实时仿真直流·数字·暂态，配万用表与示波器 | https://3147ming.github.io/ming-games/circuit-lab/ |
+| `covers/archer.webp` | `covers/archer.webp` | 大厅封面，1280×800 |
+| `covers/jigsaw.webp` | `covers/jigsaw.webp` | 大厅封面，780×1040 |
+| `covers/sleeper.webp` | `covers/sleeper.webp` | 大厅封面，780×1040 |
+| `covers/legion.webp` | `covers/legion.webp` | 大厅封面，780×1040 |
+| `jigsaw/art/*.jpg`（12 张） | 仅构建参考；**必须全部转 data URI 内联进 `jigsaw/index.html`** | 拼图底图 900×900；classic 打包不拷外部位图，禁止留相对路径 |
+| `refs/*.jpg` | 不进仓库，留作对照 | 视频抽帧：站位、UI 布局、配色、造型参考 |
 
-## 📁 目录结构
+### 拼图底图清单（`jigsaw/art/`，12 张）
 
+| 文件 | 画面 | 文件 | 画面 |
+|---|---|---|---|
+| `cat-basket.jpg` | 花篮白猫 | `ocean-fish.jpg` | 海洋小丑鱼 |
+| `sunflower-cat.jpg` | 向日葵花田橘猫 | `dessert-rabbit.jpg` | 甜品派对白兔 |
+| `rose-squirrel.jpg` | 玫瑰窗台松鼠 | `forest-bug.jpg` | 森林瓢虫蝴蝶 |
+| `daisy-rabbit.jpg` | 雏菊野餐白兔 | `snow-village.jpg` | 雪景小镇 |
+| `succulent-cat.jpg` | 多肉桌面虎斑猫 | `fruit-basket.jpg` | 水果市集篮 |
+| `forest-deer.jpg` | 森林小鹿 | `star-camp.jpg` | 星空露营小鹿 |
+
+## 三、技术形态（四款统一）
+
+- **renderer = classic**：每款一个目录，目录内只有一个自包含 `index.html`（HTML + CSS + JS 全内联，IIFE 包裹，`'use strict'`），与现有 `brick/index.html` 同一范式。
+- **零外部依赖**：不引 CDN、不引网络字体、不引外部图片/音频；图形用 Canvas 2D 程序化绘制或内联 SVG；音效用 WebAudio 程序化合成（可静音）。
+- **样式基线**：`<link rel="stylesheet" href="../shared/tokens.css">`，主题色在各文件 `:root` 内覆盖。
+- **存档分层**：`localStorage` key 前缀 `mg_<id>.v1`；局外长期档（解锁关卡、星级、钱包、背包、图鉴、最佳纪录）与单局进度分开字段，局内死亡不清长期档。
+- **适配**：viewport `width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no`；触屏拖拽跟手，同时支持鼠标与键盘；留安全区 `env(safe-area-inset-*)`；无横向滚动溢出。
+- **可访问性/降级**：`prefers-reduced-motion` 下关闭动画；控制台零报错；`file://` 双击可玩。
+- **性能**：同屏实体走对象池复用；粒子/飘字数量上限；完整版实体增多，注意 60fps，低端机可降级粒子数量。
+
+## 四、大厅接入登记点（四份清单都要加）
+
+### 4.1 `games.json`（构建清单）
+
+`games` 数组末尾追加四条：
+
+```json
+{ "id": "archer",   "name": "影弓对决", "dir": "archer",   "cover": "covers/archer.webp",   "tag": "射击", "status": "ready", "renderer": "classic" },
+{ "id": "jigsaw",   "name": "喵篮拼图", "dir": "jigsaw",   "cover": "covers/jigsaw.webp",   "tag": "益智", "status": "ready", "renderer": "classic" },
+{ "id": "sleeper",  "name": "躺平守夜", "dir": "sleeper",  "cover": "covers/sleeper.webp",  "tag": "塔防", "status": "ready", "renderer": "classic" },
+{ "id": "legion",   "name": "雪国军团", "dir": "legion",   "cover": "covers/legion.webp",   "tag": "策略", "status": "ready", "renderer": "classic" }
 ```
-ming-games/
-├── index.html        # 游戏大厅（含全部游戏入口）
-├── covers/           # 大厅封面图
-├── wild/             # 荒野 WILD
-├── soudache/         # 搜打撤
-├── one-card/         # 一世一牌
-├── brain-gym/        # 脑力训练场
-├── night-shift/      # 夜班便利店
-├── grass-cutter/     # 传统割草游戏（原型）
-├── circuit-lab/      # 电路实验模拟器
-└── quiz/             # 知识问答（源码在 quiz/src，index.html 是拼接产物）
+
+### 4.2 `index.html` 大厅 `GAMES` 数组（卡片清单）
+
+参照现有卡片字段追加四条（`order` 接在现有最大序号之后）：
+
+```js
+{
+  id: 'archer', name: '影弓对决', en: 'Shadow Archer',
+  desc: '紫夜荒原弓手对决：5 大关 20 波推进，装备跨局保留，词条叠加 build，局外商店补强。',
+  kw: '弓箭 对决 抛物线 射击 火柴人 关卡 装备 词条 跨局 肉鸽 archery',
+  tag: '射击', cover: 'covers/archer.webp', ar: '1280 / 800',
+  url: 'archer/', status: 'live', order: 25, orientation: 'landscape',
+},
+{
+  id: 'jigsaw', name: '喵篮拼图', en: 'Cat Basket Jigsaw',
+  desc: '12 张治愈插画 × 3 档片数共 36 关：拖拽拼片、限量提示、计步计时评星、图鉴收集。',
+  kw: '拼图 益智 猫咪 花篮 花卉 拖拽 关卡 图鉴 jigsaw puzzle',
+  tag: '益智', cover: 'covers/jigsaw.webp', ar: '780 / 1040',
+  url: 'jigsaw/', status: 'live', order: 26, orientation: 'portrait',
+},
+{
+  id: 'sleeper', name: '躺平守夜', en: 'Sleepy Defense',
+  desc: '上床躺平产金币，升级床门建炮台，三个房间 15 波守夜迎战 Boss，支持 1/2/4 倍速。',
+  kw: '躺平 塔防 守夜 睡觉 炮台 发育 倍速 boss 关卡 defense',
+  tag: '塔防', cover: 'covers/sleeper.webp', ar: '780 / 1040',
+  url: 'sleeper/', status: 'live', order: 27, orientation: 'portrait',
+},
+{
+  id: 'legion', name: '雪国军团', en: 'Snow Legion',
+  desc: '雪地军团自动推进：6 关递进双 Boss 中场，三类敌军，技能三选一与暴风雪大招成长。',
+  kw: '军团 自走棋 塔防 雪地 兵种 大招 技能三选一 boss 关卡 legion',
+  tag: '策略', cover: 'covers/legion.webp', ar: '780 / 1040',
+  url: 'legion/', status: 'live', order: 28, orientation: 'portrait',
+}
 ```
 
-## 🚀 更新部署
-
-本仓库通过 GitHub Pages 自动部署（源：`master` 分支根目录）。
+## 五、构建与验收（全部完成后统一跑）
 
 ```bash
-# 修改对应子目录中的文件后：
-git add -A
-git commit -m "更新说明"
-git push
+node tools/build.mjs --target=all
+node tools/verify-all.mjs --unit
 ```
 
-推送后约 1-3 分钟线上自动生效，无需其他操作。
+- classic 产物 HTML 体积不得低于源 `index.html` 的 80%（构建链有护栏，防止内联脚本被剥离）。
+- 四款在 `dist/`、`offline/`、根目录三种形态下都能进入游玩；大厅卡片封面不破图。
+- 回归：既有 24 款游戏的卡片、存档、构建产物不受影响。
 
-## 🧪 构建与验证
+## 六、指令文件
 
-```bash
-node tools/build.mjs --target=all   # 生成 dist/ 与 offline/
-node tools/verify-all.mjs --unit    # 部署门禁 + 三形态产物完整性 + 单元测试
-```
+- `instructions/00-总览与大厅接入-WorkBuddy指令.md`：仓库约定、登记步骤、通用验收（先读这份）。
+- `instructions/01-影弓对决-archer-WorkBuddy指令.md`
+- `instructions/02-喵篮拼图-jigsaw-WorkBuddy指令.md`
+- `instructions/03-躺平守夜-sleeper-WorkBuddy指令.md`
+- `instructions/04-雪国军团-legion-WorkBuddy指令.md`
 
-单文件游戏（如知识问答）的产物由自己的构建脚本生成，再进入统一构建：
+## 七、已拍板规格（WorkBuddy 按此实现；数值平衡可在各指令 CONFIG 内微调）
 
-```bash
-node quiz/.build/build.js           # 四片源码 → quiz/index.html + SW 版本
-node quiz/.build/build.js --check   # 校验产物 / 部署包 / SW / dist 是否一致
-```
+| 项 | 已确认规格 |
+|---|---|
+| 影弓结构 | 5 大关 × 4 波 = 20 波，第 20 波终局 Boss |
+| 影弓局外 | 装备跨局背包 + 局外钱包 + 图鉴；出装三槽带入下一局，当局生效 |
+| 拼图关卡 | 12 图 × 3 档（3×3 / 4×4 / 5×5）= 36 关 |
+| 躺平波次 | 3 房间 × 5 波 = 15 波，第 15 波 Boss 猎梦者收尾 |
+| 倍速档位 | 1× / 2× / 4× 三档（已砍 8×） |
+| 军团关卡 | 6 关，第 3 关中场 Boss、第 6 关终局 Boss |
+| 局外面板 | 四款开始层均展示长期进度；不做局外永久数值加成 |
+| 音效 | WebAudio 程序化合成，可静音 |
 
-## 🛠 技术栈
+## 交付物
 
-纯 HTML / CSS / JavaScript 静态网页，无后端依赖，可离线运行。
+| 文件 | 说明 |
+|---|---|
+| `archer/` `jigsaw/` `sleeper/` `legion/` | 四份自包含 `index.html`（已进仓库，线上直接用这份源文件） |
+| `covers/*.webp` | 四张大厅封面 |
+| `shared/tokens.css` | 内联版设计令牌（带 var fallback） |
+| `ming-games-四款游戏-离线包.zip` | 21 MB，解压双击 `index.html` 即四款大厅，断网可玩 |
+| `_verify/*.png` | 线上与构建产物的验收截图 |
+| `_dev/` | 内联脚本、可读源 JS、Playwright 冒烟测试 |
 
----
-© 2026 ming-games
+### 改版顺带修掉的缺陷（影弓对决）
+
+1. **HUD 层没定位**：`.lay` 只有 `display:block` 没有 `position`，运行时才被 JS 钉过 left/top，
+   而画布是 flex 居中的 —— HUD 会先落在页面左上角压住主角。改为 `position:fixed` + `transform-origin:0 0`。
+2. **词条无法应用**：`applyTrait` 手写的一长串 getter/setter 漏属性，升级选词条时抛
+   `Cannot set properties of undefined`；改用统计对象上的轻量代理，另补 `G.traitApplied` 初始化。
+3. **局间商店崩溃**：买走一件后 `shopOffers[i] = null`，`renderInter()` 仍读 `it.price` 抛异常，改为跳过空位。
