@@ -8,7 +8,7 @@ import {
   TEMPLATES, TEMPLATE_TYPES, templateByType, parseDescription, answerQuestions,
   validateRuleSet, ruleBook, applyBookEdits, createEngine, healthCheck,
   encodeShort, decodeShort, diffBooks, makeVersion, artParams,
-  MODES, CARD_PATTERN_SETS, CARD_PATTERN_DEFAULT, CARD_Q_DEFS, pendingQuestions,
+  MODES, CARD_PATTERN_SETS, CARD_PATTERN_DEFAULT, CARD_Q_DEFS, CARD_FAMILIES, pendingQuestions,
   buildDeck, identifyPattern, beatsPattern, artSamples, rulePageHtml,
 } from '../../shared/rule-engine.mjs';
 
@@ -263,4 +263,89 @@ test('美术分层：棋类 8 棋子 / 牌类 8 张含牌背，规则页由规�
   for (const h of ['牌堆', '牌型', '出牌', '胜负']) assert.ok(page.includes(h) && book.includes(h));
   assert.equal(page.includes('出处'), false);
   assert.equal(validateRuleSet(ruleSet).ok, true);
+});
+
+/* ---------------- 合并指令 块5：四套牌类模板 / 严格非法出牌 ---------------- */
+test('块5：四套牌类族模板各有独立 patternSet 且都能单局跑通', () => {
+  assert.equal(CARD_FAMILIES.length, 4);
+  assert.deepEqual(CARD_FAMILIES.map((f) => f.patternSet), ['doudizhu', 'zhengshangyou', 'single', 'custom']);
+  for (const fam of CARD_FAMILIES) {
+    const tpl = TEMPLATES.find((t) => t.id === `tpl-${fam.id}`);
+    assert.ok(tpl, `${fam.id} 模板存在`);
+    assert.equal(tpl.card.patternSet, fam.patternSet);
+    const eng = createEngine(tpl);
+    const r = eng.selfPlay(600, 7);
+    assert.equal(r.stall, false, `${fam.id} 单局不卡死：${r.reason}`);
+    assert.ok(r.steps > 0);
+  }
+});
+
+test('块5：非法出牌 ≥8 类，每类返回具体原因文本（不静默吞掉）', () => {
+  const { ruleSet } = parseDescription('两人，牌堆 54 张，每人发 10 张，赢家 6 张其余 3 张，洗回 3 次，先出完获胜，斗地主式', 'card');
+  const eng = createEngine(ruleSet);
+  const s = eng.start(3);
+  const hand = s.hands[s.turn];
+  const byRank = (r, n) => hand.filter((c) => c.rank === r).slice(0, n).map((c) => c.id);
+  const cases = [
+    [null, '领出'],
+    [{ pass: true }, '领出过牌'],
+    [{ cards: [] }, '空出'],
+    [{ cards: [hand[0].id, hand[0].id] }, '重复'],
+    [{ cards: ['not-in-hand'] }, '不在手牌'],
+    [{ cards: byRank(7, 2).length === 2 ? byRank(7, 2) : [hand[0].id, hand[1].id, hand[2].id] }, '牌型'],
+    [{ cards: [hand[0].id, hand[1].id, hand[2].id, hand[3].id, hand[4].id] }, '牌型'],
+  ];
+  const reasons = [];
+  for (const [m] of cases) {
+    const before = s.steps;
+    const r = eng.checkPlay(s, m);
+    if (r) reasons.push(r);
+    eng.apply(s, m);
+    assert.equal(s.steps, before, '非法出牌不改变步数');
+  }
+  // 压不过上家：上家是王炸（无可压），任何出牌都被拒
+  s.lastPlay = { side: s.ids[1], pattern: { id: 'rocket', len: 2, rank: 17, name: '王炸' }, cards: [] };
+  const reason8 = eng.checkPlay(s, { cards: hand.slice(0, 1).map((c) => c.id) });
+  if (reason8) reasons.push(reason8);
+  // 对局已结束：终局后不能出牌
+  s.winner = s.turn;
+  const reason9 = eng.checkPlay(s, { cards: hand.slice(0, 1).map((c) => c.id) });
+  if (reason9) reasons.push(reason9);
+  assert.ok(reasons.length >= 8, `非法原因覆盖 ${reasons.length} 条`);
+  assert.ok(reasons.every((x) => typeof x === 'string' && x.length >= 4), '每条都是可读文本');
+  assert.ok(reasons.some((x) => x.includes('领出')));
+  assert.ok(reasons.some((x) => x.includes('手牌')));
+  assert.ok(reasons.some((x) => x.includes('牌型')));
+});
+
+/* ---------------- 合并指令 块6：回牌描述问出 6 类 + blocking 门槛 ---------------- */
+test('块6：回牌原始描述问出全部 6 类牌类问题（含人数）', () => {
+  const desc = '三副牌，每人 10 张，赢家 6 其余 3，洗 3 次，先出完获胜，5-10-K 特殊牌型';
+  const { ruleSet, questions } = parseDescription(desc, 'card');
+  const specs = questions.map((q) => q.spec).filter(Boolean);
+  for (const s of CARD_Q_DEFS) assert.ok(specs.includes(s.spec), `问出 ${s.spec}`);
+  assert.equal(questions.filter((q) => q.spec).length, 6, '6 类问题全部列出');
+  // 已明确写出的值必须被采纳，不许自己改成别的
+  assert.equal(ruleSet.card.decks, 3);
+  assert.equal(ruleSet.card.handSize, 10);
+  assert.deepEqual(ruleSet.card.replenish, { winner: 6, others: 3 });
+  assert.equal(ruleSet.card.shuffleLimit, 3);
+  assert.equal(ruleSet.card.winBy, 'empty');
+  // 5-10-K 特殊牌型属于牌力次序(card-ranking)，仍未答清 → blocking
+  const v = validateRuleSet(ruleSet);
+  assert.equal(v.blocking, true, '牌力次序等必问项未答，禁止生成');
+  assert.ok(v.missing.some((m) => m.includes('card-ranking')), '缺项列出 card-ranking');
+});
+
+test('块6：必问项未答 blocking:true，答完后 blocking:false 且可校验通过', () => {
+  const { ruleSet, questions } = parseDescription('', 'card');
+  assert.equal(validateRuleSet(ruleSet).blocking, true);
+  const pick = { 'players': '3 人', 'deck-count': '126 张（自定义）', 'hand-size': '10 张',
+    'win-by': '先出完手牌获胜', 'replenish': '按名次 6/3/3 递减',
+    'shuffle-limit': '3 次', 'pattern-set': '斗地主式（含炸弹、王炸）' };
+  const next = answerQuestions(ruleSet, questions.map((q) => ({ key: q.key, option: pick[q.key] || q.default })));
+  const v = validateRuleSet(next);
+  assert.equal(v.blocking, false);
+  assert.equal(v.ok, true);
+  assert.deepEqual(next.pending, []);
 });
