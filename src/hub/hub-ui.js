@@ -74,29 +74,48 @@
     if (loading) loading.hidden = true;
   }
 
+  function makeCard(g) {
+    var ready = g.status === 'ready';
+    var el = document.createElement(ready ? 'a' : 'div');
+    el.className = 'card' + (ready ? '' : ' card-pending');
+    el.setAttribute('data-id', g.id);
+    if (ready) el.href = globalThis.HubRouter.href(g.id);
+    var isCustom = g.tag === 'custom';
+    el.innerHTML =
+      '<div class="card-cover">' +
+        '<img src="' + esc(g.cover) + '" alt="' + esc(g.name) + ' 封面" loading="lazy" decoding="async">' +
+        (ready ? '' : '<span class="card-badge">接入中</span>') +
+        (isCustom && g.funFact ? '<span class="card-fact">' + esc(g.funFact) + '</span>' : '') +
+      '</div>' +
+      '<div class="card-body">' +
+        '<span class="card-name">' + esc(g.name) + '</span>' +
+        (isCustom
+          ? '<span class="card-tag custom">' + (g.id === 'rulecraft' ? '自己做一款' : '民间规则') + '</span>'
+          : (g.tag ? '<span class="card-tag">' + esc(g.tag) + '</span>' : '')) +
+        '<span class="card-enter">' + (ready ? '进入游戏 ▶' : 'P2 构建链接入') + '</span>' +
+      '</div>';
+    var img = el.querySelector('img');
+    if (img) img.addEventListener('error', function () { img.style.display = 'none'; });
+    return el;
+  }
+
   function renderGrid() {
     if (!grid) return;
     grid.innerHTML = '';
-    games.forEach(function (g) {
-      var ready = g.status === 'ready';
-      var el = document.createElement(ready ? 'a' : 'div');
-      el.className = 'card' + (ready ? '' : ' card-pending');
-      el.setAttribute('data-id', g.id);
-      if (ready) el.href = globalThis.HubRouter.href(g.id);
-      el.innerHTML =
-        '<div class="card-cover">' +
-          '<img src="' + esc(g.cover) + '" alt="' + esc(g.name) + ' 封面" loading="lazy" decoding="async">' +
-          (ready ? '' : '<span class="card-badge">接入中</span>') +
-        '</div>' +
-        '<div class="card-body">' +
-          '<span class="card-name">' + esc(g.name) + '</span>' +
-          (g.tag ? '<span class="card-tag">' + esc(g.tag) + '</span>' : '') +
-          '<span class="card-enter">' + (ready ? '进入游戏 ▶' : 'P2 构建链接入') + '</span>' +
-        '</div>';
-      var img = el.querySelector('img');
-      if (img) img.addEventListener('error', function () { img.style.display = 'none'; });
-      grid.appendChild(el);
-    });
+    var main = games.filter(function (g) { return g.tag !== 'custom'; });
+    var custom = games.filter(function (g) { return g.tag === 'custom'; });
+    // 工坊放民间规则栏首位
+    custom.sort(function (a, b) { return (a.id === 'rulecraft' ? -1 : b.id === 'rulecraft' ? 1 : 0); });
+    main.forEach(function (g) { grid.appendChild(makeCard(g)); });
+    if (custom.length) {
+      var sec = document.createElement('section');
+      sec.className = 'hub-section custom-section';
+      sec.innerHTML = '<h2 class="hub-section-title">民间规则 <small>自己做一款 · 冷知识标签</small></h2>' +
+        '<div class="hub-section-grid"></div>';
+      var sub = sec.querySelector('.hub-section-grid');
+      custom.forEach(function (g) { sub.appendChild(makeCard(g)); });
+      grid.appendChild(sec);
+    }
   }
 
   var bridge = globalThis.HubBridge.createParent({

@@ -35,6 +35,13 @@ body {
   display: grid; gap: 16px;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
 }
+/* 民间规则独立一栏（合并指令 块10） */
+.hub-section.custom-section { grid-column: 1 / -1; margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 16px; }
+.hub-section-title { font-size: 16px; color: var(--gold); margin: 0 0 12px; letter-spacing: 1px; }
+.hub-section-title small { font-size: 11px; color: var(--muted, #a9a29a); font-weight: 400; margin-left: 8px; letter-spacing: 0; }
+.hub-section-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.card-tag.custom { color: #7be0b0; border-color: rgba(123,224,176,.4); }
+.card-fact { position: absolute; left: 8px; bottom: 8px; right: 8px; font-size: 11px; color: #ffe8b0; background: rgba(10,9,8,.72); border-radius: 6px; padding: 3px 7px; text-align: center; }
 .card {
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--panel); border: 1px solid var(--line);
