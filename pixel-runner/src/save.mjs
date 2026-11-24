@@ -36,6 +36,7 @@ export function defaultSettings() {
     vibrate: true,
     control: 'both',        // 'tap' | 'slide' | 'both'
     skin: 'vector',         // 'vector' 矢量骨架（默认） | 'sprite' 立绘皮肤
+    debugBox: false,        // 碰撞盒调试描边（块3）
   };
 }
 
@@ -144,6 +145,7 @@ export function normalizeSettings(raw) {
     vibrate: data.vibrate !== false,
     control: ['tap', 'slide', 'both'].includes(data.control) ? data.control : d.control,
     skin: data.skin === 'sprite' ? 'sprite' : 'vector',
+    debugBox: data.debugBox === true,
   };
 }
 

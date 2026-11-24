@@ -33,6 +33,7 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const storage = resolveStorage(null);
 let save = loadSave(storage);
 let settings = loadSettings(storage);
+if (settings.skin === 'sprite') loadArt('hero');   // 续用立绘皮肤时才加载 hero 贴图
 
 const prefersReduced = window.matchMedia
   ? matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -51,10 +52,17 @@ const ART_SRC = {
   heart: 'assets/art/items/heart.png',
 };
 const ART = {};
-for (const k in ART_SRC) {
+/** 立绘贴图按需加载（块3 第4条）：默认矢量路径零 hero 贴图请求 */
+function loadArt(k) {
+  if (ART[k]) return ART[k];
   const im = new Image();
   im.src = ART_SRC[k];
-  ART[k] = im;  // complete=false 期间自动走几何 fallback，避免首帧空白
+  ART[k] = im;
+  return im;
+}
+for (const k in ART_SRC) {
+  if (k === 'hero') continue;             // 默认不加载；切到「立绘」皮肤时才加载
+  loadArt(k);                             // 障碍/道具贴图仍预加载，complete=false 时走几何 fallback
 }
 function artReady(k){ const im = ART[k]; return im && im.complete && im.naturalWidth > 0; }
 // contain：等比缩放居中，不拉伸变形
@@ -676,6 +684,17 @@ function draw() {
   // 玩家
   drawPlayer(run, toScreenX, toScreenY);
 
+  // 碰撞盒调试（块3 第7条）：收 15% 的实际判定框，绿色描边
+  if (settings.debugBox) {
+    const pb = playerBox(run);
+    g2d.save();
+    g2d.strokeStyle = '#5dff8a'; g2d.lineWidth = 2; g2d.setLineDash([5, 3]);
+    g2d.strokeRect(toScreenX(pb.x), toScreenY(pb.y + pb.h), pb.w * view.scale, pb.h * view.scale);
+    g2d.fillStyle = 'rgba(93,255,138,0.12)';
+    g2d.fillRect(toScreenX(pb.x), toScreenY(pb.y + pb.h), pb.w * view.scale, pb.h * view.scale);
+    g2d.restore();
+  }
+
   // 粒子
   if (particles.length) {
     for (const p of particles) {
@@ -1196,6 +1215,7 @@ function paintSettings() {
   setT('set-vib', settings.vibrate !== false);
   qsa('#set-control button').forEach((b) => b.classList.toggle('on', b.dataset.c === settings.control));
   qsa('#set-skin button').forEach((b) => b.classList.toggle('on', b.dataset.s === (settings.skin || 'vector')));
+  qsa('#set-debugbox button').forEach((b) => b.classList.toggle('on', (b.dataset.d === 'on') === !!settings.debugBox));
 }
 
 function persist() {
@@ -1268,7 +1288,14 @@ qsa('#set-control button').forEach((b) => {
 qsa('#set-skin button').forEach((b) => {
   b.addEventListener('click', () => {
     settings.skin = b.dataset.s;
-    persist();
+    if (settings.skin === 'sprite') loadArt('hero');
+    persist(); paintSettings();
+  });
+});
+qsa('#set-debugbox button').forEach((b) => {
+  b.addEventListener('click', () => {
+    settings.debugBox = b.dataset.d === 'on';
+    persist(); paintSettings();
   });
 });
 

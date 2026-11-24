@@ -19,6 +19,8 @@ export const JUMP_BUFFER = 0.12;      // 落地前提前按的缓冲时间
 export const PLAYER_W = 34;
 export const PLAYER_H = 50;
 export const SLIDE_H = 26;
+/** 碰撞盒相对立绘收 15%（合并指令 块3 第7条）：判定更宽容，手感更顺 */
+export const HITBOX_SHRINK = 0.85;
 export const SLIDE_TIME = 0.45;       // 滑铲最长时长
 
 export const BASE_SPEED = 430;        // 起始速度 px/s
@@ -80,9 +82,11 @@ export function aabb(a, b) {
 }
 
 /** 玩家当前碰撞盒（滑铲时更矮）。 */
-export function playerBox(p) {
-  const h = p.sliding ? SLIDE_H : PLAYER_H;
-  return { x: p.x - PLAYER_W / 2, y: p.y, w: PLAYER_W, h };
+export function playerBox(p, opts = {}) {
+  const shrink = opts.shrink ?? HITBOX_SHRINK;
+  const drawH = p.sliding ? SLIDE_H : PLAYER_H;
+  const w = PLAYER_W * shrink, h = drawH * shrink;
+  return { x: p.x - w / 2, y: p.y + (drawH - h), w, h };
 }
 
 /* ------------------------------ 难度 ------------------------------ */
