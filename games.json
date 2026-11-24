@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-11-20",
+  "updated": "2026-11-24",
   "note": "P2d 清单（新增 archer/jigsaw/sleeper/legion 四款 classic 单文件游戏）。CARDS=32 / ENTRIES=32 / READY=31。ready=已接入构建链可离线试玩；pending=enlisten 待 P5 网页版。3D 项目由 makeVendorPlan 自动把 three classic 化为 globalThis.THREE。",
   "games": [
     {
@@ -336,9 +336,22 @@
       "name": "规则工坊",
       "dir": "rulecraft",
       "cover": "covers/rulecraft.png",
-      "tag": "益智",
+      "tag": "custom",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "funFact": "本地生成 · 零 API 规则工坊"
+    },
+    {
+      "id": "huipai",
+      "name": "回牌",
+      "dir": "huipai",
+      "cover": "covers/huipai.png",
+      "tag": "custom",
+      "status": "ready",
+      "renderer": "classic",
+      "updatedAt": "2026-11-24",
+      "version": 1,
+      "funFact": "3 副牌 · 5-10-K 特殊牌型"
     }
   ]
 }

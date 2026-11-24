@@ -1,0 +1,14 @@
+{
+  "name": "回牌 · 三人局",
+  "short_name": "回牌",
+  "description": "3 副 156 张，5-10-K 特殊牌型与炸弹共用牌力阶梯，本地 AI。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#173b2f",
+  "theme_color": "#173b2f",
+  "categories": ["games", "card"]
+}

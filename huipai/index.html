@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#173b2f">
+<title>回牌 · 三人局</title>
+<meta name="description" content="回牌：3 副 156 张，5-10-K 特殊牌型与炸弹共用牌力阶梯，本地启发式 AI，断线可续局。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%23f3ead8'/%3E%3Ctext x='14' y='44' font-size='30' fill='%23b23a2e'%3E5%3C/text%3E%3Ctext x='36' y='44' font-size='30' fill='%231a1a1a'%3EK%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+:root{--felt:#173b2f;--felt2:#0e2b22;--paper:#f7f2e6;--ink:#25352d;--gold:#d9b66a;--red:#b23a2e}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% 20%,#1e4a3a,#0b1d17 75%);color:#f0e9d8;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:12px 12px 28px}
+header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+h1{font-size:19px;margin:0;color:var(--gold);letter-spacing:2px}
+.bar{margin-left:auto;display:flex;gap:7px;flex-wrap:wrap}
+button,select{min-height:44px;padding:0 13px;border-radius:10px;border:1px solid #52705e;background:#1c3b2e;color:#eef3e8;font:inherit;font-size:13px;cursor:pointer;touch-action:manipulation}
+button:hover:not(:disabled){border-color:var(--gold)}button:disabled{opacity:.35;cursor:not-allowed}
+button.primary{background:#9c7d3c;border-color:#d9b66a;color:#fff}
+.hint{font-size:12px;opacity:.7;margin:0 0 8px}
+.table{position:relative;background:radial-gradient(ellipse at 50% 45%,#215240,#0f2a21);border:2px solid #3d6b53;border-radius:18px;padding:10px;min-height:560px}
+.seats{display:grid;grid-template-columns:1fr minmax(280px,1.6fr) 1fr;gap:8px;align-items:start}
+.seat{background:#0c231cc9;border:1px solid #355b48;border-radius:12px;padding:8px;min-height:110px}
+.seat.me{background:#173d30;border-color:#7e9b52}
+.seat h3{margin:0 0 6px;font-size:12px;color:#cdd9bf;font-weight:600;display:flex;justify-content:space-between}
+.seat h3 span{color:var(--gold)}
+.backs{display:flex;gap:2px;flex-wrap:wrap}
+.back{width:17px;height:25px;border-radius:3px;background:linear-gradient(135deg,#2f6a52,#164331);border:1px solid #0d2a20;box-shadow:inset 0 0 0 2px #ffffff10}
+.center{display:flex;flex-direction:column;gap:8px;min-height:120px}
+.pile{display:flex;gap:6px;align-items:center;justify-content:center}
+.pile .back{width:26px;height:38px}
+.river{min-height:110px;background:#0a2119aa;border:1px dashed #3e6a53;border-radius:10px;padding:6px}
+.river .lbl{font-size:11px;color:#9dbb9a;margin-bottom:4px}
+.msg{font-size:13px;color:#f4e6b0;min-height:20px;margin:4px 0}
+.hand-row{display:flex;gap:3px;overflow-x:auto;padding:8px 4px 2px;align-items:flex-end;min-height:120px}
+.hand-row.small .card{width:44px;height:64px;font-size:14px}
+.card{position:relative;flex:0 0 auto;width:52px;height:76px;border-radius:6px;background:linear-gradient(160deg,#fffdf6,#f0e8d2);border:1px solid #cbb994;box-shadow:0 2px 6px #0005;cursor:pointer;user-select:none;color:#1c1c28;padding:4px;font-size:15px;font-weight:700;line-height:1.05;transition:transform .1s}
+.card.red{color:var(--red)}.card.sel{transform:translateY(-12px);box-shadow:0 0 0 2px var(--gold),0 4px 10px #0008}
+.card .suit{position:absolute;top:3px;left:5px;font-size:14px}.card .rk{position:absolute;bottom:4px;right:5px;font-size:16px}
+.card .big{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:26px;opacity:.9}
+.card.joker{background:linear-gradient(160deg,#fff6d8,#f3d98a)}
+.card.back{background:linear-gradient(135deg,#2f6a52,#164331);border-color:#0d2a20;color:#fff}
+.card.back::after{content:'回';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:22px;color:#9fd0ae55}
+.ctrl{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.ctrl .sel-info{font-size:12px;color:#d8cba2;margin-right:auto}
+.log{max-height:150px;overflow-y:auto;background:#0a2119aa;border:1px solid #355b48;border-radius:10px;padding:8px;font-size:11px;line-height:1.5;color:#bcd2b6;margin-top:8px}
+.result{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;z-index:20}
+.result.show{display:flex}
+.result .panel{background:#173b2f;border:2px solid var(--gold);border-radius:16px;padding:24px;max-width:360px;text-align:center}
+.muted{opacity:.6}.tag{display:inline-block;padding:2px 8px;border-radius:6px;background:#ffffff10;font-size:11px;margin:2px}
+@media(max-width:620px){.seats{grid-template-columns:1fr 1fr}.seat.me{grid-column:1/-1}.card{width:46px;height:68px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>回牌</h1>
+  <div class="bar">
+    <select id="diff"><option value="easy">简单</option><option value="normal" selected>普通</option><option value="hard">困难</option></select>
+    <button id="new" class="primary">新局</button>
+    <button id="rules">规则</button>
+  </div>
+</header>
+<p class="hint">3 副 156 张 · 每人 10 张 · 先出完手牌获胜 · 5-10-K 与炸弹共用牌力阶梯 · <a href="./rules.html" style="color:#9ec">规则页</a></p>
+<div class="table">
+  <div class="seats">
+    <div class="seat" id="seat1"><h3>AI·左 <span id="cnt1"></span></h3><div class="backs" id="back1"></div></div>
+    <div class="seat me" id="seat0"><h3>你 <span id="cnt0"></span></h3><div class="backs" id="back0"></div></div>
+    <div class="seat" id="seat2"><h3>AI·右 <span id="cnt2"></span></h3><div class="backs" id="back2"></div></div>
+  </div>
+  <div class="center">
+    <div class="pile"><div class="back" id="pileBack"></div><span class="muted" id="pileCnt">牌堆 0</span><span class="tag" id="shufCnt">洗牌 0/3</span></div>
+    <div class="river"><div class="lbl" id="riverLbl">出牌区</div><div class="hand-row small" id="river"></div></div>
+    <div class="msg" id="msg">点「新局」开始。</div>
+  </div>
+</div>
+<div class="ctrl">
+  <span class="sel-info" id="selInfo">已选 0 张</span>
+  <button id="hint">提示一手</button>
+  <button id="pass">过牌</button>
+  <button id="play" class="primary">出牌</button>
+</div>
+<div class="hand-row" id="hand"></div>
+<div class="log" id="log"></div>
+</div>
+<div class="result" id="result"><div class="panel"><h2 id="rtitle"></h2><div id="rbody"></div><button id="rclose" class="primary">再来一局</button></div></div>
+
+<script type="module">
+import {
+  createGame, buildDeck, identify, beats, moves, checkPlay, apply, aiMove,
+  selfPlay, rankLabel, POWER_LADDER, is510K, tier510K,
+} from './src/huipai-core.mjs';
+
+const $ = (id) => document.getElementById(id);
+const SAVE = 'mg_huipai.v1';
+let s = null, sel = new Set(), busy = false, firstWinner = null;
+const difficulty = () => $('diff').value;
+
+function loadSave() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SAVE));
+    if (raw && raw.hands && raw.cfg) return raw;
+  } catch {}
+  return null;
+}
+function save() {
+  try { localStorage.setItem(SAVE, JSON.stringify(s)); } catch {}
+}
+function cardEl(c, small = false) {
+  const red = c.color?.includes('c62f3b');
+  const joker = c.joker;
+  const suit = joker ? '★' : (c.suitLabel || '');
+  const label = joker ? (c.rank === 16 ? '小王' : '大王') : c.label;
+  if (small) return `<div class="card${red ? ' red' : ''}${joker ? ' joker' : ''}" title="${label}">${suit}<br>${label}</div>`;
+  return `<div class="card${red ? ' red' : ''}${joker ? ' joker' : ''}${sel.has(c.id) ? ' sel' : ''}" data-c="${c.id}">
+    <span class="suit">${suit}</span><span class="big">${label}</span><span class="rk">${label}</span></div>`;
+}
+function backsEl(n) { return `<span class="muted">${n} 张</span>` + `<div class="backs">${'<div class="back"></div>'.repeat(Math.min(n, 24))}</div>`; }
+
+function render() {
+  if (!s) return;
+  for (let i = 0; i < s.ids.length; i++) {
+    const id = s.ids[i];
+    $(`cnt${i}`).textContent = `${s.hands[id].length} 张${id === s.turn && !s.winner ? ' · 出牌' : ''}`;
+    $(`back${i}`).innerHTML = backsEl(s.hands[id].length);
+  }
+  $('pileCnt').textContent = `牌堆 ${s.pile.length}`;
+  $('shufCnt').textContent = `洗牌 ${s.shuffles}/${s.cfg.maxReshuffle}`;
+  const last = s.last;
+  $('riverLbl').innerHTML = last ? `${last.side} 出 · ${last.pattern.name}${last.pattern.special ? ' · 阶梯第' + (last.pattern.tier + 1) + '级' : ''}` : '本墩领出';
+  $('river').innerHTML = last ? last.cards.map((c) => cardEl(c, true)).join('') : '<span class="muted">等待领出</span>';
+  const me = 'p0';
+  $('hand').innerHTML = s.hands[me].map((c) => cardEl(c)).join('');
+  [...$('hand').children].forEach((el) => el.addEventListener('click', () => {
+    const cid = el.dataset.c;
+    if (sel.has(cid)) sel.delete(cid); else sel.add(cid);
+    render();
+  }));
+  const chosen = s.hands[me].filter((c) => sel.has(c.id));
+  const pat = chosen.length ? identify(chosen) : null;
+  $('selInfo').textContent = `已选 ${sel.size} 张${pat ? ' · ' + pat.name : ''}${s.lastError ? ' · ' + s.lastError : ''}`;
+  const myTurn = !s.winner && s.turn === me && !busy;
+  const m = sel.size ? { cards: [...sel], pattern: pat } : null;
+  const reason = myTurn ? checkPlay(s, me, m) : null;
+  $('play').disabled = !myTurn || !m || !!reason;
+  $('pass').disabled = !myTurn || !s.last || s.last.side === me;
+  $('hint').disabled = !myTurn;
+  $('msg').textContent = s.winner ? `${s.winner} 先出完获胜` : (myTurn ? (s.last ? `轮到你，请压住${s.last.pattern.name}` : '轮到你领出') : `${s.turn} 思考中…`);
+  $('log').innerHTML = s.log.slice(-40).reverse().map((l) => `<div>${l}</div>`).join('');
+}
+
+function humanPlay(pass = false) {
+  if (!s || s.winner || s.turn !== 'p0' || busy) return;
+  const m = pass ? { pass: true } : (sel.size ? { cards: [...sel], pattern: identify(s.hands.p0.filter((c) => sel.has(c.id))) } : null);
+  const bad = checkPlay(s, 'p0', m);
+  if (bad) { $('msg').textContent = bad; return; }
+  sel.clear();
+  apply(s, m); save(); render();
+  if (!s.winner) aiLoop();
+  else showResult();
+}
+async function aiLoop() {
+  if (!s || s.winner) return;
+  busy = true; render();
+  while (!s.winner && s.turn !== 'p0') {
+    await new Promise((r) => setTimeout(r, 480));
+    const m = aiMove(s, difficulty());
+    if (!m) break;
+    apply(s, m); save(); render();
+  }
+  busy = false; render();
+  if (s.winner) showResult();
+}
+function showResult() {
+  const w = s.winner === 'p0' ? '你赢了！' : `${s.winner} 获胜`;
+  $('rtitle').textContent = w;
+  $('rbody').innerHTML = `<p>名次：${s.ids.map((id) => `${id}=${s.ranks[id]}`).join(' · ')}</p><p>洗牌 ${s.shuffles} 次 · 共 ${s.tricks} 墩</p>`;
+  $('result').classList.add('show');
+}
+function newGame() {
+  const first = firstWinner || 'p0';
+  s = createGame({ seed: Date.now() % 100000, difficulty: difficulty(), first });
+  sel.clear(); save(); render();
+  if (s.turn !== 'p0') aiLoop();
+}
+
+$('new').addEventListener('click', newGame);
+$('play').addEventListener('click', () => humanPlay(false));
+$('pass').addEventListener('click', () => humanPlay(true));
+$('hint').addEventListener('click', () => {
+  if (!s || s.turn !== 'p0') return;
+  const ms = moves(s, 'p0').filter((m) => !m.pass);
+  if (!ms.length) return;
+  const pref = ms.find((m) => m.pattern.id === '510k') || ms.find((m) => !m.pattern.special) || ms[0];
+  sel = new Set(pref.cards); render();
+});
+$('rclose').addEventListener('click', () => { $('result').classList.remove('show'); newGame(); });
+$('rules').addEventListener('click', () => { location.href = './rules.html'; });
+$('diff').addEventListener('change', () => { if (s) s.cfg.difficulty = difficulty(); save(); });
+
+window.__HUIPAI__ = {
+  snapshot: () => ({ turn: s?.turn, hands: s ? Object.fromEntries(s.ids.map((id) => [id, s.hands[id].length])) : {},
+    pile: s?.pile.length, shuffles: s?.shuffles, winner: s?.winner, selected: sel.size,
+    log: s?.log.slice(-6), lastError: s?.lastError }),
+  newGame, selfPlay: (n = 20) => Array.from({ length: n }, (_, i) => {
+    const r = selfPlay(i + 1); return { winner: r.winner, stall: r.stall, steps: r.steps, shuffles: r.shuffles };
+  }),
+  powerTable: () => POWER_LADDER,
+  load: (state) => { s = state; sel.clear(); render(); },
+};
+
+const saved = loadSave();
+if (saved) { s = saved; render(); if (!s.winner && s.turn !== 'p0') aiLoop(); }
+else render();
+</script>
+</body>
+</html>
