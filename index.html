@@ -132,7 +132,12 @@
   }
 
   /* ---------- 卡片网格（结构 / 排序 / 视觉基调与旧版一致，只加星标与分类标签） ---------- */
-  .grid {
+  .custom-section { grid-column: 1 / -1; margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 16px; }
+.custom-title { font-size: 16px; color: var(--gold); margin: 0 0 12px; }
+.custom-title small { font-size: 11px; opacity: .6; font-weight: 400; margin-left: 8px; }
+.custom-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.card-fact { display:block; font-size:11px; color:#ffe8b0; background:rgba(10,9,8,.6); border-radius:6px; padding:2px 7px; margin-bottom:4px; }
+.grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     align-items: start;
@@ -878,12 +883,28 @@ const GAMES = [
     en: 'Rule Craft',
     desc: '用中文描述生成可玩规则：RuleSet、规则书、程序化棋子、AI 对手与追问迭代。',
     kw: '规则工坊 自定义规则 规则生成 棋类 益智',
-    tag: '益智',
+    tag: 'custom',
+    funFact: '自己做一款 · 本地生成零 API',
     cover: 'covers/rulecraft.png',
     ar: '1280 / 800',
     url: 'rulecraft/',
     status: 'live',
     order: 29,
+    orientation: 'portrait',
+  },
+  {
+    id: 'huipai',
+    name: '回牌',
+    en: 'Hui Pai',
+    desc: '3 副 156 张，5-10-K 特殊牌型与炸弹共用牌力阶梯，本地 AI 三人局。',
+    kw: '回牌 扑克 5-10-K 牌力阶梯 民间 牌类',
+    tag: 'custom',
+    funFact: '3 副牌 · 5-10-K 特殊牌型',
+    cover: 'covers/huipai.png',
+    ar: '1280 / 800',
+    url: 'huipai/',
+    status: 'live',
+    order: 30,
     orientation: 'portrait',
   },
 ];
@@ -930,7 +951,7 @@ function todayKey(d) {
 const GAME_BY_ID = new Map(GAMES.map(function (g) { return [g.id, g]; }));
 const ORDERED = GAMES.slice().sort(function (a, b) { return (a.order == null ? 99 : a.order) - (b.order == null ? 99 : b.order); });
 const TAGS = [];
-ORDERED.forEach(function (g) { if (g.tag && TAGS.indexOf(g.tag) < 0) TAGS.push(g.tag); });
+ORDERED.forEach(function (g) { if (g.tag && g.tag !== 'custom' && TAGS.indexOf(g.tag) < 0) TAGS.push(g.tag); });
 
 /* 检索串归一：小写 + 把 - _ / · 之类的分隔符统一成空格。
    这样 id「one-card」用 one-card / one card 都搜得到，英文名大写也照搜。 */
@@ -1048,7 +1069,26 @@ function renderGrid() {
   });
 
   grid.innerHTML = '';
-  hit.forEach(function (g) { grid.appendChild(buildCard(g)); });
+  var customHit = hit.filter(function (g) { return g.tag === 'custom'; });
+  var mainHit = hit.filter(function (g) { return g.tag !== 'custom'; });
+  mainHit.forEach(function (g) { grid.appendChild(buildCard(g)); });
+  if (customHit.length) {
+    customHit.sort(function (a, b) { return (a.id === 'rulecraft' ? -1 : b.id === 'rulecraft' ? 1 : (a.order||0)-(b.order||0)); });
+    var sec = document.createElement('section');
+    sec.className = 'custom-section';
+    sec.innerHTML = '<h2 class="custom-title">民间规则 <small>自己做一款 · 冷知识标签</small></h2><div class="custom-grid"></div>';
+    var sub = sec.querySelector('.custom-grid');
+    customHit.forEach(function (g) {
+      var card = buildCard(g);
+      var badge = document.createElement('span');
+      badge.className = 'card-fact';
+      badge.textContent = g.funFact || (g.id === 'rulecraft' ? '自己做一款' : '民间规则');
+      var body = card.querySelector('.card-body');
+      if (body) body.insertBefore(badge, body.firstChild);
+      sub.appendChild(card);
+    });
+    grid.appendChild(sec);
+  }
 
   const empty = document.getElementById('empty');
   if (!hit.length) {
