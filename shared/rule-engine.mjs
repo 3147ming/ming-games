@@ -105,17 +105,39 @@ export const TEMPLATES = [
     actions: [{ type: 'deck', size: 54 }, { type: 'deal', count: 5 }, { type: 'play' }, { type: 'pass' }],
     win: [{ type: 'empty-hand' }],
   }),
+  /* 四套牌类族模板：id 与 CARD_FAMILIES 一一对应 */
+  base('card-doudizhu', 'card', '斗地主式牌', {
+    mode: 'card', board: { cols: 0, rows: 0, topology: 'card', zones: [] },
+    card: { decks: 1, size: 54, handSize: 17, winBy: 'empty', replenish: { winner: 0, others: 0 }, shuffleLimit: 3, patternSet: 'doudizhu' },
+    actions: [{ type: 'deck', size: 54 }, { type: 'deal', count: 17 }, { type: 'play' }, { type: 'pass' }],
+    win: [{ type: 'empty-hand' }],
+  }),
+  base('card-zhengshangyou', 'card', '争上游式牌', {
+    mode: 'card', board: { cols: 0, rows: 0, topology: 'card', zones: [] },
+    card: { decks: 1, size: 54, handSize: 17, winBy: 'empty', replenish: { winner: 0, others: 0 }, shuffleLimit: 3, patternSet: 'zhengshangyou' },
+    actions: [{ type: 'deck', size: 54 }, { type: 'deal', count: 17 }, { type: 'play' }, { type: 'pass' }],
+    win: [{ type: 'empty-hand' }],
+  }),
+  base('card-single', 'card', '单张压单张牌', {
+    mode: 'card', board: { cols: 0, rows: 0, topology: 'card', zones: [] },
+    card: { decks: 1, size: 54, handSize: 17, winBy: 'empty', replenish: { winner: 0, others: 0 }, shuffleLimit: 3, patternSet: 'single' },
+    actions: [{ type: 'deck', size: 54 }, { type: 'deal', count: 17 }, { type: 'play' }, { type: 'pass' }],
+    win: [{ type: 'empty-hand' }],
+  }),
+  base('card-custom', 'card', '自定义牌型牌', {
+    mode: 'card', board: { cols: 0, rows: 0, topology: 'card', zones: [] },
+    card: { decks: 1, size: 54, handSize: 10, winBy: 'empty', replenish: { winner: 6, others: 3 }, shuffleLimit: 3, patternSet: 'custom' },
+    actions: [{ type: 'deck', size: 54 }, { type: 'deal', count: 10 }, { type: 'play' }, { type: 'pass' }],
+    win: [{ type: 'empty-hand' }],
+  }),
   base('mcr', 'mahjong', '简化麻将', {
     mode: 'card', board: { cols: 0, rows: 0, topology: 'mahjong', zones: [] },
-    /* 模板是「已经拍板」的预设，参数必须写全：牌引擎不再替它补 52/5/21 这类默认值 */
-    card: { decks: 3, size: 136, handSize: 13, winBy: 'empty', replenish: { winner: 0, others: 0 }, shuffleLimit: 3, patternSet: 'custom' },
     pieces: [{ id: 'tile', name: '牌', count: 136, power: 1, move: [], art: { glyph: '牌', palette: '#E8833A', motif: 'ring2' } }],
     actions: [{ type: 'tiles', suits: ['wan', 'tiao', 'tong'] }, { type: 'hu', pattern: '4m1p' }, { type: 'fan', enabled: true }],
     win: [{ type: 'score', target: 8 }],
   }),
   base('sevenpairs', 'mahjong', '七对麻将', {
     mode: 'card', board: { cols: 0, rows: 0, topology: 'mahjong', zones: [] },
-    card: { decks: 3, size: 136, handSize: 13, winBy: 'empty', replenish: { winner: 0, others: 0 }, shuffleLimit: 3, patternSet: 'custom' },
     actions: [{ type: 'tiles', suits: ['wan', 'tiao', 'tong'] }, { type: 'hu', pattern: '7pairs' }, { type: 'fan', enabled: true }],
     win: [{ type: 'score', target: 8 }],
   }),
@@ -134,6 +156,13 @@ export const TEMPLATES = [
 ];
 
 export const templateByType = (type) => TEMPLATES.filter((t) => t.type === type);
+/** 四套牌类模板（合并指令 块5）：按牌型表 families 显式列出，便于工坊按族挑选 */
+export const CARD_FAMILIES = Object.freeze([
+  { id: 'card-doudizhu', label: '斗地主式（含炸弹）', patternSet: 'doudizhu' },
+  { id: 'card-zhengshangyou', label: '争上游式', patternSet: 'zhengshangyou' },
+  { id: 'card-single', label: '单张压单张', patternSet: 'single' },
+  { id: 'card-custom', label: '自定义牌型', patternSet: 'custom' },
+]);
 export const TEMPLATE_TYPES = Object.freeze([
   { key: 'board', label: '棋类' }, { key: 'card', label: '扑克' },
   { key: 'mahjong', label: '麻将' }, { key: 'custom', label: '自定义' },
@@ -157,7 +186,7 @@ export const KEYWORDS = Object.freeze({
   unsupported: ['传送', '飞行', '时间倒流', '隐藏身份', '骰子'],
 });
 
-const CN_DIGIT = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+const CN_DIGIT = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
 function numOf(s) {
   if (!s) return null;
   if (/^\d+$/.test(s)) return Number(s);
@@ -171,19 +200,20 @@ function q(key, text, options, apply, defaultIndex = options.length - 1) {
 }
 
 /* 6 类牌类追问：问清之前不允许把棋类默认值（52 张 / 5 张 / 21 分 / 60 回合）写进规则 */
+/** 6 类牌类追问；spec 名为合并指令 块6 的类别名，key 为内部字段（兼容既有规则卡）。 */
 export const CARD_Q_DEFS = Object.freeze([
-  { key: 'deck-count', text: '牌堆用几副牌？',
-    options: ['1 副（54 张）', '2 副（108 张）', '3 副（162 张）', '126 张（自定义）'], field: 'decks' },
-  { key: 'hand-size', text: '开局每人发几张？',
-    options: ['5 张', '10 张', '13 张', '17 张'], field: 'handSize' },
-  { key: 'win-by', text: '胜负看「先出完」还是「算分」？',
-    options: ['先出完手牌获胜', '达到目标分数获胜'], field: 'winBy' },
-  { key: 'replenish', text: '一轮出完后怎么补给？',
-    options: ['赢家 6 张、其余 3 张', '按名次 6/3/3 递减', '赢家 2 张、其余 1 张', '不补给'], field: 'replenish' },
-  { key: 'shuffle-limit', text: '牌堆抽空后，弃牌最多洗回几次？',
-    options: ['1 次', '3 次', '5 次', '不限次数'], field: 'shuffleLimit' },
-  { key: 'pattern-set', text: '牌型用哪一套？',
-    options: ['斗地主式（含炸弹、王炸）', '争上游式', '单张压单张', '自定义'], field: 'patternSet' },
+  { spec: 'deck-count', key: 'deck-count', text: '牌堆用几副牌？',
+    options: ['1 副（54 张）', '2 副（108 张）', '3 副（162 张）', '126 张（自定义）'], field: 'decks', must: true },
+  { spec: 'deal-count', key: 'hand-size', text: '开局每人发几张？',
+    options: ['5 张', '10 张', '13 张', '17 张'], field: 'handSize', must: true },
+  { spec: 'win-mode', key: 'win-by', text: '胜负看「先出完」还是「算分」？',
+    options: ['先出完手牌获胜', '达到目标分数获胜'], field: 'winBy', must: true },
+  { spec: 'refill', key: 'replenish', text: '一轮出完后怎么补给？',
+    options: ['赢家 6 张、其余 3 张', '按名次 6/3/3 递减', '赢家 2 张、其余 1 张', '不补给'], field: 'replenish', must: true },
+  { spec: 'reshuffle', key: 'shuffle-limit', text: '牌堆抽空后，弃牌最多洗回几次？',
+    options: ['1 次', '3 次', '5 次', '不限次数'], field: 'shuffleLimit', must: true },
+  { spec: 'card-ranking', key: 'pattern-set', text: '牌型用哪一套？',
+    options: ['斗地主式（含炸弹、王炸）', '争上游式', '单张压单张', '自定义'], field: 'patternSet', must: true },
 ]);
 
 const EXTRA_CARD_Q = Object.freeze({
@@ -230,14 +260,10 @@ export function parseDescription(text = '', type = 'board') {
     rs.pieces = [{ id: 'card', name: '牌', count: null, move: [],
       art: { glyph: '牌', palette: '#2DD4BF', motif: 'ring1' } }];
 
-    const decks = src.match(/(\d+|[一二两三四五六])\s*副/);
+    const decks = src.match(/(\d+|[一两二三四五六])\s*副/);
     if (decks) { rs.card.decks = Math.max(1, Math.min(6, numOf(decks[1]) || 1)); hit.add('deck-count'); }
-    /* 「三副牌共 126 张」「牌堆 126 张」「126 张牌」都要认；
-       旧正则只认「牌堆」紧挨数字，用户那句「共 126 张」直接被漏掉，于是又变成待答项 */
-    const size = src.match(/(?:牌堆|一共|总共|共)\s*(?:有\s*)?(\d{2,3})\s*张/)
-      || src.match(/(\d{2,3})\s*张\s*(?:牌堆|的牌)/)
-      || src.match(/(\d{2,3})\s*张牌/);
-    if (size) { rs.card.size = Number(size[1]); hit.add('deck-count'); }
+    const size = src.match(/牌堆\s*(\d+)\s*张|(\d+)\s*张\s*牌堆/);
+    if (size) { rs.card.size = Number(size[1] || size[2]); hit.add('deck-count'); }
     const hand = src.match(/(?:发|每人|手牌|起手|开局)\s*(\d+|[一二三四五六七八九十])\s*张/)
       || src.match(/(\d+|[一二三四五六七八九十])\s*张\s*(?:手牌|起手)/);
     if (hand) { rs.card.handSize = numOf(hand[1]); hit.add('hand-size'); }
@@ -251,20 +277,15 @@ export function parseDescription(text = '', type = 'board') {
       else rs.pending.push('score-target');
     }
 
-    /* 「赢家补 6 张其余 3 张」「赢家 6、其余 3」都要认，中间那个动词不能当成拦路虎 */
-    const rep = src.match(/赢家(?:补|得|拿|加|给|发)?\s*(\d+)\s*张?\s*[、,，]?\s*其余(?:人|玩家)?(?:补|得|拿|加|给|发)?\s*(\d+)/);
+    const rep = src.match(/赢家\s*(\d+)\s*张?\s*[、,，]?\s*其余\s*(\d+)/);
     if (rep) { rs.card.replenish = { winner: Number(rep[1]), others: Number(rep[2]) }; hit.add('replenish'); }
-    else if (/名次\s*\d|排名\s*\d/.test(src)) {
+    else if (/名次|排名/.test(src)) {
       const m = src.match(/(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)/);
-      /* 只认规则里真的写出来的名次表；没写就留给追问，不代填 6/3/3 */
-      if (m) { rs.card.replenish = { rank: m.slice(1).map(Number) }; hit.add('replenish'); }
+      rs.card.replenish = { rank: m ? m.slice(1).map(Number) : [6, 3, 3] }; hit.add('replenish');
     } else if (/不补给|无补给/.test(src)) { rs.card.replenish = { winner: 0, others: 0 }; hit.add('replenish'); }
 
-    /* 「洗回最多 3 次」里「最多」夹在中间，旧正则要求「洗回」紧跟数字，于是漏掉 */
-    const sh = src.match(/洗(?:回|牌|过)?\s*(?:最多|不超过|上限)?\s*(\d+)\s*次/)
-      || src.match(/(?:最多|不超过|上限)\s*(?:洗|重洗|洗回)\s*(\d+)\s*次/)
-      || src.match(/(\d+)\s*次\s*(?:洗回|重洗)/);
-    if (sh) { rs.card.shuffleLimit = Number(sh[1] || sh[2] || sh[3]); hit.add('shuffle-limit'); }
+    const sh = src.match(/(?:洗回|洗牌|重洗|洗)\s*(\d+|[一两二三四五六])\s*次|最多\s*(\d+)\s*次\s*(?:洗|重洗)/);
+    if (sh) { rs.card.shuffleLimit = numOf(sh[1] || sh[2]) ?? 3; hit.add('shuffle-limit'); }
     else if (/不限次数|无限洗/.test(src)) { rs.card.shuffleLimit = -1; hit.add('shuffle-limit'); }
 
     const pat = /斗地主/.test(src) ? 'doudizhu' : /争上游/.test(src) ? 'zhengshangyou'
@@ -274,14 +295,17 @@ export function parseDescription(text = '', type = 'board') {
 
     const players = src.match(/(\d+|[一两二三四])\s*人/);
     if (players) rs.players = Math.max(2, Math.min(4, numOf(players[1]) || 2));
-    /* 人数不列入 6 类必答（用户点名的是牌堆/手牌/胜负/补给/洗回/牌型），
-       但也不进 pending —— 否则会出现「待答 1 项却 ready=true」的自相矛盾 */
-    else questions.push(q('players', '几个人玩？（没说就按 2 人对打）', ['2 人', '3 人', '4 人'], () => {}, 0));
+    else { rs.pending.push('players'); questions.push(q('players', '几个人玩？', ['2 人', '3 人', '4 人'], () => {}, 0)); }
 
+    // 6 类牌类问题一律列出（已写明的标 settled 供确认，未写明的进 pending 阻断生成）
     for (const d of CARD_Q_DEFS) {
-      if (hit.has(d.key)) continue;
-      rs.pending.push(d.key);
-      questions.push(q(d.key, d.text, d.options, () => {}, d.key === 'pattern-set' ? 0 : d.options.length - 1));
+      const settled = hit.has(d.key);
+      const question = q(d.key, d.text, d.options, () => {}, d.key === 'pattern-set' ? 0 : d.options.length - 1);
+      question.spec = d.spec;
+      question.must = d.must;
+      question.settled = settled;
+      questions.push(question);
+      if (!settled) rs.pending.push(d.key);
     }
     if (rs.card.decks && !rs.card.size) rs.card.size = rs.card.decks * 54;
     if (rs.card.size && !rs.card.decks) rs.card.decks = Math.max(1, Math.ceil(rs.card.size / 54));
@@ -311,13 +335,7 @@ export function parseDescription(text = '', type = 'board') {
   if (line) { rs.win = [{ type: 'lineup', count: numOf(line[1]) || 3, times: 1 }]; hit.add('lineup'); }
   const rounds = src.match(/(\d+)\s*回合/);
   if (rounds) rs.draw = [{ type: 'no-capture', rounds: Number(rounds[1]) }];
-  /* 棋子数：先剔除「三子连线」这类牌型描述。
-     旧正则会把「三子连线赢」的「三」读成棋子数 3，开局只放 3 枚（2 打 1），
-     一步就被吃光 —— 于是体检显示「均步 1 / 先手 100%」，看着像 AI 有病，其实是解析错。 */
-  const srcNoLine = src.replace(/[\d一二三四五六七八九十]+\s*子?\s*(?:连线|连成一线|成线|连珠)/g, '');
-  const pieces = srcNoLine.match(/(\d+|[一二三四五六七八九十])\s*枚\s*(?:子|棋)/)
-    || srcNoLine.match(/(?:各|每方|每人|各方)\s*(\d+|[一二三四五六七八九十]{1,2})\s*枚?\s*(?:子|棋)/)
-    || srcNoLine.match(/(\d+)\s*个?\s*(?:子|棋子)/);
+  const pieces = src.match(/(\d+|[一二三四五六七八九十])\s*枚?\s*(?:子|棋)/);
   if (pieces) rs.pieces[0].count = Math.max(1, Math.min(30, numOf(pieces[1]) || 12));
 
   // 关键词 → 吃法（只认引擎原语）
@@ -483,7 +501,7 @@ export function answerQuestions(rs, answers = []) {
 /* ---------------- RuleSet 校验 ---------------- */
 export function validateRuleSet(rs) {
   const issues = [];
-  if (!rs || typeof rs !== 'object') return { ok: false, issues: ['不是有效的规则对象'] };
+  if (!rs || typeof rs !== 'object') return { ok: false, blocking: false, issues: ['不是有效的规则对象'] };
   if (!rs.id || !rs.name || !rs.type) issues.push('缺少 id / name / type');
   if (!Array.isArray(rs.pieces) || !rs.pieces.length) issues.push('缺少棋子定义');
   if (!Array.isArray(rs.actions) || !rs.actions.length) issues.push('缺少行为定义');
@@ -510,7 +528,20 @@ export function validateRuleSet(rs) {
   for (const w of rs.win || []) {
     if (!['eliminate', 'reach', 'lineup', 'score', 'empty-hand'].includes(w.type)) issues.push(`不支持的胜负条件：${w.type}`);
   }
-  return { ok: issues.length === 0, issues, pending: pending ? [...rs.pending] : [] };
+  // 合并指令 块6：必问项未答 → blocking:true，禁止进入生成步骤，页面显示具体缺项
+  const missing = [];
+  if (rs.mode === 'card' && Array.isArray(rs.pending)) {
+    for (const key of rs.pending) {
+      const def = CARD_Q_DEFS.find((d) => d.key === key || d.spec === key);
+      if (def) missing.push(`${def.spec}（${def.text}）`);
+      else if (key === 'players') missing.push('players（几个人玩？）');
+      else if (key === 'score-target') missing.push('目标分数（算分获胜需填多少分？）');
+      else if (key === 'deck-size') missing.push('牌堆张数（自定义牌堆总共多少张？）');
+    }
+  }
+  const blocking = missing.length > 0;
+  if (blocking) issues.push(`牌类必问项未答，不能生成：${missing.join('、')}`);
+  return { ok: issues.length === 0 && !blocking, blocking, missing, issues, pending: pending ? [...rs.pending] : [] };
 }
 
 /* ---------------- 规则书 Markdown ---------------- */
@@ -542,9 +573,7 @@ export function cardRuleBook(rs) {
   else if (c.winBy === 'score') L.push(`- 先达到 ${wait(c.scoreTarget)} 分者获胜。`);
   else L.push('- 胜负口径待确认：先出完手牌，还是算分？');
   L.push('', '## 计分');
-  L.push(c.winBy === 'score'
-    ? `每局结束按名次记分，先到 ${wait(c.scoreTarget)} 分者获胜；牌堆不够就按上面的洗回上限接着打。`
-    : '本规则不计分，只看谁先出完手牌。');
+  L.push(`洗回次数 ${c.shuffleLimit === -1 ? '不限' : wait(c.shuffleLimit)}，赢家按补给方案优先摸牌；不设吃子计分。`);
   L.push('', `<!-- version:${rs.version || 1} -->`);
   return L.join('\n');
 }
@@ -732,65 +761,17 @@ function candidatePlays(hand = [], setId = 'doudizhu', target = null) {
   return out;
 }
 
-/**
- * 牌类配置归一。
- *
- * **这里是「52 张 / 5 张 / 21 分 / 60 回合」那批错值的源头**：旧版写成
- *   `handSize: c.handSize ?? 5`、`scoreTarget: ... ?? 20`、`shuffleLimit: c.shuffleLimit ?? 3`，
- * 于是用户没答过的项被悄悄填成 5 张手牌、20 分、3 次洗回 —— 玩家看到的「规则」根本不是自己说的。
- * 现在缺失项一律留 null，并记进 missing，由上层拒绝开局（ready=false），绝不替玩家拍板。
- */
-export function cardConfig(rs) {
-  const c = (rs && rs.card) || {};
-  const missing = [];
-  const hasDeck = c.decks != null || c.size != null;
-  if (!hasDeck) missing.push('deck-count');
-  if (c.handSize == null) missing.push('hand-size');
-  if (!c.winBy) missing.push('win-by');
-  if (!c.replenish) missing.push('replenish');
-  if (c.shuffleLimit == null) missing.push('shuffle-limit');
-  if (!c.patternSet) missing.push('pattern-set');
-  /* 算分模式还必须有目标分，否则「算分」也算不出结果 */
-  const target = c.scoreTarget ?? (rs?.win || []).find((w) => w.type === 'score')?.target ?? null;
-  if (c.winBy === 'score' && target == null) missing.push('score-target');
-
-  const cfg = {
-    decks: c.decks ?? (c.size ? Math.ceil(Number(c.size) / 54) : null),
-    size: c.size ?? (c.decks ? null : null),
-    handSize: c.handSize ?? null,
-    winBy: c.winBy ?? null,
-    replenish: c.replenish ?? null,
-    shuffleLimit: c.shuffleLimit ?? null,
-    patternSet: c.patternSet ?? null,
-    scoreTarget: target,
-    missing,
-  };
-  /* 牌堆总张数：用户只说几副时按 54/副 推（含大小王），这是他明确表达过的，不算拍板 */
-  if (cfg.size == null && cfg.decks != null) cfg.size = cfg.decks * 54;
-  if (cfg.handSize != null && cfg.handSize * Math.max(2, Math.min(4, rs?.players || 2)) > (cfg.size ?? 0) && cfg.size) {
-    missing.push('deck-too-small');
-  }
-  return cfg;
-}
-
 function createCardEngine(rs) {
-  const cfg = cardConfig(rs);
-  const ready = cfg.missing.length === 0;
+  const c = rs.card || {};
+  const cfg = {
+    decks: c.decks ?? 1, size: c.size ?? 54, handSize: c.handSize ?? 5,
+    winBy: c.winBy ?? 'empty', replenish: c.replenish ?? { winner: 0, others: 0 },
+    shuffleLimit: c.shuffleLimit ?? 3, patternSet: c.patternSet ?? 'doudizhu',
+    scoreTarget: c.scoreTarget ?? (rs.win || []).find((w) => w.type === 'score')?.target ?? 20,
+  };
   const ids = Array.from({ length: Math.max(2, Math.min(4, rs.players || 2)) }, (_, i) => String.fromCharCode(97 + i));
 
   function start(seed = 0) {
-    /* 未就绪绝不开局：旧版在这里照样发牌，用的是 ?? 5 张手牌，玩家以为规则生效了 */
-    if (!ready) {
-      return {
-        mode: 'card', ready: false, missing: cfg.missing.slice(), cfg, ids,
-        turn: ids[0], leader: ids[0], round: 1,
-        hands: Object.fromEntries(ids.map((id) => [id, []])), pile: [], discard: [],
-        lastPlay: null, passed: {}, shuffles: 0, maxShuffles: 0,
-        winner: null, reason: 'not-ready', steps: 0, tricks: 0,
-        score: Object.fromEntries(ids.map((id) => [id, 0])), ranks: {},
-        log: ['规则未填全，未开局：' + cfg.missing.join('、')],
-      };
-    }
     const rng = rngFrom(`${rs.id || 'rule'}|${rs.version || 1}|${seed}`);
     const pile = shuffle(buildDeck(cfg), rng);
     const hands = Object.fromEntries(ids.map((id) => [id, []]));
@@ -801,7 +782,7 @@ function createCardEngine(rs) {
       mode: 'card', cfg, ids, rng, turn: ids[0], leader: ids[0], round: 1,
       hands, pile, discard: [], lastPlay: null, passed: {}, shuffles: 0,
       maxShuffles: cfg.shuffleLimit < 0 ? Infinity : cfg.shuffleLimit,
-      winner: null, reason: null, steps: 0, tricks: 0, deals: 1,
+      winner: null, reason: null, steps: 0, tricks: 0,
       score: Object.fromEntries(ids.map((id) => [id, 0])), ranks: {},
       log: [`发牌：每人 ${cfg.handSize} 张，牌堆剩 ${pile.length} 张`],
     };
@@ -847,46 +828,12 @@ function createCardEngine(rs) {
   }
 
   function finishGame(s, side) {
-    const rest = s.ids.filter((id) => id !== side).sort((a, b) => s.hands[b].length - s.hands[a].length);
-    s.ranks = {}; s.ranks[side] = 1;
-    rest.forEach((id, i) => { s.ranks[id] = i + 2; });
-
-    /* 算分模式：按名次把分记上（6/3/3 这种），没到目标分就重新发牌接着打 */
-    if (cfg.winBy === 'score') {
-      const table = cfg.replenish?.rank;
-      for (const id of s.ids) {
-        const place = s.ranks[id] || s.ids.length;
-        s.score[id] += Array.isArray(table) ? (table[place - 1] ?? 0) : 0;
-      }
-      s.log.push(`第 ${s.round} 轮结束，${side} 先出完；比分 ${s.ids.map((id) => `${id}:${s.score[id]}`).join(' ')}`);
-      if (s.score[side] >= cfg.scoreTarget || s.ids.some((id) => s.score[id] >= cfg.scoreTarget)) {
-        const champ = s.ids.slice().sort((a, b) => s.score[b] - s.score[a])[0];
-        s.winner = champ;
-        s.reason = 'score';
-        s.log.push(`达到 ${cfg.scoreTarget} 分：${champ} 获胜`);
-        return;
-      }
-      /* 继续下一局 */
-      s.deals = (s.deals || 1) + 1;
-      if (s.deals > 40) { s.winner = 'draw'; s.reason = 'deal-limit'; return; }
-      redeal(s, side);
-      return;
-    }
-
     s.winner = side;
-    s.reason = 'empty-hand';
-    s.log.push(`终局：${side} 获胜，名次 ${s.ids.map((id) => `${id}:${s.ranks[id]}`).join(' ')}`);
-  }
-
-  /** 重新发牌开下一局（算分模式用），分数保留 */
-  function redeal(s, firstSeat) {
-    const pile = shuffle((s.pile || []).concat(s.discard || []), s.rng);
-    s.hands = Object.fromEntries(s.ids.map((id) => [id, []]));
-    for (let i = 0; i < cfg.handSize; i++) for (const id of s.ids) if (pile.length) s.hands[id].push(pile.pop());
-    s.pile = pile; s.discard = [];
-    s.lastPlay = null; s.passed = {}; s.round = 1; s.tricks = 0;
-    s.turn = firstSeat; s.leader = firstSeat;
-    s.log.push(`重新发牌（第 ${s.deals} 局）：每人 ${cfg.handSize} 张，牌堆 ${s.pile.length} 张`);
+    s.reason = cfg.winBy === 'score' ? 'score' : 'empty-hand';
+    const rest = s.ids.filter((id) => id !== side).sort((a, b) => s.hands[b].length - s.hands[a].length);
+    s.ranks[side] = 1;
+    rest.forEach((id, i) => { s.ranks[id] = i + 2; });
+    s.log.push(`终局：${side} 获胜（${s.reason}），名次 ${s.ids.map((id) => `${id}:${s.ranks[id]}`).join(' ')}`);
   }
 
   function finishTrick(s) {
@@ -899,26 +846,35 @@ function createCardEngine(rs) {
     s.lastPlay = null; s.passed = {}; s.turn = winner; s.round++;
   }
 
+  /** 非法出牌必须返回具体原因，不静默吞掉（合并指令 块5 第3条） */
+  function illegal(s, reason) {
+    s.lastError = reason;
+    s.log.push(`非法出牌（${s.turn}）：${reason}`);
+    return s;
+  }
+
   function apply(s, m) {
-    if (s.winner) return s;
+    if (s.winner) return illegal(s, '对局已结束，不能出牌');
     const side = s.turn;
+    s.lastError = null;
     if (!m || m.pass) {
-      if (!s.lastPlay) return s; // 自由出牌时不能过
+      if (!s.lastPlay) return illegal(s, '你是领出方，必须出牌不能过');
       s.passed[side] = true; s.steps++;
       s.log.push(`第 ${s.round} 轮 ${side} 过牌`);
-      /* 必须是「除最后出牌者外，其余所有人都过」才算一轮结束。
-         旧写法把「除自己外的人」当成判断对象，3 人局里 A 出、B 过时就会提前收轮，
-         C 还没表态就被跳过 —— 表现为「有人一直不动」。 */
-      const done = s.ids.filter((id) => id !== s.lastPlay.side).every((id) => s.passed[id]);
+      const done = s.ids.filter((id) => id !== side).every((id) => id === s.lastPlay.side || s.passed[id]);
       if (done) finishTrick(s); else nextTurn(s);
       return s;
     }
     const ids = Array.isArray(m.cards) ? m.cards : [];
+    if (!ids.length) return illegal(s, '没有选出任何牌');
+    if (new Set(ids).size !== ids.length) return illegal(s, '同一张牌不能重复出');
     const cards = ids.map((id) => s.hands[side].find((c) => c.id === id));
-    if (cards.some((c) => !c)) return s;
+    if (cards.some((c) => !c)) return illegal(s, '出的牌不在自己的手牌里');
     const pat = identifyPattern(cards, cfg.patternSet);
-    if (!pat) return s;
-    if (s.lastPlay && s.lastPlay.side !== side && !beatsPattern(pat, s.lastPlay.pattern, cfg.patternSet)) return s;
+    if (!pat) return illegal(s, `牌型不符合${patternSet(cfg.patternSet).short}规则（${cards.length} 张无法组成合法牌型）`);
+    if (s.lastPlay && s.lastPlay.side !== side && !beatsPattern(pat, s.lastPlay.pattern, cfg.patternSet)) {
+      return illegal(s, `压不过上家的${s.lastPlay.pattern.name}（需同牌型且点数更大，或用炸弹/王炸）`);
+    }
     s.hands[side] = s.hands[side].filter((c) => !ids.includes(c.id));
     s.discard.push(...cards);
     s.lastPlay = { side, pattern: pat, cards };
@@ -927,6 +883,24 @@ function createCardEngine(rs) {
     if (!s.hands[side].length) { finishGame(s, side); return s; }
     nextTurn(s);
     return s;
+  }
+
+  /** 预检一手牌是否合法，返回 null=合法 / 字符串=具体原因（不改状态） */
+  function checkPlay(s, m) {
+    if (s.winner) return '对局已结束，不能出牌';
+    const side = s.turn;
+    if (!m || m.pass) return s.lastPlay ? null : '你是领出方，必须出牌不能过';
+    const ids = Array.isArray(m.cards) ? m.cards : [];
+    if (!ids.length) return '没有选出任何牌';
+    if (new Set(ids).size !== ids.length) return '同一张牌不能重复出';
+    const cards = ids.map((id) => s.hands[side].find((c) => c.id === id));
+    if (cards.some((c) => !c)) return '出的牌不在自己的手牌里';
+    const pat = identifyPattern(cards, cfg.patternSet);
+    if (!pat) return `牌型不符合${patternSet(cfg.patternSet).short}规则（${cards.length} 张无法组成合法牌型）`;
+    if (s.lastPlay && s.lastPlay.side !== side && !beatsPattern(pat, s.lastPlay.pattern, cfg.patternSet)) {
+      return `压不过上家的${s.lastPlay.pattern.name}（需同牌型且点数更大，或用炸弹/王炸）`;
+    }
+    return null;
   }
 
   function judge(s) {
@@ -947,11 +921,6 @@ function createCardEngine(rs) {
   }
 
   function selfPlay(maxSteps = 500, seed = 0) {
-    if (!ready) {
-      return { winner: null, reason: 'not-ready', steps: 0, missing: cfg.missing.slice(),
-        shuffles: 0, tricks: 0, seed, hands: {}, stall: false,
-        log: ['规则未填全，无法自对弈：' + cfg.missing.join('、')] };
-    }
     const s = start(seed);
     let guard = 0;
     while (!s.winner && guard++ < maxSteps) {
@@ -969,13 +938,9 @@ function createCardEngine(rs) {
     };
   }
 
-  return {
-    mode: 'card', ready, missing: cfg.missing.slice(), cfg, ids,
-    start, moves, apply, judge, aiMove, selfPlay,
-    identify: (cards) => (cfg.patternSet ? identifyPattern(cards, cfg.patternSet) : null),
-    beats: (a, b) => (cfg.patternSet ? beatsPattern(a, b, cfg.patternSet) : false),
-    get boardInfo() { return { cols: 0, rows: 0, cards: true, size: cfg.size }; },
-  };
+  return { start, moves, apply, checkPlay, judge, aiMove, selfPlay, identify: (cards) => identifyPattern(cards, cfg.patternSet),
+    beats: (a, b) => beatsPattern(a, b, cfg.patternSet),
+    get boardInfo() { return { cols: 0, rows: 0, cards: true, size: cfg.size }; } };
 }
 
 export function createEngine(rs) {
