@@ -34,13 +34,6 @@ pre{background:#12101f;border:1px solid var(--line);border-radius:10px;padding:1
 .q{border-left:3px solid var(--gold);padding:8px 10px;margin:9px 0;background:#1c1830;border-radius:8px}
 .q p{margin:0 0 7px;font-size:14px}
 .tag{display:inline-block;background:#3c3357;border-radius:20px;padding:3px 9px;font-size:11px;margin-right:5px}
-.bgrid{display:grid;gap:3px;max-width:340px;margin:8px 0}
-.bcell{aspect-ratio:1;min-height:0;padding:0;background:#221d33;border:1px solid #3c3357;border-radius:4px;color:#e8e2f5;font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center}
-.bcell.a{background:#5a2c33;color:#ffb3a7;border-color:#8d4a52}
-.bcell.b{background:#243a5a;color:#a7c8ff;border-color:#4a6a8d}
-.bcell.pick{outline:2px solid var(--gold);outline-offset:1px}
-.bcell.to{border-color:#6fd39a;box-shadow:inset 0 0 0 2px #6fd39a55}
-.bcell.to::after{content:'';width:8px;height:8px;border-radius:50%;background:#6fd39a}
 .good{color:#8be0a8}.bad{color:#ff9c8f}.muted{color:var(--muted)}
 .vers{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 .vers button{min-height:36px;font-size:12px}
@@ -48,16 +41,16 @@ pre{background:#12101f;border:1px solid var(--line);border-radius:10px;padding:1
 .art-strip figure{margin:0;background:#161329;border:1px solid var(--line);border-radius:9px;padding:5px;text-align:center}
 .art-strip canvas{width:100%;height:auto;display:block}
 .art-strip figcaption{font-size:10px;color:var(--muted);line-height:1.3;margin-top:3px}
-.rulepage{width:100%;height:400px;border:1px solid var(--line);border-radius:10px;background:#12101f}
+.rulepage{width:100%;height:280px;border:1px solid var(--line);border-radius:10px;background:#12101f}
 .play-panel{margin:10px 0;padding:10px;border:1px solid var(--line);border-radius:10px;background:#161329}
 .hand{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}
 .hand-card{min-width:38px;min-height:52px;padding:3px 5px;background:#f7f3ea;color:#1c1c28;border:2px solid transparent;border-radius:6px;font-weight:700;font-size:13px}
 .hand-card.red{color:#c62f3b}.hand-card.sel{border-color:var(--gold);box-shadow:0 0 0 2px #d9b66a55}
-.hand-card:disabled{min-height:52px;opacity:1;background:#efe9db;color:#4a4560}.hand-card.red:disabled{color:#a8505a}
+.hand-card:disabled{min-height:52px}
 .check{display:flex;gap:7px;align-items:center;padding:5px 8px;margin:4px 0;border-radius:8px;background:#1c1830;font-size:13px}
 .check.pass{color:#8be0a8}.check.fail{color:#ff9c8f}.check.todo{color:var(--muted)}
 .check b{margin-left:auto;font-size:12px}
-@media(max-width:560px){.art-strip{grid-template-columns:repeat(4,minmax(0,1fr))}.rulepage{height:260px}}
+@media(max-width:560px){.art-strip{grid-template-columns:repeat(4,minmax(0,1fr))}.rulepage{height:240px}}
 @media(pointer:coarse){button,select{min-height:48px}}
 @media(max-width:430px){h1{font-size:17px}.steps span{min-width:0;font-size:11px;padding:7px 3px}.panel{padding:12px}}
 </style>
@@ -88,6 +81,14 @@ pre{background:#12101f;border:1px solid var(--line);border-radius:10px;padding:1
     <div class="grid" id="artGrid"></div>
     <h2>美术参数实拍对照（8 张）</h2>
     <p class="muted" style="font-size:12px;margin:0">棋类看棋子纹样，牌类看花色 / 点数 / 牌背；一眼认不出就回第 2 步改描述。</p>
+    <div class="row" id="artParams" style="font-size:12px;align-items:center">
+      <label>视觉档 <select id="artTier" style="min-height:34px"><option value="simple">simple</option><option value="classic" selected>classic</option><option value="glossy">glossy</option></select></label>
+      <label>主色 <input type="color" id="artMain" value="#f7f3ea" style="width:42px;height:34px;padding:0;border:0;background:none"></label>
+      <label>描边 <input type="color" id="artStroke" value="#c8bfa8" style="width:42px;height:34px;padding:0;border:0;background:none"></label>
+      <label>符号粗细 <input type="range" id="artWeight" min="1" max="5" value="3" style="width:90px"></label>
+      <label>牌背 <select id="artBack" style="min-height:34px"><option value="weave">织纹</option><option value="diamond">菱格</option><option value="ring">环纹</option></select></label>
+      <button id="exportArt" style="min-height:34px">导出 8 张 PNG</button>
+    </div>
     <div class="art-strip" id="artCompare"></div>
     <div class="row" id="health"></div>
     <h2>自动生成的规则页（由规则卡原样渲染）</h2>
@@ -126,6 +127,13 @@ pre{background:#12101f;border:1px solid var(--line);border-radius:10px;padding:1
   <h2>版本历史</h2>
   <div class="vers" id="versions"></div>
   <pre id="diffView" hidden></pre>
+  <h2>定稿与一键发布</h2>
+  <div id="publishGates" class="muted" style="font-size:12px;margin:6px 0"></div>
+  <div class="row">
+    <button id="publishBtn" class="primary" disabled>定稿（生成规则包）</button>
+    <span class="muted" style="font-size:12px">门槛：规则卡 7 项齐全 · 自对弈 20 局 0 非法 · 规则页无出处</span>
+  </div>
+  <pre id="publishOut" hidden></pre>
   <div class="row">
     <button id="exportJson">导出当前 JSON</button>
     <button id="makeCode">生成短码</button>
@@ -141,12 +149,9 @@ import {
   TEMPLATE_TYPES, templateByType, parseDescription, answerQuestions, validateRuleSet,
   ruleBook, applyBookEdits, createEngine, healthCheck, encodeShort, decodeShort,
   diffBooks, makeVersion, artParams, CARD_PATTERN_SETS, CARD_PATTERN_DEFAULT,
-  CARD_Q_DEFS, pendingQuestions, rulePageHtml, buildDeck,
+  CARD_Q_DEFS, pendingQuestions, artSamples, rulePageHtml, buildDeck,
   identifyPattern, beatsPattern, rankLabel,
 } from '../shared/rule-engine.mjs';
-import {
-  renderCardFace, renderCardBack, renderPiece, drawContactCell, contactItems, CARD_BACKS,
-} from '../shared/art-render.mjs';
 
 const $ = (id) => document.getElementById(id);
 const STORE = 'mg_rulecraft.v1';
@@ -160,35 +165,107 @@ function step(n) {
     $('steps').children[i-1].classList.toggle('on', i === n);
   }
 }
-/* 美术分层：棋类只走棋子渲染器，牌类只走牌面渲染器（花色 / 点数 / 牌背三套） */
 function artData(params) {
-  const key = `p|${params.glyph}|${params.palette}|${params.rings}|${params.corners}|${params.texture}|${params.carrier}`;
+  const key = `${params.glyph}|${params.palette}|${params.motif}|${params.carrier}`;
   let cache = {};
   try { cache = JSON.parse(localStorage.getItem(ARTCACHE) || '{}'); } catch {}
   if (cache[key]) return cache[key];
   const cv = document.createElement('canvas'); cv.width = cv.height = 256;
-  renderPiece(cv.getContext('2d'), {
-    glyph: params.glyph,
-    palette: params.palette,
-    rings: params.rings || 0,
-    corners: params.corners || 0,
-    texture: params.texture || 0,
-    carrier: params.carrier || 'round',
-  }, { size: 256 });
+  const c = cv.getContext('2d');
+  c.clearRect(0, 0, 256, 256);
+  // 载体
+  c.fillStyle = params.palette;
+  if (params.carrier === 'round') {
+    c.beginPath(); c.arc(128, 128, 108, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = '#0005'; c.lineWidth = 8; c.stroke();
+  } else if (params.carrier === 'rect') {
+    c.beginPath(); c.roundRect(44, 28, 168, 200, 14); c.fill();
+    c.strokeStyle = '#0005'; c.lineWidth = 7; c.stroke();
+  } else {
+    c.beginPath(); c.roundRect(40, 18, 176, 220, 20); c.fill();
+    c.strokeStyle = '#0006'; c.lineWidth = 7; c.stroke();
+  }
+  // 环层（motif ring1-3）
+  c.strokeStyle = '#fff8'; c.lineWidth = 3;
+  for (let i = 0; i < params.rings; i++) {
+    c.beginPath(); c.arc(128, 128, 40 + i * 18, 0, Math.PI * 2); c.stroke();
+  }
+  // 角饰
+  c.fillStyle = '#fff9';
+  for (let i = 0; i < params.corners; i++) {
+    const a = (Math.PI * 2 * i) / Math.max(1, params.corners);
+    c.beginPath(); c.arc(128 + Math.cos(a) * 82, 128 + Math.sin(a) * 82, 5, 0, Math.PI * 2); c.fill();
+  }
+  // 纹理密度
+  c.fillStyle = '#0002';
+  for (let i = 0; i < params.texture * 8; i++) {
+    c.fillRect(30 + (i * 29) % 196, 30 + (i * 47) % 196, 3, 3);
+  }
+  c.fillStyle = '#fff'; c.font = 'bold 84px "Songti SC",serif';
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(params.glyph, 128, 132);
   const url = cv.toDataURL('image/png');
   cache[key] = url;
   try { localStorage.setItem(ARTCACHE, JSON.stringify(cache)); } catch {}
   return url;
 }
 
-/** 牌面 / 牌背：统一走 shared/art-render.mjs 的分层渲染器 */
+/** 牌面渲染器：花色 / 点数 / 牌背三套绘制，与棋子渲染器彻底分开。
+ *  三档视觉：simple(纯字符) / classic(描边+符号，默认) / glossy(高光+内阴影)。 */
+const artCfg = { tier: 'classic', main: '#f7f3ea', stroke: '#c8bfa8', weight: 3, back: 'weave' };
 function cardArtData(spec) {
   const cv = document.createElement('canvas'); cv.width = 180; cv.height = 252;
   const c = cv.getContext('2d');
-  if (spec.kind === 'back') renderCardBack(c, { x: 0, y: 0, w: 180, h: 252, variant: spec.variant || 0 });
-  else renderCardFace(c, { suit: spec.suit, rank: spec.rank }, { x: 0, y: 0, w: 180, h: 252 });
+  const tier = artCfg.tier, w = artCfg.weight;
+  c.fillStyle = artCfg.main; c.beginPath(); c.roundRect(3, 3, 174, 246, 12); c.fill();
+  c.strokeStyle = artCfg.stroke; c.lineWidth = tier === 'simple' ? 1 : 2; c.stroke();
+  if (tier === 'glossy') {
+    const g = c.createLinearGradient(0, 0, 180, 252);
+    g.addColorStop(0, '#ffffff55'); g.addColorStop(.45, '#ffffff00'); g.addColorStop(1, '#00000012');
+    c.fillStyle = g; c.beginPath(); c.roundRect(3, 3, 174, 246, 12); c.fill();
+  }
+  if (spec.kind === 'back') {
+    c.fillStyle = '#2a2340'; c.beginPath(); c.roundRect(11, 11, 158, 230, 9); c.fill();
+    c.strokeStyle = '#d9b66a66'; c.lineWidth = 2;
+    if (artCfg.back === 'weave') {
+      for (let i = -260; i < 260; i += 16) { c.beginPath(); c.moveTo(i, 0); c.lineTo(i + 252, 252); c.stroke(); }
+    } else if (artCfg.back === 'diamond') {
+      for (let y = -20; y < 270; y += 20) for (let x = -20; x < 190; x += 20) {
+        c.beginPath(); c.moveTo(x + 10, y); c.lineTo(x + 20, y + 10); c.lineTo(x + 10, y + 20); c.lineTo(x, y + 10); c.closePath(); c.stroke();
+      }
+    } else {
+      for (let r = 16; r < 100; r += 16) { c.beginPath(); c.arc(90, 126, r, 0, Math.PI * 2); c.stroke(); }
+    }
+    c.strokeStyle = '#d9b66a'; c.lineWidth = 3; c.beginPath(); c.arc(90, 126, 34, 0, Math.PI * 2); c.stroke();
+    c.fillStyle = '#d9b66a'; c.font = 'bold 30px "Songti SC",serif';
+    c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('牌', 90, 126);
+    return cv.toDataURL('image/png');
+  }
+  if (tier === 'simple') {
+    const s = { S: '♠', H: '♥', C: '♣', D: '♦', JOKER: '★' }[spec.suit] || '♠';
+    const lb = spec.suit === 'JOKER' ? (spec.rank === 17 ? '大王' : '小王') : rankLabel(spec.rank);
+    c.fillStyle = ({ S: '#1c1c28', H: '#c62f3b', C: '#1c1c28', D: '#c62f3b', JOKER: '#c62f3b' })[spec.suit];
+    c.font = 'bold 40px "Songti SC",serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(lb, 90, 80); c.fillText(s, 90, 150);
+    return cv.toDataURL('image/png');
+  }
+  const suit = { S: '♠', H: '♥', C: '♣', D: '♦', JOKER: '★' }[spec.suit] || '♠';
+  const color = { S: '#1c1c28', H: '#c62f3b', C: '#1c1c28', D: '#c62f3b', JOKER: '#c62f3b' }[spec.suit];
+  const label = spec.suit === 'JOKER' ? (spec.rank === 17 ? '大王' : '小王') : rankLabel(spec.rank);
+  const fs = 22 + w * 2;
+  c.fillStyle = color; c.textAlign = 'left'; c.textBaseline = 'top';
+  c.font = `bold ${fs}px "Songti SC",serif`; c.fillText(label, 14, 12);
+  c.font = `${fs - 4}px serif`; c.fillText(suit, 14, 42);
+  c.save(); c.translate(166, 240); c.rotate(Math.PI);
+  c.font = `bold ${fs}px "Songti SC",serif`; c.fillText(label, 0, 0); c.restore();
+  c.font = `bold ${78 + w}px serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
+  if (tier === 'glossy') { c.shadowColor = '#0005'; c.shadowBlur = 6; c.shadowOffsetY = 3; }
+  c.fillText(suit, 90, 122);
+  c.shadowBlur = 0; c.shadowOffsetY = 0;
+  if (spec.suit === 'JOKER') { c.font = 'bold 20px "Songti SC",serif'; c.fillText(label, 90, 182); }
   return cv.toDataURL('image/png');
 }
+const sampleArtData = (spec) => (spec.kind === 'piece' ? artData(spec) : cardArtData(spec));
 
 /* 第 1 步 */
 $('typeCards').innerHTML = TEMPLATE_TYPES.map((t) => {
@@ -225,19 +302,9 @@ $('examples').addEventListener('click', (e) => {
   if (b) $('desc').value = EXAMPLES[+b.dataset.ex];
 });
 
-const CARD_KEYS = new Set(CARD_Q_DEFS.map((d) => d.key));
-function askHead(n, qs) {
-  return qs.some((q) => CARD_KEYS.has(q.key))
-    ? `还差 ${n} 项待答：牌类这 6 项必须你点名，人数那项可点默认。`
-    : `还差 ${n} 项待答。`;
-}
-function renderQuestions(container, questions, head = '') {
+function renderQuestions(container, questions) {
   container.innerHTML = '';
   if (!questions?.length) return;
-  if (head) {
-    const h = document.createElement('div'); h.className = 'q'; h.textContent = head;
-    container.appendChild(h);
-  }
   for (const q of questions) {
     const box = document.createElement('div'); box.className = 'q';
     box.innerHTML = `<p>${q.text}</p>`;
@@ -245,17 +312,8 @@ function renderQuestions(container, questions, head = '') {
       const b = document.createElement('button'); b.textContent = o; b.style.margin = '0 6px 6px 0';
       b.addEventListener('click', () => answer(q.key, o)); box.appendChild(b);
     }
-    if (CARD_KEYS.has(q.key)) {
-      /* 这 6 项不给「用默认」：牌堆 / 手牌 / 胜负 / 补给 / 洗回 / 牌型一旦代填，
-         就会重复「52 张、5 张、21 分、60 回合」那类错误 */
-      const t = document.createElement('span');
-      t.className = 'muted'; t.style.fontSize = '12px';
-      t.textContent = '必须点名，不代填';
-      box.appendChild(t);
-    } else {
-      const d = document.createElement('button'); d.textContent = '用默认';
-      d.addEventListener('click', () => answer(q.key, q.default)); box.appendChild(d);
-    }
+    const d = document.createElement('button'); d.textContent = '用默认'; d.className = '';
+    d.addEventListener('click', () => answer(q.key, q.default)); box.appendChild(d);
     container.appendChild(box);
   }
 }
@@ -266,12 +324,49 @@ function answer(key, option) {
   rs.version = Object.keys(answered).length + 1;
   currentQ = pendingQuestions(rs);
   if (currentQ.length) {
-    renderQuestions($('askBox'), currentQ, askHead(currentQ.length, currentQ));
+    $('askBox').innerHTML = `<div class="q">还差 ${currentQ.length} 项没问清，牌类参数不会自动填默认值。</div>`;
+    renderQuestions($('askBox'), currentQ);
     $('preview').hidden = true;
     return;
   }
   $('askBox').innerHTML = '';
   showPreview();
+}
+
+/** 渲染 8 张实拍对照缩略图（块8：美术参数可调后实时重绘） */
+function renderArtCompare() {
+  if (!rs) return;
+  const samples = artSamples(rs);
+  $('artCompare').innerHTML = samples.map((s) =>
+    `<figure><canvas width="180" height="252"></canvas><figcaption>${s.label}</figcaption></figure>`).join('');
+  [...$('artCompare').querySelectorAll('canvas')].forEach((cv, i) => {
+    const img = new Image();
+    img.onload = () => cv.getContext('2d').drawImage(img, 0, 0, 180, 252);
+    img.src = sampleArtData(samples[i]);
+  });
+}
+
+/* 美术参数 → 实时预览（块8 第5条） */
+function bindArtParams() {
+  const sync = () => {
+    artCfg.tier = $('artTier').value; artCfg.main = $('artMain').value;
+    artCfg.stroke = $('artStroke').value; artCfg.weight = Number($('artWeight').value);
+    artCfg.back = $('artBack').value;
+    renderArtCompare();
+  };
+  ['artTier','artMain','artStroke','artWeight','artBack'].forEach((id) => $(id).addEventListener('input', sync));
+  // 导出 8 张 PNG 样张（块8 第6条）
+  $('exportArt').addEventListener('click', async () => {
+    if (!rs) return;
+    const samples = artSamples(rs);
+    for (let i = 0; i < samples.length; i++) {
+      const url = sampleArtData(samples[i]);
+      const a = document.createElement('a');
+      a.href = url; a.download = `art-${i + 1}-${samples[i].label.replace(/\s/g, '')}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+      await new Promise((r) => setTimeout(r, 60));
+    }
+  });
 }
 
 function showPreview() {
@@ -281,28 +376,12 @@ function showPreview() {
   const book = ruleBook(rs);
   $('book').textContent = book;
   const isCard = rs?.mode === 'card';
-  /* 生成结果：棋类逐个棋子，牌类给四花色 + 牌背各一张，先看有没有画错 */
-  if (isCard) {
-    const suits = [['S', '黑桃'], ['H', '红桃'], ['D', '方块'], ['C', '梅花']];
-    const cells = suits.map(([suit, label]) =>
-      `<div><img class="art" src="${cardArtData({ suit, rank: 14 })}" alt="${label} A"><div style="text-align:center;font-size:12px">${label}A · 牌面渲染器</div></div>`);
-    cells.push(`<div><img class="art" src="${cardArtData({ kind: 'back', variant: 0 })}" alt="牌背"><div style="text-align:center;font-size:12px">牌背·${CARD_BACKS[0].name}</div></div>`);
-    $('artGrid').innerHTML = cells.join('');
-    $('artGrid').style.gridTemplateColumns = 'repeat(5,minmax(0,1fr))';
-  } else {
-    $('artGrid').style.gridTemplateColumns = '';
-    $('artGrid').innerHTML = rs.pieces.map((p) => {
-      const a = artParams(p, rs.type);
-      return `<div><img class="art" src="${artData(a)}" alt="${p.name}"><div style="text-align:center;font-size:12px">${p.name} · ${a.motif}</div></div>`;
-    }).join('');
-  }
-  /* 美术参数实拍对照：8 张并排，牌类覆盖 5 / 10 / K / A / 2 + 三套牌背 */
-  const sheet = contactItems(rs, 8);
-  $('artCompare').innerHTML = sheet.map((it) =>
-    `<figure><canvas width="116" height="160"></canvas><figcaption>${it.label}</figcaption></figure>`).join('');
-  [...$('artCompare').querySelectorAll('canvas')].forEach((cv, i) => {
-    drawContactCell(cv.getContext('2d'), sheet[i], { x: 0, y: 0, w: 116, h: 160 });
-  });
+  $('artGrid').innerHTML = rs.pieces.map((p) => {
+    const a = artParams(p, rs.type);
+    const src = isCard ? cardArtData({ kind: 'card', suit: 'S', rank: 14 }) : artData(a);
+    return `<div><img class="art" src="${src}" alt="${p.name}"><div style="text-align:center;font-size:12px">${p.name} · ${a.renderer === 'piece' ? a.motif : '牌面渲染器'}</div></div>`;
+  }).join('');
+  renderArtCompare();
   const pageHtml = rulePageHtml(rs);
   $('rulePage').srcdoc = pageHtml;
   $('rulePage').dataset.html = pageHtml;
@@ -315,6 +394,7 @@ function showPreview() {
     + (isCard ? `<span class="tag">卡死 ${h.stalled}/20 · 洗回 ${h.shuffles} 次</span>` : '')
     + h.notes.map((n) => `<span class="tag bad">${n}</span>`).join('');
   if (isCard) renderChecklist();
+  refreshPublishGate();
   persist();
 }
 
@@ -325,14 +405,12 @@ $('generate').addEventListener('click', () => {
   rs = parsed.ruleSet;
   baseRs = JSON.parse(JSON.stringify(rs)); answered = {};
   currentQ = parsed.questions;
+  if (parsed.warnings.length) $('askBox').innerHTML = parsed.warnings.map((w) => `<div class="q">${w}</div>`).join('');
+  else $('askBox').innerHTML = '';
   if (currentQ.length) {
-    const warn = parsed.warnings.length ? parsed.warnings.join(' ') + ' ' : '';
-    renderQuestions($('askBox'), currentQ, warn + askHead(currentQ.length, currentQ));
+    renderQuestions($('askBox'), currentQ);
     $('preview').hidden = true;
-  } else {
-    $('askBox').innerHTML = parsed.warnings.map((w) => `<div class="q">${w}</div>`).join('');
-    showPreview();
-  }
+  } else showPreview();
 });
 $('copyBook').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText($('book').textContent); $('copyBook').textContent = '已复制'; }
@@ -343,7 +421,18 @@ $('downloadPage').addEventListener('click', () => {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = `${rs.id}-规则页-v${rs.version || 1}.html`; a.click(); URL.revokeObjectURL(a.href);
 });
-$('toStep3').addEventListener('click', () => { step(3); reloadVersions(); renderChecklist(); });
+$('toStep3').addEventListener('click', () => {
+  // 合并指令 块6：牌类必问项未答 → 禁止进入生成/定稿步骤，显示具体缺项
+  const v = validateRuleSet(rs);
+  if (v.blocking) {
+    $('health').innerHTML = `<span class="tag bad">不能生成：还差 ${v.missing.length} 项</span>`
+      + v.missing.map((m) => `<span class="tag bad">${m}</span>`).join('');
+    $('askBox').innerHTML = '<div class="q">牌类规则还有必问项没答清，请回答下面的问题后再继续——不会替你填默认值。</div>'
+      + currentQ.map((x) => `<div class="q"><b>${x.text}</b><div class="row">${x.options.map((o) => `<button type="button" data-q="${x.key}" data-o="${o}">${o}</button>`).join('')}</div></div>`).join('');
+    return;
+  }
+  step(3); reloadVersions(); renderChecklist();
+});
 
 /* 第 3 步 */
 $('quickTags').innerHTML = ['吃法不对', '棋盘太小', '先手太强', '胜负条件错', '美术风格换']
@@ -354,62 +443,8 @@ $('quickTags').addEventListener('click', (e) => {
 });
 /* ---- 第 4 批验收 1：人机试玩（出 3–5 手，看牌型 / 轮转 / 手牌数） ---- */
 const cardText = (c) => `${c.label}${c.suitLabel || ''}`;
-function renderBoard(note = '') {
-  const s = human.s, me = human.me;
-  const cols = rs.board.cols, rows = rs.board.rows;
-  const legal = s.winner ? [] : human.eng.moves(s, me);
-  const targets = new Set(human.pick ? legal.filter((m) => m.from === human.pick).map((m) => m.to) : []);
-  let grid = '';
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      const k = `${x},${y}`, v = s.board[k];
-      const cls = ['bcell', v || '', human.pick === k ? 'pick' : '', targets.has(k) ? 'to' : ''].join(' ');
-      grid += `<button class="${cls}" data-at="${k}">${v === 'a' ? '●' : v === 'b' ? '○' : ''}</button>`;
-    }
-  }
-  $('humanPlay').innerHTML = `
-    <div class="row"><b>第 ${s.round} 回合 · ${s.winner ? '终局 ' + s.winner : s.turn === me ? '轮到你' : 'AI 思考中'}</b>
-      <span class="tag">吃子 ${s.score.a} : ${s.score.b}</span><span class="tag">步数 ${s.steps}</span>
-      <span class="tag">无吃子 ${s.noCapture}</span></div>
-    <div class="muted" style="font-size:12px">${note || ''} ${human.pick ? `已选 ${human.pick}，点绿框格落子。` : '点自己的棋子（●）选中，再点目标格。'}</div>
-    <div class="bgrid" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${grid}</div>
-    <div class="row"><button id="bNext" ${s.winner || s.turn === me ? 'disabled' : ''}>让 AI 走一步</button><button id="bClear" ${human.pick ? '' : 'disabled'}>取消选中</button></div>
-    <pre style="max-height:110px">${(human.blog || []).slice(-10).join('\n') || '尚无落子。'}</pre>`;
-  $('humanPlay').querySelectorAll('[data-at]').forEach((b) => b.addEventListener('click', () => {
-    const k = b.dataset.at;
-    /* 不是自己回合就别让点，否则会替 AI 走棋 */
-    if (s.winner || s.turn !== me) { renderBoard('现在是对手回合，先让 AI 走完。'); return; }
-    if (!human.pick) {
-      if (s.board[k] === me) { human.pick = k; renderBoard(); }
-      else renderBoard('先点自己的棋子。');
-      return;
-    }
-    if (!targets.has(k)) { human.pick = s.board[k] === me ? k : null; renderBoard(); return; }
-    const from = human.pick;
-    human.eng.apply(s, { from, to: k });
-    human.blog.push(`红 ${from} → ${k}${s.board[k] && human.blog.length >= 0 ? '' : ''}`);
-    human.pick = null;
-    advanceBoardAI();
-  }));
-  const bc = $('bClear'); if (bc) bc.addEventListener('click', () => { human.pick = null; renderBoard(); });
-  $('bNext').addEventListener('click', advanceBoardAI);
-}
-function advanceBoardAI() {
-  const s = human.s, me = human.me;
-  let guard = 0;
-  while (!s.winner && guard++ < 400) {
-    if (s.turn === me) break;
-    const mover = s.turn;
-    const m = human.eng.aiMove(s);
-    if (!m) { s.winner = 'draw'; s.reason = 'stalemate'; break; }
-    human.eng.apply(s, m);
-    human.blog.push(`${mover === 'a' ? '红' : '蓝'} ${m.from} → ${m.to}${m.capture ? ' 吃子' : ''}`);
-  }
-  renderBoard(guard >= 400 ? 'AI 走了 400 手仍未轮到你，疑似卡死。' : '');
-}
 function renderHuman(note = '') {
   if (!human) return;
-  if (rs.mode !== 'card') { renderBoard(note); return; }
   const s = human.s, me = human.me;
   const myTurn = !s.winner && s.turn === me;
   const legal = myTurn ? human.eng.moves(s, me) : [];
@@ -423,7 +458,7 @@ function renderHuman(note = '') {
       <span class="tag">手牌 ${s.ids.map((id) => `${id}:${s.hands[id].length}`).join(' ')}</span>
       <span class="tag">牌堆 ${s.pile.length}</span><span class="tag">弃牌 ${s.discard.length}</span>
       <span class="tag">洗回 ${s.shuffles}</span></div>
-    <div class="muted" style="font-size:12px">${note || ''} 上家：${s.lastPlay ? `${s.lastPlay.side} 出 ${s.lastPlay.pattern.name}` : '自由出牌'} · ${myTurn ? `合法走法 ${legal.length} 个（可出 ${plays.length}）` : '等 AI 走完再看'}</div>
+    <div class="muted" style="font-size:12px">${note || ''} 上家：${s.lastPlay ? `${s.lastPlay.side} 出 ${s.lastPlay.pattern.name}` : '自由出牌'} · 合法走法 ${legal.length} 个（可出 ${plays.length}）</div>
     <div class="hand">${s.hands[me].map((c) => `<button class="hand-card ${String(c.color).includes('c62f3b') ? 'red' : ''} ${human.sel.includes(c.id) ? 'sel' : ''}" data-card="${c.id}" ${myTurn ? '' : 'disabled'}>${cardText(c)}</button>`).join('')}</div>
     <div class="row"><button id="hPlay" ${myTurn && canPlay ? '' : 'disabled'}>出牌${pat ? ' · ' + pat.name : ''}</button>
       <button id="hPass" ${myTurn && s.lastPlay && s.lastPlay.side !== me ? '' : 'disabled'}>过牌</button>
@@ -462,7 +497,7 @@ function advanceAI() {
 }
 function startHuman() {
   if (!rs || rs.pending?.length) return null;
-  human = { eng: createEngine(rs), s: null, me: 'a', sel: [], pick: null, blog: [], checks: [] };
+  human = { eng: createEngine(rs), s: null, me: 'a', sel: [], checks: [] };
   human.s = human.eng.start(0);
   $('humanPlay').hidden = false;
   renderHuman('点手牌选牌，再按「出牌」或「过牌」。');
@@ -484,10 +519,8 @@ function playHumanDemo(hands = 5) {
     moved++; human.checks.push(m.pass ? '过牌' : `出牌 ${m.pattern?.name || ''}`);
   }
   renderHuman();
-  const isCard = rs.mode === 'card';
   return { hands: moved, steps: s.steps, winner: s.winner, checks: human.checks.slice(),
-    handCounts: isCard ? Object.fromEntries(s.ids.map((id) => [id, s.hands[id].length])) : null,
-    log: isCard ? s.log.slice(-12) : (human.blog || []).slice(-12) };
+    handCounts: Object.fromEntries(s.ids.map((id) => [id, s.hands[id].length])), log: s.log.slice(-12) };
 }
 $('playHuman').addEventListener('click', () => {
   if (!startHuman()) { $('playLog').textContent = '还有牌类参数没问清，先回第 2 步补齐。'; return; }
@@ -510,6 +543,7 @@ function run20() {
   lastRun = { ...(lastRun || {}), games, stalled: stalled.length,
     shuffles: games.reduce((a, g) => a + (g.shuffles || 0), 0) };
   if (rs.mode === 'card') renderChecklist();
+  refreshPublishGate();
   return { games: games.length, stalled: stalled.length, shuffles: lastRun.shuffles,
     reasons: games.map((g) => g.reason) };
 }
@@ -526,10 +560,10 @@ function renderChecklist() {
     ['发 10 张', c.handSize === 10, `实际 ${c.handSize ?? '待定'}`],
     ['牌堆 126 张', c.size === 126, `实际 ${c.size ?? '待定'}`],
     ['赢家 6 其余 3', rep.winner === 6 && rep.others === 3,
-      rep.rank ? `按名次 ${rep.rank.join('/')}` : (rep.winner != null ? `赢家 ${rep.winner} 张 / 其余 ${rep.others} 张` : '待定')],
-    ['牌堆空洗回', (lastRun?.shuffles || 0) > 0, (lastRun?.shuffles != null ? `20 局共 ${lastRun.shuffles} 次` : '未跑')],
+      rep.rank ? `名次 ${rep.rank.join('/')}` : `${rep.winner ?? '待定'} / ${rep.others ?? '待定'}`],
+    ['牌堆空洗回', (lastRun?.shuffles || 0) > 0, `20 局共 ${lastRun?.shuffles ?? '未跑'} 次`],
     ['最多 3 次', c.shuffleLimit === 3, `实际 ${c.shuffleLimit ?? '待定'}`],
-    ['先出完胜', c.winBy === 'empty', c.winBy === 'empty' ? '先出完' : c.winBy === 'score' ? `算分 ${c.scoreTarget ?? '?'}` : '待定'],
+    ['先出完胜', c.winBy === 'empty', c.winBy || '待定'],
     ['5/10/K 点数', !!c.rankValues,
       c.rankValues ? `${c.rankValues[5] ?? '待定'} / ${c.rankValues[10] ?? '待定'} / ${c.rankValues.K ?? '待定'}` : '待你定'],
   ];
@@ -596,11 +630,6 @@ function persist() {
   versions = uniq;
   curVersion = versions.length - 1;
   try { localStorage.setItem(STORE, JSON.stringify({ versions, current: curVersion })); } catch {}
-  renderVersionBar();
-}
-function renderVersionBar() {
-  $('versions').innerHTML = versions.map((v, i) =>
-    `<button type="button" data-v="${i}" class="${i === curVersion ? 'primary' : ''}">v${v.version}</button>`).join('');
 }
 function reloadVersions() {
   try {
@@ -608,7 +637,8 @@ function reloadVersions() {
     versions = d.versions || []; curVersion = d.current ?? versions.length - 1;
     if (versions[curVersion]) { rs = JSON.parse(JSON.stringify(versions[curVersion])); delete rs.book; delete rs.at; }
   } catch {}
-  renderVersionBar();
+  $('versions').innerHTML = versions.map((v, i) =>
+    `<button type="button" data-v="${i}" class="${i === curVersion ? 'primary' : ''}">v${v.version}</button>`).join('');
 }
 $('versions').addEventListener('click', (e) => {
   const b = e.target.closest('[data-v]'); if (!b) return;
@@ -635,6 +665,66 @@ $('makeCode').addEventListener('click', () => {
   $('codeOut').textContent = `短码（${code.length} 字符，可发给别人还原）：${code}`;
   $('codeIn').value = code;
 });
+/* ---- 块9：定稿门槛（7 项 / 20 局 0 非法 / 规则页无出处） ---- */
+function slugify(name) {
+  const map = { '回牌': 'huipai', '斗地主': 'doudizhu', '麻将': 'mahjong', '规则工坊': 'rulecraft' };
+  if (map[name]) return map[name];
+  const ascii = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return ascii || 'rule-' + Date.now().toString(36);
+}
+function checkPublishGates() {
+  if (!rs) return { ok: false, reasons: ['还没有规则集'] };
+  const reasons = [];
+  const v = validateRuleSet(rs);
+  if (v.blocking) reasons.push('规则卡必问项未答清：' + v.missing.join('、'));
+  const seven = ['decks', 'handSize', 'winBy', 'replenish', 'shuffleLimit', 'patternSet'];
+  const c = rs.card || {};
+  for (const k of seven) if (c[k] === undefined || c[k] === null) reasons.push(`规则卡 7 项缺：${k}`);
+  // 牌力次序：显式 powerLadder，或已选的牌型表（内置阶梯）都算齐全
+  const knownSet = CARD_PATTERN_SETS.some((s) => s.id === c.patternSet);
+  if (!c.powerLadder && !rs.powerLadder && !knownSet) reasons.push('规则卡 7 项缺：powerLadder（牌力次序）');
+  const run = lastRun;
+  if (!run || !run.games || run.games.length < 20) reasons.push('还没跑 20 局自对弈');
+  else if ((run.stalled || 0) > 0) reasons.push(`自对弈有 ${run.stalled} 局卡死/非法`);
+  const page = $('rulePage').dataset.html || '';
+  if (/出处|文献|备选|参考/.test(page)) reasons.push('规则页出现了出处/文献/备选');
+  return { ok: reasons.length === 0, reasons };
+}
+function refreshPublishGate() {
+  const g = checkPublishGates();
+  $('publishBtn').disabled = !g.ok;
+  $('publishGates').innerHTML = g.ok
+    ? '<span class="tag good">三项门槛全过，可以定稿</span>'
+    : g.reasons.map((r) => `<span class="tag bad">${r}</span>`).join('');
+  return g;
+}
+$('publishBtn').addEventListener('click', () => {
+  const g = checkPublishGates();
+  if (!g.ok) { refreshPublishGate(); return; }
+  const slug = slugify(rs.name || 'rule');
+  const pkg = {
+    slug, name: rs.name, version: rs.version || 1, generatedAt: new Date().toISOString(),
+    ruleSet: rs, art: artCfg, rulebook: $('book').textContent,
+    selfPlay: { games: lastRun.games?.length || 0, stalled: lastRun.stalled || 0, shuffles: lastRun.shuffles || 0 },
+  };
+  // 写 localStorage「待同步」列表，防关页面丢失（块9 第1条）
+  const KEY = 'mg_rulecraft.pending';
+  let pending = [];
+  try { pending = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch {}
+  const idx = pending.findIndex((p) => p.slug === slug);
+  if (idx >= 0) pending[idx] = pkg; else pending.push(pkg);
+  localStorage.setItem(KEY, JSON.stringify(pending));
+  const files = [`rules/${slug}.json`, `${slug}/index.html`, `${slug}/src/rules.mjs`, `${slug}/src/render.mjs`,
+    `${slug}/covers/${slug}.png`, `${slug}/rulebook.md`, `${slug}/rules.html`];
+  $('publishOut').hidden = false;
+  $('publishOut').textContent = `定稿：${rs.name} → ${slug}（v${pkg.version}）\n` +
+    '待同步清单（已存 localStorage，可关页面）：\n' + files.map((f) => '  ' + f).join('\n') +
+    '\n\n仓库侧发布命令：node tools/publish-rule.mjs rules/' + slug + '.json';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' }));
+  a.download = `${slug}.rulepackage.json`; a.click();
+});
+
 $('restoreCode').addEventListener('click', () => {
   const got = decodeShort($('codeIn').value.trim());
   if (!got) { $('codeOut').textContent = '短码无效或规则不完整，换一个试试。'; return; }
@@ -643,6 +733,7 @@ $('restoreCode').addEventListener('click', () => {
 });
 
 reloadVersions();
+bindArtParams();
 if (rs) showPreview();
 window.__RULECRAFT__ = {
   snapshot: () => ({ type, id: rs?.id, version: rs?.version, name: rs?.name, mode: rs?.mode,
@@ -666,6 +757,9 @@ window.__RULECRAFT__ = {
     hasBook: ($('rulePage').srcdoc || '').includes('##') === false,
     text: ($('rulePage').srcdoc || '').slice(0, 120) }),
   art: () => [...$('artCompare').querySelectorAll('canvas')].length,
+  artConfig: (patch) => { if (patch) { Object.assign(artCfg, patch); renderArtCompare(); } return { ...artCfg }; },
+  publish: () => ({ ...checkPublishGates(), out: $('publishOut').textContent }),
+  refreshPublishGate,
   patterns: () => CARD_PATTERN_SETS.map((s) => s.id),
   deck: (spec) => buildDeck(spec).length,
 };
