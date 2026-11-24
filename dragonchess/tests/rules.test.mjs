@@ -96,7 +96,8 @@ test('第4条②：未登记的另一组合仍可成龙', () => {
 test('第5条：每步沿连线走一格到空点，不能跳格', () => {
   const s = createGame();
   s.phase = 'move';
-  s.board['outer-tl'] = 'r';
+  // 己方 4 子（不触发满天飞），邻点全占住只留 outer-tm 可走
+  s.board['outer-tl'] = 'r'; s.board['outer-br'] = 'r'; s.board['mid-mr'] = 'r'; s.board['inner-bl'] = 'r';
   s.board['inner-tm'] = 'b'; s.board['inner-tr'] = 'b'; s.board['mid-bl'] = 'b';
   s.board['mid-tm'] = 'b'; s.board['inner-bm'] = 'b';
   const ms = legalMoves(s, 'outer-tl');
@@ -106,14 +107,44 @@ test('第5条：每步沿连线走一格到空点，不能跳格', () => {
   assert.equal(move(s, 'outer-tl', 'inner-tl').ok, false);
 });
 
-test('第6条：盘面只剩 3 子进入满天飞，任意空点可落', () => {
+/* 满天飞按「己方剩余子数」判定：不数对方子（合并指令 块1 回归） */
+function boardWith(redIds, blueIds, turn = 'r') {
   const s = createGame();
-  s.phase = 'move'; s.turn = 'r';
-  s.board['outer-tl'] = 'r'; s.board['inner-tm'] = 'b'; s.board['inner-tr'] = 'b';
+  s.phase = 'move'; s.turn = turn;
+  for (const id of redIds) s.board[id] = 'r';
+  for (const id of blueIds) s.board[id] = 'b';
+  return s;
+}
+
+test('块1①：己方 3 子 / 对方 2 子 → 满天飞开启（旧按双方总数会误判为否）', () => {
+  const s = boardWith(
+    ['outer-tl', 'outer-tm', 'outer-tr'],
+    ['inner-tl', 'inner-tm'],
+  );
+  assert.equal(countPieces(s, 'r'), 3);
+  assert.equal(countPieces(s, 'b'), 2);
   assert.equal(isSkyMode(s), true);
-  const ms = legalMoves(s, 'outer-tl');
-  assert.ok(ms.length > 10);
-  assert.ok(ms.some((m) => m.sky && m.to === 'outer-br'));
+  assert.ok(legalMoves(s, 'outer-tl').some((m) => m.sky), '满天飞可落任意空点');
+});
+
+test('块1②：己方 3 子 / 对方 3 子 → 满天飞开启', () => {
+  const s = boardWith(
+    ['outer-tl', 'outer-tm', 'outer-tr'],
+    ['inner-tl', 'inner-tm', 'inner-tr'],
+  );
+  assert.equal(isSkyMode(s), true);
+  assert.equal(isSkyMode(s, 'b'), true, '对方同样 3 子也应开启');
+});
+
+test('块1③：己方 4 子 / 对方 1 子 → 满天飞关闭', () => {
+  const s = boardWith(
+    ['outer-tl', 'outer-tm', 'outer-tr', 'outer-ml'],
+    ['inner-tl'],
+  );
+  assert.equal(countPieces(s, 'r'), 4);
+  assert.equal(countPieces(s, 'b'), 1);
+  assert.equal(isSkyMode(s), false);
+  assert.ok(!legalMoves(s, 'outer-tl').some((m) => m.sky), '普通走子不含 sky');
 });
 
 /* ---------- 第 7 条：打炮 ---------- */
@@ -152,10 +183,12 @@ test('第8条①：吃光对方 / 无合法走法判负', () => {
   assert.equal(a.winner, 'r');
   assert.equal(a.endReason, 'eliminate');
 
+  // 己方 4 子抱团、邻点全被蓝子占满：无法走子且不满天飞 → immobile 判负
   const s = createGame();
   s.phase = 'move'; s.turn = 'r';
-  s.board['outer-tl'] = 'r';
-  s.board['outer-tm'] = 'b'; s.board['outer-ml'] = 'b'; s.board['mid-tl'] = 'b'; s.board['inner-tl'] = 'b';
+  for (const id of ['outer-tl', 'outer-tm', 'outer-tr', 'outer-ml']) s.board[id] = 'r';
+  for (const id of ['mid-tl', 'mid-tm', 'outer-mr', 'mid-tr', 'outer-bl', 'mid-ml']) s.board[id] = 'b';
+  assert.equal(isSkyMode(s, 'r'), false);
   assert.equal(allMoves(s, 'r').length, 0);
   checkEnd(s);
   assert.equal(s.winner, 'b');

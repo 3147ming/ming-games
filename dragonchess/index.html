@@ -22,8 +22,6 @@ select{padding-right:8px}
 .status{display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:#221c16;border:1px solid #463823;border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:13px}
 .status b{color:var(--gold)}.turn-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:5px}
 .turn-dot.r{background:var(--red)}.turn-dot.b{background:var(--blue)}
-.turn-dot.think{animation:pulse 1s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(1.5)}}
 .board-shell{position:relative;background:var(--paper);border:8px solid #6d5636;border-radius:16px;box-shadow:0 12px 34px #0009;overflow:hidden}
 canvas{display:block;width:100%;height:auto;touch-action:manipulation}
 .hint{margin:10px 2px 0;font-size:13px;line-height:1.6;color:#d8cbb2;min-height:42px}
@@ -40,12 +38,7 @@ canvas{display:block;width:100%;height:auto;touch-action:manipulation}
 <header>
   <div><h1>龙凤棋 · 龙棋</h1><p class="sub">民间棋 · 三环二十四点 · 成龙吃子</p></div>
   <div class="bar">
-    <select id="level" aria-label="AI 难度">
-      <option value="easy">AI · 入门</option>
-      <option value="normal" selected>AI · 棋手</option>
-      <option value="hard">AI · 老练</option>
-    </select>
-    <button id="hint" type="button" title="让 AI 给红方建议（不消耗回合）">提示</button>
+    <select id="level" aria-label="AI 难度"><option value="easy">AI · 入门</option><option value="hard">AI · 老练</option></select>
     <button id="undo" type="button">悔棋</button>
     <button id="restart" type="button">新局</button>
     <button id="rules" type="button">规则</button>
@@ -76,15 +69,13 @@ canvas{display:block;width:100%;height:auto;touch-action:manipulation}
 import {
   POINTS, EDGES, DRAGON_LINES, createGame, place, move, capture, undo,
   legalMoves, cannonMoves, dragonsNow, countPieces, isSkyMode, isCannonMode,
-  aiPlay, other, skipCapture,
+  aiPlay, other,
 } from './src/rules.mjs';
-import { aiSearch, aiHints, SKIP } from './src/ai.mjs';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const $ = (id) => document.getElementById(id);
 let S = createGame();
-let sel = null, targets = [], flash = [], flashUntil = 0, aiTimer = null, aiLevel = 'normal';
-let aiThinking = false, hintOn = false, hints = [];
+let sel = null, targets = [], flash = [], flashUntil = 0, aiTimer = null, aiLevel = 'easy';
 const PAD = 54, SPAN = 492;
 const px = (x) => PAD + ((x + 3) / 6) * SPAN;
 const py = (y) => PAD + ((3 - y) / 6) * SPAN;
@@ -101,7 +92,7 @@ function hintText() {
   if (S.pendingCapture) return `成龙！请点击一枚对方棋子吃掉（不可吃已成龙的子）。`;
   if (S.phase === 'place') return `布子阶段 · ${S.turn === 'r' ? '红方' : '蓝方'}落子，还剩 ${9 - S.placed[S.turn]} 枚。`;
   if (isCannonMode(S, S.turn)) return '打炮：选中己方子，飞到同线另一端吃掉对方子。';
-  if (isSkyMode(S, S.turn)) return '满天飞：盘面仅剩三子，己方可落到任意空点。';
+  if (isSkyMode(S, S.turn)) return '满天飞：己方仅剩三子，可落到任意空点。';
   return sel ? '点击高亮落点走子；再次点击该子可取消选择。' : '点击己方棋子，查看可走落点。';
 }
 function reasonText(r) {
@@ -166,34 +157,6 @@ function draw(now = 0) {
     ctx.strokeStyle = cannon ? '#b23a2e' : '#2e8c60'; ctx.lineWidth = 2; ctx.stroke();
     if (cannon) { ctx.fillStyle = '#7d241a'; ctx.font = '12px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('炮', px(p.x), py(p.y)); }
   }
-  // 提示：AI 建议的 3 步（金色虚线圈 + 序号），与可落点叠画在最上层
-  if (hintOn) {
-    ctx.save();
-    ctx.setLineDash([5, 4]);
-    ctx.lineWidth = 2;
-    ctx.font = 'bold 13px serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    hints.forEach((h, i) => {
-      const a = POINTS.find((q) => q.id === (h.from ?? h));
-      const b = h.to ? POINTS.find((q) => q.id === h.to) : null;
-      if (!a) return;
-      if (b) {
-        ctx.strokeStyle = '#d9a521';
-        ctx.beginPath(); ctx.moveTo(px(a.x), py(a.y)); ctx.lineTo(px(b.x), py(b.y)); ctx.stroke();
-      }
-      const tip = b || a;
-      ctx.beginPath(); ctx.arc(px(tip.x), py(tip.y), 17, 0, Math.PI * 2);
-      ctx.strokeStyle = '#d9a521'; ctx.stroke();
-      ctx.fillStyle = '#8a6510';
-      ctx.beginPath(); ctx.arc(px(tip.x), py(tip.y) - 26, 9, 0, Math.PI * 2);
-      ctx.fillStyle = '#f7e7b8'; ctx.fill();
-      ctx.strokeStyle = '#c8971b'; ctx.lineWidth = 1.5; ctx.stroke();
-      ctx.fillStyle = '#7a5810';
-      ctx.fillText(String(i + 1), px(tip.x), py(tip.y) - 25);
-    });
-    ctx.restore();
-  }
   // 棋子
   for (const p of POINTS) {
     const side = S.board[p.id]; if (!side) continue;
@@ -215,10 +178,8 @@ function draw(now = 0) {
 
 function sync() {
   $('phase').textContent = modeName();
-  $('turn').textContent = aiThinking ? '蓝方思考中…'
-    : S.pendingCapture ? `${S.pendingCapture.owner === 'r' ? '红' : '蓝'}方成龙 · 待吃子`
-    : (S.turn === 'r' ? '红方行棋' : '蓝方行棋');
-  $('tdot').className = 'turn-dot ' + S.turn + (aiThinking ? ' think' : '');
+  $('turn').textContent = S.pendingCapture ? '成龙 · 待吃子' : (S.turn === 'r' ? '红方行棋' : '蓝方行棋');
+  $('tdot').className = 'turn-dot ' + S.turn;
   $('rnum').textContent = countPieces(S, 'r');
   $('bnum').textContent = countPieces(S, 'b');
   $('idle').textContent = S.noCapture;
@@ -233,41 +194,19 @@ function sync() {
 }
 
 function clearSel() { sel = null; targets = []; }
-/* AI 出手：搜索型 AI（ai.mjs），一步可能包含「落子/走子 → 成龙吃子」两步 */
-function aiStep(level) {
-  const d = aiSearch(S, level);
-  if (d.place) return place(S, d.place);
-  if (d.move) return move(S, d.move.from, d.move.to);
-  if (d.capture === SKIP) { aiPlay(S, level); return { ok: true, skipped: true }; }
-  if (d.capture) return capture(S, d.capture);
-  return { ok: false, reason: 'nothing' };
-}
 function aiTurn() {
   clearTimeout(aiTimer);
   if (S.winner || S.turn !== 'b') return;
-  /* 兜底：上一手成龙但盘上已无可吃子（对方全在龙里/已无子），必须跳过，否则整局卡死 */
-  if (S.pendingCapture && S.pendingCapture.owner === 'b' && !S.pendingCapture.choices?.length) {
-    skipCapture(S); sync();
-    return;
-  }
-  const think = aiLevel === 'hard' ? 260 : aiLevel === 'normal' ? 200 : 260;
-  aiThinking = true;
   aiTimer = setTimeout(() => {
-    for (let i = 0; i < 4 && !S.winner; i++) {
+    // 一次操作可能产生「成龙待吃子」，再走一次把吃子完成
+    for (let i = 0; i < 3 && !S.winner; i++) {
       if (S.pendingCapture && S.pendingCapture.owner !== 'b') break;
       const before = S.step;
-      const r = aiStep(aiLevel);
-      if (r?.dragons?.length) { flash = r.dragons; flashUntil = performance.now() + 900; }
+      aiPlay(S, aiLevel, Math.random);
       if (S.step === before && !S.pendingCapture) break;
-      if (S.pendingCapture && S.pendingCapture.owner === 'b') {
-        /* 成龙待吃子：同一拍内继续吃完 */
-        continue;
-      }
-      break;
     }
-    aiThinking = false;
     clearSel(); sync();
-  }, think);
+  }, 260);
 }
 function afterPlayer() {
   clearSel();
@@ -287,20 +226,15 @@ function onClick(ev) {
     if (d < best) { best = d; hit = p.id; }
   }
   if (!hit) return;
-  if (S.pendingCapture && S.pendingCapture.owner === 'r' && !S.pendingCapture.choices?.length) {
-    /* 成龙但盘上无可吃子（对方全在龙里 / 无子）：自动放弃，否则红方永远点不下去 */
-    skipCapture(S); sync(); return;
-  }
   if (S.pendingCapture) {
     const res = capture(S, hit);
-    if (res.ok) { flash = []; hintOn = false; hints = []; afterPlayer(); }
+    if (res.ok) { flash = []; afterPlayer(); }
     else { $('hint').textContent = res.reason === 'dragon-protected' ? '这枚子已成型，不能吃。' : '请点对方棋子。'; }
     return;
   }
   if (S.phase === 'place') {
     const res = place(S, hit);
     if (res.ok) {
-      hintOn = false; hints = [];
       if (res.dragons.length) { flash = res.dragons; flashUntil = performance.now() + 900; }
       afterPlayer();
     }
@@ -309,14 +243,12 @@ function onClick(ev) {
   if (sel && targets.some((t) => (t.to ?? t) === hit)) {
     const res = move(S, sel, hit);
     if (res.ok) {
-      hintOn = false; hints = [];
       if (res.dragons.length) { flash = res.dragons; flashUntil = performance.now() + 900; }
       afterPlayer();
     }
     return;
   }
   if (S.board[hit] === 'r') {
-    hintOn = false; hints = [];
     sel = hit;
     targets = cannonMoves(S, 'r').filter((m) => m.from === hit);
     if (!targets.length) targets = legalMoves(S, hit, 'r');
@@ -333,25 +265,13 @@ $('restart').addEventListener('click', () => {
 });
 $('again').addEventListener('click', () => $('restart').click());
 $('level').addEventListener('change', (e) => { aiLevel = e.target.value; });
-$('hint').addEventListener('click', () => {
-  if (S.winner || S.turn !== 'r' || S.phase !== 'move') { $('hint').textContent = '开局布子后再用'; setTimeout(() => { $('hint').textContent = '提示'; }, 1200); return; }
-  hints = aiHints(S, 'hard');
-  hintOn = hints.length > 0;
-  if (hintOn) {
-    const nm = (id) => ({ outer: '外', mid: '中', inner: '内' })[id.split('-')[0]] + '环';
-    $('hint').textContent = 'AI 建议：' + hints.map((h, i) => `${i + 1}·${nm(h.from)}→${nm(h.to)}`).join('  ');
-    setTimeout(() => { if (hintOn) $('hint').textContent = hintText(); }, 4200);
-  } else $('hint').textContent = '暂无可走建议';
-  sync();
-});
 $('rules').addEventListener('click', () => { location.href = './rules.html'; });
 
 /** 浏览器诊断接口（证据截图 / 自对弈验证用） */
 window.__DRAGON__ = {
   get state() { return S; },
   snapshot: () => ({ phase: S.phase, turn: S.turn, board: { ...S.board }, placed: { ...S.placed },
-    pending: S.pendingCapture, choices: S.pendingCapture?.choices ?? null,
-    winner: S.winner, reason: S.endReason, noCapture: S.noCapture }),
+    pending: S.pendingCapture, winner: S.winner, reason: S.endReason, noCapture: S.noCapture }),
   clickPoint: (id) => {
     const p = POINTS.find((q) => q.id === id);
     if (!p) return false;

@@ -76,14 +76,7 @@ export const DRAGON_LINES = (() => {
 })();
 
 export const other = (side) => (side === 'r' ? 'b' : 'r');
-/* 克隆只保留棋盘状态，history 单独剔除 —— 原先整对象 JSON 化会把 history 一起深拷贝，
-   历史一长就是指数级膨胀，几十手后直接 RangeError: Invalid string length */
-export const clone = (s) => {
-  const out = {};
-  for (const k of Object.keys(s)) if (k !== 'history') out[k] = s[k];
-  return JSON.parse(JSON.stringify(out));
-};
-const MAX_HISTORY = 60;
+export const clone = (s) => JSON.parse(JSON.stringify(s));
 
 /** 新局：phase=place，双方各 9 子，红先。 */
 export function createGame(seed = 0) {
@@ -131,7 +124,6 @@ export function canPlace(s, id) {
 export function place(s, id) {
   if (!canPlace(s, id)) return { ok: false, reason: 'illegal-place' };
   s.history.push(clone(s));
-  if (s.history.length > MAX_HISTORY) s.history.splice(0, s.history.length - MAX_HISTORY);
   s.board[id] = s.turn;
   s.placed[s.turn] += 1;
   s.step += 1;
@@ -141,11 +133,8 @@ export function place(s, id) {
     const choices = captureChoices(s, s.turn);
     s.pendingCapture = { owner: s.turn, reason: 'dragon', choices };
   }
-  /* 关键：落子后要换手。原先这里漏了 finishTurn，整局卡在红方——AI 永远没机会出手 */
-  if (!s.pendingCapture) finishTurn(s);
-  else if (s.placed.r >= 9 && s.placed.b >= 9) s.phase = 'move';
-  const end = checkEnd(s);
-  return { ok: true, dragons: fresh.map((l) => l.ids), needCapture: !!s.pendingCapture, phase: s.phase, end };
+  if (s.placed.r >= 9 && s.placed.b >= 9 && !s.pendingCapture) s.phase = 'move';
+  return { ok: true, dragons: fresh.map((l) => l.ids), needCapture: !!s.pendingCapture, phase: s.phase };
 }
 
 /** 可被 side 吃掉的子：对方棋子中不属于任何已成龙的子 */
@@ -160,7 +149,6 @@ export function capture(s, targetId) {
   if (s.board[targetId] !== other(p.owner)) return { ok: false, reason: 'not-enemy' };
   if (isDragonPiece(s, targetId)) return { ok: false, reason: 'dragon-protected' };
   s.history.push(clone(s));
-  if (s.history.length > MAX_HISTORY) s.history.splice(0, s.history.length - MAX_HISTORY);
   delete s.board[targetId];
   s.noCapture = 0;
   s.pendingCapture = null;
@@ -174,7 +162,6 @@ function skipCapture(s) {
   if (!s.pendingCapture) return;
   s.pendingCapture = null;
   finishTurn(s);
-  checkEnd(s);            /* 以前这里不结算胜负：无子可吃时空转，整局卡死在布子阶段 */
 }
 
 function finishTurn(s) {
@@ -183,8 +170,8 @@ function finishTurn(s) {
   s.step += 1;
 }
 
-/** 总子数：满天飞 / 打炮的触发条件按「己方剩余子数」判定 */
-export function isSkyMode(s, side = s.turn) { return countPieces(s, other(side)) + countPieces(s, side) <= 3; }
+/** 满天飞触发条件：己方剩余子数 ≤ 3（按龙棋/麻城民间龙棋口径，不看对方子数） */
+export function isSkyMode(s, side = s.turn) { return countPieces(s, side) <= 3; }
 export function isCannonMode(s, side = s.turn) { return countPieces(s, side) === 2; }
 
 /** 打炮走法：对方 1 子在线一端、己方 1 子在同线中间，另一己方子飞到该线另一端。
@@ -233,7 +220,6 @@ export function move(s, from, to) {
   const m = legalMoves(s, from).find((x) => x.to === to);
   if (!m) return { ok: false, reason: 'illegal-move' };
   s.history.push(clone(s));
-  if (s.history.length > MAX_HISTORY) s.history.splice(0, s.history.length - MAX_HISTORY);
   delete s.board[from];
   s.board[to] = s.turn;
   if (m.cannon) {
@@ -255,9 +241,7 @@ export function move(s, from, to) {
 /** 胜负：吃光 / 无合法走法且无法成龙 / 60 回合无吃子 */
 export function checkEnd(s) {
   if (s.pendingCapture) return null;
-  /* 只有布子结束、进入走子阶段才存在「吃光对方」；布子时盘上本来就可能没子，
-     无条件判会让空棋盘直接判负（整局第一手就结束） */
-  for (const side of (s.phase === 'move' ? ['r', 'b'] : [])) {
+  for (const side of ['r', 'b']) {
     if (countPieces(s, side) === 0) {
       s.winner = other(side); s.endReason = 'eliminate'; return { winner: s.winner, reason: s.endReason };
     }
