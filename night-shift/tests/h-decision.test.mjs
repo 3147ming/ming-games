@@ -210,3 +210,14 @@ test('migrateSave 容忍空值与脏数据', () => {
   assert.equal(d.version, SAVE_VERSION);
   assert.equal(d.migratedFrom, 0);
 });
+
+test('块4：通知可手动关闭单条（dismiss），不影响其他项', async () => {
+  const { createNotifyCenter } = await import('../src/notify-center.mjs');
+  const nc = createNotifyCenter({ maxVisible: 2 });
+  nc.push({ id: 'a', text: 'A', level: 'normal' });
+  nc.push({ id: 'b', text: 'B', level: 'normal' });
+  assert.equal(nc.snapshot().total, 2);
+  assert.equal(nc.dismiss('a'), 1);
+  assert.deepEqual(nc.snapshot().visible.map((x) => x.id), ['b']);
+  assert.equal(nc.dismiss('nope'), 0);
+});

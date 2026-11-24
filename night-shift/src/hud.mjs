@@ -559,8 +559,19 @@ function syncNotify() {
     const div = document.createElement('div');
     const kind = n.level === LEVEL.URGENT ? 'bad' : n.level === LEVEL.IMPORTANT ? 'warn' : 'info';
     div.className = `toast ${kind}`;
-    div.textContent = n.text;
     div.dataset.notifyId = n.id;
+    const label = document.createElement('span');
+    label.className = 'toast-label';
+    label.textContent = n.text;
+    div.appendChild(label);
+    // 块4 第4条：手动关闭 ×（pointer-events 在容器上关闭，这里单独放行）
+    const close = document.createElement('button');
+    close.className = 'toast-close';
+    close.type = 'button';
+    close.setAttribute('aria-label', '关闭提示');
+    close.textContent = '×';
+    close.addEventListener('click', (e) => { e.stopPropagation(); notify.dismiss(n.id); syncNotify(); });
+    div.appendChild(close);
     els.toasts.appendChild(div);
   }
   if (s.hidden > 0) {

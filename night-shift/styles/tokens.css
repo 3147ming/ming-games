@@ -457,6 +457,10 @@ html, body {
 @keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 .toast.out { animation: toast-out .2s ease forwards; }
 @keyframes toast-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-6px); } }
+/* 块4：toast 手动关闭（+ 3s 自动淡出由 notify-center 的 ttl 控制） */
+.toast-label{display:inline-block;max-width:min(230px,34vw)}
+.toast-close{pointer-events:auto;float:right;margin:1px 0 0 8px;padding:0 4px;min-width:18px;height:18px;line-height:16px;border:0;border-radius:4px;background:#ffffff14;color:inherit;font:inherit;font-size:13px;cursor:pointer}
+.toast-close:hover{background:#ffffff30}
 
 /* ---------- 存档提示（右上角 · 半透磨砂 · 2s 自动消失） ----------
    与普通 toast（顶部居中）分开：存档反馈需要"一眼能看到但不打断操作"，

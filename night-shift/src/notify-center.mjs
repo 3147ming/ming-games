@@ -101,6 +101,13 @@ export function createNotifyCenter(opts = {}) {
     expand() { expanded = true; },
     collapse() { expanded = false; },
     toggle() { expanded = !expanded; },
+    /** 手动关闭单条（块4 第4条） */
+    dismiss(id) {
+      const before = items.length;
+      items = items.filter((n) => n.id !== id);
+      if (!items.length) expanded = false;
+      return before - items.length;
+    },
     clear() { items = []; expanded = false; },
     setFilter(v) {
       filter = v === FILTER.OFF || v === FILTER.IMPORTANT ? v : FILTER.ALL;
