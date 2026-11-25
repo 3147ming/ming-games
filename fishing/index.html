@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>小铺垂钓 · 湖边一竿</title>
+<meta name="description" content="小铺垂钓：抛竿等咬钩，踩准完美区收竿。常见鱼、稀有鱼、传说鱼，鱼竿升级、每日一钓，以及零服务器的纯 P2P 联机。">
+<style>
+:root{
+  --paper:#f6f1e4; --ink:#2c2318; --dim:#7d6d59; --line:#ded2bb;
+  --gold:#c8912f; --gold2:#a87a22; --lake:#3f7f93; --red:#d0483a; --green:#3f8f5f;
+  --bg:#f6f1e4;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:linear-gradient(180deg,#faf6ec,#ece2cc);
+  color:var(--ink);font-family:"PingFang SC","Microsoft YaHei",-apple-system,system-ui,sans-serif;
+  -webkit-tap-highlight-color:transparent;
+}
+[hidden]{display:none!important}
+.wrap{max-width:min(100%,880px);margin:0 auto;padding:14px 12px 40px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+h1{margin:0;font-size:24px;letter-spacing:.5px}
+.sub{margin:2px 0 0;font-size:12px;color:var(--dim)}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+.bar .stat{background:rgba(255,255,255,.68);border:1px solid var(--line);border-radius:999px;padding:4px 12px;white-space:nowrap}
+.bar b{font-variant-numeric:tabular-nums}
+.modes{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.modes button{min-height:38px;padding:0 14px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.72);color:var(--ink);font-size:13px;cursor:pointer}
+.modes button.on{background:linear-gradient(180deg,var(--gold),var(--gold2));color:#fff;font-weight:600;border-color:var(--gold)}
+.panel{background:rgba(255,255,255,.72);border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:10px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.row h2{margin:0;font-size:15px}
+.dim{font-size:12px;color:var(--dim)}
+.scenewrap{position:relative;width:100%;aspect-ratio:12/7;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:#e8dfc9}
+#scene{width:100%;height:100%;display:block;touch-action:manipulation}
+.bubble{position:absolute;left:50%;top:10px;transform:translateX(-50%);background:rgba(255,252,242,.92);border:1px solid var(--line);border-radius:999px;padding:5px 14px;font-size:13px;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis}
+.dailybar{margin:0 0 10px;background:rgba(255,255,255,.72);border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-size:13px;color:var(--ink)}
+.meter{margin:12px 0 4px}
+.meter-track{position:relative;height:26px;border-radius:13px;background:linear-gradient(180deg,#e6dcc4,#d9cdb0);border:1px solid var(--line);overflow:hidden}
+.meter-zone{position:absolute;top:0;bottom:0;background:linear-gradient(180deg,#e0654f,#c3402f);opacity:.85}
+.meter-mark{position:absolute;top:-2px;left:0;width:6px;height:30px;border-radius:3px;background:var(--ink);box-shadow:0 0 0 2px rgba(255,255,255,.85);will-change:transform}
+.meter-cap{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-top:4px}
+.ctl{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:10px}
+.btn{min-height:44px;padding:0 20px;border-radius:11px;border:1px solid var(--line);background:#fff;color:var(--ink);font-size:14px;cursor:pointer}
+.btn.primary{background:linear-gradient(180deg,var(--gold),var(--gold2));color:#fff;border-color:var(--gold);font-weight:600}
+.btn.reel{background:linear-gradient(180deg,#e0654f,#c3402f);border-color:#c3402f;color:#fff;font-weight:700;min-width:132px}
+.btn:disabled{opacity:.42;cursor:not-allowed}
+.btn.mini{min-height:32px;padding:0 10px;font-size:12px;border-radius:9px}
+.msg{text-align:center;font-size:14px;line-height:1.7;min-height:24px;color:var(--ink);margin:8px 0 0}
+.msg.ok{color:#1f7a4d}.msg.bad{color:#b8322a}.msg.dim{color:var(--dim)}
+.hint{font-size:12px;color:var(--dim);text-align:center;margin-top:8px;line-height:1.7}
+.basket{display:flex;gap:6px;flex-wrap:wrap;min-height:26px}
+.basket .empty{font-size:12px;color:var(--dim)}
+.fish{display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:rgba(255,255,255,.85);border-radius:999px;padding:4px 11px;font-size:13px}
+.fish .dot{width:10px;height:10px;border-radius:50%;flex:none}
+.fish .vl{color:var(--gold2);font-weight:600;font-variant-numeric:tabular-nums}
+.shop{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
+.rod{border:1px solid var(--line);background:rgba(255,255,255,.85);border-radius:12px;padding:9px 11px;display:flex;flex-direction:column;gap:3px}
+.rod.owned{opacity:.72}
+.rod .rn{font-size:14px;font-weight:600}
+.rod .rd{font-size:11px;color:var(--dim)}
+.rod .rp{font-size:12px;color:var(--gold2);font-weight:600}
+.rod .btn{margin-top:4px;align-self:flex-start}
+.p2p{background:rgba(255,255,255,.72);border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:10px}
+.p2p h2{margin:0 0 6px;font-size:15px}
+.note{font-size:12px;color:var(--dim);line-height:1.8;margin:0 0 10px}
+.steps{margin:0 0 10px;padding-left:20px;font-size:13px;line-height:1.9}
+.p2p-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.p2p-row input{flex:1;min-width:180px;min-height:40px;border-radius:9px;border:1px solid var(--line);padding:0 10px;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace;background:#fff}
+.p2p-state{font-size:12px;margin-top:8px;padding:6px 10px;border-radius:9px;background:rgba(0,0,0,.05)}
+.p2p-state.ok{color:#1f7a4d}.p2p-state.err{color:#b8322a}.p2p-state.wait{color:var(--dim)}
+.check{font-size:12px;color:var(--dim);cursor:pointer}
+.check input{min-height:0;width:16px;height:16px;margin:0;accent-color:var(--gold)}
+.sheet{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.55)}
+.sheet[hidden]{display:none}.panel2{width:min(100%,440px);max-height:84vh;overflow:auto;background:#fff;border-radius:18px;padding:22px}
+.panel2 h2{margin:0 0 10px;font-size:18px}.panel2 p{font-size:13px;line-height:1.85;color:var(--dim)}
+.panel2 b{color:var(--ink)}
+@media (pointer:coarse){button,input{min-height:48px}}
+@media(max-width:430px){h1{font-size:20px}.bar .stat{font-size:12px;padding:3px 9px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>小铺垂钓</h1>
+      <p class="sub">湖边小铺 · 抛竿等咬钩 · 踩准完美区</p>
+    </div>
+    <div class="bar">
+      <div class="stat">金币 <b id="coin">0</b></div>
+      <div class="stat">本场 <b id="score">0</b></div>
+      <div class="stat">最高单笔 <b id="best">0</b></div>
+      <div class="stat">鱼种 <b id="kinds">0</b></div>
+      <button class="btn mini" id="btn-info" type="button">规则</button>
+    </div>
+  </div>
+
+  <div class="modes">
+    <button type="button" id="mode-solo" class="on">单人垂钓</button>
+    <button type="button" id="mode-daily">每日一钓</button>
+    <button type="button" id="mode-p2p">纯 P2P 联机</button>
+  </div>
+
+  <div class="dailybar" id="daily-bar" hidden></div>
+
+  <section class="p2p" id="p2p" hidden>
+    <h2>纯 P2P 联机 · 零服务器</h2>
+    <p class="note">
+      不经过任何服务器、不连任何第三方、不花钱 —— 代价是要手动交换两段连接码。<br>
+      <b>同一片湖</b>：双方的鱼群、咬钩延迟、反应窗口都由同一个公开种子算出来，
+      房主改不了 —— 他一改就跟对方对不上，当场就被发现。
+    </p>
+    <div class="p2p-row" id="rolebar">
+      <button class="btn primary" id="btn-host" type="button">我来建房</button>
+      <button class="btn" id="btn-join" type="button">我有房主码</button>
+    </div>
+    <label class="p2p-row check"><input type="checkbox" id="p2p-daily"> 今日之湖（当天所有人同一片湖，5 竿）</label>
+    <div id="host-flow" hidden>
+      <ol class="steps">
+        <li>把下面这段【房主码】发给朋友</li>
+        <li>朋友会回你一段【加入码】，粘贴到下面</li>
+        <li>点「接受加入码」，通道就通了</li>
+      </ol>
+      <div class="p2p-row"><button class="btn primary" id="btn-gen-host" type="button">生成房主码</button>
+        <input id="host-code" readonly placeholder="房主码"></div>
+      <div class="p2p-row"><button class="btn mini" id="btn-copy-host" type="button">复制房主码</button></div>
+      <div class="p2p-row"><input id="join-in" placeholder="粘贴朋友的加入码"></div>
+      <div class="p2p-row"><button class="btn primary" id="btn-accept" type="button">接受加入码</button></div>
+    </div>
+    <div id="guest-flow" hidden>
+      <ol class="steps">
+        <li>把朋友给你的【房主码】粘到下面</li>
+        <li>点「生成加入码」，把加入码发回给朋友</li>
+      </ol>
+      <div class="p2p-row"><input id="host-in" placeholder="粘贴房主码"></div>
+      <div class="p2p-row"><button class="btn primary" id="btn-gen-guest" type="button">生成加入码</button></div>
+      <div class="p2p-row"><input id="guest-code" readonly placeholder="加入码"></div>
+      <div class="p2p-row"><button class="btn mini" id="btn-copy-guest" type="button">复制加入码</button></div>
+    </div>
+    <div class="p2p-state" id="p2p-state">未连接</div>
+  </section>
+
+  <section class="panel">
+    <div class="scenewrap">
+      <canvas id="scene" width="720" height="420"></canvas>
+      <div class="bubble" id="bubble">湖边小铺 · 今天也来一竿</div>
+    </div>
+    <div class="meter">
+      <div class="meter-track" id="meter-track">
+        <div class="meter-zone" id="meter-zone" style="display:none"></div>
+        <div class="meter-mark" id="meter-mark" style="display:none"></div>
+      </div>
+      <div class="meter-cap"><span>红区＝完美（双倍）</span><span id="meter-hint">等鱼上钩…</span></div>
+    </div>
+    <div class="ctl">
+      <button class="btn" id="btn-cast" type="button">抛竿</button>
+      <button class="btn reel" id="btn-reel" type="button" disabled>收竿！</button>
+    </div>
+    <div class="msg" id="msg">点「抛竿」，等浮标一沉就点「收竿」。</div>
+    <div class="hint" id="hint">完美区在窗口正中间那一小段，稀有鱼的窗口更窄。</div>
+  </section>
+
+  <section class="panel">
+    <div class="row">
+      <h2>鱼篓</h2>
+      <button class="btn mini" id="btn-sell" type="button">卖鱼换金币</button>
+    </div>
+    <div class="basket" id="basket"></div>
+  </section>
+
+  <section class="panel">
+    <div class="row">
+      <h2>鱼竿铺</h2>
+      <span class="dim" id="rod-name">竹竿（0 级）</span>
+    </div>
+    <div class="shop" id="shop"></div>
+  </section>
+
+  <div class="ctl">
+    <button class="btn" id="btn-new" type="button">换一片湖</button>
+    <button class="btn" id="btn-close" type="button" hidden>断开连接</button>
+  </div>
+
+  <div class="sheet" id="info" hidden>
+    <div class="panel2">
+      <h2>小铺垂钓怎么玩</h2>
+      <p>
+        <b>核心循环</b>：点「抛竿」→ 浮标落水 → 等一会儿 → 有鱼咬钩（浮标一沉）→
+        屏幕下方出现一条<b>反应窗口</b>，中间那段红色是<b>完美区</b> →
+        在窗口里点「收竿」。<br><br>
+        <b>三种结果</b>：正中完美区＝<b>大鱼</b>（双倍价值）；窗口里但偏了＝<b>小鱼</b>（半价）；
+        超出窗口或压根没点＝<b>空钩</b>（鱼跑了）。<br><br>
+        <b>稀有度</b>：常见鱼窗口宽、价值低；稀有鱼窗口窄、价值高；
+        传说鱼（龙鳞锦鲤）窗口最窄、价值最高。<br><br>
+        <b>鱼竿</b>：金币可以在鱼竿铺买更好的竿 —— 窗口更宽、稀有鱼更多、卖鱼更贵。<br><br>
+        <b>每日一钓</b>：种子由日期派生，<b>同一天所有人的鱼群与窗口分布完全一致</b>，
+        每天抛 5 竿，记最好成绩。<br><br>
+        <b>纯 P2P 联机</b>：不需要服务器，但要把两段连接码互发一下。
+        双方看到的是<b>同一片湖</b> —— 鱼群、咬钩延迟、反应窗口都由同一个公开种子算出来，
+        房主改不了；各自独立收竿、各自计分。
+      </p>
+      <div class="ctl"><button class="btn primary" id="info-close" type="button">知道了</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* file:// 兜底：Chrome 下 file:// 协议会用 CORS 拦掉 ES 模块（ES module 走的是跨源请求）。
+   源码目录直接双击打开时，改加载构建出来的 classic 兜底包（内容与 src/main.mjs 完全一致）。
+   正常 http/https 下这段不做事，走下面的 module 入口。 */
+(function () {
+  if (location.protocol.indexOf('file:') !== 0) return;
+  window.addEventListener('error', function (e) {
+    var t = e.target;
+    if (!t || t.tagName !== 'SCRIPT') return;
+    if ((t.src || '').indexOf('/src/main.mjs') < 0) return;
+    if (window.__fishingClassic) return;
+    window.__fishingClassic = true;
+    var s = document.createElement('script');
+    s.src = './src/fishing.classic.js';
+    (document.body || document.head).appendChild(s);
+  }, true);
+})();
+</script>
+<script type="module" src="./src/main.mjs"></script>
+</body>
+</html>

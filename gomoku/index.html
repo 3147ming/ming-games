@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#151210">
+<title>五子棋</title>
+<meta name="description" content="五子棋 —— 15×15 棋盘，支持人机、同屏双人，以及零服务器的纯 P2P 联机（手动交换连接码即可开黑，不经过任何服务器）。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23151210'/%3E%3Ccircle cx='32' cy='32' r='19' fill='none' stroke='%23c8a96b' stroke-width='3'/%3E%3Ccircle cx='26' cy='28' r='5' fill='%23f0e6d2'/%3E%3Ccircle cx='38' cy='36' r='5' fill='%23222'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+:root{--ink:#1b1713;--paper:#f3ead8;--gold:#c8a96b;--red:#b23a2e;--blue:#243b53}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:radial-gradient(circle at 50% 0%,#2a2119,#12100e 70%);color:#f0e6d2;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
+.wrap{max-width:860px;margin:0 auto;padding:14px 14px 30px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+h1{font-size:20px;margin:0;letter-spacing:2px;color:var(--gold)}
+.sub{font-size:12px;opacity:.68;margin:2px 0 0}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+button,select,input{min-height:44px;padding:0 14px;border-radius:10px;border:1px solid #6b5839;background:#2b231a;color:#f3e9d4;font:inherit;font-size:14px;cursor:pointer;touch-action:manipulation}
+button:hover,select:hover,input:hover{border-color:var(--gold)}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.primary{background:var(--gold);color:#241b10;font-weight:600;border-color:var(--gold)}
+.status{display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:#221c16;border:1px solid #463823;border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:13px}
+.status b{color:var(--gold)}
+.turn-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:5px}
+.turn-dot.b{background:#222}.turn-dot.w{background:#f3ead8;border:1px solid #999}
+.board-shell{position:relative;background:var(--paper);border:8px solid #6d5636;border-radius:16px;box-shadow:0 12px 34px #0009;overflow:hidden}
+canvas{display:block;width:100%;height:auto;touch-action:manipulation;cursor:pointer}
+.end{position:absolute;inset:0;display:none;place-items:center;background:#0d0b09dd;text-align:center;padding:20px}
+.end.show{display:grid}.end h2{font-size:26px;color:var(--gold);margin:0 0 8px}
+.hint{margin:10px 2px 0;font-size:13px;line-height:1.6;color:#d8cbb2;min-height:40px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;opacity:.72;margin-top:8px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}
+
+/* ---- 联机面板 ---- */
+.p2p{margin-top:14px;background:#221c16;border:1px solid #463823;border-radius:12px;padding:12px}
+.p2p h2{font-size:15px;margin:0 0 8px;color:var(--gold);letter-spacing:1px}
+.p2p p.note{font-size:12px;line-height:1.6;opacity:.75;margin:0 0 10px}
+.p2p-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.p2p-row input{flex:1;min-width:200px;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.code-box{width:100%;min-height:76px;padding:8px;font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.4;word-break:break-all;background:#171310;border:1px solid #463823;border-radius:8px;color:#c8a96b;resize:vertical}
+.p2p-state{font-size:12px;padding:6px 10px;border-radius:8px;background:#171310;border:1px solid #3a3128}
+.p2p-state.ok{border-color:#4caf6e;color:#8fdcab}
+.p2p-state.err{border-color:#b23a2e;color:#e89a92}
+.p2p-state.wait{border-color:#c8a96b;color:#c8a96b}
+.steps{counter-reset:s;margin:0 0 10px;padding-left:20px;font-size:13px;line-height:1.8}
+.steps li{margin-bottom:2px}
+@media(pointer:coarse){button,select,input{min-height:48px}}
+@media(max-width:430px){h1{font-size:17px}.bar{margin-left:0;width:100%}.bar button{flex:1;padding:0 8px;font-size:13px}.status{font-size:12px}.p2p-row input{min-width:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div><h1>五子棋</h1><p class="sub">15×15 · 黑先 · 五连即胜</p></div>
+  <div class="bar">
+    <select id="mode" aria-label="对局模式">
+      <option value="ai">人机对弈</option>
+      <option value="hotseat">同屏双人</option>
+      <option value="p2p">纯 P2P 联机</option>
+    </select>
+    <select id="level" aria-label="AI 难度"><option value="1">AI · 入门</option><option value="2">AI · 老练</option></select>
+    <button id="undo" type="button">悔棋</button>
+    <button id="restart" type="button">新局</button>
+  </div>
+</header>
+
+<div class="status" aria-live="polite">
+  <span><b id="phase">进行中</b></span>
+  <span><i class="turn-dot b" id="tdot"></i><b id="turn">黑棋落子</b></span>
+  <span>手数 <b id="moves">0</b></span>
+  <span id="modehint">人机：黑棋你执白棋 AI</span>
+</div>
+
+<div class="board-shell">
+  <canvas id="cv" width="600" height="600" aria-label="五子棋棋盘"></canvas>
+  <div class="end" id="end"><div><h2 id="endtitle">黑棋胜</h2><p id="enddesc"></p><button id="again" type="button">再来一局</button></div></div>
+</div>
+
+<p class="hint" id="hint">点击交叉点落子。黑棋先走，五子连成一线即胜。</p>
+<div class="legend"><span><i style="background:#222"></i>黑棋</span><span><i style="background:#f3ead8;border:1px solid #999"></i>白棋</span><span>最后一手有金色标记</span></div>
+
+<!-- 联机面板：只在「纯 P2P 联机」模式下显示 -->
+<section class="p2p" id="p2p" hidden>
+  <h2>纯 P2P 联机 · 零服务器</h2>
+  <p class="note">
+    不经过任何服务器、不连任何第三方、不花钱、也不用改 IP —— 代价是要手动交换两段连接码。
+    用微信/短信把码发给对方就行。同一个 WiFi 下最稳；跨公网能否连上取决于双方网络环境。
+  </p>
+
+  <div class="p2p-row" id="rolebar">
+    <button class="primary" id="btn-host" type="button">我来建房</button>
+    <button id="btn-join" type="button">我有房主码</button>
+  </div>
+
+  <div id="host-flow" hidden>
+    <ol class="steps">
+      <li>把下面这段【房主码】发给朋友</li>
+      <li>朋友会回你一段【加入码】，粘贴到下面</li>
+      <li>点「接受加入码」，通道就通了</li>
+    </ol>
+    <div class="p2p-row"><button id="btn-gen-host" class="primary" type="button">生成房主码</button>
+      <input id="host-pass" type="password" inputmode="numeric" placeholder="房间密码（可留空）" maxlength="12" style="max-width:180px"></div>
+    <textarea class="code-box" id="host-code" readonly placeholder="点上面「生成房主码」后，这里会出现一段码，复制发给朋友"></textarea>
+    <div class="p2p-row" style="margin-top:8px">
+      <textarea class="code-box" id="join-in" placeholder="把朋友发回的加入码粘贴到这里" style="min-height:60px"></textarea>
+    </div>
+    <div class="p2p-row"><button id="btn-accept" class="primary" type="button">接受加入码</button>
+      <button id="btn-copy-host" type="button">复制房主码</button></div>
+  </div>
+
+  <div id="guest-flow" hidden>
+    <ol class="steps">
+      <li>把朋友发来的【房主码】粘贴到下面</li>
+      <li>点「生成加入码」，把生成的码发回房主</li>
+      <li>房主接受后自动开局</li>
+    </ol>
+    <div class="p2p-row"><textarea class="code-box" id="host-in" placeholder="粘贴房主码到这里" style="min-height:60px"></textarea></div>
+    <div class="p2p-row"><button id="btn-gen-guest" class="primary" type="button">生成加入码</button>
+      <input id="guest-pass" type="password" inputmode="numeric" placeholder="房间密码" maxlength="12" style="max-width:180px"></div>
+    <textarea class="code-box" id="guest-code" readonly placeholder="生成后在这里，把这段码发回房主"></textarea>
+    <div class="p2p-row"><button id="btn-copy-guest" type="button">复制加入码</button></div>
+  </div>
+
+  <div class="p2p-row" style="margin-top:10px">
+    <span class="p2p-state wait" id="p2p-state">未连接</span>
+    <button id="btn-close" type="button">断开</button>
+  </div>
+</section>
+
+</div>
+<script type="module" src="./src/main.mjs"></script>
+</body>
+</html>

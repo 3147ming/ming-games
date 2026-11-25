@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#161024">
+<title>谁是卧底</title>
+<meta name="description" content="谁是卧底 —— 描述、投票、揪出卧底。单机 AI、同屏多人，以及零服务器的纯 P2P 联机（手动交换连接码即可开黑，不经过任何服务器）。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23161024'/%3E%3Ccircle cx='32' cy='26' r='13' fill='%23f0c040'/%3E%3Cpath d='M12 56c4-10 12-14 20-14s16 4 20 14z' fill='%236a4bb8'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+:root{--ink:#120d20;--panel:#1c1533;--panel2:#241a44;--line:#372c5c;--gold:#f0c040;--text:#ece7f7;--muted:#a396c4;--spy:#e0483c;--ok:#4caf6e}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:radial-gradient(circle at 50% 0%,#2a1e52,#0d0918 72%);color:var(--text);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:860px;margin:0 auto;padding:14px 14px 30px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+h1{font-size:20px;margin:0;letter-spacing:2px;color:var(--gold)}
+.sub{font-size:12px;opacity:.7;margin:2px 0 0}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+button,select,input,textarea{min-height:44px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;font-size:14px;cursor:pointer;touch-action:manipulation}
+button:hover,select:hover,input:hover{border-color:var(--gold)}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.primary{background:var(--gold);color:#1a1305;font-weight:600;border-color:var(--gold)}
+button.danger{background:var(--spy);color:#fff;border-color:var(--spy)}
+.status{display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:13px}
+.status b{color:var(--gold)}
+
+/* 同屏发词 */
+.handout{background:linear-gradient(180deg,#2b1f52,#1c1533);border:1px solid var(--gold);border-radius:14px;padding:18px;margin-bottom:10px;text-align:center}
+.handout h3{margin:0 0 12px;font-size:15px;color:var(--gold)}
+.handout-word{font-size:38px;font-weight:800;color:var(--gold);letter-spacing:4px;margin-bottom:14px;min-height:48px}
+
+/* 我的词（私密） */
+.myword{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:linear-gradient(90deg,#2b1f52,#1c1533);border:1px solid var(--gold);border-radius:14px;padding:12px 14px;margin-bottom:10px}
+.myword .lbl{font-size:11px;opacity:.75;letter-spacing:.1em}
+.myword .word{font-size:26px;font-weight:800;color:var(--gold);letter-spacing:2px}
+.myword .hint{font-size:12px;opacity:.8}
+.myword .hidebtn{margin-left:auto}
+
+/* 座位 */
+.seats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px}
+.seat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center;position:relative;transition:.18s}
+.seat.turn{border-color:var(--gold);box-shadow:0 0 14px rgba(240,192,64,.3)}
+.seat.out{opacity:.45;filter:grayscale(.8)}
+.seat .nm{font-size:13px;font-weight:600}
+.seat .tag{font-size:10px;opacity:.7;margin-top:2px}
+.seat .st{font-size:11px;margin-top:6px;color:var(--muted)}
+.seat .role{margin-top:6px;font-size:12px;font-weight:700}
+.seat .role.civ{color:#7fd8a0}.seat .role.spy{color:var(--spy)}
+.seat.votable{cursor:pointer;border-color:#6a4bb8}
+.seat.votable:hover{border-color:var(--gold);transform:translateY(-2px)}
+.seat .votemark{position:absolute;top:6px;right:8px;font-size:11px;color:var(--gold)}
+
+/* 描述区 */
+.descs{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.desc{display:flex;gap:8px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-left:3px solid #6a4bb8;border-radius:10px;padding:8px 10px;font-size:13px;line-height:1.6}
+.desc .who{color:var(--gold);font-weight:600;flex:0 0 auto}
+.desc .txt{flex:1}
+.desc .mine{border-left-color:var(--gold)}
+input[type=text],textarea{width:100%}
+.hintline{margin:8px 2px 0;font-size:13px;line-height:1.7;color:#c9bde3;min-height:40px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+
+/* 投票格子 */
+.votebox{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+.votebox h3{margin:0 0 8px;font-size:14px;color:var(--gold)}
+.votegrid{display:flex;gap:8px;flex-wrap:wrap}
+.votegrid button{min-width:120px;flex:1}
+
+/* 结算 */
+.result{background:var(--panel2);border:1px solid var(--gold);border-radius:12px;padding:12px;margin-bottom:10px;font-size:13px;line-height:1.8}
+.result b{color:var(--gold)}
+.end{position:fixed;inset:0;display:none;place-items:center;background:#07050cdd;text-align:center;padding:20px;z-index:60}
+.end.show{display:grid}
+.end h2{font-size:28px;color:var(--gold);margin:0 0 8px}
+.end .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;max-width:420px}
+.end .box p{font-size:13px;line-height:1.8;opacity:.85}
+
+/* ---- 联机面板 ---- */
+.p2p{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+.p2p h2{font-size:15px;margin:0 0 8px;color:var(--gold);letter-spacing:1px}
+.p2p p.note{font-size:12px;line-height:1.6;opacity:.75;margin:0 0 10px}
+.p2p-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.p2p-row input{flex:1;min-width:200px;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.code-box{width:100%;min-height:76px;padding:8px;font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.4;word-break:break-all;background:#0f0b1c;border:1px solid var(--line);border-radius:8px;color:var(--gold);resize:vertical}
+.p2p-state{font-size:12px;padding:6px 10px;border-radius:8px;background:#0f0b1c;border:1px solid #2b2348}
+.p2p-state.ok{border-color:#4caf6e;color:#8fdcab}
+.p2p-state.err{border-color:#e0483c;color:#f0a49c}
+.p2p-state.wait{border-color:var(--gold);color:var(--gold)}
+.steps{counter-reset:s;margin:0 0 10px;padding-left:20px;font-size:13px;line-height:1.8}
+@media(pointer:coarse){button,select,input{min-height:48px}}
+@media(max-width:430px){h1{font-size:17px}.bar{margin-left:0;width:100%}.bar button{flex:1;padding:0 8px;font-size:13px}.myword .word{font-size:22px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div><h1>谁是卧底</h1><p class="sub">描述 · 投票 · 揪出那个不一样的</p></div>
+  <div class="bar">
+    <select id="mode" aria-label="对局模式">
+      <option value="ai">人机对局</option>
+      <option value="hotseat">同屏多人</option>
+      <option value="p2p">纯 P2P 联机</option>
+    </select>
+    <select id="playercount" aria-label="玩家数">
+      <option value="3">3 人</option>
+      <option value="4" selected>4 人</option>
+      <option value="5">5 人</option>
+      <option value="6">6 人</option>
+    </select>
+    <button id="restart" type="button">新局</button>
+  </div>
+</header>
+
+<div class="status" aria-live="polite">
+  <span><b id="phase">进行中</b></span>
+  <span><b id="round">第 1 轮</b></span>
+  <span>卧底 <b id="spycount">1</b> 个</span>
+  <span id="modehint">人机：你 + 3 个 AI</span>
+</div>
+
+<!-- 同屏模式：轮流传手机看词 -->
+<div class="handout" id="handout" hidden>
+  <h3>请把手机交给 <b id="handout-name">玩家 1</b></h3>
+  <div class="handout-word" id="handout-word">···</div>
+  <button class="primary" id="btn-handout" type="button">查看我的词</button>
+</div>
+
+<!-- 我的词（只有自己看得到） -->
+<div class="myword" id="myword">
+  <div>
+    <div class="lbl">你的词</div>
+    <div class="word" id="mywordval">···</div>
+  </div>
+  <div class="hint" id="mywordhint"></div>
+  <button class="hidebtn" id="btn-peek" type="button">按住查看</button>
+</div>
+
+<!-- 座位 -->
+<div class="seats" id="seats"></div>
+
+<!-- 描述列表 -->
+<div class="descs" id="descs"></div>
+
+<!-- 投票区 -->
+<div class="votebox" id="votebox" hidden>
+  <h3 id="votetitle">指认谁是卧底</h3>
+  <div class="votegrid" id="votegrid"></div>
+</div>
+
+<!-- 描述输入 -->
+<div class="votebox" id="descbox" hidden>
+  <h3>你的描述（60 字以内，别直接说出你的词）</h3>
+  <input type="text" id="descin" maxlength="60" placeholder="用一句话描述你的词">
+  <div class="actions"><button class="primary" id="btn-desc" type="button">提交描述</button></div>
+</div>
+
+<!-- 结算 -->
+<div class="result" id="result" hidden></div>
+
+<p class="hintline" id="hint">每个人轮流描述一句话，然后投票指认卧底。</p>
+
+<!-- 终局 -->
+<div class="end" id="end"><div class="box"><h2 id="endtitle">游戏结束</h2><p id="enddesc"></p><button id="again" type="button">再来一局</button></div></div>
+
+<!-- 联机面板 -->
+<section class="p2p" id="p2p" hidden>
+  <h2>纯 P2P 联机 · 零服务器</h2>
+  <p class="note">
+    不经过任何服务器、不连任何第三方、不花钱、也不用改 IP —— 代价是要手动交换两段连接码。
+    用微信/短信把码发给对方就行。同一个 WiFi 下最稳；跨公网能否连上取决于双方网络环境。
+    <br>你只会拿到**自己的那一个词** —— 别人的词房主也不会告诉你，泄露了就没得玩了。
+  </p>
+
+  <div class="p2p-row" id="rolebar">
+    <button class="primary" id="btn-host" type="button">我来建房</button>
+    <button id="btn-join" type="button">我有房主码</button>
+  </div>
+
+  <div id="host-flow" hidden>
+    <ol class="steps">
+      <li>把下面这段【房主码】发给朋友</li>
+      <li>朋友会回你一段【加入码】，粘贴到下面</li>
+      <li>点「接受加入码」，通道就通了</li>
+    </ol>
+    <div class="p2p-row"><button id="btn-gen-host" class="primary" type="button">生成房主码</button>
+      <input id="host-pass" type="password" inputmode="numeric" placeholder="房间密码（可留空）" maxlength="12" style="max-width:180px"></div>
+    <textarea class="code-box" id="host-code" readonly placeholder="点上面「生成房主码」后，这里会出现一段码，复制发给朋友"></textarea>
+    <div class="p2p-row" style="margin-top:8px">
+      <textarea class="code-box" id="join-in" placeholder="把朋友发回的加入码粘贴到这里" style="min-height:60px"></textarea>
+    </div>
+    <div class="p2p-row"><button id="btn-accept" class="primary" type="button">接受加入码</button>
+      <button id="btn-copy-host" type="button">复制房主码</button></div>
+  </div>
+
+  <div id="guest-flow" hidden>
+    <ol class="steps">
+      <li>把朋友发来的【房主码】粘贴到下面</li>
+      <li>点「生成加入码」，把生成的码发回房主</li>
+      <li>房主接受后自动开局</li>
+    </ol>
+    <div class="p2p-row"><textarea class="code-box" id="host-in" placeholder="粘贴房主码到这里" style="min-height:60px"></textarea></div>
+    <div class="p2p-row"><button id="btn-gen-guest" class="primary" type="button">生成加入码</button>
+      <input id="guest-pass" type="password" inputmode="numeric" placeholder="房间密码" maxlength="12" style="max-width:180px"></div>
+    <textarea class="code-box" id="guest-code" readonly placeholder="生成后在这里，把这段码发回房主"></textarea>
+    <div class="p2p-row"><button id="btn-copy-guest" type="button">复制加入码</button></div>
+  </div>
+
+  <div class="p2p-row" style="margin-top:10px">
+    <span class="p2p-state wait" id="p2p-state">未连接</span>
+    <button id="btn-close" type="button">断开</button>
+  </div>
+</section>
+
+</div>
+<script type="module" src="./src/main.mjs"></script>
+</body>
+</html>

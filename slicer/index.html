@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>切片大师 · 划过水果的休闲切物游戏</title>
+<meta name="description" content="切片大师：按住划过水果把它切开，一次划过切中越多连击倍率越高；别碰炸弹，切冰冻蛋全场慢速。60 秒一局，每日一局与零服务器纯 P2P 联机。">
+<style>
+:root{
+  --paper:#f4efe4; --ink:#2a2118; --dim:#7a6b58; --line:#d8cdb8;
+  --red:#e0483c; --orange:#f7931e; --gold:#c8912f; --green:#3fb96b; --blue:#48b8e8;
+  --bg:#f4efe4;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:linear-gradient(180deg,#f7f2e7,#e9dfca);
+  color:var(--ink);font-family:"PingFang SC","Microsoft YaHei",-apple-system,system-ui,sans-serif;
+  -webkit-tap-highlight-color:transparent;
+}
+[hidden]{display:none!important}
+.wrap{max-width:min(100%,960px);margin:0 auto;padding:14px 12px 40px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+h1{margin:0;font-size:24px;letter-spacing:.5px}
+.sub{margin:2px 0 0;font-size:12px;color:var(--dim)}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+.bar .stat{background:rgba(255,255,255,.65);border:1px solid var(--line);border-radius:999px;padding:4px 12px;white-space:nowrap}
+.bar b{font-variant-numeric:tabular-nums}
+.modes{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.modes button{min-height:36px;padding:0 14px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.7);color:var(--ink);font-size:13px;cursor:pointer}
+.modes button.on{background:linear-gradient(180deg,var(--gold),#a87a22);color:#fff;font-weight:600;border-color:var(--gold)}
+.panel{background:rgba(255,255,255,.72);border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:10px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+.fieldwrap{position:relative;width:100%;aspect-ratio:1/1;max-width:560px;margin:0 auto;border-radius:14px;overflow:hidden;border:1px solid var(--line);box-shadow:inset 0 2px 8px rgba(0,0,0,.06)}
+#field{width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+.msg{text-align:center;font-size:14px;line-height:1.7;min-height:24px;color:var(--ink);margin:8px 0 0}
+.msg.ok{color:#1f7a4d}.msg.bad{color:#b8322a}.msg.dim{color:var(--dim)}
+.ctl{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px}
+.btn{min-height:44px;padding:0 20px;border-radius:11px;border:1px solid var(--line);background:#fff;color:var(--ink);font-size:14px;cursor:pointer}
+.btn.primary{background:linear-gradient(180deg,var(--gold),#a87a22);color:#fff;border-color:var(--gold);font-weight:600}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.hint{font-size:12px;color:var(--dim);text-align:center;margin-top:8px;line-height:1.7}
+.dailybar{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;font-size:12px;color:var(--dim);margin-top:8px}
+.dailybar span{background:rgba(255,255,255,.6);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+.p2p{background:rgba(255,255,255,.72);border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:10px}
+.p2p h2{margin:0 0 6px;font-size:15px}
+.note{font-size:12px;color:var(--dim);line-height:1.8;margin:0 0 10px}
+.steps{margin:0 0 10px;padding-left:20px;font-size:13px;line-height:1.9}
+.p2p-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.p2p-row input{flex:1;min-width:180px;min-height:40px;border-radius:9px;border:1px solid var(--line);padding:0 10px;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace}
+.p2p-state{font-size:12px;margin-top:8px;padding:6px 10px;border-radius:9px;background:rgba(0,0,0,.05)}
+.p2p-state.ok{color:#1f7a4d}.p2p-state.err{color:#b8322a}.p2p-state.wait{color:var(--dim)}
+.sheet{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.55)}
+.panel2{width:min(100%,420px);max-height:84vh;overflow:auto;background:#fff;border-radius:18px;padding:22px}
+.panel2 h2{margin:0 0 10px;font-size:18px}
+.panel2 p{font-size:13px;line-height:1.85;color:var(--dim);margin:0 0 10px}
+.grade{font-size:56px;font-weight:800;text-align:center;line-height:1;margin:6px 0 10px}
+.grade.gS{color:#c8912f}.grade.gA{color:#3fb96b}.grade.gB{color:#48b8e8}.grade.gC{color:#f7931e}.grade.gD{color:#7a6b58}
+.resgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 14px}
+.resgrid div{background:#f7f2e7;border:1px solid var(--line);border-radius:11px;padding:8px 10px;font-size:13px}
+.resgrid b{float:right;font-variant-numeric:tabular-nums}
+@media (pointer:coarse){button,input{min-height:48px}}
+@media(max-width:430px){h1{font-size:20px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>切片大师</h1>
+      <p class="sub">按住划过水果把它切开 · 一次划过切中越多倍率越高 · 别碰炸弹</p>
+    </div>
+    <div class="bar">
+      <div class="stat">得分 <b id="score">0</b></div>
+      <div class="stat">时间 <b id="time">60</b></div>
+      <div class="stat">连击 <b id="combo">0</b></div>
+      <div class="stat">炸弹 <b id="bombs">0/3</b></div>
+      <div class="stat">最高 <b id="best">0</b></div>
+      <div class="stat">金币 <b id="coins">0</b></div>
+      <button class="btn" id="btn-info" style="min-height:30px;padding:0 10px">规则</button>
+    </div>
+  </div>
+
+  <div class="modes">
+    <button type="button" id="mode-solo" class="on">单人</button>
+    <button type="button" id="mode-daily">每日一局</button>
+    <button type="button" id="mode-p2p">纯 P2P 联机</button>
+  </div>
+
+  <section class="p2p" id="p2p" hidden>
+    <h2>纯 P2P 联机 · 零服务器</h2>
+    <p class="note">
+      不经过任何服务器、不连任何第三方、不花钱、也不用改 IP —— 代价是要手动交换两段连接码。<br>
+      <b>轨迹走独立通道</b>：你划过的每一刀（几十个坐标点）单独发，不塞进权威动作序列。<br>
+      <b>结算各自算</b>：出现顺序完全由公开种子推导，双方用同一套规则各自结算，
+      所以最终分数必然一致；房主想改分数，他广播的分数跟自己广播的轨迹对不上，当场就被发现。
+    </p>
+    <div class="p2p-row" id="rolebar">
+      <button class="btn primary" id="btn-host" type="button">我来建房</button>
+      <button class="btn" id="btn-join" type="button">我有房主码</button>
+    </div>
+    <div id="host-flow" hidden>
+      <ol class="steps">
+        <li>把下面这段【房主码】发给朋友</li>
+        <li>朋友会回你一段【加入码】，粘贴到下面</li>
+        <li>点「接受加入码」，通道就通了</li>
+      </ol>
+      <div class="p2p-row"><button class="btn primary" id="btn-gen-host" type="button">生成房主码</button>
+      <input id="host-code" readonly placeholder="房主码"></div>
+      <div class="p2p-row"><button class="btn" id="btn-copy-host" type="button">复制房主码</button></div>
+      <div class="p2p-row"><input id="join-in" placeholder="粘贴朋友的加入码"></div>
+      <div class="p2p-row"><button class="btn primary" id="btn-accept" type="button">接受加入码</button></div>
+      <div class="p2p-row"><input id="host-pass" placeholder="房间密码（可留空）"></div>
+    </div>
+    <div id="guest-flow" hidden>
+      <ol class="steps">
+        <li>把朋友给你的【房主码】粘到下面</li>
+        <li>点「生成加入码」，把加入码发回给朋友</li>
+      </ol>
+      <div class="p2p-row"><input id="host-in" placeholder="粘贴房主码"></div>
+      <div class="p2p-row"><input id="host-pass" placeholder="房间密码（可留空）"></div>
+      <div class="p2p-row"><button class="btn primary" id="btn-gen-guest" type="button">生成加入码</button></div>
+      <div class="p2p-row"><input id="guest-code" readonly placeholder="加入码"></div>
+      <div class="p2p-row"><button class="btn" id="btn-copy-guest" type="button">复制加入码</button></div>
+    </div>
+    <div class="p2p-state" id="p2p-state">未连接</div>
+  </section>
+
+  <section class="panel">
+    <div class="fieldwrap">
+      <canvas id="field" width="600" height="600"></canvas>
+    </div>
+    <div class="msg" id="msg">按住屏幕划过水果</div>
+    <div class="ctl">
+      <button class="btn primary" id="btn-new">开局</button>
+      <button class="btn" id="btn-close" hidden>断开连接</button>
+    </div>
+    <div class="hint" id="hint">按住并划过水果 —— 一次划过切中越多，连击倍率越高。</div>
+    <div class="dailybar">
+      <span>每日最佳 <b id="daily-best">0</b></span>
+      <span>今日种子 <b id="daily-seed">-</b></span>
+    </div>
+  </section>
+
+  <div class="sheet" id="over" hidden>
+    <div class="panel2">
+      <h2 style="text-align:center">本局结算</h2>
+      <div class="grade" id="over-grade">D</div>
+      <div class="resgrid">
+        <div>得分 <b id="over-score">0</b></div>
+        <div>最佳连击 <b id="over-combo">0</b></div>
+        <div>切中水果 <b id="over-fruit">0</b></div>
+        <div>误切炸弹 <b id="over-bombs">0</b></div>
+      </div>
+      <p style="text-align:center;font-size:12px">本局种子 <b id="over-seed">0</b></p>
+      <div class="ctl"><button class="btn primary" id="over-again">再来一局</button>
+      <button class="btn" id="over-close">看看场面</button></div>
+    </div>
+  </div>
+
+  <div class="sheet" id="info" hidden>
+    <div class="panel2">
+      <h2>切片大师怎么玩</h2>
+      <p>
+        <b>目标</b>：60 秒内划过尽可能多的水果，拿高分、拿高评价。<br><br>
+        <b>怎么切</b>：按住鼠标或手指，在屏幕上<b>划一条线</b>。线扫过的水果会被切成两半。
+        水果越小分越高（葡萄 20 分，西瓜 12 分）。<br><br>
+        <b>连击</b>：一次划过切中多个水果 → 倍率叠加（2 个 ×1.5，3 个 ×2，最多 ×4）。<br><br>
+        <b>炸弹</b>：切到扣 25 分、连击清零；一共切到 3 颗就直接判负结束。<br><br>
+        <b>冰冻蛋</b>：切到后全场慢速 5 秒，好切但也少赚分。<br><br>
+        <b>磁铁星</b>：切到后周围的东西被吸过来，容易串成一刀多切。<br><br>
+        <b>难度</b>：越到后面掉得越快、刷得越密、炸弹越多。<br><br>
+        <b>每日一局</b>：按日期派生种子，同一天所有人的出现顺序完全一样，比的就是手速。<br><br>
+        <b>纯 P2P 联机</b>：不需要服务器，但要把两段连接码互发一下。
+        轨迹走独立通道传，结算双方各自按公开种子算 —— 房主改不了分数。
+      </p>
+      <div class="ctl"><button class="btn primary" id="info-close">知道了</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* file:// 兜底：Chrome 下 file:// 协议会用 CORS 拦掉 ES 模块（ES module 走的是跨源请求）。
+   源码目录直接双击打开时，改加载构建出来的 classic 兜底包（内容与 src/main.mjs 完全一致）。
+   正常 http/https 下这段不做事，走下面的 module 入口。 */
+(function () {
+  if (location.protocol.indexOf('file:') !== 0) return;
+  window.addEventListener('error', function (e) {
+    var t = e.target;
+    if (!t || t.tagName !== 'SCRIPT') return;
+    if ((t.src || '').indexOf('/src/main.mjs') < 0) return;
+    if (window.__slicerClassic) return;
+    window.__slicerClassic = true;
+    var s = document.createElement('script');
+    s.src = './src/slicer.classic.js';
+    (document.body || document.head).appendChild(s);
+  }, true);
+})();
+</script>
+<script type="module" src="./src/main.mjs"></script>
+</body>
+</html>

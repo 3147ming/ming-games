@@ -99,23 +99,48 @@
     return el;
   }
 
+  /* 四大频道：与线上首页（根 index.html）保持同一套归类。
+     channel 字段来自 games.json，改归类只改那一处。 */
+  var CHANNELS = [
+    { id: 'casual', name: '休闲小游戏', desc: '点开就能玩，一局几分钟' },
+    { id: 'party',  name: '多人派对',   desc: '热座或纯 P2P，和朋友一起' },
+    { id: 'board',  name: '策略棋牌',   desc: '动脑子的慢局，棋与牌' },
+    { id: 'tool',   name: '实用工具',   desc: '学习、实验、日常用得上' }
+  ];
+  var CHANNEL_BY_ID = Object.create(null);
+  CHANNELS.forEach(function (c) { CHANNEL_BY_ID[c.id] = c; });
+  /* 未知 channel 兜到休闲，不至于凭空消失。 */
+  games.forEach(function (g) { if (!CHANNEL_BY_ID[g.channel]) g.channel = 'casual'; });
+
   function renderGrid() {
     if (!grid) return;
     grid.innerHTML = '';
-    var main = games.filter(function (g) { return g.tag !== 'custom'; });
-    var custom = games.filter(function (g) { return g.tag === 'custom'; });
-    // 工坊放民间规则栏首位
-    custom.sort(function (a, b) { return (a.id === 'rulecraft' ? -1 : b.id === 'rulecraft' ? 1 : 0); });
-    main.forEach(function (g) { grid.appendChild(makeCard(g)); });
-    if (custom.length) {
+    CHANNELS.forEach(function (c) {
+      var inChan = games.filter(function (g) { return g.channel === c.id; });
+      if (!inChan.length) return;
+      var main = inChan.filter(function (g) { return g.tag !== 'custom'; });
+      var custom = inChan.filter(function (g) { return g.tag === 'custom'; });
+      // 工坊放民间规则栏首位
+      custom.sort(function (a, b) { return (a.id === 'rulecraft' ? -1 : b.id === 'rulecraft' ? 1 : 0); });
+
       var sec = document.createElement('section');
-      sec.className = 'hub-section custom-section';
-      sec.innerHTML = '<h2 class="hub-section-title">民间规则 <small>自己做一款 · 冷知识标签</small></h2>' +
+      sec.className = 'hub-section chan-section';
+      sec.dataset.channel = c.id;
+      sec.innerHTML = '<div class="chan-head"><h2>' + esc(c.name) + '</h2>' +
+        '<small>' + esc(c.desc) + '</small>' +
+        '<span class="chan-count">' + inChan.length + ' 款</span></div>' +
         '<div class="hub-section-grid"></div>';
       var sub = sec.querySelector('.hub-section-grid');
-      custom.forEach(function (g) { sub.appendChild(makeCard(g)); });
+      main.forEach(function (g) { sub.appendChild(makeCard(g)); });
+      if (custom.length) {
+        var csub = document.createElement('div');
+        csub.className = 'hub-section-grid';
+        csub.style.marginTop = '14px';
+        custom.forEach(function (g) { csub.appendChild(makeCard(g)); });
+        sub.appendChild(csub);
+      }
       grid.appendChild(sec);
-    }
+    });
   }
 
   var bridge = globalThis.HubBridge.createParent({

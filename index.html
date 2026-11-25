@@ -99,6 +99,43 @@
     border-color: var(--flux); color: var(--flux); background: rgba(168,154,230,.13);
   }
   .hub-count { margin: 0; font-size: 11px; letter-spacing: .1em; color: var(--paper-dim); }
+
+  /* ---- 频道条：一级分类（四大频道），比 tag-chip 更大更醒目 ---- */
+  .hub-channels {
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px;
+  }
+  .chan-chip {
+    min-height: 52px; padding: 7px 12px;
+    border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.02);
+    color: var(--paper-dim); font-family: inherit; text-align: left;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+    transition: border-color .15s, color .15s, background .15s, transform .1s;
+    display: flex; flex-direction: column; justify-content: center; gap: 2px;
+    min-width: 0; overflow: hidden;
+  }
+  .chan-chip b { font-size: 14px; font-weight: 600; color: var(--paper); letter-spacing: .02em; }
+  .chan-chip small {
+    font-size: 10px; letter-spacing: .04em; opacity: .72;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .chan-chip:hover { border-color: rgba(214,171,88,.5); background: rgba(214,171,88,.06); }
+  .chan-chip:active { transform: scale(.97); }
+  .chan-chip:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .chan-chip[aria-pressed="true"] {
+    border-color: var(--gold); background: rgba(214,171,88,.13);
+  }
+  .chan-chip[aria-pressed="true"] b { color: var(--gold); }
+
+  /* ---- 频道分组标题（网格内的 section） ---- */
+  .chan-section { grid-column: 1 / -1; margin-top: 18px; }
+  .chan-section:first-child { margin-top: 4px; }
+  .chan-head { display: flex; align-items: baseline; gap: 10px; margin: 0 0 12px; }
+  .chan-head h2 { margin: 0; font-size: 16px; color: var(--gold); letter-spacing: .04em; }
+  .chan-head small { font-size: 11px; color: var(--paper-dim); letter-spacing: .04em; }
+  .chan-count {
+    margin-left: auto; font-size: 11px; color: var(--paper-dim); letter-spacing: .08em;
+  }
+  .chan-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); align-items: start; }
   .hub-count[hidden] { display: none; }
 
   /* ---------- 最近在玩（横向列表，空态整块隐藏） ---------- */
@@ -371,6 +408,17 @@
     .hub-modal { align-items: center; padding: 24px; }
     .hub-sheet { border-radius: 18px; }
   }
+
+  /* 窄屏：频道条从 5 列变 2 列（+「全部」独占一行太浪费，改成 3 列两行）。
+     5 列在 360px 宽下每个只剩 60px，频道名会被截成「实用工…」，所以必须换行。 */
+  @media (max-width: 560px) {
+    .hub-channels { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+    .chan-chip { min-height: 46px; padding: 6px 10px; }
+    .chan-chip b { font-size: 13px; }
+    .chan-chip small { font-size: 9.5px; }
+    .chan-head { flex-wrap: wrap; gap: 4px 8px; }
+    .chan-head small { width: 100%; order: 3; }
+  }
 </style>
 </head>
 <body>
@@ -395,6 +443,7 @@
         <button id="btn-board" class="chip" type="button">📊 排行榜</button>
         <button id="btn-daily" class="chip" type="button">📅 每日挑战</button>
       </div>
+      <div class="hub-channels" id="channels" role="group" aria-label="按频道筛选"></div>
       <div class="hub-tags" id="tags" role="group" aria-label="按分类筛选分类"></div>
       <p class="hub-count" id="count" hidden></p>
     </section>
@@ -451,6 +500,9 @@ const GAMES = [
     desc: '十分钟单局生存割草。四把武器、三系职业、秽气进化、长期成长与转生。',
     kw: '荒野 割草 生存 肉鸽 roguelike 转生 武器 职业',
     tag: '动作',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/wild.png',
     ar: '780 / 1688',
     url: 'wild/',
@@ -465,6 +517,9 @@ const GAMES = [
     desc: '3D 第一人称撤离射击。搜物资 → 交火变硬 → 活着撤离，带出去的才是你的。',
     kw: '搜打撤 撤离 射击 塔科夫 FPS 3D 战利品 军械商',
     tag: '射击',
+    channel: 'party',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/raid.png',
     ar: '1280 / 800',
     url: 'soudache/',
@@ -479,6 +534,9 @@ const GAMES = [
     desc: '每一世只带回一张牌的卡牌肉鸽。你是死在第九层的无名氏，轮回不止。',
     kw: '一世一牌 卡牌 肉鸽 roguelike 轮回 流派 遗物 难度阶梯',
     tag: '卡牌',
+    channel: 'board',
+    players: '多人',
+    multiplayer: 'hotseat',
     cover: 'covers/card.png',
     ar: '780 / 1688',
     url: 'one-card/',
@@ -493,6 +551,9 @@ const GAMES = [
     desc: '53 款脑力小游戏：记忆 / 反应 / 视觉 / 数学 / 益智，九大类每日开练。',
     kw: '脑力 训练 记忆 反应 视觉 数学 益智 小游戏 每日挑战',
     tag: '益智',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/gym.png',
     ar: '1280 / 800',
     url: 'brain-gym/',
@@ -507,6 +568,9 @@ const GAMES = [
     desc: '深夜营业的 3D 模拟经营。补货、收银、应付奇奇怪怪的夜客，撑过七个夜班。',
     kw: '夜班 便利店 模拟 经营 收银 补货 3D 上班',
     tag: '模拟',
+    channel: 'tool',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/sim.png',
     ar: '1280 / 800',
     url: 'night-shift/',
@@ -520,7 +584,10 @@ const GAMES = [
     en: 'Zhaoyun',
     desc: '水墨风塔防原型。长坂坡七进七出，护住阿斗突出重围。',
     kw: '赵云 阿斗 三国 塔防 水墨 长坂坡 修罗八阵 今日之战',
-    tag: '策略',
+    tag: '塔防',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/zhaoyun.png',
     ar: '780 / 1688',
     url: 'zhaoyun/',
@@ -534,7 +601,10 @@ const GAMES = [
     en: 'Quiz',
     desc: '百词斩式分类刷题：分类书架 / 实力检测 / AI 建题库 / 错题本 / 背景音乐。',
     kw: '问答 刷题 题库 错题本 知识 测验 选择题',
-    tag: '益智',
+    tag: '答题',
+    channel: 'tool',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/quiz.png',
     ar: '1200 / 1600',
     url: 'quiz/',
@@ -548,7 +618,10 @@ const GAMES = [
     en: 'Circuit Lab',
     desc: '面包板 / 数字实验箱上搭电路，实时算直流、数字与暂态，配万用表、示波器和 8 个示例实验。',
     kw: '电路 面包板 示波器 万用表 物理 实验 模拟 数字电路',
-    tag: '模拟',
+    tag: '教学',
+    channel: 'tool',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/lab.png',
     ar: '1280 / 800',
     url: 'circuit-lab/',
@@ -563,6 +636,9 @@ const GAMES = [
     desc: '旧纸上的文字解谜：13 个房间、40 件物品、12 条配方、7 个谜题、4 个结局，线索全在字里行间。',
     kw: '解谜 密室 文字 逃脱 推理解谜 纸 房间 结局',
     tag: '解谜',
+    channel: 'casual',
+    players: '多人',
+    multiplayer: 'hotseat',
     cover: 'covers/paper-maze.png',
     ar: '1280 / 800',
     url: 'paper-maze/',
@@ -577,6 +653,9 @@ const GAMES = [
     desc: '程序化音游：4 曲 × 3 难度共 12 张谱面，谱面与音乐同源生成，判定精确到毫秒。',
     kw: '音游 节奏 音乐 判定 连击 霓虹 4轨 rhythm',
     tag: '音游',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/neon-rhythm.png',
     ar: '1280 / 800',
     url: 'neon-rhythm/',
@@ -590,7 +669,10 @@ const GAMES = [
     en: 'Pixel Runner',
     desc: '一键无尽跑酷：二段跳 + 滑铲 + 近失奖励，三种障碍三种道具，像素风全程序化绘制。',
     kw: '跑酷 像素 无尽 跳跃 滑铲 jump runner 街机',
-    tag: '街机',
+    tag: '跑酷',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/pixel-runner.png',
     ar: '1280 / 800',
     url: 'pixel-runner/',
@@ -605,6 +687,9 @@ const GAMES = [
     desc: '真 3D 战场割草：百人同屏、三兵种各异（刀兵基准 / 枪兵远而脆 / 斧兵重而慢），精英队长带号令光环，Boss 三招含突进斩，局末评级 S/A/B/C。',
     kw: '割草 三国 战场 3d 无双 肉鸽 roguelike 兵种 精英 boss 评级',
     tag: '动作',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/grass-cutter.png',
     ar: '1280 / 800',
     url: 'grass-cutter/',
@@ -619,6 +704,9 @@ const GAMES = [
     desc: '回合制战棋：剑/弓/术三方克制（1.3 ↔ 0.8 不取倒数，给劣势方留反打空间），林地/山地/水泽改变走位与防御，8×6 网格，局末 S/A/B/C 评级。',
     kw: '战棋 回合制 山海经 三国 塔防 tactics srpg 克制 网格',
     tag: '战棋',
+    channel: 'board',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/shanhai.png',
     ar: '1280 / 800',
     url: 'shanhai/',
@@ -633,6 +721,9 @@ const GAMES = [
     desc: '三张牌凑同花、顺子、豹子比大小，押注与连胜的卡牌博弈。',
     kw: '卡牌 扑克 三张牌 同花 顺子 豹子 博弈',
     tag: '卡牌',
+    channel: 'board',
+    players: '多人',
+    multiplayer: 'hotseat',
     cover: 'covers/trio-v2.png',
     ar: '1280 / 800',
     url: 'trio/',
@@ -647,6 +738,9 @@ const GAMES = [
     desc: '4×4/6×6/9×9 三级数独，计时挑战、提示与每日一题。',
     kw: '数独 益智 数字 逻辑 每日 计时',
     tag: '益智',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/sudoku-v2.png',
     ar: '1280 / 800',
     url: 'sudoku/',
@@ -661,6 +755,9 @@ const GAMES = [
     desc: '3×3/4×4 数字华容道，最少步数挑战与每日固定盘面。',
     kw: '华容道 滑块 解谜 数字 最少步数',
     tag: '解谜',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/slide-v2.png',
     ar: '1280 / 800',
     url: 'slide/',
@@ -675,19 +772,26 @@ const GAMES = [
     desc: '经典打砖块：多球、加宽、激光道具，关卡递进。',
     kw: '打砖块 街机 弹球 道具 关卡',
     tag: '街机',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/brick-v2.png',
     ar: '1280 / 800',
     url: 'brick/',
     status: 'live',
     order: 17,
     orientation: 'portrait',
-  },  {
+  },
+  {
     id: 'diner',
     name: '深夜食堂',
     en: 'Midnight Diner',
     desc: '摆摊经营：看清客单按序配菜，30 秒营业赚金币，连击有加成。',
     kw: '模拟 经营 食堂 摆摊 配菜 客人',
     tag: '模拟',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/diner-v2.png',
     ar: '1280 / 800',
     url: 'diner/',
@@ -702,6 +806,9 @@ const GAMES = [
     desc: '6×6 棋盘包围翻转，与 AI 对弈争夺领土。',
     kw: '策略 棋盘 包围 翻转 黑白棋 AI',
     tag: '策略',
+    channel: 'board',
+    players: '多人',
+    multiplayer: 'hotseat',
     cover: 'covers/territory-v2.png',
     ar: '1280 / 800',
     url: 'territory/',
@@ -716,6 +823,9 @@ const GAMES = [
     desc: '四键下落式打拍，PERFECT/GREAT 判定与连击加成，每日固定谱面。',
     kw: '音游 节奏 下落 四键 连击 判定',
     tag: '音游',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/tap-v2.png',
     ar: '1280 / 800',
     url: 'tap/',
@@ -726,10 +836,12 @@ const GAMES = [
   {
     id: 'liar',
     name: '骗子酒馆',
-    en: "Liar's Bar",
-    desc: '吹牛骰子心理博弈，叫牌与质疑的酒馆对决。',
+    desc: '吹牛骰子心理博弈，叫牌与质疑的酒馆对决。人机对局，以及零服务器的纯 P2P 联机（骰子各摇各的，房主也算不出你的点数）。',
     kw: '卡牌 骰子 吹牛 心理 博弈',
     tag: '卡牌',
+    channel: 'party',
+    players: '多人',
+    multiplayer: 'p2p',
     cover: 'covers/liar.png',
     ar: '1280 / 800',
     url: 'liar/',
@@ -744,6 +856,9 @@ const GAMES = [
     desc: '经典三人扑克，叫地主、出牌型、炸弹王炸与 AI 对弈。',
     kw: '卡牌 斗地主 扑克 炸弹 地主',
     tag: '卡牌',
+    channel: 'board',
+    players: '多人',
+    multiplayer: 'hotseat',
     cover: 'covers/doudizhu.png',
     ar: '1280 / 800',
     url: 'doudizhu/',
@@ -758,6 +873,9 @@ const GAMES = [
     desc: '民间热门抢分扑克，5/10/K 凑分，先到 100 分获胜。',
     kw: '卡牌 510K 抢分 扑克 民间',
     tag: '卡牌',
+    channel: 'board',
+    players: '多人',
+    multiplayer: 'hotseat',
     cover: 'covers/wuyouk.png',
     ar: '1280 / 800',
     url: 'wuyouk/',
@@ -772,6 +890,9 @@ const GAMES = [
     desc: '四人找朋友，红蓝两队暗配队友，同心协力赢墩得分。',
     kw: '卡牌 找朋友 配合 同心 四家',
     tag: '卡牌',
+    channel: 'party',
+    players: '多人',
+    multiplayer: 'hotseat',
     cover: 'covers/tongxin.png',
     ar: '1280 / 800',
     url: 'tongxin/',
@@ -786,6 +907,9 @@ const GAMES = [
     desc: '三轨切换、跳跃滑铲、躲列车收金币的无限跑酷。',
     kw: '跑酷 地铁 三轨 跳跃 滑铲 街机',
     tag: '街机',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/metro-runner.png',
     ar: '1280 / 800',
     url: 'metro-runner/',
@@ -800,6 +924,9 @@ const GAMES = [
     desc: '紫夜荒原的弓手对决：5 大关 20 波推进，装备跨局保留，词条叠加成 build，局外商店补强。',
     kw: '弓箭 对决 抛物线 射击 火柴人 关卡 装备 词条 跨局 肉鸽 archery',
     tag: '射击',
+    channel: 'party',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/archer.webp',
     ar: '1280 / 800',
     url: 'archer/',
@@ -808,15 +935,52 @@ const GAMES = [
     orientation: 'landscape',
   },
   {
+    id: 'dragonchess',
+    name: '龙凤棋',
+    en: 'Dragon Chess',
+    desc: '三层同心方格的民间棋，成龙吃子、满天飞、打炮，双档 AI 对弈。',
+    kw: '龙凤棋 龙棋 成龙 满天飞 打炮 策略',
+    tag: '策略',
+    channel: 'board',
+    players: '多人',
+    multiplayer: 'hotseat',
+    cover: 'covers/dragonchess.png',
+    ar: '1280 / 800',
+    url: 'dragonchess/',
+    status: 'live',
+    order: 27,
+    orientation: 'portrait',
+  },
+  {
     id: 'jigsaw',
     name: '喵篮拼图',
     en: 'Cat Basket Jigsaw',
     desc: '12 张治愈插画 × 3 档片数共 36 关：拖拽拼片、限量提示、计步计时评星、图鉴收集。',
     kw: '拼图 益智 猫咪 花篮 花卉 拖拽 关卡 图鉴 jigsaw puzzle',
     tag: '益智',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/jigsaw.webp',
     ar: '780 / 1040',
     url: 'jigsaw/',
+    status: 'live',
+    order: 28,
+    orientation: 'portrait',
+  },
+  {
+    id: 'mahjong',
+    name: '麻将',
+    en: 'Mahjong',
+    desc: '136 张四人局，碰杠胡与七对，番型明细结算，断线可续局。',
+    kw: '麻将 碰杠胡 七对 清一色 益智',
+    tag: '益智',
+    channel: 'board',
+    players: '多人',
+    multiplayer: 'hotseat',
+    cover: 'covers/mahjong.png',
+    ar: '1280 / 800',
+    url: 'mahjong/',
     status: 'live',
     order: 28,
     orientation: 'portrait',
@@ -828,53 +992,14 @@ const GAMES = [
     desc: '上床躺平产金币，升级床与门、建炮台，三个房间 15 波守夜迎战 Boss，支持 1/2/4 倍速。',
     kw: '躺平 塔防 守夜 睡觉 炮台 发育 倍速 boss 关卡 defense',
     tag: '塔防',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'none',
     cover: 'covers/sleeper.webp',
     ar: '780 / 1040',
     url: 'sleeper/',
     status: 'live',
     order: 29,
-    orientation: 'portrait',
-  },
-  {
-    id: 'legion',
-    name: '雪国军团',
-    en: 'Snow Legion',
-    desc: '雪地军团自动推进：6 关递进、双 Boss 中场、三类敌军，技能三选一与暴风雪大招成长。',
-    kw: '军团 自走棋 塔防 雪地 兵种 大招 技能三选一 boss 关卡 legion',
-    tag: '策略',
-    cover: 'covers/legion.webp',
-    ar: '780 / 1040',
-    url: 'legion/',
-    status: 'live',
-    order: 30,
-    orientation: 'portrait',
-  },
-  {
-    id: 'dragonchess',
-    name: '龙凤棋',
-    en: 'Dragon Chess',
-    desc: '三层同心方格的民间棋，成龙吃子、满天飞、打炮，双档 AI 对弈。',
-    kw: '龙凤棋 龙棋 成龙 满天飞 打炮 策略',
-    tag: '策略',
-    cover: 'covers/dragonchess.png',
-    ar: '1280 / 800',
-    url: 'dragonchess/',
-    status: 'live',
-    order: 27,
-    orientation: 'portrait',
-  },
-  {
-    id: 'mahjong',
-    name: '麻将',
-    en: 'Mahjong',
-    desc: '136 张四人局，碰杠胡与七对，番型明细结算，断线可续局。',
-    kw: '麻将 碰杠胡 七对 清一色 益智',
-    tag: '益智',
-    cover: 'covers/mahjong.png',
-    ar: '1280 / 800',
-    url: 'mahjong/',
-    status: 'live',
-    order: 28,
     orientation: 'portrait',
   },
   {
@@ -884,12 +1009,32 @@ const GAMES = [
     desc: '用中文描述生成可玩规则：RuleSet、规则书、程序化棋子、AI 对手与追问迭代。',
     kw: '规则工坊 自定义规则 规则生成 棋类 益智',
     tag: 'custom',
-    funFact: '自己做一款 · 本地生成零 API',
+    channel: 'tool',
+    players: '多人',
+    multiplayer: 'hotseat',
     cover: 'covers/rulecraft.png',
     ar: '1280 / 800',
     url: 'rulecraft/',
     status: 'live',
     order: 29,
+    orientation: 'portrait',
+    funFact: '自己做一款 · 本地生成零 API',
+  },
+  {
+    id: 'legion',
+    name: '雪国军团',
+    en: 'Snow Legion',
+    desc: '雪地军团自动推进：6 关递进、双 Boss 中场、三类敌军，技能三选一与暴风雪大招成长。',
+    kw: '军团 自走棋 塔防 雪地 兵种 大招 技能三选一 boss 关卡 legion',
+    tag: '策略',
+    channel: 'board',
+    players: '单人',
+    multiplayer: 'none',
+    cover: 'covers/legion.webp',
+    ar: '780 / 1040',
+    url: 'legion/',
+    status: 'live',
+    order: 30,
     orientation: 'portrait',
   },
   {
@@ -899,14 +1044,221 @@ const GAMES = [
     desc: '3 副 156 张，5-10-K 特殊牌型与炸弹共用牌力阶梯，本地 AI 三人局。',
     kw: '回牌 扑克 5-10-K 牌力阶梯 民间 牌类',
     tag: 'custom',
-    funFact: '3 副牌 · 5-10-K 特殊牌型',
+    channel: 'board',
+    players: '多人',
+    multiplayer: 'hotseat',
     cover: 'covers/huipai.png',
     ar: '1280 / 800',
     url: 'huipai/',
     status: 'live',
     order: 30,
     orientation: 'portrait',
+    funFact: '3 副牌 · 5-10-K 特殊牌型',
   },
+  {
+    id: 'gomoku',
+    name: '五子棋',
+    en: 'Gomoku',
+    desc: '15×15 棋盘，黑先，五连即胜。人机、同屏双人，以及零服务器的纯 P2P 联机。',
+    kw: '五子棋 五子连珠 棋 棋牌 黑白棋 人机 联机 gomoku 五子',
+    tag: '棋牌',
+    channel: 'board',
+    players: '双人',
+    multiplayer: 'hotseat',
+    cover: 'covers/gomoku.png',
+    ar: '1280 / 800',
+    url: 'gomoku/',
+    status: 'live',
+    order: 40,
+    orientation: 'landscape',
+  },
+  {
+    id: 'party-tools',
+    name: '聚会工具箱',
+    en: 'Party Tools',
+    desc: '随机分组、多面骰、转盘、抽签、计分板五件套。聚会前打开就能用，名单和分数都只存在本机。',
+    kw: '聚会 工具 分组 骰子 转盘 抽签 计分 随机 派对 聚会工具箱',
+    tag: '工具',
+    channel: 'tool',
+    players: '单人',
+    multiplayer: 'none',
+    cover: 'covers/party-tools.png',
+    ar: '1280 / 800',
+    url: 'party-tools/',
+    status: 'live',
+    order: 41,
+    orientation: 'landscape',
+  },
+  {
+    id: 'connect4',
+    name: '四子棋',
+    en: 'Connect Four',
+    desc: '7×6 竖盘重力落子，四连即胜。人机、同屏双人，以及零服务器的纯 P2P 联机。',
+    kw: '四子棋 四子 连珠 棋 棋牌 落子 重力 联机 connect4',
+    tag: '棋牌',
+    channel: 'board',
+    players: '双人',
+    multiplayer: 'hotseat',
+    cover: 'covers/connect4.png',
+    ar: '1280 / 800',
+    url: 'connect4/',
+    status: 'live',
+    order: 42,
+    orientation: 'landscape',
+  },
+  {
+    id: 'uno',
+    name: 'UNO 彩牌',
+    en: 'UNO',
+    desc: '四色数字牌加万能牌，手牌出完即胜。人机、同屏双人，以及零服务器的纯 P2P 联机。',
+    kw: 'UNO 彩牌  uno 纸牌 接龙 数字牌 万能牌 联机 棋牌',
+    tag: '棋牌',
+    channel: 'board',
+    players: '双人',
+    multiplayer: 'hotseat',
+    cover: 'covers/uno.png',
+    ar: '1280 / 800',
+    url: 'uno/',
+    status: 'live',
+    order: 43,
+    orientation: 'landscape',
+  },
+  {
+    id: 'undercover',
+    name: '谁是卧底',
+    en: 'Undercover',
+    desc: '描述、投票、揪出卧底。人机、同屏多人，以及零服务器的纯 P2P 联机（你的词只有你自己看得到）。',
+    kw: '谁是卧底 卧底 描述 投票 派对 身份推理 联机 undercover',
+    tag: '派对',
+    channel: 'party',
+    players: '多人',
+    multiplayer: 'hotseat',
+    cover: 'covers/undercover.png',
+    ar: '1280 / 800',
+    url: 'undercover/',
+    status: 'live',
+    order: 44,
+    orientation: 'landscape',
+  },
+  {
+    id: 'drawguess',
+    name: '你画我猜',
+    en: 'Draw & Guess',
+    desc: '一个人画，其余的人猜。人机对练、同屏派对，以及零服务器的纯 P2P 联机（画师手上的词只有他自己看得到）。',
+    kw: '你画我猜 画画 猜词 涂鸦 派对 联机 pictionary drawguess',
+    tag: '派对',
+    channel: 'party',
+    players: '多人',
+    multiplayer: 'hotseat',
+    cover: 'covers/drawguess.png',
+    ar: '1280 / 800',
+    url: 'drawguess/',
+    status: 'live',
+    order: 45,
+    orientation: 'landscape',
+  },
+  {
+    id: 'ludo',
+    name: '飞行棋',
+    en: 'Ludo',
+    desc: '经典飞行棋：4 色 16 颗棋子，掷 6 起飞、飞跃点、撞机、终点通道。人机对局，以及零服务器的纯 P2P 联机（点数是双方各自算出来的，房主改不了）。',
+    kw: '飞行棋 骰子 棋盘 经典 派对 联机 ludo aeroplane chess',
+    tag: '棋牌',
+    channel: 'board',
+    players: '多人',
+    multiplayer: 'p2p',
+    cover: 'covers/ludo.png',
+    ar: '1280 / 800',
+    url: 'ludo/',
+    status: 'live',
+    order: 46,
+    orientation: 'landscape',
+  },
+  {
+    id: 'shanhai-merge',
+    name: '山海合成',
+    en: 'Shanhai Merge',
+    desc: '把两只同阶上古神兽叠在一起合体升级，合出饕餮即胜。支持每日固定局比分数、一键撤销与步数挑战。',
+    kw: '山海合成 合成 消消乐 灵兽 神兽 每日挑战 撤销 shanhai merge puzzle',
+    tag: '休闲',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'none',
+    cover: 'covers/shanhai-merge.png',
+    ar: '1280 / 800',
+    url: 'shanhai-merge/',
+    status: 'live',
+    order: 47,
+    orientation: 'landscape',
+  },
+  {
+    id: 'blast',
+    name: '方块爆破',
+    en: 'Blast Chain',
+    desc: '点一格炸开 3×3，落下的同色方块自动消除触发连锁，倍率越叠越高。支持撤销、每日一局与零服务器纯 P2P 对战。',
+    kw: '方块爆破 消除 连锁 合成 休闲 每日一局 撤销 联机 blast',
+    tag: '休闲',
+    channel: 'casual',
+    players: '双人',
+    multiplayer: 'p2p',
+    cover: 'covers/blast.png',
+    ar: '1280 / 800',
+    url: 'blast/',
+    status: 'live',
+    order: 48,
+    orientation: 'landscape',
+  },
+  {
+    id: 'fishing',
+    name: '小铺垂钓',
+    en: 'Little Shop Fishing',
+    desc: '湖边小铺抛竿垂钓：等鱼咬钩，踩准完美区收竿。常见 / 稀有 / 传说三种鱼，每日一钓与零服务器纯 P2P 联机。',
+    kw: '小铺垂钓 钓鱼 抛竿 咬钩 反应窗口 稀有鱼 每日一钓 联机 fishing',
+    tag: '休闲',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'p2p',
+    cover: 'covers/fishing.png',
+    ar: '1280 / 800',
+    url: 'fishing/',
+    status: 'live',
+    order: 49,
+    orientation: 'landscape',
+  },
+  {
+    id: 'slicer',
+    name: '切片大师',
+    en: 'Slicer Master',
+    desc: '按住划过水果把它切开，一次划过切中越多倍率越高；别碰炸弹。每日一局与零服务器纯 P2P 联机。',
+    kw: '切片大师 切水果 划过 连击 炸弹 休闲 每日一局 联机 slicer fruit',
+    tag: '休闲',
+    channel: 'casual',
+    players: '单人',
+    multiplayer: 'p2p',
+    cover: 'covers/slicer.png',
+    ar: '1280 / 800',
+    url: 'slicer/',
+    status: 'live',
+    order: 50,
+    orientation: 'landscape',
+  },
+  {
+    id: 'quiz-party',
+    name: '快问快答派对',
+    en: 'Quiz Party',
+    desc: '15 秒限时抢答：答对得分、答得越快分越高、连对还有加成。128 道分类题库，每日一局全网同题，也能零服务器纯 P2P 双人同题对抢。',
+    kw: '快问快答 答题 抢答 问答 知识竞赛 每日一局 联机 派对 quiz party trivia',
+    tag: '派对',
+    channel: 'party',
+    players: '多人',
+    multiplayer: 'p2p',
+    cover: 'covers/quiz-party.png',
+    ar: '1280 / 800',
+    url: 'quiz-party/',
+    status: 'live',
+    order: 51,
+    orientation: 'landscape',
+  }
 ];
 
 const grid = document.getElementById('grid');
@@ -953,6 +1305,18 @@ const ORDERED = GAMES.slice().sort(function (a, b) { return (a.order == null ? 9
 const TAGS = [];
 ORDERED.forEach(function (g) { if (g.tag && g.tag !== 'custom' && TAGS.indexOf(g.tag) < 0) TAGS.push(g.tag); });
 
+/* 四大频道：channel 字段的权威映射表。
+   channel 来自 games.json（tools/gen-hub-index.mjs 注入），改归类只改 games.json。 */
+const CHANNELS = [
+  { id: 'casual', name: '休闲小游戏', desc: '点开就能玩，一局几分钟' },
+  { id: 'party',  name: '多人派对',   desc: '热座或纯 P2P，和朋友一起' },
+  { id: 'board',  name: '策略棋牌',   desc: '动脑子的慢局，棋与牌' },
+  { id: 'tool',   name: '实用工具',   desc: '学习、实验、日常用得上' }
+];
+const CHANNEL_BY_ID = new Map(CHANNELS.map(function (c) { return [c.id, c]; }));
+/* 未知 channel 的游戏兜到休闲，不至于凭空消失。 */
+ORDERED.forEach(function (g) { if (!CHANNEL_BY_ID.has(g.channel)) g.channel = 'casual'; });
+
 /* 检索串归一：小写 + 把 - _ / · 之类的分隔符统一成空格。
    这样 id「one-card」用 one-card / one card 都搜得到，英文名大写也照搜。 */
 function norm(s) {
@@ -966,7 +1330,7 @@ ORDERED.forEach(function (g) {
   g._hay = norm([g.name, g.en, g.id, g.tag, g.kw, g.desc].filter(Boolean).join(' '));
 });
 
-const state = { q: '', tag: '', favOnly: false, fav: loadFav() };
+const state = { q: '', tag: '', chan: '', favOnly: false, fav: loadFav() };
 
 /* ---------- 1. 最近在玩 ---------- */
 function loadRecent() {
@@ -1063,32 +1427,69 @@ function renderGrid() {
   const terms = q ? q.split(' ').filter(Boolean) : [];
   const hit = ORDERED.filter(function (g) {
     if (state.favOnly && !state.fav.has(g.id)) return false;
+    if (state.chan && g.channel !== state.chan) return false;
     if (state.tag && g.tag !== state.tag) return false;
     if (!terms.length) return true;
     return terms.every(function (t) { return g._hay.indexOf(t) >= 0; });
   });
 
   grid.innerHTML = '';
-  var customHit = hit.filter(function (g) { return g.tag === 'custom'; });
-  var mainHit = hit.filter(function (g) { return g.tag !== 'custom'; });
-  mainHit.forEach(function (g) { grid.appendChild(buildCard(g)); });
-  if (customHit.length) {
-    customHit.sort(function (a, b) { return (a.id === 'rulecraft' ? -1 : b.id === 'rulecraft' ? 1 : (a.order||0)-(b.order||0)); });
+
+  /* 按频道分组渲染。
+     未选频道（全部）时，四个频道各成一节，节内按 channel 顺序排；
+     选中某个频道时只渲染那一节 —— 不再套一层多余的分组标题。 */
+  var showGroups = !state.chan;
+  var channels = showGroups
+    ? CHANNELS
+    : CHANNELS.filter(function (c) { return c.id === state.chan; });
+
+  channels.forEach(function (c) {
+    var inChan = hit.filter(function (g) { return g.channel === c.id; });
+    if (!inChan.length) return;
+
+    /* 「民间规则」（tag=custom）在频道内部再单独成组：
+       它们是民间玩法，冷知识标签是卖点，混在同类游戏里会被埋掉。
+       原来它们是整页置底的一个 section，现在收进所属频道的末尾。 */
+    var customHit = inChan.filter(function (g) { return g.tag === 'custom'; });
+    var mainHit = inChan.filter(function (g) { return g.tag !== 'custom'; });
+
     var sec = document.createElement('section');
-    sec.className = 'custom-section';
-    sec.innerHTML = '<h2 class="custom-title">民间规则 <small>自己做一款 · 冷知识标签</small></h2><div class="custom-grid"></div>';
-    var sub = sec.querySelector('.custom-grid');
-    customHit.forEach(function (g) {
-      var card = buildCard(g);
-      var badge = document.createElement('span');
-      badge.className = 'card-fact';
-      badge.textContent = g.funFact || (g.id === 'rulecraft' ? '自己做一款' : '民间规则');
-      var body = card.querySelector('.card-body');
-      if (body) body.insertBefore(badge, body.firstChild);
-      sub.appendChild(card);
-    });
+    sec.className = 'chan-section';
+    sec.dataset.channel = c.id;
+
+    if (showGroups) {
+      var head = document.createElement('div');
+      head.className = 'chan-head';
+      head.innerHTML = '<h2>' + esc(c.name) + '</h2><small>' + esc(c.desc) + '</small>' +
+        '<span class="chan-count">' + inChan.length + ' 款</span>';
+      sec.appendChild(head);
+    }
+
+    var sub = document.createElement('div');
+    sub.className = 'chan-grid';
+
+    mainHit.forEach(function (g) { sub.appendChild(buildCard(g)); });
+
+    if (customHit.length) {
+      customHit.sort(function (a, b) { return (a.id === 'rulecraft' ? -1 : b.id === 'rulecraft' ? 1 : (a.order||0)-(b.order||0)); });
+      var csub = document.createElement('div');
+      csub.className = 'chan-grid';
+      csub.style.marginTop = '14px';
+      customHit.forEach(function (g) {
+        var card = buildCard(g);
+        var badge = document.createElement('span');
+        badge.className = 'card-fact';
+        badge.textContent = g.funFact || (g.id === 'rulecraft' ? '自己做一款' : '民间规则');
+        var body = card.querySelector('.card-body');
+        if (body) body.insertBefore(badge, body.firstChild);
+        csub.appendChild(card);
+      });
+      sub.appendChild(csub);
+    }
+
+    sec.appendChild(sub);
     grid.appendChild(sec);
-  }
+  });
 
   const empty = document.getElementById('empty');
   if (!hit.length) {
@@ -1097,6 +1498,7 @@ function renderGrid() {
     else if (state.favOnly) msg = '收藏的游戏都被关键词/分类挡掉了 —— 清掉搜索或分类再试。';
     else if (terms.length) msg = '没有找到匹配 <b>' + esc(state.q.trim()) + '</b> 的游戏 —— 换个关键词，或点搜索框右侧的 × 看全部。';
     else if (state.tag) msg = '「<b>' + esc(state.tag) + '</b>」分类下暂时没有游戏。';
+    else if (state.chan) msg = '「<b>' + esc((CHANNEL_BY_ID.get(state.chan) || {}).name || state.chan) + '</b>」频道下暂时没有游戏。';
     else msg = '没有可显示的游戏。';
     empty.innerHTML = msg;
     empty.hidden = false;
@@ -1140,9 +1542,36 @@ function renderRecent() {
 }
 
 /* ---------- 4. 工具栏事件 ---------- */
+function renderChannels() {
+  const host = document.getElementById('channels');
+  const all = [{ id: '', name: '全部', desc: '所有频道' }].concat(CHANNELS);
+  host.innerHTML = all.map(function (c) {
+    var n = c.id ? ORDERED.filter(function (g) { return g.channel === c.id; }).length : ORDERED.length;
+    return '<button class="chan-chip" type="button" data-chan="' + esc(c.id) + '" aria-pressed="' +
+      (state.chan === c.id) + '"><b>' + esc(c.name) + '</b><small>' + esc(c.desc) + ' · ' + n + ' 款</small></button>';
+  }).join('');
+  Array.prototype.forEach.call(host.querySelectorAll('.chan-chip'), function (btn) {
+    btn.addEventListener('click', function () {
+      state.chan = btn.dataset.chan || '';
+      /* 换频道后，原来选中的 tag 可能不在新频道里 —— 留在一个空分类里会让人以为游戏丢了。
+         所以切频道时清掉 tag，只保留搜索词。 */
+      state.tag = '';
+      Array.prototype.forEach.call(host.querySelectorAll('.chan-chip'), function (b) {
+        b.setAttribute('aria-pressed', String((b.dataset.chan || '') === state.chan));
+      });
+      renderTags();
+      renderGrid();
+    });
+  });
+}
+
 function renderTags() {
   const host = document.getElementById('tags');
-  const all = [{ t: '', label: '全部' }].concat(TAGS.map(function (t) { return { t: t, label: t }; }));
+  /* 标签是频道内的二级分类：选了频道就只列该频道下的标签。 */
+  const pool = state.chan ? ORDERED.filter(function (g) { return g.channel === state.chan; }) : ORDERED;
+  const tags = [];
+  pool.forEach(function (g) { if (g.tag && g.tag !== 'custom' && tags.indexOf(g.tag) < 0) tags.push(g.tag); });
+  const all = [{ t: '', label: '全部' }].concat(tags.map(function (t) { return { t: t, label: t }; }));
   host.innerHTML = all.map(function (x) {
     return '<button class="tag-chip" type="button" data-tag="' + esc(x.t) + '" aria-pressed="' +
       (state.tag === x.t) + '">' + esc(x.label) + '</button>';
@@ -1818,6 +2247,7 @@ function bindSheet() {
 }
 
 /* ---------- 启动 ---------- */
+renderChannels();
 renderTags();
 bindTools();
 bindSheet();

@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f4efe4">
+<title>方块爆破 · 连锁消除</title>
+<meta name="description" content="方块爆破：点格子炸开 3×3，落下同色触发连锁，倍率越叠越高。支持撤销、每日一局与零服务器纯 P2P 联机。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23f4efe4'/%3E%3Crect x='8' y='8' width='20' height='20' rx='4' fill='%23e0483c'/%3E%3Crect x='34' y='8' width='20' height='20' rx='4' fill='%23f5c542'/%3E%3Crect x='8' y='34' width='20' height='20' rx='4' fill='%233d8bd8'/%3E%3Crect x='34' y='34' width='20' height='20' rx='4' fill='%233fb96b'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+:root{
+  --paper:#f4efe4;--ink:#2a2118;--muted:#7a6b58;--gold:#c8912f;
+  --line:#d8cdb8;--red:#e0483c;--blue:#3d8bd8;--green:#3fb96b;--purple:#9b5de5;
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% 0,#fbf7ee,#e9dfca 80%);color:var(--ink);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
+.wrap{max-width:1120px;margin:0 auto;padding:14px 14px 28px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+h1{font-size:22px;margin:0;color:var(--ink);letter-spacing:1px}
+h1 small{font-size:12px;color:var(--muted);font-weight:400;letter-spacing:0}
+.bar{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+button,select{min-height:42px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:#fffaf0;color:var(--ink);font:inherit;font-size:13px;cursor:pointer;touch-action:manipulation}
+button:hover:not(:disabled){border-color:var(--gold)}button:disabled{opacity:.4;cursor:not-allowed}
+button.primary{background:var(--gold);border-color:var(--gold);color:#fff}
+button.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.hint{font-size:12px;color:var(--muted);margin:0 0 10px}
+.board-area{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
+.board-box{background:#fffaf0;border:2px solid var(--line);border-radius:16px;padding:14px;box-shadow:0 6px 20px #6b5a3a15}
+.board-box h3{margin:0 0 8px;font-size:13px;color:var(--muted);display:flex;justify-content:space-between}
+.board-box h3 b{color:var(--ink)}
+.board{display:grid;gap:3px;background:#e9dfca;border:6px solid #e9dfca;border-radius:10px;touch-action:manipulation;user-select:none}
+.cell{width:38px;height:38px;border-radius:6px;background:#f7f2e6;cursor:default;transition:transform .12s,opacity .12s}
+.cell.has{cursor:pointer;box-shadow:inset 0 -3px 0 #0002,inset 0 2px 0 #fff6}
+.cell.has:hover{transform:scale(1.08);z-index:2}
+.cell.c1{background:#e0483c}.cell.c2{background:#f5c542}.cell.c3{background:#3d8bd8}.cell.c4{background:#3fb96b}.cell.c5{background:#9b5de5}
+.side{flex:1;min-width:260px;display:flex;flex-direction:column;gap:10px}
+.panel{background:#fffaf0;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.panel h3{margin:0 0 8px;font-size:14px}
+.stat{display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px dashed var(--line)}
+.stat:last-child{border-bottom:0}
+.stat b{font-size:15px}
+.msg{font-size:13px;min-height:20px;color:var(--muted)}
+.msg.win{color:var(--green);font-weight:700}.msg.lose{color:var(--red);font-weight:700}
+.tag{display:inline-block;padding:2px 8px;border-radius:6px;background:#e9dfca;font-size:11px;margin:2px}
+.p2p{display:flex;flex-direction:column;gap:6px;font-size:12px}
+.p2p textarea{width:100%;min-height:46px;border:1px solid var(--line);border-radius:8px;padding:6px;font:11px/1.4 monospace;background:#fff;resize:vertical}
+.p2p-state{font-size:12px;padding:6px 8px;border-radius:8px;background:#e9dfca}
+.p2p-state.ok{background:#d9f0e0;color:#1d7a3f}.p2p-state.err{background:#f8d9d5;color:#a52319}
+.rules{font-size:12px;line-height:1.7;color:var(--muted)}
+.rules b{color:var(--ink)}
+@media(max-width:760px){.cell{width:32px;height:32px}.board{gap:2px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>方块爆破 <small>连锁消除 · 零服务器联机</small></h1>
+  <div class="bar">
+    <button id="mode-solo" class="on">单人</button>
+    <button id="mode-ai">人机</button>
+    <button id="mode-daily">每日局</button>
+    <button id="mode-p2p">联机</button>
+  </div>
+</header>
+<p class="hint">点一个方块 → 炸开周围 3×3 → 落下的同色方块自动消除并触发连锁，越连分越高。别让任意一列顶到天花板。</p>
+
+<div class="board-area">
+  <div class="board-box">
+    <h3><span id="board-title">你的棋盘</span><b id="chain"></b></h3>
+    <div class="board" id="board"></div>
+  </div>
+  <div class="board-box" id="ai-box" hidden>
+    <h3><span>对手棋盘</span><b id="ai-score"></b></h3>
+    <div class="board" id="aiboard"></div>
+  </div>
+  <div class="side">
+    <div class="panel">
+      <h3>本局</h3>
+      <div class="stat"><span>得分</span><b id="score">0</b></div>
+      <div class="stat"><span>最高连锁</span><b id="best">0</b></div>
+      <div class="stat"><span>手数</span><b id="moves">0</b></div>
+      <div class="stat"><span>难度等级</span><b id="level">1</b></div>
+      <div class="stat"><span>种子</span><b id="seed">—</b></div>
+      <div class="msg" id="msg"></div>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button id="btn-undo">撤销一步</button>
+        <button id="btn-new" class="primary">新的一局</button>
+      </div>
+    </div>
+
+    <div class="panel p2p" id="p2p-panel" hidden>
+      <h3>纯 P2P 联机（零服务器）</h3>
+      <div id="rolebar" style="display:flex;gap:8px">
+        <button id="btn-host">我是房主</button>
+        <button id="btn-guest">我是加入方</button>
+      </div>
+      <div id="host-flow" hidden>
+        <div>① 把这段房主码发给朋友：</div>
+        <textarea id="host-code" readonly></textarea>
+        <div>② 把朋友发回的加入码粘进来：</div>
+        <textarea id="join-in" placeholder="粘贴加入码"></textarea>
+        <button id="btn-accept">建立连接</button>
+      </div>
+      <div id="guest-flow" hidden>
+        <div>① 粘贴房主码：</div>
+        <textarea id="host-in" placeholder="粘贴房主码"></textarea>
+        <button id="btn-gencode">生成加入码</button>
+        <div>② 把这段加入码发回房主：</div>
+        <textarea id="guest-code" readonly></textarea>
+      </div>
+      <div class="p2p-state" id="p2p-state">未连接 · 不连任何服务器，需手动交换连接码</div>
+      <button id="btn-close">断开</button>
+    </div>
+
+    <div class="panel rules">
+      <h3>规则要点</h3>
+      <b>爆破</b>：点一格，3×3 范围全消。<br>
+      <b>连锁</b>：落下后同色正交相邻自动消，第 k 段 ×k 倍率。<br>
+      <b>天空</b>：每手后落新块，越多手落越猛。<br>
+      <b>判负</b>：任一列顶到 8 格高即出局。<br>
+      <b>撤销</b>：单机撤销整步（含 AI 应答），联机只撤自己的盘。
+    </div>
+  </div>
+</div>
+</div>
+<script>
+/* file:// 下 ES module 会被 CORS 拦掉 —— 这时改加载 classic 兜底包。
+   http(s) 下 module 正常加载，这段监听器不会触发。 */
+(function () {
+  if (location.protocol !== 'file:') return;
+  window.__blastClassic = false;
+  document.addEventListener('error', function (e) {
+    var t = e.target;
+    if (!t || !t.tagName || t.tagName.toLowerCase() !== 'script') return;
+    if ((t.src || '').indexOf('/src/main.mjs') < 0) return;
+    if (window.__blastClassic) return;
+    window.__blastClassic = true;
+    var s = document.createElement('script');
+    s.src = './src/blast.classic.js';
+    (document.body || document.head).appendChild(s);
+  }, true);
+})();
+</script>
+<script type="module" src="./src/main.mjs"></script>
+</body>
+</html>

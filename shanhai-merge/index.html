@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>山海合成 · 上古神兽合成</title>
+<meta name="description" content="山海合成：把两只同阶上古神兽叠在一起合成更高阶，合成出九尾狐乃至饕餮即获胜。支持每日固定局比分数、一键撤销、步数挑战。">
+<style>
+:root{
+  --bg:#0d1417; --paper:#151f24; --paper2:#1b282e; --ink:#e6efe9;
+  --dim:#7e949c; --line:#26363d; --ac:#e8b93c; --ac2:#c8912f;
+  --bad:#e0473c; --ok:#3fb96b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:
+    radial-gradient(1200px 500px at 50% -10%, #1a2b30 0%, rgba(26,43,48,0) 70%),
+    linear-gradient(180deg,#0d1417,#0a1013);
+  color:var(--ink);font-family:"PingFang SC","Microsoft YaHei",-apple-system,system-ui,sans-serif;
+  -webkit-tap-highlight-color:transparent;min-height:100vh;
+}
+[hidden]{display:none!important}
+.wrap{max-width:min(100%,620px);margin:0 auto;padding:14px 12px 44px}
+
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+h1{margin:0;font-size:25px;letter-spacing:2px;
+   background:linear-gradient(180deg,#f6e3ac,#d9a52c);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{margin:3px 0 0;font-size:12px;color:var(--dim);letter-spacing:.5px}
+.bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:13px}
+.bar .stat{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:999px;padding:4px 11px;white-space:nowrap}
+.bar b{font-variant-numeric:tabular-nums;color:var(--ac)}
+
+.modes{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 8px}
+.modes button{min-height:38px;padding:0 13px;border-radius:9px;border:1px solid var(--line);
+  background:rgba(255,255,255,.04);color:var(--dim);font-size:13px;cursor:pointer}
+.modes button.on{background:linear-gradient(180deg,var(--ac),var(--ac2));color:#20180a;font-weight:600;border-color:var(--ac)}
+.optrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px;font-size:12px;color:var(--dim)}
+.optrow select{min-height:34px;border-radius:8px;border:1px solid var(--line);background:var(--paper2);color:var(--ink);padding:0 8px;font-size:13px}
+.optrow label{display:flex;align-items:center;gap:6px}
+
+.panel{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:10px}
+
+.board{
+  width:100%;max-width:480px;margin:0 auto;aspect-ratio:1/1;
+  display:grid;grid-template-columns:repeat(6,1fr);gap:5px;
+  background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:14px;padding:7px;
+  touch-action:none;user-select:none;-webkit-user-select:none;
+}
+.cell{position:relative;border-radius:9px;background:rgba(255,255,255,.028);display:grid;place-items:center;overflow:visible}
+.cell.hl::after{content:"";position:absolute;inset:-1px;border-radius:10px;
+  box-shadow:inset 0 0 0 2px rgba(232,185,60,.75);pointer-events:none}
+.cell.drop-ok::after{content:"";position:absolute;inset:-1px;border-radius:10px;
+  box-shadow:inset 0 0 0 2px rgba(63,185,107,.8);pointer-events:none}
+
+.blk{width:100%;height:100%;border-radius:9px;display:grid;place-items:center;position:relative;
+  font-weight:700;color:#fff;cursor:grab;line-height:1;
+  box-shadow:0 2px 6px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.22);
+  transition:transform .16s ease,box-shadow .16s ease,opacity .2s ease}
+.blk:active{cursor:grabbing}
+.blk .lv{font-size:13px;letter-spacing:-.5px;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.blk.ondark .lv{color:#2a2118;text-shadow:0 1px 1px rgba(255,255,255,.35)}
+.blk.ondark .no{color:#2a2118;opacity:.6;text-shadow:none}
+.blk.long .lv{font-size:11px;letter-spacing:-1px}
+.blk .no{position:absolute;top:1px;right:3px;font-size:10px;font-weight:600;opacity:.75}
+.blk.sel{transform:scale(1.08);box-shadow:0 0 0 2px var(--ac),0 4px 12px rgba(232,185,60,.4)}
+.blk.dim{opacity:.32}
+.blk.out{animation:blkOut .2s ease forwards}
+.blk.in{animation:blkIn .28s cubic-bezier(.2,.9,.3,1.2)}
+.blk.pop{animation:blkPop .3s cubic-bezier(.2,.9,.3,1.4)}
+@keyframes blkOut{to{opacity:0;transform:scale(.55)}}
+@keyframes blkIn{from{opacity:0;transform:translateY(-70%) scale(.7)}to{opacity:1;transform:none}}
+@keyframes blkPop{0%{transform:scale(.7)}60%{transform:scale(1.16)}100%{transform:scale(1)}}
+
+.ghost{position:fixed;z-index:60;width:56px;height:56px;border-radius:10px;pointer-events:none;
+  display:grid;place-items:center;font-weight:700;color:#fff;font-size:15px;
+  transform:translate(-50%,-50%) scale(1.08);opacity:.92;
+  box-shadow:0 8px 20px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.25)}
+
+.msg{text-align:center;font-size:13.5px;line-height:1.75;min-height:22px;color:var(--dim);margin:8px 0 2px}
+.msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}.msg.warn{color:var(--ac)}
+.ctl{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:9px}
+.btn{min-height:44px;padding:0 18px;border-radius:11px;border:1px solid var(--line);
+  background:rgba(255,255,255,.06);color:var(--ink);font-size:14px;cursor:pointer}
+.btn.primary{background:linear-gradient(180deg,var(--ac),var(--ac2));color:#20180a;border-color:var(--ac);font-weight:600}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+.btn.mini{min-height:34px;padding:0 12px;font-size:12.5px;border-radius:8px}
+.hint{font-size:12px;color:var(--dim);text-align:center;margin-top:8px;line-height:1.8}
+
+.codex{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:4px}
+.cx{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.04);border:1px solid var(--line);
+  border-radius:9px;padding:4px 6px;font-size:11.5px;color:var(--dim)}
+.cx i{width:13px;height:13px;border-radius:4px;flex:none}
+.cx b{color:var(--ink);font-weight:600;font-size:12px}
+
+.over{position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;
+  padding:20px;background:rgba(5,9,11,.78);backdrop-filter:blur(3px);
+  pointer-events:none}   /* 不挡住下面的按钮 —— 结束后还能按「撤销一步」 */
+.over .card{width:min(100%,360px);background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:22px;text-align:center;pointer-events:auto}
+.over h2{margin:0 0 6px;font-size:21px;color:var(--ac)}
+.over p{margin:0 0 4px;font-size:13px;color:var(--dim);line-height:1.8}
+.over .big{font-size:30px;font-weight:700;color:var(--ink);margin:6px 0;font-variant-numeric:tabular-nums}
+
+.sheet{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(5,9,11,.72)}
+.sheet .card{width:min(100%,420px);max-height:84vh;overflow:auto;background:var(--paper);
+  border:1px solid var(--line);border-radius:18px;padding:22px}
+.sheet h2{margin:0 0 10px;font-size:18px;color:var(--ac)}
+.sheet p{font-size:13px;line-height:1.9;color:var(--dim);margin:0 0 10px}
+.sheet b{color:var(--ink)}
+.sheet ol{margin:0 0 10px;padding-left:20px;font-size:13px;line-height:1.95;color:var(--dim)}
+
+@media (pointer:coarse){button,select{min-height:46px}.blk .lv{font-size:14px}.blk.long .lv{font-size:12px}}
+@media(max-width:400px){h1{font-size:21px}.codex{grid-template-columns:repeat(2,1fr)}}
+@media(prefers-reduced-motion:reduce){
+  .blk,.blk.in,.blk.pop,.blk.out{animation:none!important;transition:none!important}
+  *{scroll-behavior:auto!important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>山海合成</h1>
+      <p class="sub">上古神兽 · 两两合体 · 合成饕餮即胜</p>
+    </div>
+    <div class="bar">
+      <div class="stat">得分 <b id="score">0</b></div>
+      <div class="stat">最高 <b id="best">0</b></div>
+      <div class="stat">胜 <b id="wins">0</b></div>
+      <button class="btn mini" id="btn-info" type="button">规则</button>
+    </div>
+  </div>
+
+  <div class="modes">
+    <button type="button" id="mode-daily" class="on">每日固定局</button>
+    <button type="button" id="mode-free">自由对局</button>
+    <button type="button" id="mode-challenge">步数挑战</button>
+  </div>
+
+  <div class="optrow">
+    <label>目标阶
+      <select id="target">
+        <option value="4">毕方（四阶）</option>
+        <option value="5" selected>九尾狐（五阶）</option>
+        <option value="6">烛龙（六阶）</option>
+        <option value="7">鲲鹏（七阶）</option>
+        <option value="8">饕餮（八阶）</option>
+      </select>
+    </label>
+    <label>步数上限
+      <select id="movelimit">
+        <option value="0" selected>不限</option>
+        <option value="30">30 步</option>
+        <option value="60">60 步</option>
+        <option value="100">100 步</option>
+      </select>
+    </label>
+    <span id="modehint" style="margin-left:auto">今日盘面人人相同，可比分数</span>
+  </div>
+
+  <section class="panel">
+    <div class="board" id="board"></div>
+    <div class="msg" id="msg">把两只同阶神兽叠在一起，它们就会合体。</div>
+    <div class="ctl">
+      <button class="btn primary" id="btn-new" type="button">新开一局</button>
+      <button class="btn" id="btn-undo" type="button">撤销一步</button>
+      <button class="btn" id="btn-wait" type="button" hidden>等一等（飘一只）</button>
+    </div>
+    <div class="hint" id="hint">拖动一只神兽到同阶的另一只上即可合成；也可以先点一只、再点另一只。</div>
+    <div class="codex" id="codex"></div>
+  </section>
+</div>
+
+<div class="over" id="over" hidden>
+  <div class="card">
+    <h2 id="over-title">本局结束</h2>
+    <div class="big" id="over-score">0</div>
+    <p id="over-desc"></p>
+    <div class="ctl"><button class="btn primary" id="btn-again" type="button">再来一局</button></div>
+  </div>
+</div>
+
+<div class="sheet" id="info" hidden>
+  <div class="card">
+    <h2>山海合成怎么玩</h2>
+    <p><b>目标</b>：把上古神兽两两合体，合成出目标阶（默认九尾狐）即获胜；最高可合到饕餮（八阶）。</p>
+    <ol>
+      <li><b>怎么合</b>：拖动一只神兽到<b>同阶</b>的另一只身上，两只合体成高一阶（山魈+山魈=白泽，以此类推）。也可以先点一只、再点另一只。</li>
+      <li><b>飘落</b>：每次合成后天上会飘落 1~2 只新神兽，只落在空位上；合成次数越多，飘得越快。</li>
+      <li><b>结束</b>：棋盘塞满又合不动，或者步数挑战用完步数，本局就结束。</li>
+      <li><b>撤销</b>：任何一步都能撤销 —— 合成类游戏没有撤销很痛苦，按「撤销一步」就回去了。</li>
+      <li><b>每日固定局</b>：按日期派生的种子，当天所有人的初始盘面和整条飘落序列完全一样，可以直接比分数。</li>
+    </ol>
+    <p style="color:var(--dim)">八阶神兽：山魈 → 白泽 → 玄鸟 → 毕方 → 九尾狐 → 烛龙 → 鲲鹏 → 饕餮</p>
+    <div class="ctl"><button class="btn primary" id="info-close" type="button">知道了</button></div>
+  </div>
+</div>
+
+<script type="module" src="./src/main.mjs"></script>
+</body>
+</html>

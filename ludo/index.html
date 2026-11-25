@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>飞行棋 · 经典四人飞行棋</title>
+<meta name="description" content="经典飞行棋：4 人 4 色 16 颗棋子，掷 6 起飞、飞跃点、撞机、终点通道。人机对局与零服务器纯 P2P 联机。">
+<style>
+:root{
+  --paper:#f4efe4; --ink:#2a2118; --dim:#7a6b58; --line:#d8cdb8;
+  --red:#e0483c; --yellow:#f5c542; --blue:#3d8bd8; --green:#3fb96b;
+  --gold:#c8912f; --bg:#f4efe4;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:linear-gradient(180deg,#f7f2e7,#e9dfca);
+  color:var(--ink);font-family:"PingFang SC","Microsoft YaHei",-apple-system,system-ui,sans-serif;
+  -webkit-tap-highlight-color:transparent;
+}
+[hidden]{display:none!important}
+.wrap{max-width:min(100%,960px);margin:0 auto;padding:14px 12px 40px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+h1{margin:0;font-size:24px;letter-spacing:.5px}
+.sub{margin:2px 0 0;font-size:12px;color:var(--dim)}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+.bar .stat{background:rgba(255,255,255,.65);border:1px solid var(--line);border-radius:999px;padding:4px 12px;white-space:nowrap}
+.bar b{font-variant-numeric:tabular-nums}
+.modes{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.modes button{min-height:36px;padding:0 14px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.7);color:var(--ink);font-size:13px;cursor:pointer}
+.modes button.on{background:linear-gradient(180deg,var(--gold),#a87a22);color:#fff;font-weight:600;border-color:var(--gold)}
+select{min-height:36px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--ink);padding:0 8px;font-size:13px}
+.panel{background:rgba(255,255,255,.72);border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:10px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+.boardwrap{position:relative;width:100%;aspect-ratio:1/1;max-width:620px;margin:0 auto}
+#board{width:100%;height:100%;display:block;border-radius:14px;touch-action:manipulation}
+.seatbar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:10px}
+.pill{display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:rgba(255,255,255,.8);border-radius:999px;padding:5px 12px;font-size:13px}
+.pill .dot{width:12px;height:12px;border-radius:50%;flex:none;box-shadow:0 0 0 2px rgba(255,255,255,.8)}
+.pill.active{border-color:var(--gold);box-shadow:0 0 0 2px rgba(200,145,47,.35)}
+.pill .home{font-size:11px;color:var(--dim)}
+.dierow{display:flex;align-items:center;justify-content:center;gap:14px;margin:12px 0}
+.die{width:46px;height:46px;border-radius:11px;background:#fff;border:2px solid var(--ink);display:grid;place-items:center;font-size:26px;font-weight:700;box-shadow:0 2px 0 var(--ink)}
+.die.rolling{animation:shake .4s infinite}
+@keyframes shake{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(6deg)}}
+.msg{text-align:center;font-size:14px;line-height:1.7;min-height:24px;color:var(--ink);margin:6px 0}
+.msg.ok{color:#1f7a4d}.msg.bad{color:#b8322a}.msg.dim{color:var(--dim)}
+.ctl{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+.btn{min-height:44px;padding:0 20px;border-radius:11px;border:1px solid var(--line);background:#fff;color:var(--ink);font-size:14px;cursor:pointer}
+.btn.primary{background:linear-gradient(180deg,var(--gold),#a87a22);color:#fff;border-color:var(--gold);font-weight:600}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.hint{font-size:12px;color:var(--dim);text-align:center;margin-top:8px;line-height:1.7}
+.p2p{background:rgba(255,255,255,.72);border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:10px}
+.p2p h2{margin:0 0 6px;font-size:15px}
+.note{font-size:12px;color:var(--dim);line-height:1.8;margin:0 0 10px}
+.steps{margin:0 0 10px;padding-left:20px;font-size:13px;line-height:1.9}
+.p2p-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.p2p-row input{flex:1;min-width:180px;min-height:40px;border-radius:9px;border:1px solid var(--line);padding:0 10px;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace}
+.p2p-state{font-size:12px;margin-top:8px;padding:6px 10px;border-radius:9px;background:rgba(0,0,0,.05)}
+.p2p-state.ok{color:#1f7a4d}.p2p-state.err{color:#b8322a}.p2p-state.wait{color:var(--dim)}
+.sheet{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.55)}
+.sheet[hidden]{display:none}.panel2{width:min(100%,420px);max-height:82vh;overflow:auto;background:#fff;border-radius:18px;padding:22px}
+.panel2 h2{margin:0 0 10px;font-size:18px}.panel2 p{font-size:13px;line-height:1.85;color:var(--dim)}
+@media (pointer:coarse){button,select,input{min-height:48px}}
+@media(max-width:430px){h1{font-size:20px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>飞行棋</h1>
+      <p class="sub">4 人 4 色 16 颗棋子 · 掷 6 起飞 · 飞跃点 · 撞机 · 终点通道</p>
+    </div>
+    <div class="bar">
+      <div class="stat">金币 <b id="coin">100</b></div>
+      <div class="stat">胜局 <b id="wins">0</b></div>
+      <div class="stat">最高 <b id="best">100</b></div>
+      <button class="btn" id="btn-info" style="min-height:30px;padding:0 10px">规则</button>
+    </div>
+  </div>
+
+  <div class="modes">
+    <button type="button" id="mode-ai" class="on">人机对局</button>
+    <button type="button" id="mode-p2p">纯 P2P 联机</button>
+    <select id="playercount" aria-label="玩家数">
+      <option value="2">2 人</option>
+      <option value="3">3 人</option>
+      <option value="4" selected>4 人</option>
+    </select>
+  </div>
+
+  <section class="p2p" id="p2p" hidden>
+    <h2>纯 P2P 联机 · 零服务器</h2>
+    <p class="note">
+      不经过任何服务器、不连任何第三方、不花钱、也不用改 IP —— 代价是要手动交换两段连接码。<br>
+      <b>点数是算出来的，不是掷出来的</b>：双方各自用同一个公开种子和同一个掷骰序号算出点数，
+      房主改不了 —— 他一改就跟对方对不上，立刻被发现。
+    </p>
+    <div class="p2p-row" id="rolebar">
+      <button class="btn primary" id="btn-host" type="button">我来建房</button>
+      <button class="btn" id="btn-join" type="button">我有房主码</button>
+    </div>
+    <div id="host-flow" hidden>
+      <ol class="steps">
+        <li>把下面这段【房主码】发给朋友</li>
+        <li>朋友会回你一段【加入码】，粘贴到下面</li>
+        <li>点「接受加入码」，通道就通了</li>
+      </ol>
+      <div class="p2p-row"><button class="btn primary" id="btn-gen-host" type="button">生成房主码</button>
+      <input id="host-code" readonly placeholder="房主码"></div>
+      <div class="p2p-row"><button class="btn" id="btn-copy-host" type="button">复制房主码</button></div>
+      <div class="p2p-row"><input id="join-in" placeholder="粘贴朋友的加入码"></div>
+      <div class="p2p-row"><button class="btn primary" id="btn-accept" type="button">接受加入码</button></div>
+    </div>
+    <div id="guest-flow" hidden>
+      <ol class="steps">
+        <li>把朋友给你的【房主码】粘到下面</li>
+        <li>点「生成加入码」，把加入码发回给朋友</li>
+      </ol>
+      <div class="p2p-row"><input id="host-in" placeholder="粘贴房主码"></div>
+      <div class="p2p-row"><button class="btn primary" id="btn-gen-guest" type="button">生成加入码</button></div>
+      <div class="p2p-row"><input id="guest-code" readonly placeholder="加入码"></div>
+      <div class="p2p-row"><button class="btn" id="btn-copy-guest" type="button">复制加入码</button></div>
+    </div>
+    <div class="p2p-state" id="p2p-state">未连接</div>
+  </section>
+
+  <section class="panel">
+    <div class="boardwrap">
+      <canvas id="board" width="600" height="600"></canvas>
+    </div>
+    <div class="seatbar" id="seatbar"></div>
+    <div class="dierow">
+      <div class="die" id="die">?</div>
+      <div class="ctl" style="margin:0">
+        <button class="btn primary" id="btn-roll">掷骰子</button>
+      </div>
+    </div>
+    <div class="msg" id="msg">点「开局」入座</div>
+    <div class="ctl" id="ctl-planes"></div>
+    <div class="hint" id="hint">先点「开局」，然后轮到你时点「掷骰子」。</div>
+  </section>
+
+  <div class="ctl">
+    <button class="btn primary" id="btn-new">开局</button>
+    <button class="btn" id="btn-close" hidden>断开连接</button>
+  </div>
+
+  <div class="sheet" id="info" hidden>
+    <div class="panel2">
+      <h2>飞行棋怎么玩</h2>
+      <p>
+        <b>目标</b>：4 颗棋子全部走进终点通道才算赢。<br><br>
+        <b>起飞</b>：棋子先在起点外面待着，<b>掷到 6</b> 才能起飞进起点。<br><br>
+        <b>通道</b>：从起点出发绕外圈一圈（51 步），到了自己颜色的入口就拐进终点通道。
+        通道一共 6 格，<b>必须刚好点数</b>踩到终点 —— 点数不够就动不了。<br><br>
+        <b>再掷一次</b>：掷出 6 可以再掷一次。<br><br>
+        <b>飞跃点</b>：棋子正好停在绿色飞跃格上，会再往前飞 7 格。<br><br>
+        <b>撞机</b>：跟对方棋子停进同一格，对方被撞回起点外面。
+        自己的棋子可以叠在一起。<br><br>
+        <b>纯 P2P 联机</b>：不需要服务器，但要把两段连接码互发一下。
+        点数是双方各自算出来的（同一个公开种子 + 同一个掷骰序号），
+        所以房主没法作弊掷骰子。
+      </p>
+      <div class="ctl"><button class="btn primary" id="info-close">知道了</button></div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./src/main.mjs"></script>
+</body>
+</html>

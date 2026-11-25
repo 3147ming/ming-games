@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#151210">
+<title>聚会工具箱</title>
+<meta name="description" content="聚会工具箱 —— 随机分组器、多面骰、转盘、抽签、计分板五件套，离线可用，聚会前打开就能用。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23151210'/%3E%3Crect x='14' y='14' width='16' height='16' rx='3' fill='%23c8a96b'/%3E%3Ccircle cx='42' cy='22' r='9' fill='%23f0e6d2'/%3E%3Crect x='16' y='38' width='32' height='10' rx='3' fill='%23b23a2e'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+:root{--ink:#1b1713;--paper:#f3ead8;--gold:#c8a96b;--red:#b23a2e;--blue:#243b53;--flux:#a89ae6}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:radial-gradient(circle at 50% 0%,#2a2119,#12100e 70%);color:#f0e6d2;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
+.wrap{max-width:860px;margin:0 auto;padding:14px 14px 30px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+h1{font-size:20px;margin:0;letter-spacing:2px;color:var(--gold)}
+.sub{font-size:12px;opacity:.68;margin:2px 0 0}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 12px}
+.tab{min-height:44px;padding:0 15px;border-radius:10px;border:1px solid #6b5839;background:#2b231a;color:#d9cbb2;font:inherit;font-size:14px;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--gold);color:#241b10;font-weight:600;border-color:var(--gold)}
+.panel{display:none;background:#221c16;border:1px solid #463823;border-radius:14px;padding:14px}
+.panel.on{display:block}
+h2{font-size:16px;margin:0 0 4px;color:var(--gold);letter-spacing:1px}
+.desc{font-size:12px;line-height:1.6;opacity:.72;margin:0 0 12px}
+label{display:block;font-size:12px;opacity:.8;margin:10px 0 4px}
+textarea,input,select{width:100%;min-height:44px;padding:9px 11px;border-radius:10px;border:1px solid #6b5839;background:#171310;color:#f3e9d4;font:inherit;font-size:14px}
+textarea{min-height:120px;resize:vertical;line-height:1.6}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row>*{flex:1;min-width:120px}
+button{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid #6b5839;background:#2b231a;color:#f3e9d4;font:inherit;font-size:14px;cursor:pointer;flex:0 0 auto}
+button:hover{border-color:var(--gold)}
+button.primary{background:var(--gold);color:#241b10;font-weight:600;border-color:var(--gold)}
+button.ghost{background:transparent}
+.out{margin-top:12px;padding:12px;border-radius:10px;background:#171310;border:1px solid #3a3128;font-size:14px;line-height:1.7;min-height:48px}
+.out.big{font-size:30px;font-weight:700;color:var(--gold);text-align:center;letter-spacing:.1em;min-height:96px;display:flex;align-items:center;justify-content:center}
+.groups{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-top:10px}
+.grp{background:#171310;border:1px solid #463823;border-radius:10px;padding:9px 11px}
+.grp b{display:block;color:var(--gold);font-size:13px;margin-bottom:5px}
+.grp span{font-size:13px;line-height:1.7;word-break:break-all}
+.score-table{width:100%;border-collapse:collapse;font-size:14px;margin-top:10px}
+.score-table th,.score-table td{padding:7px 8px;border-bottom:1px solid #3a3128;text-align:left}
+.score-table th{color:var(--gold);font-size:12px;font-weight:600}
+.score-table input{padding:5px 7px;min-height:36px;font-size:13px}
+.score-table .n{width:110px}.score-table .s{width:88px}.score-table .d{width:64px;text-align:center}
+.chip-row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.pill{min-height:36px;padding:0 12px;border-radius:999px;border:1px solid #6b5839;background:#2b231a;color:#d9cbb2;font:inherit;font-size:13px;cursor:pointer}
+.pill[aria-pressed="true"]{background:var(--gold);color:#241b10;border-color:var(--gold)}
+.wheel-wrap{display:flex;gap:16px;align-items:center;flex-wrap:wrap;justify-content:center}
+.wheel{width:190px;height:190px;border-radius:50%;border:5px solid #6d5636;position:relative;flex:0 0 auto}
+.wheel canvas{width:100%;height:100%;border-radius:50%;display:block}
+.pointer{position:absolute;left:50%;top:-4px;transform:translateX(-50%);width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-top:20px solid var(--gold);z-index:2}
+@media(pointer:coarse){button,select,textarea,input{min-height:48px}}
+@media(max-width:430px){h1{font-size:17px}.row>*{min-width:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div><h1>聚会工具箱</h1><p class="sub">分组 · 骰子 · 转盘 · 抽签 · 计分板 · 全部离线</p></div>
+</header>
+
+<div class="tabs" role="tablist" aria-label="工具">
+  <button class="tab" role="tab" data-tab="split" aria-selected="true">随机分组</button>
+  <button class="tab" role="tab" data-tab="dice" aria-selected="false">骰子</button>
+  <button class="tab" role="tab" data-tab="wheel" aria-selected="false">转盘</button>
+  <button class="tab" role="tab" data-tab="draw" aria-selected="false">抽签</button>
+  <button class="tab" role="tab" data-tab="score" aria-selected="false">计分板</button>
+</div>
+
+<!-- 随机分组 -->
+<section class="panel on" id="p-split" role="tabpanel">
+  <h2>随机分组器</h2>
+  <p class="desc">把名单粘进去（每行一个，或用逗号/顿号分隔），选几组，自动洗牌分好。可以指定组长。</p>
+  <label for="split-names">名单</label>
+  <textarea id="split-names" placeholder="小明&#10;小红&#10;小刚&#10;小美&#10;小强&#10;小丽"></textarea>
+  <div class="row">
+    <div><label for="split-n">组数</label><input id="split-n" type="number" min="1" max="20" value="2"></div>
+    <div><label for="split-leader">组长（每人一个）</label><input id="split-leader" type="number" min="0" max="20" value="0"></div>
+  </div>
+  <div class="row" style="margin-top:10px"><button class="primary" id="split-go" type="button">开始分组</button><button class="ghost" id="split-clear" type="button">清空</button></div>
+  <div class="out" id="split-out">粘上名单就能分。</div>
+</section>
+
+<!-- 骰子 -->
+<section class="panel" id="p-dice" role="tabpanel">
+  <h2>多面骰</h2>
+  <p class="desc">选面数和个数，点一下就掷。可以同时掷多颗（比如掷 2d6 求和）。</p>
+  <div class="chip-row" id="dice-faces"></div>
+  <div class="row">
+    <div><label for="dice-count">颗数</label><input id="dice-count" type="number" min="1" max="20" value="1"></div>
+    <div><label for="dice-mod">取模（0=不取）</label><input id="dice-mod" type="number" min="0" max="99" value="0"></div>
+  </div>
+  <div class="row" style="margin-top:10px"><button class="primary" id="dice-go" type="button">掷骰子</button></div>
+  <div class="out big" id="dice-out">—</div>
+  <div class="out" id="dice-detail">还没掷。</div>
+</section>
+
+<!-- 转盘 -->
+<section class="panel" id="p-wheel" role="tabpanel">
+  <h2>转盘</h2>
+  <p class="desc">填几个选项，转盘转到谁就是谁。支持权重（用 <code>选项*3</code> 表示出现三次）。</p>
+  <label for="wheel-items">选项（每行一个，可用 <code>名称*次数</code> 设权重）</label>
+  <textarea id="wheel-items" style="min-height:110px">火锅&#10;烧烤&#10;日料&#10;麻辣烫</textarea>
+  <div class="row" style="margin-top:10px"><button class="primary" id="wheel-go" type="button">转动</button></div>
+  <div class="wheel-wrap" style="margin-top:14px">
+    <div class="wheel"><div class="pointer"></div><canvas id="wheel-cv" width="380" height="380"></canvas></div>
+    <div style="flex:1;min-width:200px">
+      <div class="out big" id="wheel-out">?</div>
+      <div class="out" id="wheel-log">还没转过。</div>
+    </div>
+  </div>
+</section>
+
+<!-- 抽签 -->
+<section class="panel" id="p-draw" role="tabpanel">
+  <h2>抽签</h2>
+  <p class="desc">从一份名单里随机抽若干个，可设「不重复」直到抽完为止。</p>
+  <label for="draw-items">名单（每行一个）</label>
+  <textarea id="draw-items" style="min-height:110px">一等奖&#10;二等奖&#10;三等奖&#10;谢谢参与&#10;再接再厉</textarea>
+  <div class="row">
+    <div><label for="draw-n">抽几个</label><input id="draw-n" type="number" min="1" max="50" value="1"></div>
+  </div>
+  <div class="chip-row">
+    <button class="pill" id="draw-norep" type="button" aria-pressed="true">不重复</button>
+    <button class="pill" id="draw-rep" type="button" aria-pressed="false">可重复</button>
+  </div>
+  <div class="row"><button class="primary" id="draw-go" type="button">开始抽</button><button class="ghost" id="draw-reset" type="button">重置</button></div>
+  <div class="out big" id="draw-out">—</div>
+  <div class="out" id="draw-pool">池子里还有 5 个。</div>
+</section>
+
+<!-- 计分板 -->
+<section class="panel" id="p-score" role="tabpanel">
+  <h2>计分板</h2>
+  <p class="desc">给每个玩家记分。分数存在本机浏览器里，关掉页面也还在。</p>
+  <div class="row">
+    <div><label for="score-add">加入玩家</label><input id="score-add" type="text" placeholder="名字" maxlength="12"></div>
+    <div style="display:flex;align-items:flex-end"><button class="primary" id="score-add-go" type="button">添加</button></div>
+  </div>
+  <table class="score-table">
+    <thead><tr><th>玩家</th><th>分数</th><th></th><th></th></tr></thead>
+    <tbody id="score-rows"></tbody>
+  </table>
+  <div class="row" style="margin-top:10px">
+    <button id="score-clear" type="button">清零</button>
+    <button id="score-remove" type="button">删除最后一人</button>
+    <button class="ghost" id="score-wipe" type="button">全部清除</button>
+  </div>
+</section>
+
+</div>
+<script type="module" src="./src/main.mjs"></script>
+</body>
+</html>

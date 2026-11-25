@@ -40,6 +40,18 @@ body {
 .hub-section-title { font-size: 16px; color: var(--gold); margin: 0 0 12px; letter-spacing: 1px; }
 .hub-section-title small { font-size: 11px; color: var(--muted, #a9a29a); font-weight: 400; margin-left: 8px; letter-spacing: 0; }
 .hub-section-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+
+/* 频道分组：与线上首页（根 index.html）同一套视觉 */
+.hub-section.chan-section { grid-column: 1 / -1; margin-top: 18px; }
+.hub-section.chan-section:first-child { margin-top: 4px; }
+.chan-head { display: flex; align-items: baseline; gap: 10px; margin: 0 0 12px; }
+.chan-head h2 { font-size: 16px; color: var(--gold); margin: 0; letter-spacing: .04em; }
+.chan-head small { font-size: 11px; color: var(--muted, #a9a29a); font-weight: 400; letter-spacing: .04em; }
+.chan-count { margin-left: auto; font-size: 11px; color: var(--muted, #a9a29a); letter-spacing: .08em; }
+@media (max-width: 560px) {
+  .chan-head { flex-wrap: wrap; gap: 4px 8px; }
+  .chan-head small { width: 100%; order: 3; }
+}
 .card-tag.custom { color: #7be0b0; border-color: rgba(123,224,176,.4); }
 .card-fact { position: absolute; left: 8px; bottom: 8px; right: 8px; font-size: 11px; color: #ffe8b0; background: rgba(10,9,8,.72); border-radius: 6px; padding: 3px 7px; text-align: center; }
 .card {

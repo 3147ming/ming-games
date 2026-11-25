@@ -1,7 +1,7 @@
 {
-  "version": 1,
-  "updated": "2026-11-24",
-  "note": "P2d 清单（新增 archer/jigsaw/sleeper/legion 四款 classic 单文件游戏）。CARDS=32 / ENTRIES=32 / READY=31。ready=已接入构建链可离线试玩；pending=enlisten 待 P5 网页版。3D 项目由 makeVendorPlan 自动把 three classic 化为 globalThis.THREE。",
+  "version": 2,
+  "updated": "2026-11-25",
+  "note": "P3 清单：新增 channel / players / multiplayer / features 四个字段，为四大频道（casual 休闲小游戏 / party 多人派对 / board 策略棋牌 / tool 实用工具）提供归类依据。channel 是分类的权威来源，tag 降级为二级标签。multiplayer 标记是否支持本地热座（hotseat）或可走纯 P2P 联机（p2p），none 表示纯单人。features 列出该游戏接入的平台能力（daily 每日挑战 / achievements 成就 / localLeaderboard 本地排行 /offline 可离线 / hotseat 可热座）。CARDS=32 / ENTRIES=32 / READY=31。",
   "games": [
     {
       "id": "wild",
@@ -11,7 +11,21 @@
       "tag": "动作",
       "status": "ready",
       "renderer": "esm",
-      "entry": "src/main.js"
+      "entry": "src/main.js",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "en": "Wild",
+      "desc": "十分钟单局生存割草。四把武器、三系职业、秽气进化、长期成长与转生。",
+      "kw": "荒野 割草 生存 肉鸽 roguelike 转生 武器 职业",
+      "ar": "780 / 1688",
+      "orientation": "portrait",
+      "url": "wild/",
+      "order": 1,
+      "hubStatus": "live"
     },
     {
       "id": "raid",
@@ -21,7 +35,21 @@
       "tag": "射击",
       "status": "ready",
       "renderer": "esm",
-      "entry": "src/main.js"
+      "entry": "src/main.js",
+      "channel": "party",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "en": "Soudache Raid",
+      "desc": "3D 第一人称撤离射击。搜物资 → 交火变硬 → 活着撤离，带出去的才是你的。",
+      "kw": "搜打撤 撤离 射击 塔科夫 FPS 3D 战利品 军械商",
+      "ar": "1280 / 800",
+      "orientation": "landscape",
+      "url": "soudache/",
+      "order": 2,
+      "hubStatus": "live"
     },
     {
       "id": "card",
@@ -31,7 +59,22 @@
       "tag": "卡牌",
       "status": "ready",
       "renderer": "esm",
-      "entry": "src/main.js"
+      "entry": "src/main.js",
+      "channel": "board",
+      "players": "多人",
+      "multiplayer": "hotseat",
+      "features": [
+        "offline",
+        "hotseat"
+      ],
+      "en": "One Card",
+      "desc": "每一世只带回一张牌的卡牌肉鸽。你是死在第九层的无名氏，轮回不止。",
+      "kw": "一世一牌 卡牌 肉鸽 roguelike 轮回 流派 遗物 难度阶梯",
+      "ar": "780 / 1688",
+      "orientation": "portrait",
+      "url": "one-card/",
+      "order": 3,
+      "hubStatus": "live"
     },
     {
       "id": "gym",
@@ -40,7 +83,24 @@
       "cover": "covers/gym.png",
       "tag": "益智",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "daily",
+        "achievements",
+        "localLeaderboard",
+        "offline"
+      ],
+      "en": "Brain Gym",
+      "desc": "53 款脑力小游戏：记忆 / 反应 / 视觉 / 数学 / 益智，九大类每日开练。",
+      "kw": "脑力 训练 记忆 反应 视觉 数学 益智 小游戏 每日挑战",
+      "ar": "1280 / 800",
+      "orientation": "landscape",
+      "url": "brain-gym/",
+      "order": 4,
+      "hubStatus": "live"
     },
     {
       "id": "sim",
@@ -50,7 +110,21 @@
       "tag": "模拟",
       "status": "ready",
       "renderer": "esm",
-      "entry": "src/main.mjs"
+      "entry": "src/main.mjs",
+      "channel": "tool",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "en": "Night Shift",
+      "desc": "深夜营业的 3D 模拟经营。补货、收银、应付奇奇怪怪的夜客，撑过七个夜班。",
+      "kw": "夜班 便利店 模拟 经营 收银 补货 3D 上班",
+      "ar": "1280 / 800",
+      "orientation": "landscape",
+      "url": "night-shift/",
+      "order": 5,
+      "hubStatus": "live"
     },
     {
       "id": "zhaoyun",
@@ -59,7 +133,21 @@
       "cover": "covers/zhaoyun.png",
       "tag": "塔防",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "en": "Zhaoyun",
+      "desc": "水墨风塔防原型。长坂坡七进七出，护住阿斗突出重围。",
+      "kw": "赵云 阿斗 三国 塔防 水墨 长坂坡 修罗八阵 今日之战",
+      "ar": "780 / 1688",
+      "orientation": "portrait",
+      "url": "zhaoyun/",
+      "order": 6,
+      "hubStatus": "live"
     },
     {
       "id": "quiz",
@@ -72,7 +160,24 @@
       "copyIgnore": [
         "src",
         "data"
-      ]
+      ],
+      "channel": "tool",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "daily",
+        "achievements",
+        "localLeaderboard",
+        "offline"
+      ],
+      "en": "Quiz",
+      "desc": "百词斩式分类刷题：分类书架 / 实力检测 / AI 建题库 / 错题本 / 背景音乐。",
+      "kw": "问答 刷题 题库 错题本 知识 测验 选择题",
+      "ar": "1200 / 1600",
+      "orientation": "portrait",
+      "url": "quiz/",
+      "order": 7,
+      "hubStatus": "live"
     },
     {
       "id": "lab",
@@ -82,7 +187,21 @@
       "tag": "教学",
       "status": "ready",
       "renderer": "esm",
-      "entry": "js/app.js"
+      "entry": "js/app.js",
+      "channel": "tool",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "en": "Circuit Lab",
+      "desc": "面包板 / 数字实验箱上搭电路，实时算直流、数字与暂态，配万用表、示波器和 8 个示例实验。",
+      "kw": "电路 面包板 示波器 万用表 物理 实验 模拟 数字电路",
+      "ar": "1280 / 800",
+      "orientation": "landscape",
+      "url": "circuit-lab/",
+      "order": 8,
+      "hubStatus": "live"
     },
     {
       "id": "paper-maze",
@@ -92,7 +211,22 @@
       "tag": "解谜",
       "status": "ready",
       "renderer": "esm",
-      "entry": "src/ui.mjs"
+      "entry": "src/ui.mjs",
+      "channel": "casual",
+      "players": "多人",
+      "multiplayer": "hotseat",
+      "features": [
+        "offline",
+        "hotseat"
+      ],
+      "en": "Paper Maze",
+      "desc": "旧纸上的文字解谜：13 个房间、40 件物品、12 条配方、7 个谜题、4 个结局，线索全在字里行间。",
+      "kw": "解谜 密室 文字 逃脱 推理解谜 纸 房间 结局",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "paper-maze/",
+      "order": 9,
+      "hubStatus": "live"
     },
     {
       "id": "neon-rhythm",
@@ -102,7 +236,22 @@
       "tag": "音游",
       "status": "ready",
       "renderer": "esm",
-      "entry": "src/ui.mjs"
+      "entry": "src/ui.mjs",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "localLeaderboard",
+        "offline"
+      ],
+      "en": "Neon Rhythm",
+      "desc": "程序化音游：4 曲 × 3 难度共 12 张谱面，谱面与音乐同源生成，判定精确到毫秒。",
+      "kw": "音游 节奏 音乐 判定 连击 霓虹 4轨 rhythm",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "neon-rhythm/",
+      "order": 10,
+      "hubStatus": "live"
     },
     {
       "id": "pixel-runner",
@@ -112,17 +261,45 @@
       "tag": "跑酷",
       "status": "ready",
       "renderer": "esm",
-      "entry": "src/ui.mjs"
+      "entry": "src/ui.mjs",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "en": "Pixel Runner",
+      "desc": "一键无尽跑酷：二段跳 + 滑铲 + 近失奖励，三种障碍三种道具，像素风全程序化绘制。",
+      "kw": "跑酷 像素 无尽 跳跃 滑铲 jump runner 街机",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "pixel-runner/",
+      "order": 11,
+      "hubStatus": "live"
     },
     {
       "id": "grass-cutter",
-      "name": "传统割草",
+      "name": "传统割草游戏",
       "dir": "grass-cutter",
       "cover": "covers/grass-cutter.png",
       "tag": "动作",
       "status": "ready",
       "renderer": "esm",
-      "entry": "src/main.js"
+      "entry": "src/main.js",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "en": "Grass Cutter",
+      "desc": "真 3D 战场割草：百人同屏、三兵种各异（刀兵基准 / 枪兵远而脆 / 斧兵重而慢），精英队长带号令光环，Boss 三招含突进斩，局末评级 S/A/B/C。",
+      "kw": "割草 三国 战场 3d 无双 肉鸽 roguelike 兵种 精英 boss 评级",
+      "ar": "1280 / 800",
+      "orientation": "landscape",
+      "url": "grass-cutter/",
+      "order": 12,
+      "hubStatus": "live"
     },
     {
       "id": "shanhai",
@@ -131,7 +308,21 @@
       "cover": "covers/shanhai.png",
       "tag": "战棋",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "board",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "en": "Scroll of Beasts",
+      "desc": "回合制战棋：剑/弓/术三方克制（1.3 ↔ 0.8 不取倒数，给劣势方留反打空间），林地/山地/水泽改变走位与防御，8×6 网格，局末 S/A/B/C 评级。",
+      "kw": "战棋 回合制 山海经 三国 塔防 tactics srpg 克制 网格",
+      "ar": "1280 / 800",
+      "orientation": "landscape",
+      "url": "shanhai/",
+      "order": 13,
+      "hubStatus": "live"
     },
     {
       "id": "warehouse-strike",
@@ -143,7 +334,20 @@
       "renderer": "esm",
       "entry": "src/main.js",
       "source": "D:/Projects/WAREHOUSE-STRIKE",
-      "addedIn": "P1"
+      "addedIn": "P1",
+      "channel": "party",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "listed": false,
+      "url": "warehouse-strike/",
+      "desc": "",
+      "ar": "1 / 1",
+      "orientation": "portrait",
+      "order": 999,
+      "hubStatus": "dev"
     },
     {
       "id": "lab-sandbox",
@@ -156,7 +360,20 @@
       "logicFrom": "lab",
       "source": "D:/Projects/lab-simulator",
       "sharesSourceWith": "lab",
-      "addedIn": "P1"
+      "addedIn": "P1",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "listed": false,
+      "url": "lab-sandbox/",
+      "desc": "",
+      "ar": "1 / 1",
+      "orientation": "portrait",
+      "order": 999,
+      "hubStatus": "dev"
     },
     {
       "id": "enlisten",
@@ -167,7 +384,18 @@
       "status": "pending",
       "renderer": "classic",
       "source": "D:/Projects/EN-LISTEN",
-      "addedIn": "P5"
+      "addedIn": "P5",
+      "channel": "tool",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [],
+      "listed": false,
+      "url": "enlisten/",
+      "desc": "",
+      "ar": "1 / 1",
+      "orientation": "portrait",
+      "order": 999,
+      "hubStatus": "dev"
     },
     {
       "id": "trio",
@@ -176,7 +404,22 @@
       "cover": "covers/trio-v2.png",
       "tag": "卡牌",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "board",
+      "players": "多人",
+      "multiplayer": "hotseat",
+      "features": [
+        "offline",
+        "hotseat"
+      ],
+      "en": "Trio Cards",
+      "desc": "三张牌凑同花、顺子、豹子比大小，押注与连胜的卡牌博弈。",
+      "kw": "卡牌 扑克 三张牌 同花 顺子 豹子 博弈",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "trio/",
+      "order": 14,
+      "hubStatus": "live"
     },
     {
       "id": "sudoku",
@@ -185,7 +428,24 @@
       "cover": "covers/sudoku-v2.png",
       "tag": "益智",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "daily",
+        "achievements",
+        "localLeaderboard",
+        "offline"
+      ],
+      "en": "Sudoku Express",
+      "desc": "4×4/6×6/9×9 三级数独，计时挑战、提示与每日一题。",
+      "kw": "数独 益智 数字 逻辑 每日 计时",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "sudoku/",
+      "order": 15,
+      "hubStatus": "live"
     },
     {
       "id": "slide",
@@ -194,7 +454,21 @@
       "cover": "covers/slide-v2.png",
       "tag": "解谜",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "en": "Slide Puzzle",
+      "desc": "3×3/4×4 数字华容道，最少步数挑战与每日固定盘面。",
+      "kw": "华容道 滑块 解谜 数字 最少步数",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "slide/",
+      "order": 16,
+      "hubStatus": "live"
     },
     {
       "id": "brick",
@@ -203,7 +477,22 @@
       "cover": "covers/brick-v2.png",
       "tag": "街机",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "localLeaderboard",
+        "offline"
+      ],
+      "en": "Brick Breaker",
+      "desc": "经典打砖块：多球、加宽、激光道具，关卡递进。",
+      "kw": "打砖块 街机 弹球 道具 关卡",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "brick/",
+      "order": 17,
+      "hubStatus": "live"
     },
     {
       "id": "diner",
@@ -212,7 +501,21 @@
       "cover": "covers/diner-v2.png",
       "tag": "模拟",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "en": "Midnight Diner",
+      "desc": "摆摊经营：看清客单按序配菜，30 秒营业赚金币，连击有加成。",
+      "kw": "模拟 经营 食堂 摆摊 配菜 客人",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "diner/",
+      "order": 18,
+      "hubStatus": "live"
     },
     {
       "id": "territory",
@@ -221,7 +524,22 @@
       "cover": "covers/territory-v2.png",
       "tag": "策略",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "board",
+      "players": "多人",
+      "multiplayer": "hotseat",
+      "features": [
+        "offline",
+        "hotseat"
+      ],
+      "en": "Territory",
+      "desc": "6×6 棋盘包围翻转，与 AI 对弈争夺领土。",
+      "kw": "策略 棋盘 包围 翻转 黑白棋 AI",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "territory/",
+      "order": 19,
+      "hubStatus": "live"
     },
     {
       "id": "tap",
@@ -230,7 +548,23 @@
       "cover": "covers/tap-v2.png",
       "tag": "音游",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "daily",
+        "localLeaderboard",
+        "offline"
+      ],
+      "en": "Tap Rhythm",
+      "desc": "四键下落式打拍，PERFECT/GREAT 判定与连击加成，每日固定谱面。",
+      "kw": "音游 节奏 下落 四键 连击 判定",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "tap/",
+      "order": 21,
+      "hubStatus": "live"
     },
     {
       "id": "liar",
@@ -239,7 +573,22 @@
       "cover": "covers/liar.png",
       "tag": "卡牌",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "esm",
+      "entry": "src/main.mjs",
+      "channel": "party",
+      "players": "多人",
+      "multiplayer": "p2p",
+      "features": [
+        "offline",
+        "p2p"
+      ],
+      "desc": "吹牛骰子心理博弈，叫牌与质疑的酒馆对决。人机对局，以及零服务器的纯 P2P 联机（骰子各摇各的，房主也算不出你的点数）。",
+      "kw": "卡牌 骰子 吹牛 心理 博弈",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "liar/",
+      "order": 22,
+      "hubStatus": "live"
     },
     {
       "id": "doudizhu",
@@ -248,7 +597,22 @@
       "cover": "covers/doudizhu.png",
       "tag": "卡牌",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "board",
+      "players": "多人",
+      "multiplayer": "hotseat",
+      "features": [
+        "offline",
+        "hotseat"
+      ],
+      "en": "Doudizhu",
+      "desc": "经典三人扑克，叫地主、出牌型、炸弹王炸与 AI 对弈。",
+      "kw": "卡牌 斗地主 扑克 炸弹 地主",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "doudizhu/",
+      "order": 23,
+      "hubStatus": "live"
     },
     {
       "id": "wuyouk",
@@ -257,7 +621,22 @@
       "cover": "covers/wuyouk.png",
       "tag": "卡牌",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "board",
+      "players": "多人",
+      "multiplayer": "hotseat",
+      "features": [
+        "offline",
+        "hotseat"
+      ],
+      "en": "510K",
+      "desc": "民间热门抢分扑克，5/10/K 凑分，先到 100 分获胜。",
+      "kw": "卡牌 510K 抢分 扑克 民间",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "wuyouk/",
+      "order": 24,
+      "hubStatus": "live"
     },
     {
       "id": "tongxin",
@@ -266,7 +645,22 @@
       "cover": "covers/tongxin.png",
       "tag": "卡牌",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "party",
+      "players": "多人",
+      "multiplayer": "hotseat",
+      "features": [
+        "offline",
+        "hotseat"
+      ],
+      "en": "Tongxin",
+      "desc": "四人找朋友，红蓝两队暗配队友，同心协力赢墩得分。",
+      "kw": "卡牌 找朋友 配合 同心 四家",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "tongxin/",
+      "order": 25,
+      "hubStatus": "live"
     },
     {
       "id": "metro-runner",
@@ -275,7 +669,21 @@
       "cover": "covers/metro-runner.png",
       "tag": "街机",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "en": "Metro Rush",
+      "desc": "三轨切换、跳跃滑铲、躲列车收金币的无限跑酷。",
+      "kw": "跑酷 地铁 三轨 跳跃 滑铲 街机",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "metro-runner/",
+      "order": 26,
+      "hubStatus": "live"
     },
     {
       "id": "archer",
@@ -284,7 +692,21 @@
       "cover": "covers/archer.webp",
       "tag": "射击",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "party",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "en": "Shadow Archer",
+      "desc": "紫夜荒原的弓手对决：5 大关 20 波推进，装备跨局保留，词条叠加成 build，局外商店补强。",
+      "kw": "弓箭 对决 抛物线 射击 火柴人 关卡 装备 词条 跨局 肉鸽 archery",
+      "ar": "1280 / 800",
+      "orientation": "landscape",
+      "url": "archer/",
+      "order": 27,
+      "hubStatus": "live"
     },
     {
       "id": "jigsaw",
@@ -293,7 +715,23 @@
       "cover": "covers/jigsaw.webp",
       "tag": "益智",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "achievements",
+        "localLeaderboard",
+        "offline"
+      ],
+      "en": "Cat Basket Jigsaw",
+      "desc": "12 张治愈插画 × 3 档片数共 36 关：拖拽拼片、限量提示、计步计时评星、图鉴收集。",
+      "kw": "拼图 益智 猫咪 花篮 花卉 拖拽 关卡 图鉴 jigsaw puzzle",
+      "ar": "780 / 1040",
+      "orientation": "portrait",
+      "url": "jigsaw/",
+      "order": 28,
+      "hubStatus": "live"
     },
     {
       "id": "sleeper",
@@ -302,7 +740,21 @@
       "cover": "covers/sleeper.webp",
       "tag": "塔防",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "en": "Sleepy Defense",
+      "desc": "上床躺平产金币，升级床与门、建炮台，三个房间 15 波守夜迎战 Boss，支持 1/2/4 倍速。",
+      "kw": "躺平 塔防 守夜 睡觉 炮台 发育 倍速 boss 关卡 defense",
+      "ar": "780 / 1040",
+      "orientation": "portrait",
+      "url": "sleeper/",
+      "order": 29,
+      "hubStatus": "live"
     },
     {
       "id": "legion",
@@ -311,7 +763,21 @@
       "cover": "covers/legion.webp",
       "tag": "策略",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "board",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "en": "Snow Legion",
+      "desc": "雪地军团自动推进：6 关递进、双 Boss 中场、三类敌军，技能三选一与暴风雪大招成长。",
+      "kw": "军团 自走棋 塔防 雪地 兵种 大招 技能三选一 boss 关卡 legion",
+      "ar": "780 / 1040",
+      "orientation": "portrait",
+      "url": "legion/",
+      "order": 30,
+      "hubStatus": "live"
     },
     {
       "id": "dragonchess",
@@ -320,7 +786,22 @@
       "cover": "covers/dragonchess.png",
       "tag": "策略",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "board",
+      "players": "多人",
+      "multiplayer": "hotseat",
+      "features": [
+        "offline",
+        "hotseat"
+      ],
+      "en": "Dragon Chess",
+      "desc": "三层同心方格的民间棋，成龙吃子、满天飞、打炮，双档 AI 对弈。",
+      "kw": "龙凤棋 龙棋 成龙 满天飞 打炮 策略",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "dragonchess/",
+      "order": 27,
+      "hubStatus": "live"
     },
     {
       "id": "mahjong",
@@ -329,7 +810,73 @@
       "cover": "covers/mahjong.png",
       "tag": "益智",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "channel": "board",
+      "players": "多人",
+      "multiplayer": "hotseat",
+      "features": [
+        "localLeaderboard",
+        "offline",
+        "hotseat"
+      ],
+      "en": "Mahjong",
+      "desc": "136 张四人局，碰杠胡与七对，番型明细结算，断线可续局。",
+      "kw": "麻将 碰杠胡 七对 清一色 益智",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "mahjong/",
+      "order": 28,
+      "hubStatus": "live"
+    },
+    {
+      "id": "gomoku",
+      "name": "五子棋",
+      "dir": "gomoku",
+      "cover": "covers/gomoku.png",
+      "tag": "棋牌",
+      "status": "ready",
+      "renderer": "esm",
+      "entry": "src/main.mjs",
+      "channel": "board",
+      "players": "双人",
+      "multiplayer": "hotseat",
+      "features": [
+        "offline",
+        "hotseat",
+        "p2p"
+      ],
+      "en": "Gomoku",
+      "desc": "15×15 棋盘，黑先，五连即胜。人机、同屏双人，以及零服务器的纯 P2P 联机。",
+      "kw": "五子棋 五子连珠 棋 棋牌 黑白棋 人机 联机 gomoku 五子",
+      "ar": "1280 / 800",
+      "url": "gomoku/",
+      "order": 40,
+      "hubStatus": "live",
+      "orientation": "landscape"
+    },
+    {
+      "id": "party-tools",
+      "name": "聚会工具箱",
+      "dir": "party-tools",
+      "cover": "covers/party-tools.png",
+      "tag": "工具",
+      "status": "ready",
+      "renderer": "esm",
+      "entry": "src/main.mjs",
+      "channel": "tool",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "en": "Party Tools",
+      "desc": "随机分组、多面骰、转盘、抽签、计分板五件套。聚会前打开就能用，名单和分数都只存在本机。",
+      "kw": "聚会 工具 分组 骰子 转盘 抽签 计分 随机 派对 聚会工具箱",
+      "ar": "1280 / 800",
+      "url": "party-tools/",
+      "order": 41,
+      "hubStatus": "live",
+      "orientation": "landscape"
     },
     {
       "id": "rulecraft",
@@ -339,7 +886,23 @@
       "tag": "custom",
       "status": "ready",
       "renderer": "classic",
-      "funFact": "本地生成 · 零 API 规则工坊"
+      "funFact": "自己做一款 · 本地生成零 API",
+      "channel": "tool",
+      "players": "多人",
+      "multiplayer": "hotseat",
+      "features": [
+        "daily",
+        "offline",
+        "hotseat"
+      ],
+      "en": "Rule Craft",
+      "desc": "用中文描述生成可玩规则：RuleSet、规则书、程序化棋子、AI 对手与追问迭代。",
+      "kw": "规则工坊 自定义规则 规则生成 棋类 益智",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "rulecraft/",
+      "order": 29,
+      "hubStatus": "live"
     },
     {
       "id": "huipai",
@@ -351,7 +914,272 @@
       "renderer": "classic",
       "updatedAt": "2026-11-24",
       "version": 1,
-      "funFact": "3 副牌 · 5-10-K 特殊牌型"
+      "funFact": "3 副牌 · 5-10-K 特殊牌型",
+      "channel": "board",
+      "players": "多人",
+      "multiplayer": "hotseat",
+      "features": [
+        "offline",
+        "hotseat"
+      ],
+      "en": "Hui Pai",
+      "desc": "3 副 156 张，5-10-K 特殊牌型与炸弹共用牌力阶梯，本地 AI 三人局。",
+      "kw": "回牌 扑克 5-10-K 牌力阶梯 民间 牌类",
+      "ar": "1280 / 800",
+      "orientation": "portrait",
+      "url": "huipai/",
+      "order": 30,
+      "hubStatus": "live"
+    },
+    {
+      "id": "connect4",
+      "name": "四子棋",
+      "dir": "connect4",
+      "cover": "covers/connect4.png",
+      "tag": "棋牌",
+      "status": "ready",
+      "renderer": "esm",
+      "entry": "src/main.mjs",
+      "channel": "board",
+      "players": "双人",
+      "multiplayer": "hotseat",
+      "features": [
+        "offline",
+        "hotseat",
+        "p2p"
+      ],
+      "en": "Connect Four",
+      "desc": "7×6 竖盘重力落子，四连即胜。人机、同屏双人，以及零服务器的纯 P2P 联机。",
+      "kw": "四子棋 四子 连珠 棋 棋牌 落子 重力 联机 connect4",
+      "ar": "1280 / 800",
+      "url": "connect4/",
+      "order": 42,
+      "hubStatus": "live",
+      "orientation": "landscape"
+    },
+    {
+      "id": "uno",
+      "name": "UNO 彩牌",
+      "dir": "uno",
+      "cover": "covers/uno.png",
+      "tag": "棋牌",
+      "status": "ready",
+      "renderer": "esm",
+      "entry": "src/main.mjs",
+      "channel": "board",
+      "players": "双人",
+      "multiplayer": "hotseat",
+      "features": [
+        "offline",
+        "hotseat",
+        "p2p"
+      ],
+      "en": "UNO",
+      "desc": "四色数字牌加万能牌，手牌出完即胜。人机、同屏双人，以及零服务器的纯 P2P 联机。",
+      "kw": "UNO 彩牌  uno 纸牌 接龙 数字牌 万能牌 联机 棋牌",
+      "ar": "1280 / 800",
+      "url": "uno/",
+      "order": 43,
+      "hubStatus": "live",
+      "orientation": "landscape"
+    },
+    {
+      "id": "undercover",
+      "name": "谁是卧底",
+      "dir": "undercover",
+      "cover": "covers/undercover.png",
+      "tag": "派对",
+      "status": "ready",
+      "renderer": "esm",
+      "entry": "src/main.mjs",
+      "channel": "party",
+      "players": "多人",
+      "multiplayer": "hotseat",
+      "features": [
+        "offline",
+        "hotseat",
+        "p2p"
+      ],
+      "en": "Undercover",
+      "desc": "描述、投票、揪出卧底。人机、同屏多人，以及零服务器的纯 P2P 联机（你的词只有你自己看得到）。",
+      "kw": "谁是卧底 卧底 描述 投票 派对 身份推理 联机 undercover",
+      "ar": "1280 / 800",
+      "url": "undercover/",
+      "order": 44,
+      "hubStatus": "live",
+      "orientation": "landscape"
+    },
+    {
+      "id": "drawguess",
+      "name": "你画我猜",
+      "dir": "drawguess",
+      "cover": "covers/drawguess.png",
+      "tag": "派对",
+      "status": "ready",
+      "renderer": "esm",
+      "entry": "src/main.mjs",
+      "channel": "party",
+      "players": "多人",
+      "multiplayer": "hotseat",
+      "features": [
+        "offline",
+        "hotseat",
+        "p2p"
+      ],
+      "en": "Draw & Guess",
+      "desc": "一个人画，其余的人猜。人机对练、同屏派对，以及零服务器的纯 P2P 联机（画师手上的词只有他自己看得到）。",
+      "kw": "你画我猜 画画 猜词 涂鸦 派对 联机 pictionary drawguess",
+      "ar": "1280 / 800",
+      "url": "drawguess/",
+      "order": 45,
+      "hubStatus": "live",
+      "orientation": "landscape"
+    },
+    {
+      "id": "ludo",
+      "name": "飞行棋",
+      "dir": "ludo",
+      "cover": "covers/ludo.png",
+      "tag": "棋牌",
+      "status": "ready",
+      "renderer": "esm",
+      "entry": "src/main.mjs",
+      "channel": "board",
+      "players": "多人",
+      "multiplayer": "p2p",
+      "features": [
+        "offline",
+        "p2p"
+      ],
+      "en": "Ludo",
+      "desc": "经典飞行棋：4 色 16 颗棋子，掷 6 起飞、飞跃点、撞机、终点通道。人机对局，以及零服务器的纯 P2P 联机（点数是双方各自算出来的，房主改不了）。",
+      "kw": "飞行棋 骰子 棋盘 经典 派对 联机 ludo aeroplane chess",
+      "ar": "1280 / 800",
+      "url": "ludo/",
+      "order": 46,
+      "hubStatus": "live",
+      "orientation": "landscape"
+    },
+    {
+      "id": "blast",
+      "name": "方块爆破",
+      "dir": "blast",
+      "cover": "covers/blast.png",
+      "tag": "休闲",
+      "status": "ready",
+      "renderer": "esm",
+      "entry": "src/main.mjs",
+      "channel": "casual",
+      "players": "双人",
+      "multiplayer": "p2p",
+      "features": ["offline", "p2p", "undo"],
+      "en": "Blast Chain",
+      "desc": "点一格炸开 3×3，落下的同色方块自动消除触发连锁，倍率越叠越高。支持撤销、每日一局与零服务器纯 P2P 对战。",
+      "kw": "方块爆破 消除 连锁 合成 休闲 每日一局 撤销 联机 blast",
+      "ar": "1280 / 800",
+      "url": "blast/",
+      "order": 48,
+      "hubStatus": "live",
+      "orientation": "landscape"
+    },
+    {
+      "id": "shanhai-merge",
+      "name": "山海合成",
+      "dir": "shanhai-merge",
+      "cover": "covers/shanhai-merge.png",
+      "tag": "休闲",
+      "status": "ready",
+      "renderer": "esm",
+      "entry": "src/main.mjs",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "none",
+      "features": [
+        "offline"
+      ],
+      "en": "Shanhai Merge",
+      "desc": "把两只同阶上古神兽叠在一起合体升级，合出饕餮即胜。支持每日固定局比分数、一键撤销与步数挑战。",
+      "kw": "山海合成 合成 消消乐 灵兽 神兽 每日挑战 撤销 shanhai merge puzzle",
+      "ar": "1280 / 800",
+      "url": "shanhai-merge/",
+      "order": 47,
+      "hubStatus": "live",
+      "orientation": "landscape"
+    },
+    {
+      "id": "slicer",
+      "name": "切片大师",
+      "dir": "slicer",
+      "cover": "covers/slicer.png",
+      "tag": "休闲",
+      "status": "ready",
+      "renderer": "esm",
+      "entry": "src/main.mjs",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "p2p",
+      "features": [
+        "offline",
+        "p2p"
+      ],
+      "en": "Slicer Master",
+      "desc": "按住划过水果把它切开，一次划过切中越多倍率越高；别碰炸弹。每日一局与零服务器纯 P2P 联机。",
+      "kw": "切片大师 切水果 划过 连击 炸弹 休闲 每日一局 联机 slicer fruit",
+      "ar": "1280 / 800",
+      "url": "slicer/",
+      "order": 50,
+      "hubStatus": "live",
+      "orientation": "landscape"
+    },
+    {
+      "id": "fishing",
+      "name": "小铺垂钓",
+      "dir": "fishing",
+      "cover": "covers/fishing.png",
+      "tag": "休闲",
+      "status": "ready",
+      "renderer": "esm",
+      "entry": "src/main.mjs",
+      "channel": "casual",
+      "players": "单人",
+      "multiplayer": "p2p",
+      "features": [
+        "offline",
+        "p2p"
+      ],
+      "en": "Little Shop Fishing",
+      "desc": "湖边小铺抛竿垂钓：等鱼咬钩，踩准完美区收竿。常见 / 稀有 / 传说三种鱼，每日一钓与零服务器纯 P2P 联机。",
+      "kw": "小铺垂钓 钓鱼 抛竿 咬钩 反应窗口 稀有鱼 每日一钓 联机 fishing",
+      "ar": "1280 / 800",
+      "url": "fishing/",
+      "order": 49,
+      "hubStatus": "live",
+      "orientation": "landscape"
+    },
+    {
+      "id": "quiz-party",
+      "name": "快问快答派对",
+      "dir": "quiz-party",
+      "cover": "covers/quiz-party.png",
+      "tag": "派对",
+      "status": "ready",
+      "renderer": "esm",
+      "entry": "src/main.mjs",
+      "channel": "party",
+      "players": "多人",
+      "multiplayer": "p2p",
+      "features": [
+        "offline",
+        "p2p"
+      ],
+      "en": "Quiz Party",
+      "desc": "15 秒限时抢答：答对得分、答得越快分越高、连对还有加成。128 道分类题库，每日一局全网同题，也能零服务器纯 P2P 双人同题对抢。",
+      "kw": "快问快答 答题 抢答 问答 知识竞赛 每日一局 联机 派对 quiz party trivia",
+      "ar": "1280 / 800",
+      "url": "quiz-party/",
+      "order": 51,
+      "hubStatus": "live",
+      "orientation": "landscape"
     }
   ]
 }

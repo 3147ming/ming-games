@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1b2d">
+<title>你画我猜</title>
+<meta name="description" content="你画我猜 —— 一个画，其余的人猜。人机对练、同屏派对，以及零服务器的纯 P2P 联机（手动交换连接码即可开黑，不经过任何服务器）。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3Crect width='64' height='64' rx='12' fill='%230f1b2d'/%3Cpath d='M14 44c6-16 16-24 30-22' stroke='%2338bdf8' stroke-width='5' fill='none' stroke-linecap='round'/%3Ccircle cx='44' cy='22' r='7' fill='%23f472b6'/%3C/svg>">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+:root{--ink:#0b1524;--panel:#132338;--panel2:#1a2d47;--line:#274060;--blue:#38bdf8;--pink:#f472b6;--green:#4ade80;--amber:#fbbf24;--text:#e8f0fa;--muted:#8ba4c0}
+*{box-sizing:border-box}
+/* hidden 属性必须真的隐藏 —— 下面有 .myword{display:flex} 这类规则，
+   不加这条的话 [hidden] 会被 display 覆盖，元素照样露出来。 */
+[hidden]{display:none!important}html,body{margin:0;min-height:100%;background:radial-gradient(circle at 50% 0%,#16324f,#080f1a 74%);color:var(--text);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:960px;margin:0 auto;padding:14px 14px 30px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+h1{font-size:20px;margin:0;letter-spacing:2px;color:var(--blue)}
+.sub{font-size:12px;opacity:.7;margin:2px 0 0}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+button,select,input{font:inherit}
+button,select,input[type=text]{min-height:44px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:14px;cursor:pointer;touch-action:manipulation}
+button:hover,select:hover,input:hover{border-color:var(--blue)}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.primary{background:var(--blue);color:#04121e;font-weight:600;border-color:var(--blue)}
+button.pink{background:var(--pink);color:#2a0716;font-weight:600;border-color:var(--pink)}
+button.ghost{background:transparent}
+input[type=text]{width:100%}
+.status{display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:13px}
+.status b{color:var(--blue)}
+
+/* 画板 */
+.board{position:relative;background:#fdfdff;border-radius:16px;overflow:hidden;border:1px solid var(--line);margin-bottom:10px}
+.board canvas{display:block;width:100%;height:auto;touch-action:none;background:#fdfdff;cursor:crosshair}
+/* 遮罩层只是显示文字，不能挡住画板 —— pointer-events:none */
+.board .overlay{position:absolute;inset:0;display:grid;place-items:center;background:#fdfdffdd;text-align:center;padding:20px;pointer-events:none}
+.board .overlay .big{font-size:34px;font-weight:800;color:var(--ink);letter-spacing:2px;margin-bottom:8px}
+.board .overlay .sm{font-size:14px;color:#4a5a6b;line-height:1.7}
+.board .overlay.hidden{display:none}
+
+/* 工具条 */
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.swatch{width:34px;height:34px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;min-height:0}
+.swatch.on{border-color:#0b1524;transform:scale(1.12)}
+.toolbtn{min-height:38px;padding:0 12px;font-size:13px;border-radius:9px}
+.sizewrap{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+
+/* 猜词区 */
+.guessrow{display:flex;gap:8px;margin-bottom:10px}
+.guessrow input{flex:1}
+.chat{max-height:150px;overflow-y:auto;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:8px;margin-bottom:10px}
+.chat .line{font-size:13px;padding:5px 8px;border-radius:8px;margin-bottom:4px;line-height:1.6;background:rgba(255,255,255,.04)}
+.chat .line b{color:var(--blue)}
+.chat .line.hit{background:rgba(74,222,128,.16);color:#bff5d2}
+.chat .line.near{background:rgba(251,191,36,.13);color:#ffe4a3}
+.chat .line.sys{color:var(--muted);font-size:12px;text-align:center;background:none}
+
+/* 私密词 */
+.myword{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:linear-gradient(90deg,#1c3b58,#132338);border:1px solid var(--blue);border-radius:14px;padding:12px 14px;margin-bottom:10px}
+.myword .lbl{font-size:11px;opacity:.75;letter-spacing:.1em}
+.myword .word{font-size:28px;font-weight:800;color:var(--blue);letter-spacing:3px}
+.myword .hidebtn{margin-left:auto}
+.handout{background:linear-gradient(180deg,#1c3b58,#132338);border:1px solid var(--blue);border-radius:14px;padding:18px;margin-bottom:10px;text-align:center}
+.handout h3{margin:0 0 12px;font-size:15px;color:var(--blue)}
+.handout .big{font-size:36px;font-weight:800;color:var(--blue);letter-spacing:4px;margin-bottom:14px;min-height:46px}
+
+.seats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px}
+.seat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}
+.seat.drawer{border-color:var(--pink);box-shadow:0 0 14px rgba(244,114,182,.25)}
+.seat .nm{font-size:13px;font-weight:600}
+.seat .sc{font-size:20px;font-weight:800;color:var(--green);margin-top:4px}
+.seat .rl{font-size:11px;color:var(--muted);margin-top:2px}
+
+.result{background:var(--panel2);border:1px solid var(--blue);border-radius:12px;padding:12px;margin-bottom:10px;font-size:13px;line-height:1.8}
+.result b{color:var(--blue)}
+.end{position:fixed;inset:0;display:none;place-items:center;background:#060c15e0;text-align:center;padding:20px;z-index:60}
+.end.show{display:grid}
+.end h2{font-size:28px;margin:0 0 8px;color:var(--blue)}
+.end .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;max-width:420px}
+.end .box p{font-size:13px;line-height:1.8;opacity:.85}
+.hintline{margin:8px 2px 0;font-size:13px;line-height:1.7;color:#bcd3e8;min-height:40px}
+
+/* 联机 */
+.p2p{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+.p2p h2{font-size:15px;margin:0 0 8px;color:var(--blue);letter-spacing:1px;cursor:pointer;user-select:none}
+.p2p h2 .fold{font-size:12px;opacity:.7;margin-left:6px;font-weight:400}
+.p2p.collapsed h2{margin-bottom:0}
+.p2p.collapsed .p2p-body{display:none}
+.p2p p.note{font-size:12px;line-height:1.6;opacity:.75;margin:0 0 10px}
+.p2p-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.p2p-row input{flex:1;min-width:200px;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.code-box{width:100%;min-height:76px;padding:8px;font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.4;word-break:break-all;background:#081220;border:1px solid var(--line);border-radius:8px;color:var(--blue);resize:vertical}
+.p2p-state{font-size:12px;padding:6px 10px;border-radius:8px;background:#081220;border:1px solid #1f3a58}
+.p2p-state.ok{border-color:var(--green);color:#a5f3c4}
+.p2p-state.err{border-color:#f87171;color:#fca5a5}
+.p2p-state.wait{border-color:var(--blue);color:var(--blue)}
+.steps{counter-reset:s;margin:0 0 10px;padding-left:20px;font-size:13px;line-height:1.8}
+@media(pointer:coarse){button,select,input{min-height:48px}}
+@media(max-width:430px){h1{font-size:17px}.bar{margin-left:0;width:100%}.bar button,.bar select{flex:1;padding:0 8px;font-size:13px}.myword .word{font-size:22px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div><h1>你画我猜</h1><p class="sub">一个人画，其余的人猜</p></div>
+  <div class="bar">
+    <select id="mode" aria-label="对局模式">
+      <option value="ai">人机对练</option>
+      <option value="hotseat">同屏派对</option>
+      <option value="p2p">纯 P2P 联机</option>
+    </select>
+    <select id="playercount" aria-label="玩家数">
+      <option value="2" selected>2 人</option>
+      <option value="3">3 人</option>
+      <option value="4">4 人</option>
+      <option value="5">5 人</option>
+      <option value="6">6 人</option>
+    </select>
+    <button id="restart" type="button">新局</button>
+  </div>
+</header>
+
+<div class="status" aria-live="polite">
+  <span><b id="phase">准备中</b></span>
+  <span>第 <b id="round">0</b> 回合</span>
+  <span id="drawerinfo">等待画师</span>
+  <span id="modehint">人机：你画，AI 猜</span>
+</div>
+
+<!-- 同屏模式：传手机看词 -->
+<div class="handout" id="handout" hidden>
+  <h3>请把手机交给 <b id="handout-title">画师</b> <b id="handout-name">玩家 1</b></h3>
+  <div class="big" id="handout-word">···</div>
+  <button class="primary" id="btn-handout" type="button">看看</button>
+  <button class="pink" id="btn-pass" type="button" hidden>画完了，传给下一位</button>
+</div>
+
+<!-- 私密：只有画师看得到 -->
+<div class="myword" id="myword" hidden>
+  <div>
+    <div class="lbl">你要画的词</div>
+    <div class="word" id="mywordval">···</div>
+  </div>
+  <button class="hidebtn" id="btn-peek" type="button">按住查看</button>
+</div>
+
+<!-- 画板 -->
+<div class="board">
+  <canvas id="cv" width="900" height="600"></canvas>
+  <div class="overlay" id="overlay">
+    <div>
+      <div class="big" id="ovtitle">还没开始</div>
+      <div class="sm" id="ovdesc">点「新局」开始</div>
+    </div>
+  </div>
+</div>
+
+<!-- 画笔工具 -->
+<div class="tools" id="tools">
+  <button class="swatch on" data-c="#111827" style="background:#111827" type="button" aria-label="黑色"></button>
+  <button class="swatch" data-c="#dc2626" style="background:#dc2626" type="button" aria-label="红色"></button>
+  <button class="swatch" data-c="#2563eb" style="background:#2563eb" type="button" aria-label="蓝色"></button>
+  <button class="swatch" data-c="#16a34a" style="background:#16a34a" type="button" aria-label="绿色"></button>
+  <button class="swatch" data-c="#f59e0b" style="background:#f59e0b" type="button" aria-label="橙色"></button>
+  <button class="swatch" data-c="#a855f7" style="background:#a855f7" type="button" aria-label="紫色"></button>
+  <div class="sizewrap">
+    <span>笔粗</span>
+    <input id="size" type="range" min="2" max="28" value="7" style="width:110px;min-height:0">
+  </div>
+  <button class="toolbtn ghost" id="btn-undo" type="button">撤销</button>
+  <button class="toolbtn ghost" id="btn-clear" type="button">清空</button>
+</div>
+
+<!-- 猜词 -->
+<div class="guessrow">
+  <input type="text" id="guessin" maxlength="20" placeholder="你画的是什么？在这里打字猜" autocomplete="off">
+  <button class="pink" id="btn-guess" type="button">猜！</button>
+</div>
+
+<!-- 聊天/猜测记录 -->
+<div class="chat" id="chat"></div>
+
+<!-- 座位与比分 -->
+<div class="seats" id="seats"></div>
+
+<!-- 结算 -->
+<div class="result" id="result" hidden></div>
+
+<p class="hintline" id="hint">画师在画板上作画，其他人在下面打字猜。</p>
+
+<!-- 终局 -->
+<div class="end" id="end"><div class="box"><h2 id="endtitle">游戏结束</h2><p id="enddesc"></p><button id="again" type="button">再来一局</button></div></div>
+
+<!-- 联机面板 -->
+<section class="p2p" id="p2p" hidden>
+  <h2 id="p2p-toggle">纯 P2P 联机 · 零服务器<span class="fold">（点标题折叠）</span></h2>
+  <div class="p2p-body">
+  <p class="note">
+    不经过任何服务器、不连任何第三方、不花钱、也不用改 IP —— 代价是要手动交换两段连接码。
+    用微信/短信把码发给对方就行。同一个 WiFi 下最稳；跨公网能否连上取决于双方网络环境。
+    <br>画师手上的词<b>只有画师看得到</b>，猜的人提前知道就没得玩了。
+  </p>
+
+  <div class="p2p-row" id="rolebar">
+    <button class="primary" id="btn-host" type="button">我来建房</button>
+    <button id="btn-join" type="button">我有房主码</button>
+  </div>
+
+  <div id="host-flow" hidden>
+    <ol class="steps">
+      <li>把下面这段【房主码】发给朋友</li>
+      <li>朋友会回你一段【加入码】，粘贴到下面</li>
+      <li>点「接受加入码」，通道就通了</li>
+    </ol>
+    <div class="p2p-row"><button id="btn-gen-host" class="primary" type="button">生成房主码</button>
+      <input id="host-pass" type="password" inputmode="numeric" placeholder="房间密码（可留空）" maxlength="12" style="max-width:180px"></div>
+    <textarea class="code-box" id="host-code" readonly placeholder="点上面「生成房主码」后，这里会出现一段码，复制发给朋友"></textarea>
+    <div class="p2p-row" style="margin-top:8px">
+      <textarea class="code-box" id="join-in" placeholder="把朋友发回的加入码粘贴到这里" style="min-height:60px"></textarea>
+    </div>
+    <div class="p2p-row"><button id="btn-accept" class="primary" type="button">接受加入码</button>
+      <button id="btn-copy-host" type="button">复制房主码</button></div>
+  </div>
+
+  <div id="guest-flow" hidden>
+    <ol class="steps">
+      <li>把朋友发来的【房主码】粘贴到下面</li>
+      <li>点「生成加入码」，把生成的码发回房主</li>
+      <li>房主接受后自动开局</li>
+    </ol>
+    <div class="p2p-row"><textarea class="code-box" id="host-in" placeholder="粘贴房主码到这里" style="min-height:60px"></textarea></div>
+    <div class="p2p-row"><button id="btn-gen-guest" class="primary" type="button">生成加入码</button>
+      <input id="guest-pass" type="password" inputmode="numeric" placeholder="房间密码" maxlength="12" style="max-width:180px"></div>
+    <textarea class="code-box" id="guest-code" readonly placeholder="生成后在这里，把这段码发回房主"></textarea>
+    <div class="p2p-row"><button id="btn-copy-guest" type="button">复制加入码</button></div>
+  </div>
+
+  <div class="p2p-row" style="margin-top:10px">
+    <span class="p2p-state wait" id="p2p-state">未连接</span>
+    <button id="btn-close" type="button">断开</button>
+  </div>
+  </div>
+</section>
+
+</div>
+<script type="module" src="./src/main.mjs"></script>
+</body>
+</html>

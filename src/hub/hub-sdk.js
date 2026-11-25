@@ -26,37 +26,14 @@ const NS = 'ming.hub.v1';
 const OWNER_TAGS = Object.freeze(['卡牌', '益智', '模拟', '策略', '解谜', '战棋', '街机', '音游']);
 const OTHER_TAGS = Object.freeze(['动作', '射击']);
 
-/* 13 款游戏元数据（与首页 GAMES 单一真源保持一致） */
-const GAMES = Object.freeze([
-  { id: 'wild',         name: '荒野 WILD',       tag: '动作', url: 'wild/' },
-  { id: 'raid',         name: '搜打撤',           tag: '射击', url: 'soudache/' },
-  { id: 'card',         name: '一世一牌',         tag: '卡牌', url: 'one-card/' },
-  { id: 'gym',          name: '脑力训练场',       tag: '益智', url: 'brain-gym/' },
-  { id: 'sim',          name: '夜班便利店',       tag: '模拟', url: 'night-shift/' },
-  { id: 'zhaoyun',      name: '赵云与阿斗',       tag: '策略', url: 'zhaoyun/' },
-  { id: 'quiz',         name: '知识问答',         tag: '益智', url: 'quiz/' },
-  { id: 'lab',          name: '电路实验模拟器',   tag: '模拟', url: 'circuit-lab/' },
-  { id: 'paper-maze',   name: '纸上迷城',         tag: '解谜', url: 'paper-maze/' },
-  { id: 'neon-rhythm',  name: '霓虹律动',         tag: '音游', url: 'neon-rhythm/' },
-  { id: 'pixel-runner', name: '像素跑酷',         tag: '街机', url: 'pixel-runner/' },
-  { id: 'grass-cutter', name: '传统割草游戏',     tag: '动作', url: 'grass-cutter/' },
-  { id: 'shanhai',      name: '山海拾遗',         tag: '战棋', url: 'shanhai/' },
-  { id: 'trio',         name: '三张牌',           tag: '卡牌', url: 'trio/' },
-  { id: 'sudoku',       name: '数独速递',         tag: '益智', url: 'sudoku/' },
-  { id: 'slide',        name: '华容道',           tag: '解谜', url: 'slide/' },
-  { id: 'brick',        name: '方块消消',         tag: '街机', url: 'brick/' },
-  { id: 'diner',        name: '深夜食堂',         tag: '模拟', url: 'diner/' },
-  { id: 'territory',    name: '占位棋',           tag: '策略', url: 'territory/' },
-  { id: 'tap',          name: '节奏拍打',         tag: '音游', url: 'tap/' },
-  { id: 'metro-runner', name: '地铁跑酷',         tag: '街机', url: 'metro-runner/' },
-  { id: 'dragonchess', name: '龙凤棋',           tag: '策略', url: 'dragonchess/' },
-  { id: 'mahjong', name: '麻将',               tag: '益智', url: 'mahjong/' },
-  { id: 'rulecraft', name: '规则工坊',           tag: '益智', url: 'rulecraft/' },
-  { id: 'liar', name: '骗子酒馆', tag: '卡牌', url: 'liar/' },
-  { id: 'doudizhu', name: '斗地主', tag: '卡牌', url: 'doudizhu/' },
-  { id: 'wuyouk', name: '510K', tag: '卡牌', url: 'wuyouk/' },
-  { id: 'tongxin', name: '同心', tag: '卡牌', url: 'tongxin/' },
-]);
+/* 游戏清单：不在这里硬编码。
+   构建期由 tools/build-offline.mjs 注入 globalThis.__HUB_GAMES__（来自 games.json），
+   这里是同一份数据的第二个消费者 —— 以前硬编码了一份 28 条的清单，
+   每次加游戏都要记得同步，改成读注入值后少一个能忘的地方。
+   注：本文件在 hub.html 里排在 DATA 块之后，所以 __HUB_GAMES__ 一定已经存在。 */
+const GAMES = Object.freeze((globalThis.__HUB_GAMES__ || []).map(function (g) {
+  return { id: g.id, name: g.name, tag: g.tag, url: g.url || (g.dir ? g.dir + '/' : ''), channel: g.channel };
+}));
 
 function isOwner(tag) { return OWNER_TAGS.indexOf(tag) >= 0; }
 
