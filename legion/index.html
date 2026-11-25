@@ -382,13 +382,13 @@ function drawCity(t) {
   /* 主城升级 */
   ctx.save();
   var upReady = L.cityLv < 4 && L.coins >= CONFIG.cityCost[L.cityLv + 1];
-  ctx.fillStyle = upReady ? 'rgba(126,217,195,.95)' : 'rgba(20,32,48,.75)';
-  ctx.strokeStyle = upReady ? '#DFFFF4' : 'rgba(255,255,255,.22)'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(286, 266, 148, 30, 8) : ctx.rect(286, 266, 148, 30);
+  ctx.fillStyle = upReady ? 'rgba(126,217,195,.97)' : 'rgba(20,32,48,.82)';
+  ctx.strokeStyle = upReady ? '#DFFFF4' : 'rgba(255,255,255,.28)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(286, 300, 148, 30, 9) : ctx.rect(286, 300, 148, 30);
   ctx.fill(); ctx.stroke();
-  ctx.fillStyle = upReady ? '#0B2A22' : 'rgba(255,255,255,.5)';
+  ctx.fillStyle = upReady ? '#0B2A22' : 'rgba(255,255,255,.55)';
   ctx.font = '700 14px "PingFang SC",system-ui'; ctx.textAlign = 'center';
-  ctx.fillText(L.cityLv >= 4 ? '主城已满级' : '升级主城 ' + CONFIG.cityCost[L.cityLv + 1], 360, 287);
+  ctx.fillText(L.cityLv >= 4 ? '主城已满级' : '升级主城 ' + CONFIG.cityCost[L.cityLv + 1], 360, 321);
   ctx.restore();
 
   /* 招募旗 */
@@ -1225,27 +1225,15 @@ function onDown(ev) {
     addText(560, 1400, '进度 +10%', '#9FE8D0', 16);
     return;
   }
-  /* 主城升级 */
-  ctx.save();
-  var upReady = L.cityLv < 4 && L.coins >= CONFIG.cityCost[L.cityLv + 1];
-  ctx.fillStyle = upReady ? 'rgba(126,217,195,.95)' : 'rgba(20,32,48,.75)';
-  ctx.strokeStyle = upReady ? '#DFFFF4' : 'rgba(255,255,255,.22)'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(286, 266, 148, 30, 8) : ctx.rect(286, 266, 148, 30);
-  ctx.fill(); ctx.stroke();
-  ctx.fillStyle = upReady ? '#0B2A22' : 'rgba(255,255,255,.5)';
-  ctx.font = '700 14px "PingFang SC",system-ui'; ctx.textAlign = 'center';
-  ctx.fillText(L.cityLv >= 4 ? '主城已满级' : '升级主城 ' + CONFIG.cityCost[L.cityLv + 1], 360, 287);
-  ctx.restore();
-
-  /* 主城升级 */
-  if (q.x > 286 && q.x < 434 && q.y > 262 && q.y < 300) {
+  /* 主城升级（绘制见 drawCity，此处只做判定） */
+  if (q.x > 286 && q.x < 434 && q.y > 296 && q.y < 336) {
     if (L.cityLv >= 4) { say('主城已经是最高级了。'); return; }
     var cost = CONFIG.cityCost[L.cityLv + 1];
-    if (L.coins < cost) { addText(360, 320, '金币不足（需 ' + cost + '）', '#FF8A8D', 17); return; }
+    if (L.coins < cost) { say('金币不够，升城要 ' + cost + '。'); return; }
     L.coins -= cost; L.cityLv++;
     L.cityMax = CONFIG.cityHp[L.cityLv];
     L.cityHp = Math.min(L.cityMax, L.cityHp + L.cityMax * 0.5);
-    addText(360, 320, '主城升级 Lv.' + (L.cityLv + 1), '#9FE8D0', 20);
+    say('主城升到 Lv.' + (L.cityLv + 1) + '，城墙厚了一圈。');
     SFX.build();
     return;
   }
