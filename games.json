@@ -284,7 +284,8 @@
       "cover": "covers/archer.webp",
       "tag": "射击",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "desc": "站桩拉弓：按住后拉蓄力、松手走抛物线，地面怪走进来砍人、空中弓手站悬空板放箭。5 章 × 20 波、30 项能力、四槽装备、天赋三系。"
     },
     {
       "id": "jigsaw",
@@ -303,7 +304,8 @@
       "cover": "covers/sleeper.webp",
       "tag": "塔防",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "desc": "上床产金币、升门建炮台，扛过五晚猎梦者：鬼靠挠门升级，门碎了就完。六人间宿舍、15 级炮台链、五类赚钱建筑。"
     },
     {
       "id": "legion",
@@ -312,7 +314,8 @@
       "cover": "covers/legion.webp",
       "tag": "策略",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "classic",
+      "desc": "一关 6 天 6 夜：白天收麦穗建塔招英雄，夜里六波怪冲城，暴风雪大招与三条强化线，6 关递进。"
     }
   ]
 }
