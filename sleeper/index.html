@@ -846,6 +846,18 @@ function bedRate() { return CONFIG.bed[G.bedLv].rate; }
 function startNight() {
   G.phase = 'night';
   G.timer = 60;
+  /* 原版策略：门等级低于全场平均时，80% 的猎梦者先去别家 */
+  var avgDoor = 2;
+  if (!G.skipUsed && G.doorLv < avgDoor && Math.random() < 0.8) {
+    G.skipUsed = true;
+    G.skipNight = true;
+    G.ghost = null;
+    G.timer = 14;
+    addText(W / 2, 520, '猎梦者去了邻居家', '#9AA3B2', 26);
+    addText(W / 2, 566, '门等级低于全场平均，它先挑了别人', '#7C8698', 16);
+    return;
+  }
+  G.skipNight = false;
   var isBoss = G.night >= 5;
   var hp = isBoss ? CONFIG.ghost.bossHp : CONFIG.ghost.baseHp + (G.night - 1) * CONFIG.ghost.hpPerNight;
   G.ghost = {
@@ -1135,6 +1147,10 @@ function update(dt) {
   } else if (G.phase === 'night') {
     G.timer -= dt;
     updateEconomy(dt);
+    if (G.skipNight && !G.ghost) {
+      if (G.timer <= 0) { G.skipNight = false; endNight(); }
+      return;
+    }
     updateTurrets(dt);
     updateGhost(dt);
     updateShots(dt);

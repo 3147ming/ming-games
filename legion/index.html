@@ -379,6 +379,18 @@ function drawCity(t) {
   });
   ctx.restore();
 
+  /* 主城升级 */
+  ctx.save();
+  var upReady = L.cityLv < 4 && L.coins >= CONFIG.cityCost[L.cityLv + 1];
+  ctx.fillStyle = upReady ? 'rgba(126,217,195,.95)' : 'rgba(20,32,48,.75)';
+  ctx.strokeStyle = upReady ? '#DFFFF4' : 'rgba(255,255,255,.22)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(286, 266, 148, 30, 8) : ctx.rect(286, 266, 148, 30);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = upReady ? '#0B2A22' : 'rgba(255,255,255,.5)';
+  ctx.font = '700 14px "PingFang SC",system-ui'; ctx.textAlign = 'center';
+  ctx.fillText(L.cityLv >= 4 ? '主城已满级' : '升级主城 ' + CONFIG.cityCost[L.cityLv + 1], 360, 287);
+  ctx.restore();
+
   /* 招募旗 */
   ctx.save();
   ctx.strokeStyle = '#8A6A3A'; ctx.lineWidth = 4;
@@ -832,7 +844,7 @@ function update(dt) {
 
   if (L.phase === 'day') {
     L.timer -= dt;
-    L.gauge = Math.min(100, L.gauge + dt * (100 / CONFIG.dayLen) * 0.62);
+    L.gauge = Math.min(100, L.gauge + dt * (100 / CONFIG.dayLen));
     if (Math.random() < dt * 0.06 && (!L.events || L.events.length < 2)) addEvent();
     if (L.gauge >= 100) startDusk();
   } else if (L.phase === 'dusk') {
@@ -1211,6 +1223,30 @@ function onDown(ev) {
     L.coins -= CONFIG.coinGauge.cost; L.coinUse++;
     L.gauge = Math.min(100, L.gauge + CONFIG.coinGauge.gauge);
     addText(560, 1400, '进度 +10%', '#9FE8D0', 16);
+    return;
+  }
+  /* 主城升级 */
+  ctx.save();
+  var upReady = L.cityLv < 4 && L.coins >= CONFIG.cityCost[L.cityLv + 1];
+  ctx.fillStyle = upReady ? 'rgba(126,217,195,.95)' : 'rgba(20,32,48,.75)';
+  ctx.strokeStyle = upReady ? '#DFFFF4' : 'rgba(255,255,255,.22)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(286, 266, 148, 30, 8) : ctx.rect(286, 266, 148, 30);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = upReady ? '#0B2A22' : 'rgba(255,255,255,.5)';
+  ctx.font = '700 14px "PingFang SC",system-ui'; ctx.textAlign = 'center';
+  ctx.fillText(L.cityLv >= 4 ? '主城已满级' : '升级主城 ' + CONFIG.cityCost[L.cityLv + 1], 360, 287);
+  ctx.restore();
+
+  /* 主城升级 */
+  if (q.x > 286 && q.x < 434 && q.y > 262 && q.y < 300) {
+    if (L.cityLv >= 4) { say('主城已经是最高级了。'); return; }
+    var cost = CONFIG.cityCost[L.cityLv + 1];
+    if (L.coins < cost) { addText(360, 320, '金币不足（需 ' + cost + '）', '#FF8A8D', 17); return; }
+    L.coins -= cost; L.cityLv++;
+    L.cityMax = CONFIG.cityHp[L.cityLv];
+    L.cityHp = Math.min(L.cityMax, L.cityHp + L.cityMax * 0.5);
+    addText(360, 320, '主城升级 Lv.' + (L.cityLv + 1), '#9FE8D0', 20);
+    SFX.build();
     return;
   }
   /* 招募旗 */

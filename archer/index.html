@@ -84,7 +84,8 @@ h1,h2,h3,p{margin:0}
 /* ---- 模式 / 技能 / 结算 ---- */
 .center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2.2vmin;text-align:center}
 #ov-result .center,#ov-pause .center{background:rgba(26,14,46,.9);border:1px solid var(--line);border-radius:18px;
-  padding:4vmin 5vmin;max-width:74vmin;margin:auto;box-shadow:0 18px 60px rgba(0,0,0,.5)}
+  flex:0 0 auto;padding:3.2vmin 4vmin;width:min(640px,84%);max-width:74vmin;margin:auto;box-sizing:border-box;
+  box-shadow:0 18px 60px rgba(0,0,0,.5)}
 #ov-result .btn{min-width:15vmin}
 .modes{display:flex;gap:2vmin;flex-wrap:wrap;justify-content:center}
 .mode{width:clamp(160px,26vmin,240px);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:2vmin;
@@ -1569,12 +1570,18 @@ function drawHUD() {
   ctx.fillText(String(G.coins), gx + 38, gy + 23);
   ctx.restore();
 
-  /* 右上按钮 */
+  /* 右上按钮：帮助 / 暂停（与 hudTap 判定一一对应，绝不画不可点的按钮） */
   ctx.save();
   ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 2;
-  for (var i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(1118 + i * 7, 36, 2.2, 0, 6.284); ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fill(); }
+  /* 帮助：圆圈 + 问号 */
   ctx.beginPath(); ctx.arc(1176, 36, 13, 0, 6.284); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(1176, 26); ctx.lineTo(1176, 36); ctx.stroke();
+  ctx.beginPath(); ctx.arc(1176, 32, 4.4, 3.5, 5.9); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(1176, 37); ctx.lineTo(1176, 40); ctx.stroke();
+  ctx.beginPath(); ctx.arc(1176, 43.5, 1.6, 0, 6.284); ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.fill();
+  /* 角色/装备入口：圆圈 + 小人（打开装备面板） */
+  ctx.beginPath(); ctx.arc(1176, 78, 13, 0, 6.284); ctx.stroke();
+  ctx.beginPath(); ctx.arc(1176, 74, 4.2, 0, 6.284); ctx.stroke();
+  ctx.beginPath(); ctx.arc(1176, 89, 7.5, 3.5, 5.9); ctx.stroke();
   ctx.restore();
 
   /* 左下生命/护盾 */
@@ -1835,6 +1842,21 @@ function openPause() {
   UI.paused = true;
   el('p-info').innerHTML = '第 ' + (G.arch + 1) + ' 章 · 第 ' + G.wave + '/' + G.waveTotal + ' 波<br>' +
     '击杀 ' + G.kills + ' · 金币 ' + G.coins + ' · 等级 ' + G.lvl;
+  el('p-resume').textContent = '继续';
+  showOnly('ov-pause');
+}
+function openGearInRun() {
+  if (!G) return;
+  UI.paused = true;
+  var html = '';
+  ['weapon', 'helmet', 'shield', 'cloak'].forEach(function (slot) {
+    var uid = save.loadout[slot], it = uid ? findItem(uid) : null;
+    html += slotName(slot) + '：' + (it
+      ? '<span style="color:' + QUAL[it.q].color + '">' + it.name + ' Lv.' + it.level + '</span>（' + modLine(it) + '）'
+      : '空') + '<br>';
+  });
+  el('p-info').innerHTML = html + '<br><small style="color:#A996C4">装备在局外更换，战斗内只读。</small>';
+  el('p-resume').textContent = '继续';
   showOnly('ov-pause');
 }
 function openHelp() {
@@ -2045,6 +2067,9 @@ function hudTap(ev) {
   var q = toLogical(ev.clientX, ev.clientY);
   if (q.x > 1070 && q.x < 1132 && q.y > 452 && q.y < 514) { openPause(); return true; }
   if (q.x > 1132 && q.x < 1196 && q.y > 452 && q.y < 514) { openHelp(); return true; }
+  /* 右上两枚圆钮：帮助 / 装备（与绘制坐标一致） */
+  if (Math.sqrt((q.x - 1176) * (q.x - 1176) + (q.y - 36) * (q.y - 36)) < 21) { openHelp(); return true; }
+  if (Math.sqrt((q.x - 1176) * (q.x - 1176) + (q.y - 78) * (q.y - 78)) < 21) { openGearInRun(); return true; }
   return false;
 }
 
