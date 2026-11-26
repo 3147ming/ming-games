@@ -20,9 +20,24 @@ export function extractInlineModule(html) {
 
 /** 把内联代码写成 <gameDir>/.build/inline-entry.mjs，返回绝对路径；无内联 module 时返回 null。 */
 export function materializeInlineEntry(gameDir, html) {
-  const code = extractInlineModule(html);
-  if (!code) return null;
+  const raw = extractInlineModule(html);
+  if (!raw) return null;
+  /* 内联代码里的 import 路径是相对 index.html 写的（如 ../shared/poker.js），
+     入口文件却落在 <gameDir>/.build/ 里，直接写盘会解析错一层。
+     这里按 index.html 的位置解析成绝对路径，再换算成相对 .build/ 的写法。 */
   const dir = path.join(gameDir, '.build');
+  const rel = (spec) => {
+    if (!spec.startsWith('.')) return spec;
+    const abs = path.resolve(gameDir, spec);
+    let r = path.relative(dir, abs).split(path.sep).join('/');
+    if (!r.startsWith('.')) r = './' + r;
+    return r;
+  };
+  const code = raw
+    .replace(/(\bimport\s+[^'";]*?\bfrom\s*)(['"])([^'"]+)\2/g, (_, head, q, spec) => head + q + rel(spec) + q)
+    .replace(/(\bimport\s*)(['"])([^'"]+)\2/g, (_, head, q, spec) => head + q + rel(spec) + q)
+    .replace(/(\bexport\s+[^'";]*?\bfrom\s*)(['"])([^'"]+)\2/g, (_, head, q, spec) => head + q + rel(spec) + q)
+    .replace(/(\bimport\s*\(\s*)(['"])([^'"]+)\2/g, (_, head, q, spec) => head + q + rel(spec) + q);
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, 'inline-entry.mjs');
   fs.writeFileSync(file, code.endsWith('\n') ? code : code + '\n', 'utf8');
