@@ -234,11 +234,11 @@ var PLAYER_H = 68;
 var BOW = { x: PLAYER_X + 26, y: GROUND - 58 };
 
 var CONFIG = {
-  gravity: 900,
-  speedMin: 520, speedMax: 760,
+  gravity: 980,
+  speedMin: 560, speedMax: 1090,
   dragMin: 24, dragMax: 164,
-  dotsMin: 4, dotsMax: 15,
-  dotGap: 13, dotR: 3.5, dotsMaxLen: 200,
+  dotsMin: 6, dotsMax: 15,
+  dotGap: 60, dotR: 3.5, dotsMaxLen: 1300,
   cooldown: 0.35,
   walkMin: 55, walkMax: 90,
   stopX: 290, spawnX: 1240,
@@ -591,11 +591,17 @@ function drawGrunt(g, e, t) {
   g.restore();
   g.restore();
   /* 血条 */
-  if (e.hp < e.maxHp - 0.01) {
-    var bw = 42 * sc, bx = x - bw / 2, by = y - 76 * sc;
+  if (e.hp < e.maxHp - 0.01 || e.kind === 'boss' || (e.shieldHp || 0) > 0) {
+    var bw = (e.kind === 'shield' ? 54 : 42) * sc, bx = x - bw / 2, by = y - 76 * sc;
     g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(bx, by, bw, 5);
     g.fillStyle = e.kind === 'boss' ? '#FF5C6C' : '#8FE36B';
     g.fillRect(bx + 1, by + 1, (bw - 2) * clamp(e.hp / e.maxHp, 0, 1), 3);
+    /* 盾条（浅紫），碎了就不画 */
+    if ((e.shieldMax || 0) > 0) {
+      var sw = (bw - 2) * clamp((e.shieldHp || 0) / e.shieldMax, 0, 1);
+      g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(bx, by - 6, bw, 4);
+      g.fillStyle = '#B9A6FF'; g.fillRect(bx + 1, by - 5, Math.max(0, sw), 2);
+    }
   }
 }
 
@@ -781,30 +787,41 @@ cv.addEventListener('pointercancel', function () { UI.draw = null; });
 cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
 /* ---------- 波次 ---------- */
+/* 波次进度 0..1 的「抛物线」：前 5 波很松，10 波开始爬坡，17 波后陡起来 */
+function waveCurve(w, total) {
+  var x = clamp((w - 1) / Math.max(1, (total || G.waveTotal) - 1), 0, 1);
+  return x * x * 0.78 + x * 0.34;
+}
 function hpScale() {
-  return 1 + G.arch * 0.6 + G.wave * 0.04;
+  var x = clamp((G.wave - 1) / Math.max(1, G.waveTotal - 1), 0, 1);
+  return 1 + G.arch * 0.5 + x * x * 1.05 + x * 0.32;
 }
 function spawnDef(kind, extra) {
   var s = hpScale();
   var base = {
-    grunt:  { hp: 32, dmg: 6,  speed: 78, score: 1 },
-    shield: { hp: 58, dmg: 5,  speed: 58, score: 2 },
-    archer: { hp: 28, dmg: 6,  speed: 0,  score: 2 },
+    grunt:  { hp: 32, dmg: 6,  speed: 104, score: 1 },
+    shield: { hp: 58, dmg: 5,  speed: 84, score: 2 },
+    archer: { hp: 28, dmg: 5,  speed: 0,  score: 2 },
     air:    { hp: 24, dmg: 5,  speed: 0,  score: 2 },
     spear:  { hp: 38, dmg: 9,  speed: 0,  score: 3 },
-    mage:   { hp: 46, dmg: 4,  speed: 62, score: 3 },
-    boss:   { hp: 420, dmg: 12, speed: 34, score: 12 }
+    mage:   { hp: 46, dmg: 4,  speed: 78, score: 3 },
+    boss:   { hp: 300, dmg: 9,  speed: 46, score: 12 }
   }[kind] || { hp: 30, dmg: 8, speed: 70, score: 1 };
   var e = {
     id: Math.random().toString(36).slice(2), kind: kind, x: CONFIG.spawnX,
     hp: base.hp * s * (extra && extra.mul ? extra.mul : 1),
     maxHp: base.hp * s * (extra && extra.mul ? extra.mul : 1),
     dmg: base.dmg * (1 + G.arch * 0.28), speed: base.speed,
-    mode: 'walk', atkT: 0, atkState: 'move', cd: rnd(0.8, 1.6), seed: rnd(0, 6.28),
+    mode: 'walk', atkT: 0, atkState: 'move', cd: rnd(1.2, 2.2), seed: rnd(0, 6.28),
     dead: false, dying: 0, smoke: 0.32, plankScale: 0, y: GROUND, scale: 1,
     color: kind === 'shield' ? '#241636' : kind === 'boss' ? '#2A0F1C' : '#170D28',
-    slow: 0, burn: 0, burnDmg: 0, charm: 0, hitFlash: 0
+    slow: 0, burn: 0, burnDmg: 0, charm: 0, hitFlash: 0, stunT: 0
   };
+  if (kind === 'shield') {
+    /* 盾牌有耐久：正面先吃盾，碎了才掉血；高抛越过盾顶可直接打人 */
+    e.shieldMax = Math.round(34 + G.wave * 2.2);
+    e.shieldHp = e.shieldMax;
+  }
   if (kind === 'air' || kind === 'spear') {
     e.mode = 'air';
     var lv = extra.lv || 0;
@@ -813,53 +830,89 @@ function spawnDef(kind, extra) {
     e.plankScale = 0; e.aim = 0.25; e.pull = 0;
     e.scale = 0.92;
   } else if (kind === 'archer') {
-    e.mode = 'stand'; e.x = rnd(700, 1000);
+    e.mode = 'stand'; e.x = rnd(680, 900);
   } else if (kind === 'mage') {
-    e.mode = 'stand'; e.x = rnd(600, 760); e.cd = 3;
+    e.mode = 'stand'; e.x = rnd(620, 780); e.cd = 3;
   } else if (kind === 'boss') {
-    e.scale = 1.9; e.hp *= 2.2; e.maxHp = e.hp; e.waveBoss = true;
+    e.scale = 1.75; e.hp *= 1.05; e.maxHp = e.hp; e.waveBoss = true; e.x = 1120;
   }
   return e;
 }
 
 function buildWave() {
-  var n = clamp(irnd(3, 6) + (G.wave % 5 === 0 ? 1 : 0), 3, 8);
+  var c = waveCurve(G.wave, G.waveTotal);
+  /* 数量也是抛物线：3 → 5 → 6 → 8 */
+  var n = Math.round(3 + 5 * c);
+  var elite = G.wave % 5 === 0 && G.wave !== G.waveTotal;
+  if (elite) n = Math.min(9, n + 1);
   var list = [];
-  var airMax = 3, air = 0;
-  var pool = ['grunt', 'grunt', 'grunt'];
-  if (G.arch >= 0) pool.push('archer');
-  if (G.arch >= 0) pool.push('shield');
-  if (G.arch >= 1) pool.push('mage');
-  pool.push('air');
+  var airMax = 1 + Math.round(c * 3), air = 0;
+  var pool = ['grunt', 'grunt'];
+  if (G.wave >= 2) pool.push('archer');
+  if (G.wave >= 3) pool.push('shield');
+  if (G.wave >= 6) pool.push('air');
+  if (G.wave >= 8) pool.push('shield', 'archer');
+  if (G.wave >= 11) pool.push('mage');
+  if (G.wave >= 13) pool.push('air', 'grunt');
 
   for (var i = 0; i < n; i++) {
     var k = pick(pool);
     if (k === 'air' || k === 'spear') {
       if (air >= airMax) k = 'grunt';
-      else { air++; if (G.arch >= 2 && Math.random() < 0.3) k = 'spear'; }
+      else { air++; if (G.arch >= 2 && G.wave >= 15 && Math.random() < 0.35) k = 'spear'; }
     }
     list.push(k);
   }
-  if (G.wave % 5 === 0) { list.push('shield'); if (G.arch >= 1) list.push('spear'); }
-  if (G.wave === G.waveTotal) list = ['boss', 'grunt', 'grunt'];
-  if (G.mode === 'hero') list = list.map(function (k) { return k; });
+  if (elite) { list.push('shield'); if (G.arch >= 1) list.push('spear'); }
+  if (G.wave === G.waveTotal) list = ['boss', 'grunt', 'grunt', 'archer'];
 
   var airUsed = 0;
   return list.map(function (k) {
     var ex = {};
     if (k === 'air' || k === 'spear') { ex.lv = airUsed++ % 3; ex.x = rnd(720, 1080); }
-    return { kind: k, ex: ex, delay: rnd(0.15, 0.9) };
+    /* 出场间隔也随波次收紧：1.05→0.3 秒 */
+    var gap = 1.05 - 0.75 * c;
+    return { kind: k, ex: ex, delay: rnd(gap * 0.6, gap * 1.25) };
   });
 }
 
 function startWave() {
   G.spawnQueue = buildWave();
   G.waveKills = 0;
+  G.waveHurt = 0;
+  G.waveScored = false;
   G.spawnT = 0;
   G.waveGap = 0;
   if (G.wave % 5 === 0 && G.wave !== G.waveTotal) toast('精英波次');
   if (G.wave === G.waveTotal) { toast('首领来袭'); SFX.boss(); }
+  /* 首次遇到新兵种给一句提示，别让玩家猜机制 */
+  G.tips = G.tips || {};
+  var hasShield = G.spawnQueue.some(function (q) { return q.kind === 'shield'; });
+  var hasRanged = G.spawnQueue.some(function (q) { return q.kind === 'archer' || q.kind === 'air'; });
+  if (hasShield && !G.tips.shield) { G.tips.shield = 1; addText(W / 2, 236, '盾兵正面挡箭 · 抬高弧线砸过去', '#B9A6FF', 22, -10, 2.4); }
+  if (hasRanged && !G.tips.ranged) { G.tips.ranged = 1; addText(W / 2, 266, '敌方弓手会还手 · 先点掉远程', '#FF9C9C', 22, -10, 2.4); }
   if (has('holyshield')) G.shield = Math.min(stats().shieldMax, G.shield + 25 * skillLv('holyshield'));
+}
+
+/* 一波打完按表现结算经验：不受伤且血厚 = S */
+function scoreWave() {
+  if (G.waveScored) return;
+  G.waveScored = true;
+  var st = stats();
+  var ratio = G.hp / st.maxHp;
+  var hurt = G.waveHurt || 0;
+  var rank = (hurt <= 0 && ratio >= 0.85) ? 'S'
+    : (hurt <= 0 || ratio >= 0.7) ? 'A'
+    : (ratio >= 0.45) ? 'B' : 'C';
+  var mul = rank === 'S' ? 1.45 : rank === 'A' ? 1.2 : rank === 'B' ? 1 : 0.85;
+  var base = 6 + Math.round(G.wave * 0.75);
+  var gain = Math.round(base * mul);
+  if (has('wise')) gain = Math.round(gain * (1 + 0.2 * skillLv('wise')));
+  G.xp += gain;
+  G.lastRank = rank;
+  var col = rank === 'S' ? '#FFD34D' : rank === 'A' ? '#BFE9FF' : rank === 'B' ? '#D9C9F2' : '#FF9C9C';
+  addText(W / 2, 246, '第 ' + G.wave + ' 波 · ' + rank + '  +' + gain + ' 经验', col, 26, -12, 1.7);
+  checkLevel();
 }
 
 function spawnTick(dt) {
@@ -892,6 +945,7 @@ function hurtPlayer(dmg, fromTop) {
   if (has('dodge') && Math.random() < 0.12 * skillLv('dodge')) {
     addText(PLAYER_X, GROUND - 90, '闪避', '#9FE8FF', 18); return;
   }
+  G.waveHurt = (G.waveHurt || 0) + Math.max(1, dmg);
   if (save.talents.def >= 3) dmg *= 0.96;
   dmg *= (has('armor') ? 1 - 0.1 * skillLv('armor') : 1);
   if (fromTop) dmg *= (1 - clamp(st.top / (st.top + 60), 0, 0.7));
@@ -940,10 +994,24 @@ function hitEnemy(e, ar) {
   if (crit) dmg *= 1.6;
   if (e.mode === 'air' && has('headshot')) dmg *= 1 + 0.25 * skillLv('headshot');
   if (has('fury')) dmg *= 1 + skillLv('fury') * 0.15 * (1 - G.hp / st.maxHp);
-  if (e.kind === 'shield' && ar.vx > 0 && Math.random() < 0.6) {
-    addText(e.x, GROUND - 74, '盾挡', '#B9A6FF', 16);
-    burst(e.x, GROUND - 46, '#B9A6FF', 5, 60);
+  /* 盾牌：有耐久，正面先吃盾；从上往下砸（高抛）可以越过盾顶 */
+  var overShield = ar.vy > Math.abs(ar.vx) * 0.95;
+  if (e.kind === 'shield' && e.shieldHp > 0 && ar.vx > 0 && !overShield) {
+    var sd = Math.max(1, Math.round(dmg));
+    e.shieldHp -= sd;
+    addText(e.x - 6, GROUND - 78, '盾 -' + fmt(sd), '#B9A6FF', 17);
+    burst(e.x - 10, GROUND - 46, '#B9A6FF', 6, 70);
+    e.hitFlash = 0.1;
     ar.dead = true;
+    if (e.shieldHp <= 0) {
+      e.shieldHp = 0;
+      addText(e.x, GROUND - 104, '盾碎', '#FFD34D', 24, -54, 1.2);
+      burst(e.x, GROUND - 48, '#C9B8FF', 20, 150);
+      e.stunT = 0.5;
+      SFX.crit();
+    } else {
+      SFX.hit();
+    }
     return;
   }
   if (has('execute') && e.hp / e.maxHp <= 0.08 + 0.04 * skillLv('execute') && e.kind !== 'boss') {
@@ -1013,7 +1081,7 @@ function killEnemy(e, give) {
     gold = Math.round(gold);
     G.coins += gold;
     addText(e.x, GROUND - 108, '+' + gold, '#FFD34D', 17, -40);
-    var xp = (e.kind === 'boss' ? 40 : 4) * (has('wise') ? 1 + 0.2 * skillLv('wise') : 1);
+    var xp = (e.kind === 'boss' ? 24 : 2) * (has('wise') ? 1 + 0.2 * skillLv('wise') : 1);
     G.xp += xp;
     SFX.coin();
     checkLevel();
@@ -1032,7 +1100,7 @@ function checkLevel() {
   while (G.xp >= G.xpNeed && G.phase === 'fight') {
     G.xp -= G.xpNeed;
     G.lvl++;
-    G.xpNeed = Math.round(G.xpNeed * 1.18 + 4);
+    G.xpNeed = Math.round(G.xpNeed * 1.14 + 3);
     openSkillPick();
     break;
   }
@@ -1049,9 +1117,14 @@ function slowFactor(e) {
 function shootAt(e, speed) {
   var from = { x: e.x, y: e.mode === 'air' ? e.y - 46 : GROUND - 46 };
   var to = { x: PLAYER_X + rnd(-6, 6), y: GROUND - 34 };
-  var sol = ballistic(from, to, speed || 520);
+  /* 敌人也要能真打到人：先算出「打到这个点最少需要多快」，不够就提到够 */
+  var dx = to.x - from.x, dy = to.y - from.y;
+  var need = Math.sqrt(CONFIG.gravity * (dy + Math.sqrt(dx * dx + dy * dy))) * 1.06;
+  var v = Math.max(speed || 0, need);
+  var sol = ballistic(from, to, v);
   if (!sol) return;
-  G.arrows.push({ x: from.x, y: from.y, vx: sol.vx, vy: sol.vy, foe: true, life: 4, hit: {}, pierce: 0, bounce: 0, dmg: e.dmg });
+  var h0 = {}; h0[e.id] = 1;                       /* 别打到自己身上 */
+  G.arrows.push({ x: from.x, y: from.y, vx: sol.vx, vy: sol.vy, foe: true, life: 4, hit: h0, pierce: 0, bounce: 0, dmg: e.dmg, age: 0 });
   SFX.shoot();
 }
 
@@ -1060,10 +1133,10 @@ function ballistic(from, to, v) {
   var dx = to.x - from.x, dy = to.y - from.y;
   if (Math.abs(dx) < 1) dx = dx < 0 ? -1 : 1;
   var v2 = v * v;
-  var disc = v2 * v2 - g * (g * dx * dx + 2 * dy * v2);
+  /* 屏幕坐标（y 向下）：低伸弹道解，向右/向左都成立 */
+  var disc = v2 * v2 - g * (g * dx * dx - 2 * dy * v2);
   if (disc < 0) return null;
-  var root = Math.sqrt(disc);
-  var tan = (v2 - root) / (g * dx);
+  var tan = (Math.sqrt(disc) - v2) / (g * dx);
   var dirx = dx >= 0 ? 1 : -1;
   var cos = dirx / Math.sqrt(1 + tan * tan);
   var sin = tan * cos;
@@ -1095,6 +1168,7 @@ function updateEnemy(e, dt) {
   }
 
   if (e.smoke > 0) { e.smoke -= dt; return; }
+  if (e.stunT > 0) { e.stunT -= dt; return; }   /* 盾碎硬直 */
 
   if (e.mode === 'air') {
     if (e.plankScale < 1) e.plankScale = Math.min(1, e.plankScale + dt / 0.2 * 1.1);
@@ -1105,7 +1179,7 @@ function updateEnemy(e, dt) {
       if (e.pull >= 1) {
         shootAt(e, e.kind === 'spear' ? 460 : 520);
         e.pull = 0;
-        e.cd = e.kind === 'spear' ? rnd(2.2, 3.0) : rnd(1.6, 2.4);
+        e.cd = e.kind === 'spear' ? rnd(2.6, 3.4) : rnd(2.2, 3.2);
       }
     }
     if (e.kind === 'spear' && e.cd > 0.4 && e.cd < 0.5) {
@@ -1131,7 +1205,7 @@ function updateEnemy(e, dt) {
         }
       }
     } else if (e.cd <= 0) {
-      shootAt(e, 540); e.cd = rnd(1.8, 2.8);
+      shootAt(e, 900); e.cd = rnd(2.7, 3.9);
     }
     return;
   }
@@ -1190,6 +1264,7 @@ function updateEnemy(e, dt) {
 
 function updateArrow(a, dt) {
   a.life -= dt;
+  a.age = (a.age || 0) + dt;
   a.vy += CONFIG.gravity * dt;
   var px = a.x, py = a.y;
   a.x += a.vx * dt; a.y += a.vy * dt;
@@ -1212,7 +1287,7 @@ function updateArrow(a, dt) {
       a.dead = true; burst(a.x, a.y, '#FF9B9B', 6, 70);
       return;
     }
-    if (G.mode === 'normal') {
+    if (G.mode === 'normal' && a.age > 0.16) {
       for (var i = 0; i < G.enemies.length; i++) {
         var e = G.enemies[i];
         if (e.dead || a.hit[e.id]) continue;
@@ -1319,13 +1394,14 @@ function update(dt) {
   updateParts(dt);
   G.ult = Math.min(1, G.ult + dt * 0.06);
 
-  /* 波次完成 */
+  /* 波次完成 → 先按表现结算经验，再进下一波 */
   if (!G.spawnQueue.length && !G.enemies.some(function (e) { return !e.dead; })) {
+    if (!G.waveScored) { scoreWave(); G.waveGap = 1.15; }
     G.waveGap -= dt;
     if (G.waveGap <= 0) {
       if (G.wave >= G.waveTotal) { onChapterClear(); return; }
       G.wave++;
-      G.waveGap = 0.9;
+      G.waveGap = 1.15;
       if (has('firstaid')) G.hp = Math.min(st.maxHp, G.hp + st.maxHp * 0.12 * skillLv('firstaid'));
       if (save.talents.def >= 5) G.shield = Math.min(st.shieldMax, G.shield + 6);
       if (save.talents.rec >= 1) G.hp = Math.min(st.maxHp, G.hp + st.maxHp * 0.06);
@@ -1433,25 +1509,39 @@ function render(dt) {
 
     if (G.heroCool <= 0 && dl >= CONFIG.dragMin) {
       var sp = CONFIG.speedMin + (CONFIG.speedMax - CONFIG.speedMin) * power;
-      var count = Math.round(CONFIG.dotsMin + (CONFIG.dotsMax - CONFIG.dotsMin) * power);
-      var maxLen = Math.min(CONFIG.dotsMaxLen, 55 + 145 * power);
-      /* 提示线只画到弓前方一小段：最多 200px / 15 点，绝不描到落点 */
+      /* 沿真实弹道积分到落点，再按等弧长取 4~15 个白点：
+         点少而稀（不长成实线），但末点就是落点，玩家能看见自己会打到哪 */
       var px = BOW.x, py = BOW.y;
       var vx = drawing.dir.x * sp, vy = drawing.dir.y * sp;
-      var acc = 0, seg = 0.006;
-      var pts = [];
-      for (var it = 0; it < 900 && acc < maxLen; it++) {
+      var seg = 0.008, tot = 0, trail = [{ x: px, y: py, s: 0 }];
+      for (var it = 0; it < 700; it++) {
         var nx = px + vx * seg, ny = py + vy * seg;
-        acc += Math.hypot(nx - px, ny - py);
-        px = nx; py = ny; vy += CONFIG.gravity * seg;
-        if (acc >= CONFIG.dotGap) { acc = 0; pts.push({ x: px, y: py }); if (pts.length >= count) break; }
+        vy += CONFIG.gravity * seg;
+        tot += Math.hypot(nx - px, ny - py);
+        px = nx; py = ny;
+        trail.push({ x: px, y: py, s: tot });
+        if (py >= GROUND - 2 || px < -80 || px > W + 80) break;
+      }
+      var landY = Math.min(py, GROUND - 2);
+      var n = clamp(Math.round(tot / CONFIG.dotGap), CONFIG.dotsMin, CONFIG.dotsMax);
+      var pts = [], cur = 1;
+      for (var i = 1; i <= n; i++) {
+        var want = tot * i / n;
+        while (cur < trail.length - 1 && trail[cur].s < want) cur++;
+        pts.push(trail[cur]);
       }
       ctx.save();
       for (var d = 0; d < pts.length; d++) {
-        var al = 1 - (d / Math.max(1, pts.length - 1)) * 0.45;
+        var al = 0.95 - (d / Math.max(1, pts.length - 1)) * 0.45;
         ctx.globalAlpha = al; ctx.fillStyle = '#FFFFFF';
         ctx.beginPath(); ctx.arc(pts[d].x, pts[d].y, CONFIG.dotR, 0, 6.284); ctx.fill();
       }
+      /* 落点：一个细圈，让「拉多远」有明确反馈 */
+      var lx = clamp(px, 8, W - 8);
+      ctx.globalAlpha = 0.72; ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.ellipse(lx, landY + 2, 16, 5.5, 0, 0, 6.284); ctx.stroke();
+      ctx.globalAlpha = 0.20; ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath(); ctx.ellipse(lx, landY + 2, 16, 5.5, 0, 0, 6.284); ctx.fill();
       ctx.restore();
     }
   }
@@ -2094,7 +2184,26 @@ window.archer = {
     wave: function (n) { G.wave = n; G.enemies = []; G.spawnQueue = []; G.waveGap = 0; startWave(); },
     hurt: function (n) { hurtPlayer(n, false); },
     killAll: function () { G.enemies.forEach(function (e) { killEnemy(e, true); }); },
-    coins: function (n) { if (G) G.coins += n; save.coins += n; persist(); }
+    coins: function (n) { if (G) G.coins += n; save.coins += n; persist(); },
+    /* 调试：搜索「能命中 (tx,ty) 的角度+力度」并直接开火，用来验证弹道是否可解 */
+    aim: function (tx, ty) {
+      var best = null;
+      for (var pw = 0; pw <= 1.0001; pw += 0.02) {
+        var v = CONFIG.speedMin + (CONFIG.speedMax - CONFIG.speedMin) * pw;
+        for (var a = -1.25; a <= 0.4201; a += 0.008) {
+          var vx = Math.cos(a) * v, vy = Math.sin(a) * v;
+          if (vx <= 0) continue;
+          var t = (tx - BOW.x) / vx;
+          if (t <= 0 || t > 4) continue;
+          var y = BOW.y + vy * t + 0.5 * CONFIG.gravity * t * t;
+          var err = Math.abs(y - ty);
+          if (!best || err < best.err) best = { err: err, a: a, pw: pw };
+        }
+      }
+      if (!best) return null;
+      fireBow({ x: Math.cos(best.a), y: Math.sin(best.a) }, best.pw);
+      return { err: Math.round(best.err * 10) / 10, ang: Math.round(best.a * 100) / 100, power: Math.round(best.pw * 100) / 100 };
+    }
   }
 };
 })();
