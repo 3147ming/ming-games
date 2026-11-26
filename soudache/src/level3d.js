@@ -12,7 +12,7 @@
 
 import * as THREE from '../vendor/three.module.js';
 import {
-  VIEW3D, PALETTE3D, LIGHT_ZONES, MATCH, CONTAINERS, RNG_SALT_3D, TILE,
+  VIEW3D, PALETTE3D, LIGHT_ZONES, MATCH, CONTAINERS, RNG_SALT_3D, TILE, PBR3D,
 } from './config.js';
 import { lampSites } from './grade3d.js';
 import {
@@ -21,9 +21,9 @@ import {
   getSurfaceMaps, getLampPoolTexture,
 } from './models.js';
 // 只为挑台阶朝向而查询格子是否实心（纯查询，不修改 mapgen 的任何输出）
-import { isTileSolid, elevationAt } from './mapgen.js';
+import { isTileSolid, elevationAt, terrainHeightAt, wallHeightAt } from './mapgen.js';
 // P23：外部 GLB 资源。加载失败只会退回程序化模型，绝不阻断关卡构建。
-import { loadGLB, mergeStatic, glbLambert } from './assets.js';
+import { loadGLB, mergeStatic, glbLambert, glbPbr } from './assets.js';
 // 幽灵痕迹：纯视觉氛围层。渲染逻辑在独立模块里对齐新版地形高度与冻结时机，
 // 这里只挂一个接入点，不动本文件已有的归档/装配顺序。
 import { attachGhostTraces } from './ghostTracesRender.js';
@@ -106,6 +106,20 @@ export function glbEnabled() {
 }
 
 /**
+ * W6：四通道 PBR 材质是否启用。
+ * `?pbr=0` 是 A/B 与弱机自救的退路（与 `?glb=0` 同级约定）：
+ * 关掉后 Poly Haven 道具回到 glbLambert，用来证明"提升真的来自 PBR 通道"。
+ */
+export function pbrEnabled() {
+  if (!PBR3D.enabled) return false;
+  if (typeof location === 'undefined') return true;
+  return !/[?&]pbr=0(&|$)/.test(location.search);
+}
+
+/** 这批容器用 Poly Haven 四通道资产（带 normal/ARM，值得走 PBR）；其余 Kenney 单贴图不值得。 */
+const PBR_CONTAINER_TYPES = new Set(['crate', 'weaponbox']);
+
+/**
  * 构建整张关卡。
  * @param {THREE.Scene} scene 场景
  * @param {object} map 地图对象（mapgen.generateMap 的输出）
@@ -127,24 +141,40 @@ export function buildLevel(scene, map, rng, quality = 'high') {
 
   const ground = buildGround(map);
   group.add(ground);
-  disposables.push(ground.geometry, ground.material);
+  // W8：大图 ground 是 Group（多 chunk 共享材质），小图仍是单 Mesh。统一收集可 dispose 资源。
+  const groundChunks = ground.userData && ground.userData.groundChunks;
+  if (groundChunks) {
+    for (const m of groundChunks) disposables.push(m.geometry);
+    disposables.push(ground.userData.groundMat);
+  } else {
+    disposables.push(ground.geometry, ground.material);
+  }
 
   /* ---------------- 墙体 + 掩体箱（合并为单网格） ---------------- */
 
   const boxes = [];
-  const wallH = u(VIEW3D.wallHeight);
   const crateH = u(VIEW3D.crateHeight);
   const wallTop = PALETTE3D.wallTop;
   const crateTop = shade(PALETTE3D.crate, 1.30);
 
   for (const rect of map.walls) {
-    const k = 1 + decorRng.float(-1, 1) * VIEW3D.level.wallColorJitter;
+    // W8 白板感：墙顶点色在夜战灯光下偏亮；乘 albedoScale 压暗（A/B 验证 0.6~0.75 安全）。
+    // 乘在 k 上而非材质 color 上：保留逐段明暗扰动与顶点色 path，只整体降一档反照率。
+    const k = (1 + decorRng.float(-1, 1) * VIEW3D.level.wallColorJitter) * VIEW3D.wallAlbedoScale;
     const side = shade(PALETTE3D.wall, k);
     const top = shade(wallTop, k);
+    // 逐段取高度：高楼的墙必须真的高起来，否则十二米的楼在画面上只有半截，
+    // 而弹道又按 12m 挡住子弹 —— 视觉与判定会当场打架。
+    const segH = u(wallHeightAt(map, rect.x + rect.w / 2, rect.y + rect.h / 2));
+    // W7：墙脚按地形抬起，墙整体平移（高度不变）——否则坡上的墙会陷进地里或悬空。
+    // 缓坡边缘已 fade 到 0，最外圈墙段 base=0，与走廊平地无缝衔接。
+    const cx = rect.x + rect.w / 2;
+    const cz = rect.y + rect.h / 2;
+    const base = u(terrainHeightAt(map, cx, cz));
     boxes.push(boxWithFaceColors(
-      rect.w, wallH, rect.h,
+      rect.w, segH, rect.h,
       [side, side, top, side, side, side],
-    ).translate(rect.x + rect.w / 2, wallH / 2, rect.y + rect.h / 2));
+    ).translate(cx, base + segH / 2, cz));
   }
 
   // 掩体箱：全部矩形合并为 1 个 InstancedMesh（P1-2）。
@@ -194,7 +224,12 @@ export function buildLevel(scene, map, rng, quality = 'high') {
     const rect = crateRects[ci];
     const k = 1 + decorRng.float(-1, 1) * VIEW3D.level.crateColorJitter;
     crateK[ci] = k;
-    cratePos.set(rect.x + rect.w / 2, 0, rect.y + rect.h / 2);
+    // W7：箱子坐在地形上（逐实例抬升，不动几何/实例数，draw 不变）。
+    cratePos.set(
+      rect.x + rect.w / 2,
+      u(terrainHeightAt(map, rect.x + rect.w / 2, rect.y + rect.h / 2)),
+      rect.y + rect.h / 2,
+    );
     crateScale.set(rect.w, 1, rect.h);
     crateMatrix.compose(cratePos, crateQuat, crateScale);
     crateInstances.setMatrixAt(ci, crateMatrix);
@@ -206,6 +241,9 @@ export function buildLevel(scene, map, rng, quality = 'high') {
   disposables.push(crateInstances.geometry, crateInstances.material);
 
   const solidsGeo = mergeGeometries(boxes);
+  // 合并后没有包围盒：不算的话视锥剔除失效（整块永远可见），测试也没法断言墙高
+  solidsGeo.computeBoundingBox();
+  solidsGeo.computeBoundingSphere();
   for (const b of boxes) b.dispose();
   const solidsMat = surfaceMat('#FFFFFF', getConcreteTexture(), VIEW3D.wallRoughness, surfaceDetail);
   solidsMat.vertexColors = true;
@@ -229,7 +267,6 @@ export function buildLevel(scene, map, rng, quality = 'high') {
    */
 
   const ceilGap = u(VIEW3D.level.ceilingGap);
-  const ceilY = u(VIEW3D.wallHeight) + ceilGap;
   const slabThick = u(0.18);
   // 板面必须盖住整圈墙顶（房间是从叶子里内缩 1 格挖出来的，墙厚正好 1 格）。
   // 之前只外扩 0.35m，街上一抬头就是"墙顶与楼板之间的一条缝"，能看到天空。
@@ -243,12 +280,14 @@ export function buildLevel(scene, map, rng, quality = 'high') {
     emissive: ceilColor.clone().multiplyScalar(VIEW3D.level.ceilingEmissive),
   });
 
+  // 每栋楼自己的屋顶高度（1~3 层），不再是一个全局 ceilY
+  const roomCeilY = (room) => u(room.wallHeight > 0 ? room.wallHeight : VIEW3D.wallHeight) + ceilGap;
   const slabBoxes = [];
   for (const room of indoorRooms) {
     const w = room.w + slabPad * 2;
     const h = room.h + slabPad * 2;
     slabBoxes.push(new THREE.BoxGeometry(w, slabThick, h)
-      .translate(room.x + room.w / 2, ceilY - slabThick / 2, room.y + room.h / 2));
+      .translate(room.x + room.w / 2, roomCeilY(room) - slabThick / 2, room.y + room.h / 2));
   }
   const ceilGeo = slabBoxes.length
     ? mergeGeometries(slabBoxes)
@@ -267,10 +306,10 @@ export function buildLevel(scene, map, rng, quality = 'high') {
 
   const beamH = u(VIEW3D.level.ceilingBeamH);
   const beamW = u(VIEW3D.level.ceilingBeamW);
-  const beamY = ceilY - beamH / 2 - u(0.02);
   const beamSpacing = u(VIEW3D.level.ceilingBeamSpacing);
   const beamBoxes = [];
   for (const room of indoorRooms) {
+    const beamY = roomCeilY(room) - beamH / 2 - u(0.02);
     for (let z = room.y + beamSpacing; z < room.y + room.h; z += beamSpacing) {
       beamBoxes.push(new THREE.BoxGeometry(room.w, beamH, beamW)
         .translate(room.x + room.w / 2, beamY, z));
@@ -295,6 +334,92 @@ export function buildLevel(scene, map, rng, quality = 'high') {
     opacity: 0.42,
     depthWrite: false,
   });
+  /* ---------------- 屋顶设备（天际线的来源） ----------------
+   * 为什么必须做：单层等高的方块城，远看就是"一圈围墙"，不管贴图多好都不像城市。
+   * 屋顶是唯一能在街道视角里稳定提供**轮廓变化**的地方 —— 女儿墙、水箱、机组、天线，
+   * 每一个都只值几十个三角形，但叠在一起就把水平的天际线打碎了。
+   *
+   * 性能：全部合并成 **1 个** geometry、1 个 draw call，与楼栋数量无关。
+   * 只给 2 层以上的楼上设备：单层仓库顶上也堆水箱会显得假（真实库区屋顶是空的）。
+   */
+  const roofRng = rng.fork(0x0f00); // 独立子流：不动 decorRng，墙/箱颜色不漂
+  const propParts = [];
+  const propColor = (hex) => new THREE.Color(hex);
+  const C_PARAPET = PALETTE3D.wall;
+  const C_TANK = '#6E7A72';
+  const C_AC = '#8A9490';
+  const C_ANT = '#2A3134';
+
+  /** 加一个屋顶方块（尺寸以米给，中心点以世界单位给） */
+  const addProp = (wM, hM, dM, x, y, z, color) => {
+    const c = propColor(color);
+    propParts.push(boxWithFaceColors(
+      u(wM), u(hM), u(dM),
+      [c, c, c, c, c, c],
+    ).translate(x, y, z));
+  };
+
+  for (const room of indoorRooms) {
+    if ((room.floors || 1) < 2) continue;
+    const topY = roomCeilY(room);
+    const pM = u(0.70); // 女儿墙高
+    const pT = u(0.30); // 厚度
+    const cx = room.x + room.w / 2;
+    const cz = room.y + room.h / 2;
+    // 女儿墙：四周各一条，压在楼板边缘
+    addProp(room.w / 20, 0.70, 0.30, cx, topY + pM / 2, room.y + pT / 2, C_PARAPET);
+    addProp(room.w / 20, 0.70, 0.30, cx, topY + pM / 2, room.y + room.h - pT / 2, C_PARAPET);
+    addProp(0.30, 0.70, room.h / 20, room.x + pT / 2, topY + pM / 2, cz, C_PARAPET);
+    addProp(0.30, 0.70, room.h / 20, room.x + room.w - pT / 2, topY + pM / 2, cz, C_PARAPET);
+
+    const innerW = room.w - u(3.2);
+    const innerH = room.h - u(3.2);
+    if (innerW < u(2.5) || innerH < u(2.5)) continue;
+    const pick = () => ({
+      x: room.x + u(1.6) + roofRng.float(0, innerW),
+      z: room.y + u(1.6) + roofRng.float(0, innerH),
+    });
+
+    // 水箱：楼层越高越可能有（三层楼 = 办公/宿舍，顶上一定有生活水箱）
+    if ((room.floors || 1) >= 2 && room.w * room.h > 1600) {
+      const q = pick();
+      const th = u(2.4);
+      addProp(2.0, 1.7, 2.0, q.x, topY + th + u(0.85), q.z, C_TANK);
+      // 四条腿：离地 2.4m，街上看是"架在屋顶上的罐子"而不是一块箱子
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+        addProp(0.14, 2.4, 0.14, q.x + sx * u(0.75), topY + th / 2, q.z + sz * u(0.75), C_ANT);
+      }
+    }
+    // 空调机组 / 通风机：2~3 台，随机朝向靠尺寸差体现
+    const units = 2 + (roofRng.chance(0.5) ? 1 : 0);
+    for (let i = 0; i < units; i += 1) {
+      const q = pick();
+      addProp(1.2, 0.9, 1.0, q.x, topY + u(0.45), q.z, C_AC);
+    }
+    // 天线：只给三层楼（高处的通讯节点），一根杆 + 两道横臂
+    if ((room.floors || 1) >= 3) {
+      const q = pick();
+      addProp(0.12, 3.2, 0.12, q.x, topY + u(1.6), q.z, C_ANT);
+      addProp(0.9, 0.06, 0.06, q.x, topY + u(2.9), q.z, C_ANT);
+      addProp(0.6, 0.06, 0.06, q.x, topY + u(2.3), q.z, C_ANT);
+    }
+  }
+
+  if (propParts.length) {
+    const propGeo = mergeGeometries(propParts);
+    propGeo.computeBoundingBox();
+    propGeo.computeBoundingSphere();
+    for (const g of propParts) g.dispose();
+    const propMat = surfaceMat('#FFFFFF', getConcreteTexture(), VIEW3D.wallRoughness, surfaceDetail);
+    propMat.vertexColors = true; // ⚠ 事后赋值不重编 program：这里材质刚建、尚未编译，才成立
+    const roofProps = new THREE.Mesh(propGeo, propMat);
+    roofProps.castShadow = true;
+    roofProps.receiveShadow = true;
+    roofProps.name = 'roofProps';
+    group.add(roofProps);
+    disposables.push(propGeo, propMat);
+  }
+
   const beams = new THREE.Mesh(beamGeo, beamMat);
   beams.castShadow = false;
   beams.receiveShadow = false;
@@ -361,9 +486,10 @@ export function buildLevel(scene, map, rng, quality = 'high') {
   const lampPos = new THREE.Vector3();
   const lampScale = new THREE.Vector3(1, 1, 1);
   lampPoints.forEach((p, i) => {
-    lampPos.set(p.x, u(0.03), p.y);
+    const base = u(terrainHeightAt(map, p.x, p.y));
+    lampPos.set(p.x, base + u(0.03), p.y);
     lampPools.setMatrixAt(i, lampMat4.compose(lampPos, lampQuat, lampScale));
-    lampPos.set(p.x, u(zone.lampHeight) + u(0.10), p.y);
+    lampPos.set(p.x, base + u(zone.lampHeight) + u(0.10), p.y);
     lampFixtures.setMatrixAt(i, lampMat4.compose(lampPos, lampQuat, lampScale));
   });
   lampPools.instanceMatrix.needsUpdate = true;
@@ -387,7 +513,7 @@ export function buildLevel(scene, map, rng, quality = 'high') {
     const baseR = bushGeo.boundingSphere ? bushGeo.boundingSphere.radius : 1;
     map.bushes.forEach((bush, i) => {
       const s = bush.r / baseR;
-      pos.set(bush.x, 0, bush.y);
+      pos.set(bush.x, u(terrainHeightAt(map, bush.x, bush.y)), bush.y);
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), decorRng.float(0, Math.PI * 2));
       scl.set(s, s * decorRng.float(0.85, 1.15), s);
       bushMesh.setMatrixAt(i, m.compose(pos, q, scl));
@@ -441,7 +567,7 @@ export function buildLevel(scene, map, rng, quality = 'high') {
       const x = propRng.float(48, WORLD_W_L - 48);
       const y = propRng.float(48, WORLD_H_L - 48);
       if (tooClose(x, y)) continue;
-      pos.set(x, 0, y);
+      pos.set(x, u(terrainHeightAt(map, x, y)), y);
       q.setFromEuler(new THREE.Euler(propRng.float(-0.24, 0.24), propRng.float(0, Math.PI * 2), propRng.float(-0.24, 0.24)));
       const s = propRng.float(0.7, 1.7);
       scl.set(s, s * propRng.float(0.48, 0.9), s);
@@ -614,12 +740,23 @@ export function buildLevel(scene, map, rng, quality = 'high') {
       // 颜色必须乘上本作的容器基色（CONTAINER_COLORS），**不能**沿用 GLTF 的白色固有色 ——
       // 详见 glbLambert 的注释：Kenney 的 albedo 本身很亮，白固有色 × 本作光照会饱和过曝，
       // 木箱直接变成一块惨白的板子。乘基色后等价于"给 GLB 套一层本作调色"。
-      const mat = glbLambert(merged.material, {
-        color: CONTAINER_COLORS[type],
-        // #P0-2 夜战可见性沿用原规则：可搜刮容器带轻微自发光，暗处不致死黑。
-        emissive: isLoot ? VIEW3D.lootEmissive : null,
-        emissiveIntensity: isLoot ? VIEW3D.lootEmissiveIntensity : 0,
-      });
+      // W6：Poly Haven 四通道道具走 glbPbr 保住法线/ARM/AO；low 档或 ?pbr=0 回退 Lambert。
+      // gain 是 Standard→Lambert 观感对齐的旋钮（历史过曝教训），只作用在 PBR 分支。
+      const usePbr = quality !== 'low' && pbrEnabled() && PBR_CONTAINER_TYPES.has(type)
+        && !!(merged.material && merged.material.normalMap);
+      const mat = usePbr
+        ? glbPbr(merged.material, {
+          color: CONTAINER_COLORS[type],
+          gain: PBR3D.containerGain,
+          normalScale: PBR3D.normalScale,
+          emissive: isLoot ? VIEW3D.lootEmissive : null,
+          emissiveIntensity: isLoot ? VIEW3D.lootEmissiveIntensity : 0,
+        })
+        : glbLambert(merged.material, {
+          color: CONTAINER_COLORS[type],
+          emissive: isLoot ? VIEW3D.lootEmissive : null,
+          emissiveIntensity: isLoot ? VIEW3D.lootEmissiveIntensity : 0,
+        });
 
       const mesh = new THREE.InstancedMesh(merged.geometry, mat, Math.max(1, slot.capacity));
       mesh.name = `containers:${type}`;
@@ -707,10 +844,13 @@ export function buildLevel(scene, map, rng, quality = 'high') {
       }
     }
     // 旧三类的阴影标记不同：slab 投影+接收、lip 都不投、step 仅接收。逐类保留。
-    const addMerged = (geos, mat, castShadow, receiveShadow) => {
+    const addMerged = (name, geos, mat, castShadow, receiveShadow) => {
       if (!geos.length) return;
       const merged = mergeGeometries(geos);
       const mesh = new THREE.Mesh(merged, mat);
+      // 命名三类平台 mesh：真机 A/B 定位材质（如「台面白板感」）与护栏都靠它，
+      // 合并几何后没有独立对象可查，名字是唯一稳定标识。
+      mesh.name = name;
       mesh.castShadow = castShadow;
       mesh.receiveShadow = receiveShadow;
       group.add(mesh);
@@ -718,9 +858,9 @@ export function buildLevel(scene, map, rng, quality = 'high') {
       disposables.push(merged, mat);
       for (const g of geos) g.dispose();
     };
-    addMerged(platGeos, platMat, true, true);
-    addMerged(trimGeos, trimMat, false, false);
-    addMerged(stepGeos, stepMat, false, true);
+    addMerged('platform:top', platGeos, platMat, true, true);
+    addMerged('platform:trim', trimGeos, trimMat, false, false);
+    addMerged('platform:step', stepGeos, stepMat, false, true);
   }
 
   /**
@@ -744,7 +884,7 @@ export function buildLevel(scene, map, rng, quality = 'high') {
 
   const extractMarkers = map.extracts.map((point) => {
     const marker = buildExtractMarker(point.r);
-    marker.position.set(point.x, 0, point.y);
+    marker.position.set(point.x, u(terrainHeightAt(map, point.x, point.y)), point.y);
     marker.visible = Boolean(point.open);
     group.add(marker);
     disposables.push(
@@ -793,7 +933,7 @@ export function buildLevel(scene, map, rng, quality = 'high') {
    * @param {number} time 战局累计时间（秒）
    * @returns {void}
    */
-  function update(time) {
+  function update(time, player) {
     const pulse = 0.5 + 0.5 * Math.sin(time * VIEW3D.level.highlightPulseSpeed);
     for (const marker of extractMarkers) {
       marker.userData.ringMat.opacity = 0.40 + pulse * 0.32;
@@ -801,6 +941,10 @@ export function buildLevel(scene, map, rng, quality = 'high') {
       marker.userData.ring.rotation.y = time * 0.4;
     }
     if (highlight.visible) hlMat.opacity = 0.45 + pulse * 0.4;
+    // W8：大图地面分块可见性跟随玩家（小图无 updateVisible，零开销）
+    if (player && ground.userData && ground.userData.updateVisible) {
+      ground.userData.updateVisible(player.x, player.y);
+    }
   }
 
   /** 掩体箱受损：按剩余血量比例向瓦砾色压暗（受损越重越暗），只改该实例颜色 */

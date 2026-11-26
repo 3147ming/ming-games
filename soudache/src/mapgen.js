@@ -9,7 +9,7 @@
 import {
   TILE, CELL, MATCH, VIEW3D,
   CONTAINERS, CONTAINER_SPAWN_WEIGHTS, POI, ENEMY_SPAWN_WEIGHTS, CRATE, VEHICLE,
-  MAPS, DEFAULT_MAP_ID, POI_NAMES, HUD,
+  MAPS, DEFAULT_MAP_ID, POI_NAMES, HUD, TERRAIN3D,
 } from './config.js';
 import { createRng } from './rng.js';
 import { buildAreaPlan } from './areas.js';
@@ -69,9 +69,34 @@ export function ceilingHeightAt(map, x, y) {
   for (let i = 0; i < rooms.length; i += 1) {
     const r = rooms[i];
     if (r.indoor === false) continue;
-    if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return VIEW3D.wallHeight;
+    // 每栋楼的层高不同（1~3 层）：返回该分区自己的高度，跳/翻越才不会穿出屋顶
+    if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+      return Number.isFinite(r.wallHeight) && r.wallHeight > 0 ? r.wallHeight : VIEW3D.wallHeight;
+    }
   }
   return Infinity;
+}
+
+/**
+ * 该点的**墙体高度**（米）。非墙格 / 越界返回基准层高。
+ *
+ * 与 `ceilingHeightAt` 的分工：那个回答"头顶有没有屋顶"，这个回答"这面墙多高"。
+ * 弹道要用后者：子弹越过 4.2m 的矮墙可以打到后面的人，但 12.6m 的楼必须挡住。
+ * 数据源是生成期算好的 `map.wallHeightGrid`，渲染与判定读同一份，不会出现
+ * "看着三层的楼，子弹从二楼穿过去"。
+ *
+ * @param {object} map 地图
+ * @param {number} x 世界 x
+ * @param {number} y 世界 y
+ * @returns {number} 墙高（米）
+ */
+export function wallHeightAt(map, x, y) {
+  if (!map || !map.wallHeightGrid) return VIEW3D.wallHeight;
+  const tx = Math.floor(x / map.tile);
+  const ty = Math.floor(y / map.tile);
+  if (tx < 0 || ty < 0 || tx >= map.cols || ty >= map.rows) return VIEW3D.wallHeight;
+  const h = map.wallHeightGrid[ty * map.cols + tx];
+  return Number.isFinite(h) && h > 0 ? h : VIEW3D.wallHeight;
 }
 
 /** 世界坐标 → 格索引 */
@@ -196,24 +221,138 @@ export function hasLineOfSight(map, x1, y1, x2, y2, opts = {}) {
 }
 
 /**
- * 世界坐标处的站立高度（米）：站在架高平台上返回 VIEW3D.platformHeight，否则 0。
+ * 世界坐标处的地形高度（米，W7 缓坡）：从 terrainGrid 双线性采样。
+ *
+ * ⚠ 采样而非取格值：逐格取值会让 2m 一格的地面变成台阶，玩家走上去一颠一颠、
+ * 子弹高度判定也会在格边界跳变。双线性插值保证高度连续。
+ * 旧地图 / 无地形字段时恒返回 0（向后兼容，不需要迁移存档）。
+ * @param {object} map 地图
+ * @param {number} x 世界 x
+ * @param {number} y 世界 y
+ * @returns {number} 地形高度（米）
+ */
+export function terrainHeightAt(map, x, y) {
+  const g = map && map.terrainGrid;
+  if (!g || !map.terrainGridInfo) return 0;
+  const { cols, rows, tile } = map.terrainGridInfo;
+  // 格中心坐标 = (tx+0.5)*tile；采样点落在四个中心之间 → 换算到中心坐标系
+  const fx = x / tile - 0.5;
+  const fy = y / tile - 0.5;
+  const x0 = Math.floor(fx);
+  const y0 = Math.floor(fy);
+  const sx = fx - x0;
+  const sy = fy - y0;
+  const at = (tx, ty) => {
+    if (tx < 0 || ty < 0 || tx >= cols || ty >= rows) return 0;
+    return g[ty * cols + tx];
+  };
+  const a = at(x0, y0); const b = at(x0 + 1, y0);
+  const c = at(x0, y0 + 1); const d = at(x0 + 1, y0 + 1);
+  return (a * (1 - sx) + b * sx) * (1 - sy) + (c * (1 - sx) + d * sx) * sy;
+}
+
+/**
+ * 世界坐标处的站立高度（米）：地形缓坡与架高平台取高者。
  *
  * ⚠ 设计要点：平台格本身仍是 CELL.FLOOR（可通行），高程只是一个**附加属性**。
  * 因此平台不改变连通性、不参与碰撞，也就不会破坏"敌人出生点必须可达"这类既有保证 ——
  * 这正是把垂直结构做成"架高平台"而非"真正的二层"的原因。
+ * W7：地形缓坡也走同一条真值链 —— 视觉、碰撞、弹道、投掷、AI 视野全部读这一个函数，
+ * 不会出现"看着有坡、子弹却按平地算"的分裂。
  * @param {object} map 地图
  * @param {number} x 世界 x
  * @param {number} y 世界 y
  * @returns {number} 高度（米）
  */
 export function elevationAt(map, x, y) {
-  const plats = map.platforms;
+  const terrain = terrainHeightAt(map, x, y);
+  const platform = platformHeightAt(map, x, y);
+  return platform > terrain ? platform : terrain;
+}
+
+/**
+ * 架高平台高度（米）：只认 platform 矩形，不含地形缓坡。
+ *
+ * 为什么单独有它：几处"是否已经站在平台上"的判断（敌人出生点过滤、AI 抢占高地）
+ * 在 W7 之前写的是 `elevationAt(...) > 0.5`。若直接沿用，缓坡也会被误判成"平台"，
+ * 敌人就不刷在坡上、AI 也不去抢真高地 —— 布局会悄悄漂移（golden 会红）。
+ * 这些地方语义是"平台"而非"高度"，必须读这个专门的真值。
+ * @param {object} map 地图
+ * @param {number} x 世界 x
+ * @param {number} y 世界 y
+ * @returns {number} 平台高度（米），不在平台上返回 0
+ */
+export function platformHeightAt(map, x, y) {
+  const plats = map && map.platforms;
   if (!plats || !plats.length) return 0;
   for (let i = 0; i < plats.length; i += 1) {
     const p = plats[i];
     if (x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h) return VIEW3D.platformHeight;
   }
   return 0;
+}
+
+/* ============================ W7 露天缓坡地形 ============================ */
+
+/**
+ * 为露天广场生成缓坡高度场（独立 RNG 分叉，不动主序列）。
+ *
+ * 做法：每个 plaza room 撒 1~3 个"丘"，丘心在房间内、半径按房间尺寸取，
+ * 高度按高斯衰减叠加；再乘一层边缘 fade，让靠近墙的一圈高度降到 0 ——
+ * 否则广场边缘的地面会比墙脚高，视觉上就是"墙陷进土里"。
+ *
+ * ⚠ 只写 plaza 格（room.indoor === false）：室内地板保持 0，房间/走廊/墙体不受影响。
+ * 高度存在**格中心**，采样时双线性插值（见 terrainHeightAt），所以格边界连续。
+ *
+ * @param {object} map 已建好的地图对象（需要 rooms / grid / cols / rows / tile）
+ * @param {object} rng 独立子流（调用方用 rng.fork(TERRAIN3D.forkSalt) 生成）
+ * @returns {{grid:Float32Array, info:object}} 高度场
+ */
+export function generateTerrain(map, rng) {
+  const { cols, rows, tile } = map;
+  const grid = new Float32Array(cols * rows);
+  const info = { cols, rows, tile };
+  if (!TERRAIN3D.enabled) return { grid, info };
+
+  const plazas = (map.rooms || []).filter((r) => r.indoor === false && r.plaza);
+  for (const room of plazas) {
+    const tw = room.tw; const th = room.th;
+    if (tw < 4 || th < 4) continue; // 太小的空地做坡只会像土包
+    const n = Math.max(TERRAIN3D.hillCountMin,
+      Math.min(TERRAIN3D.hillCountMax, rng.int(TERRAIN3D.hillCountMin, TERRAIN3D.hillCountMax)));
+    const hills = [];
+    for (let i = 0; i < n; i += 1) {
+      hills.push({
+        tx: room.tx + rng.float(1, tw - 1),
+        ty: room.ty + rng.float(1, th - 1),
+        rx: Math.max(2, tw * rng.float(0.28, 0.52)),
+        ry: Math.max(2, th * rng.float(0.28, 0.52)),
+        amp: rng.float(TERRAIN3D.amplitudeMin, TERRAIN3D.amplitudeMax),
+      });
+    }
+    const fadeTiles = Math.max(1, Math.min(tw, th) * TERRAIN3D.edgeFade);
+    for (let ty = room.ty; ty < room.ty + th; ty += 1) {
+      for (let tx = room.tx; tx < room.tx + tw; tx += 1) {
+        const idx = ty * cols + tx;
+        if (map.grid[idx] !== CELL.FLOOR) continue; // 墙/箱格不抬高，避免压进障碍
+        // 边缘 fade：离最近房间边界不足 fadeTiles 时线性降到 0
+        const edge = Math.min(
+          tx - room.tx, room.tx + tw - 1 - tx,
+          ty - room.ty, room.ty + th - 1 - ty,
+        );
+        const fade = Math.min(1, edge / fadeTiles);
+        if (fade <= 0) continue;
+        let h = 0;
+        for (const hill of hills) {
+          const dx = (tx + 0.5 - hill.tx) / hill.rx;
+          const dy = (ty + 0.5 - hill.ty) / hill.ry;
+          h += hill.amp * Math.exp(-2.2 * (dx * dx + dy * dy));
+        }
+        grid[idx] = Math.min(h * fade, TERRAIN3D.amplitudeMax);
+      }
+    }
+  }
+  return { grid, info };
 }
 
 /* ============================ 可破坏掩体箱 ============================ */
@@ -683,6 +822,52 @@ export function generateMap(seed, mapId, opts = {}) {
   }
   const rooms = leaves.map((l) => l.room);
 
+  /* ---------------- 建筑高度分层 ----------------
+   * 单层等高的方块城永远不可能像城市：天际线是一条水平线，远看就是一圈围墙。
+   * 这里给每个**室内**分区抽一个层数（1~3 层 = 4.2 / 8.4 / 12.6m），
+   * 屋顶设备（女儿墙/水箱/机组/天线）在 level3d 里按层数挂上去。
+   *
+   * ⚠ 抽签走独立子流 `0x5ee1`：不动主 rng 序列，否则房间尺寸、容器位置、
+   * 敌人出生点会跟着漂，golden 哈希全变，改动会变成"哪里都动了"。
+   * 图层高度写进 `room.wallHeight`（米），是渲染 / 天花板夹取 / 弹道遮挡的**唯一真值**。
+   */
+  const heightRng = rng.fork(0x5ee1);
+  const table = def.heightFloors || [0.5, 0.36, 0.14];
+  const t0 = table[0];
+  const t1 = table[0] + table[1];
+  for (const room of rooms) {
+    if (room.indoor === false) { room.floors = 0; room.wallHeight = 0; continue; }
+    const roll = heightRng.float(0, 1);
+    const floors = roll < t0 ? 1 : (roll < t1 ? 2 : 3);
+    room.floors = floors;
+    room.wallHeight = VIEW3D.wallHeight * floors;
+  }
+
+  /**
+   * 墙体高度网格：**墙格**取相邻建筑的最高层，其余保持基准层高。
+   *
+   * 为什么要有它：`map.walls` 是一堆矩形，渲染、弹道、跳跃夹取都按"一个全局墙高"算。
+   * 一旦建筑有高低差，同一个 4.2m 常量就会让高楼的墙在画面上只有半截，
+   * 或者让子弹穿透 12m 的楼 —— 必须有一份"这个格子上的墙有多高"的真值表。
+   * 只写建筑外扩 1 圈的**边界**：那是墙所在的位置；房间里与走廊上的值不参与判定。
+   */
+  const heightGrid = new Float32Array(cols * rows).fill(VIEW3D.wallHeight);
+  for (const room of rooms) {
+    if (room.indoor === false) continue;
+    const x0 = Math.max(0, room.tx - 1); const x1 = Math.min(cols - 1, room.tx + room.tw);
+    const y0 = Math.max(0, room.ty - 1); const y1 = Math.min(rows - 1, room.ty + room.th);
+    for (let ty = y0; ty <= y1; ty += 1) {
+      for (let tx = x0; tx <= x1; tx += 1) {
+        const i = ty * cols + tx;
+        // 只写**实心墙格**：房间内部与走廊的格值不参与任何判定，
+        // 写进去反而会让"相邻高楼的外圈"污染别人的室内格（多栋共用一堵墙时取最高是对的，
+        // 但楼内中心格被邻居抬高就是错的）。
+        if (grid[i] !== CELL.WALL) continue;
+        if (heightGrid[i] < room.wallHeight) heightGrid[i] = room.wallHeight;
+      }
+    }
+  }
+
   const map = {
     // 地图身份：只用于 UI / 结算展示，不参与生成，也不进 golden 哈希。
     id: def.id,
@@ -695,6 +880,8 @@ export function generateMap(seed, mapId, opts = {}) {
     width: cols * TILE, height: rows * TILE,
     grid,
     rooms,
+    // 每个墙格的实际高度（米）。渲染挤出、弹道遮挡、跳跃夹取都读它。
+    wallHeightGrid: heightGrid,
     crates: [],
     bushes: [],
     containers: [],
@@ -707,6 +894,14 @@ export function generateMap(seed, mapId, opts = {}) {
     playerSpawn: { x: rooms[0].cx, y: rooms[0].cy },
     walls: [],
   };
+
+  // 1.5) W7 露天缓坡地形。独立 RNG 分叉，不动主序列；新字段不进 GOLDEN 快照。
+  //      必须早于任何 elevationAt 调用（敌人出生点过滤、落位），让它们看到真实高程。
+  {
+    const terrain = generateTerrain(map, rng.fork(TERRAIN3D.forkSalt));
+    map.terrainGrid = terrain.grid;
+    map.terrainGridInfo = terrain.info;
+  }
 
   // 2) 房间内掩体箱（实心，值 2）
   for (const room of rooms) {
@@ -972,7 +1167,7 @@ export function generateMap(seed, mapId, opts = {}) {
         if (isSolidAt(map, p.x, p.y) || circleHitsSolid(map, p.x, p.y, 14)) continue;
         // 高度校验：敌人不刷在架高平台上（避免一出生就"站在高墙顶 / 屋顶"的观感异常），
         // 抢占高地交给 AI 的 pickHighGround 在战斗中按需执行。
-        if (elevationAt(map, p.x, p.y) > 0.5) continue;
+        if (platformHeightAt(map, p.x, p.y) > 0.5) continue;
         if (Math.hypot(p.x - map.playerSpawn.x, p.y - map.playerSpawn.y) < minDist) continue;
         // 敌人出生点必须能从玩家出生点走到，避免生成在封闭孤岛
         const idx = Math.floor(p.y / TILE) * cols + Math.floor(p.x / TILE);

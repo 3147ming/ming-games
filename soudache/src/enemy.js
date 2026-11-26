@@ -8,7 +8,7 @@
 import { ENEMY_TYPES, BOSSES, AI, CELL, ROPE, TILE, WORLD_W, WORLD_H, VIEW3D } from './config.js';
 import {
   hasLineOfSight, moveWithCollision, isSolidAt, getFlowField, flowDirection, randomPointInRoom,
-  elevationAt, cellAt, crateRectIndexAt, damageCrateRect,
+  platformHeightAt, cellAt, crateRectIndexAt, damageCrateRect,
 } from './mapgen.js';
 import { createWeaponState, updateWeapon, fireWeapon, startReload, applyDamage } from './combat.js';
 import { smokeBlocks, blastAttenuation } from './throwable.js';
@@ -686,8 +686,8 @@ export class Enemy {
     if (!cfg.enabled) return null;
     const plats = world.map.platforms;
     if (!plats || !plats.length) return null;
-    // 已经在某块平台上，不用再抢
-    if (elevationAt(world.map, this.x, this.y) > 0.5) return null;
+    // 已经在某块平台上，不用再抢（只认平台：缓坡不是"高地"，别让 AI 误判而不去抢真平台）
+    if (platformHeightAt(world.map, this.x, this.y) > 0.5) return null;
 
     let best = null;
     let bestScore = Infinity;
@@ -1307,7 +1307,10 @@ export class Enemy {
         x: base.x + this.rng.float(-radius, radius),
         y: base.y + this.rng.float(-radius, radius),
       };
-      if (p.x < TILE || p.y < TILE || p.x > WORLD_W - TILE || p.y > WORLD_H - TILE) continue;
+      // W8：按地图自身边界，旧图 map.width==WORLD_W 逐位等价，大图不再被误判越界。
+      const mw = (world.map && world.map.width) || WORLD_W;
+      const mh = (world.map && world.map.height) || WORLD_H;
+      if (p.x < TILE || p.y < TILE || p.x > mw - TILE || p.y > mh - TILE) continue;
       if (isSolidAt(world.map, p.x, p.y)) continue;
       return p;
     }

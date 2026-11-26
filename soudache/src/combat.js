@@ -8,7 +8,7 @@
 import { COMBAT, AI, PLAYER, CELL, VIEW3D, HITDIR, RECOIL, ITEMS } from './config.js';
 import { recoilStep, spreadAt } from './recoil.js';
 import { reloadDuration, reloadProgress, reloadStage } from './reload.js';
-import { cellAt, crateRectIndexAt, damageCrateRect, elevationAt } from './mapgen.js';
+import { cellAt, crateRectIndexAt, damageCrateRect, elevationAt, wallHeightAt } from './mapgen.js';
 import {
   armorMitigation, helmetMitigation, zoneFromHeight, zoneMultiplier,
   armorDurabilityLoss, helmetDurabilityLoss, armorWasHit,
@@ -293,7 +293,9 @@ export function hitscan3D(world, shooter, opts) {
   // tan(pitch) 在接近 ±90° 时发散（pitchLimit 85°，这里再夹一层保险）
   const tanPitch = Math.tan(Math.max(-1.5, Math.min(1.5, pitch)));
   const Oy = eyeY + muzzle * tanPitch;
-  const wallTop = VIEW3D.wallHeight * VIEW3D.metersToUnits;
+  // 墙高逐格查表：建筑有 1~3 层，4.2m 的矮墙可以越过，12.6m 的楼必须挡住。
+  // 用一个全局常量会让高楼"看着三层、子弹从二楼穿过去"（渲染已经按格挤出了）。
+  const wallTopOf = (px, pz) => wallHeightAt(world.map, px, pz) * VIEW3D.metersToUnits;
   const crateTop = VIEW3D.crateHeight * VIEW3D.metersToUnits;
 
   // 1) 墙体 / 掩体箱步进（与旧 hitscan 同构：d 从 10 到 maxDist，step=10）
@@ -306,7 +308,7 @@ export function hitscan3D(world, shooter, opts) {
     const cell = cellAt(world.map, px, pz);
     if (cell === CELL.WALL) {
       // 射线在墙顶之上则飞过去（pitch 抬到足够高时越过墙体）
-      if (py < wallTop) {
+      if (py < wallTopOf(px, pz)) {
         limit = d;
         break;
       }

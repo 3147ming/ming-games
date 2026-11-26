@@ -100,6 +100,8 @@ export const MAPS = {
     // 露天广场比例：库区要有"货场/停车场"这种一眼望穿的空地，
     // 否则扩图只是把室内迷宫做大，仍然是室内战。
     roomSkipChance: 0.3,
+    // 层数分布：[1 层, 2 层, 3 层] 的概率。仓库区以单层大跨为主，少量办公/宿舍楼挑高。
+    heightFloors: [0.52, 0.34, 0.14],
     corridorWidth: 2, // 2 格宽走廊：双向都能绕，交火有回旋余地
     loopCorridors: 0, // 开阔图不额外加环路：绕后靠房间本身的空间
     // --- 掩体 / 植被 ---
@@ -140,6 +142,8 @@ export const MAPS = {
     // 地下管廊刻意几乎不留露天（0.04）：三张图必须有"室内战"的那一张，
     // 否则差异化没了 —— 想打 CQB 的人应该能选到这张。
     roomSkipChance: 0.04,
+    // 地下管廊：几乎全是单层（92%）。这张图要的是「钻管道」的压迫感，不是天际线。
+    heightFloors: [0.92, 0.08, 0],
     corridorWidth: 1, // 1 格宽：只能单列通过，无法并肩，烟/雷/卡点价值陡增
     loopCorridors: 10, // 额外 10 条环路：窄图最怕死胡同，多出口才敢往里走
     // --- 掩体 / 植被 ---
@@ -185,6 +189,8 @@ export const MAPS = {
     roomFillMin: 0.6, // 较开阔、视线长
     // 观测站是室外为主的一张图：露天比例最高，建筑只是散落的观测点
     roomSkipChance: 0.36,
+    // 观测站建在山脊上：楼层差最大，天际线错落
+    heightFloors: [0.40, 0.34, 0.26],
     corridorWidth: 2,
     loopCorridors: 5, // 中等环路，保证立体机动有回旋余地
     // --- 掩体 / 植被 ---
@@ -207,6 +213,54 @@ export const MAPS = {
     // --- 敌人（与既有图同区间：不靠改数值做难度）---
     enemyCountMin: MATCH.enemyCountMin,
     enemyCountMax: MATCH.enemyCountMax,
+  },
+  /**
+   * W8 大地图：荒原哨站（400×400m）。
+   *
+   * 250×250 tile = 500m 见方，对标三角洲级大地图。管线先在 200×200(400m) 上
+   * 验证通（地面分块 P1），再放大到 500m：地面靠 chunk 只渲染玩家附近几块，
+   * 不随整图面数线性增长；寻路实测单次 BFS <1ms、缓存 ~4MB，不是瓶颈。
+   *
+   * ⚠ 独立 def、不动 MAP_COLS/MAP_ROWS 与旧三图：GOLDEN 快照、旧档、旧图测试全绿。
+   * bspDepth 7（≈128 间）保持街区密度——固定 depth 时房间数封顶 2^depth，
+   * 若沿用 depth 5 会变成少数几个巨无霸房间，不是"更大的城市"而是"空旷荒原"。
+   * 容器密度刻意压低（containerAreaDiv 320 + containerMax 2）：写实木箱 6576 面/个，
+   * 不压会把移动端 tris 预算打穿。敌人倍率 1.9 补回面积涨带来的稀疏。
+   */
+  wasteland: {
+    id: 'wasteland',
+    name: '荒原哨站',
+    tagline: '大地图 · 长途转移 · 据点争夺',
+    desc: '500 米见方的废弃哨站：据点分散、路途漫长，出发前要规划好撤离路线，装满之后能否活着走回去才是真考验。',
+    cols: 250,
+    rows: 250,
+    bspDepth: 7, // ≈128 间：固定深度时房间数封顶 2^depth，必须加深才不会变成几个巨无霸房间
+    leafMin: 12,
+    roomFillMin: 0.55,
+    roomSkipChance: 0.4, // 大图多露天：荒原本身就是开阔地，建筑是散落据点
+    heightFloors: [0.62, 0.28, 0.10], // 以单层为主：大图高层太多渲染与流场都贵
+    corridorWidth: 2,
+    loopCorridors: 6, // 环路保证大图不出现超长死胡同
+    crateCountMin: 1,
+    crateCountMax: 3,
+    crateAreaDiv: 26,
+    crateWideChance: 0.5,
+    crateTallChance: 0.6,
+    plazaCrateMax: 14,
+    bushMax: 8,
+    // 密度压低：房间数随 depth 涨，若沿用 depot 的 /90 会堆到几百个容器打穿面数预算
+    containerAreaDiv: 320,
+    containerRoomRate: 0.7,
+    containerMax: 2,
+    // 撤离点/出生距离随图放大（旧图 720/820 在 500m 图上太小）
+    extractSpread: 3000, // 150m：三个出口真正分散
+    spawnMinExtractDist: 2000, // 100m：收益要背长途
+    platformCount: 24, // 高地随面积增加
+    vehicles: true, // 大图没有载具就是纯跑路
+    // 500m 图面积是 400m 的 1.56 倍，但房间数只从 79→90（depth 固定），
+    // 敌人按房间撒会掉到 24；倍率 1.9 补回 ~29，与 400m 持平稳住空旷感。
+    enemyCountMin: Math.round(MATCH.enemyCountMin * 1.9),
+    enemyCountMax: Math.round(MATCH.enemyCountMax * 1.9),
   },
 };
 
@@ -2196,10 +2250,10 @@ export const PALETTE3D = {
   terminalHacked: '#10B981', // 已破解：转绿
   airdrop: '#FFB020', // 空投信标：传说金
   highlight: '#FBBF24',
-  enemyPatrol: '#9CA3AF',
-  enemyElite: '#DC2626',
-  enemyMarksman: '#7B68A6', // 精确射手：紫
-  enemyRusher: '#E08A3C', // 冲锋兵：橙
+  enemyPatrol: '#4E5747', // 巡逻兵：橄榄灰（原来 #9CA3AF 是浅灰，月光下直接读成白板）
+  enemyElite: '#7A3A32', // 精英：暗锈红（保留辨识度，但不再是一身霓虹红）
+  enemyMarksman: '#4C4A63', // 精确射手：灰紫（同色相压饱和）
+  enemyRusher: '#6E5638', // 冲锋兵：沙褐（原来 #E08A3C 太亮，像穿了荧光背心）
   vmBody: '#393E36',
   vmDark: '#22281F',
   sky: '#1A2430',
@@ -2225,7 +2279,7 @@ export const PALETTE3D = {
   medkitCross: '#E23B3B',
   ammoBox: '#C9A227',
   armorPlate: '#7F8C9B',
-  hand: '#C8A07A',
+  hand: '#8C6E52', // 皮肤：原来 #C8A07A 在月光下会白到发光（近景像戴了白面具）
   helmet: '#33392F',
   backpack: '#3A4A3F',
 };
@@ -2312,8 +2366,10 @@ export const VIEW3D = {
   },
   // 敌人/物资的轻微自发光：暗处至少保留一层"底亮度"轮廓，不至于死黑不可见。
   // 敌人用偏冷的自发光，使其在暗背景中也能被一眼辨识（30m 外仍可见）。
-  enemyEmissive: '#5C7790',
-  enemyEmissiveIntensity: 1.6,
+  // 自发光只做暗处轮廓保底，绝不能当补光用：emissive 不受光照影响，
+  // 给到 1.6 会把整具模型压成一块纯色（塑料感的另一半来源）。
+  enemyEmissive: '#2A3A4A',
+  enemyEmissiveIntensity: 0.35,
   lootEmissive: '#6A5230',
   lootEmissiveIntensity: 0.55,
 
@@ -2329,16 +2385,30 @@ export const VIEW3D = {
   dustCount: 420, // 空气尘埃粒子数（营造体积感，0 = 关闭）
   dustRadius: 70, // 尘埃分布半径（米，跟随相机的局部范围）
   dustSize: 0.035, // 尘埃颗粒大小（米）
-  groundRoughness: 0.86, // 地面粗糙度
+  // W7 反光修复：地面法线碎高光的主因是 normalScale 太大 + metalness/env 太高。
+  // A/B（tools/ab-ground-reflection.mjs）证明：关 env/roughMap 会变暗（高光也是亮度来源），
+  // 正解是压低法线坡度 + 地面专享 metalness=0 / env=0.5 / 粗糙度提高，再补一点顶点色反照率。
+  groundRoughness: 0.92, // 地面粗糙度（原 0.86 偏亮，湿滑感）
+  groundMetalness: 0, // 地面不反光金属化（全局 metalness 0.06 保留给金属件）
+  groundEnvIntensity: 0.5, // 地面环境反射（原 0.85 让月光碎斑太强）
   wallRoughness: 0.76, // 墙面 / 掩体箱粗糙度
+  // W8 白板感修复：墙与平台台面的顶点色在夜战灯光区偏亮（A/B 实测 mean 0.368，
+  // 压到 0.6 后 0.301、观感明显更夜间军事且不死黑）。统一乘这个系数压反照率，
+  // 不碰已验证过的地面专享参数与光区。env/metal 与白板无关（A/B 关掉几乎无变化）。
+  wallAlbedoScale: 0.72,
   metalness: 0.06, // 非金属表面的基础金属度（略微给一点，增加反射层次）
 
   // --- 敌人模型 ---
+  // 局内角色比例：**按真人重标定**（总高 ≈1.7~1.85m，腿长占身高 48~50%，头宽/肩宽 ≈0.36）。
+  // 旧值是给"10~40m 外的剪影识别"调的：腿只占 35%、头肩比 0.53 —— 远看是个能认的方块人，
+  // 但本作是 CQB，敌人经常站在 3m 内，凑近就是大头娃娃（截图一眼"这不是三角洲"）。
+  // 现在远看依然是清晰剪影（头盔/背心/背包三层轮廓），近看比例经得起看。
+  // ⚠ combat.js 的命中高度直接由 legH + torsoH + headR*2 推导，改这里命中区自动跟随。
   enemy: {
-    patrol: { torsoW: 0.62, torsoH: 0.95, torsoD: 0.38, headR: 0.19, legH: 0.72 },
-    elite: { torsoW: 0.70, torsoH: 1.02, torsoD: 0.42, headR: 0.20, legH: 0.76 },
+    patrol: { torsoW: 0.50, torsoH: 0.60, torsoD: 0.27, headR: 0.115, legH: 0.86 }, // ≈1.69m
+    elite: { torsoW: 0.56, torsoH: 0.64, torsoD: 0.30, headR: 0.118, legH: 0.88 }, // ≈1.76m
     // 冲锋兵：更瘦小灵活，和"高速贴脸"的定位呼应
-    rusher: { torsoW: 0.56, torsoH: 0.88, torsoD: 0.34, headR: 0.18, legH: 0.68 },
+    rusher: { torsoW: 0.46, torsoH: 0.56, torsoD: 0.25, headR: 0.110, legH: 0.82 }, // ≈1.60m
     gunLength: 0.62,
     hitFlashColor: '#FFE4E6',
   },
@@ -2626,6 +2696,7 @@ export const POI_NAMES = {
   depot: ['ADMIN', 'DOCK', 'SUBSTATION', 'WAREHOUSE', 'CHECKPOINT', 'CRANE', 'GARAGE', 'PIER'],
   conduit: ['PUMP', 'TUNNEL', 'RELAY', 'MAINT', 'VENT', 'SILO', 'JUNCTION', 'CONTROL'],
   ridge: ['RADAR', 'CLIFF', 'RELAY', 'WATCH', 'RIDGE', 'TOWER', 'BUNKER', 'SLOPE'],
+  wasteland: ['OUTPOST', 'SILO', 'DEPOT', 'CHECK', 'TOWER', 'BRIDGE', 'QUARRY', 'RELAY'],
 };
 
 /**
@@ -2678,6 +2749,66 @@ export const SURFACE3D = {
   seed: 0x5d0a, // 烘焙种子；改它会整体换一套纹理，不影响战局确定性
   bumpScale: 0.035, // 凹凸强度：大平面别开太大，否则墙面会出现塑料波纹
   roughnessMix: 1.0, // 粗糙度贴图混入比例（乘在材质 roughness 上）
+  normalStrength: 1.8, // W6：高度图→法线图的 Sobel 坡度；大平面保守值，避免橘皮
+  normalScale: 0.24, // W6：three 侧 normalScale。W7 从 0.55 降到 0.24：碎高光主因，太大=湿滑金属
+};
+
+/**
+ * W6 PBR 保真档位（GLB 道具的四通道材质）。
+ *
+ * 为什么单列：glbLambert 是"亮度安全但丢材质"的旧出口，glbPbr 是"保真但偏亮"的新出口。
+ * gain 是把 Standard 的漫反射拉回 Lambert 同一观感区间的**唯一**旋钮 —— 历史 1.7 曝光
+ * 时代不带 gain 直接 Standard 会让木箱冲成白板，W5 重标定后仍要留这个旋钮做 A/B。
+ * 移动端 low 档始终走 glbLambert（省掉 normal/ARM 的纹理采样），与 surfaceDetail 降级一致。
+ */
+/**
+ * W7 露天缓坡地形（真高程，不是只抬地面的假坡）。
+ *
+ * ⚠ 为什么幅度这么小（0.9m）：本项目没有分块加载/LOD，地面是整图一次性合并的网格。
+ * 先把"高度场贯穿 elevationAt + 所有落位"这条链路打通并验证不穿模，再谈大起伏。
+ * 大起伏需要墙脚/掩体/寻路全部按高度重建，那是分块加载之后的事。
+ *
+ * 只作用于露天广场（room.plaza）；室内地面保持 0，避免房间地板/墙脚穿帮。
+ * 广场边缘衰减到 0，保证与围墙/走廊交界处不悬空。
+ */
+export const TERRAIN3D = {
+  enabled: true,
+  forkSalt: 0x7a9c31, // 独立 RNG 分叉：地形采样不得动主 rng 序列（golden 铁律）
+  amplitudeMin: 0.35, // 单个缓坡幅度下限（米）
+  amplitudeMax: 0.95, // 上限：再高就会让掩体箱悬空观感明显
+  hillCountMin: 1, // 每个广场至少 1 个丘
+  hillCountMax: 3,
+  edgeFade: 0.22, // 边缘衰减带占广场短边的比例：靠墙 22% 内高度降到 0
+};
+
+/**
+ * W8 P1 地面分块（流式可见性）。
+ *
+ * 整图单 Mesh 时包围球覆盖全图 → 视锥剔除永远不生效 → 400m 图 80k 面全画。
+ * 分块后只显示玩家附近 chunk，可见 tris 降到 ~1/9。小图（≤chunkThreshold 格）
+ * 保持单 Mesh，旧图 golden / level3d 测试零回归。
+ *
+ * visibleChunks 是可见半径（块数）：(2r+1)² 块同时可见。r=2 → 25 块；
+ * 每块 64×64 面 → 25×8192=204k 面仍超预算，故大图用 r=1（9 块）或小 chunk。
+ */
+export const GROUND3D = {
+  enabled: true,
+  chunkThreshold: 12000, // 格数阈值：旧图 6912 不分块，大图 40000 分块
+  chunkTiles: 24, // 每块 24×24 tile = 48×48m；大图 200/24≈9×9=81 块
+  visibleChunks: 1, // 可见半径 1 → 3×3=9 块，每块 1152 面 → ~10k 面
+};
+
+export const PBR3D = {
+  enabled: true, // 总开关；?pbr=0 可强制回退做 A/B / 弱机自救
+  containerGain: 0.78, // Poly Haven 道具固有色衰减：保住木纹/铆钉，又不冲白
+  normalScale: 0.85, // 法线强度：Poly Haven normal 偏强，0.85 避免橘皮
+  // 角色只给"金属/玻璃"少数部位升 Standard（枪 + 护目镜），布料保持 Lambert：
+  // 全角色换 PBR 会让 16 个敌人 × 7 材质都进 PBR 光循环，移动端帧率吃不消。
+  actorMetal: true,
+  actorMetalRoughness: 0.34, // 枪械烤蓝钢：低粗糙出高光，但不到镜面
+  actorMetalness: 0.62,
+  actorLensRoughness: 0.12, // 护目镜玻璃：镜面高光
+  actorLensMetalness: 0.10,
 };
 
 /**

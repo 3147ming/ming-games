@@ -12,7 +12,7 @@
 import {
   THROWABLE, ABILITY, VIEW3D, CELL,
 } from './config.js';
-import { elevationAt, solidAt } from './mapgen.js';
+import { elevationAt, solidAt, wallHeightAt } from './mapgen.js';
 import { applyDamage } from './combat.js';
 
 const U = VIEW3D.metersToUnits;
@@ -171,7 +171,8 @@ export function stepGrenade(g, dt, map, def) {
   let nx = g.x + g.vx * dt;
   let ny = g.y + g.vy * dt;
   let nh = g.h + g.vh * dt;
-  const wallTop = VIEW3D.wallHeight * U;
+  // 逐格墙高：楼有 1~3 层，手雷不能穿楼而过得按落点那面墙的高度判
+  const wallTop = wallHeightAt(map, nx, ny) * U;
 
   // 墙面反弹：按轴分离探测，才能判断是撞到 x 向的墙还是 y 向的墙
   if (nh < wallTop && solidAt(map, nx, ny)) {

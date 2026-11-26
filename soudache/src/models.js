@@ -11,9 +11,11 @@
  */
 
 import * as THREE from '../vendor/three.module.js';
-import { VIEW3D, PALETTE3D, WEAPONS, ARMORS, RARITY, SURFACE3D } from './config.js';
-import { bakeSurface } from './surfaces.js';
+import { VIEW3D, PALETTE3D, WEAPONS, ARMORS, RARITY, SURFACE3D, PBR3D, GROUND3D } from './config.js';
+import { bakeSurface, normalFromHeight, bytesChecksum } from './surfaces.js';
 import { loadGLB, glbLambert } from './assets.js';
+// W7：地面顶点高程读同一份地形真值，避免"渲染起伏"与"逻辑高程"各算一套而漂移。
+import { terrainHeightAt } from './mapgen.js';
 // 尺寸真值单独成文件（零 three 依赖）：3D 枪模与战前改枪台的 2D 线稿读同一份，避免两表漂移
 import { VM_PARAMS, resolvedBarrel } from './vmparams.js';
 
@@ -48,7 +50,7 @@ export function yawFromAngle(angle) {
  * @param {string} color 颜色
  * @param {object} opts 附加参数
  *   { emissive, transparent, opacity, phong, shininess, specular,
- *     standard, roughness, metalness, envIntensity, flat }
+ *     standard, roughness, metalness, envIntensity, flat, normalMap, normalScale }
  * @returns {THREE.Material} 材质
  */
 export function lowPolyMat(color, opts = {}) {
@@ -75,6 +77,13 @@ export function lowPolyMat(color, opts = {}) {
     if (opts.bumpMap) {
       params.bumpMap = opts.bumpMap;
       params.bumpScale = opts.bumpScale != null ? opts.bumpScale : SURFACE3D.bumpScale;
+    }
+    // W6：真法线贴图。与 bumpMap 同时挂时 three 会两者都算——大面积表面二选一，
+    // 调用方（surfaceMat / 地面）传 normalMap 时不要再传 bumpMap，避免双重凹凸。
+    if (opts.normalMap) {
+      params.normalMap = opts.normalMap;
+      const ns = opts.normalScale != null ? opts.normalScale : SURFACE3D.normalScale;
+      params.normalScale = new THREE.Vector2(ns, ns);
     }
     if (opts.roughnessMap) params.roughnessMap = opts.roughnessMap;
     const mat = new THREE.MeshStandardMaterial(params);
@@ -104,8 +113,10 @@ export function surfaceMat(color, map, roughness = VIEW3D.wallRoughness, detail 
     roughness,
     metalness: VIEW3D.metalness,
     flat: false, // 大平面不需要 flatShading，否则会露出三角形硬边
-    // P12：detail = { bumpMap, roughnessMap }，低画质 / 无 DOM 时为 null 自动降级。
-    bumpMap: detail ? detail.bumpMap : null,
+    // P12：detail = { bumpMap, normalMap, roughnessMap }，低画质 / 无 DOM 时为 null 自动降级。
+    // W6：有法线图就用法线（真 PBR），没则退回 P12 的 bumpMap，二者不同挂。
+    normalMap: detail && detail.normalMap ? detail.normalMap : null,
+    bumpMap: detail && !detail.normalMap ? detail.bumpMap : null,
     roughnessMap: detail ? detail.roughnessMap : null,
   });
 }
@@ -310,10 +321,16 @@ export function getSurfaceMaps(kind) {
     const baked = bakeSurface(kind, SURFACE3D.size, SURFACE3D.seed);
     const map = surfaceTexture(baked.albedo, baked.size, false);
     if (map) {
+      // W6：height → Sobel 法线（真 PBR），同时保留 bumpMap 供老调用方/对比。
+      // 法线与 roughness 都是数据通道，必须 linear=true（NoColorSpace），
+      // 否则 sRGB 编码会把法线方向抬歪、粗糙度整体压低。
+      const normalPixels = normalFromHeight(baked.height, baked.size, SURFACE3D.normalStrength);
       maps = {
         map,
         bumpMap: surfaceTexture(baked.height, baked.size, true),
+        normalMap: surfaceTexture(normalPixels, baked.size, true),
         roughnessMap: surfaceTexture(baked.roughness, baked.size, true),
+        normalChecksum: bytesChecksum(normalPixels),
         checksum: baked.checksum,
         size: baked.size,
       };
@@ -618,23 +635,20 @@ export function getFireTexture() { return getTex('fire', FIRE_TEX, 128); }
 /* ============================ 地面 ============================ */
 
 /**
- * 构建地面：按 tile 生成棋盘格顶点色，并提供移动时的参照感；叠加一层混凝土噪点贴图。
+ * 构建地面：按 tile 生成棋盘格顶点色，叠加混凝土噪点贴图。
+ *
+ * W8 P1：大图（格数 > GROUND.chunkThreshold）按 chunk 切成多个 Mesh，共享一份材质，
+ * 每帧只显示玩家附近若干块 —— 整图单 Mesh 时包围球覆盖全图、视锥剔除永远不生效，
+ * 400m 图地面 80k 面全画。小图保持单 Mesh（旧图 golden / level3d 测试零回归）。
+ *
  * @param {object} map 地图对象
- * @returns {THREE.Mesh} 地面网格
+ * @returns {THREE.Mesh|THREE.Group} 小图返回单 Mesh；大图返回 Group（userData.chunks / updateVisible）
  */
 export function buildGround(map) {
   const { cols, rows, tile } = map;
-  const quads = [];
-  const colors = [];
-  const uvs = [];
-  // 地面基色由贴图 + 顶点亮度调制共同决定；PALETTE3D.ground/groundAlt 仍留给 2D 层与图例使用。
 
   /**
-   * 地面斑驳：**按格顶点色**做低频噪声，而不是整片一个色或严格棋盘格。
-   *
-   * 为什么不用贴图解决：2m 一格的贴图在 20m 外就被 mipmap 平均成纯灰，
-   * 大地面立刻变成一块塑料板。顶点色是几何属性，缩多远都不会被抹掉。
-   * 噪声用 5 格一个波长的平滑插值，读起来是"沥青补丁/积水痕"，不是棋盘。
+   * 地面斑驳：按格顶点色做低频噪声（5 格波长），缩多远都不会被 mipmap 抹掉。
    */
   const hash2 = (x, y) => {
     let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263);
@@ -646,57 +660,90 @@ export function buildGround(map) {
     const x0 = Math.floor(gx); const y0 = Math.floor(gy);
     const fx = gx - x0; const fy = gy - y0;
     const sm = (t) => t * t * (3 - 2 * t);
-    const u = sm(fx); const v = sm(fy);
+    const u2 = sm(fx); const v = sm(fy);
     const a = hash2(x0, y0); const b = hash2(x0 + 1, y0);
     const c = hash2(x0, y0 + 1); const d = hash2(x0 + 1, y0 + 1);
-    return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+    return (a * (1 - u2) + b * u2) * (1 - v) + (c * (1 - u2) + d * u2) * v;
   };
-  for (let ty = 0; ty < rows; ty += 1) {
-    for (let tx = 0; tx < cols; tx += 1) {
-      const x0 = tx * tile;
-      const z0 = ty * tile;
-      const x1 = x0 + tile;
-      const z1 = z0 + tile;
-      // 平面躺平：顶点顺序保证法线朝 +Y
-      quads.push(x0, 0, z0, x0, 0, z1, x1, 0, z1);
-      quads.push(x0, 0, z0, x1, 0, z1, x1, 0, z0);
-      // P12：手写几何原本没有 uv，地面贴图一直采样不到 —— 每格铺一张可平铺贴图。
-      uvs.push(0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0);
-      // 顶点色在这里是**亮度调制**，不是最终反照率：
-      // 贴图已经是浅灰混凝土，再乘一个接近 0 的深色会把地面压成死黑。
-      // 0.5 附近让地面落到"夜间沥青/旧混凝土"的区间，斑块与逐格抖动负责打散均匀感。
-      const patch = smooth2(tx, ty);
-      // 0.045 是"夜间旧混凝土"的线性反照率：贴图本身是浅灰（≈0.34 线性），
-      // 乘 0.05 后落到 0.017，配月光/路灯刚好读成深灰而不是白板。
-      // 顶点色**必须**在 lowPolyMat 里声明才生效（见那里的注释），这组数才成立。
-      const k = 0.036 + patch * 0.018 + (hash2(tx * 7 + 1, ty * 13 + 3) - 0.5) * 0.007;
-      // 轻微色偏：偏冷（蓝多一点）读起来像潮湿混凝土，而不是纯灰塑料
-      for (let j = 0; j < 6; j += 1) colors.push(k * 0.96, k, k * 1.04);
+  // W7：地面顶点按地形高度场抬升（与 elevationAt 同源双线性采样），无地形字段时恒 0。
+  const vY = (wx, wz) => u(terrainHeightAt(map, wx, wz));
+
+  /** 生成 [tx0,tx1)×[ty0,ty1) 范围的几何（顶点与世界坐标逐位同旧版） */
+  const buildGeo = (tx0, ty0, tx1, ty1) => {
+    const quads = []; const colors = []; const uvs = [];
+    for (let ty = ty0; ty < ty1; ty += 1) {
+      for (let tx = tx0; tx < tx1; tx += 1) {
+        const x0 = tx * tile; const z0 = ty * tile;
+        const x1 = x0 + tile; const z1 = z0 + tile;
+        const y00 = vY(x0, z0); const y01 = vY(x0, z1);
+        const y11 = vY(x1, z1); const y10 = vY(x1, z0);
+        quads.push(x0, y00, z0, x0, y01, z1, x1, y11, z1);
+        quads.push(x0, y00, z0, x1, y11, z1, x1, y10, z0);
+        uvs.push(0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0);
+        const patch = smooth2(tx, ty);
+        const k = 0.043 + patch * 0.021 + (hash2(tx * 7 + 1, ty * 13 + 3) - 0.5) * 0.008;
+        for (let j = 0; j < 6; j += 1) colors.push(k * 0.96, k, k * 1.04);
+      }
     }
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(quads), 3));
-  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
-  geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
-  geo.computeVertexNormals();
-  // 地面是画面里面积最大的表面，升级为 Standard 后能吃到环境光与高光，
-  // 观感提升最明显；保留顶点色棋盘格与地面贴图。
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(quads), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
+    geo.computeVertexNormals();
+    return geo;
+  };
+
+  // 共享材质：Standard + 贴图 + 法线 + 粗糙度（W7 哑光标定）
   const detail = getSurfaceMaps('floor');
-  // 顶点色走构造参数（见 lowPolyMat 注释），不能事后赋值
   const groundMat = lowPolyMat('#FFFFFF', {
     standard: true,
     map: getFloorTexture(),
     roughness: VIEW3D.groundRoughness,
-    metalness: VIEW3D.metalness,
+    metalness: VIEW3D.groundMetalness,
+    envIntensity: VIEW3D.groundEnvIntensity,
     flat: false,
     vertexColors: true,
-    bumpMap: detail ? detail.bumpMap : null,
+    normalMap: detail && detail.normalMap ? detail.normalMap : null,
+    bumpMap: detail && !detail.normalMap ? detail.bumpMap : null,
     roughnessMap: detail ? detail.roughnessMap : null,
   });
-  const mesh = new THREE.Mesh(geo, groundMat);
-  mesh.receiveShadow = true;
-  mesh.name = 'ground';
-  return mesh;
+
+  const useChunks = GROUND3D.enabled && (cols * rows) > GROUND3D.chunkThreshold;
+  if (!useChunks) {
+    const mesh = new THREE.Mesh(buildGeo(0, 0, cols, rows), groundMat);
+    mesh.receiveShadow = true;
+    mesh.name = 'ground';
+    return mesh;
+  }
+
+  // 大图：按 chunk 切块，共享材质。每块记录中心与半径，供可见性判定。
+  const cs = GROUND3D.chunkTiles;
+  const chunks = [];
+  const group = new THREE.Group();
+  group.name = 'ground';
+  for (let cy = 0; cy < rows; cy += cs) {
+    for (let cx = 0; cx < cols; cx += cs) {
+      const geo = buildGeo(cx, cy, Math.min(cx + cs, cols), Math.min(cy + cs, rows));
+      const mesh = new THREE.Mesh(geo, groundMat);
+      mesh.receiveShadow = true;
+      mesh.name = `ground:${Math.floor(cx / cs)},${Math.floor(cy / cs)}`;
+      mesh.userData.cx = (cx + Math.min(cs, cols - cx) / 2) * tile;
+      mesh.userData.cz = (cy + Math.min(cs, rows - cy) / 2) * tile;
+      chunks.push(mesh);
+      group.add(mesh);
+    }
+  }
+  const visibleRadius = GROUND3D.visibleChunks; // 半径（块数），(2r+1)^2 块可见
+  const radiusUnits = (visibleRadius + 0.5) * cs * tile;
+  group.userData.groundChunks = chunks;
+  group.userData.groundMat = groundMat;
+  group.userData.updateVisible = (px, pz) => {
+    for (const m of chunks) {
+      m.visible = Math.hypot(m.userData.cx - px, m.userData.cz - pz) <= radiusUnits;
+    }
+  };
+  group.userData.radiusUnits = radiusUnits;
+  return group;
 }
 
 /* ============================ 灌木 ============================ */
@@ -1089,15 +1136,28 @@ export function buildEnemyModel(typeId, opts = {}) {
   // 它们对轮廓识别贡献很小，但每个都是一次 draw；GLB 接管后整组程序化部件会被隐藏。
   const detailMeshes = [];
 
-  const bodyMat = lowPolyMat(tint); // 军服
+  const bodyMat = lowPolyMat(tint); // 军服（布料：Lambert 足够，省 PBR 光循环）
   const darkMat = lowPolyMat(PALETTE3D.vmDark); // 背心 / 靴 / 手套 / 耳机
-  const gunMat = lowPolyMat(PALETTE3D.vmBody); // 武器
+  // W6：只给金属武器 + 玻璃镜片升 Standard —— 这两件近景最容易读出"塑料 vs 真材质"。
+  // 布料/皮肤/背包留 Lambert：16 敌人 × 7 材质全上 PBR 会吃满移动端帧率预算。
+  const gunMat = PBR3D.actorMetal
+    ? lowPolyMat(PALETTE3D.vmBody, {
+      standard: true, // 保留默认 flatShading：枪/盔是硬边方盒，平滑着色会把棱角抹圆
+      roughness: PBR3D.actorMetalRoughness, metalness: PBR3D.actorMetalness,
+    })
+    : lowPolyMat(PALETTE3D.vmBody);
   const skinMat = lowPolyMat(PALETTE3D.hand); // 面部与手（皮肤色）
   const helmetMat = lowPolyMat(PALETTE3D.helmet);
   const packMat = lowPolyMat(PALETTE3D.backpack);
-  const eyeMat = lowPolyMat('#12161A'); // 眼部暗色，做出"有脸"
+  // 护目镜镜片：不要用纯黑，留一点冷色反光，近看才有"玻璃"而不是"黑洞"
+  const lensMat = PBR3D.actorMetal
+    ? lowPolyMat('#5E7E86', {
+      standard: true,
+      roughness: PBR3D.actorLensRoughness, metalness: PBR3D.actorLensMetalness,
+    })
+    : lowPolyMat('#5E7E86');
   // mats 用于受击闪红，因此要覆盖所有可见材质
-  const mats = [bodyMat, darkMat, gunMat, skinMat, helmetMat, packMat];
+  const mats = [bodyMat, darkMat, gunMat, skinMat, helmetMat, packMat, lensMat];
 
   // #P0-2 夜战可见性：给敌人全体可见材质加一层轻微自发光，暗处也能看清轮廓
   // （30m 外仍可见）。baseEmissive 会被 renderer3d 的受击闪红逻辑还原，
@@ -1116,19 +1176,21 @@ export function buildEnemyModel(typeId, opts = {}) {
   const torsoH = u(dim.torsoH);
   const torsoW = u(dim.torsoW);
   const torsoD = u(dim.torsoD);
-
   const headR = u(dim.headR);
 
-  /* ---------- 下半身：髋 → 大腿 → 膝 → 小腿 → 靴 ---------- */
-  const thighH = legH * 0.46;
-  const shinH = legH * 0.40;
-  const bootH = legH * 0.14;
-  const legW = u(0.19);
-  const legD = u(0.20);
+  /* ---------- 下半身：髋 → 大腿 → 膝（护膝）→ 小腿 → 靴 ----------
+   * 比例按真人重排：髋高 ≈ 身高一半，大腿 / 小腿 / 靴 ≈ 0.50 / 0.38 / 0.12。
+   * 旧的 0.72m 腿 + 0.95m 躯干是"Q 版"比例，站在 3m 内一眼就露馅（本作是 CQB）。
+   */
+  const thighH = legH * 0.50;
+  const shinH = legH * 0.38;
+  const bootH = legH * 0.12;
+  const legW = u(0.165);
+  const legD = u(0.185);
   const legs = [];
   for (const side of [-1, 1]) {
     const hip = new THREE.Group(); // 髋关节：走路时绕它摆动整条腿
-    hip.position.set(side * torsoW * 0.24, legH, 0);
+    hip.position.set(side * torsoW * 0.22, legH, 0);
 
     const thigh = new THREE.Mesh(new THREE.BoxGeometry(legW, thighH, legD), bodyMat);
     thigh.position.y = -thighH / 2;
@@ -1136,12 +1198,18 @@ export function buildEnemyModel(typeId, opts = {}) {
 
     const knee = new THREE.Group(); // 膝关节：抬腿时弯小腿
     knee.position.y = -thighH;
-    const shin = new THREE.Mesh(new THREE.BoxGeometry(legW * 0.92, shinH, legD * 0.9), bodyMat);
+    const shin = new THREE.Mesh(new THREE.BoxGeometry(legW * 0.94, shinH, legD * 0.92), bodyMat);
     shin.position.y = -shinH / 2;
     knee.add(shin);
 
-    const boot = new THREE.Mesh(new THREE.BoxGeometry(legW * 1.04, bootH, legD * 1.40), darkMat);
-    boot.position.set(0, -shinH - bootH / 2, -u(0.03));
+    // 护膝：贴在膝关节正面（-Z 是正面），是"战术装备"最容易读出的一件
+    const kneePad = new THREE.Mesh(new THREE.BoxGeometry(legW * 1.02, u(0.13), u(0.055)), darkMat);
+    kneePad.position.set(0, -shinH * 0.10, -legD * 0.50);
+    knee.add(kneePad);
+    detailMeshes.push(kneePad);
+
+    const boot = new THREE.Mesh(new THREE.BoxGeometry(legW * 1.06, bootH, legD * 1.55), darkMat);
+    boot.position.set(0, -shinH - bootH / 2, -u(0.035));
     knee.add(boot);
 
     hip.add(knee);
@@ -1154,136 +1222,158 @@ export function buildEnemyModel(typeId, opts = {}) {
   torso.position.y = legH;
   group.add(torso);
 
-  const pelvis = new THREE.Mesh(new THREE.BoxGeometry(torsoW * 0.92, torsoH * 0.20, torsoD), darkMat);
-  pelvis.position.y = torsoH * 0.10;
+  const pelvis = new THREE.Mesh(new THREE.BoxGeometry(torsoW * 0.94, torsoH * 0.18, torsoD), darkMat);
+  pelvis.position.y = torsoH * 0.09;
   torso.add(pelvis);
 
-  const abdomen = new THREE.Mesh(new THREE.BoxGeometry(torsoW * 0.86, torsoH * 0.34, torsoD * 0.92), bodyMat);
-  abdomen.position.y = torsoH * 0.36;
+  const abdomen = new THREE.Mesh(new THREE.BoxGeometry(torsoW * 0.88, torsoH * 0.26, torsoD * 0.94), bodyMat);
+  abdomen.position.y = torsoH * 0.38;
   torso.add(abdomen);
 
-  const chest = new THREE.Mesh(new THREE.BoxGeometry(torsoW, torsoH * 0.40, torsoD), bodyMat);
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(torsoW, torsoH * 0.30, torsoD), bodyMat);
   chest.position.y = torsoH * 0.70;
   torso.add(chest);
 
-  // 战术背心（比躯干大一圈，压在胸腹上）
-  const vest = new THREE.Mesh(
-    new THREE.BoxGeometry(torsoW * 1.08, torsoH * 0.56, torsoD * 1.12),
-    darkMat,
-  );
-  vest.position.y = torsoH * 0.60;
-  torso.add(vest);
-
-  // 胸前弹匣袋
+  // 板甲：前后两片 + 肩带。一整块"马甲"盒子会把腰线糊死，分开才有"穿在人身上"的层次。
+  const carrierF = new THREE.Mesh(new THREE.BoxGeometry(torsoW * 1.02, torsoH * 0.40, u(0.055)), darkMat);
+  carrierF.position.set(0, torsoH * 0.60, -torsoD * 0.52);
+  torso.add(carrierF);
+  const carrierB = new THREE.Mesh(new THREE.BoxGeometry(torsoW * 1.02, torsoH * 0.42, u(0.06)), darkMat);
+  carrierB.position.set(0, torsoH * 0.58, torsoD * 0.50);
+  torso.add(carrierB);
   for (const side of [-1, 1]) {
-    const pouch = new THREE.Mesh(new THREE.BoxGeometry(u(0.11), u(0.14), u(0.07)), packMat);
-    pouch.position.set(side * torsoW * 0.30, torsoH * 0.42, -torsoD * 0.58);
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(torsoW * 0.16, torsoH * 0.34, u(0.05)), darkMat);
+    strap.position.set(side * torsoW * 0.28, torsoH * 0.86, -torsoD * 0.30);
+    torso.add(strap);
+    detailMeshes.push(strap);
+  }
+
+  // 胸前弹匣袋 ×3 + 侧袋
+  for (const i of [-1, 0, 1]) {
+    const pouch = new THREE.Mesh(new THREE.BoxGeometry(torsoW * 0.22, torsoH * 0.18, u(0.05)), packMat);
+    pouch.position.set(i * torsoW * 0.28, torsoH * 0.40, -torsoD * 0.60);
     torso.add(pouch);
     detailMeshes.push(pouch);
   }
+  for (const side of [-1, 1]) {
+    const sidePouch = new THREE.Mesh(new THREE.BoxGeometry(u(0.06), torsoH * 0.22, torsoD * 0.52), packMat);
+    sidePouch.position.set(side * torsoW * 0.56, torsoH * 0.34, 0);
+    torso.add(sidePouch);
+    detailMeshes.push(sidePouch);
+  }
 
   // 腰带
-  const belt = new THREE.Mesh(new THREE.BoxGeometry(torsoW * 1.02, u(0.08), torsoD * 1.04), darkMat);
-  belt.position.y = torsoH * 0.20;
+  const belt = new THREE.Mesh(new THREE.BoxGeometry(torsoW * 1.04, u(0.06), torsoD * 1.06), darkMat);
+  belt.position.y = torsoH * 0.06;
   torso.add(belt);
 
-  // 肩甲
+  // 肩垫：把肩线撑出去，远看才有"战术背心"的方肩轮廓
   for (const side of [-1, 1]) {
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(u(0.20), u(0.13), torsoD * 0.9), darkMat);
-    pad.position.set(side * (torsoW * 0.5 + u(0.06)), torsoH * 0.86, 0);
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(torsoW * 0.26, u(0.07), torsoD * 0.86), darkMat);
+    pad.position.set(side * (torsoW * 0.46), torsoH * 0.94, 0);
     torso.add(pad);
     detailMeshes.push(pad);
   }
 
-  /* ---------- 颈 + 头 + 五官 ---------- */
-  const neckY = torsoH * 0.98;
-  const neck = new THREE.Mesh(new THREE.BoxGeometry(u(0.13), u(0.10), u(0.13)), skinMat);
-  neck.position.y = neckY;
+  /* ---------- 颈 + 头 + 头盔（近景经得起看，远景靠盔形撑剪影） ---------- */
+  const neckH = u(0.07);
+  const neck = new THREE.Mesh(new THREE.BoxGeometry(u(0.10), neckH, u(0.10)), skinMat);
+  neck.position.y = torsoH + neckH * 0.5;
   torso.add(neck);
 
   const head = new THREE.Group(); // 头部独立成组，便于做扫视
-  head.position.y = neckY + u(0.06) + headR;
+  head.position.y = torsoH + neckH + headR;
   torso.add(head);
 
-  const headW = headR * 1.72;
+  const headW = headR * 1.70;
   const headH2 = headR * 2.0;
   const headD = headR * 1.78;
   const skull = new THREE.Mesh(new THREE.BoxGeometry(headW, headH2, headD), skinMat);
   head.add(skull);
 
-  // 正面：脸板 + 双眼 + 眉骨 + 鼻梁 + 护目镜带 —— low-poly 但五官分明，不再是无脸方块
+  // 面部：下半张脸是面罩，上半张被护目镜压住 —— 特警/步兵就是这个观感。
+  // 不再画"两只卡通大眼睛"：远看是两条反光带，近看才分得清轮廓。
   const faceZ = -headD / 2 - u(0.004);
-  const face = new THREE.Mesh(new THREE.BoxGeometry(headW * 0.92, headH2 * 0.72, u(0.02)), skinMat);
-  face.position.set(0, -headH2 * 0.04, faceZ);
-  head.add(face);
-  detailMeshes.push(face);
+  const mask = new THREE.Mesh(new THREE.BoxGeometry(headW * 0.86, headH2 * 0.34, u(0.035)), darkMat);
+  mask.position.set(0, -headH2 * 0.20, faceZ);
+  head.add(mask);
+  detailMeshes.push(mask);
 
-  for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.BoxGeometry(headW * 0.24, u(0.045), u(0.02)), eyeMat);
-    eye.position.set(side * headW * 0.24, headH2 * 0.10, faceZ - u(0.012));
-    head.add(eye);
-    detailMeshes.push(eye);
-    // 眉骨压在眼睛上方，让眼神更有压迫感
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(headW * 0.30, u(0.028), u(0.02)), darkMat);
-    brow.position.set(side * headW * 0.24, headH2 * 0.19, faceZ - u(0.012));
-    head.add(brow);
-    detailMeshes.push(brow);
-  }
-
-  const nose = new THREE.Mesh(new THREE.BoxGeometry(u(0.05), u(0.06), u(0.05)), skinMat);
-  nose.position.set(0, -headH2 * 0.04, faceZ - u(0.03));
-  head.add(nose);
-  detailMeshes.push(nose);
+  const goggle = new THREE.Mesh(new THREE.BoxGeometry(headW * 0.94, headH2 * 0.20, u(0.03)), lensMat);
+  goggle.position.set(0, headH2 * 0.10, faceZ - u(0.012));
+  head.add(goggle);
+  detailMeshes.push(goggle);
 
   // 通讯耳罩
   for (const side of [-1, 1]) {
-    const cup = new THREE.Mesh(new THREE.BoxGeometry(u(0.05), u(0.11), u(0.09)), darkMat);
-    cup.position.set(side * (headW * 0.5 + u(0.015)), headH2 * 0.04, 0);
+    const cup = new THREE.Mesh(new THREE.BoxGeometry(u(0.035), headH2 * 0.40, headD * 0.52), darkMat);
+    cup.position.set(side * (headW * 0.5 + u(0.008)), -headH2 * 0.04, 0);
     head.add(cup);
     detailMeshes.push(cup);
   }
 
-  // 头盔：盔体 + 帽檐
-  const helmet = new THREE.Mesh(new THREE.IcosahedronGeometry(headR * 1.16, 1), helmetMat);
-  helmet.position.y = headR * 0.20;
-  helmet.scale.set(1, 0.82, 1.04);
+  // 头盔：**方块盔**（不是裹住整颗头的球）。半球会把脸埋进去，近看只剩一颗黑疙瘩。
+  const helmet = new THREE.Mesh(new THREE.BoxGeometry(headW * 1.18, headH2 * 0.52, headD * 1.16), helmetMat);
+  helmet.position.y = headH2 * 0.26;
   head.add(helmet);
-  const brim = new THREE.Mesh(new THREE.BoxGeometry(headW * 1.10, u(0.05), u(0.14)), helmetMat);
-  brim.position.set(0, headR * 0.34, faceZ - u(0.02));
+  const brim = new THREE.Mesh(new THREE.BoxGeometry(headW * 1.16, u(0.022), headD * 0.30), helmetMat);
+  brim.position.set(0, headH2 * 0.06, -headD * 0.56);
   head.add(brim);
   detailMeshes.push(brim);
+  // 夜视支架：额前那个小方块，是"现代步兵"最强的识别点
+  const nvgMount = new THREE.Mesh(new THREE.BoxGeometry(u(0.05), u(0.045), u(0.05)), darkMat);
+  nvgMount.position.set(0, headH2 * 0.18, -headD * 0.60);
+  head.add(nvgMount);
+  detailMeshes.push(nvgMount);
+  // 盔带：绕盔一周的深色带子，把"方块盔"从"一个盒子"变成"戴上去的装备"
+  const helmetBand = new THREE.Mesh(new THREE.BoxGeometry(headW * 1.20, u(0.030), headD * 1.18), darkMat);
+  helmetBand.position.y = headH2 * 0.08;
+  head.add(helmetBand);
+  detailMeshes.push(helmetBand);
+  // 下颌带：从耳罩垂到下巴，近看才有的细节，远看是一条竖线
+  for (const side of [-1, 1]) {
+    const chinStrap = new THREE.Mesh(new THREE.BoxGeometry(u(0.016), headH2 * 0.44, u(0.016)), darkMat);
+    chinStrap.position.set(side * headW * 0.34, -headH2 * 0.42, -headD * 0.18);
+    head.add(chinStrap);
+    detailMeshes.push(chinStrap);
+  }
 
   /* ---------- 背包（模型面朝 -Z，背包在 +Z 侧） ---------- */
   const pack = new THREE.Mesh(
-    new THREE.BoxGeometry(torsoW * 0.58, torsoH * 0.58, u(0.20)),
+    new THREE.BoxGeometry(torsoW * 0.62, torsoH * 0.54, u(0.17)),
     packMat,
   );
-  pack.position.set(0, torsoH * 0.62, torsoD * 0.62);
+  pack.position.set(0, torsoH * 0.60, torsoD * 0.66);
   torso.add(pack);
-  const packTop = new THREE.Mesh(new THREE.BoxGeometry(torsoW * 0.40, u(0.10), u(0.14)), darkMat);
-  packTop.position.set(0, torsoH * 0.92, torsoD * 0.60);
+  const packTop = new THREE.Mesh(new THREE.BoxGeometry(torsoW * 0.42, u(0.08), u(0.12)), darkMat);
+  packTop.position.set(0, torsoH * 0.88, torsoD * 0.64);
   torso.add(packTop);
   detailMeshes.push(packTop);
+  // 电台天线：细长一条，对剪影贡献极大（远处一眼能看出"背了电台的人"）
+  const antenna = new THREE.Mesh(new THREE.BoxGeometry(u(0.018), u(0.34), u(0.018)), darkMat);
+  antenna.position.set(torsoW * 0.24, torsoH * 0.98, torsoD * 0.70);
+  torso.add(antenna);
+  detailMeshes.push(antenna);
 
   /* ---------- 手臂：肩 → 上臂 → 肘 → 前臂 → 手 ---------- */
   const arms = [];
-  const upperH = torsoH * 0.34;
-  const foreH = torsoH * 0.30;
+  const upperH = torsoH * 0.42;
+  const foreH = torsoH * 0.38;
   for (const side of [-1, 1]) {
     const shoulder = new THREE.Group();
-    shoulder.position.set(side * (torsoW * 0.5 + u(0.07)), torsoH * 0.82, 0);
+    shoulder.position.set(side * (torsoW * 0.5 + u(0.02)), torsoH * 0.86, 0);
 
-    const upper = new THREE.Mesh(new THREE.BoxGeometry(u(0.14), upperH, u(0.15)), bodyMat);
+    const upper = new THREE.Mesh(new THREE.BoxGeometry(u(0.105), upperH, u(0.115)), bodyMat);
     upper.position.y = -upperH / 2;
     shoulder.add(upper);
 
     const elbow = new THREE.Group();
     elbow.position.y = -upperH;
-    const fore = new THREE.Mesh(new THREE.BoxGeometry(u(0.12), foreH, u(0.13)), bodyMat);
+    const fore = new THREE.Mesh(new THREE.BoxGeometry(u(0.095), foreH, u(0.105)), bodyMat);
     fore.position.y = -foreH / 2;
     elbow.add(fore);
-    const hand = new THREE.Mesh(new THREE.BoxGeometry(u(0.11), u(0.11), u(0.12)), skinMat);
-    hand.position.y = -foreH - u(0.04);
+    const hand = new THREE.Mesh(new THREE.BoxGeometry(u(0.09), u(0.09), u(0.10)), darkMat);
+    hand.position.y = -foreH - u(0.035);
     elbow.add(hand);
 
     shoulder.add(elbow);
@@ -1293,13 +1383,13 @@ export function buildEnemyModel(typeId, opts = {}) {
 
   /* ---------- 武器与枪口火光 ---------- */
   const gun = new THREE.Mesh(
-    new THREE.BoxGeometry(u(0.11), u(0.13), u(VIEW3D.enemy.gunLength)),
+    new THREE.BoxGeometry(u(0.075), u(0.10), u(VIEW3D.enemy.gunLength)),
     gunMat,
   );
-  gun.position.set(u(0.10), torsoH * 0.55, -u(VIEW3D.enemy.gunLength) * 0.42);
+  gun.position.set(u(0.09), torsoH * 0.50, -u(VIEW3D.enemy.gunLength) * 0.42);
   torso.add(gun);
-  const gunMag = new THREE.Mesh(new THREE.BoxGeometry(u(0.07), u(0.16), u(0.09)), darkMat);
-  gunMag.position.set(u(0.10), torsoH * 0.42, -u(0.10));
+  const gunMag = new THREE.Mesh(new THREE.BoxGeometry(u(0.055), u(0.14), u(0.07)), darkMat);
+  gunMag.position.set(u(0.09), torsoH * 0.38, -u(0.10));
   torso.add(gunMag);
 
   const flash = new THREE.Mesh(
@@ -1312,7 +1402,7 @@ export function buildEnemyModel(typeId, opts = {}) {
       blending: THREE.AdditiveBlending,
     }),
   );
-  flash.position.set(u(0.10), torsoH * 0.55, -u(VIEW3D.enemy.gunLength) * 0.95);
+  flash.position.set(u(0.09), torsoH * 0.50, -u(VIEW3D.enemy.gunLength) * 0.95);
   flash.visible = false;
   torso.add(flash);
 

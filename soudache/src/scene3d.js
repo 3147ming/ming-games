@@ -145,6 +145,9 @@ export function createScene3D(canvas, device) {
   );
   // YXZ：先 yaw 后 pitch，符合 FPS 相机直觉（避免绕 Z 轴 roll）
   camera.rotation.order = 'YXZ';
+  // W8：这里只是"建场景瞬间"的占位。renderer3d 每帧用 cam.position.set(player.x,...) 覆盖，
+  // 太阳 target 也由 focusShadow 每帧跟随玩家（见 renderer3d.js:1083）。所以大图不需要传尺寸进来，
+  // 用旧图 WORLD_W/H 占位无害——玩家出生点由 map.playerSpawn 决定，第一帧就纠正到位。
   camera.position.set(WORLD_W / 2, VIEW3D.eyeStand, WORLD_H / 2);
 
   // #P0-2 玩家头灯：跟随相机向前打出 15m 锥形光，暗处探路。

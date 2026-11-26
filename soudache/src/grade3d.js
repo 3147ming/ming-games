@@ -87,7 +87,11 @@ export function smoothZoneMix(current, target, dt, rate = LIGHT_ZONES.interior.z
 /** 点是否落在空地：灯具与道具都不能压在墙 / 掩体箱里 */
 export function isOpenPoint(map, x, y, pad = 14) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-  if (x < pad || y < pad || x > WORLD_W - pad || y > WORLD_H - pad) return false;
+  // W8：按地图自身尺寸判定边界（大图 400m 时全局 WORLD_W/H 只是旧图尺寸，
+  // 用它会把大图外围的合法灯位全误判成越界）。旧图 map.width==WORLD_W，逐位等价。
+  const mw = (map && map.width) || WORLD_W;
+  const mh = (map && map.height) || WORLD_H;
+  if (x < pad || y < pad || x > mw - pad || y > mh - pad) return false;
   const rects = [
     ...((map && map.walls) || []),
     ...((map && map.crateRects) || []),

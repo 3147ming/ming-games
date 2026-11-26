@@ -226,6 +226,48 @@ export function sampleSurface(kind, u, v, seed = 0x5d0a) {
   };
 }
 
+/**
+ * 从高度通道生成切线空间法线贴图（Sobel 差分）。
+ *
+ * 为什么不用现成的 bumpMap：bumpMap 是屏幕空间导数近似，斜视角会失真、也没有
+ * 高光各向异性；normalMap 是逐像素真法线，Standard 材质在环境光/点光下才有
+ * 正确的明暗过渡。本项目已经烘焙了 height 通道，就地派生，零新素材。
+ *
+ * 关键点：
+ * - 采样按 size 取模 → 边缘差分跨到对边，保证贴图无缝平铺（与 value noise 同约定）。
+ * - 输出 RGBA：R/G = 切线空间 X/Y，B = Z（朝外），编码到 [0,1] 再转 255。
+ * - strength 控制坡度：地面/墙这类大平面要保守，太大就会出现"橘皮"。
+ *
+ * @param {Uint8ClampedArray} height RGBA 高度通道（取 R）
+ * @param {number} size 边长
+ * @param {number} strength 坡度强度（默认 1）
+ * @returns {Uint8ClampedArray} RGBA 法线贴图
+ */
+export function normalFromHeight(height, size, strength = 1) {
+  const n = size * size * 4;
+  const out = new Uint8ClampedArray(n);
+  const hv = (x, y) => height[((wrap(y, size) * size + wrap(x, size)) * 4)] / 255;
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const tl = hv(x - 1, y - 1), t = hv(x, y - 1), tr = hv(x + 1, y - 1);
+      const l = hv(x - 1, y), r = hv(x + 1, y);
+      const bl = hv(x - 1, y + 1), b = hv(x, y + 1), br = hv(x + 1, y + 1);
+      const dx = (tr + 2 * r + br) - (tl + 2 * l + bl);
+      const dy = (bl + 2 * b + br) - (tl + 2 * t + tr);
+      let nx = -dx * strength;
+      let ny = -dy * strength;
+      const len = Math.hypot(nx, ny, 1) || 1;
+      nx /= len; ny /= len;
+      const i = (y * size + x) * 4;
+      out[i] = (nx * 0.5 + 0.5) * 255;
+      out[i + 1] = (ny * 0.5 + 0.5) * 255;
+      out[i + 2] = (1 / len * 0.5 + 0.5) * 255;
+      out[i + 3] = 255;
+    }
+  }
+  return out;
+}
+
 /** FNV-1a 风格校验和，用于确定性护栏与探针取证 */
 export function bytesChecksum(bytes) {
   let h = 2166136261;

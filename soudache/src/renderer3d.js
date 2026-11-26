@@ -39,24 +39,21 @@ import { clone as cloneSkinned } from '../vendor/SkeletonUtils.js';
  * `?glb=0` 时整条链路关闭，敌人回到程序化方块人（与容器同一开关）。
  */
 const ENEMY_GLB = {
-  patrol: 'models/kenney-mini-characters/character-soldier.glb',
-  assault: 'models/kenney-mini-characters/character-soldier.glb',
-  machinegunner: 'models/kenney-mini-characters/character-soldier.glb',
-  rusher: 'models/kenney-mini-characters/character-worker.glb',
-  shotgunner: 'models/kenney-mini-characters/character-worker.glb',
-  marksman: 'models/kenney-mini-characters/character-raider.glb',
-  carbinger: 'models/kenney-mini-characters/character-raider.glb',
-  elite: 'models/kenney-mini-characters/character-raider.glb',
-  // 医疗兵单独用机器人：全表唯一的机器人剪影，交火中一眼能认出"先打这只"，
-  // 比给它换个颜色更有效（颜色会被受击闪红、距离雾、鹰眼标记一起吃掉）。
-  medic: 'models/kenney-mini-characters/character-robot.glb',
-  // Boss **故意不换**：首领需要与杂兵完全不同的体型/轮廓（血条已在 HUD 上，
-  // 但场上还得靠剪影分辨），换成普通角色骨架会把这个辨识度抹平。
+  // ★ 2026-11-20：**角色不再用 kenney-mini-characters 那套 GLB**。
+  // 那是给"40m 外剪影"做的 Q 版大头娃娃（腿占身高 35%、头肩比 0.53），
+  // 本作是 CQB，敌人经常站在 3m 内 —— 打光再好也是一眼"这不是三角洲"。
+  // 现在局内角色走 models.buildEnemyModel 的真人比例程序化模型（1.6~1.8m、
+  // 方块盔 + 护目镜 + 面罩 + 板甲 + 电台天线），近景经得起看，远景剪影更硬。
+  //
+  // 这套 GLB 接管管线**保留但空表**：将来若拿到写实士兵模型（CC0/CC-BY），
+  // 只要往这张表里补一条 typeId → 士兵模型路径，就能原地接管，不用重写动画/缩放/朝向对齐。
+  // ⚠ 填的时候必须确认模型前向：Kenney 那套是面朝 +Z，_upgradeEnemyModel 里已经补了 180°。
 };
-const ALLY_GLB = 'models/kenney-mini-characters/character-soldier.glb';
+const ALLY_GLB = null; // 同上：队友与敌人同源，靠染色区分，不单独走 GLB
 /**
  * 角色 GLB 的亮度衰减（0~1）。0.62 是实测值：1.0 时军装被冲成薄荷绿、肤色糊成白，
  * 0.62 时绿色和肤色都能分辨，又不会在暗处看不见人（自发光另有补偿）。
+ * 当前 ENEMY_GLB 为空表，这组值只在将来接入写实士兵模型时才会用到。
  */
 const ENEMY_GLB_GAIN = 0.62;
 
@@ -643,14 +640,14 @@ export class Renderer3D {
     // POI：数据终端与空投信标（局内不变，建一次即可）
     for (const t of (world.map.terminals || [])) {
       const m = buildTerminalModel();
-      m.position.set(t.x, 0, t.y);
+      m.position.set(t.x, u(elevationAt(world.map, t.x, t.y)), t.y);
       this.handle.scene.add(m);
       this._terminalModels.set(t, m);
     }
     // M-03：闸刀 POI（与终端同构，局内不重建，只由 _syncPois 改色）
     for (const sw of (world.map.switches || [])) {
       const m = buildSwitchModel();
-      m.position.set(sw.x, 0, sw.y);
+      m.position.set(sw.x, u(elevationAt(world.map, sw.x, sw.y)), sw.y);
       this.handle.scene.add(m);
       this._switchModels.set(sw, m);
     }
@@ -658,7 +655,7 @@ export class Renderer3D {
     if (a) {
       // 半径直接吃逻辑半径（场景单位，与 buildExtractMarker 的 point.r 一致），不额外套 u()
       this._airdropBeacon = buildAirdropBeacon(a.r);
-      this._airdropBeacon.position.set(a.x, 0, a.y);
+      this._airdropBeacon.position.set(a.x, u(elevationAt(world.map, a.x, a.y)), a.y);
       this.handle.scene.add(this._airdropBeacon);
     }
   }
@@ -740,7 +737,7 @@ export class Renderer3D {
         this.handle.scene.add(m);
         this._vehicleModels.set(v, m);
       }
-      m.position.set(v.x, 0, v.y);
+      m.position.set(v.x, u(elevationAt(world.map, v.x, v.y)), v.y);
       m.rotation.y = yawFromAngle(v.angle);
     }
   }
@@ -1907,7 +1904,7 @@ export class Renderer3D {
     this._syncThrowables(world);
     this._syncPois(world);
     if (this.level) {
-      this.level.update(world.time);
+      this.level.update(world.time, player); // W8：传玩家位置驱动大图地面分块可见性
       this._syncHighlight(world);
     }
     this._syncCamera(player, dt, world);

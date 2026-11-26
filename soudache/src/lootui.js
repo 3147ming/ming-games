@@ -143,6 +143,9 @@ export function createLootUI(host, hooks = {}) {
     if (r.ok) {
       sound(action.kind === 'equip' || action.kind === 'quickPickup' ? 'pickup' : 'ui');
       changed();
+      // ⚠ changed() 可能同步触发 onChange → main 的「搜空自动收面板」→ close() → ctx=null。
+      // 面板已关就不要再修焦点/重绘/弹提示（否则操作一个已隐藏的 UI，甚至再读 ctx 崩溃）。
+      if (!ctx) return r;
       reselectAfterAct(); // 先修焦点再重绘，避免 Enter 连按落到已消失的物品上
       render();
       if (opts.okToast) toast(opts.okToast, 'info');
@@ -178,6 +181,12 @@ export function createLootUI(host, hooks = {}) {
 
   /** 当前显示的容器（按侧 + cid） */
   function activeContainer(side) {
+    // 防御：onChange 回调可能在 transferItem 成功后**同步**关闭 UI（搜空自动收面板，
+    // 见 main.js 的 loot-change），把 ctx 置 null。此时 act() 后续仍会走
+    // reselectAfterAct → selectableItems → 这里，读 ctx.entity 会抛
+    // "Cannot read properties of null (reading 'entity')" 让整个游戏暂停。
+    // UI 已关就是没有当前容器，返回 null 让各调用方的 `if (!c)` 分支兜住。
+    if (!ctx) return null;
     const cid = side === 'src' ? srcCid : dstCid;
     const list = side === 'src' ? entityContainers(ctx.entity) : (ctx.gear.containers || []);
     return list.find((c) => c.cid === cid) || list[0] || null;

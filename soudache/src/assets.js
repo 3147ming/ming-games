@@ -13,6 +13,7 @@
  */
 import * as THREE from '../vendor/three.module.js';
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
+import { VIEW3D } from './config.js';
 
 /** 资源根目录（相对本模块，src/ 的上一级）。用 URL 而不是字符串拼接，避免部署路径差异。 */
 const ASSET_ROOT = new URL('../assets/', import.meta.url);
@@ -132,6 +133,56 @@ export function glbLambert(srcMat, opts = {}) {
     color,
     side: THREE.FrontSide,
   });
+  if (opts.emissive != null) {
+    mat.emissive = new THREE.Color(opts.emissive);
+    mat.emissiveIntensity = opts.emissiveIntensity != null ? opts.emissiveIntensity : 0;
+  }
+  return mat;
+}
+
+/**
+ * W6：GLB 的**保真 PBR** 出口 —— 与 glbLambert 并列，由调用方按画质档选择。
+ *
+ * 为什么需要它：glbLambert 为了压住过曝把 GLTF 的 Standard 降级成 Lambert，
+ * 代价是 normal / roughness / metalness / AO 四通道全丢 —— Poly Haven 的木箱/
+ * 弹药箱明明带四通道（glb-audit 已验证），渲染出来却是一块没高光的塑料板。
+ * W5 已经把 ACES 与曝光（0.78）重标定过，本作灯光不再是 1.7 时代的过曝口径，
+ * 现在有条件安全地用回 PBR。但**必须留可调 gain**，因为 Standard 漫反射在
+ * 同样照度下仍比 Lambert 亮一档，浅色 albedo 不压会重新冲成白板。
+ *
+ * 保真项（GLTFLoader r160 已把 metalrough 拆成两张图、AO 映射到 uv0）：
+ * - map / normalMap / roughnessMap / metalnessMap / aoMap 原样保留
+ * - 固有色继承 srcMat.color（Poly Pizza 枪靠它分件），再乘 gain
+ * - normalScale 可压：法线太强会出现"橘皮"，默认 0.85 偏保守
+ *
+ * 降级路径：srcMat 没有 normalMap（Kenney 单色贴图）时，Standard 只会更慢不会更好看，
+ * 调用方应继续走 glbLambert。这里不自动降级，是为了让 A/B 能强制对比。
+ *
+ * @param {THREE.Material|null} srcMat GLTF 原材质
+ * @param {{color?:number|string, gain?:number, envIntensity?:number, normalScale?:number,
+ *          emissive?:number|string, emissiveIntensity?:number}} [opts]
+ * @returns {THREE.MeshStandardMaterial}
+ */
+export function glbPbr(srcMat, opts = {}) {
+  const base = opts.color != null ? opts.color : (srcMat && srcMat.color ? srcMat.color : 0xffffff);
+  const color = new THREE.Color(base);
+  const gain = opts.gain != null ? opts.gain : 1;
+  if (gain !== 1) color.multiplyScalar(Math.max(0, gain));
+  const mat = new THREE.MeshStandardMaterial({
+    map: srcMat && srcMat.map ? srcMat.map : null,
+    normalMap: srcMat && srcMat.normalMap ? srcMat.normalMap : null,
+    roughnessMap: srcMat && srcMat.roughnessMap ? srcMat.roughnessMap : null,
+    metalnessMap: srcMat && srcMat.metalnessMap ? srcMat.metalnessMap : null,
+    aoMap: srcMat && srcMat.aoMap ? srcMat.aoMap : null,
+    color,
+    roughness: 1, // 交给 roughnessMap；无贴图时 1 = 全粗糙，不会假亮
+    metalness: 1, // 交给 metalnessMap；无贴图时会被 srcMat 是否有图决定，见下
+    envMapIntensity: opts.envIntensity != null ? opts.envIntensity : VIEW3D.envIntensity,
+    side: THREE.FrontSide,
+  });
+  if (!srcMat || !srcMat.metalnessMap) mat.metalness = 0;
+  const ns = opts.normalScale != null ? opts.normalScale : 0.85;
+  if (mat.normalMap) mat.normalScale.set(ns, ns);
   if (opts.emissive != null) {
     mat.emissive = new THREE.Color(opts.emissive);
     mat.emissiveIntensity = opts.emissiveIntensity != null ? opts.emissiveIntensity : 0;
