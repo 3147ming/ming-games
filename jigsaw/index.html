@@ -1141,6 +1141,20 @@ window.MG_JIGSAW_GRID = {
     cv.setPointerCapture && cv.setPointerCapture(ev.pointerId);
     ev.preventDefault();
   }
+  /* 散片允许被拖到的范围：整块必须留在画布内、且不能压到顶部工具栏和底部托盘。
+     原来没有限制，拖到边缘松手后片心会落在屏幕外（或落进托盘区），
+     命中判定摸不到它，看起来就是「这片再也拖不动了」。 */
+  function clampPiece(p, x, y) {
+    var half = Math.max(p.cell || 110, 60) * 0.55;
+    var minY = GEO.TOPBAR + half + 2;
+    var maxY = GEO.TRAY_Y - half - 4;
+    if (maxY < minY) { maxY = minY; }         /* 极端窄屏也别把范围算反 */
+    var maxX = W - half - 2;
+    return {
+      x: clamp(x, half + 2, Math.max(half + 2, maxX)),
+      y: clamp(y, minY, maxY)
+    };
+  }
   function onMove(ev) {
     if (UI.pan && ev.pointerId === UI.pan.id) {
       var q0 = toStage(ev.clientX, ev.clientY);
@@ -1151,7 +1165,9 @@ window.MG_JIGSAW_GRID = {
     if (!UI.drag || ev.pointerId !== UI.drag.id) return;
     var q = toStage(ev.clientX, ev.clientY);
     if (Math.abs(q.x - UI.drag.px) + Math.abs(q.y - UI.drag.py) > 2) UI.drag.moved = true;
-    UI.drag.x = q.x - UI.drag.ox; UI.drag.y = q.y - UI.drag.oy;
+    /* 越界部分直接夹回可用区域，片心始终留在能点到的地方 */
+    var lim = clampPiece(UI.drag.piece, q.x - UI.drag.ox, q.y - UI.drag.oy);
+    UI.drag.x = lim.x; UI.drag.y = lim.y;
     ev.preventDefault();
   }
   function onUp(ev) {
@@ -1192,8 +1208,10 @@ window.MG_JIGSAW_GRID = {
         setTimeout(finish, 900);
       }
     } else {
-      /* 未吸附：停在松手处（原版不惩罚，只轻微晃一下） */
-      p.x = d.x; p.y = d.y;
+      /* 未吸附：停在松手处（原版不惩罚，只轻微晃一下）
+         落点再夹一次：手指可能在裁剪区外抬起，位置越界会让这片再也点不到 */
+      var stay = clampPiece(p, d.x, d.y);
+      p.x = stay.x; p.y = stay.y;
       p.shake = 1;
       SFX.miss();
     }
