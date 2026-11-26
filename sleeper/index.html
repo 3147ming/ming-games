@@ -43,9 +43,17 @@ h1,h2,h3,p{margin:0}
 .lobby .name b{display:block;font-size:clamp(24px,4.6vmin,44px);letter-spacing:.24em;color:#fff}
 .lobby .name small{display:block;color:var(--dim);letter-spacing:.4em;font-size:clamp(9px,1.4vmin,12px);margin-top:.6vmin}
 .shoprow{display:grid;grid-template-columns:repeat(3,1fr);gap:1.4vmin;margin-bottom:2vmin}
-.shopcard{background:rgba(30,36,46,.9);border:1px solid var(--line);border-radius:12px;padding:1.4vmin;font-size:clamp(10px,1.5vmin,13px)}
-.shopcard b{display:block;color:var(--gold);margin-bottom:.4vmin;font-size:clamp(12px,1.8vmin,15px)}
-.shopcard small{color:var(--dim);display:block;line-height:1.6;min-height:3em}
+.shopcard{background:rgba(30,36,46,.9);border:1px solid var(--line);border-radius:12px;padding:1.4vmin;font-size:clamp(10px,1.5vmin,13px);
+  transition:border-color .15s,transform .15s}
+.shopcard:hover{border-color:#4A5568;transform:translateY(-2px)}
+.shopcard.lock{opacity:.62}
+.shopcard .sh{display:flex;align-items:center;gap:.5em;margin-bottom:.5vmin}
+.shopcard .shi{display:inline-flex;width:1.5em;height:1.5em;flex:none}
+.shopcard .shi svg{width:100%;height:100%}
+.shopcard .sh i{font-style:normal;color:#8FE36B;font-size:.9em}
+.shopcard b{display:block;color:var(--gold);font-size:clamp(12px,1.8vmin,15px)}
+.shopcard small{color:var(--dim);display:block;line-height:1.6;min-height:3em;margin-bottom:.6vmin}
+.shopcard .btn{width:100%}
 /* 匹配 */
 .match{display:flex;flex-direction:column;align-items:center;gap:1.2vmin;height:100%;justify-content:center}
 .match .mode{color:var(--red);font-size:clamp(20px,3.6vmin,32px);letter-spacing:.2em;font-weight:800;
@@ -64,29 +72,67 @@ h1,h2,h3,p{margin:0}
 /* 对局面板 */
 .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-top:2px solid #333B48;
   border-radius:14px 14px 0 0;padding:1.6vmin 2vmin 2.4vmin;display:none;flex-direction:column;gap:1.2vmin;
-  max-height:64%;z-index:8}
+  max-height:64%;z-index:8;transition:max-height .22s ease}
 .sheet.on{display:flex}
-.sheet .st{display:flex;align-items:center;justify-content:space-between}
+/* 收起状态：只留标题栏，能看见房间里的情况 */
+.sheet.mini{max-height:7vmin}
+.sheet.mini .tabsrow,.sheet.mini .blist{display:none}
+.sheet .st{display:flex;align-items:center;justify-content:space-between;gap:1vmin}
+.sheet .st .grip{position:absolute;left:50%;top:.5vmin;transform:translateX(-50%);width:15%;height:3px;
+  border-radius:2px;background:#3B4553}
 .sheet .st b{font-size:clamp(18px,2.8vmin,26px);color:#FF9B4D;letter-spacing:.2em;
-  text-shadow:-1px -1px 0 #7A3200,1px 1px 0 #7A3200}
+  text-shadow:-1px -1px 0 #7A3200,1px 1px 0 #7A3200;cursor:pointer}
+.sheet .st b small{display:block;font-size:clamp(9px,1.25vmin,11px);letter-spacing:.06em;color:#7C8698;
+  text-shadow:none;font-weight:400;margin-top:.2em}
+.sheet .st .closebtn{border:none;background:transparent;color:var(--dim);font:inherit;font-size:clamp(12px,1.9vmin,15px);
+  cursor:pointer;border:1px solid var(--line);border-radius:8px;padding:.5vmin 1.2vmin}
+.sheet .st .closebtn:hover{color:#fff;border-color:#5C6B80}
 .tabsrow{display:flex;gap:.8vmin;flex-wrap:wrap}
 .tabpill{padding:.7vmin 1.4vmin;border-radius:8px;background:#1A1F27;border:1px solid var(--line);
-  color:var(--dim);font-size:clamp(10px,1.5vmin,13px);cursor:pointer}
-.tabpill.on{background:#EDF1F6;color:#12151C;font-weight:700}
-.blist{overflow-y:auto;display:flex;flex-direction:column;gap:1vmin;padding-right:.6vmin}
+  color:var(--dim);font-size:clamp(10px,1.5vmin,13px);cursor:pointer;display:inline-flex;align-items:center;gap:.45em;
+  transition:background .12s,color .12s,border-color .12s}
+.tabpill .ti{display:inline-flex;width:1.25em;height:1.25em}
+.tabpill .ti svg{width:100%;height:100%}
+.tabpill:hover{border-color:#4A5568;color:#C9D4E2}
+.tabpill.on{background:#EDF1F6;color:#12151C;font-weight:700;border-color:#EDF1F6}
+.blist{overflow-y:auto;display:flex;flex-direction:column;gap:1vmin;padding-right:.6vmin;
+  -webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:#3B4553 transparent}
+.blist::-webkit-scrollbar{width:6px}
+.blist::-webkit-scrollbar-thumb{background:#3B4553;border-radius:3px}
+/* 轻提示 */
+.toast{position:absolute;left:50%;top:6vmin;transform:translate(-50%,-12px) scale(.96);opacity:0;pointer-events:none;
+  background:rgba(24,29,38,.96);border:1px solid #3B4553;color:#EDF1F6;border-radius:10px;
+  padding:1vmin 2vmin;font-size:clamp(11px,1.6vmin,14px);letter-spacing:.04em;white-space:nowrap;
+  box-shadow:0 10px 28px rgba(0,0,0,.5);z-index:40;transition:opacity .18s,transform .18s;max-width:86vw;overflow:hidden;text-overflow:ellipsis}
+.toast.on{opacity:1;transform:translate(-50%,0) scale(1)}
+.toast.warn{border-color:rgba(255,138,141,.55);color:#FFC9CB}
+.toast.good{border-color:rgba(143,227,107,.55);color:#CFF5BB}
 .bcard{display:flex;gap:1.2vmin;align-items:center;background:#171C24;border:1px solid var(--line);
-  border-radius:10px;padding:1vmin;cursor:pointer}
-.bcard.lock{opacity:.5}
-.bcard .ic{width:clamp(44px,7vmin,62px);height:clamp(44px,7vmin,62px);border-radius:8px;flex:none;font-weight:800;
-  display:flex;align-items:center;justify-content:center;font-size:clamp(18px,2.9vmin,25px);color:#CFE0F2;
-  background:linear-gradient(180deg,#2A3240,#1B2029);border:1px solid #39424F}
+  border-radius:10px;padding:1vmin;cursor:pointer;transition:transform .12s,border-color .12s,background .12s}
+.bcard.can:hover{border-color:#5C6B80;background:#1C222C;transform:translateY(-1px)}
+.bcard.can:active{transform:translateY(1px) scale(.995)}
+.bcard.lock{opacity:.52;filter:saturate(.5)}
+.bcard.lock:active{animation:nope .28s}
+@keyframes nope{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+/* 图标：SVG 矢量，按类目着色，带底色光晕 */
+.bcard .ic{width:clamp(44px,7vmin,62px);height:clamp(44px,7vmin,62px);border-radius:10px;flex:none;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(180deg,#2E3847,#1B2029);border:1px solid #3B4553;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07)}
+.bcard .ic svg{width:74%;height:74%;display:block;overflow:visible}
+.bcard.can .ic{border-color:rgba(255,198,92,.42);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 0 0 1px rgba(255,198,92,.12)}
 .bcard .txt{flex:1;min-width:0}
 .bcard .txt b{display:block;font-size:clamp(11px,1.7vmin,14px)}
 .bcard .txt small{display:block;color:var(--dim);font-size:clamp(9px,1.35vmin,12px);line-height:1.5}
-.bcard .cost{text-align:right;flex:none;font-size:clamp(10px,1.5vmin,13px)}
-.bcard .cost b{display:block;color:var(--gold)}
-.bcard .cost span{color:var(--volt)}
-.bcard .cost small{color:#7C8698;font-size:.9em}
+.bcard .txt .tag{display:inline-block;margin-top:.35vmin;padding:0 .45em;border-radius:4px;font-size:clamp(8px,1.2vmin,11px);
+  background:rgba(143,227,107,.14);color:#8FE36B;border:1px solid rgba(143,227,107,.3)}
+.bcard .cost{text-align:right;flex:none;font-size:clamp(10px,1.5vmin,13px);min-width:clamp(52px,9vmin,86px)}
+.bcard .cost .c{display:flex;align-items:center;justify-content:flex-end;gap:.28em;color:var(--gold);font-weight:700}
+.bcard .cost .c.volt{color:var(--volt)}
+.bcard .cost .c svg{width:1.1em;height:1.1em;flex:none}
+.bcard .cost .c.no{color:#FF8A8D}
+.bcard .cost small{display:block;color:#7C8698;font-size:.9em;margin-top:.25em}
+.bcard .cost .ok{color:#8FE36B}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -147,7 +193,9 @@ h1,h2,h3,p{margin:0}
 
   <!-- 建造 / 升级 面板 -->
   <div class="sheet" id="sheet">
-    <div class="st"><b id="sheet-title">建筑</b><button class="btn ghost sm" id="sheet-close">关闭</button></div>
+    <div class="st"><span class="grip"></span>
+      <b id="sheet-title">建筑<small>点标题收起 / 展开</small></b>
+      <button class="closebtn" id="sheet-close">收起</button></div>
     <div class="tabsrow" id="sheet-tabs"></div>
     <div class="blist" id="sheet-list"></div>
   </div>
@@ -169,21 +217,23 @@ var GEO = {
 var CONFIG = {
   dayLen: 35,
   nightLen: 30,
+  /* 床：升级曲线收紧。原来最后一档要 1800（+900），一局里几乎摸不到；
+     现在最高 480，且「升一级立刻回本 ~10 秒」，升级在 5 晚里始终是可选项。 */
   bed: [
     { name: '破旧小床', rate: 4, cost: 0 },
-    { name: '简陋的床', rate: 8, cost: 60 },
-    { name: '铁架床', rate: 16, cost: 160, door: 1 },
-    { name: '木架床', rate: 32, cost: 420, door: 2 },
-    { name: '舒服的床', rate: 65, cost: 900, door: 3 },
-    { name: '弹簧床', rate: 128, cost: 1800, door: 4 }
+    { name: '简陋的床', rate: 9, cost: 45 },
+    { name: '铁架床', rate: 18, cost: 110, door: 1 },
+    { name: '木架床', rate: 34, cost: 220, door: 2 },
+    { name: '舒服的床', rate: 60, cost: 360, door: 2 },
+    { name: '弹簧床', rate: 100, cost: 480, door: 3 }
   ],
   door: [
     { name: '木门', hp: 700, cost: 0 },
-    { name: '木门·2', hp: 1100, cost: 120 },
-    { name: '铁门', hp: 1500, cost: 300 },
-    { name: '钢门', hp: 1900, cost: 700 },
-    { name: '合金门', hp: 2300, cost: 1500 },
-    { name: '圣光门', hp: 2700, cost: 3000 }
+    { name: '木门·2', hp: 1250, cost: 90 },
+    { name: '铁门', hp: 1850, cost: 210 },
+    { name: '钢门', hp: 2600, cost: 420 },
+    { name: '合金门', hp: 3600, cost: 780 },
+    { name: '圣光门', hp: 5400, cost: 1300 }
   ],
   turret: [
     { name: '帚炮台', cost: 8, atk: 4, cd: 0.9 },
@@ -224,9 +274,10 @@ var CONFIG = {
     { id: 'doorcard', name: '房门升级卡', cost: 300, cur: 'coin', desc: '立刻把门升一级（不超过上限）', icon: '🪪' }
   ],
   ghost: {
-    baseHp: 260, hpPerNight: 240, bossHp: 3200,
-    dmg: 14, scratchCd: 0.6,
-    shockCd: 13, rageCd: 22
+    /* 鬼血量：第 1 夜 170 血，一座 Lv1 帚炮台（4 攻 / 0.9s）约 38 秒能磨死，
+       给「刚学会躺下、还没造炮台」的新手留出活路；第 5 夜首领 3200 不变。 */
+    baseHp: 170, hpPerNight: 180, bossHp: 3200,
+    dmg: 14, scratchCd: 0.6, shockCd: 13, rageCd: 22
   }
 };
 
@@ -272,8 +323,22 @@ var SFX = {
   scratch: function () { beep(120, 0.09, 'sawtooth', 0.05, 70); },
   die: function () { [400, 300, 200].forEach(function (f, i) { setTimeout(function () { beep(f, 0.2, 'triangle', 0.07); }, i * 140); }); },
   night: function () { beep(90, 0.7, 'sawtooth', 0.08, 50); },
-  win: function () { [523, 659, 784, 1046].forEach(function (f, i) { setTimeout(function () { beep(f, 0.2, 'sine', 0.06); }, i * 120); }); }
+  win: function () { [523, 659, 784, 1046].forEach(function (f, i) { setTimeout(function () { beep(f, 0.2, 'sine', 0.06); }, i * 120); }); },
+  deny: function () { beep(160, 0.07, 'square', 0.035, 110); },
+  tap: function () { beep(660, 0.035, 'sine', 0.03); }
 };
+/* 轻提示：面板里点不动的原因、升级成功之类，都在顶部冒一条，不打断操作 */
+var toastEl = null, toastT = 0;
+function toast(txt, kind) {
+  if (!toastEl) {
+    toastEl = document.createElement('div');
+    toastEl.className = 'toast';
+    el('stage').appendChild(toastEl);
+  }
+  toastEl.textContent = txt;
+  toastEl.className = 'toast on' + (kind ? ' ' + kind : '');
+  toastT = 1.9;
+}
 /* =========================================================================
  * 舞台
  * ========================================================================= */
@@ -468,7 +533,28 @@ function drawRoom(t) {
     else if (cell.kind === 'tech' || cell.kind === 'dark') drawTech(cell, t);
   });
 
+  drawSelectGlow(t);
   drawGuide();
+}
+
+/* 选中的格子给一圈呼吸高亮，让玩家知道「我现在点的是哪块地」 */
+function drawSelectGlow(t) {
+  var cell = G.selCell;
+  if (!cell || cell.wall) return;
+  if (!el('sheet').classList.contains('on')) return;
+  var x = cellX(cell.c), y = cellY(cell.r);
+  var a = 0.55 + Math.sin(t * 4) * 0.25;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,198,92,' + a.toFixed(3) + ')';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x + 2, y + 2, C - 4, C - 4, 7); else ctx.rect(x + 2, y + 2, C - 4, C - 4);
+  ctx.stroke();
+  ctx.globalAlpha = 0.16; ctx.fillStyle = '#FFC65C';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x + 2, y + 2, C - 4, C - 4, 7); else ctx.rect(x + 2, y + 2, C - 4, C - 4);
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawBed(cell, t) {
@@ -570,25 +656,51 @@ function turretColor(lv) {
 function drawTurret(cell, t) {
   var x = cellX(cell.c), y = cellY(cell.r);
   var lv = cell.lv || 0;
+  var col = turretColor(lv);
   ctx.save(); ctx.translate(x + C / 2, y + C / 2);
-  /* 底座 */
-  ctx.fillStyle = 'rgba(0,0,0,.28)';
-  ctx.beginPath(); ctx.ellipse(0, 22, 30, 10, 0, 0, 6.284); ctx.fill();
-  ctx.fillStyle = '#2C3542';
-  ctx.beginPath(); ctx.arc(0, 14, 24, 0, 6.284); ctx.fill();
-  ctx.fillStyle = turretColor(lv);
-  ctx.beginPath(); ctx.arc(0, 12, 18, 0, 6.284); ctx.fill();
-  /* 炮管 */
-  var aim = G.ghost ? Math.atan2(G.ghost.y - (y + C / 2), G.ghost.x - (x + C / 2)) : -1.2;
+  /* 底座投影 + 三层底座，比原来单圆饼有立体感 */
+  ctx.fillStyle = 'rgba(0,0,0,.3)';
+  ctx.beginPath(); ctx.ellipse(0, 23, 31, 10, 0, 0, 6.284); ctx.fill();
+  var baseG = ctx.createLinearGradient(0, -2, 0, 24);
+  baseG.addColorStop(0, '#43505F'); baseG.addColorStop(1, '#232A34');
+  ctx.fillStyle = baseG;
+  ctx.beginPath(); ctx.ellipse(0, 18, 27, 13, 0, 0, 6.284); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.ellipse(0, 17, 27, 13, 0, Math.PI, 0); ctx.stroke();
+  /* 转盘 */
+  ctx.fillStyle = '#2B333F';
+  ctx.beginPath(); ctx.arc(0, 8, 21, 0, 6.284); ctx.fill();
+  var tg = ctx.createRadialGradient(-6, 0, 2, 0, 8, 22);
+  tg.addColorStop(0, col); tg.addColorStop(1, 'rgba(0,0,0,.45)');
+  ctx.fillStyle = tg;
+  ctx.beginPath(); ctx.arc(0, 8, 16, 0, 6.284); ctx.fill();
+  ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.globalAlpha = 0.85;
+  ctx.beginPath(); ctx.arc(0, 8, 16, 0, 6.284); ctx.stroke(); ctx.globalAlpha = 1;
+  /* 炮管：朝向猎梦者，带枪口 */
+  var aim = G.ghost ? Math.atan2(G.ghost.y - (y + C / 2 + 8), G.ghost.x - (x + C / 2)) : -1.15;
   ctx.save(); ctx.rotate(aim);
-  ctx.fillStyle = '#1A2028'; ctx.fillRect(0, -7, 34, 14);
-  ctx.fillStyle = turretColor(lv); ctx.fillRect(24, -5, 10, 10);
+  ctx.fillStyle = '#151B23';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(2, -6.5, 32, 13, 4); else ctx.rect(2, -6.5, 32, 13);
+  ctx.fill();
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(26, -5, 9, 10, 3); else ctx.rect(26, -5, 9, 10);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.28)'; ctx.fillRect(4, -5, 20, 2);
   ctx.restore();
+  /* 核心指示灯（有目标时呼吸） */
+  var on = G.ghost ? 0.55 + Math.sin(t * 8) * 0.45 : 0.4;
+  ctx.globalAlpha = on; ctx.fillStyle = col;
+  ctx.beginPath(); ctx.arc(0, 8, 4, 0, 6.284); ctx.fill();
+  ctx.globalAlpha = 1;
   /* 等级 */
-  ctx.fillStyle = 'rgba(8,12,18,.82)';
-  ctx.beginPath(); ctx.arc(0, 20, 11, 0, 6.284); ctx.fill();
-  ctx.fillStyle = '#FFC65C'; ctx.font = '700 12px system-ui'; ctx.textAlign = 'center';
-  ctx.fillText(lv + 1, 0, 25);
+  ctx.fillStyle = 'rgba(8,12,18,.86)';
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-13, 18, 26, 16, 5) : ctx.rect(-13, 18, 26, 16);
+  ctx.fill();
+  ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.globalAlpha = 0.6; ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.fillStyle = '#FFC65C'; ctx.font = '700 11px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Lv' + (lv + 1), 0, 30);
   ctx.restore();
 }
 
@@ -596,33 +708,158 @@ function drawMoney(cell, t) {
   var x = cellX(cell.c), y = cellY(cell.r);
   ctx.save(); ctx.translate(x + C / 2, y + C / 2);
   if (cell.key === 'game') {
-    ctx.fillStyle = '#39424F'; ctx.fillRect(-26, -30, 52, 56);
-    ctx.fillStyle = '#7ED9C3'; ctx.fillRect(-20, -24, 40, 22);
-    ctx.fillStyle = '#0E1116'; ctx.fillRect(-13, -18, 26, 11);
-    ctx.fillStyle = '#FFC65C'; ctx.beginPath(); ctx.arc(0, 16, 5, 0, 6.284); ctx.fill();
+    /* 发霉游戏机：机身 + 屏幕辉光 + 手柄 */
+    var gg = ctx.createLinearGradient(0, -30, 0, 26);
+    gg.addColorStop(0, '#4A5566'); gg.addColorStop(1, '#2A323E');
+    ctx.fillStyle = gg;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-25, -28, 50, 54, 8) : ctx.rect(-25, -28, 50, 54);
+    ctx.fill();
+    ctx.strokeStyle = '#5E6B7C'; ctx.lineWidth = 1.4; ctx.stroke();
+    /* 屏幕 */
+    ctx.fillStyle = '#0B1014';
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-19, -22, 38, 22, 4) : ctx.rect(-19, -22, 38, 22);
+    ctx.fill();
+    ctx.save();
+    ctx.globalAlpha = 0.5 + Math.sin(t * 4) * 0.25;
+    ctx.fillStyle = '#7ED9C3';
+    var sx = -16 + ((t * 18) % 34);
+    ctx.fillRect(sx, -18, 4, 3); ctx.fillRect(sx + 6, -15, 3, 2);
+    ctx.restore();
+    /* 按键 */
+    ctx.fillStyle = '#7ED9C3'; ctx.beginPath(); ctx.arc(-10, 12, 4, 0, 6.284); ctx.fill();
+    ctx.fillStyle = '#FFC65C'; ctx.beginPath(); ctx.arc(10, 12, 4, 0, 6.284); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.16)'; ctx.fillRect(-19, -2, 38, 2);
   } else {
-    var col = { copper: '#C9855B', silver: '#C9D2DE', gold: '#FFC65C', diamond: '#7FE3FF' }[cell.key] || '#C9855B';
+    var col = { copper: '#C9855B', silver: '#D5DEE9', gold: '#FFC65C', diamond: '#7FE3FF' }[cell.key] || '#C9855B';
+    /* 矿车轨道 */
+    ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-28, 24); ctx.lineTo(28, 24); ctx.stroke();
+    /* 矿堆：三块晶体，主晶亮、两侧暗，带高光 */
+    function crystal(cx2, cy2, h, w, alpha) {
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.moveTo(cx2 - w, cy2); ctx.lineTo(cx2, cy2 - h); ctx.lineTo(cx2 + w, cy2); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.45)';
+      ctx.beginPath(); ctx.moveTo(cx2 - w * 0.4, cy2 - 2); ctx.lineTo(cx2, cy2 - h * 0.92); ctx.lineTo(cx2 + w * 0.1, cy2 - 2); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    crystal(-13, 22, 14, 7, 0.65);
+    crystal(13, 22, 16, 8, 0.65);
+    crystal(0, 24, 26, 11, 1);
+    /* 底座 */
     ctx.fillStyle = '#2A3240';
-    ctx.beginPath(); ctx.moveTo(-26, 20); ctx.lineTo(0, 6); ctx.lineTo(26, 20); ctx.lineTo(26, 30); ctx.lineTo(-26, 30); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = col;
-    ctx.beginPath(); ctx.moveTo(-12, 6); ctx.lineTo(0, -14); ctx.lineTo(12, 6); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,.35)';
-    ctx.beginPath(); ctx.moveTo(-4, 2); ctx.lineTo(0, -8); ctx.lineTo(4, 2); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-24, 20, 48, 8, 3) : ctx.rect(-24, 20, 48, 8);
+    ctx.fill();
+    /* 闪一下，表示在产出 */
+    var p = (t * 0.9) % 1;
+    if (p < 0.35) {
+      ctx.globalAlpha = (1 - p / 0.35) * 0.8;
+      ctx.fillStyle = '#fff';
+      var a = p * 6.28 + 1;
+      ctx.beginPath(); ctx.arc(Math.cos(a) * 12, -2 + Math.sin(a) * 8, 1.8, 0, 6.284); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
   }
   ctx.restore();
 }
+
+/* 科技/黑科技设施：不再写字母，按 key 画功能图标 */
+var TECH_GLYPH = {
+  repair: function (c) {   /* 扳手 */
+    ctx.save(); ctx.rotate(-0.7);
+    ctx.strokeStyle = c; ctx.lineWidth = 5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-9, 10); ctx.lineTo(8, -8); ctx.stroke();
+    ctx.beginPath(); ctx.arc(11, -11, 7, 0.6, 5.4); ctx.stroke();
+    ctx.restore();
+  },
+  bubble: function (c) {   /* 能量罩 */
+    ctx.strokeStyle = c; ctx.lineWidth = 2.6;
+    ctx.beginPath(); ctx.arc(0, 2, 15, 0, 6.284); ctx.stroke();
+    ctx.globalAlpha = 0.22; ctx.fillStyle = c; ctx.fill(); ctx.globalAlpha = 1;
+    ctx.beginPath(); ctx.arc(-5, -4, 3.4, 0, 6.284); ctx.stroke();
+  },
+  atm: function (c) {      /* 取款机 */
+    ctx.strokeStyle = c; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-15, -15, 30, 30, 5) : ctx.rect(-15, -15, 30, 30); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-15, -4); ctx.lineTo(15, -4); ctx.stroke();
+    ctx.fillStyle = c; ctx.fillRect(-8, 2, 16, 3); ctx.fillRect(-8, 8, 10, 2.6);
+  },
+  watch: function (c) {    /* 望远镜 */
+    ctx.save(); ctx.rotate(-0.5);
+    ctx.strokeStyle = c; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-12, -6); ctx.lineTo(12, 4); ctx.stroke();
+    ctx.lineWidth = 2.6;
+    ctx.beginPath(); ctx.arc(12, 4, 6, 0, 6.284); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-12, -6); ctx.lineTo(-16, -8); ctx.stroke();
+    ctx.restore();
+  },
+  talisman: function (c) { /* 符咒 */
+    ctx.strokeStyle = c; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-10, -16, 20, 32, 4) : ctx.rect(-10, -16, 20, 32); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-4, -9); ctx.lineTo(4, -9); ctx.moveTo(0, -9); ctx.lineTo(0, 6);
+    ctx.moveTo(-4, 2); ctx.lineTo(4, 8); ctx.stroke();
+  },
+  fridge: function (c) {   /* 冰箱 */
+    ctx.strokeStyle = c; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-12, -17, 24, 34, 4) : ctx.rect(-12, -17, 24, 34); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-12, -3); ctx.lineTo(12, -3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-7, -12); ctx.lineTo(-7, -7); ctx.moveTo(-7, 2); ctx.lineTo(-7, 7); ctx.stroke();
+  },
+  coil: function (c) {     /* 电磁圈 */
+    ctx.strokeStyle = c; ctx.lineWidth = 2.4;
+    for (var i = 0; i < 3; i++) {
+      ctx.beginPath(); ctx.ellipse(0, 0, 15 - i * 3, 6, 0, 0, 6.284); ctx.stroke();
+    }
+  },
+  accel: function (c) {    /* 加速器 */
+    ctx.strokeStyle = c; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.moveTo(-14, 8); ctx.lineTo(-2, 8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-8, -2); ctx.lineTo(4, -2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-2, -12); ctx.lineTo(10, -12); ctx.stroke();
+    ctx.fillStyle = c;
+    ctx.beginPath(); ctx.moveTo(16, -2); ctx.lineTo(6, -6); ctx.lineTo(6, 2); ctx.closePath(); ctx.fill();
+  },
+  box: function (c) {      /* 礼盒 */
+    ctx.strokeStyle = c; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-14, -8, 28, 22, 4) : ctx.rect(-14, -8, 28, 22); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(14, 0); ctx.moveTo(0, -8); ctx.lineTo(0, 14); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-9, -14); ctx.quadraticCurveTo(-9, -8, 0, -8);
+    ctx.quadraticCurveTo(9, -8, 9, -14); ctx.stroke();
+  },
+  doorcard: function (c) { /* 升级卡 */
+    ctx.strokeStyle = c; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-16, -11, 32, 22, 4) : ctx.rect(-16, -11, 32, 22); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-8, 4); ctx.lineTo(0, -5); ctx.lineTo(8, 4); ctx.stroke();
+  }
+};
 
 function drawTech(cell, t) {
   var x = cellX(cell.c), y = cellY(cell.r);
   ctx.save(); ctx.translate(x + C / 2, y + C / 2);
   var dark = cell.kind === 'dark';
-  ctx.fillStyle = dark ? '#3A1F3E' : '#28323E';
-  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-26, -26, 52, 52, 9) : ctx.rect(-26, -26, 52, 52);
+  var c = dark ? '#C084FC' : '#6FD3FF';
+  /* 设备外壳：渐变 + 顶部高光 + 底部投影 */
+  ctx.fillStyle = 'rgba(0,0,0,.28)';
+  ctx.beginPath(); ctx.ellipse(0, 26, 27, 7, 0, 0, 6.284); ctx.fill();
+  var g = ctx.createLinearGradient(0, -26, 0, 26);
+  if (dark) { g.addColorStop(0, '#3E2246'); g.addColorStop(1, '#211026'); }
+  else { g.addColorStop(0, '#2E3B4B'); g.addColorStop(1, '#1D242E'); }
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-24, -24, 48, 48, 10) : ctx.rect(-24, -24, 48, 48);
   ctx.fill();
-  ctx.strokeStyle = dark ? '#C084FC' : '#6FD3FF'; ctx.lineWidth = 2; ctx.stroke();
-  ctx.fillStyle = dark ? '#E8C6FF' : '#BFE9FF';
-  ctx.font = '700 20px "PingFang SC",system-ui'; ctx.textAlign = 'center';
-  ctx.fillText((cell.key || '?').slice(0, 1).toUpperCase(), 0, 7);
+  ctx.strokeStyle = c; ctx.lineWidth = 1.8; ctx.globalAlpha = 0.75; ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fillRect(-24, -24, 48, 2);
+  /* 功能图标 */
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  var fn = TECH_GLYPH[cell.key] || TECH_GLYPH.box;
+  fn(c);
+  ctx.restore();
+  /* 运行指示灯 */
+  ctx.globalAlpha = 0.5 + Math.sin(t * 3 + cell.c) * 0.35;
+  ctx.fillStyle = c;
+  ctx.beginPath(); ctx.arc(18, -18, 2.6, 0, 6.284); ctx.fill();
+  ctx.globalAlpha = 1;
   ctx.restore();
 }
 
@@ -714,21 +951,35 @@ function drawTexts() {
   });
 }
 
-function drawGuide() {
+function drawGuide(t) {
   var y = 340;
-  ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, y, W, 52);
-  ctx.fillStyle = '#F2EEE6'; ctx.font = '600 22px "PingFang SC",system-ui'; ctx.textAlign = 'left';
-  ctx.fillText(guideText(), 24, y + 34);
+  /* 夜里换成红底，和白天区分开 */
+  ctx.fillStyle = G.phase === 'night' ? 'rgba(70,10,14,.62)' : 'rgba(0,0,0,.55)';
+  ctx.fillRect(0, y, W, 52);
+  ctx.fillStyle = '#F2EEE6'; ctx.font = '600 21px "PingFang SC",system-ui'; ctx.textAlign = 'left';
+  var txt = guideText();
+  /* 太长就整句缩字号，别让文字被进度条挤掉 */
   var done = guideDone();
-  ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = '500 16px "PingFang SC",system-ui';
+  var maxW = W - 48 - 120;
+  while (ctx.measureText(txt).width > maxW && ctx.font.indexOf('px') > 0) {
+    var sz = parseInt(ctx.font.match(/(\d+)px/)[1], 10) - 1;
+    if (sz < 15) break;
+    ctx.font = '600 ' + sz + 'px "PingFang SC",system-ui';
+  }
+  ctx.fillText(txt, 24, y + 34);
+  ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = '500 15px "PingFang SC",system-ui';
   ctx.textAlign = 'right'; ctx.fillText('未完成 ' + done + '/6', W - 24, y + 33);
 }
 
 function guideText() {
-  if (G.phase === 'night') return '猎梦者来了！升级门、修炮台，撑到天亮';
+  if (G.phase === 'night') {
+    if (!G.cells.some(function (c) { return c.kind === 'turret'; }))
+      return '夜里了还没有炮台 · 它会一直挠门，明天记得先造一座';
+    return '猎梦者来了！升级门、补炮台，撑到天亮';
+  }
   if (!G.lying) return '1.点床躺下，床会持续产金币';
-  if (G.doorLv === 0) return '2.点门升级木门，门碎了就完了';
-  if (!G.cells.some(function (c) { return c.kind === 'turret'; })) return '3.点空地板建一座帚炮台';
+  if (G.doorLv === 0) return '2.再点一次床（或点门）打开升级面板，先把门升级';
+  if (!G.cells.some(function (c) { return c.kind === 'turret'; })) return '3.点空地板建一座帚炮台，夜里靠它打鬼';
   if (!G.tech.length) return '4.点空地造维修台，夜里自动修门';
   if (G.bedLv < 2) return '5.升级床，产币更快';
   return '6.活下去，撑过第 5 晚';
@@ -745,29 +996,64 @@ function guideDone() {
 }
 
 function drawHUD(t) {
-  /* 返回 */
   ctx.save();
-  ctx.fillStyle = '#FF3B3B'; ctx.font = '900 46px system-ui'; ctx.textAlign = 'left';
-  ctx.fillText('‹', 24, 78);
-  /* 金币 / 闪电 */
-  ctx.fillStyle = '#FFC65C'; ctx.beginPath(); ctx.arc(46, 120, 15, 0, 6.284); ctx.fill();
-  ctx.fillStyle = '#8A5A00'; ctx.font = '700 16px system-ui'; ctx.textAlign = 'center'; ctx.fillText('$', 46, 126);
-  ctx.fillStyle = '#FFD98A'; ctx.font = '700 26px "PingFang SC",system-ui'; ctx.textAlign = 'left';
-  ctx.fillText(fmt(G.coins), 68, 129);
+  /* 返回：圆形底盘 + 箭头，比原来孤零零一个红色字符清楚 */
+  ctx.fillStyle = 'rgba(255,59,59,.14)';
+  ctx.beginPath(); ctx.arc(48, 76, 24, 0, 6.284); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,90,90,.45)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(48, 76, 24, 0, 6.284); ctx.stroke();
+  ctx.strokeStyle = '#FF5A5A'; ctx.lineWidth = 3.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(54, 66); ctx.lineTo(44, 76); ctx.lineTo(54, 86); ctx.stroke();
+
+  /* 金币：硬币 + 内圈 + 数字，带一层暖色底 */
+  var cg = ctx.createLinearGradient(0, 104, 0, 138);
+  cg.addColorStop(0, 'rgba(255,198,92,.16)'); cg.addColorStop(1, 'rgba(255,198,92,.04)');
+  ctx.fillStyle = cg;
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(26, 104, 148, 34, 12) : ctx.rect(26, 104, 148, 34);
+  ctx.fill();
+  ctx.fillStyle = '#FFC65C';
+  ctx.beginPath(); ctx.arc(46, 121, 12, 0, 6.284); ctx.fill();
+  ctx.strokeStyle = 'rgba(122,74,0,.55)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(46, 121, 8, 0, 6.284); ctx.stroke();
+  ctx.strokeStyle = '#7A4A00'; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(46, 116.5); ctx.lineTo(46, 125.5); ctx.stroke();
+  ctx.fillStyle = '#FFD98A'; ctx.font = '700 23px "PingFang SC",system-ui'; ctx.textAlign = 'left';
+  ctx.fillText(fmt(G.coins), 64, 129);
+
   /* 闪电 */
+  ctx.fillStyle = 'rgba(111,211,255,.12)';
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(184, 104, 118, 34, 12) : ctx.rect(184, 104, 118, 34);
+  ctx.fill();
   ctx.fillStyle = '#6FD3FF';
-  ctx.beginPath(); ctx.moveTo(190, 104); ctx.lineTo(178, 126); ctx.lineTo(188, 126); ctx.lineTo(182, 142);
-  ctx.lineTo(198, 118); ctx.lineTo(187, 118); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#BFE9FF'; ctx.font = '700 26px "PingFang SC",system-ui';
-  ctx.fillText(fmt(G.volt), 208, 129);
-  /* 邻居 / 菜单 / 电源 */
-  ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(520, 120, 14, 0, 6.284); ctx.stroke();
-  ctx.beginPath(); ctx.arc(520, 114, 5, 0, 6.284); ctx.stroke();
-  ctx.beginPath(); ctx.arc(520, 132, 8, 3.4, 6.0); ctx.stroke();
-  for (var i = 0; i < 3; i++) { ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.arc(586 + i * 8, 120, 2.4, 0, 6.284); ctx.fill(); }
-  ctx.beginPath(); ctx.arc(660, 120, 13, 0, 6.284); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(660, 111); ctx.lineTo(660, 120); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(196, 105); ctx.lineTo(186, 123); ctx.lineTo(195, 123); ctx.lineTo(190, 138);
+  ctx.lineTo(203, 118); ctx.lineTo(193, 118); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#BFE9FF'; ctx.font = '700 23px "PingFang SC",system-ui';
+  ctx.fillText(fmt(G.volt), 210, 129);
+
+  /* 右侧三个圆形按钮：邻居 / 菜单 / 设置，统一 44 直径，描边 + 悬停质感 */
+  function rbtn(cx, cy, fill) {
+    ctx.fillStyle = 'rgba(255,255,255,.06)';
+    ctx.beginPath(); ctx.arc(cx, cy, 22, 0, 6.284); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.arc(cx, cy, 22, 0, 6.284); ctx.stroke();
+    if (fill) fill(cx, cy);
+  }
+  rbtn(516, 121, function (cx, cy) {
+    ctx.strokeStyle = 'rgba(255,255,255,.72)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx, cy - 5, 5.2, 0, 6.284); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy + 11, 8.6, 3.5, 5.9); ctx.stroke();
+  });
+  rbtn(578, 121, function (cx, cy) {
+    for (var i = 0; i < 3; i++) {
+      ctx.fillStyle = 'rgba(255,255,255,.78)';
+      ctx.beginPath(); ctx.arc(cx - 8 + i * 8, cy, 2.6, 0, 6.284); ctx.fill();
+    }
+  });
+  rbtn(640, 121, function (cx, cy) {
+    ctx.fillStyle = 'rgba(255,255,255,.72)';
+    ctx.font = '700 20px Georgia,serif'; ctx.textAlign = 'center';
+    ctx.fillText('i', cx, cy + 7);
+  });
   ctx.restore();
 
   /* 头像行 */
@@ -805,28 +1091,47 @@ function drawHUD(t) {
     ctx.restore();
   }
 
-  /* 产出摘要 */
+  /* 产出摘要：三列带小图标，一眼分清「床产 / 矿产 / 炮台」 */
   ctx.save();
   var sy = 1160;
-  ctx.fillStyle = 'rgba(22,27,35,.92)'; ctx.fillRect(24, sy, W - 48, 84);
-  ctx.strokeStyle = '#2C3340'; ctx.lineWidth = 2; ctx.strokeRect(24, sy, W - 48, 84);
+  var bg2 = ctx.createLinearGradient(0, sy, 0, sy + 84);
+  bg2.addColorStop(0, 'rgba(30,36,46,.95)'); bg2.addColorStop(1, 'rgba(18,22,29,.95)');
+  ctx.fillStyle = bg2;
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(24, sy, W - 48, 84, 12) : ctx.rect(24, sy, W - 48, 84);
+  ctx.fill();
+  ctx.strokeStyle = '#2C3340'; ctx.lineWidth = 2; ctx.stroke();
   ctx.textAlign = 'left';
-  ctx.fillStyle = '#9AA3B2'; ctx.font = '500 14px "PingFang SC",system-ui';
-  ctx.fillText('产出', 44, sy + 26);
-  ctx.fillStyle = '#FFD98A'; ctx.font = '700 20px "PingFang SC",system-ui';
-  ctx.fillText(G.lying ? ('金币 ' + bedRate() + '/s') : '金币 0/s（未躺下）', 44, sy + 54);
+
+  /* 列分隔 */
+  ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(296, sy + 14); ctx.lineTo(296, sy + 70); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(492, sy + 14); ctx.lineTo(492, sy + 70); ctx.stroke();
+
+  ctx.fillStyle = '#9AA3B2'; ctx.font = '500 13px "PingFang SC",system-ui';
+  ctx.fillText('躺床产出', 44, sy + 26);
+  ctx.fillStyle = G.lying ? '#FFD98A' : '#7C8698';
+  ctx.font = '700 21px "PingFang SC",system-ui';
+  ctx.fillText(G.lying ? (bedRate() + '/s') : '未躺下', 44, sy + 56);
+  if (!G.lying) {
+    ctx.fillStyle = 'rgba(255,138,141,.9)'; ctx.font = '500 12px "PingFang SC",system-ui';
+    ctx.fillText('点床躺下', 118, sy + 56);
+  }
+
   var mineRate = 0;
   G.cells.forEach(function (c) {
     if (c.kind !== 'money') return;
     var d = CONFIG.money.filter(function (m) { return m.id === c.key; })[0];
     if (d && d.coin) mineRate += d.coin;
   });
-  ctx.fillStyle = '#BFE9FF'; ctx.font = '700 18px "PingFang SC",system-ui';
-  ctx.fillText('矿 ' + mineRate + '/s', 320, sy + 54);
-  ctx.fillStyle = '#7ED957'; ctx.font = '700 18px "PingFang SC",system-ui';
-  ctx.fillText('炮台 ' + countKind('turret') + ' 座', 480, sy + 54);
-  ctx.fillStyle = '#7C8698'; ctx.font = '500 12px "PingFang SC",system-ui';
-  ctx.fillText('门 Lv.' + (G.doorLv + 1) + ' · 床 Lv.' + (G.bedLv + 1), 320, sy + 26);
+  ctx.fillStyle = '#9AA3B2'; ctx.font = '500 13px "PingFang SC",system-ui';
+  ctx.fillText('矿产', 320, sy + 26);
+  ctx.fillStyle = mineRate > 0 ? '#BFE9FF' : '#7C8698'; ctx.font = '700 21px "PingFang SC",system-ui';
+  ctx.fillText(mineRate + '/s', 320, sy + 56);
+
+  ctx.fillStyle = '#9AA3B2'; ctx.font = '500 13px "PingFang SC",system-ui';
+  ctx.fillText('防守', 516, sy + 26);
+  ctx.fillStyle = '#8FE36B'; ctx.font = '700 21px "PingFang SC",system-ui';
+  ctx.fillText(countKind('turret') + ' 座炮台', 516, sy + 56);
   ctx.restore();
 
   /* 底部：倍速 / 暂停 / 本局信息 */
@@ -945,24 +1250,32 @@ function upgradeCost(kind, lv) {
 }
 
 function tryUpgradeBed() {
-  if (G.bedLv >= 5) { addText(360, 1200, '已是最高级', '#9AA3B2', 20); return; }
+  if (G.bedLv >= 5) { toast('床已经是最高档了', 'warn'); addText(360, 1200, '已是最高级', '#9AA3B2', 20); return; }
   var next = CONFIG.bed[G.bedLv + 1];
   if (next.door !== undefined && G.doorLv < next.door) {
+    toast('先把门升到 Lv.' + (next.door + 1), 'warn');
     addText(360, 1200, '前置：门 Lv.' + (next.door + 1), '#FF8A8D', 20);
     return;
   }
-  if (G.coins < next.cost) { addText(360, 1200, '金币不够（需 ' + next.cost + '）', '#FF8A8D', 20); return; }
+  if (G.coins < next.cost) {
+    toast('还差 ' + Math.ceil(next.cost - G.coins) + ' 金币，躺着攒一会儿', 'warn');
+    addText(360, 1200, '金币不够（需 ' + next.cost + '）', '#FF8A8D', 20); return;
+  }
   G.coins -= next.cost; G.bedLv++;
+  toast('床升级 → ' + CONFIG.bed[G.bedLv].name + ' · 产币 ' + CONFIG.bed[G.bedLv].rate + '/s', 'good');
   addText(360, 1200, '床升级 → ' + CONFIG.bed[G.bedLv].name, '#FFD34D', 22);
   SFX.build(); persistBest();
 }
 function tryUpgradeDoor() {
-  if (G.doorLv >= 5) { addText(360, 1200, '已是最高级', '#9AA3B2', 20); return; }
+  if (G.doorLv >= 5) { toast('门已经是最高档了', 'warn'); addText(360, 1200, '已是最高级', '#9AA3B2', 20); return; }
   var next = CONFIG.door[G.doorLv + 1];
-  if (G.coins < next.cost) { addText(360, 1200, '金币不够（需 ' + next.cost + '）', '#FF8A8D', 20); return; }
+  if (G.coins < next.cost) {
+    toast('还差 ' + Math.ceil(next.cost - G.coins) + ' 金币', 'warn');
+    addText(360, 1200, '金币不够（需 ' + next.cost + '）', '#FF8A8D', 20); return;
+  }
   G.coins -= next.cost;
-  var add = next.hp - G.doorMax;
   G.doorLv++; G.doorMax = next.hp; G.doorHp = next.hp;
+  toast('门升级 → ' + next.name + ' · 血量 ' + fmt(next.hp), 'good');
   addText(360, 1200, '门升级 → ' + next.name, '#FFD34D', 22);
   SFX.build(); persistBest();
 }
@@ -1213,54 +1526,97 @@ function onDown(ev) {
   var q = toLogical(ev.clientX, ev.clientY);
 
   if (q.y < 100 && q.x < 80) { confirmQuit(); return; }
+  /* 底部按钮：点一次循环 1× → 2× → 4×，并给一句提示 */
   if (q.y > 1440 && q.y < 1530) {
-    if (q.x > 30 && q.x < 150) { G.speed = G.speed === 1 ? 2 : G.speed === 2 ? 4 : 1; return; }
-    if (q.x > 540) { openPause(); return; }
+    if (q.x > 30 && q.x < 150) {
+      G.speed = G.speed === 1 ? 2 : G.speed === 2 ? 4 : 1;
+      toast('速度 ' + G.speed + '×', G.speed > 1 ? 'good' : '');
+      SFX.tap(); return;
+    }
+    if (q.x > 500) { openPause(); return; }
   }
   if (q.y > GEO.CORR_Y && q.y < GEO.CORR_Y + GEO.CORR_H) return;
 
+  /* 点画布其它地方顺手收起面板，别让面板一直挡着房间 */
+  if (el('sheet').classList.contains('on')) {
+    var keep = hitCell(q.x, q.y);
+    if (!keep || keep !== G.selCell) closeSheet();
+  }
+
   var cell = hitCell(q.x, q.y);
   if (!cell) return;
-  if (cell.wall) return;
+  if (cell.wall) { toast('这是墙，不能建东西', 'warn'); return; }
   if (cell.kind === 'bed') {
-    if (!G.lying) { G.lying = true; addText(cellCenter(2, 3).x, cellCenter(2, 3).y - 50, '躺平收租', '#7ED957', 18); }
-    else openUpgradeSheet(cell);
+    if (!G.lying) {
+      G.lying = true;
+      toast('躺平收租 · 床在产金币', 'good');
+      addText(cellCenter(2, 3).x, cellCenter(2, 3).y - 50, '躺平收租', '#7ED957', 18);
+    } else openUpgradeSheet(cell);
     return;
   }
   if (cell.kind === 'empty') { openBuildSheet(cell); return; }
   openUpgradeSheet(cell);
 }
 
-cv.addEventListener('pointerdown', onDown);
+/* 用 pointerup 触发点击，而不是 pointerdown：
+   原来手指刚按下就弹面板，面板正好盖在手指下方，抬手时又落到「关闭」上，面板一闪就没。 */
+var downPos = null;
+cv.addEventListener('pointerdown', function (ev) { downPos = { x: ev.clientX, y: ev.clientY }; });
+cv.addEventListener('pointerup', function (ev) {
+  if (!downPos) return;
+  var moved = Math.hypot(ev.clientX - downPos.x, ev.clientY - downPos.y);
+  downPos = null;
+  if (moved > 14) return;   /* 拖动/滑动不算点击 */
+  onDown(ev);
+});
+cv.addEventListener('pointercancel', function () { downPos = null; });
 cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 /* =========================================================================
  * 面板 / 界面
  * ========================================================================= */
 var TABS = [
-  { id: 'base', name: '基础' }, { id: 'money', name: '赚钱' }, { id: 'tech', name: '高科技' },
-  { id: 'dark', name: '黑科技' }, { id: 'badger', name: '蜜獾工坊' }
+  { id: 'base', name: '基础', icon: 'bed' }, { id: 'money', name: '赚钱', icon: 'mine' },
+  { id: 'tech', name: '高科技', icon: 'tech' },
+  { id: 'dark', name: '黑科技', icon: 'dark' }, { id: 'badger', name: '蜜獾工坊', icon: 'paw' }
 ];
 var sheetTab = 'base';
 
 function openSheet(title) {
-  el('sheet-title').textContent = title;
+  el('sheet-title').firstChild.textContent = title;
   el('sheet').classList.add('on');
+  el('sheet').classList.remove('mini');
+  el('sheet-close').textContent = '收起';
   renderTabs();
   renderSheetList();
 }
+/* 收起：只留标题条，能看房间，再点一下展开 */
+function toggleSheet() {
+  var s = el('sheet');
+  if (!s.classList.contains('on')) return;
+  s.classList.toggle('mini');
+  el('sheet-close').textContent = s.classList.contains('mini') ? '展开' : '收起';
+  SFX.tap();
+}
+el('sheet-title').onclick = toggleSheet;
+el('sheet-close').onclick = toggleSheet;
 function closeSheet() {
   el('sheet').classList.remove('on');
   G.selCell = null;
 }
 function openBuildSheet(cell) {
   G.selCell = cell;
-  sheetTab = 'base';
+  if (!G.seenBuild) {
+    G.seenBuild = 1;
+    toast('点卡片建造 · 再点一下面板标题能收起', 'good');
+  }
+  SFX.tap();
   openSheet('建筑');
 }
 function openUpgradeSheet(cell) {
   G.selCell = cell;
-  sheetTab = 'base';
-  openSheet(cell.kind === 'bed' ? '升级床' : cell.kind === 'door' ? '升级门' : '升级');
+  if (cell.kind === 'bed' || cell.kind === 'door') sheetTab = 'base';
+  SFX.tap();
+  openSheet(cell.kind === 'bed' ? '升级床' : cell.kind === 'door' ? '升级门' : '升级 · ' + (cell.kind === 'turret' ? '炮台 Lv.' + ((cell.lv || 0) + 1) : ''));
 }
 
 function renderTabs() {
@@ -1268,26 +1624,123 @@ function renderTabs() {
   TABS.forEach(function (t) {
     var d = document.createElement('div');
     d.className = 'tabpill' + (t.id === sheetTab ? ' on' : '');
-    d.textContent = t.name;
-    d.onclick = function () { sheetTab = t.id; renderTabs(); renderSheetList(); };
+    d.innerHTML = '<span class="ti">' + ICON[t.icon] + '</span>' + t.name;
+    d.onclick = function () {
+      if (sheetTab === t.id) return;
+      sheetTab = t.id; SFX.tap(); renderTabs(); renderSheetList();
+    };
     box.appendChild(d);
   });
 }
 
 function costHtml(cost, volt) {
   var s = '';
-  if (cost) s += '<b>💰 ' + cost + '</b>';
-  if (volt) s += '<span>⚡ ' + volt + '</span>';
-  if (!cost && !volt) s += '<b>免费</b>';
+  var poor = (cost && G.coins < cost) || (volt && G.volt < volt);
+  if (cost) s += '<div class="c' + (poor ? ' no' : '') + '">' + ICON.coin + cost + '</div>';
+  if (volt) s += '<div class="c volt' + (poor ? ' no' : '') + '">' + ICON.volt + volt + '</div>';
+  if (!cost && !volt) s += '<div class="c ok">免费</div>';
   return s;
 }
 
-function rowHtml(icon, name, desc, cost, volt, canBuild, lockText, action) {
+/* ------------------------------------------------------------------ */
+/* 图标库：全部是内联 SVG，按类目取色。原来用「炮 / 床 / 门 / 技」单字当图标，
+   缩到卡片尺寸后既看不清也分不出是造什么，这里换成有辨识度的矢量图标。 */
+var ICON = (function () {
+  function svg(body, extra) {
+    return '<svg viewBox="0 0 32 32" fill="none" stroke-linecap="round" stroke-linejoin="round" ' +
+      (extra || '') + '>' + body + '</svg>';
+  }
+  var C = {
+    coin: '#FFC65C', volt: '#6FD3FF', bed: '#B9CDE6', door: '#8FE36B',
+    turret: '#FF9C6B', mine: '#FFD34D', tech: '#6FD3FF', dark: '#C084FC', box: '#9AA3B2',
+    gifty: '#FF6B9D'
+  };
+  return {
+    coin: C.coin ? svg('<circle cx="16" cy="16" r="12" fill="' + C.coin + '" opacity=".16"/>' +
+      '<circle cx="16" cy="16" r="9.5" stroke="' + C.coin + '" stroke-width="2"/>' +
+      '<path d="M18.6 12.4c-.7-.9-1.7-1.3-2.9-1.3-1.8 0-3 1-3 2.3 0 1.2 1 1.8 2.6 2.2 2 .5 3.4 1.2 3.4 3 0 1.7-1.4 2.8-3.4 2.8-1.4 0-2.6-.6-3.2-1.6" stroke="' + C.coin + '" stroke-width="2"/>' +
+      '<path d="M16 9.4v2M16 20.6v2" stroke="' + C.coin + '" stroke-width="2"/>') : '',
+    volt: svg('<path d="M18.5 3 9 18h6l-2 11 10-15h-6.2z" fill="' + C.volt + '" opacity=".95"/>' +
+      '<path d="M18.5 3 9 18h6l-2 11 10-15h-6.2z" stroke="' + C.volt + '" stroke-width="1.4"/>'),
+    bed: svg('<rect x="4" y="13" width="24" height="12" rx="2.5" fill="' + C.bed + '" opacity=".18"/>' +
+      '<rect x="4" y="13" width="24" height="12" rx="2.5" stroke="' + C.bed + '" stroke-width="1.8"/>' +
+      '<path d="M6 25v3M26 25v3" stroke="' + C.bed + '" stroke-width="2"/>' +
+      '<rect x="7" y="9" width="9" height="5" rx="2" fill="' + C.bed + '" opacity=".9"/>' +
+      '<path d="M10 17h12" stroke="' + C.bed + '" stroke-width="1.6" opacity=".7"/>' +
+      '<circle cx="23" cy="17" r="2.2" stroke="' + C.bed + '" stroke-width="1.4"/>'),
+    door: svg('<rect x="7" y="5" width="18" height="23" rx="2.5" fill="' + C.door + '" opacity=".16"/>' +
+      '<rect x="7" y="5" width="18" height="23" rx="2.5" stroke="' + C.door + '" stroke-width="2"/>' +
+      '<path d="M7 12h18M7 20h18" stroke="' + C.door + '" stroke-width="1.3" opacity=".55"/>' +
+      '<circle cx="21" cy="17.5" r="1.6" fill="' + C.door + '"/>'),
+    turret: svg('<circle cx="14" cy="22" r="7.5" fill="' + C.turret + '" opacity=".18"/>' +
+      '<circle cx="14" cy="22" r="5.5" stroke="' + C.turret + '" stroke-width="1.8"/>' +
+      '<path d="M19 18 27 11" stroke="' + C.turret + '" stroke-width="3.4"/>' +
+      '<circle cx="14" cy="22" r="1.8" fill="' + C.turret + '"/>' +
+      '<path d="M4 28h20" stroke="' + C.turret + '" stroke-width="1.6" opacity=".5"/>' +
+      '<path d="M27 7.2 28.4 9.4 25.6 9.4z" fill="' + C.turret + '"/>'),
+    mine: svg('<path d="M6 25 16 9l10 16z" fill="' + C.mine + '" opacity=".22"/>' +
+      '<path d="M6 25 16 9l10 16z" stroke="' + C.mine + '" stroke-width="1.8"/>' +
+      '<path d="M12 25 16 18l4 7" stroke="' + C.mine + '" stroke-width="1.4" opacity=".7"/>' +
+      '<path d="M4 28h24" stroke="' + C.mine + '" stroke-width="1.6" opacity=".45"/>'),
+    tech: svg('<path d="M20.5 5a7 7 0 0 0-8.6 8.9L4 21.8 10.2 28l7.9-7.9A7 7 0 0 0 27 11.5l-4 2.5-3-2.6 2.5-4z" stroke="' + C.tech + '" stroke-width="1.8" fill="' + C.tech + '" fill-opacity=".14"/>'),
+    shield: svg('<path d="M16 4 26 8v8c0 6-4.4 10.4-10 12-5.6-1.6-10-6-10-12V8z" stroke="' + C.tech + '" stroke-width="1.8" fill="' + C.tech + '" fill-opacity=".16"/>' +
+      '<path d="m11.6 15.6 3.2 3.2 6-6.4" stroke="' + C.tech + '" stroke-width="2"/>'),
+    telescope: svg('<circle cx="19" cy="11" r="6" stroke="#FFC65C" stroke-width="1.8" fill="#FFC65C" fill-opacity=".14"/>' +
+      '<path d="m13.5 16.5-7 7M9 20l3 3" stroke="#FFC65C" stroke-width="2.4"/>'),
+    dark: svg('<rect x="5" y="5" width="22" height="22" rx="6" stroke="' + C.dark + '" stroke-width="1.8" fill="' + C.dark + '" fill-opacity=".14"/>' +
+      '<path d="M16 9v4M16 19v4M9 16h4M19 16h4" stroke="' + C.dark + '" stroke-width="2"/>' +
+      '<circle cx="16" cy="16" r="2.4" fill="' + C.dark + '"/>'),
+    gift: svg('<rect x="5" y="12" width="22" height="15" rx="2.5" stroke="' + C.gifty + '" stroke-width="1.8" fill="' + C.gifty + '" fill-opacity=".14"/>' +
+      '<path d="M5 17h22M16 12v15" stroke="' + C.gifty + '" stroke-width="1.6"/>' +
+      '<path d="M16 12c-4.5 0-6-1.4-6-3.2S11.6 6 13 6c2 0 3 3 3 6 0-3 1-6 3-6 1.4 0 3 .9 3 2.8S20.5 12 16 12z" stroke="' + C.gifty + '" stroke-width="1.6"/>'),
+    bolt: svg('<circle cx="16" cy="16" r="11" stroke="' + C.dark + '" stroke-width="1.6" fill="' + C.dark + '" fill-opacity=".14"/>' +
+      '<path d="M17.5 8 11 17h4.4l-1 7 6.6-9H16.6z" fill="' + C.dark + '"/>'),
+    rocket: svg('<path d="M16 4c5 4 6.5 9 6 14l-6 4-6-4c-.5-5 1-10 6-14z" stroke="#FF6B9D" stroke-width="1.8" fill="#FF6B9D" fill-opacity=".16"/>' +
+      '<circle cx="16" cy="13" r="2.6" stroke="#FF6B9D" stroke-width="1.6"/>' +
+      '<path d="m10 22-3 6 6-2M22 22l3 6-6-2" stroke="#FF6B9D" stroke-width="1.6"/>'),
+    card: svg('<rect x="4" y="8" width="24" height="17" rx="3" stroke="#8FE36B" stroke-width="1.8" fill="#8FE36B" fill-opacity=".13"/>' +
+      '<path d="m11 20 4-8 4 8" stroke="#8FE36B" stroke-width="1.8"/>' +
+      '<path d="M9 25h14" stroke="#8FE36B" stroke-width="1.4" opacity=".6"/>'),
+    box: svg('<path d="M16 4 27 10v12l-11 6-11-6V10z" stroke="' + C.box + '" stroke-width="1.8" fill="' + C.box + '" fill-opacity=".12"/>' +
+      '<path d="M5 10l11 6 11-6M16 16v12" stroke="' + C.box + '" stroke-width="1.5" opacity=".8"/>'),
+    fridge: svg('<rect x="8" y="4" width="16" height="24" rx="3" stroke="#6FD3FF" stroke-width="1.8" fill="#6FD3FF" fill-opacity=".12"/>' +
+      '<path d="M8 13h16" stroke="#6FD3FF" stroke-width="1.6"/>' +
+      '<path d="M12 7v3M12 16v3" stroke="#6FD3FF" stroke-width="2"/>'),
+    note: svg('<rect x="6" y="6" width="20" height="22" rx="3" stroke="#9AA3B2" stroke-width="1.8" fill="#9AA3B2" fill-opacity=".12"/>' +
+      '<path d="M11 13h10M11 18h10M11 23h6" stroke="#9AA3B2" stroke-width="1.8"/>'),
+    paw: svg('<circle cx="11" cy="11" r="3" stroke="#FFC65C" stroke-width="1.6"/><circle cx="21" cy="11" r="3" stroke="#FFC65C" stroke-width="1.6"/>' +
+      '<circle cx="7" cy="18" r="2.6" stroke="#FFC65C" stroke-width="1.6"/><circle cx="25" cy="18" r="2.6" stroke="#FFC65C" stroke-width="1.6"/>' +
+      '<path d="M16 16c-4 0-7 3.5-7 6.5S12 27 16 27s7-1.5 7-4.5-3-6.5-7-6.5z" stroke="#FFC65C" stroke-width="1.7" fill="#FFC65C" fill-opacity=".14"/>')
+  };
+})();
+
+/* 升级预览：把「现在 → 升完」的差值算出来，玩家不用自己心算划不划算 */
+function upTag(cur, next, unit) {
+  var d = next - cur;
+  if (!d) return '';
+  return (d > 0 ? '+' : '') + (Math.round(d * 10) / 10) + unit;
+}
+
+/* 卡片的图标按「是什么」挑，而不是每行给个汉字 */
+function iconOf(row) { return ICON[row.icon] || ICON.box; }
+
+function rowHtml(row, canBuild, lockText, action) {
   var d = document.createElement('div');
-  d.className = 'bcard' + (canBuild ? '' : ' lock');
-  d.innerHTML = '<div class="ic">' + icon + '</div><div class="txt"><b>' + name + '</b><small>' + desc + '</small></div>' +
-    '<div class="cost">' + costHtml(cost, volt) + '<small>' + (lockText || '') + '</small></div>';
-  if (canBuild && action) d.onclick = action;
+  d.className = 'bcard' + (canBuild ? ' can' : ' lock');
+  d.innerHTML =
+    '<div class="ic">' + iconOf(row) + '</div>' +
+    '<div class="txt"><b>' + row.name + '</b><small>' + row.desc + '</small>' +
+    (row.tag ? '<span class="tag">' + row.tag + '</span>' : '') + '</div>' +
+    '<div class="cost">' + costHtml(row.cost, row.volt) + '<small>' + (lockText || '') + '</small></div>';
+  d.onclick = function () {
+    if (canBuild && action) { action(); return; }
+    /* 点不动的时候给出原因，而不是毫无反馈 */
+    if (lockText) {
+      d.classList.remove('nope'); void d.offsetWidth; d.classList.add('nope');
+      toast(lockText);
+      SFX.deny();
+    }
+  };
   return d;
 }
 
@@ -1301,40 +1754,62 @@ function renderSheetList() {
     if (!cell || cell.kind !== 'turret') {
       var t0 = CONFIG.turret[0];
       var turretCount = countKind('turret');
-      box.appendChild(rowHtml('炮', '建造 ' + t0.name, '攻击 ' + t0.atk + ' / ' + t0.cd + 's · 每级攻击翻倍', t0.cost, 0,
-        !!cell && buildable(cell) && turretCount < 6, cell && buildable(cell) ? '可建造 ' + turretCount + '/6' : '先选空地',
-        function () { if (buildTurret(cell, 0)) renderSheetList(); }));
+      box.appendChild(rowHtml({
+        icon: 'turret', name: '建造 ' + t0.name,
+        desc: '攻击 ' + t0.atk + ' / ' + t0.cd + 's · 每升一级攻击翻倍',
+        cost: t0.cost,
+        tag: '炮台 ' + turretCount + '/6'
+      }, !!cell && buildable(cell) && turretCount < 6,
+        cell && buildable(cell) ? (turretCount >= 6 ? '炮台已满 6 座' : '点这里建在选中的空地') : '先点一块空地',
+        function () { if (buildTurret(cell, 0)) { SFX.build(); renderSheetList(); } }));
     }
     if (G.bedLv < 5) {
       var nb = CONFIG.bed[G.bedLv + 1];
       var needDoor = nb.door !== undefined && G.doorLv < nb.door;
-      box.appendChild(rowHtml('床', '升级床 → ' + nb.name, '产币 ' + nb.rate + '/s（当前 ' + bedRate() + '/s）' +
-        (needDoor ? ' · 前置：门 Lv.' + (nb.door + 1) : ''), nb.cost, 0,
-        G.coins >= nb.cost && !needDoor, G.coins >= nb.cost && !needDoor ? '可升级' : (needDoor ? '前置不足' : '金币不足'),
+      var payback = nb.cost / Math.max(1, nb.rate - bedRate());
+      box.appendChild(rowHtml({
+        icon: 'bed', name: '床 → ' + nb.name,
+        desc: '产币 ' + bedRate() + ' → ' + nb.rate + '/s' +
+          (needDoor ? ' · 需先把门升到 Lv.' + (nb.door + 1) : ''),
+        cost: nb.cost,
+        tag: needDoor ? '' : '约 ' + Math.round(payback) + ' 秒回本'
+      }, G.coins >= nb.cost && !needDoor,
+        needDoor ? '前置：门 Lv.' + (nb.door + 1) : (G.coins >= nb.cost ? '点击升级' : '差 ' + Math.ceil(nb.cost - G.coins) + ' 金币'),
         function () { tryUpgradeBed(); renderSheetList(); }));
     } else {
-      box.appendChild(rowHtml('床', '床已满级', '产币 ' + bedRate() + '/s', 0, 0, false, '已满级'));
+      box.appendChild(rowHtml({ icon: 'bed', name: '床已满级', desc: '产币 ' + bedRate() + '/s', tag: '最高档' }, false, '已是最高级'));
     }
     if (G.doorLv < 5) {
       var nd = CONFIG.door[G.doorLv + 1];
-      box.appendChild(rowHtml('门', '升级门 → ' + nd.name, '血量 ' + nd.hp + '（当前 ' + fmt(G.doorMax) + '）', nd.cost, 0,
-        G.coins >= nd.cost, G.coins >= nd.cost ? '可升级' : '金币不足',
+      box.appendChild(rowHtml({
+        icon: 'door', name: '门 → ' + nd.name,
+        desc: '血量 ' + fmt(G.doorMax) + ' → ' + fmt(nd.hp) + '（' + upTag(G.doorMax, nd.hp, '') + '）',
+        cost: nd.cost,
+        tag: '扛 ' + Math.round(nd.hp / 700 * 100) + '%'
+      }, G.coins >= nd.cost,
+        G.coins >= nd.cost ? '点击升级（并回满血）' : '差 ' + Math.ceil(nd.cost - G.coins) + ' 金币',
         function () { tryUpgradeDoor(); renderSheetList(); }));
     } else {
-      box.appendChild(rowHtml('门', '门已满级', '圣光门 ' + fmt(G.doorMax) + ' 血', 0, 0, false, '已满级'));
+      box.appendChild(rowHtml({ icon: 'door', name: '门已满级', desc: '圣光门 ' + fmt(G.doorMax) + ' 血', tag: '最高档' }, false, '已是最高级'));
     }
     if (cell && cell.kind === 'turret') {
       if (cell.lv < 14) {
         var nd2 = CONFIG.turret[cell.lv + 1];
-        box.appendChild(rowHtml('炮', '升级 → ' + nd2.name, '攻击 ' + nd2.atk + ' / ' + nd2.cd + 's', nd2.cost, nd2.volt || 0,
-          G.coins >= nd2.cost && G.volt >= (nd2.volt || 0), '当前 Lv.' + (cell.lv + 1),
+        box.appendChild(rowHtml({
+          icon: 'turret', name: '本座 → ' + nd2.name,
+          desc: '攻击 ' + CONFIG.turret[cell.lv].atk + ' → ' + nd2.atk + ' / ' + nd2.cd + 's',
+          cost: nd2.cost, volt: nd2.volt || 0,
+          tag: '当前 Lv.' + (cell.lv + 1)
+        }, G.coins >= nd2.cost && G.volt >= (nd2.volt || 0),
+          G.coins >= nd2.cost && G.volt >= (nd2.volt || 0) ? '点击升级' : '资源不足',
           function () {
-            if (G.coins < nd2.cost || G.volt < (nd2.volt || 0)) { addText(360, 1040, '资源不足', '#FF8A8D', 18); return; }
+            if (G.coins < nd2.cost || G.volt < (nd2.volt || 0)) { toast('资源不足', 'warn'); return; }
             G.coins -= nd2.cost; G.volt -= nd2.volt || 0; cell.lv = cell.lv + 1;
+            toast('炮台升级到 Lv.' + (cell.lv + 1) + ' · ' + nd2.name, 'good');
             addText(360, 1040, '炮台 → ' + nd2.name, '#7ED957', 20); SFX.build(); renderSheetList();
           }));
       } else {
-        box.appendChild(rowHtml('炮', '七色花炮台 · 满级', '攻击 65536 / 0.55s', 0, 0, false, '已满级'));
+        box.appendChild(rowHtml({ icon: 'turret', name: '七色花炮台 · 满级', desc: '攻击 65536 / 0.55s', tag: '最高档' }, false, '已是最高级'));
       }
     }
   }
@@ -1343,27 +1818,41 @@ function renderSheetList() {
     CONFIG.money.forEach(function (def) {
       var cnt = G.cells.filter(function (c) { return c.kind === 'money' && c.key === def.id; }).length;
       var afford = def.cur === 'volt' ? G.volt >= def.cost : G.coins >= def.cost;
-      box.appendChild(rowHtml('矿', def.name, def.desc, def.cur === 'coin' ? def.cost : 0, def.cur === 'volt' ? def.cost : 0,
-        !!cell && buildable(cell) && afford && cnt < 2, cell && buildable(cell) ? '可建造 ' + cnt + '/2' : '先选空地',
-        function () { if (buildMoney(cell, def)) renderSheetList(); }));
+      box.appendChild(rowHtml({
+        icon: 'mine', name: def.name, desc: def.desc,
+        cost: def.cur === 'coin' ? def.cost : 0, volt: def.cur === 'volt' ? def.cost : 0,
+        tag: '已建 ' + cnt + '/2'
+      }, !!cell && buildable(cell) && afford && cnt < 2,
+        cell && buildable(cell) ? (cnt >= 2 ? '这类已建满 2 座' : '点这里建造') : '先点一块空地',
+        function () { if (buildMoney(cell, def)) { SFX.build(); renderSheetList(); } }));
     });
   }
 
   if (sheetTab === 'tech') {
     CONFIG.tech.forEach(function (def) {
       var has = G.tech.indexOf(def.id) >= 0;
-      box.appendChild(rowHtml('技', def.name, def.desc, 0, def.cost,
-        !!cell && buildable(cell) && G.volt >= def.cost && !has, has ? '已建造' : (cell && buildable(cell) ? '可建造 0/1' : '先选空地'),
-        function () { if (buildTech(cell, def, false)) renderSheetList(); }));
+      box.appendChild(rowHtml({
+        icon: def.id === 'bubble' ? 'shield' : def.id === 'watch' ? 'telescope'
+          : def.id === 'fridge' ? 'fridge' : def.id === 'talisman' ? 'note'
+          : def.id === 'atm' ? 'coin' : 'tech',
+        name: def.name, desc: def.desc, volt: def.cost, tag: has ? '已建造' : '限 1 座'
+      }, !!cell && buildable(cell) && G.volt >= def.cost && !has,
+        has ? '已经建过了' : (cell && buildable(cell) ? (G.volt >= def.cost ? '点这里建造' : '闪电不足') : '先点一块空地'),
+        function () { if (buildTech(cell, def, false)) { SFX.build(); renderSheetList(); } }));
     });
   }
 
   if (sheetTab === 'dark') {
     CONFIG.dark.forEach(function (def) {
       var has = G.tech.indexOf(def.id) >= 0;
-      box.appendChild(rowHtml('黑', def.name, def.desc, def.cur === 'coin' ? def.cost : 0, def.cur === 'coin' ? 0 : def.cost,
-        !!cell && buildable(cell) && (def.cur === 'coin' ? G.coins >= def.cost : G.volt >= def.cost) && !has,
-        has ? '已建造' : (cell && buildable(cell) ? '可建造 0/1' : '先选空地'),
+      box.appendChild(rowHtml({
+        icon: def.id === 'box' ? 'gift' : def.id === 'coil' ? 'bolt'
+          : def.id === 'accel' ? 'rocket' : 'card',
+        name: def.name, desc: def.desc,
+        cost: def.cur === 'coin' ? def.cost : 0, volt: def.cur === 'coin' ? 0 : def.cost,
+        tag: def.id === 'box' || def.id === 'doorcard' ? '用完即止' : (has ? '已建造' : '限 1 座')
+      }, !!cell && buildable(cell) && (def.cur === 'coin' ? G.coins >= def.cost : G.volt >= def.cost) && !has,
+        has ? '已经建过了' : (cell && buildable(cell) ? '点这里建造' : '先点一块空地'),
         function () {
           if (def.id === 'box') {
             if (G.coins < def.cost) return;
@@ -1387,18 +1876,21 @@ function renderSheetList() {
 
   if (sheetTab === 'badger') {
     if (!save.items || !save.items.length) {
-      box.appendChild(rowHtml('獾', '还没有带入道具', '在主界面蜜獾商店买，最多带 3 件', 0, 0, false, ''));
+      box.appendChild(rowHtml({ icon: 'paw', name: '还没有带入道具', desc: '在主界面蜜獾工坊买，最多带 3 件', tag: '最多 3 件' }, false, '去主界面买'));
     } else {
       save.items.forEach(function (it, idx) {
         var used = G.usedItems && G.usedItems.indexOf(idx) >= 0;
-        box.appendChild(rowHtml('獾', it.name, it.desc, 0, 0, !used, used ? '已使用' : '可使用', function () {
+        box.appendChild(rowHtml({
+          icon: it.id === 'gold' ? 'coin' : it.id === 'repair' ? 'tech' : 'turret',
+          name: it.name, desc: it.desc, tag: used ? '已使用' : '本局可用'
+        }, !used, used ? '这件已经用过了' : '点击使用', function () {
           G.usedItems = G.usedItems || [];
           G.usedItems.push(idx);
-          if (it.id === 'gold') { G.coins += 300; addText(360, 1200, '+300 金币', '#FFD34D', 22); }
-          if (it.id === 'repair') { G.doorHp = G.doorMax; addText(360, 1200, '门已回满', '#7ED957', 22); }
+          if (it.id === 'gold') { G.coins += 300; addText(360, 1200, '+300 金币', '#FFD34D', 22); toast('金币袋 +300 金币', 'good'); }
+          if (it.id === 'repair') { G.doorHp = G.doorMax; addText(360, 1200, '门已回满', '#7ED957', 22); toast('门已回满', 'good'); }
           if (it.id === 'up') {
             G.cells.filter(function (c) { return c.kind === 'turret'; }).forEach(function (c) { if (c.lv < 14) c.lv++; });
-            addText(360, 1200, '全场炮台 +1 级', '#7ED957', 22);
+            addText(360, 1200, '全场炮台 +1 级', '#7ED957', 22); toast('全场炮台 +1 级', 'good');
           }
           SFX.build(); renderSheetList();
         }));
@@ -1447,21 +1939,34 @@ el('btn-ready').onclick = function () {
 
 /* ---- 主界面 ---- */
 function renderLobby() {
-  el('lobby-stat').innerHTML = '最高撑到第 ' + Math.max(1, save.maxWave) + ' 晚 · 通关 ' + save.wins + ' 次 · 金币 ' + save.coins;
+  el('lobby-stat').innerHTML = '最高撑到第 ' + Math.max(1, save.maxWave) + ' 晚 · 通关 ' + save.wins + ' 次' +
+    ' · <b style="color:#FFC65C">金币 ' + fmt(save.coins) + '</b>' +
+    (save.items.length ? ' · 已带 ' + save.items.length + '/3 件' : '');
   var box = el('shoprow'); box.innerHTML = '';
   var items = [
-    { id: 'gold', name: '金币袋', cost: 60, desc: '带入局内，使用后 +300 金币' },
-    { id: 'repair', name: '维修令', cost: 80, desc: '带入局内，使用后门回满血' },
-    { id: 'up', name: '升级券', cost: 120, desc: '带入局内，全场炮台 +1 级' }
+    { id: 'gold', name: '金币袋', cost: 60, desc: '带入局内，使用后 +300 金币', icon: 'coin' },
+    { id: 'repair', name: '维修令', cost: 80, desc: '带入局内，使用后门回满血', icon: 'tech' },
+    { id: 'up', name: '升级券', cost: 120, desc: '带入局内，全场炮台 +1 级', icon: 'turret' }
   ];
   items.forEach(function (it) {
-    var d = document.createElement('div'); d.className = 'shopcard';
-    d.innerHTML = '<b>' + it.name + '</b><small>' + it.desc + '</small>' +
-      '<button class="btn sm" style="margin-top:.8vmin;width:100%">买 ' + it.cost + ' 金币</button>';
+    var owned = save.items.filter(function (x) { return x.id === it.id; }).length;
+    var poor = save.coins < it.cost;
+    var full = save.items.length >= 3;
+    var d = document.createElement('div');
+    d.className = 'shopcard' + (poor || full ? ' lock' : '');
+    d.innerHTML =
+      '<div class="sh"><span class="shi">' + (ICON[it.icon] || ICON.box) + '</span>' +
+      '<b>' + it.name + '</b>' + (owned ? '<i>×' + owned + '</i>' : '') + '</div>' +
+      '<small>' + it.desc + '</small>' +
+      '<button class="btn sm"' + (poor || full ? ' disabled' : '') + '>' +
+      (full ? '最多带 3 件' : poor ? '差 ' + Math.ceil(it.cost - save.coins) + ' 金币' : '买 ' + it.cost + ' 金币') +
+      '</button>';
     d.querySelector('button').onclick = function () {
-      if (save.coins < it.cost) return;
-      if (save.items.length >= 3) { alert('最多带 3 件道具'); return; }
-      save.coins -= it.cost; save.items.push(it); persist(); renderLobby();
+      if (full) { toast('最多带 3 件道具，先在本局用掉一些', 'warn'); return; }
+      if (poor) { toast('还差 ' + Math.ceil(it.cost - save.coins) + ' 金币，先打一局', 'warn'); return; }
+      save.coins -= it.cost; save.items.push(it); persist(); SFX.build();
+      toast('已买入 ' + it.name + '（' + save.items.length + '/3）', 'good');
+      renderLobby();
     };
     box.appendChild(d);
   });
@@ -1558,7 +2063,7 @@ el('btn-reset').onclick = function () {
   if (!confirm('清空躺平守夜的存档？')) return;
   save = defaultSave(); persist(); renderLobby();
 };
-el('sheet-close').onclick = function () { closeSheet(); };
+el('sheet-close').onclick = function () { toggleSheet(); };
 el('end-retry').onclick = function () { startRun(); };
 el('end-home').onclick = function () { G = null; showOnly('ov-title'); renderLobby(); };
 el('p-resume').onclick = function () { UI.paused = false; hideAll(); };
@@ -1578,6 +2083,10 @@ function loop(ts) {
     if (left <= 0) { matching = false; startRun(); }
   }
   if (G && !UI.paused) update(dt * (G.speed || 1));
+  if (toastT > 0) {
+    toastT -= dt;
+    if (toastT <= 0 && toastEl) toastEl.classList.remove('on');
+  }
   render();
 }
 requestAnimationFrame(loop);
