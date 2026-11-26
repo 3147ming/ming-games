@@ -46,6 +46,7 @@ body{background:var(--bg);color:var(--paper);font-family:"PingFang SC","Microsof
 .veil[hidden]{display:none}.veil h2{color:var(--ink);font-size:22px;margin:0}.veil p{color:var(--dim);font-size:13px;line-height:1.8;margin:0}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
+  <link rel="stylesheet" href="../shared/screen-fit.css">
 </head>
 <body>
 <div class="wrap">
@@ -219,5 +220,7 @@ window.__SUDOKU__ = {
   forceSolve: () => { grid = solution.slice(); finish(); },
 };
 </script>
+<script>window.MG_SCREEN_FIT={"title":"数独速递","tagline":"SUDOKU · 唯一解 · 计时挑战","accent":"#4f9dff","bg":"#f6f1e6","mainWidth":"560px","cover":"../covers/sudoku-v2.png","tip":"每行、每列、每宫填入 1-9 不重复，先写笔记再落子更稳。","light":false,"left":[{"title":"难度","body":"四档难度，全部唯一解生成。每日题固定，可与朋友比拼用时。"},{"title":"工具","body":"✎ 笔记：真铅笔标记\n提示：揭示一格\n擦除：清除笔记与填入\n暂停：隐藏题面并停表"}],"right":[{"title":"观感","body":"米白纸张底色，深色墨迹数字。笔记与错误分色显示，长时间解题更轻松。"},{"title":"存档","body":"每步自动写入本机，刷新后可续玩；最佳用时按难度分别记录。"}]};window.MG_SCREEN_FIT_FRIENDS=["metro-runner","tap","sudoku","slide","territory","trio","liar","doudizhu","wuyouk","tongxin"];</script>
+<script src="../shared/screen-fit.js"></script>
 </body>
 </html>

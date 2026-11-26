@@ -1,0 +1,239 @@
+/* ming-games 宽屏观感升级 · 共享屏幕适配层
+ * 目标：把窄条游戏页放到有氛围、有信息密度的宽屏舞台中，消除纯黑空白区。
+ * 纯 CSS + 现有封面素材，不生成新美术资源；窄屏自动降级为原布局。
+ */
+:root {
+  --mg-fit-main: 560px;
+  --mg-fit-rail: 252px;
+  --mg-fit-accent: #f3c14b;
+  --mg-fit-bg: #090d16;
+}
+
+body.mg-fit-enabled {
+  background:
+    radial-gradient(85% 62% at 10% -4%, color-mix(in srgb, var(--mg-fit-accent) 18%, transparent), transparent 72%),
+    radial-gradient(78% 58% at 92% 106%, color-mix(in srgb, var(--mg-fit-accent) 12%, transparent), transparent 72%),
+    var(--mg-fit-bg) !important;
+  background-attachment: fixed !important;
+  overflow-x: hidden;
+}
+
+/* 封面虚化氛围层：使用站点已有封面，不是程序生成的美术 */
+.mg-fit-ambient {
+  position: fixed;
+  inset: -10%;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--mg-fit-cover, none);
+  background-size: cover;
+  background-position: center;
+  filter: blur(74px) saturate(1.5) brightness(.98);
+  opacity: .86;
+  transform: scale(1.08);
+}
+.mg-fit-ambient::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(90% 70% at 50% 18%, rgba(255, 255, 255, .07), transparent 70%),
+    linear-gradient(180deg, rgba(5, 8, 14, .08), rgba(5, 8, 14, .40));
+}
+/* 浅色主题（数独）避免灰蒙蒙 */
+body.mg-fit-light .mg-fit-ambient { filter: blur(74px) saturate(.85) brightness(1.08); opacity: .42; }
+body.mg-fit-light .mg-fit-ambient::after {
+  background: linear-gradient(180deg, rgba(255, 252, 244, .30), rgba(246, 241, 230, .78));
+}
+body.mg-fit-light .mg-fit-card {
+  background: linear-gradient(160deg, rgba(255, 255, 255, .88), rgba(255, 255, 255, .72));
+  border-color: rgba(40, 35, 25, .12);
+  box-shadow: 0 12px 28px rgba(60, 50, 35, .12);
+}
+body.mg-fit-light .mg-fit-card h3 { color: #8a5a16; }
+body.mg-fit-light .mg-fit-card p { color: rgba(40, 34, 24, .78); }
+body.mg-fit-light .mg-fit-card b { color: #1a1712; }
+body.mg-fit-light .mg-fit-link { background: rgba(40, 35, 25, .07); border-color: rgba(40, 35, 25, .14); color: rgba(40, 34, 24, .82); }
+body.mg-fit-light .mg-fit-link--primary { background: #b5791f; color: #fff; }
+body.mg-fit-light .mg-fit-card--hero h2 { color: #fff; }
+.mg-fit-grid {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: .5;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, .038) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, .038) 1px, transparent 1px);
+  background-size: 48px 48px;
+  -webkit-mask-image: radial-gradient(circle at 50% 35%, #000 5%, transparent 74%);
+  mask-image: radial-gradient(circle at 50% 35%, #000 5%, transparent 74%);
+}
+
+.mg-fit-shell {
+  position: relative;
+  z-index: 1;
+  width: min(100%, calc(var(--mg-fit-main) + var(--mg-fit-rail) * 2 + 72px));
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--mg-fit-main)) minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
+  gap: clamp(12px, 1.6vw, 26px);
+  align-items: start;
+  min-height: calc(100vh - 24px);
+}
+.mg-fit-rail, .mg-fit-stage { grid-row: 1; }
+.mg-fit-shell > .wrap { width: 100% !important; max-width: none !important; }
+.mg-fit-dock {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  align-self: end;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  padding: 14px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, .11);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .08), rgba(255, 255, 255, .02));
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .2);
+}
+.mg-fit-dock strong { display: block; font-size: 14px; letter-spacing: .08em; margin-bottom: 4px; }
+.mg-fit-dock span { font-size: 11px; line-height: 1.7; color: rgba(255, 255, 255, .6); }
+.mg-fit-dock .mg-fit-links { justify-content: flex-end; }
+body.mg-fit-light .mg-fit-dock {
+  background: rgba(255, 255, 255, .72);
+  border-color: rgba(40, 35, 25, .12);
+}
+body.mg-fit-light .mg-fit-dock span { color: rgba(40, 34, 24, .66); }
+.mg-fit-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: sticky;
+  top: 14px;
+  min-width: 0;
+}
+.mg-fit-rail--left { justify-self: end; width: min(100%, var(--mg-fit-rail)); }
+.mg-fit-rail--right { justify-self: start; width: min(100%, var(--mg-fit-rail)); }
+
+.mg-fit-card {
+  position: relative;
+  padding: 14px 15px 15px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, .11);
+  background: linear-gradient(160deg, rgba(255, 255, 255, .075), rgba(255, 255, 255, .025));
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .26), inset 0 1px 0 rgba(255, 255, 255, .08);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  overflow: hidden;
+}
+.mg-fit-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 14px; bottom: 14px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--mg-fit-accent);
+  opacity: .85;
+}
+.mg-fit-card h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  letter-spacing: .08em;
+  color: var(--mg-fit-accent);
+  font-weight: 700;
+}
+.mg-fit-card p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.85;
+  color: rgba(255, 255, 255, .78);
+  white-space: pre-line;
+}
+.mg-fit-card b { color: #fff; font-weight: 700; }
+.mg-fit-card--hero {
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, .10), rgba(255, 255, 255, .02)),
+    var(--mg-fit-cover, none) center / cover;
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.mg-fit-card--hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(5, 8, 14, .18), rgba(5, 8, 14, .86));
+  z-index: -1;
+}
+.mg-fit-card--hero h2 {
+  position: relative;
+  margin: 0 0 4px;
+  font-size: 19px;
+  letter-spacing: .14em;
+  color: #fff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, .7);
+}
+.mg-fit-card--hero span {
+  position: relative;
+  font-size: 11px;
+  letter-spacing: .1em;
+  color: rgba(255, 255, 255, .76);
+}
+.mg-fit-links { display: flex; flex-wrap: wrap; gap: 7px; }
+.mg-fit-link {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  background: rgba(255, 255, 255, .06);
+  color: rgba(255, 255, 255, .82);
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background .16s ease, transform .16s ease, border-color .16s ease;
+}
+.mg-fit-link:hover {
+  background: rgba(255, 255, 255, .13);
+  border-color: var(--mg-fit-accent);
+  transform: translateY(-1px);
+}
+.mg-fit-link--primary {
+  background: var(--mg-fit-accent);
+  border-color: transparent;
+  color: #14110a;
+}
+.mg-fit-link--primary:hover { filter: brightness(1.08); }
+
+/* 沉浸模式：收起侧栏，舞台居中放大 */
+body.mg-fit-immersive .mg-fit-rail { display: none; }
+body.mg-fit-immersive .mg-fit-shell {
+  grid-template-columns: minmax(0, var(--mg-fit-main));
+  grid-template-rows: auto;
+  justify-content: center;
+  width: min(100%, calc(var(--mg-fit-main) + 32px));
+}
+body.mg-fit-immersive .mg-fit-dock { display: none; }
+body.mg-fit-immersive .mg-fit-ambient { opacity: .78; }
+
+/* 小屏降级：只保留氛围层，游戏页保持原有窄屏体验 */
+@media (max-width: 1080px) {
+  .mg-fit-shell {
+    display: block;
+    width: min(100%, var(--mg-fit-main));
+    min-height: 0;
+  }
+  .mg-fit-rail, .mg-fit-dock { display: none; }
+  .mg-fit-shell > .wrap { width: 100% !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mg-fit-link { transition: none; }
+}

@@ -61,6 +61,7 @@ body{background:radial-gradient(120% 80% at 50% -10%,#1d1236 0%,var(--bg) 64%);c
 .seg button.on{border-color:var(--ac);color:var(--ac)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
+  <link rel="stylesheet" href="../shared/screen-fit.css">
 </head>
 <body>
 <div class="wrap">
@@ -340,5 +341,7 @@ window.__TAP__ = {
   debugFinish() { if (running) { running = false; cancelAnimationFrame(raf); endGame(); } },
 };
 </script>
+<script>window.MG_SCREEN_FIT={"title":"节奏拍打","tagline":"TAP · 四键下落式音游","accent":"#b08cff","bg":"#100b1e","mainWidth":"500px","cover":"../covers/tap-v2.png","tip":"音符落到判定线时按对应键，稳住连击就能拿高分。","light":false,"left":[{"title":"键位","body":"4 键：D / F / J / K\n6 键：D / F / J / K / L / ;\n手机：点下方判定键"},{"title":"判定","body":"PERFECT ±45ms · GREAT ±90ms\nGOOD ±140ms · MISS 断连击\n连击 25 / 50 / 100 旋律升调"}],"right":[{"title":"曲库","body":"9 首曲谱覆盖电子、鼓点、钢琴、8-bit、慢摇，含 2 首以上 6 键谱。"},{"title":"声音","body":"kick / snare / hat / lead 四轨 Web Audio 实时合成，零音频文件。"}]};window.MG_SCREEN_FIT_FRIENDS=["metro-runner","tap","sudoku","slide","territory","trio","liar","doudizhu","wuyouk","tongxin"];</script>
+<script src="../shared/screen-fit.js"></script>
 </body>
 </html>

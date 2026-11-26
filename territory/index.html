@@ -36,6 +36,7 @@ body{background:radial-gradient(120% 80% at 50% -10%,#241a42 0%,var(--bg) 64%);c
 .overlay h2{margin:0 0 10px;color:var(--ac);letter-spacing:.1em;font-size:19px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
+  <link rel="stylesheet" href="../shared/screen-fit.css">
 </head>
 <body>
 <div class="wrap">
@@ -255,5 +256,7 @@ $('over-btn').addEventListener('click',function(){start(false)});
 start(false);
 })();
 </script>
+<script>window.MG_SCREEN_FIT={"title":"占位棋","tagline":"TERRITORY · 包围翻转","accent":"#a97bff","bg":"#140f24","mainWidth":"520px","cover":"../covers/territory-v2.png","tip":"落子包围对手棋子即可翻色，角和边是稳固据点。","light":false,"left":[{"title":"规则","body":"你执紫棋先手。落子后包围对手的棋子会全部翻转为你的颜色。"},{"title":"AI 档位","body":"入门 · 棋手 · 老练\n三档思考深度，逐步提升压迫感。"}],"right":[{"title":"技巧","body":"角与边更难被翻转，是稳定据点；中央棋子流动性强，适合做包围跳板。"},{"title":"节奏","body":"先占角、再连边，等对手阵型散开后从中央切入。每日局同样固定开局。"}]};window.MG_SCREEN_FIT_FRIENDS=["metro-runner","tap","sudoku","slide","territory","trio","liar","doudizhu","wuyouk","tongxin"];</script>
+<script src="../shared/screen-fit.js"></script>
 </body>
 </html>

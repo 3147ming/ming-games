@@ -33,6 +33,7 @@ body{background:radial-gradient(120% 80% at 50% -10%,#2c2117 0%,var(--bg) 64%);c
 .done h2{margin:0 0 12px;color:var(--ac);letter-spacing:.1em}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
+  <link rel="stylesheet" href="../shared/screen-fit.css">
 </head>
 <body>
 <div class="wrap">
@@ -108,5 +109,7 @@ $('info-close').addEventListener('click',function(){$('info').hidden=true});
 newGame(false);
 })();
 </script>
+<script>window.MG_SCREEN_FIT={"title":"华容道","tagline":"SLIDE · 最少步数挑战","accent":"#f3c14b","bg":"#17130f","mainWidth":"520px","cover":"../covers/slide-v2.png","tip":"把方块滑进空格，按顺序排好数字，空格留在右下角。","light":false,"left":[{"title":"玩法","body":"点数字方块把它滑进空格，把 1 ~ n²-1 按顺序排列、空格留在右下角。"},{"title":"模式","body":"3×3 入门 / 4×4 挑战\n每日局按日期固定盘面\n撤销可回退上一步"}],"right":[{"title":"目标","body":"步数越少越好。最佳步数与胜局数保存在本机，可反复挑战自己的纪录。"},{"title":"每日挑战","body":"每天一道固定盘面，同一天所有人的起点一致。适合和朋友比拼最少步数。"}]};window.MG_SCREEN_FIT_FRIENDS=["metro-runner","tap","sudoku","slide","territory","trio","liar","doudizhu","wuyouk","tongxin"];</script>
+<script src="../shared/screen-fit.js"></script>
 </body>
 </html>

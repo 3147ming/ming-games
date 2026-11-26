@@ -42,6 +42,7 @@ body{background:radial-gradient(120% 85% at 50% -10%,#2c2038 0%,var(--ink) 62%);
 .panel h2{margin:0 0 10px;font-size:18px;color:var(--gold)}.panel p{font-size:12px;line-height:1.85;color:var(--dim)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
+  <link rel="stylesheet" href="../shared/screen-fit.css">
 </head>
 <body>
 <div class="wrap">
@@ -193,5 +194,7 @@ $('info-close').addEventListener('click',function(){$('info').hidden=true});
 start();
 })();
 </script>
+<script>window.MG_SCREEN_FIT={"title":"510K","tagline":"抢分扑克 · 攒够 100 分","accent":"#f3c14b","bg":"#0e1a17","mainWidth":"560px","cover":"../covers/wuyouk.png","tip":"抢 5、10、K 的分，赢下含分牌的那一墩，攒够 100 分获胜。","light":false,"left":[{"title":"分牌","body":"5 = 5 分\n10 = 10 分\nK = 10 分\n一副牌共 100 分，金色边框的是分牌。"},{"title":"胜负","body":"谁先攒够 100 分获胜；有人先出完手牌也立即结算，分数最高者胜。"}],"right":[{"title":"出牌","body":"拿黑桃 3 者先出。可出单张 / 对子 / 三张 / 顺子（≥3），须压过上家同牌型。两家都过后重新出。"},{"title":"赢墩","body":"最后出牌且未被压的人获得本墩所有分牌的分数。"}]};window.MG_SCREEN_FIT_FRIENDS=["metro-runner","tap","sudoku","slide","territory","trio","liar","doudizhu","wuyouk","tongxin"];</script>
+<script src="../shared/screen-fit.js"></script>
 </body>
 </html>
