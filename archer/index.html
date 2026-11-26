@@ -577,9 +577,24 @@ function drawGrunt(g, e, t) {
     g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = 1;
     g.beginPath(); g.moveTo(5, -13); g.lineTo(0, 0); g.lineTo(5, 13); g.stroke();
   } else if (e.kind === 'shield') {
-    g.fillStyle = '#4B3A72'; g.strokeStyle = '#7C63A8'; g.lineWidth = 2;
-    g.beginPath(); g.roundRect ? g.roundRect(-6, -16, 14, 32, 5) : g.rect(-6, -16, 14, 32);
-    g.fill(); g.stroke();
+    if ((e.shieldHp || 0) > 0) {
+      var sk = clamp((e.shieldHp || 0) / Math.max(1, e.shieldMax || 1), 0, 1);
+      g.fillStyle = '#4B3A72'; g.strokeStyle = '#7C63A8'; g.lineWidth = 2;
+      g.beginPath(); g.roundRect ? g.roundRect(-6, -16, 14, 32, 5) : g.rect(-6, -16, 14, 32);
+      g.fill(); g.stroke();
+      /* 裂纹：盾越薄裂得越明显 */
+      if (sk < 0.66) {
+        g.strokeStyle = 'rgba(20,10,40,.75)'; g.lineWidth = 1.4;
+        g.beginPath(); g.moveTo(-4, -10); g.lineTo(3, -2); g.lineTo(-2, 6); g.stroke();
+      }
+      if (sk < 0.33) {
+        g.beginPath(); g.moveTo(4, -13); g.lineTo(-1, -4); g.lineTo(5, 4); g.stroke();
+      }
+    } else {
+      /* 盾没了，只剩一截握柄 */
+      g.strokeStyle = '#4B3A72'; g.lineWidth = 4; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(-2, 8); g.lineTo(1, -4); g.stroke();
+    }
   } else if (e.kind === 'boss') {
     g.fillStyle = '#B03A4A'; g.fillRect(-3, -26, 6, 52);
     g.fillStyle = '#E85D6E'; g.beginPath(); g.moveTo(0, -34); g.lineTo(-9, -20); g.lineTo(9, -20); g.closePath(); g.fill();
@@ -591,7 +606,7 @@ function drawGrunt(g, e, t) {
   g.restore();
   g.restore();
   /* 血条 */
-  if (e.hp < e.maxHp - 0.01 || e.kind === 'boss' || (e.shieldHp || 0) > 0) {
+  if (e.hp < e.maxHp - 0.01 || e.kind === 'boss' || e.kind === 'shield' || (e.shieldHp || 0) > 0) {
     var bw = (e.kind === 'shield' ? 54 : 42) * sc, bx = x - bw / 2, by = y - 76 * sc;
     g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(bx, by, bw, 5);
     g.fillStyle = e.kind === 'boss' ? '#FF5C6C' : '#8FE36B';
@@ -847,6 +862,17 @@ function buildWave() {
   if (elite) n = Math.min(9, n + 1);
   var list = [];
   var airMax = 1 + Math.round(c * 3), air = 0;
+
+  /* 兵种解锁按波次「保底」给，而不是只丢进随机池：
+     随机池会让新兵种好几波不露面，玩家以为机制没生效。
+     后面继续随机混编，保证「出场频率」也是随波次爬升的。
+     保底数量只占这一波的一部分，剩下的留给随机，避免某波清一色。 */
+  var gate = [];
+  if (G.wave === 2) gate.push('archer');
+  if (G.wave === 3) gate.push('shield');
+  if (G.wave === 6) gate.push('air');
+  if (G.wave === 11) gate.push('mage');
+
   var pool = ['grunt', 'grunt'];
   if (G.wave >= 2) pool.push('archer');
   if (G.wave >= 3) pool.push('shield');
@@ -856,11 +882,13 @@ function buildWave() {
   if (G.wave >= 13) pool.push('air', 'grunt');
 
   for (var i = 0; i < n; i++) {
-    var k = pick(pool);
+    /* 首发按解锁顺序出，其余随机 */
+    var k = (i < gate.length) ? gate[i] : pick(pool);
     if (k === 'air' || k === 'spear') {
       if (air >= airMax) k = 'grunt';
       else { air++; if (G.arch >= 2 && G.wave >= 15 && Math.random() < 0.35) k = 'spear'; }
     }
+    if (k === 'shield' && Math.random() < 0.22) k = 'grunt';   /* 别一波全是盾 */
     list.push(k);
   }
   if (elite) { list.push('shield'); if (G.arch >= 1) list.push('spear'); }
@@ -2201,8 +2229,10 @@ window.archer = {
         }
       }
       if (!best) return null;
+      /* 无视冷却，强制出一箭（否则连续 aim 只有第一发生效，测不出连击） */
+      G.heroCool = 0;
       fireBow({ x: Math.cos(best.a), y: Math.sin(best.a) }, best.pw);
-      return { err: Math.round(best.err * 10) / 10, ang: Math.round(best.a * 100) / 100, power: Math.round(best.pw * 100) / 100 };
+      return { err: Math.round(best.err * 10) / 10, ang: Math.round(best.a * 100) / 100, power: Math.round(best.pw * 100) / 100, n: G.arrows.length };
     }
   }
 };
