@@ -176,7 +176,8 @@
       "cover": "covers/trio-v2.png",
       "tag": "卡牌",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "esm",
+      "entry": "index.html"
     },
     {
       "id": "sudoku",
@@ -248,7 +249,8 @@
       "cover": "covers/doudizhu.png",
       "tag": "卡牌",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "esm",
+      "entry": "index.html"
     },
     {
       "id": "wuyouk",
@@ -257,7 +259,8 @@
       "cover": "covers/wuyouk.png",
       "tag": "卡牌",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "esm",
+      "entry": "index.html"
     },
     {
       "id": "tongxin",
@@ -266,7 +269,8 @@
       "cover": "covers/tongxin.png",
       "tag": "卡牌",
       "status": "ready",
-      "renderer": "classic"
+      "renderer": "esm",
+      "entry": "index.html"
     },
     {
       "id": "metro-runner",

@@ -16,6 +16,7 @@ import { bundle } from './esm-to-classic.mjs';
 import { renderGameHtml, renderHubHtml, copyAssets, copyDir, readImportMap } from './build-offline.mjs';
 import { threeToClassic } from './vendor-map.mjs';
 import { buildAssetLayer } from './build-assets.mjs';
+import { materializeInlineEntry, collectCssSidecars } from './esm-from-html.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (name, dflt) => {
@@ -123,7 +124,7 @@ for (const target of targets) {
     const logic = g.logicFrom ? byId.get(g.logicFrom) : g;
     if (!logic) throw new Error(`[build] ${g.id}: logicFrom=${g.logicFrom} 在 games.json 里不存在`);
     const srcDir = path.join(ROOT, logic.dir);
-    const entry = logic.entry || g.entry;
+    const entry = logic.entry || g.entry || 'index.html';
     const renderer = logic.renderer || g.renderer;
     if (!fs.existsSync(path.join(srcDir, 'index.html'))) {
       throw new Error(`[build] ${g.id}: 源入口不存在 ${srcDir}/index.html`);
@@ -135,8 +136,14 @@ for (const target of targets) {
     let bundleCode = '';
     let modules = [];
     let warnings = [];
+    let inlineEntry = null;
     if (renderer === 'esm') {
-      const r = bundle(path.join(srcDir, entry), plan ? { resolve: plan.resolve } : {});
+      const srcHtml = fs.readFileSync(path.join(srcDir, 'index.html'), 'utf8');
+      /* 内联 module（无 src）的入口就是 HTML 自己：把代码落成 .build/inline-entry.mjs 再打包，
+         共享模块（shared/poker.js 等）的相对路径保持不变，产物因此依然自包含。 */
+      if (!entry || entry === 'index.html') inlineEntry = materializeInlineEntry(srcDir, srcHtml);
+      const entryFile = inlineEntry || path.join(srcDir, entry);
+      const r = bundle(entryFile, plan ? { resolve: plan.resolve } : {});
       bundleCode = r.code;
       modules = r.modules;
       warnings = r.warnings;
@@ -171,6 +178,7 @@ for (const target of targets) {
       throw new Error('[build] ' + g.id + ': 产物 ' + outBytes + ' B 远小于源 ' + srcBytes + ' B，疑似内联应用脚本被剥离');
     }
     fs.writeFileSync(path.join(dstDir, 'index.html'), html, 'utf8');
+    if (inlineEntry) fs.rmSync(path.dirname(inlineEntry), { recursive: true, force: true });
     let assets = copyAssets(srcDir, dstDir, {
       allowExt: renderer === 'classic' ? ['.js', '.mjs'] : [],
       exclude: g.copyIgnore || []

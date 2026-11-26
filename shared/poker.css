@@ -1,0 +1,99 @@
+/* 扑克牌桌底座样式（由构建链内联进各游戏的 <style>）
+ * 与 shared/poker.js 一一对应：牌堆 pk-deck / 座位 pk-seat / 出牌 pk-center。
+ * 只依赖 --accent、--line、--dim、--paper、--gold 这几个各游戏已有的变量，
+ * 缺省时退回自带值，保证内联后在任何一款里都成立。 */
+:root{--pk-w:34px;--pk-h:48px}
+
+.pk-table{position:relative;width:100%;isolation:isolate}
+.pk-table .pk-board{position:relative;display:grid;padding-bottom:14px;grid-template-columns:1fr auto 1fr;grid-template-rows:auto auto;grid-template-areas:"opp opp opp" "left center right" "me me me";gap:6px;padding:6px 4px 4px;border-radius:16px;background:radial-gradient(120% 100% at 50% 40%,rgba(255,255,255,.045),transparent 70%)}
+
+/* ── 牌堆 ── */
+.pk-deck{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--dim,#8b8578);margin:0 0 6px 4px}
+.pk-deck-label{letter-spacing:.12em}
+.pk-deck-stack{position:relative;width:26px;height:34px}
+.pk-deck-stack .pk-back{position:absolute;inset:0;width:26px;height:34px;border-radius:4px}
+.pk-deck-count b{color:var(--gold,#d6ab58);font-size:12px}
+.pk-deck.is-empty{opacity:.45}
+.pk-deck.is-shuffle .pk-deck-stack{animation:pkShuffle .5s ease}
+@keyframes pkShuffle{0%{transform:none}25%{transform:translate(-4px,-2px) rotate(-5deg)}50%{transform:translate(4px,1px) rotate(4deg)}75%{transform:translate(-2px,0) rotate(-2deg)}100%{transform:none}}
+
+/* ── 牌背与牌面 ── */
+.pk-back{display:block;width:18px;height:26px;border-radius:3px;background:repeating-linear-gradient(45deg,#3b5372,#3b5372 3px,#2c4058 3px,#2c4058 6px);border:1px solid rgba(255,255,255,.16);box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.pk-face{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;width:var(--pk-w);height:var(--pk-h);border-radius:5px;background:linear-gradient(160deg,#fbf7ee,#e9e1d1);color:#1a1520;font-weight:700;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,.4),inset 0 0 0 1px rgba(255,255,255,.7);user-select:none}
+.pk-face.red{color:#c0392b}
+.pk-face .pk-r{font-size:15px}
+.pk-face .pk-s{font-size:13px;line-height:1.15}
+.pk-face.joker{background:linear-gradient(160deg,#fff6e0,#f0dfb8)}
+.pk-face.joker .pk-jr{font-size:12px}
+.pk-face.joker .pk-js{font-size:12px}
+
+/* ── 座位区 ── */
+.pk-seat{position:relative;border:1px solid var(--line,rgba(255,255,255,.14));border-radius:12px;background:rgba(0,0,0,.26);padding:6px 7px;transition:border-color .18s,box-shadow .18s,transform .18s;min-width:0}
+.pk-seat.is-turn{border-color:var(--gold,#d6ab58);box-shadow:0 0 14px rgba(214,171,88,.34),inset 0 0 0 1px rgba(214,171,88,.25)}
+.pk-seat.is-turn .pk-avatar{box-shadow:0 0 0 2px var(--gold,#d6ab58)}
+.pk-seat.is-acting{transform:translateY(-2px)}
+.pk-seat.is-dealt .pk-fan .pk-back:last-child{animation:pkLand .3s ease}
+@keyframes pkLand{0%{transform:translateY(-8px) scale(1.12)}100%{transform:none}}
+.pk-seat-head{display:flex;align-items:center;gap:5px;font-size:11px;min-width:0}
+.pk-avatar{flex:none;width:20px;height:20px;border-radius:50%;overflow:hidden;line-height:1;background:linear-gradient(180deg,var(--seat,#5a6a7a),rgba(0,0,0,.5));display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff}
+.pk-who{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0}
+.pk-tag{flex:none;min-width:0;max-width:7.5em;overflow:hidden;text-overflow:ellipsis;font-size:9px;padding:0 4px;border-radius:999px;border:1px solid var(--line,rgba(255,255,255,.14));color:var(--dim,#8b8578);white-space:nowrap}
+.pk-tag.t-landlord{color:#1a1305;background:var(--gold,#d6ab58);border-color:transparent}
+.pk-tag.t-red{color:#ff9b8f;border-color:rgba(255,107,107,.5)}
+.pk-tag.t-blue{color:#8fc2ff;border-color:rgba(95,168,255,.5)}
+.pk-tag.t-mate{color:#8ee0a8;border-color:rgba(110,212,140,.5)}
+.pk-n{flex:none;min-width:0;margin-left:auto;font-size:10px;color:var(--dim,#8b8578);white-space:nowrap}
+.pk-fan{display:flex;align-items:center;justify-content:center;min-height:30px;margin:4px 0 2px;padding-left:6px}
+.pk-fan .pk-back,.pk-fan .pk-face{margin-left:-8px;flex:none}
+.pk-fan .pk-face{width:24px;height:34px}
+.pk-fan .pk-face .pk-r{font-size:11px}
+.pk-fan .pk-face .pk-s{font-size:10px}
+.pk-fan .pk-back.pk-tick{width:6px;height:16px;border-radius:2px;margin-left:2px;background:linear-gradient(180deg,var(--gold,#d6ab58),rgba(214,171,88,.3));border:none;box-shadow:none;opacity:.55}
+.pk-seat.is-me .pk-fan{min-height:22px;padding-bottom:14px}
+.pts-badge{flex:none;font-size:9px;padding:0 4px;border-radius:999px;background:rgba(214,171,88,.16);border:1px solid rgba(214,171,88,.4);color:var(--gold,#d6ab58);white-space:nowrap}
+.pk-mini{display:flex;gap:2px;justify-content:center;flex-wrap:wrap;min-height:0}
+.pk-say{position:absolute;right:4px;bottom:-9px;font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(0,0,0,.72);border:1px solid var(--line,rgba(255,255,255,.14));color:var(--paper,#ece6da);opacity:0;transition:opacity .18s;white-space:nowrap;pointer-events:none}
+.pk-say.on{opacity:1}
+
+/* 槽位 */
+.pk-opp{grid-area:opp}
+.pk-left{grid-area:left;align-self:start}
+.pk-right{grid-area:right;align-self:start}
+.pk-me{grid-area:me;margin-top:2px}
+.pk-seat.pk-left .pk-avatar,.pk-seat.pk-right .pk-avatar{width:17px;height:17px;font-size:9px}
+.pk-seat.pk-left,.pk-seat.pk-right{font-size:10px}
+.pk-seat.pk-left .pk-tag,.pk-seat.pk-right .pk-tag{max-width:5.4em}
+
+.pk-seat.pk-left .pk-fan,.pk-seat.pk-right .pk-fan{min-height:26px}
+.pk-seat.pk-left .pk-fan .pk-back,.pk-seat.pk-right .pk-fan .pk-back{width:14px;height:20px}
+
+/* ── 桌心 ── */
+.pk-center{grid-area:center;position:relative;min-width:148px;min-height:78px;display:flex;align-items:center;justify-content:center;border-radius:14px;background:radial-gradient(circle at 50% 45%,rgba(255,255,255,.07),rgba(0,0,0,.18) 75%);border:1px dashed rgba(255,255,255,.10)}
+.pk-empty{font-size:11px;color:var(--dim,#8b8578);letter-spacing:.06em;padding:0 8px;text-align:center}
+.pk-live{display:flex;gap:2px;align-items:center;justify-content:center;flex-wrap:wrap;padding:6px 4px;min-height:60px}
+.pk-live .pk-face{width:28px;height:40px}
+.pk-live{gap:0}
+.pk-live .pk-face .pk-r{font-size:12px}
+.pk-live .pk-face .pk-s{font-size:11px}
+.pk-live .pk-face.k-score{box-shadow:0 0 0 2px var(--gold,#d6ab58),0 3px 8px rgba(0,0,0,.4)}
+.pk-live .pk-face.k-new{outline:2px solid rgba(110,212,140,.85);outline-offset:1px}
+.pk-live .pk-face.k-hot{outline:2px solid rgba(255,159,58,.9);outline-offset:1px}
+.pk-fly{position:absolute;width:22px;height:30px;pointer-events:none;z-index:80}
+
+/* PLAY 印章 */
+.pk-live.stamped::after{content:'PLAY';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-12deg) scale(1);font:700 13px/1 "PingFang SC",system-ui,sans-serif;letter-spacing:.18em;color:rgba(255,255,255,.92);border:2px solid rgba(255,255,255,.75);border-radius:6px;padding:4px 8px 3px;animation:pkStamp .55s cubic-bezier(.2,1.4,.4,1) both;pointer-events:none}
+@keyframes pkStamp{0%{opacity:0;transform:translate(-50%,-50%) rotate(-12deg) scale(1.9)}55%{opacity:1;transform:translate(-50%,-50%) rotate(-12deg) scale(.94)}100%{opacity:0;transform:translate(-50%,-50%) rotate(-12deg) scale(1)}}
+
+/* 结算飘字 */
+.pk-claim{position:absolute;left:50%;top:0;transform:translateX(-50%);font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:rgba(0,0,0,.78);border:1px solid var(--gold,#d6ab58);color:var(--gold,#d6ab58);animation:pkClaim 1.3s ease both;pointer-events:none;z-index:70}
+.pk-claim.lose{border-color:var(--line);color:var(--dim,#8b8578)}
+@keyframes pkClaim{0%{opacity:0;transform:translate(-50%,6px) scale(.9)}18%{opacity:1;transform:translate(-50%,0) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-10px)}}
+
+@media (max-width:380px){
+  :root{--pk-w:30px;--pk-h:43px}
+  .pk-center{min-width:112px}
+  .pk-live .pk-face{width:25px;height:36px}
+}
+@media (prefers-reduced-motion:reduce){
+  .pk-table *{animation:none!important;transition:none!important}
+}

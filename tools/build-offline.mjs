@@ -97,6 +97,10 @@ export function renderGameHtml(opts) {
   html = stripLegacyTags(html);
 
   if (renderer === 'esm') {
+    /* 两种合法形态：
+     *   a) <script type="module" src="...">  多文件 ESM 入口（由 bundle 内联）
+     *   b) <script type="module"> 内联代码    单文件 ESM（如卡牌系列直接 import ../../shared/poker.js）
+     * b 形态没有 src，入口就是 HTML 自己，bundle 由调用方用 index.html 当 entry 生成。 */
     const re = /<script[^>]*\btype=["']module["'][^>]*>[\s\S]*?<\/script>/gi;
     const matches = [...html.matchAll(re)];
     if (matches.length !== 1) {
@@ -104,15 +108,19 @@ export function renderGameHtml(opts) {
     }
     const tag = matches[0][0];
     const src = (tag.match(/\bsrc=["']([^"']+)["']/) || [])[1];
-    if (!src) throw new Error(`[build] ${gameId}: module script 缺少 src`);
-    const expected = entryRel.replace(/^\.\//, '');
-    if (!src.replace(/^\.\//, '').endsWith(expected.split('/').pop())) {
-      throw new Error(`[build] ${gameId}: 入口不一致，HTML=${src} games.json=${entryRel}`);
+    if (src) {
+      const expected = entryRel.replace(/^\.\//, '');
+      if (!expected.endsWith(src.replace(/^\.\//, '').split('/').pop())) {
+        throw new Error(`[build] ${gameId}: 入口不一致，HTML=${src} games.json=${entryRel}`);
+      }
     }
     /* 源 HTML 的 module 标签体内常塞一段 classic JS（可见性暂停 / pagehide 清理 /
        全局错误日志）。浏览器因 src 存在会忽略它，P2b 把它迁移成独立 script 保留下来。 */
     const inner = (tag.match(/<script[^>]*>([\s\S]*?)<\/script>/i) || [])[1] || '';
-    const legacyInline = inner.trim();
+    /* 内联 module（无 src）的标签体就是游戏源码本身，已经被 bundle 打包过一次，
+       不能再当 legacy 脚本原样贴回去（里面有 import 语句，浏览器会报
+       "Cannot use import statement outside a module"）。 */
+    const legacyInline = src ? inner.trim() : '';
     let replacement = `<script>\n${safeInlineScript(bundleCode)}\n</script>`;
     let prefix = vendorScripts.map((s) => `<script src="${s}"></script>`).join('\n');
     /* 资源本地化 shim 必须在 three.classic.js 与资源表之后、游戏 bundle 之前执行 */
