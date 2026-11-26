@@ -9,8 +9,9 @@
 
   var cfg = window.MG_SCREEN_FIT || {};
   var main = document.querySelector('.wrap') ||
-             document.querySelector('main') ||
              document.querySelector('#app') ||
+             document.querySelector('#stage') ||
+             document.querySelector('main') ||
              document.body.firstElementChild;
   if (!main || document.querySelector('.mg-fit-shell')) return;
 

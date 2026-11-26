@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="./styles.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2314110f'/%3E%3Cpath d='M8 7h16v18H8z' fill='%23e8e0d0'/%3E%3Cpath d='M11 12h10M11 16h10M11 20h6' stroke='%23201b17' stroke-width='1.6'/%3E%3C/svg%3E">
 <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="../shared/screen-fit.css">
 </head>
 <body>
 <div id="app" class="app">
@@ -125,5 +126,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+<script>window.MG_SCREEN_FIT={"title":"纸上迷城","tagline":"文字解谜 · 一座写不完的纸城","tip":"方向键 / WASD 移动，点击物件查看；卡关 90 秒后可开启提示。","accent":"#e7d6a8","bg":"#1b1712","mainWidth":"620px","cover":"../covers/paper-maze.png","left":[{"title":"操作","body":"方向键 / WASD 移动\n点击物件查看\n背包 / 日记 / 图鉴随时翻阅"},{"title":"提示","body":"卡关 90 秒后可按提示。纸张、折痕与字句本身就是线索。"}],"right":[{"title":"氛围","body":"点亮纸灯后逐步展开房间，音效与笔记记录同步保存在本机。"}]};window.MG_SCREEN_FIT_FRIENDS=["metro-runner","tap","sudoku","slide","territory","trio","liar","doudizhu","wuyouk","tongxin","diner","shanhai","paper-maze","sleeper","legion","brick"];</script>
+<script src="../shared/screen-fit.js"></script>
 </body>
 </html>

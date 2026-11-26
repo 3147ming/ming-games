@@ -28,6 +28,7 @@ canvas{display:block;width:100%;height:100%}
 .msg{text-align:center;min-height:18px;font-size:11px;margin:6px 0;color:var(--dim)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
+  <link rel="stylesheet" href="../shared/screen-fit.css">
 </head>
 <body>
 <div class="wrap">
@@ -135,5 +136,7 @@ $('info-close').addEventListener('click',function(){$('info').hidden=true});
 HUD();buildLevel();draw();
 })();
 </script>
+<script>window.MG_SCREEN_FIT={"title":"方块消消","tagline":"BRICK · 道具与关卡","tip":"拖动挡板或按 ← → 接球，空格发球，打碎全部砖块进入下一关。","accent":"#4db8ff","bg":"#0a1420","mainWidth":"520px","cover":"../covers/brick-v2.png","left":[{"title":"操作","body":"鼠标 / 手指拖动挡板\n← → 移动 · 空格发球\n漏球扣一命，三命耗尽结束"},{"title":"道具","body":"多球 ● · 加宽挡板 ▬ · 激光 ↑（自动发射）"}],"right":[{"title":"关卡","body":"关卡递进难度提升；每日关卡按日期固定布局，可反复挑战。"}]};window.MG_SCREEN_FIT_FRIENDS=["metro-runner","tap","sudoku","slide","territory","trio","liar","doudizhu","wuyouk","tongxin","diner","shanhai","paper-maze","sleeper","legion","brick"];</script>
+<script src="../shared/screen-fit.js"></script>
 </body>
 </html>
