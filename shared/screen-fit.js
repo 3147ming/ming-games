@@ -22,6 +22,7 @@
   if (cfg.mainWidth) body.style.setProperty('--mg-fit-main', cfg.mainWidth);
   if (cfg.cover) body.style.setProperty('--mg-fit-cover', 'url("' + cfg.cover + '")');
   if (cfg.light) body.classList.add('mg-fit-light');
+  if (cfg.overlayTop) body.classList.add('mg-fit-overlay-top');
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);

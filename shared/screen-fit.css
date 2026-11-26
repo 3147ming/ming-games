@@ -213,6 +213,11 @@ body.mg-fit-light .mg-fit-dock span { color: rgba(40, 34, 24, .66); }
 }
 .mg-fit-link--primary:hover { filter: brightness(1.08); }
 
+/* 个别游戏（如纸上迷城）有全屏 boot 引导层，整个舞台需要提高到它之上 */
+body.mg-fit-overlay-top .mg-fit-shell { z-index: 60; }
+body.mg-fit-overlay-top .mg-fit-rail,
+body.mg-fit-overlay-top .mg-fit-dock { z-index: 61; }
+
 /* 沉浸模式：收起侧栏，舞台居中放大 */
 body.mg-fit-immersive .mg-fit-rail { display: none; }
 body.mg-fit-immersive .mg-fit-shell {
