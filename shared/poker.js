@@ -159,6 +159,8 @@ export function mount(root, opts) {
     hand(i, n, faceUp) {
       const s = seats[i];
       if (!s) return;
+      /* 自家区域：牌背/计数条是「对手信息」，对自己反而噪音（手牌就在下面） */
+      if (s.cfg && s.cfg.me) { s.fan.textContent = ''; api.count(i, n); return; }
       s.fan.textContent = '';
       const me = !!(cfg[i] && cfg[i].me);
       if (faceUp && faceUp.length) faceUp.forEach((c) => s.fan.append(faceEl(c)));
