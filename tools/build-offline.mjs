@@ -89,12 +89,30 @@ function safeInlineScript(code) {
   return String(code).replace(/<\/script/gi, '<\\/script');
 }
 
+
+/* 给产物钉一个 <base href="./">：让所有相对引用（module import / css / 图片）
+   都以本页面所在目录为基准。GitHub Pages 的 /repo/game/ 子路径场景下缺了它会解析到站点根。 */
+function ensurePageBase(html, label) {
+  if (/<base\b/i.test(html)) return html;
+  /* 只认文档开头第一个 <head>：内联 CSS/JS 里可能含 "<head>" 字面量（如 quiz 的模板字符串），
+     按字符串计数会命中多次。 */
+  const m = /<head[^>]*>/i.exec(html);
+  if (!m) throw new Error(`[build] ${label}: 找不到 <head>`);
+  const at = m.index + m[0].length;
+  return html.slice(0, at) + '\n<base href="./">' + html.slice(at);
+}
+
 export function renderGameHtml(opts) {
   const { gameDir, gameId, entryRel, renderer, bundleCode, bridgeCode, label,
     vendorScripts = [], preludeCode = '' } = opts;
   let html = fs.readFileSync(path.join(gameDir, 'index.html'), 'utf8');
   html = inlineStylesheets(html, gameDir, label || gameId);
   html = stripLegacyTags(html);
+  /* 卡牌四款的源 HTML 里，内联 module 的 import 用 ../../shared/poker.js（相对源目录的磁盘布局）。
+     产物只内联一份，但线上 Pages 是源目录直出、且 nuxt/GH Pages 会把 <base> 当路径基准：
+     GitHub Pages 项目子路径下没有 <base> 时，相对 import 会被解析到站点根，导致 404。
+     因此在 <head> 里钉一个指向本页目录的 base —— 对模块 import 与 <link> 都安全（均为相对本页）。 */
+  html = ensurePageBase(html, `${label || gameId}:base`);
 
   if (renderer === 'esm') {
     /* 两种合法形态：
