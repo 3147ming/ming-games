@@ -45,26 +45,40 @@ canvas{transition:opacity .22s linear}
   filter:blur(14px);transform:rotate(-7deg)}
 .art::after{content:"";position:absolute;left:0;right:0;bottom:0;height:46%;
   background:radial-gradient(78% 120% at 50% 124%,#EAF4FF 0%,#D3E6F7 42%,rgba(211,230,247,0) 78%)}
-/* 三层剪影雪山：用 conic/linear 拼，不引外部图片，离线形态同样成立 */
-.art .ridge{position:absolute;left:-6%;right:-6%;bottom:22%;height:52%}
-.art .ridge i{position:absolute;bottom:0;width:0;height:0;border-style:solid;border-color:transparent}
-.art .ridge i:nth-child(1){left:2%;border-width:0 62px 96px;border-bottom-color:#4B739B}
-.art .ridge i:nth-child(2){left:20%;border-width:0 88px 138px;border-bottom-color:#3A5D82}
-.art .ridge i:nth-child(3){left:44%;border-width:0 74px 116px;border-bottom-color:#456A92}
-.art .ridge i:nth-child(4){left:64%;border-width:0 96px 150px;border-bottom-color:#33547A}
-.art .ridge i:nth-child(5){left:86%;border-width:0 58px 88px;border-bottom-color:#4B739B}
-/* 雪帽 */
-.art .ridge i::after{content:"";position:absolute;left:50%;top:0;width:0;height:0;
-  border-style:solid;border-width:0 15px 30px;border-bottom-color:rgba(234,244,255,.82);
-  transform:translate(-50%,3px)}
-.art .legion-row{position:absolute;left:50%;bottom:13%;transform:translateX(-50%);display:flex;gap:9px;z-index:2}
-.art .legion-row i{display:block;width:9px;border-radius:3px 3px 0 0;background:#1B2B40;
-  box-shadow:0 -4px 0 -1px #1B2B40}   /* 头顶那一点 = 头盔 */
-.art .legion-row i:nth-child(1){height:22px}
-.art .legion-row i:nth-child(2){height:26px}
-.art .legion-row i:nth-child(3){height:30px}
-.art .legion-row i:nth-child(4){height:26px}
-.art .legion-row i:nth-child(5){height:22px}
+/* 三层剪影雪山：clip-path 画三角 + 顶部 13% 覆雪。
+   2026-11-27 复检：原来用 border 三角做山、再叠一个 `::after` 白三角当雪帽，
+   在 500px 宽的竖屏上雪帽会被压成一块浮在白背景前的"白纸片"（三角顶点被父级 0×0
+   盒子的定位偏移吃掉）。改成 clip-path：山体和雪线都在同一个元素里，
+   形状、雪线高度、颜色都能单独调，也不会再错位。 */
+.art .ridge{position:absolute;left:-6%;right:-6%;bottom:18%;height:52%}
+.art .ridge i{position:absolute;bottom:0;display:block;
+  clip-path:polygon(50% 0,100% 100%,0 100%)}
+/* 雪山用「% 高度 + aspect-ratio」定尺寸：宽屏下插画只有 170px 高时，
+   原来写死的 150px 山体会被裁掉山顶（1280×800 上就是这样）。
+   改成跟随容器高度、宽度由 aspect-ratio 反推，任何高度下山形都不变形、不裁切。 */
+.art .ridge i:nth-child(1){left:1%;height:max(40%,5.6vw);aspect-ratio:1.29;
+  background:linear-gradient(180deg,#EAF4FF 0 15%,#4B739B 15%)}
+.art .ridge i:nth-child(2){left:19%;height:max(58%,8.2vw);aspect-ratio:1.28;
+  background:linear-gradient(180deg,#EAF4FF 0 13%,#3A5D82 13%)}
+.art .ridge i:nth-child(3){left:43%;height:max(49%,7vw);aspect-ratio:1.28;
+  background:linear-gradient(180deg,#EAF4FF 0 14%,#456A92 14%)}
+.art .ridge i:nth-child(4){left:62%;height:max(63%,9vw);aspect-ratio:1.28;
+  background:linear-gradient(180deg,#EAF4FF 0 12%,#33547A 12%)}
+.art .ridge i:nth-child(5){left:85%;height:max(37%,5.2vw);aspect-ratio:1.32;
+  background:linear-gradient(180deg,#EAF4FF 0 16%,#4B739B 16%)}
+/* 城前一排小兵：贴底、站在雾里，纯剪影（头 + 身分开画才读得出"人"）。
+   注意：这段样式前后被"重写雪山"的批量替换误删过两次 —— 改那一片 CSS 时别把它一起吃掉。 */
+.art .legion-row{position:absolute;left:50%;bottom:9%;transform:translateX(-50%);
+  display:flex;align-items:flex-end;gap:13px;z-index:5}
+.art .legion-row i{position:relative;display:block;width:7px;background:#16243A;
+  border-radius:2px 2px 1px 1px}
+.art .legion-row i::before{content:"";position:absolute;left:50%;bottom:100%;margin-bottom:2px;
+  width:6px;height:6px;border-radius:50%;background:#16243A;transform:translateX(-50%)}
+.art .legion-row i:nth-child(1){height:19px}
+.art .legion-row i:nth-child(2){height:23px}
+.art .legion-row i:nth-child(3){height:27px}
+.art .legion-row i:nth-child(4){height:23px}
+.art .legion-row i:nth-child(5){height:19px}
 .art .mist{position:absolute;inset:auto 0 0 0;height:34%;
   background:linear-gradient(180deg,rgba(234,244,255,0),rgba(234,244,255,.6) 62%,rgba(234,244,255,.92))}
 /* 城楼剪影 + 一点暖光，给冷调一个暖点 */
@@ -74,9 +88,9 @@ canvas{transition:opacity .22s linear}
 .art .keep::before{left:4px}.art .keep::after{right:4px}
 .art .keep b{position:absolute;left:50%;top:12px;width:9px;height:12px;transform:translateX(-50%);
   background:#F0B428;border-radius:2px;box-shadow:0 0 12px #F0B428}
-.art .flag{position:absolute;z-index:2;right:clamp(12px,2vmin,20px);bottom:15%;width:4px;height:44px;background:#2E4A6B;border-radius:2px}
-.art .flag::after{content:"";position:absolute;left:4px;top:0;width:0;height:0;
-  border-style:solid;border-width:7px 0 7px 22px;border-left-color:#5BC8F0;transform:translateY(-2px)}
+.art .flag{position:absolute;z-index:3;right:clamp(30px,8vmin,68px);bottom:26%;width:4px;height:46px;background:#2E4A6B;border-radius:2px}
+.art .flag::after{content:"";position:absolute;left:4px;top:0;width:24px;height:15px;
+  background:#5BC8F0;clip-path:polygon(0 0,100% 50%,0 100%)}
 .art .kicker{position:absolute;left:clamp(10px,1.8vmin,16px);top:clamp(8px,1.4vmin,13px);z-index:3;
   color:rgba(234,244,255,.82);font-size:clamp(9px,1.32vmin,11px);letter-spacing:.34em;font-weight:600}
 .title-main{text-align:center;flex:0 0 auto}
