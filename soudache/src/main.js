@@ -53,7 +53,7 @@ import { createPreview, PREVIEW3D, fitDistance } from './preview3d.js';
 import { VM_GLB, buildOperatorShowcase } from './models.js';
 import { installPerfHud } from './perf-hud.js';
 import * as Storage from './storage.js';
-import { autoEquip, applyPreset, QUICK_PRESETS } from './quickloadout.js';
+import { autoEquip, applyPreset, QUICK_PRESETS, planRestockLoadout } from './quickloadout.js';
 import { installGuard, frameError, resetFrameStreak, clearFatal } from './guard.js';
 import { applyMods, buy as purchaseUpgrade, checkBuy, getNode as getUpgradeNode } from './upgrades.js';
 import { applyWeaponMods, normalizeWeaponMods, computeEffectiveWeapon, attachmentOptions, loadoutModWeight, effectiveStatsPreview } from './gunbench.js';
@@ -2073,6 +2073,12 @@ function applySetMod(role, slot, modId) {
 
 const ui = createUI(uiRoot, {
   'goto-menu': () => go('menu'),
+  // 右键返回（ui.handleBack 在最内层面板都关完后落到这里）：与 Esc 语义一致。
+  // battle 无面板 → 暂停/恢复；其它屏 → 回主菜单。面板层已由 ui.handleBack 消费。
+  back: () => {
+    if (screen === 'battle') setPaused(!paused);
+    else if (screen !== 'menu') go('menu');
+  },
   'goto-loadout': () => {
     refreshLoadout();
     go('loadout');
@@ -2195,6 +2201,49 @@ const ui = createUI(uiRoot, {
     ui.renderLoadout(save);
     ui.toast(`${preset.name}方案已套用（${changed.length} 槽）`);
     audio.ui();
+  },
+  // C-2 一键补齐配装：preview 只算清单（ui 用它弹确认框），loadout 才真正扣款。
+  // 执行全程走现有 buy(id)（资金/声望/每日额度/库存/限购全在里面判），不另起扣钱逻辑。
+  'restock-preview': () => {
+    const todayStr = String(Storage.dailySeed());
+    const lv = Storage.repLevel((save.rep && save.rep.xp) || 0);
+    return planRestockLoadout(save.loadout, {
+      currency: save.currency,
+      remaining: (id) => shopRemaining(save, id, todayStr),
+      unlocked: (id) => lv >= (SHOP_TIER[id] || 1),
+    });
+  },
+  'restock-loadout': (plan) => {
+    if (!plan || !Array.isArray(plan.lines) || !plan.lines.length) return;
+    const before = save.currency;
+    const filled = [];
+    const skipped = [];
+    for (const line of plan.lines) {
+      let bought = 0;
+      for (let i = 0; i < line.qty; i += 1) {
+        const cur = save.currency;
+        buy(line.id); // 唯一交易入口：售罄/声望/资金不足时只 toast，不扣钱
+        if (save.currency < cur) bought += 1;
+        else { skipped.push(line.label); break; }
+      }
+      if (!bought) continue;
+      // 买进仓库后落槽：deploy 时会按 loadout 从 stash 扣，不会凭空发装备。
+      if (line.slot === 'ammo') {
+        const map = save.loadout.ammo || (save.loadout.ammo = {});
+        map[line.id] = (Number(map[line.id]) || 0) + bought;
+      } else {
+        save.loadout[line.slot] = line.id;
+        filled.push(line.slot);
+      }
+    }
+    normalizeLoadoutAmmo(save.loadout, WEAPONS);
+    Storage.saveGame(save);
+    ui.renderLoadout(save);
+    ui.renderShop(save);
+    const spent = before - save.currency;
+    const miss = skipped.length ? `，${skipped.length} 项因资金/额度跳过：${[...new Set(skipped)].join('、')}` : '';
+    ui.toast(`已补齐 ${filled.length} 槽 · 花费 ¥${spent.toLocaleString('en-US')}${miss}`, skipped.length ? 'warn' : 'info');
+    if (spent > 0) audio.cash();
   },
   'set-operator': (data) => {
     const op = getOperator(data.operator);

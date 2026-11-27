@@ -3142,7 +3142,7 @@ body { font-family: var(--df-sans); font-variant-numeric: tabular-nums; }
 .df-modal { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; background: rgba(3, 5, 7, .78); }
 .df-modal-card { width: min(420px, calc(100vw - 32px)); border: 1px solid var(--df-accent-a35); background: var(--df-bg); padding: 18px 20px; clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
 .df-modal-head { font: 600 14px var(--df-label); letter-spacing: .08em; color: var(--df-accent); }
-.df-modal-text { font-size: 13px; line-height: 1.6; color: var(--df-text); margin: 12px 0 8px; }
+.df-modal-text { font-size: 13px; line-height: 1.6; color: var(--df-text); margin: 12px 0 8px; white-space: pre-line; max-height: 46vh; overflow-y: auto; }
 .df-modal-note { font: 10px var(--df-mono); color: var(--df-dim); }
 .df-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .df-ctx-menu { position: fixed; z-index: 70; width: 178px; border: 1px solid var(--df-line); background: var(--df-bg); padding: 4px; }

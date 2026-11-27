@@ -86,6 +86,9 @@ export class Player {
     // P19 动作状态机：冲刺后抬枪锁、探头偏移、切枪计时。三者都只影响手感，不改数值表。
     this.sprintLock = 0;
     this.wasSprinting = false;
+    // 开火打断冲刺后必须松开 sprint 才能重新起跑，避免"边开火边按住 Shift"每帧
+    // 打断/重起的抖动弹射（松开前 sprint 输入被锁存）。
+    this.sprintRequireRelease = false;
     this.leanT = 0;
     this.leanInput = 0;
     this.switchTimer = 0;
@@ -680,7 +683,20 @@ export class Player {
     // 硬性超重：**不再禁止奔跑**，只是移速会按超重比例下降（减速，见下方 weightMul）。
     // 与超重减速同时生效 —— 玩家超重时"跑得慢但还能跑"，逃命手段依旧可用。
     // P19：冲刺判据收敛到 canSprint（含载具/疲惫/蹲伏/读条），不再各处手写取反。
-    const wantSprint = Boolean(input.sprint) && canSprint(this);
+    // 开火打断冲刺：按住开火（自动枪 input.fire / 半自动 input.firePressed）时立即停跑，
+    // 只留一段很短的抬枪收尾（sprintFireRaise），下一帧起就能出弹（<0.15s）。
+    // 体力不清零、不重置冷却，照常按下面的 sprinting=false 分支恢复。
+    const wantsFire = Boolean(input.fire) || Boolean(input.firePressed);
+    if (this.sprinting && wantsFire) {
+      this.sprinting = false;
+      this.sprintLock = COMBAT.sprintFireRaise || 0.10;
+      this.sprintRequireRelease = true;
+    }
+    // 松开**开火键**才解锁重新起跑（不是松开 sprint）：
+    // 玩家按住 Shift 跑、点一下左键开火 → 打断；松开左键后仍按着 Shift 就自动续跑。
+    // 一直按住开火时 wantsFire 恒真 → 不会重新起跑（避免边开火边跑的抖动弹射）。
+    if (!wantsFire) this.sprintRequireRelease = false;
+    const wantSprint = Boolean(input.sprint) && !this.sprintRequireRelease && canSprint(this);
     // 注意：冲刺可一直消耗到体力为 0（不再用 >1 的门槛提前截断），
     // 体力归零时进入 exhausted 锁定冲刺，直至恢复到 staminaExhaustRecovery 阈值才解除。
     this.sprinting = wantSprint && this.moving;

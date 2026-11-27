@@ -405,6 +405,7 @@ export function createUI(root, handlers, opts) {
           <h2>商店 MARKET</h2>
           <div class="head-right">
             <span class="coin" data-role="shop-currency"></span>
+            <button class="btn small" data-action="restock-loadout" title="按当前配装补齐空槽并补足弹药">一键补齐配装</button>
             <button class="btn ghost" data-action="goto-menu">返回</button>
           </div>
         </header>
@@ -534,6 +535,7 @@ export function createUI(root, handlers, opts) {
               <li><kbd>Alt</kbd>+<kbd>A</kbd><kbd>D</kbd> 左右探头（探头会牺牲精度）</li>
               <li><kbd>Shift</kbd> 冲刺（消耗体力，体力耗尽无法冲刺，静止快速恢复）</li>
               <li><kbd>1</kbd><kbd>2</kbd> 切换武器 · <kbd>Tab</kbd> 背包 · <kbd>Esc</kbd> 暂停</li>
+              <li><kbd>右键</kbd> 返回 / 关闭面板（未锁定时；战斗中锁定右键仍是开镜）</li>
               <li><kbd>V</kbd> 绳索速降（从高地快速下滑）</li>
               <li><kbd>F</kbd> 上车 / 下车</li>
               <li><kbd>G</kbd> 投掷战术道具 · <kbd>X</kbd> 终结技（干员技能见战前配置）</li>
@@ -2640,7 +2642,7 @@ export function createUI(root, handlers, opts) {
     if (!modal) { fn(data, target); return; }
     const titles = {
       buy: '确认购买', sell: '确认出售', 'sell-all': '确认一键出售', 'buy-listing': '确认本地报价',
-      'list-item': '确认委托出售',
+      'list-item': '确认委托出售', restock: '确认一键补齐配装',
     };
     const texts = {
       buy: `按军需处标价买入 1 件物资${data.label ? ` · ${data.label}` : ''}？`,
@@ -2652,7 +2654,9 @@ export function createUI(root, handlers, opts) {
     const title = q('confirm-title');
     const text = q('confirm-text');
     if (title) title.textContent = titles[action] || '确认操作';
-    if (text) text.textContent = texts[action] || '确认执行该操作？';
+    // restock 的清单由 planRestockLoadout 生成，逐行列出（含合计与资金不足警示），
+    // 复用同一个确认弹窗，不另起一套 UI。
+    if (text) text.textContent = (data && data.summary) || texts[action] || '确认执行该操作？';
     pendingConfirm = { action, data, target, fn };
     modal.classList.remove('hidden');
     const yes = root.querySelector('[data-action="confirm-yes"]');
@@ -2699,6 +2703,31 @@ export function createUI(root, handlers, opts) {
         const item = lastSave && lastSave.stash.items.find((i) => String(i.uid) === String(data.uid));
         closeStashMenu();
         if (item) renderStashDetail(item, lastSave);
+        return true;
+      }
+      case 'restock-loadout': {
+        // 清单由 main 的 preview 生成（它才持有 shopRemaining / 声望 / 存档真值）。
+        const plan = typeof handlers['restock-preview'] === 'function' ? handlers['restock-preview']() : null;
+        if (!plan) return true;
+        if (!plan.lines || !plan.lines.length) {
+          toast(plan && plan.missing && plan.missing.length ? '配装已满，但部分槽今日售罄 / 声望不足' : '配装已满，无需补齐');
+          return true;
+        }
+        const slotLabel = {
+          primary: '主武器', secondary: '副手', sidearm: '手枪', melee: '匕首',
+          helmet: '头盔', armor: '护甲', backpack: '背包', rig: '胸挂', ammo: '弹药',
+        };
+        const rows = plan.lines.map((l) => `${slotLabel[l.slot] || l.slot}：${l.label} ×${l.qty} · ${money(l.unitPrice * l.qty)}`);
+        const miss = (plan.missing || []).map((m) => `${slotLabel[m.slot] || m.slot}（${m.reason}）`);
+        const parts = [`补齐 ${plan.filled} 槽，合计 ${money(plan.total)}：`, ...rows];
+        if (miss.length) parts.push(`买不全：${miss.join('、')}`);
+        if (!plan.affordable) parts.push(`⚠ 资金不足：需 ${money(plan.total)}，当前 ${money(lastSave ? lastSave.currency : 0)}。确认后按顺序尽量买，买不起的会跳过。`);
+        openConfirm('restock', {
+          summary: parts.join('\n'),
+          plan,
+        }, target, () => {
+          if (typeof handlers['restock-loadout'] === 'function') handlers['restock-loadout'](plan);
+        });
         return true;
       }
       default: void target; return false;
@@ -2772,6 +2801,29 @@ export function createUI(root, handlers, opts) {
     if (ev.key !== 'Escape') return;
     closeStashMenu();
     if (pendingConfirm) closeConfirm();
+  });
+
+  /**
+   * 统一的「返回 / 关闭」处理（右键未锁定时调用，与 Esc 语义一致）。
+   * 按最内层优先出栈：确认弹窗 → 战利品 → 旧抽屉 → 背包 → 交给 main 处理屏幕级返回。
+   * 返回 true 表示已消费；main 的 back hook 负责 battle 暂停 / 非战斗屏回菜单。
+   */
+  function handleBack() {
+    if (pendingConfirm) { closeConfirm(); return true; }
+    closeStashMenu();
+    if (lootUI.isOpen()) { lootUI.close(); return true; }
+    if (!q('loot').classList.contains('hidden')) { closeLoot(); return true; }
+    if (!q('backpack').classList.contains('hidden')) { closeBackpack(); return true; }
+    if (typeof handlers.back === 'function') { handlers.back(); return true; }
+    return false;
+  }
+
+  // 右键 = 返回/关闭：仅在指针未锁定时生效（战斗中锁定右键仍是开镜，见 input.js）。
+  // 必须在 window 上监听，面板/DOM 元素都可能吞掉冒泡；nav 手势由 preventDefault 抑制。
+  window.addEventListener('mousedown', (ev) => {
+    if (ev.button !== 2) return;
+    if (window.SOUDACHE && window.SOUDACHE.input && window.SOUDACHE.input.locked) return;
+    if (handleBack()) ev.preventDefault();
   });
 
   /* ---------------- 事件委托 ---------------- */

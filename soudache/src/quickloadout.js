@@ -10,7 +10,8 @@
  *   - 不改动传入的 save/loadout/stash，返回新对象。
  */
 
-import { ITEMS, WEAPONS, ARMORS, BACKPACKS, RIGS, MELEE } from './config.js';
+import { ITEMS, WEAPONS, ARMORS, BACKPACKS, RIGS, MELEE, SHOP } from './config.js';
+import { resolveAmmoGrade, loadoutAmmoBoxes } from './ammo.js';
 
 /**
  * 槽位规则：与 ui.js 的 EQUIP_SLOTS.allowed 保持一致。
@@ -116,3 +117,73 @@ export const QUICK_PRESETS = Object.freeze([
   { id: 'stealth', name: '轻装', desc: '冲锋枪 + 轻甲，跑得更快', gear: { primary: 'smg', sidearm: 'pistol', armor: 'lv2', backpack: '', melee: 'knife' } },
   { id: 'heavy', name: '重装', desc: '机枪 + 高甲 + 大背包', gear: { primary: 'lmg', armor: 'lv3', helmet: 'helmet_lv3', backpack: 'bp_lv2' } },
 ]);
+
+/**
+ * 一键补齐配装：只产出购买清单，不扣钱、不落槽（这些交给 main 走现有 buy 链路）。
+ *
+ * 规则：
+ *   - 只补**空槽**（已有装备不换，避免"一键"把玩家配好的枪洗掉）。
+ *   - 每个空槽从商店可售、今日有额度、声望已解锁的候选里挑：
+ *     价格最低优先，同价按 scoreOf（防护/容量/价值）更高者优先 —— 即"最低可用 + 性价比最高"。
+ *   - 弹药补当前主武器口径到 2 盒（缺几盒买几盒），口径由 resolveAmmoGrade 决定。
+ *   - 不硬凑：买不起 / 售罄 / 未解锁的槽进 missing，由 UI 明确提示。
+ *
+ * @param {object} loadout 当前配装（只读）
+ * @param {object} ctx { currency, remaining(id), unlocked(id), ammoTarget? }
+ * @returns {{lines: Array<{id,qty,unitPrice,label,slot}>, total:number, missing:Array<{slot,reason}>, filled:number}}
+ */
+export function planRestockLoadout(loadout, ctx = {}) {
+  const lo = loadout || {};
+  const currency = Math.max(0, Number(ctx.currency) || 0);
+  const remaining = typeof ctx.remaining === 'function' ? ctx.remaining : () => 1;
+  const unlocked = typeof ctx.unlocked === 'function' ? ctx.unlocked : () => true;
+  const ammoTarget = Number.isFinite(ctx.ammoTarget) ? ctx.ammoTarget : 2;
+  const lines = [];
+  const missing = [];
+  let spent = 0;
+
+  const canBuy = (id) => {
+    const def = ITEMS[id];
+    return !!def && SHOP.items.includes(id) && remaining(id) > 0 && unlocked(id);
+  };
+  const addLine = (id, qty, slot) => {
+    const def = ITEMS[id];
+    const unitPrice = def && def.value;
+    if (!Number.isFinite(unitPrice) || qty <= 0) return;
+    lines.push({ id, qty, unitPrice, slot, label: def.name || id });
+    spent += unitPrice * qty;
+  };
+
+  for (const [slot, allowed] of Object.entries(SLOT_ALLOWED)) {
+    if (lo[slot] && lo[slot] !== 'none') continue; // 非空槽不动
+    // 候选：允许在该槽 + 商店可买；价格低优先，同价评分高优先
+    const candidates = allowed.filter(canBuy).sort((a, b) => {
+      const pa = ITEMS[a].value || 0; const pb = ITEMS[b].value || 0;
+      return pa - pb || scoreOf(b) - scoreOf(a) || a.localeCompare(b);
+    });
+    const pick = candidates[0];
+    if (!pick) {
+      // 区分"商店根本没这槽的货 / 售罄 / 声望不够"，给玩家明确原因
+      const anyInShop = allowed.some((id) => SHOP.items.includes(id));
+      const reason = !anyInShop ? '无货' : '售罄或声望不足';
+      missing.push({ slot, reason });
+      continue;
+    }
+    addLine(pick, 1, slot);
+  }
+
+  // 弹药：当前主武器口径补到 2 盒（只买差价内可承担的缺额）
+  const ammoId = resolveAmmoGrade(lo, 'primary');
+  if (ammoId && ITEMS[ammoId] && canBuy(ammoId)) {
+    const have = loadoutAmmoBoxes(lo, ammoId);
+    const need = Math.max(0, (ammoTarget - have));
+    if (need > 0) {
+      const room = Math.max(0, remaining(ammoId));
+      const qty = Math.min(need, room);
+      if (qty > 0) addLine(ammoId, qty, 'ammo');
+      if (qty < need) missing.push({ slot: 'ammo', reason: room <= 0 ? '今日售罄' : '额度不足' });
+    }
+  }
+
+  return { lines, total: spent, missing, filled: lines.filter((l) => l.slot !== 'ammo').length, affordable: spent <= currency };
+}

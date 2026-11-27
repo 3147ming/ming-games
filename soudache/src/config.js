@@ -1841,6 +1841,9 @@ export const COMBAT = {
   // 冲刺退出后必须先把枪抬起来才能开火；按武器大类分档，越重越慢。
   // 键与 combatstate.weaponClassOf 一一对应，缺档时回落 ar。
   sprintRaise: { pistol: 0.15, smg: 0.20, ar: 0.27, shotgun: 0.30, lmg: 0.42, sniper: 0.45 },
+  // 冲刺中按下开火 → 立即打断冲刺，只留这段「抬枪收尾」（秒）而不是整段 sprintRaise。
+  // 0.10s 让玩家手指按下即出弹（<0.15s），同时保留 raiseT 散布惩罚（第一发明显更散）。
+  sprintFireRaise: 0.10,
   // 切枪耗时：掏手枪最快（战术救场），主武器互换最慢。
   switchTime: { toPistol: 0.45, fromPistol: 0.55, primary: 0.80 },
   // 抬枪期间按开镜键可加速（举枪同时贴腮），但不会瞬间归零。
