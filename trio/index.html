@@ -50,6 +50,7 @@ body{background:radial-gradient(120% 80% at 50% -10%,#241a2e 0%,var(--ink) 62%);
 .panel .kv b{color:var(--paper);font-weight:500}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
+  <link rel="stylesheet" href="../shared/screen-fit.css">
 </head>
 <body>
 <div class="wrap">
@@ -221,5 +222,7 @@ $('btn-info-close').addEventListener('click',function(){$('info').hidden=true});
 deal(false);
 })();
 </script>
+<script>window.MG_SCREEN_FIT={"title":"炸金花","tagline":"三张牌 · 看牌与诈唬","accent":"#ff6b6b","bg":"#1a1116","mainWidth":"560px","cover":"../covers/trio-v2.png","tip":"看牌下注稳，不看牌半价赌信息差，果断比牌。","light":false,"left":[{"title":"牌型（大到小）","body":"豹子 → 同花顺 → 同花\n顺子 → 对子 → 单张\n同级先比关键点数，再比花色。"},{"title":"下注","body":"看牌后下注按面值；不看牌下注只需半价，但信息更少。任何人可发起比牌。"}],"right":[{"title":"对手","body":"休闲 / 老手两档 AI，会估算牌力并有一定诈唬概率，不会只按牌型死跟。"},{"title":"声明","body":"纯本地存档，无网络、无真钱。"}]};window.MG_SCREEN_FIT_FRIENDS=["metro-runner","tap","sudoku","slide","territory","trio","liar","doudizhu","wuyouk","tongxin","diner","paper-maze","sleeper","legion","brick","shanhai","warehouse-strike","grass-cutter","neon-rhythm"];</script>
+<script src="../shared/screen-fit.js"></script>
 </body>
 </html>

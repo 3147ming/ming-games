@@ -1,0 +1,40 @@
+/* ming-games 大厅宽屏观感升级
+ * 只影响桌面大厅布局与氛围；手机维持原样。零新增美术资源。
+ */
+@media (min-width: 1100px) {
+  html { background: #0b0a09; }
+  /* 复用已有三张牌封面做极淡氛围底，不生成新美术 */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: -12%;
+    z-index: 0;
+    pointer-events: none;
+    background: url('../covers/trio-v2.png') center / cover;
+    filter: blur(90px) saturate(1.25) brightness(.8);
+    opacity: .24;
+  }
+  .hub-head, .hub-shell, .hub-foot { position: relative; z-index: 1; }
+  body {
+    background:
+      radial-gradient(1100px 620px at 12% -8%, rgba(214, 171, 88, .15), transparent 70%),
+      radial-gradient(900px 560px at 88% 108%, rgba(168, 154, 230, .12), transparent 70%),
+      radial-gradient(120% 90% at 50% -10%, #1b1712 0%, #0b0a09 62%) !important;
+    background-attachment: fixed !important;
+  }
+  .hub-shell { width: min(94%, 1180px); gap: 20px; }
+  .hub-head { margin-bottom: 32px; }
+  .hub-title { font-size: 38px; letter-spacing: .26em; }
+  .hub-sub { font-size: 13px; letter-spacing: .38em; margin-top: 10px; }
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
+    gap: 20px;
+  }
+  .card { border-radius: 14px; }
+  .card-cover img { transition: transform .35s ease, filter .35s ease; }
+  .card:hover .card-cover img { transform: scale(1.04); filter: saturate(1.14); }
+  .hub-foot { width: min(94%, 1180px); max-width: none; margin-top: 34px; }
+  .hub-tools { gap: 14px; }
+  #q { min-height: 52px; font-size: 16px; }
+  .hub-actions { gap: 10px; }
+}

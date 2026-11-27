@@ -13,16 +13,18 @@
              document.querySelector('#stage') ||
              document.querySelector('main') ||
              document.body.firstElementChild;
-  if (!main || document.querySelector('.mg-fit-shell')) return;
+  if ((!main && !cfg.noWrap) || document.querySelector('.mg-fit-shell')) return;
 
   var body = document.body;
   body.classList.add('mg-fit-enabled');
+  if (cfg.noWrap) body.classList.add('mg-fit-nowrap');
   if (cfg.accent) body.style.setProperty('--mg-fit-accent', cfg.accent);
   if (cfg.bg) body.style.setProperty('--mg-fit-bg', cfg.bg);
   if (cfg.mainWidth) body.style.setProperty('--mg-fit-main', cfg.mainWidth);
   if (cfg.cover) body.style.setProperty('--mg-fit-cover', 'url("' + cfg.cover + '")');
   if (cfg.light) body.classList.add('mg-fit-light');
   if (cfg.overlayTop) body.classList.add('mg-fit-overlay-top');
+  if (cfg.bright) body.style.setProperty('--mg-fit-bright', cfg.bright);
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -44,8 +46,16 @@
   shell.appendChild(left);
   shell.appendChild(center);
   shell.appendChild(right);
-  main.parentNode.insertBefore(shell, main);
-  center.appendChild(main);
+  if (cfg.noWrap) {
+    /* 全屏 canvas / 自定义骨架：主容器留在原位，侧栏浮在两侧 */
+    var glow = el('div', 'mg-fit-center-glow');
+    body.insertBefore(glow, body.firstChild);
+    body.appendChild(left);
+    body.appendChild(right);
+  } else {
+    main.parentNode.insertBefore(shell, main);
+    center.appendChild(main);
+  }
 
   function card(title, bodyText, hero) {
     var c = el('section', 'mg-fit-card' + (hero ? ' mg-fit-card--hero' : ''));
@@ -67,8 +77,10 @@
     right.appendChild(card(item.title, item.body));
   });
 
-  /* 底部信息带：把原本空着的下半屏变成可用的导航与提示区 */
-  var dock = el('div', 'mg-fit-dock');
+  /* 底部信息带：把原本空着的下半屏变成可用的导航与提示区（noWrap 模式跳过，避免遮挡全屏画布） */
+  var dock = null;
+  if (!cfg.noDock) {
+  dock = el('div', 'mg-fit-dock');
   var dockTitle = el('div');
   dockTitle.appendChild(el('strong', null, cfg.title || '游戏'));
   dockTitle.appendChild(el('span', null, cfg.tagline || '本机存档 · 断网可玩'));
@@ -100,14 +112,15 @@
   });
   links.appendChild(focus);
   dock.appendChild(links);
-  shell.appendChild(dock);
+  if (cfg.noWrap) body.appendChild(dock); else shell.appendChild(dock);
+  }
 
   /* 暴露只读诊断接口，便于线上验证 */
   window.__MG_SCREEN_FIT__ = {
     ready: true,
     config: cfg,
     rails: { left: left.children.length, right: right.children.length },
-    dock: true,
+    dock: !!dock,
     immersive: function (on) { body.classList.toggle('mg-fit-immersive', !!on); }
   };
 })();

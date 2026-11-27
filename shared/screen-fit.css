@@ -27,7 +27,7 @@ body.mg-fit-enabled {
   background-image: var(--mg-fit-cover, none);
   background-size: cover;
   background-position: center;
-  filter: blur(74px) saturate(1.5) brightness(.98);
+  filter: blur(74px) saturate(1.5) brightness(calc(.98 * var(--mg-fit-bright, 1)));
   opacity: .86;
   transform: scale(1.08);
 }
@@ -212,6 +212,35 @@ body.mg-fit-light .mg-fit-dock span { color: rgba(40, 34, 24, .66); }
   color: #14110a;
 }
 .mg-fit-link--primary:hover { filter: brightness(1.08); }
+
+/* 不移动主容器的模式：全屏 canvas / 自定义骨架游戏，只在两侧加信息栏与聚光 */
+body.mg-fit-nowrap .mg-fit-rail { position: fixed; top: 14px; z-index: 60; }
+body.mg-fit-nowrap .mg-fit-rail--left { left: 16px; right: auto; }
+body.mg-fit-nowrap .mg-fit-rail--right { right: 16px; left: auto; }
+body.mg-fit-nowrap .mg-fit-center-glow {
+  position: fixed;
+  left: 50%; top: 48%;
+  width: min(72vw, 820px); height: min(68vh, 640px);
+  transform: translate(-50%, -50%);
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--mg-fit-accent) 16%, transparent), transparent 70%);
+  filter: blur(46px);
+}
+body.mg-fit-nowrap .mg-fit-dock {
+  position: fixed;
+  left: 50%; bottom: 14px;
+  z-index: 59;
+  transform: translateX(-50%);
+  width: min(94%, 900px);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr);
+  padding: 10px 14px;
+}
+@media (max-width: 1080px) {
+  body.mg-fit-nowrap .mg-fit-rail { display: none; }
+  body.mg-fit-nowrap .mg-fit-dock { display: none; }
+}
 
 /* 个别游戏（如纸上迷城）有全屏 boot 引导层，整个舞台需要提高到它之上 */
 body.mg-fit-overlay-top .mg-fit-shell { z-index: 60; }

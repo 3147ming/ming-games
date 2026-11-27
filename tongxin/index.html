@@ -40,6 +40,7 @@ body{background:radial-gradient(120% 85% at 50% -10%,#1e2a36 0%,var(--ink) 62%);
 .panel h2{margin:0 0 10px;font-size:18px;color:var(--gold)}.panel p{font-size:12px;line-height:1.85;color:var(--dim)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
+  <link rel="stylesheet" href="../shared/screen-fit.css">
 </head>
 <body>
 <div class="wrap">
@@ -216,5 +217,7 @@ $('info-close').addEventListener('click',function(){$('info').hidden=true});
 start();
 })();
 </script>
+<script>window.MG_SCREEN_FIT={"title":"同心","tagline":"找朋友 · 两两配合","accent":"#6fd48b","bg":"#0f1a17","mainWidth":"560px","cover":"../covers/tongxin.png","tip":"记住自己的队友，少压队友的牌，帮队友赢墩拿分。","light":false,"left":[{"title":"队伍","body":"四人各 13 张，分红蓝两队各两人。你只知道自己的队友，AI 需要靠出牌推断。"},{"title":"胜负","body":"一墩结束，赢墩者及其队友各得 1 分；先到 8 分的队伍获胜。"}],"right":[{"title":"配合要点","body":"少压队友的牌，多帮队友赢墩。这是默契与推断的博弈。"},{"title":"叫牌线索","body":"队友不压你的牌、对手急着压你，往往就是身份线索。红色与蓝色标记会一直显示在面板上。"}]};window.MG_SCREEN_FIT_FRIENDS=["metro-runner","tap","sudoku","slide","territory","trio","liar","doudizhu","wuyouk","tongxin","diner","paper-maze","sleeper","legion","brick","shanhai","warehouse-strike","grass-cutter","neon-rhythm"];</script>
+<script src="../shared/screen-fit.js"></script>
 </body>
 </html>
