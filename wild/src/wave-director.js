@@ -16,7 +16,7 @@ import {
   rollRarity, WAVE_WEAPONS, weaponGoodById, weaponBaseOf, WAVE_ITEMS, itemGoodById,
   charById, dangerOf, SHOP_SLOTS, SHOP_SELL_RATE, SHOP_WEAPON_CHANCE,
   SHOP_GUARANTEED_WEAPONS, shopPrice, rerollPrice, eliteWavesOf, CARRY_KEEP,
-  WAVE_GEM_MAGNET,
+  WAVE_GEM_MAGNET, killMaterialRate,
 } from './wave-config.js';
 
 const rarityIndex = (key) => Math.max(0, RARITIES.findIndex((r) => r.key === key));
@@ -339,20 +339,16 @@ export class WaveDirector {
       amount += bonus;
     }
     // 材料与经验同源但不同量纲：经验按原值走 gainXp（升级曲线不变）。
-    // ★ 阶段12 经济校准：0.4 → 分段 0.26 / 0.18 / 0.12。
-    //   实测 0.4 时一局 3.0~3.4 万材料、购买 46~53 次，商店四格几乎每波清空，
-    //   没有"这波买武器还是攒钱"的取舍。但一刀切压到 0.26 又会把**前 5 波**卡死
-    //   （开局 20s 只掉几百 xp，买不起第一把武器就进入死亡螺旋）。
-    //   所以按波数分段：前期宽松保起步，中期收紧，15 波后最紧 —— 后期材料多、
-    //   价格也高，正好把"要不要刷新"变成真正的选择。
-    // ★★ 阶段12 经济校准的真正关键：**不能逐次 max(1, round())**。
-    //   一颗普通宝石的 xp 是 1，折算 0.06 后 round → 0，再被 max(1) 抬到 1 ——
-    //   等于每颗宝石固定给 1 材料。实测一局拾取 33,579 次 ⟹ 下限就是 33,579 材料，
-    //   折算率怎么调都没用（余额永远 3 万+，商店只花掉一千多）。
+    // ★ 阶段14 经济校准：击杀材料从 1:1 改为按波分段递减（见 killMaterialRate）。
+    //   实测 1:1 时一局收入 13,021、只花 1,871、剩 11,150 —— 后期"钱多到没有取舍"。
+    //   但一刀切压低会把**前 4 波**卡死（历史教训：死亡螺旋 4 局死 3 局）。
+    //   故按波分段：1~4 波 1.0 保起步，5~8 波 0.7，9~12 波 0.5，13+ 波 0.35。
+    //   击杀数随波指数增长，即使 0.35 后期绝对收入仍足够买满商店，但不再泛滥。
+    // ★★ 阶段12 至今的关键修复：**不能逐次 max(1, round())**。
+    //   一颗普通宝石 xp=1，折算后 round → 0，再被 max(1) 抬到 1 ——
+    //   等于每颗宝石固定给 1 材料，折算率怎么调都没用（余额永远 1 万+）。
     //   改成浮点累加器：每次只加 `amount * rate` 的小数，攒够 1 才入账，零头保留。
-    // ★ Brotato 口径：材料 **1:1** 掉落（击杀数≈材料数），不再按比例折算。
-    //   之前每波收入靠"波末补贴 + 0.06 折算"硬凑，与击杀脱钩，玩家打得再好也就那么多。
-    const rate = 1;
+    const rate = killMaterialRate(this.wave);
     this.matFrac += amount * rate;
     // +1e-9：0.12 这类十进制小数在二进制里累加会出现 0.2+1.8=1.9999999999999998，
     // 直接 floor 会无缘无故少给 1 材料（测试②就抓到过）。

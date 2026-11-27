@@ -18,12 +18,14 @@ import {
   WAVE_WEAPONS,
   weaponGoodById,
   weaponBaseOf,
+  killMaterialRate,
 } from './wave-config.js';
 import { ArenaCore } from './arena.js';
 import { Rng } from './rng.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const arenaSrc = fs.readFileSync(path.join(here, 'arena.js'), 'utf8');
+const directorSrc = fs.readFileSync(path.join(here, 'wave-director.js'), 'utf8');
 
 test('固定竞技场尺寸与边界夹紧可用', () => {
   const h = waveArenaHalf();
@@ -60,6 +62,36 @@ test('波末经济与未拾取结转率按校准值执行', () => {
   assert.equal(waveEndMaterials(1, { harvest: 0 }), 32);
   assert.equal(waveEndMaterials(20, { harvest: 0 }), 222);
   assert.equal(CARRY_KEEP, 0.5, '漏捡仍全额结转会把商店经济冲垮');
+});
+
+test('击杀材料按波分段递减，避免后期材料洪水（阶段14经济校准）', () => {
+  // 前 4 波 1:1 保起步（历史教训：一刀切压低会死亡螺旋）
+  assert.equal(killMaterialRate(1), 1);
+  assert.equal(killMaterialRate(4), 1);
+  // 中期收紧
+  assert.equal(killMaterialRate(5), 0.7);
+  assert.equal(killMaterialRate(8), 0.7);
+  assert.equal(killMaterialRate(9), 0.5);
+  assert.equal(killMaterialRate(12), 0.5);
+  // 13 波后最紧
+  assert.equal(killMaterialRate(13), 0.35);
+  assert.equal(killMaterialRate(20), 0.35);
+  // 严格单调不增
+  let prev = Infinity;
+  for (let w = 1; w <= 20; w++) {
+    const r = killMaterialRate(w);
+    assert.ok(r <= prev, `第 ${w} 波折算率反弹：${r} > ${prev}`);
+    prev = r;
+  }
+});
+
+test('onPickup 使用分段折算率而非硬编码 1:1', () => {
+  assert.match(directorSrc, /killMaterialRate,?\s*\}?\s*from '\.\/wave-config\.js'/,
+    'wave-director 未 import killMaterialRate');
+  assert.match(directorSrc, /const rate = killMaterialRate\(this\.wave\)/,
+    'onPickup 仍在用固定折算率，材料洪水会回来');
+  assert.doesNotMatch(directorSrc, /const rate = 1;/,
+    '不应残留 1:1 固定折算率');
 });
 
 test('旧连续局的无界地图逻辑保留，波次模式才启用边界', () => {
