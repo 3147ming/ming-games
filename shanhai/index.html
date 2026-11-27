@@ -22,6 +22,14 @@
 </style>
 <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="../shared/screen-fit.css">
+  <!-- desktop-tune -->
+<style>
+/* 桌面端把卷轴舞台放大，减少深色留白（窄屏不受影响） */
+@media (min-width: 1100px) {
+  .app { width: min(74vw, 880px); }
+  .layout { max-width: 880px; }
+}
+</style>
 </head>
 <body>
   <div class="app" id="app">
