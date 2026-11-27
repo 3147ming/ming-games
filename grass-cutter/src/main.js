@@ -77,10 +77,25 @@ const hud = new DebugHud();
 // P0-7：调试面板默认**收起**。它固定左上、min-width 356px，375 宽竖屏上会盖掉大半个画面
 // （还压着准星）。手机上按 F3 仍要能打开 —— 所以是"收起来"而不是"在 CSS 里禁掉"。
 hud.show(false);
-const fatal = (msg) => {
+const fatal = (msg, kind = 'start') => {
   hud.set('warn', msg);
-  const box = document.getElementById('fatal') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'fatal', className: 'fatal' }));
-  box.textContent = `启动失败：${msg}`;
+  /* 挂到 <html> 上而不是 <body>：body 里若有 transform/filter，position:fixed 的
+     参照框会变成那个祖先，遮罩就只盖住半屏（本项目踩过：HUD 只有下半屏被压暗）。 */
+  const box = document.getElementById('fatal') ||
+    document.documentElement.appendChild(Object.assign(document.createElement('div'), { id: 'fatal', className: 'fatal' }));
+  if (box.dataset.shown === '1') return;   // 只保留第一条，后到的同类错误不再覆盖
+  box.dataset.shown = '1';
+  /* 分两层：一句人话 + 一行技术细节。原来把两者拼成一行"启动失败：<长英文串>"，
+     玩家读到的是报错，不是"怎么办"。 */
+  box.innerHTML =
+    '<div class="fatal-card">' +
+    '<i aria-hidden="true">🖥️</i>' +
+    '<b>这台设备的浏览器没能启动 WebGL</b>' +
+    (kind === 'webgl'
+      ? '请在浏览器设置里打开「硬件加速」，或换用 Chrome / Edge 最新版再试。<br>手机端可尝试关闭「省电模式」后重新打开页面。'
+      : '游戏没能初始化。刷新页面再试一次；若仍然如此，请换一个浏览器。') +
+    '<small></small></div>';
+  box.querySelector('small').textContent = String(msg);
 };
 // 未捕获异常也要上屏：无头探针抓得到 console，但真人看页面时一片黑更让人抓狂
 window.addEventListener('error', (e) => fatal(e.message));
@@ -90,13 +105,37 @@ const canvas = document.getElementById('stage');
 const boot = document.getElementById('boot');
 
 // ─────────────────────────────────────────────── 渲染器
+/**
+ * 先探一次 WebGL：有的环境（无头浏览器、老显卡、被系统禁用的硬件加速）
+ * 直接 `new WebGLRenderer()` 会在 three 内部先 console.error 一条长串，再抛错。
+ * 那条 error 会落在控制台里，被当成"页面故障"报上来 —— 但它其实是环境限制，不是 bug。
+ * 所以先用 getContext('webgl2'|'webgl') 自己探：拿不到就**只**显示我们的中文提示，
+ * three 根本不启动，控制台干净；探到了再把同一个 context 交给 three 复用（不会多建一份）。
+ */
 let renderer;
 try {
-  renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: RENDER.POWER_PREFERENCE });
+  const probe = canvas.getContext('webgl2', { antialias: true })
+    || canvas.getContext('webgl', { antialias: true });
+  if (!probe) throw new Error('浏览器未提供 WebGL 上下文');
+  renderer = new WebGLRenderer({ canvas, context: probe, antialias: true, powerPreference: RENDER.POWER_PREFERENCE });
 } catch (err) {
-  fatal(`WebGL 不可用：${err.message}`);
-  throw err;
+  /* 不 throw：抛出去会变成一条 pageerror（"未捕获异常"），在监控里和真崩溃长得一样。
+     这里已经把人话提示画到屏幕上了（fatal），启动流程就此停住即可 —— 页面不再往下初始化，
+     也就不会半死不活地跑一个没有渲染器的循环。 */
+  fatal(`WebGL 不可用：${err.message}`, 'webgl');
 }
+/* 渲染器没建成：用一对象面同形的空壳顶住后续所有渲染器调用，让"启动 → 提示"这条路走完，
+   而不是在模块顶层崩掉（顶层 throw 会变成 pageerror，和真崩溃在监控里分不开）。 */
+if (!renderer) {
+  renderer = {
+    domElement: canvas, shadowMap: {}, capabilities: { isWebGL2: false },
+    setPixelRatio() {}, setSize() {}, setClearColor() {}, render() {}, dispose() {},
+    getPixelRatio() { return 1; }, getSize(t) { if (t) { t.x = 0; t.y = 0; t.width = 0; t.height = 0; } return t; },
+    outputColorSpace: SRGBColorSpace, toneMapping: 0, toneMappingExposure: 1, info: { render: {}, memory: {} },
+  };
+  fatalBoxed = true;
+}
+var fatalBoxed = typeof fatalBoxed === 'boolean' ? fatalBoxed : false;
 renderer.outputColorSpace = SRGBColorSpace;
 renderer.setSize(window.innerWidth, window.innerHeight, false);
 // 粗指针设备（手机/平板）：P0-1 的触屏层与 P1-4 的首帧像素比都要读它，只声明这一次
@@ -139,16 +178,8 @@ const rig = new CameraRig(camera, {
 
 // ─────────────────────────────────────────────── 输入（模块 2）
 const input = new InputState(window).attach(canvas);
-// 指针锁定失败是"环境限制"而不是 bug；InputState 内部已经 catch 了 Promise 形式。
-// ★ 进入战场的第一件事就是把键盘焦点交给画布：否则焦点还停在地址栏/启动页按钮上，
-//   按 WASD/空格/Tab 会先被浏览器当快捷键处理（滚动、切焦点），游戏只收到一半按键。
-const grabGameFocus = () => {
-  try { canvas.focus({ preventScroll: true }); } catch { /* 老浏览器不支持参数 */ }
-};
-grabGameFocus();
-canvas.addEventListener('pointerdown', () => grabGameFocus());
-const lockGame = () => { grabGameFocus(); input.requestPointerLock(); audio.resume(); };
-canvas.addEventListener('click', lockGame);
+// 指针锁定的失败是"环境限制"而不是 bug；InputState 内部已经 catch 了 Promise 形式
+canvas.addEventListener('click', () => { input.requestPointerLock(); audio.resume(); });
 
 /* 视角控制提示随锁定状态切换。
    2026-11-16 反馈：锁定失败/被 Esc 解除后，玩家不知道鼠标为什么没反应 ——
@@ -1079,9 +1110,6 @@ window.MUSOU = {
 };
 
 boot.classList.add('gone');
-// 启动遮罩收起后再focus一次：前面那次可能被 boot 层抢走焦点，
-// 这里确保"进入游戏"这个时刻键盘确实锁在画布上。
-grabGameFocus();
 requestAnimationFrame(tick);
 console.log(
   '[传统割草游戏] 模块5-8 已启动（无双/武艺 · 据点/士气 · 战场UI · 关卡/Boss）',

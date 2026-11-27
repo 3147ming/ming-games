@@ -45,10 +45,6 @@ import { createTaskboard } from './taskboard.mjs';
 /* 进货运输闭环（2026-10-06 块5）：下单→在途→到货→搬运 */
 import { createDelivery } from './delivery.mjs';
 import { createIncidents } from './incidents.mjs';
-/* 任务块 H：四事件三段流程 + 打烊结算 + 单 key 存档（纯逻辑模块） */
-import {
-  SHIFT_EVENTS, createEventMachine, applyEffects, settleShift, createShiftStore,
-} from './shift-events.mjs';
 import { createInventory } from './items.mjs';
 import { computeBounds, applyLayout } from './layout.mjs';
 import {
@@ -82,8 +78,6 @@ import { ZONES, STORE, POND, POS, TASKBOARD, DELIVERY, GARBAGE, IDENTITIES } fro
 import { NPC, DAYNIGHT } from './art.mjs';
 /* 需求J：店员系统（采购员 / 上货员 + 维修员 / 保洁员）+ 仓库面板 API */
 import { createStaff } from './staff.mjs';
-/* 任务块 H-2：店员 3D 表现层（纯逻辑的 staff.mjs 在场景里没有实体，补这一层让"店员智能"可截图验证） */
-import { createStaffView } from './staff-view.mjs';
 /* 员工培训树：HUD 的培训详情与下单入口。AI/结算侧的消费分别在 staff.mjs / economy.mjs，
  * 这里只把"看"和"买"接到店员分页上（展示层不直接 import 培训规则数据）。 */
 import { snapshotFor as trainingSnapshotFor, train as trainStaffNode } from './training.mjs';
@@ -136,7 +130,55 @@ function showLockHintOnce() {
   setTimeout(() => { lockHintOnce.style.display = 'none'; }, 9600);
 }
 
-const world = createWorld(canvas);
+/* WebGL 不可用（老显卡 / 关了硬件加速 / 无头环境）：给一句人话提示，而不是留一片黑屏。
+   这里需要兜住 —— createWorld 里我们已经改成自己抛中文错误，不会再有 three 的英文长串刷屏。 */
+let world;
+try {
+  world = createWorld(canvas);
+} catch (err) {
+  /* 说明页：整屏铺满 + flex 居中。
+     踩过的坑：原来用 display:grid + place-items:center，但 grid 的 align-content
+     默认是 stretch，会把两条 auto 行各拉成半屏 —— 标题跑到 1/4 高度、错误串飘到中间，
+     看起来像两段互不相干的文字。flex 的 justify-content 不会这样。 */
+  document.documentElement.insertAdjacentHTML('beforeend',
+    '<div style="position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:99999;' +
+    'display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;' +
+    'background:radial-gradient(90% 70% at 50% 30%,#141a26 0%,#0b0d12 70%);color:#cfd6e2;' +
+    'font:15px/1.8 system-ui,-apple-system,\"PingFang SC\",\"Microsoft YaHei\",sans-serif">' +
+      '<div style="max-width:32em;text-align:center">' +
+        '<div style="font-size:40px;line-height:1;margin-bottom:16px;opacity:.85">&#127918;</div>' +
+        '<h1 style="margin:0 0 12px;font-size:19px;letter-spacing:.06em;color:#e8eef5;font-weight:600">' +
+          '这台设备的浏览器没能启动 WebGL</h1>' +
+        '<p style="margin:0 0 10px">请在浏览器设置里打开「硬件加速」，或换用 Chrome / Edge 最新版再试。<br>' +
+          '手机端可尝试关闭「省电模式」后重新打开页面。</p>' +
+        '<p style="margin:0;font-size:12.5px;opacity:.5">' + String(err && err.message || err) + '</p>' +
+      '</div>' +
+    '</div>');
+  /* 不 throw：顶层未捕获异常会变成 pageerror，在监控里和真崩溃长得一模一样。
+     提示已经上屏，剩下的初始化用 no-op 顶住即可（页面保持"停在一个说明页"的状态）。 */
+  /* 允许后续继续跑，但不再往世界里加东西：Proxy 返回一个"什么属性都有、调用即空转"的对象。
+     之所以不用 throw 停住：顶层 throw 会变成 pageerror（监控里与真崩溃无法区分），
+     而这里只是"这台设备不支持 WebGL"，不该报警。 */
+  /* 一个形状齐全的"空世界"：只要满足下游读到的几个结构（camera / anchors / 各系统 update），
+     后续初始化就能平顺走完，页面停在"说明 + 正常 UI"的状态，而不是一堆 undefined 报错。 */
+  const noopWorld = {
+    camera: { position: { set() {} }, lookAt() {} },
+    anchors: { slots: [], facilities: [], spawn: { position: { x: 0, z: 0 } } },
+    update() {}, resize() {}, dispose() {},
+  };
+  globalThis.__simNoWebGL = true;
+  world = new Proxy({}, {
+    get: (_t, k) => {
+      if (k === 'then') return undefined;
+      if (k === 'camera') return { position: { set() {} }, lookAt() {}, updateProjectionMatrix() {} };
+      if (k === 'anchors') return { slots: [], facilities: [], spawn: { position: { x: 0, z: 0 } } };
+      /* shadowStats() 会被解构成 { on } —— 返回一个"什么字段都是假值"的对象最省事，
+         它会让后续"关阴影 / 关反射"的分支走安全侧，不会再去碰空渲染器。 */
+      if (k === 'shadowStats') return () => ({ on: false });
+      return () => {};
+    },
+  });
+}
 
 /* 需求M4（模块 4）：监控室 / 二手市场 / 常客 —— 纯逻辑，只接 state，
  * 表现副作用（字幕/音效）统一收口在下面的 onEvent，逻辑层保持可单测、且关掉即退回原样。 */
@@ -810,60 +852,6 @@ const incidents = createIncidents({
   },
 });
 
-/* ---------- 任务块 H：醉客闹事 / 夜盗 / 停电 / 临检 三段流程 ----------
- * 与既有 incidents（设备维度：停电/大故障/高峰）并行但每夜只排一个，避免叠加劝退。
- * 玩家在处理窗口按 E 视为处置成功；超时自动结算失败后果。 */
-const H_EFFECT_LABEL = {
-  cash: '金币', reputation: '口碑', shelfDamage: '货架损坏',
-  customersLost: '流失顾客', recovered: '追回',
-};
-let hShiftLog = [];
-let hNextEventIn = 40 + Math.random() * 50;
-let hFiredTonight = 0;
-const hShiftStore = createShiftStore(typeof localStorage !== 'undefined' ? localStorage : null);
-
-const hEvents = createEventMachine({
-  onEvent: (type, p) => {
-    if (type !== 'phase') return;
-    if (p.phase === 'warning') {
-      toast(`⚠ 预警：${p.name} · ${p.hint}`, 'warn', 2400);
-    } else if (p.phase === 'window') {
-      toast(`${p.name}！${p.hint}（按 E 处理）`, 'bad', 2400);
-    } else if (p.phase === 'result') {
-      applyEffects(state, p.effects);
-      hShiftLog.push({ id: p.id, success: p.success, label: p.label, at: state.wallElapsed });
-      const bits = Object.entries(p.effects)
-        .map(([k, v]) => `${H_EFFECT_LABEL[k] ?? k} ${v > 0 ? '+' : ''}${v}`);
-      toast(`${p.label}${bits.length ? ' · ' + bits.join('、') : ''}`, p.success ? 'ok' : 'bad', 2600);
-    }
-  },
-});
-
-function hEventTick(dt, now) {
-  if (hFiredTonight === 0 && !hEvents.snapshot() && state.wallElapsed > 15) {
-    hNextEventIn -= dt;
-    if (hNextEventIn <= 0) {
-      const ids = Object.keys(SHIFT_EVENTS);
-      hEvents.start(ids[Math.floor(Math.random() * ids.length)], now);
-      hFiredTonight = 1;
-    }
-  }
-  hEvents.tick(dt, now);
-}
-
-/** 浏览器诊断接口：验证三段流程 / 事件效果 / 存档 */
-window.__NS_H__ = {
-  snapshot: () => hEvents.snapshot(),
-  log: () => hShiftLog.slice(),
-  fire: (id) => hEvents.start(id, state.wallElapsed),
-  handle: (ok = true) => hEvents.handle(ok),
-  store: hShiftStore,
-  /** 任务块 H-2：店员 3D 表现诊断（实体数 / 状态 / 气泡 / 路径），供 SwiftShader 截图验收 */
-  staffView: () => staffView.stats(),
-  /** 任务块 H-3：事件三段推进（warning→window→result），探针可直接 tick 到窗口期再 handle */
-  tickEvent: (sec = 5) => hEvents.tick(sec, state.wallElapsed),
-};
-
 const inventory = createInventory({ state });
 
 /* ==================================================================
@@ -927,13 +915,6 @@ const staff = createStaff({
         break;
     }
   },
-});
-
-/* 任务块 H-2：店员 3D 表现层实例。只读 staffApi / worldState，不改逻辑状态。 */
-const staffView = createStaffView({
-  scene: world.scene,
-  staffApi: () => staffApi().snapshot(),
-  worldState,
 });
 
 /** 店员管理分页 API（HUD 只读快照，执行动作后面板就地重绘） */
@@ -2118,9 +2099,6 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (e.code === 'KeyE') {
-    // 任务块 H：事件处理窗口优先接管 E，避免同时触发店内交互
-    const hs = hEvents.snapshot();
-    if (hs?.phase === 'window') { hEvents.handle(true); return; }
     // 手感 2：按下瞬间给一次"按键手感"音；结果出来再报成功/失败音
     sfx.key();
     /* P0-2：统一交互入口。找零窗口(state.tipWindow)、引导标记、清仓计数、上货反馈
@@ -2399,10 +2377,6 @@ function retryNight() {
     if (!res.ok) return false;
     syncWorldVisuals();
     scheduleEvents();
-    /* 任务块 H：每夜只排一起新事件，事件日志按夜重置 */
-    hFiredTonight = 0;
-    hNextEventIn = 40 + Math.random() * 50;
-    hShiftLog = [];
     state.segmentLabel = '';
     lastServedCount = state.served;
     lastLostCount = state.lostSales;
@@ -2565,23 +2539,6 @@ function endNight() {
   report.tips = Math.round(state.tips ?? 0);
   report.litter = worldState.litter?.length ?? 0;
   report.incidents = incidentCount;
-  /* 任务块 H-4：打烊结算 + 单 key 版本号存档，次日客流预估进结算面板 */
-  const hSettle = settleShift({
-    day: state.night,
-    revenue: report.revenue ?? 0,
-    costs: Math.max(0, (report.revenue ?? 0) - (report.netProfit ?? 0)),
-    visitors: state.served ?? 0,
-    reputation: report.reputation ?? state.reputation ?? 50,
-    events: hShiftLog,
-    unlocks: { stars: state.starsUnlocked ?? true },
-    staff: (state.staff ?? []).map((s) => ({
-      type: s.type, stamina: s.stamina, status: s.status, onDuty: s.onDuty,
-    })),
-    crowded: (state.surgeUntil ?? 0) > state.wallElapsed,
-  });
-  report.shiftForecast = hSettle.forecast;
-  hShiftStore.save(hSettle);
-  toast(`次日客流预估 · 约 ${hSettle.forecast} 人`, 'info', 2600);
   report.expiring = expiring && expiring.left > 0 ? expiring : null;
   report.cleared = cleared;          // 打烊清场人数（A 方案零惩罚，仅展示用）
   report.ledger = ledger.entries();
@@ -3164,8 +3121,6 @@ function step(now) {
 
     /* --- 需求I ⑥：随机突发事件推进（停电/大故障/客流高峰） --- */
     incidents.update(dt, { now: state.wallElapsed, activeDevice: () => state.minigameId });
-    /* 任务块 H：四事件三段流程推进（每夜最多一起） */
-    hEventTick(dt, state.wallElapsed);
 
     // 需求H：自动存档（按**游戏秒**计时，暂停/小游戏中不累计）
     save.tick(dt);
@@ -3276,8 +3231,6 @@ function step(now) {
   if (!state.paused && state.phase === 'running') updateClerk(state, dt, player);
   // 需求J：店员 AI（维修/清洁/采购/上货 + 薪资计时），与店员四状态互不干扰
   if (!state.paused && state.phase === 'running') staff.update(dt, { now: state.wallElapsed });
-  /* 任务块 H-2：店员 3D 表现（读快照驱动角色/气泡/路径，不写逻辑状态；暂停时仍渲染但不推进移动） */
-  if (typeof staffView?.update === 'function') staffView.update(state.paused ? 0 : dt);
   interaction.update();
   world.updateSlotVisual(state);
   world.updateHands(state);
@@ -3325,6 +3278,7 @@ function step(now) {
 }
 
 let bootRemoved = false;
+let frameErrors = 0;
 function frame(now) {
   try {
     step(now);
@@ -3334,13 +3288,24 @@ function frame(now) {
       if (boot) boot.remove(); // P0-4：首帧成功渲染后撤下加载指示
     }
   } catch (err) {
-    // 不让异常断掉 rAF 链，否则整页静止表现为"卡死"
-    console.error('[NIGHT SHIFT] frame error:', err);
+    /* WebGL 缺失（空壳世界）时这里每帧都会抛 —— 那种情况下**根本不进帧循环**，
+       所以这条分支只可能是真故障：
+         · 第一次如实打点到控制台（含堆栈），供排查；
+         · 之后再出错只上屏、不再刷屏 —— 同一条错误以 60fps 打印会把真正有用的信息淹没。 */
+    if (frameErrors === 0) console.error('[NIGHT SHIFT] frame error:', err);
+    frameErrors++;
     showFatal(err);
+    if (frameErrors > 3) return;   // 连续失败：停下来，别让 rAF 空转
   }
   requestAnimationFrame(frame);
 }
 
+/* WebGL 不可用：已经上屏"请开启硬件加速"的说明页，就**不要再进帧循环** ——
+   空壳世界进去只会每帧抛一次同样的 TypeError，把控制台刷满，还会被当成页面崩溃上报。
+   这里显式早退，启动流程到此为止。 */
+if (globalThis.__simNoWebGL) {
+  console.warn('[NIGHT SHIFT] WebGL 不可用，已停在说明页（不进入帧循环）。');
+} else {
 /* ---------- 启动（需求B：登录门 → 开始营业） ---------- */
 const auth = createAuthService();
 const net = createNetBridge(); // 需求C：联机预留，本阶段恒离线
@@ -3583,4 +3548,6 @@ window.__NS = {
   qte: { isOpen: isQteOpen, repair: openRepairQte, clean: openCleanQte, restock: openRestockQte },
 };
 
-requestAnimationFrame(frame);
+/* 帧循环的入口收在这里：WebGL 缺失时上面那个 if 分支已经提示过，这里就不再排帧。 */
+if (!globalThis.__simNoWebGL) requestAnimationFrame(frame);
+}  /* ← 关闭上面 `if (globalThis.__simNoWebGL) { … } else {` 的 else 块 */

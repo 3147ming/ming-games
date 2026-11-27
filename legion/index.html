@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="../shared/tokens.css">
 <style>
 :root{
-  --ac:#7ED9C3; --gold:#F0B428; --red:#FF5C6C; --paper:#EAF2FB; --dim:#8FA3BC; --line:#29384F;
+  --ac:#5BC8F0; --gold:#F0B428; --red:#FF5C6C; --paper:#EAF2FB; --dim:#8FA3BC; --line:#29384F;
   --bg:#0E1626; --snow:#E8F1FA; --panel:rgba(12,20,34,.94);
 }
 *{box-sizing:border-box}
@@ -25,6 +25,100 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 h1,h2,h3,p{margin:0}
 .center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2vmin;text-align:center}
 .big{font-size:clamp(22px,4vmin,36px);letter-spacing:.12em;color:#fff}
+/* ── 标题层版式（2026-11-27 复检：原先是"一大块居中文字 + 上下各半屏纯黑"，
+   首屏看起来像未完成。改成：插画主视觉 → 标题 → 关卡卡 → 统计 → 主按钮，五段垂直节奏，
+   让内容自然铺满整屏，同时保持"雪原夜袭"的冷调氛围。 ── */
+/* 标题层开启时把画布藏掉：两者都是满屏，画布会在四周露出 OG 蓝边（与插画冷调不统一）。 */
+#stage.booting canvas{opacity:0}
+canvas{transition:opacity .22s linear}
+.title-wrap{position:absolute;inset:0;display:flex;flex-direction:column;gap:clamp(8px,1.4vmin,14px);
+  padding:clamp(10px,2vmin,20px) clamp(10px,2.4vmin,24px);overflow-y:auto;overscroll-behavior:contain}
+.art{position:relative;flex:1 1 auto;min-height:clamp(150px,26vh,260px);max-height:clamp(190px,34vh,300px);border-radius:18px;overflow:hidden;
+  background:
+    radial-gradient(120% 80% at 50% 116%,rgba(126,217,195,.30),transparent 62%),
+    radial-gradient(90% 62% at 18% 8%,rgba(83,126,180,.42),transparent 66%),
+    linear-gradient(178deg,#16294A 0%,#1E3A5E 38%,#2C557F 66%,#3B6E96 82%,#C9DCEB 100%);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.09),0 18px 46px rgba(0,0,0,.5)}
+/* 极光：两条倾斜柔光带，只做一次 transform 错位，不动画（省电也符合 reduced-motion） */
+.art::before{content:"";position:absolute;left:-24%;top:-16%;width:150%;height:64%;
+  background:linear-gradient(102deg,transparent 8%,rgba(126,217,195,.34) 34%,rgba(126,217,195,0) 62%);
+  filter:blur(14px);transform:rotate(-7deg)}
+.art::after{content:"";position:absolute;left:0;right:0;bottom:0;height:46%;
+  background:radial-gradient(78% 120% at 50% 124%,#EAF4FF 0%,#D3E6F7 42%,rgba(211,230,247,0) 78%)}
+/* 三层剪影雪山：用 conic/linear 拼，不引外部图片，离线形态同样成立 */
+.art .ridge{position:absolute;left:-6%;right:-6%;bottom:22%;height:52%}
+.art .ridge i{position:absolute;bottom:0;width:0;height:0;border-style:solid;border-color:transparent}
+.art .ridge i:nth-child(1){left:2%;border-width:0 62px 96px;border-bottom-color:#4B739B}
+.art .ridge i:nth-child(2){left:20%;border-width:0 88px 138px;border-bottom-color:#3A5D82}
+.art .ridge i:nth-child(3){left:44%;border-width:0 74px 116px;border-bottom-color:#456A92}
+.art .ridge i:nth-child(4){left:64%;border-width:0 96px 150px;border-bottom-color:#33547A}
+.art .ridge i:nth-child(5){left:86%;border-width:0 58px 88px;border-bottom-color:#4B739B}
+/* 雪帽 */
+.art .ridge i::after{content:"";position:absolute;left:50%;top:0;width:0;height:0;
+  border-style:solid;border-width:0 15px 30px;border-bottom-color:rgba(234,244,255,.82);
+  transform:translate(-50%,3px)}
+.art .legion-row{position:absolute;left:50%;bottom:13%;transform:translateX(-50%);display:flex;gap:9px;z-index:2}
+.art .legion-row i{display:block;width:9px;border-radius:3px 3px 0 0;background:#1B2B40;
+  box-shadow:0 -4px 0 -1px #1B2B40}   /* 头顶那一点 = 头盔 */
+.art .legion-row i:nth-child(1){height:22px}
+.art .legion-row i:nth-child(2){height:26px}
+.art .legion-row i:nth-child(3){height:30px}
+.art .legion-row i:nth-child(4){height:26px}
+.art .legion-row i:nth-child(5){height:22px}
+.art .mist{position:absolute;inset:auto 0 0 0;height:34%;
+  background:linear-gradient(180deg,rgba(234,244,255,0),rgba(234,244,255,.6) 62%,rgba(234,244,255,.92))}
+/* 城楼剪影 + 一点暖光，给冷调一个暖点 */
+.art .keep{position:absolute;left:50%;bottom:16%;width:74px;height:58px;transform:translateX(-50%);
+  background:#25374F;border-radius:4px 4px 0 0;box-shadow:0 -8px 0 -2px #25374F,0 0 34px rgba(240,180,40,.5)}
+.art .keep::before,.art .keep::after{content:"";position:absolute;top:-22px;width:16px;height:22px;background:#25374F}
+.art .keep::before{left:4px}.art .keep::after{right:4px}
+.art .keep b{position:absolute;left:50%;top:12px;width:9px;height:12px;transform:translateX(-50%);
+  background:#F0B428;border-radius:2px;box-shadow:0 0 12px #F0B428}
+.art .flag{position:absolute;z-index:2;right:clamp(12px,2vmin,20px);bottom:15%;width:4px;height:44px;background:#2E4A6B;border-radius:2px}
+.art .flag::after{content:"";position:absolute;left:4px;top:0;width:0;height:0;
+  border-style:solid;border-width:7px 0 7px 22px;border-left-color:#5BC8F0;transform:translateY(-2px)}
+.art .kicker{position:absolute;left:clamp(10px,1.8vmin,16px);top:clamp(8px,1.4vmin,13px);z-index:3;
+  color:rgba(234,244,255,.82);font-size:clamp(9px,1.32vmin,11px);letter-spacing:.34em;font-weight:600}
+.title-main{text-align:center;flex:0 0 auto}
+/* 关卡卡在小屏挤不下时压缩内边距而不是撑出滚动条：整屏一页看完才算"成品"。 */
+/* 短屏（手机竖屏）：插画与关卡卡按比例收，但不收成"缩在顶部的一条" ——
+   靠 margin:auto 把整组内容在剩余空间里居中，上下留白对称就不会显得"内容没做完"。 */
+@media (max-height:900px){
+  .lvcard{padding:clamp(6px,1.2vmin,10px)}
+  .art{max-height:42vh;min-height:22vh}
+}
+.tt{margin:0;font-size:clamp(24px,4.4vmin,40px);letter-spacing:.16em;color:#fff;
+  text-shadow:0 2px 22px rgba(126,217,195,.36)}
+.tt-sub{margin:.5em 0 0;color:var(--dim);font-size:clamp(10px,1.5vmin,13px);line-height:1.7}
+.levels{gap:clamp(6px,1.2vmin,12px);width:min(100%,760px);margin:0 auto;flex:0 1 auto;min-height:0}
+.lvcard{padding:clamp(8px,1.5vmin,14px);display:flex;flex-direction:column;justify-content:center;min-height:0}
+/* 窄而高的屏（手机竖屏）：关卡卡如果拉满会变成 6 个空罐头，很难看。
+   所以改成"卡片按内容高度、字号放大一档"，只用 flex-grow 吃掉一点点剩余，
+   真正撑住版面的靠插画（给它更大的 max-height）。 */
+/* 窄屏：卡片收紧后剩下的竖向空间，由「标题块 + 点位小铭牌」吸收，
+   而不是把卡片拉成空罐头 —— 每张卡下方补一行"难度点位"，有内容也有装饰。 */
+@media (max-width:560px){
+  .title-main{padding:clamp(4px,1vmin,10px) 0}
+  /* 窄屏把卡片拉高只会变成空罐头 → 改为底部收口，剩余空间由插画吸收（见 serverPix 说明）。 */
+  .lvcard{padding:clamp(10px,1.7vmin,14px);flex:none;justify-content:flex-start}
+  .lvcard b{font-size:14px}
+  .lvcard small{font-size:11px}
+  .lvcard .stars{font-size:12px;margin-top:.4em}
+  .art{max-height:46vh;flex:1 1 auto}
+}
+/* 玩法速览三栏：把"这游戏怎么玩"从一段灰字变成可扫读的三块，顺便填充底部 */
+.tips{flex:0 0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(6px,1vmin,10px);
+  width:min(100%,760px);margin:0 auto}
+.tip{background:rgba(255,255,255,.045);border:1px solid rgba(126,217,195,.16);border-radius:12px;
+  padding:clamp(7px,1.3vmin,12px);display:flex;flex-direction:column;gap:.35em;text-align:left;min-width:0}
+.tip b{color:var(--ac);font-size:clamp(10px,1.5vmin,13px);letter-spacing:.06em}
+.tip span{color:#A9BDD4;font-size:clamp(9px,1.3vmin,12px);line-height:1.5}
+@media (max-width:420px){.tips{grid-template-columns:1fr}.tip{flex-direction:row;align-items:baseline;gap:.6em}}
+.title-foot{flex:0 0 auto;text-align:center;display:flex;flex-direction:column;gap:clamp(6px,1.2vmin,12px);
+  padding-bottom:clamp(2px,1vmin,10px)}
+.stat{color:var(--dim);font-size:clamp(10px,1.45vmin,13px)}
+#btn-start{min-width:clamp(140px,26vmin,200px);padding:1.3vmin 3vmin;font-size:clamp(13px,2.1vmin,17px);
+  box-shadow:0 8px 26px rgba(126,217,195,.34)}
 .btn{border:none;border-radius:10px;padding:1vmin 2.2vmin;font:inherit;font-weight:700;cursor:pointer;
   background:var(--ac);color:#08201C;font-size:clamp(12px,1.9vmin,16px)}
 .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--paper);font-weight:500}
@@ -40,6 +134,9 @@ h1,h2,h3,p{margin:0}
 .lvcard b{display:block;font-size:clamp(12px,1.9vmin,16px);margin-bottom:.6vmin}
 .lvcard small{color:var(--dim);font-size:clamp(9px,1.35vmin,12px);display:block;line-height:1.6}
 .lvcard .stars{color:var(--gold);letter-spacing:.1em;font-size:clamp(11px,1.6vmin,14px);margin-top:.6vmin;display:block}
+/* 难度点位：第 N 关 N 个点，低调但能一眼看出难度爬升 */
+.lvcard .pips{display:block;margin-top:.5em;font-size:9px;letter-spacing:.28em;color:rgba(126,217,195,.55)}
+.lvcard.on .pips{color:var(--ac)}
 /* 技能卡 */
 .cards{display:flex;gap:2vmin;flex-wrap:wrap;justify-content:center}
 .skill{width:clamp(140px,22vmin,210px);background:linear-gradient(180deg,#1B2C42,#0F1A29);border:1px solid var(--line);
@@ -62,20 +159,36 @@ h1,h2,h3,p{margin:0}
   font:inherit;font-size:clamp(10px,1.5vmin,13px);cursor:pointer;font-weight:700}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
-  <link rel="stylesheet" href="../shared/screen-fit.css">
 </head>
 <body>
 <div id="stage">
   <canvas id="cv" width="720" height="1600"></canvas>
 
   <div class="ov on" id="ov-title">
-    <div class="center">
-      <div class="big">雪 国 军 团</div>
-      <div class="hint">白天收割麦穗、招募英雄、建塔修墙；夜里六波怪冲城，撑到天亮。</div>
+    <div class="title-wrap">
+      <div class="art" id="title-art">
+        <span class="kicker">S N O W &nbsp; L E G I O N</span>
+        <div class="ridge"><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="legion-row"><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="keep"><b></b></div>
+        <div class="flag"></div>
+        <div class="mist"></div>
+      </div>
+      <div class="title-main">
+        <h1 class="tt">雪 国 军 团</h1>
+        <p class="tt-sub">白天收割麦穗、招募英雄、建塔修墙<br>夜里六波怪冲城，撑到天亮</p>
+      </div>
       <div class="levels" id="level-list"></div>
-      <div class="hint" id="title-stat"></div>
-      <div class="row"><button class="btn" id="btn-start">进入雪原</button>
-        <button class="btn ghost" id="btn-reset">清空存档</button></div>
+      <div class="tips">
+      <div class="tip"><b>☀ 白天</b><span>收割麦穗换金币，招募英雄、立箭塔</span></div>
+      <div class="tip"><b>☾ 夜里</b><span>六波怪冲城，守住主城到天亮</span></div>
+      <div class="tip"><b>❄ 六天</b><span>每天解锁新技能，一关一轮回</span></div>
+    </div>
+    <div class="title-foot">
+        <div class="stat" id="title-stat"></div>
+        <div class="row"><button class="btn" id="btn-start">进入雪原</button>
+          <button class="btn ghost" id="btn-reset">清空存档</button></div>
+      </div>
     </div>
   </div>
 
@@ -1279,8 +1392,11 @@ cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
  * ========================================================================= */
 var curLevel = 0;
 
-function hideAll() { ['ov-title', 'ov-skill', 'ov-end', 'ov-pause'].forEach(function (id) { el(id).classList.remove('on'); }); }
-function showOnly(id) { hideAll(); el(id).classList.add('on'); }
+/* 标题层是唯一使用 .title-wrap（不再吃 .center 的居中布局）的覆盖层，直接靠 ov 的 flex 排。
+   booting：标题层开启时隐藏画布 —— 否则满屏画布会在四周露出 OG 蓝边，与插画冷调打架。 */
+el('stage').classList.add('booting');
+function hideAll() { ['ov-title', 'ov-skill', 'ov-end', 'ov-pause'].forEach(function (id) { el(id).classList.remove('on'); }); el('stage').classList.remove('booting'); }
+function showOnly(id) { hideAll(); el(id).classList.add('on'); if (id === 'ov-title') el('stage').classList.add('booting'); }
 
 function renderLevels() {
   var box = el('level-list'); box.innerHTML = '';
@@ -1290,7 +1406,8 @@ function renderLevels() {
     var d = document.createElement('div');
     d.className = 'lvcard' + (i === curLevel ? ' on' : '') + (unlocked ? '' : ' lock');
     d.innerHTML = '<b>' + (i + 1) + '. ' + lv.name + '</b><small>' + (unlocked ? '6 天 6 夜' : '通关上一关解锁') + '</small>' +
-      '<span class="stars">' + (stars ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : '未通关') + '</span>';
+      '<span class="stars">' + (stars ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : '未通关') + '</span>' +
+      '<span class="pips" aria-hidden="true">' + '●'.repeat(i + 1) + '</span>';
     if (unlocked) d.onclick = function () { curLevel = i; renderLevels(); };
     box.appendChild(d);
   });
@@ -1405,7 +1522,5 @@ window.legion = {
 };
 })();
 </script>
-<script>window.MG_SCREEN_FIT={"title":"雪国军团","tagline":"SNOW LEGION · 六天六夜塔防","tip":"白天收割麦穗、招募英雄、建塔修墙；夜里六波怪冲城，撑到天亮。","accent":"#7fc8ff","bg":"#0e1724","mainWidth":"470px","cover":"../covers/legion.webp","left":[{"title":"白天","body":"收割麦穗、招募英雄、建塔修墙。资源分配决定夜晚的容错率。"},{"title":"夜晚","body":"六波敌人冲城。守住主城即可进入下一关，每关随机技能三选一。"}],"right":[{"title":"Roguelike","body":"关卡递进、技能随机构筑。进度保存在本机，断网可玩。"}]};window.MG_SCREEN_FIT_FRIENDS=["metro-runner","tap","sudoku","slide","territory","trio","liar","doudizhu","wuyouk","tongxin","diner","shanhai","paper-maze","sleeper","legion","brick"];</script>
-<script src="../shared/screen-fit.js"></script>
 </body>
 </html>

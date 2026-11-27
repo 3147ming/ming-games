@@ -166,9 +166,24 @@ for (const target of targets) {
         for (const w of layer.warnings) warnings.push(`assets: ${w}`);
       }
     }
+    /* 素材存在性内联：src 里的 @asset-present-begin/end 块，用 assets/present.json 覆写。
+       动机：预留素材（ranged / bossN）缺文件时，若代码仍去请求，浏览器网络层必留一条 404，
+       onerror 抹不掉。清单里没有的 id 直接不发请求 —— 零噪音，且补上文件后重建即自动生效。 */
+    let finalBundle = bundleCode;
+    const presentFile = path.join(srcDir, 'assets', 'present.json');
+    if (bundleCode.includes('@asset-present-begin') && fs.existsSync(presentFile)) {
+      const present = JSON.parse(fs.readFileSync(presentFile, 'utf8')).sprites || [];
+      const lit = '[' + present.map((s) => JSON.stringify(s)).join(', ') + ']';
+      finalBundle = bundleCode.replace(
+        /\/\/ @asset-present-begin[\s\S]*?\/\/ @asset-present-end/,
+        `let SPRITE_PRESENT = ${lit}; // 由 tools/assets-manifest.mjs 生成`
+      );
+      warnings.push(`assets: present.json 生效（${present.length} 个精灵入库）`);
+    }
+
     const html = renderGameHtml({
       gameDir: srcDir, gameId: g.id, entryRel: entry || '', renderer,
-      bundleCode, bridgeCode, label: `${target}:${g.id}`, vendorScripts, preludeCode
+      bundleCode: finalBundle, bridgeCode, label: `${target}:${g.id}`, vendorScripts, preludeCode
     });
     /* 体积护栏：classic 游戏的内联应用脚本若被剥离，产物会缩成只剩外壳的几十 KB。
        低于源 HTML 的 80% 直接失败，宁可拒绝出包也不发布空页。 */

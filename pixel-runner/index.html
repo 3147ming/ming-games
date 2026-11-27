@@ -40,6 +40,14 @@
     <button aria-label="设置" class="link-btn" id="btn-settings">⚙ 设置</button>
     <button class="link-btn" id="btn-help">? 玩法</button>
   </div>
+
+  <!-- 2026-11-27 复检：菜单在 430×932 下只占上半屏，下面 500px 纯黑。
+       补一块"操作速查"钉在底部：既填了空，也顺手解决了新玩家不知道"按住跳更高"。 -->
+  <div class="ctrl-hint" aria-hidden="true">
+    <div><b>点击 / 空格</b><span>跳跃，按住跳更高</span></div>
+    <div><b>↓ / 下滑</b><span>滑铲钻过矮洞</span></div>
+    <div><b>金币</b><span>攒够解锁新角色</span></div>
+  </div>
 </section>
 
 <!-- ============ 局内 HUD ============ -->
@@ -146,22 +154,6 @@
         <button data-c="tap">点击</button>
         <button data-c="slide">上滑</button>
         <button data-c="both">都行</button>
-      </div>
-    </label>
-
-    <label class="srow">
-      <span>角色</span>
-      <div class="seg" id="set-skin">
-        <button data-s="vector">矢量</button>
-        <button data-s="sprite">立绘</button>
-      </div>
-    </label>
-
-    <label class="srow">
-      <span>碰撞盒</span>
-      <div class="seg" id="set-debugbox">
-        <button data-d="off">隐藏</button>
-        <button data-d="on">显示</button>
       </div>
     </label>
 

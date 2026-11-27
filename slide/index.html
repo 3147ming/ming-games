@@ -11,7 +11,10 @@
 <style>
 :root{--ac:#c9a227;--bg:#1a1410;--paper:#ece6da;--dim:#a99b86;--line:#3d3226}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%}
-body{background:radial-gradient(120% 80% at 50% -10%,#2c2117 0%,var(--bg) 64%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:18px 12px calc(22px + env(safe-area-inset-bottom))}
+body{min-height:100vh;min-height:100dvh;background:radial-gradient(120% 80% at 50% -10%,#2c2117 0%,var(--bg) 64%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:18px 12px calc(22px + env(safe-area-inset-bottom))}
+/* 2026-11-27 复检：整块内容原先是"贴顶排完、下面留 200px 死黑"。
+   改成 wrap 用 auto 边距在剩余空间里居中 —— 上下留白对称，视觉上就是"一页"而不是"没排满"。 */
+.wrap{margin:auto 0}
 .wrap{width:min(100%,440px)}
 .head{text-align:center;margin-bottom:12px}.logo{font-size:24px;letter-spacing:.3em;margin:0;color:var(--ac)}.sub{font-size:11px;letter-spacing:.14em;color:var(--dim);margin:5px 0 0}
 .bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:12px;padding:9px 12px;margin-bottom:12px;font-size:12px}
@@ -19,7 +22,7 @@ body{background:radial-gradient(120% 80% at 50% -10%,#2c2117 0%,var(--bg) 64%);c
 .tabs{display:flex;gap:6px;justify-content:center;margin-bottom:10px}
 .tab{border:1px solid var(--line);border-radius:999px;padding:6px 14px;background:transparent;color:var(--dim);font:inherit;font-size:12px;cursor:pointer;min-height:36px}
 .tab.on{border-color:var(--ac);color:var(--ac);background:rgba(201,162,39,.1)}
-.board{display:grid;gap:5px;background:rgba(0,0,0,.3);border:2px solid var(--line);border-radius:12px;padding:6px;margin:0 auto;width:min(100%,340px);aspect-ratio:1}
+.board{display:grid;gap:5px;background:rgba(0,0,0,.3);border:2px solid var(--line);border-radius:12px;padding:6px;margin:0 auto;width:min(100%,420px);aspect-ratio:1}
 .tile{border:none;border-radius:8px;background:linear-gradient(160deg,#d9b547,#a4811e);color:#1a1408;font:inherit;font-size:clamp(20px,7vw,30px);font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .12s}
 .tile.empty{background:rgba(0,0,0,.35);cursor:default}
 .tile:active:not(.empty){transform:scale(.94)}
@@ -33,7 +36,6 @@ body{background:radial-gradient(120% 80% at 50% -10%,#2c2117 0%,var(--bg) 64%);c
 .done h2{margin:0 0 12px;color:var(--ac);letter-spacing:.1em}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
-  <link rel="stylesheet" href="../shared/screen-fit.css">
 </head>
 <body>
 <div class="wrap">
@@ -109,7 +111,5 @@ $('info-close').addEventListener('click',function(){$('info').hidden=true});
 newGame(false);
 })();
 </script>
-<script>window.MG_SCREEN_FIT={"title":"华容道","tagline":"SLIDE · 最少步数挑战","accent":"#f3c14b","bg":"#17130f","mainWidth":"520px","cover":"../covers/slide-v2.png","tip":"把方块滑进空格，按顺序排好数字，空格留在右下角。","light":false,"left":[{"title":"玩法","body":"点数字方块把它滑进空格，把 1 ~ n²-1 按顺序排列、空格留在右下角。"},{"title":"模式","body":"3×3 入门 / 4×4 挑战\n每日局按日期固定盘面\n撤销可回退上一步"}],"right":[{"title":"目标","body":"步数越少越好。最佳步数与胜局数保存在本机，可反复挑战自己的纪录。"},{"title":"每日挑战","body":"每天一道固定盘面，同一天所有人的起点一致。适合和朋友比拼最少步数。"}]};window.MG_SCREEN_FIT_FRIENDS=["metro-runner","tap","sudoku","slide","territory","trio","liar","doudizhu","wuyouk","tongxin"];</script>
-<script src="../shared/screen-fit.js"></script>
 </body>
 </html>

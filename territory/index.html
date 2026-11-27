@@ -11,12 +11,13 @@
 <style>
 :root{--ac:#a89ae6;--bg:#141026;--paper:#ece9f7;--dim:#9a92b8;--line:#332a52;--me:#a89ae6;--ai:#e0736b}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%}
-body{background:radial-gradient(120% 80% at 50% -10%,#241a42 0%,var(--bg) 64%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:16px 12px calc(20px + env(safe-area-inset-bottom))}
-.wrap{width:min(100%,440px)}
+body{min-height:100vh;min-height:100dvh;background:radial-gradient(120% 80% at 50% -10%,#241a42 0%,var(--bg) 64%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:16px 12px calc(20px + env(safe-area-inset-bottom))}
+.wrap{width:min(100%,440px);margin:auto 0}
+/* 2026-11-27 复检：棋盘 360px + 上下各 200px 死黑。整组改为在剩余高度里居中，棋盘放宽一档。 */
 .head{text-align:center;margin-bottom:10px}.logo{font-size:23px;letter-spacing:.24em;margin:0;color:var(--ac)}.sub{font-size:10px;letter-spacing:.14em;color:var(--dim);margin:4px 0 0}
 .bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:12px;padding:9px 12px;margin-bottom:10px;font-size:12px}
 .score{display:flex;gap:12px;align-items:center}.me b{color:var(--me);font-size:18px}.ai b{color:var(--ai);font-size:18px}
-.board{display:grid;gap:3px;background:#241c3d;border:2px solid var(--line);border-radius:12px;padding:4px;margin:0 auto;width:min(100%,360px);aspect-ratio:1}
+.board{display:grid;gap:3px;background:#241c3d;border:2px solid var(--line);border-radius:12px;padding:4px;margin:0 auto;width:min(100%,420px);aspect-ratio:1}
 .cell{background:#1b1633;border:none;border-radius:6px;cursor:pointer;position:relative;min-width:0;min-height:0;padding:0}
 .cell:hover{background:#2a2249}
 .cell .disc{position:absolute;inset:14%;border-radius:50%;transition:transform .2s;display:flex;align-items:center;justify-content:center}.cell .disc svg{width:58%;height:58%;color:#241a42}
@@ -36,7 +37,6 @@ body{background:radial-gradient(120% 80% at 50% -10%,#241a42 0%,var(--bg) 64%);c
 .overlay h2{margin:0 0 10px;color:var(--ac);letter-spacing:.1em;font-size:19px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
-  <link rel="stylesheet" href="../shared/screen-fit.css">
 </head>
 <body>
 <div class="wrap">
@@ -256,7 +256,5 @@ $('over-btn').addEventListener('click',function(){start(false)});
 start(false);
 })();
 </script>
-<script>window.MG_SCREEN_FIT={"title":"占位棋","tagline":"TERRITORY · 包围翻转","accent":"#a97bff","bg":"#140f24","mainWidth":"520px","cover":"../covers/territory-v2.png","tip":"落子包围对手棋子即可翻色，角和边是稳固据点。","light":false,"left":[{"title":"规则","body":"你执紫棋先手。落子后包围对手的棋子会全部翻转为你的颜色。"},{"title":"AI 档位","body":"入门 · 棋手 · 老练\n三档思考深度，逐步提升压迫感。"}],"right":[{"title":"技巧","body":"角与边更难被翻转，是稳定据点；中央棋子流动性强，适合做包围跳板。"},{"title":"节奏","body":"先占角、再连边，等对手阵型散开后从中央切入。每日局同样固定开局。"}]};window.MG_SCREEN_FIT_FRIENDS=["metro-runner","tap","sudoku","slide","territory","trio","liar","doudizhu","wuyouk","tongxin"];</script>
-<script src="../shared/screen-fit.js"></script>
 </body>
 </html>

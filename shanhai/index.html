@@ -21,15 +21,6 @@
 }
 </style>
 <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="../shared/screen-fit.css">
-  <!-- desktop-tune -->
-<style>
-/* 桌面端把卷轴舞台放大，减少深色留白（窄屏不受影响） */
-@media (min-width: 1100px) {
-  .app { width: min(74vw, 880px); }
-  .layout { max-width: 880px; }
-}
-</style>
 </head>
 <body>
   <div class="app" id="app">
@@ -43,8 +34,6 @@
       </div>
       <nav class="masthead__actions" aria-label="对局操作" role="navigation">
         <button aria-label="棋艺对局" class="btn btn--ghost btn--small" id="open-chess" type="button">棋艺</button>
-        <button aria-label="查看规则" class="btn btn--ghost btn--small" id="open-rules" type="button">规则</button>
-        <button aria-label="民间棋" class="btn btn--ghost btn--small" id="open-folk" type="button">民间棋</button>
         <button aria-label="选择关卡" class="btn btn--ghost btn--small" id="pick-stage" type="button">择卷</button>
         <button aria-label="重开关卡" class="btn btn--ghost btn--small" id="restart-stage" type="button" disabled>重开</button>
       </nav>
@@ -119,6 +108,13 @@
       </aside>
     </main>
 
+    <div class="scene" aria-hidden="true">
+      <span class="scene__sun"></span>
+      <span class="scene__ridge scene__ridge--far"></span>
+      <span class="scene__ridge scene__ridge--near"></span>
+      <span class="scene__birds">ᐧ ᐧ ᐧ</span>
+    </div>
+
     <footer class="footline" role="contentinfo">
       <span>纯静态 · 零依赖</span>
       <span id="save-status">存档 v1 · 本地</span>
@@ -129,13 +125,35 @@
 
   <section class="screen" id="stage-screen" role="dialog" aria-modal="true" aria-labelledby="stage-screen-title">
     <div class="screen__panel stage-select">
-      <p class="eyebrow">SHAN HAI · SHI YI</p>
-      <div class="hero-mark" aria-hidden="true">拾</div>
-      <h2 id="stage-screen-title">山海拾遗</h2>
-      <p class="hero-sub">八荒有遗，拾而为卷</p>
-      <p class="hero-copy">墨色为野，石青为山，朱砂为火。三步之内见胜负，一纸之间藏山海。</p>
-      <button class="btn btn--ghost" id="open-chess-stage" type="button">另开 · 棋艺（象棋 / 五子棋 / 跳棋 / 暗棋 / 翻棋）</button>
-      <div class="stage-list" id="stage-list" aria-label="选择关卡"></div>
+      <!-- 2026-11-27 复检：原首屏是「居中竖排的窄卡片 + 两张大关卡卡」，
+           1280×800 下整块只有 400px 宽、四周大片墨黑，且卡内小字被压叠。
+           改成「纸卷横幅 + 左右分栏」：左为卷首题记，右为关卡列，宽度放开到 880px。 -->
+      <header class="scroll-head">
+        <div class="hero-mark" aria-hidden="true">拾</div>
+        <div class="scroll-head__text">
+          <p class="eyebrow">SHAN HAI · SHI YI</p>
+          <h2 id="stage-screen-title">山海拾遗</h2>
+          <p class="hero-sub">八荒有遗，拾而为卷</p>
+        </div>
+        <span class="scroll-head__seal" aria-hidden="true">残<br>卷</span>
+      </header>
+      <div class="scroll-body">
+        <div class="scroll-intro">
+          <p class="hero-copy">墨色为野，石青为山，朱砂为火。三步之内见胜负，一纸之间藏山海。</p>
+          <ul class="intro-points">
+            <li><b>剑</b>克弓 · <b>弓</b>克术 · <b>术</b>克剑，克制 ×1.3</li>
+            <li>林地守势、山地费步、水泽断绝</li>
+            <li>每卷三步必胜，评 S 需不损一兵</li>
+          </ul>
+          <button class="btn btn--ghost" id="open-chess-stage" type="button">另开 · 棋艺（象棋 / 五子棋 / 跳棋 / 暗棋 / 翻棋）</button>
+        </div>
+        <div class="stage-list" id="stage-list" aria-label="选择关卡"></div>
+      </div>
+      <div class="scroll-footnote" id="scroll-footnote">
+        <div><b id="fn-stages">0 / 2</b><span>已破卷数</span></div>
+        <div><b id="fn-best">—</b><span>最高评级</span></div>
+        <div><b id="fn-chess">5</b><span>棋艺可选</span></div>
+      </div>
       <div class="screen__foot">
         <span class="fineprint">进度只存在此设备 · 存档版本 v1</span>
         <button class="btn btn--ghost btn--small" id="stage-close" type="button" hidden>继续此卷</button>
@@ -221,15 +239,6 @@ window.addEventListener('unhandledrejection', function(e) {
   <script defer src="./src/chess-render.mjs"></script>
   <script defer src="./src/chess-ui.mjs"></script>
 
-  <!-- 规则页 / 民间棋入口 -->
-  <script>
-  (function(){
-    var r=document.getElementById('open-rules'),f=document.getElementById('open-folk');
-    if(r) r.addEventListener('click',function(){ location.href='./rules.html'; });
-    if(f) f.addEventListener('click',function(){ location.href='./folk.html'; });
-  })();
-  </script>
-
 <!-- PWA：Service Worker（离线可用 / 可安装到主屏） -->
 <script>
 if ('serviceWorker' in navigator) {
@@ -238,7 +247,5 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
-<script>window.MG_SCREEN_FIT={"title":"山海拾遗","tagline":"残卷战棋 · 山海经主题","tip":"点选我方单位查看可移动格，用地形与兵种克制取胜。","accent":"#c98a4b","bg":"#101611","noWrap":true,"bright":1.25,"cover":"../covers/shanhai.png","left":[{"title":"地形","body":"平地无加成\n林地 防↑\n山地 移×2\n水泽 阻挡通行"},{"title":"兵势克制","body":"剑克弓 · 弓克术 · 术克剑\n克制 ×1.3，被克 ×0.8。"}],"right":[{"title":"卷册","body":"多卷残卷可选，棋盘与敌方配置各异。存档只存在此设备。"},{"title":"棋艺","body":"另有象棋 / 五子棋 / 跳棋 / 暗棋 / 翻棋，可在页内切换。"}]};window.MG_SCREEN_FIT_FRIENDS=["metro-runner","tap","sudoku","slide","territory","trio","liar","doudizhu","wuyouk","tongxin","diner","paper-maze","sleeper","legion","brick","shanhai","warehouse-strike","grass-cutter","neon-rhythm"];</script>
-<script src="../shared/screen-fit.js"></script>
 </body>
 </html>

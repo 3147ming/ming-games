@@ -109,7 +109,11 @@ h1,h2,h3,p{margin:0}
 .tag{font-size:clamp(9px,1.3vmin,12px);border:1px solid var(--line);border-radius:6px;padding:.3vmin .8vmin;color:var(--dim)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media (max-aspect-ratio:1/1){
-  .menu{grid-template-columns:1fr;grid-template-rows:auto 1fr auto}
+  /* ★ 2026-11-27 复检：行模板写成 auto 1fr auto，而三个子项靠 order 重排
+     （hero=1 / tabs=2 / side=3）—— auto-placement 按 order 顺序落格，
+     结果「页签栏」正好落进 1fr 那一行，被拉伸成 700px 高的五根空柱子。
+     把 1fr 让给 hero（插画），页签与关卡条各自 auto 即可。 */
+  .menu{grid-template-columns:1fr;grid-template-rows:1fr auto auto}
   .tabs{flex-direction:row;padding:1.4vmin;order:2}
   .tab{writing-mode:horizontal-tb;flex:1;padding:1vmin .4vmin;letter-spacing:.1em}
   .side{flex-direction:row;overflow-x:auto;padding:1.4vmin;order:3}

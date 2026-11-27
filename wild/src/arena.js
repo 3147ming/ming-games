@@ -1154,6 +1154,13 @@ const SPRITE_FILE = {
 // Boss 立绘也放这里：老设备/离线圈缺文件时静默回退程序化剪影，不留 404 噪音。
 const OPTIONAL_SPRITES = new Set(['ranged', 'boss1', 'boss2', 'boss3', 'boss4', 'boss5']);
 
+// 构建时由 tools/build.mjs 用 assets/present.json 覆盖（见文件末尾的 __SPRITE_PRESENT__ 标记）。
+// 语义：assets/ 下**真实存在**的精灵 id。默认值 = 非可选素材（它们本来就必须在）；
+// 不在这个数组里的 id 连 <img> 都不建 —— 不发请求，就不会有 404 噪音。
+// @asset-present-begin
+let SPRITE_PRESENT = Object.keys(SPRITE_FILE).filter((id) => !OPTIONAL_SPRITES.has(id));
+// @asset-present-end
+
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 // 刻意用 sqrt 而不是 Math.hypot —— hypot 为防溢出做了额外分支，实测慢 5~10 倍。
@@ -4657,6 +4664,12 @@ export class Arena {
     // 未加载完或加载失败 → 渲染时回退剪影（见 _drawEntity）。
     this._imgs = {};
     this._imgFailed = {};
+    // ★ 2026-11-27 复检：预加载必须在**构造期**发起（这里），不能等到 start()。
+    //   原因：可选素材（ranged / bossN）要走一段 fetch 探测，探测是异步的；如果等到
+    //   start() 才发起，用户点「进入荒野」→ 这一瞬间才发出请求 → 网络面板里那条 404
+    //   就恰好落在开局动画上，看起来像"开局报错"。放到构造期，探测与标题页同帧启动，
+    //   等玩家真正进局时它早就静默结束了。
+    this._preloadAssets();    // 阶段 3：图片异步加载；加载完前渲染层自动回退剪影
     this._whiteMask = {};   // id → 白闪蒙版离屏 canvas（死亡闪白用，只烘焙一次）
     this._eliteMask = {};   // id → 精英红蒙版离屏 canvas（"颜色更红"，同样只烘焙一次）
     this._skinMasks = {};   // 阶段 6-2：皮肤 id → 英雄色调蒙版离屏 canvas（只烘焙一次）
@@ -4895,7 +4908,6 @@ export class Arena {
     // 阶段 8-2：原「主动技能：端游空格/Q/E + 手游点技能槽」两条入口已一起删除。
 
     this.last = performance.now();
-    this._preloadAssets();    // 阶段 3：图片异步加载；加载完前渲染层自动回退剪影
     this.raf = requestAnimationFrame((t) => this._loop(t));
   }
 
@@ -4908,14 +4920,19 @@ export class Arena {
       let url;
       try { url = new URL('assets/' + SPRITE_FILE[id], document.baseURI).href; }
       catch { this._imgFailed[id] = true; continue; }
-      if (OPTIONAL_SPRITES.has(id)) {
-        // 可选素材：先探一次，文件在就正常加载，文件不在就**当作加载失败**（→ 用剪影）。
-        fetch(url, { method: 'HEAD' })
-          .then((r) => { if (r.ok) this._loadSprite(id, url); else this._imgFailed[id] = true; })
-          .catch(() => { this._imgFailed[id] = true; });
-      } else {
-        this._loadSprite(id, url);
-      }
+      // ★ 2026-11-26 复检：这里踩过两次坑，记下来免得再走一遍 ——
+      //   ① 原先用 `fetch(HEAD)` 探测可选素材：静态服务器普遍不实现 HEAD → 404，
+      //      探测器本身成了噪音源（正是本函数注释里说的"自己给自己挖坑"）；
+      //   ② 改成 `fetch(GET)` 探测完再 `<img>` 二次加载：请求翻倍，控制台仍然报 404 ——
+      //      因为**静态站点的 404 由浏览器网络层记一条 console error**，和用 fetch 还是
+      //      Image 无关，onerror / .catch 只能"处理"失败，抹不掉那条记录。
+      //   结论：只要去请求一个不存在的文件，控制台就一定会响。要真正零噪音，只能**不发请求**。
+      //   机制改为「清单式入库」：assets/present.json 由 `node tools/assets-manifest.mjs`
+      //   按 assets/ 实际文件生成，构建时内联成 SPRITE_PRESENT。缺文件 → 连 <img> 都不建，
+      //   直接 _imgFailed[id]=true 走剪影。以后把 ranged.png 丢进 assets/ 跑一次清单脚本，
+      //   它会自动出现在页面上，不需要改这行代码。
+      if (!SPRITE_PRESENT.includes(id)) { this._imgFailed[id] = true; continue; }
+      this._loadSprite(id, url);
     }
   }
 

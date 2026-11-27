@@ -66,6 +66,7 @@
       'stage-close', 'result-screen', 'result-retry', 'result-next', 'result-back',
       'result-stamp', 'result-kicker', 'result-title', 'result-rating', 'result-rounds',
       'result-hp', 'result-kills', 'result-note', 'toast',
+      'fn-stages', 'fn-best',
     ];
     for (const id of ids) dom[id] = document.getElementById(id);
     dom.resultPanel = dom['result-screen'].querySelector('.result-panel');
@@ -205,6 +206,17 @@
         </button>
       `;
     }).join('');
+
+    /* 首屏底条的三个数字：已破卷数 / 最高评级 / 棋艺可选数。
+       评级按 S>A>B>C 排序取最好 —— 直接比字符串会把 'C' 判成最高。 */
+    const RANK = { S: 4, A: 3, B: 2, C: 1 };
+    const cleared = Maps.STAGES.filter((st) => save.cleared[st.id]);
+    const best = cleared.reduce((acc, st) => {
+      const r = save.cleared[st.id].bestRating;
+      return (RANK[r] || 0) > (RANK[acc] || 0) ? r : acc;
+    }, '');
+    if (dom['fn-stages']) dom['fn-stages'].textContent = `${cleared.length} / ${Maps.STAGES.length}`;
+    if (dom['fn-best']) dom['fn-best'].textContent = best || '—';
   }
 
   /* ── 绘制 ────────────────────────────────────────────────────────── */

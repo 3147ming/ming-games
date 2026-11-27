@@ -492,7 +492,13 @@ function drawLabel(canvas, tex, { emoji = '', title = '', sub = '', tint = '#E6E
 export function createWorld(canvas) {
   MATS = createMaterials();
 
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  /* 先探一次 WebGL：拿不到就抛我们自己的中文错误，别让 three 先在控制台吐一长串
+     "A WebGL context could not be created..."（那串会被当成页面故障上报，其实只是环境限制）。
+     探到的 context 原样交给 three 复用，不会多建一份。 */
+  const probe = canvas.getContext('webgl2', { antialias: true })
+    || canvas.getContext('webgl', { antialias: true });
+  if (!probe) throw new Error('浏览器未提供 WebGL 上下文（请开启硬件加速或更换浏览器）');
+  const renderer = new THREE.WebGLRenderer({ canvas, context: probe, antialias: true });
   const isTouch = window.matchMedia('(pointer: coarse)').matches;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouch ? 1.5 : 2));
   renderer.setSize(window.innerWidth, window.innerHeight, false);

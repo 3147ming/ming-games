@@ -11,17 +11,27 @@
 <style>
 :root{--gold:#ffb142;--cyan:#48dbfb;--ink:#0b1420;--paper:#e8eef5;--dim:#8fa3b8;--line:#22374d}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%}
-body{background:radial-gradient(120% 85% at 50% -10%,#132437 0%,var(--ink) 62%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:12px 10px calc(18px + env(safe-area-inset-bottom))}
-.wrap{width:min(100%,460px)}
+body{min-height:100vh;min-height:100dvh;background:radial-gradient(120% 85% at 50% -10%,#132437 0%,var(--ink) 62%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:12px 10px calc(18px + env(safe-area-inset-bottom))}
+.wrap{width:min(100%,460px);flex:1 1 auto;display:flex;flex-direction:column;justify-content:center}
+/* 2026-11-27 复检：赛道固定 min(70vh,560px)，430×932 下只剩 560 高 + 下方 200px 死黑，
+   而且"开始"在遮罩里和球场下面各有一个（同一个动作两个入口，看着像没收拾干净）。
+   现在：赛道 flex 吃掉剩余高度，暂停收进球场右下角，页面下方只留一行操作提示。 */
 .head{text-align:center;margin-bottom:6px}.logo{font-size:21px;letter-spacing:.2em;margin:0;color:var(--gold)}.sub{font-size:9px;letter-spacing:.14em;color:var(--dim);margin:3px 0 0}
 .bar{display:flex;justify-content:space-between;align-items:center;gap:6px;background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:12px;padding:7px 11px;margin-bottom:8px;font-size:11px}
 .bar b{color:var(--gold);font-size:15px}
-.stage{position:relative;width:min(100%,380px);height:min(70vh,560px);margin:0 auto;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#08111c;touch-action:none;user-select:none}
+.stage{position:relative;width:min(100%,420px);flex:1 1 auto;min-height:min(58vh,420px);margin:0 auto;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#08111c;touch-action:none;user-select:none}
 canvas{display:block;width:100%;height:100%}
 .hud{position:absolute;top:9px;left:0;right:0;display:flex;justify-content:space-between;padding:0 14px;font-size:11px;color:var(--dim);pointer-events:none;text-shadow:0 1px 4px #000}
 .hud b{color:var(--gold);font-size:16px;font-variant-numeric:tabular-nums}
 .overlay{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(6,12,20,.9);text-align:center;padding:18px}
-.overlay[hidden]{display:none}.overlay h2{margin:0;font-size:20px;letter-spacing:.16em;color:var(--gold)}
+.overlay[hidden]{display:none}
+/* 暂停放在球场右下角：只在"跑起来"之后才有意义，标题卡上不出现（==> 用兄弟选择器跟着遮罩走）。 */
+.pausebtn{position:absolute;right:10px;bottom:10px;z-index:6;min-height:34px;padding:0 12px;border-radius:999px;
+  border:1px solid rgba(255,255,255,.22);background:rgba(6,12,20,.62);color:var(--paper);
+  font:inherit;font-size:12px;cursor:pointer;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+.pausebtn:active{transform:scale(.96)}
+.overlay:not([hidden]) ~ .pausebtn{display:none}
+.overlay h2{margin:0;font-size:20px;letter-spacing:.16em;color:var(--gold)}
 .overlay p{margin:0;font-size:11px;color:var(--dim);line-height:1.8;max-width:270px}
 .controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
 .btn{border:none;border-radius:12px;min-height:42px;padding:0 18px;font:inherit;font-size:13px;cursor:pointer;background:var(--gold);color:#1a1206;font-weight:600}
@@ -31,7 +41,6 @@ canvas{display:block;width:100%;height:100%}
 .keyhint span{font-size:10px;color:var(--dim);border:1px solid var(--line);border-radius:6px;padding:3px 7px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
-  <link rel="stylesheet" href="../shared/screen-fit.css">
 </head>
 <body>
 <div class="wrap">
@@ -41,10 +50,11 @@ canvas{display:block;width:100%;height:100%}
     <canvas id="cv"></canvas>
     <div class="hud"><span>距离 <b id="dist">0</b>m</span><span>金币 <b id="coins">0</b></span></div>
     <div class="overlay" id="overlay"><h2 id="ovTitle">地铁跑酷</h2><p id="ovText">左右切轨、上滑跳跃、下滑滑铲，躲开迎面列车与障碍，收集金币。速度会越来越快。</p><div class="controls"><button class="btn" id="ovBtn">开始跑酷</button></div></div>
+    <button class="pausebtn" id="btn-pause" type="button" aria-label="暂停">暂停</button>
   </div>
   <div class="msg" id="msg">← → 切轨 · ↑ 跳 · ↓ 滑 · 手机滑动 / 双指</div>
   <div class="keyhint"><span>← → / A D 切轨</span><span>↑ / W / 空格 跳</span><span>↓ / S 滑铲</span></div>
-  <div class="controls"><button class="btn" id="btn-start">开始</button><button class="btn ghost" id="btn-pause">暂停</button></div>
+
 </div>
 <div class="overlay" id="info" hidden style="position:fixed;z-index:60"><div style="width:min(90%,360px);background:#132437;border:1px solid var(--line);border-radius:16px;padding:22px"><h2 style="margin:0 0 10px;color:var(--gold);font-size:18px">玩法</h2><p style="font-size:12px;line-height:1.9;color:var(--dim);margin:0">角色在三条轨道上自动前进。<b>左右切换</b>轨道避开障碍，<b>上滑跳跃</b>越过矮障，<b>下滑滑铲</b>穿过高闸，<b>列车</b>必须换轨绕开。撞上即结束；金币连击有额外加成。速度随距离提升。键盘方向键 / WASD / 空格，或手机滑动操作。纯本地存档。</p><div class="controls" style="margin-top:16px"><button class="btn" id="infoClose">知道了</button></div></div></div>
 <script>
@@ -625,7 +635,6 @@ function roundRect(x, y, w, h, r) {
 }
 
 $('ovBtn').addEventListener('click', function () { $('overlay').hidden = true; paused = false; $('btn-pause').textContent = '暂停'; newGame(); });
-$('btn-start').addEventListener('click', function () { $('overlay').hidden = true; paused = false; $('btn-pause').textContent = '暂停'; newGame(); });
 $('btn-pause').addEventListener('click', function () { if (!G || G.over) return; paused = !paused; this.textContent = paused ? '继续' : '暂停'; if (!paused) lastT = performance.now(); });
 $('btn-info').addEventListener('click', function () { $('info').hidden = false });
 $('infoClose').addEventListener('click', function () { $('info').hidden = true });
@@ -676,7 +685,5 @@ window.__METRO__ = {
 G = null; draw();
 })();
 </script>
-<script>window.MG_SCREEN_FIT={"title":"地铁跑酷","tagline":"METRO RUSH · 2.5D 三轨穿行","accent":"#ffb142","bg":"#0b1420","mainWidth":"520px","cover":"../covers/metro-runner.png","tip":"左右切轨，上跳下滑，躲开列车与障碍，顺路收金币。","light":false,"left":[{"title":"操作","body":"← → / A D 切轨\n↑ / W / 空格 跳跃\n↓ / S 滑铲\n手机：滑动 / 双指"},{"title":"通关要点","body":"列车必须换轨绕开；矮障跳过、高闸滑过。速度随距离提升，金币连击有额外加成。"}],"right":[{"title":"场景","body":"隧道、站台与霓虹灯牌随距离推进。开局三段金币帮你进入节奏。"},{"title":"存档","body":"最高距离与最多金币保存在本机，断网也能玩。"}]};window.MG_SCREEN_FIT_FRIENDS=["metro-runner","tap","sudoku","slide","territory","trio","liar","doudizhu","wuyouk","tongxin"];</script>
-<script src="../shared/screen-fit.js"></script>
 </body>
 </html>

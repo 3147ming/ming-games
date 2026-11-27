@@ -351,6 +351,9 @@ export class Ui {
     // 内容批 P1-6：难度阶梯显示（封顶 5）。0 阶不显示 —— 第一世的标题页不该有数字。
     const asc = meta.ascension || 0;
     const carriedCard = meta.carried && CARD_MAP[meta.carried] ? CARD_MAP[meta.carried] : null;
+    // 首屏信息带的两个进度数字（与下面 title-stats 同源，只是拆成"大数字"展示）
+    if ($('brief-cards')) $('brief-cards').textContent = meta.unlockedCards.length;
+    if ($('brief-relics')) $('brief-relics').textContent = meta.unlockedRelics.length;
     $('title-stats').innerHTML =
       `已归来 ${meta.runs} 世 · 抵达第九层 ${meta.wins} 次<br>` +
       `牌谱 ${meta.unlockedCards.length} / ${POOL_CARDS.length} · 遗物 ${meta.unlockedRelics.length} / ${RELICS.length}` +

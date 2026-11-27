@@ -53,6 +53,35 @@
           <h1 class="game-title">一世一牌</h1>
           <p class="game-sub">ONE&nbsp;CARD&nbsp;PER&nbsp;LIFE</p>
           <p class="game-line">你是死在第九层的无名者。<br>每一世，你只带回一张牌。</p>
+
+          <!-- 2026-11-27 复检：宽屏下 #device 是 780px 竖槽，两侧各留 250px 死黑，
+               中间又只有"标题 + 两个按钮"，等于一屏只用了三分之一。
+               加一排「四流派 + 三条规则」的信息带：宽屏时铺成两列（左流派 / 右规则），
+               窄屏时落成一列。内容全部是既有设定，不新造玩法。 -->
+          <div class="title-brief">
+            <div class="brief-col">
+              <p class="brief-cap">四流派 · 每派 18 张</p>
+              <ul class="brief-schools">
+                <li><b>刃</b><span>直伤连击，力量越高越疼</span></li>
+                <li><b>霜</b><span>格挡虚弱，让敌人打不动</span></li>
+                <li><b>蚀</b><span>生命换毒层，敌人回合里掉血</span></li>
+                <li><b>熵</b><span>能量与抽牌滚起来，一回合打空牌库</span></li>
+              </ul>
+            </div>
+            <div class="brief-col">
+              <p class="brief-cap">一世三条</p>
+              <ul class="brief-rules">
+                <li><i>1</i>每局只带 <b>一张</b> 牌回来，带回即入牌谱</li>
+                <li><i>2</i>牌谱 72 张、遗物 32 件，集齐才算走完</li>
+                <li><i>3</i>第九层之后是无尽，越深遗物越狠</li>
+              </ul>
+              <div class="brief-progress" id="brief-progress">
+                <span><b id="brief-cards">49</b>/72 牌谱</span>
+                <span><b id="brief-relics">14</b>/32 遗物</span>
+              </div>
+            </div>
+          </div>
+
           <div class="title-actions">
             <button aria-label="开始新一局" id="btn-new-run" class="big">开始一世</button>
             <button aria-label="查看图鉴" id="btn-codex">牌谱</button>

@@ -11,23 +11,6 @@
 <link rel="stylesheet" href="./styles.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2314110f'/%3E%3Cpath d='M8 7h16v18H8z' fill='%23e8e0d0'/%3E%3Cpath d='M11 12h10M11 16h10M11 20h6' stroke='%23201b17' stroke-width='1.6'/%3E%3C/svg%3E">
 <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="../shared/screen-fit.css">
-  <!-- desktop-tune -->
-<style>
-/* 桌面端把首屏引导层改成纸张本色，贴合「纸上迷城」主题并消除黑屏感 */
-@media (min-width: 1100px) {
-  #bootOverlay.boot {
-    background:
-      radial-gradient(62% 42% at 50% 30%, rgba(255, 246, 224, .96), transparent 72%),
-      linear-gradient(160deg, #efe6d2, #d6c6a8);
-    color: #2a2118;
-  }
-  #bootOverlay.boot h1, #bootOverlay.boot .boot-sub { color: #2a2118; }
-  #bootOverlay.boot .dim { color: #5c5144 !important; }
-  #bootOverlay.boot .btn.primary { background: #2a2118; color: #f3ead8; }
-  #bootOverlay.boot .boot-lamp::before { border-color: #a67c3a; }
-}
-</style>
 </head>
 <body>
 <div id="app" class="app">
@@ -92,6 +75,21 @@
     <h1>纸上迷城</h1>
     <p class="boot-sub">一座纸做的、写不完的城</p>
     <p class="boot-stats dim" id="bootStats">正在点亮纸灯…</p>
+    <!-- 2026-11-27 复检：首屏原来只有「标题 + 一行灰字 + 一个按钮」，430×932 下
+         上下各留 300px 纯黑，像一张没做完的启动图。补两层内容：
+         ① 四格规模数字（房间/物品/谜题/结局）—— 一眼看出这游戏有多大；
+         ② 三条玩法要点 —— 文字解谜的门槛就在"知道该干什么"。 -->
+    <div class="boot-facts">
+      <div><b>12</b><span>房间</span></div>
+      <div><b>40</b><span>件物品</span></div>
+      <div><b>7</b><span>个谜题</span></div>
+      <div><b>4</b><span>种结局</span></div>
+    </div>
+    <ul class="boot-how">
+      <li><b>看</b>房间里每件东西都能点，细节都在文字里</li>
+      <li><b>配</b>物品按配方能合成，钥匙常藏在合出来的东西里</li>
+      <li><b>走</b>找到出口去下一间，灯油有限，别无谓地翻</li>
+    </ul>
     <button class="btn primary big" id="bootStart" type="button">点亮纸灯</button>
     <p aria-live="polite" class="boot-tip dim small">方向键 / WASD 移动 · 点击物件查看 · 卡关 90 秒后可按提示</p>
   </div>
@@ -142,7 +140,5 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
-<script>window.MG_SCREEN_FIT={"title":"纸上迷城","tagline":"文字解谜 · 一座写不完的纸城","tip":"方向键 / WASD 移动，点击物件查看；卡关 90 秒后可开启提示。","overlayTop":true,"light":true,"accent":"#e7d6a8","bg":"#1b1712","mainWidth":"620px","cover":"../covers/paper-maze.png","left":[{"title":"操作","body":"方向键 / WASD 移动\n点击物件查看\n背包 / 日记 / 图鉴随时翻阅"},{"title":"提示","body":"卡关 90 秒后可按提示。纸张、折痕与字句本身就是线索。"}],"right":[{"title":"氛围","body":"点亮纸灯后逐步展开房间，音效与笔记记录同步保存在本机。"}]};window.MG_SCREEN_FIT_FRIENDS=["metro-runner","tap","sudoku","slide","territory","trio","liar","doudizhu","wuyouk","tongxin","diner","shanhai","paper-maze","sleeper","legion","brick"];</script>
-<script src="../shared/screen-fit.js"></script>
 </body>
 </html>

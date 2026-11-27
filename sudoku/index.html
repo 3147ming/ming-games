@@ -4,54 +4,58 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#f4eddf">
-<meta name="description" content="数独速递 —— 9×9 四级难度、真铅笔笔记、唯一解生成、暂停隐藏、存档续玩。">
+<meta name="description" content="数独速递 —— 4×4 / 6×6 / 9×9 三级数独，计时挑战、提示与每日一题。">
 <title>数独速递 · SUDOKU</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230e1a14'/%3E%3Ctext x='16' y='23' font-size='17' text-anchor='middle' fill='%235cc08a'%3E9%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="../shared/tokens.css">
 <style>
-:root{--ink:#1f1b16;--ac:#2e7d5b;--bg:#fffcf4;--paper:#1f1b16;--dim:#8d8168;--line:#c9bda3;--line-soft:#e3dac6;--bad:#c0392b;--cell:#fffcf4;--given:#f2ead9}
+:root{--ac:#2e7d5b;--bg:#f4eddf;--paper:#3b3226;--dim:#8d8168;--line:#d9cdb4;--bad:#c0392b;--cell:#fffcf4;--given:#f2ead9}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%}
-body{background:var(--bg);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:16px 12px calc(22px + env(safe-area-inset-bottom))}
+body{min-height:100vh;min-height:100dvh;background:radial-gradient(120% 90% at 50% -10%,#fbf7ee 0%,var(--bg) 70%);color:var(--paper);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:18px 12px calc(22px + env(safe-area-inset-bottom))}
+/* 2026-11-27 复检：内容原先是"贴顶排完、下半屏 400px 全空"。改为整组在剩余高度里居中。 */
+.wrap{margin:auto 0}
 .wrap{width:min(100%,480px)}
-.head{text-align:center;margin-bottom:10px}.logo{font-size:24px;letter-spacing:.28em;margin:0;color:var(--ac)}.sub{font-size:11px;letter-spacing:.14em;color:var(--dim);margin:5px 0 0}
-.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:var(--bg);border:1.5px solid var(--ink);border-radius:12px;padding:9px 12px;margin-bottom:10px;font-size:12px}
+.head{text-align:center;margin-bottom:12px}.logo{font-size:24px;letter-spacing:.28em;margin:0;color:var(--ac)}.sub{font-size:11px;letter-spacing:.14em;color:var(--dim);margin:5px 0 0}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(255,252,244,.7);border:1px solid var(--line);border-radius:12px;padding:9px 12px;margin-bottom:12px;font-size:12px}
 .bar b{color:var(--ac);font-size:15px}.bar .stat{display:flex;gap:12px;flex-wrap:wrap}
 .tabs{display:flex;gap:6px;justify-content:center;margin-bottom:10px;flex-wrap:wrap}
-.tab{border:1.5px solid var(--line);border-radius:999px;padding:6px 14px;background:var(--bg);color:var(--dim);font:inherit;font-size:12px;cursor:pointer;min-height:36px}
-.tab.on{border-color:var(--ink);color:var(--ink);background:#f2ead9}
-.board{display:grid;gap:1px;background:var(--line-soft);border:2px solid var(--ink);border-radius:8px;padding:1.5px;margin:0 auto;width:min(100%,430px);aspect-ratio:1;box-shadow:0 4px 14px rgba(31,27,22,.08)}
+.tab{border:1px solid var(--line);border-radius:999px;padding:6px 14px;background:rgba(255,252,244,.7);color:var(--dim);font:inherit;font-size:12px;cursor:pointer;min-height:36px}
+.tab.on{border-color:var(--ac);color:var(--ac);background:rgba(46,125,91,.12)}
+.board{display:grid;gap:2px;background:var(--line);border:2px solid #b8a888;border-radius:10px;padding:2px;margin:0 auto;width:min(100%,460px);aspect-ratio:1;box-shadow:0 6px 20px rgba(90,70,40,.12)}
 .cell{background:var(--cell);border:none;color:var(--ac);font:inherit;font-size:clamp(16px,5vw,24px);font-weight:600;display:flex;align-items:center;justify-content:center;cursor:pointer;min-width:0;min-height:0;padding:0;position:relative}
-.cell.given{color:var(--ink);background:var(--given);font-weight:700}
+.cell.given{color:#2b241a;background:var(--given);font-weight:700}
 .cell.sel{background:rgba(46,125,91,.2);outline:2px solid var(--ac);outline-offset:-2px;z-index:1}
-.cell.peer{background:rgba(46,125,91,.06)}
-.cell.same{background:rgba(46,125,91,.14)}
-.cell.err{color:var(--bad);background:rgba(192,57,43,.12)}
-.cell.bd-r{border-right:1.5px solid var(--ink)}.cell.bd-b{border-bottom:1.5px solid var(--ink)}
-.notes{position:absolute;inset:4%;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);font-size:clamp(7px,2.2vw,11px);line-height:1;font-weight:600;color:var(--dim);pointer-events:none}
+.cell.peer{background:rgba(46,125,91,.07)}
+.cell.same{background:rgba(46,125,91,.16)}
+.cell.err{color:var(--bad)}
+.cell.bd-r{border-right:2px solid #b8a888}.cell.bd-b{border-bottom:2px solid #b8a888}
+.notes{position:absolute;inset:6%;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);font-size:clamp(7px,2.1vw,11px);line-height:1;font-weight:500;color:var(--dim);pointer-events:none}
 .notes span{display:flex;align-items:center;justify-content:center}
-.cell.notemode{background:var(--bg)}
 .pad{display:flex;gap:5px;justify-content:center;flex-wrap:wrap;margin:12px 0 4px}
-.num{border:1.5px solid var(--line);border-radius:10px;background:var(--cell);color:var(--ac);font:inherit;font-size:17px;font-weight:600;min-width:42px;min-height:44px;cursor:pointer}
+.num{border:1px solid var(--line);border-radius:10px;background:var(--cell);color:var(--ac);font:inherit;font-size:17px;font-weight:600;min-width:42px;min-height:44px;cursor:pointer;box-shadow:0 2px 5px rgba(90,70,40,.08)}
 .num:active{background:rgba(46,125,91,.18)}
 .controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:8px}
-.btn{border:1.5px solid var(--ink);border-radius:12px;min-height:44px;padding:0 16px;font:inherit;font-size:13px;cursor:pointer;background:var(--ac);color:#fff;font-weight:600}
-.btn.ghost{background:var(--bg);color:var(--ink);font-weight:400;border-color:var(--line)}
+.btn{border:none;border-radius:12px;min-height:44px;padding:0 16px;font:inherit;font-size:13px;cursor:pointer;background:var(--ac);color:#fff;font-weight:600}
+.btn.ghost{background:rgba(255,252,244,.8);border:1px solid var(--line);color:var(--paper);font-weight:400}
 .btn.on{background:var(--ac);color:#fff;border-color:var(--ac)}
 .msg{text-align:center;min-height:20px;font-size:12px;margin:8px 0;color:var(--dim)}
+/* 按钮行：430px 宽下 6 个按钮挤成 5+1（最后一个"每日题"孤零零一行），很扎眼。
+   窄屏改成 3 列栅格 = 3+3 两行，两边对称，也顺手把触控热区拉宽。 */
+@media (max-width:520px){
+  .controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;width:100%}
+  .controls .btn{padding:0 8px;font-size:13px;width:100%}
+}
 .msg.win{color:var(--ac)}
-.done{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(31,27,22,.72)}
-.done[hidden]{display:none}.done .inner{width:min(100%,380px);background:var(--bg);border:2px solid var(--ink);border-radius:18px;padding:24px;text-align:center}
+.done{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.72)}
+.done[hidden]{display:none}.done .inner{width:min(100%,360px);background:linear-gradient(180deg,#fffcf4,#f4eddf);border:1px solid var(--line);border-radius:18px;padding:24px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.2)}
 .done h2{margin:0 0 12px;color:var(--ac);letter-spacing:.1em}
-.veil{position:fixed;inset:0;z-index:35;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:24px}
-.veil[hidden]{display:none}.veil h2{color:var(--ink);font-size:22px;margin:0}.veil p{color:var(--dim);font-size:13px;line-height:1.8;margin:0}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
-  <link rel="stylesheet" href="../shared/screen-fit.css">
 </head>
 <body>
 <div class="wrap">
-  <div class="head"><h1 class="logo">SUDOKU</h1><p class="sub">数 独 速 递 · 唯 一 解 · 计 时</p></div>
-  <div class="bar"><div class="stat"><span>最佳 <b id="best">—</b></span><span>用时 <b id="time">0:00</b></span><span>错误 <b id="errs">0</b></span><span>提示 <b id="hints">—</b></span></div><button class="btn ghost" id="btn-info" style="min-height:32px;padding:0 10px">规则</button></div>
+  <div class="head"><h1 class="logo">SUDOKU</h1><p class="sub">数 独 速 递 · 计 时 挑 战</p></div>
+  <div class="bar"><div class="stat"><span>最佳 <b id="best">—</b></span><span>用时 <b id="time">0:00</b></span><span>胜局 <b id="wins">0</b></span></div><button class="btn ghost" id="btn-info" style="min-height:32px;padding:0 10px">规则</button></div>
   <div class="tabs" id="tabs"></div>
   <div class="board" id="board"></div>
   <div class="pad" id="pad"></div>
@@ -65,162 +69,98 @@ body{background:var(--bg);color:var(--paper);font-family:"PingFang SC","Microsof
     <button class="btn ghost" id="btn-daily">每日题</button>
   </div>
 </div>
-<div class="veil" id="veil" hidden><h2>⏸ 已暂停</h2><p>题面已隐藏 · 计时已停止<br>点「继续」回到对局</p><button class="btn" id="veil-resume">继续</button></div>
 <div class="done" id="done" hidden><div class="inner"><h2>完成！</h2><p id="done-info" style="font-size:13px;color:var(--dim);line-height:1.8"></p><div class="controls"><button class="btn" id="done-again">再来一局</button></div></div></div>
 <div class="done" id="info" hidden><div class="inner" style="text-align:left"><h2>玩法</h2><p id="info-body" style="font-size:12px;line-height:1.9;color:var(--dim)"></p><div class="controls"><button class="btn" id="info-close">知道了</button></div></div></div>
-<script type="module">
-import { DIFFICULTY, generate, rng, hashSeed, clearPeerNotes, isWrong, isSolved } from './src/sudoku-core.mjs';
-const $ = (i) => document.getElementById(i);
-const KEY = 'mg_sudoku.v2';
-const S = (() => { try { const o = JSON.parse(localStorage.getItem(KEY)); if (o && typeof o === 'object') return o; } catch (e) {} return { best: {}, avg: {}, wins: 0, runs: 0, daily: null, save: null }; })();
-function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
-function today() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
-function fmt(ms) { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
-
-let diff = DIFFICULTY.easy, puzzle = [], solution = [], grid = [], given = [], notes = [];
-let sel = -1, noteMode = false, errors = 0, hintsLeft = 0, hintsUsed = 0, wrongTimer = new Map();
-let start = 0, elapsedMs = 0, running = false, paused = false, pauseAt = 0;
-let timerId = 0, doneFlag = false, isDaily = false, seed = 0;
-
-function stopTimer() { if (running && !paused) elapsedMs += Date.now() - start; running = false; clearInterval(timerId); }
-function startTimer() { start = Date.now(); running = true; clearInterval(timerId); timerId = setInterval(() => { if (!paused && !doneFlag) { $('time').textContent = fmt(elapsedMs + Date.now() - start); } }, 250); }
-function curElapsed() { return elapsedMs + (running && !paused ? Date.now() - start : 0); }
-
-function makeGame(d, daily) {
-  isDaily = !!daily; diff = d;
-  seed = daily ? hashSeed('sudoku-' + today() + '-' + d.key) : ((Date.now() ^ (Math.random() * 1e9)) | 0);
-  const g = generate(seed, d);
-  puzzle = g.puzzle; solution = g.solution;
-  grid = puzzle.slice(); given = puzzle.map((v) => v > 0);
-  notes = puzzle.map(() => []); sel = -1; errors = 0; hintsLeft = d.hints; hintsUsed = 0;
-  wrongTimer = new Map(); elapsedMs = 0; doneFlag = false; paused = false; noteMode = false;
-  $('msg').className = 'msg'; $('msg').textContent = daily ? '每日题 · ' + today() : d.label + ' · 唯一解';
-  startTimer(); persist(); render();
+<script>
+(function(){
+'use strict';
+var KEY='mg_sudoku.v1',$=function(i){return document.getElementById(i)};
+var S=(function(){try{var o=JSON.parse(localStorage.getItem(KEY));if(o&&typeof o==='object')return o}catch(e){}return {best:{},wins:0,runs:0,daily:null}})();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function rng(seed){var x=seed>>>0||1;return function(){x^=x<<13;x^=x>>>17;x^=x<<5;return (x>>>0)/4294967296}}
+function seedFrom(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+var SIZES=[{n:4,w:2,h:2,key:'4'},{n:6,w:3,h:2,key:'6'},{n:9,w:3,h:3,key:'9'}];
+var size=SIZES[0],puzzle=[],solution=[],grid=[],given=[],notes=[],sel=-1,start=0,timer=null,daily=false,noteMode=false,paused=false,pauseAt=0,pauseTotal=0;
+function fmt(ms){var s=Math.floor(ms/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function elapsed(){return (paused?pauseAt:Date.now())-start-pauseTotal}
+function makeSolution(n,rand){
+  var b=new Array(n*n).fill(0);
+  var boxOf=function(r,c){return Math.floor(r/size.h)*size.w+Math.floor(c/size.w)};
+  function ok(r,c,v){for(var i=0;i<n;i++){if(b[r*n+i]===v||b[i*n+c]===v)return false}var br=Math.floor(r/size.h)*size.h,bc=Math.floor(c/size.w)*size.w;for(var i=0;i<size.h;i++)for(var j=0;j<size.w;j++)if(b[(br+i)*n+bc+j]===v)return false;return true}
+  function fill(k){if(k===n*n)return true;var r=Math.floor(k/n),c=k%n,order=[];for(var v=1;v<=n;v++)order.push(v);for(var i=order.length-1;i>0;i--){var j=Math.floor(rand()*(i+1));var t=order[i];order[i]=order[j];order[j]=t}for(var v of order){if(ok(r,c,v)){b[k]=v;if(fill(k+1))return true;b[k]=0}}return false}
+  fill(0);return b;
 }
-function persist() {
-  S.save = { v: 2, dk: diff.key, daily: isDaily, seed, puzzle, solution, grid, given, notes,
-    sel, errors, hintsLeft, hintsUsed, elapsedMs, savedAt: Date.now(), done: doneFlag };
-  save();
+function makePuzzle(n,rand){
+  var sol=makeSolution(n,rand),puz=sol.slice();
+  var remove=Math.floor(n*n*0.55);
+  var idx=[];for(var i=0;i<n*n;i++)idx.push(i);
+  for(var i=idx.length-1;i>0;i--){var j=Math.floor(rand()*(i+1));var t=idx[i];idx[i]=idx[j];idx[j]=t}
+  for(var k=0;k<remove;k++)puz[idx[k]]=0;
+  return {puz:puz,sol:sol};
 }
-function resume() {
-  const q = S.save;
-  if (!q || q.v !== 2 || !q.puzzle || q.puzzle.length !== 81) return false;
-  diff = Object.values(DIFFICULTY).find((x) => x.key === q.dk) || DIFFICULTY.easy;
-  isDaily = !!q.daily; seed = q.seed; puzzle = q.puzzle; solution = q.solution;
-  grid = q.grid; given = q.given; notes = q.notes; sel = q.sel;
-  errors = q.errors; hintsLeft = q.hintsLeft; hintsUsed = q.hintsUsed; elapsedMs = q.elapsedMs || 0;
-  wrongTimer = new Map(); doneFlag = !!q.done; paused = false; noteMode = false;
-  $('msg').className = 'msg'; $('msg').textContent = '已恢复上次对局';
-  if (!doneFlag) startTimer(); render(); return true;
+function newGame(isDaily){
+  daily=!!isDaily;
+  var seed=daily?seedFrom('sudoku-'+today()+'-'+size.key):(Date.now()^Math.random()*1e9|0);
+  var r=makePuzzle(size.n,rng(seed));
+  puzzle=r.puz;solution=r.sol;grid=puzzle.slice();given=puzzle.map(function(v){return v>0});notes=puzzle.map(function(){return []});sel=-1;
+  start=Date.now();pauseTotal=0;paused=false;$('btn-pause').textContent='暂停';$('btn-pause').classList.remove('on');
+  clearInterval(timer);timer=setInterval(function(){if(!doneFlag&&!paused)$('time').textContent=fmt(elapsed())},250);
+  doneFlag=false;render();$('msg').className='msg';$('msg').textContent=daily?'每日题 · '+today():'进行中';
 }
-function clearSave() { S.save = null; save(); }
-
-function boxOf2(r, c) { return Math.floor(r / diff.boxH) + '_' + Math.floor(c / diff.boxW); }
-function render() {
-  $('best').textContent = S.best[diff.key] ? fmt(S.best[diff.key]) : '—';
-  $('errs').textContent = errors;
-  $('hints').textContent = hintsLeft + '/' + diff.hints;
-  const board = $('board'); board.innerHTML = '';
-  const n = diff.n;
-  board.style.gridTemplateColumns = 'repeat(' + n + ',1fr)';
-  board.style.gridTemplateRows = 'repeat(' + n + ',1fr)';
-  const sr = sel >= 0 ? (sel / n) | 0 : -1, sc = sel >= 0 ? sel % n : -1;
-  for (let i = 0; i < n * n; i++) {
-    const r = (i / n) | 0, c = i % n, cell = document.createElement('button');
-    cell.className = 'cell' + (given[i] ? ' given' : '') + (noteMode && !given[i] ? ' notemode' : '');
-    if (given[i] || grid[i]) cell.textContent = grid[i] || '';
-    else {
-      cell.textContent = '';
-      if (notes[i] && notes[i].length) {
-        const nd = document.createElement('div'); nd.className = 'notes'; let ns = '';
-        for (let v = 1; v <= n; v++) ns += '<span>' + (notes[i].includes(v) ? v : '') + '</span>';
-        nd.innerHTML = ns; cell.appendChild(nd);
-      }
+var doneFlag=false;
+function render(){
+  $('best').textContent=S.best[size.key]?fmt(S.best[size.key]):'—';$('wins').textContent=S.wins;
+  var n=size.n;var board=$('board');board.style.gridTemplateColumns='repeat('+n+',1fr)';board.innerHTML='';
+  var sr=sel>=0?Math.floor(sel/n):-1,sc=sel>=0?sel%n:-1;
+  for(var i=0;i<n*n;i++){
+    var r=Math.floor(i/n),c=i%n,cell=document.createElement('button');cell.className='cell'+(given[i]?' given':'');
+    if(given[i]||grid[i])cell.textContent=grid[i]||'';
+    else{
+      cell.textContent='';
+      if(notes[i]&&notes[i].length){var nd=document.createElement('div');nd.className='notes';var ns='';for(var v=1;v<=n;v++)ns+='<span>'+(notes[i].indexOf(v)>=0?v:'')+'</span>';nd.innerHTML=ns;cell.appendChild(nd)}
     }
-    if (wrongTimer.has(i)) cell.classList.add('err');
-    if (i === sel) cell.classList.add('sel');
-    else if (sel >= 0 && (r === sr || c === sc || boxOf2(r, c) === boxOf2(sr, sc))) cell.classList.add('peer');
-    else if (sel >= 0 && grid[i] && grid[i] === grid[sel]) cell.classList.add('same');
-    if ((c + 1) % diff.boxW === 0 && c < n - 1) cell.classList.add('bd-r');
-    if ((r + 1) % diff.boxH === 0 && r < n - 1) cell.classList.add('bd-b');
-    cell.setAttribute('data-i', i); board.appendChild(cell);
+    if(!given[i]&&grid[i]&&grid[i]!==solution[i])cell.classList.add('err');
+    if(i===sel)cell.classList.add('sel');
+    else if(sel>=0&&(r===sr||c===sc||boxOf(r,c)===boxOf(sr,sc)))cell.classList.add('peer');
+    else if(sel>=0&&grid[i]&&grid[i]===grid[sel])cell.classList.add('same');
+    if((c+1)%size.w===0&&c<n-1)cell.classList.add('bd-r');
+    if((r+1)%size.h===0&&r<n-1)cell.classList.add('bd-b');
+    cell.setAttribute('data-i',i);board.appendChild(cell);
   }
-  $('tabs').innerHTML = Object.values(DIFFICULTY).map((d) => '<button class="tab' + (d.key === diff.key ? ' on' : '') + '" data-k="' + d.key + '">' + d.label + ' ' + d.blanks + '空</button>').join('');
-  $('tabs').querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => {
-    const d = Object.values(DIFFICULTY).find((x) => x.key === b.dataset.k);
-    if (d.key !== diff.key) { clearSave(); makeGame(d, false); }
-  }));
-  $('pad').innerHTML = Array.from({ length: n }, (_, k) => '<button class="num" data-v="' + (k + 1) + '">' + (k + 1) + '</button>').join('');
-  $('pad').querySelectorAll('.num').forEach((b) => b.addEventListener('click', () => input(+b.dataset.v)));
-  board.querySelectorAll('.cell').forEach((c) => c.addEventListener('click', () => { sel = +c.dataset.i; render(); persist(); }));
+  $('tabs').innerHTML=SIZES.map(function(s){return '<button class="tab'+(s.key===size.key?' on':'')+'" data-k="'+s.key+'">'+s.n+'×'+s.n+'</button>'}).join('');
+  Array.prototype.forEach.call($('tabs').children,function(b){b.addEventListener('click',function(){size=SIZES.filter(function(s){return s.key===b.getAttribute('data-k')})[0];newGame(false)})});
+  $('pad').innerHTML=Array.from({length:n},function(_,k){return '<button class="num" data-v="'+(k+1)+'">'+(k+1)+'</button>'}).join('');
+  Array.prototype.forEach.call($('pad').children,function(b){b.addEventListener('click',function(){input(+b.getAttribute('data-v'))})});
+  Array.prototype.forEach.call(board.children,function(c){c.addEventListener('click',function(){sel=+c.getAttribute('data-i');render()})});
 }
-function input(v) {
-  if (sel < 0 || doneFlag || paused || given[sel]) return;
-  if (noteMode) {
-    const a = notes[sel] || (notes[sel] = []);
-    const k = a.indexOf(v); if (k >= 0) a.splice(k, 1); else a.push(v);
-    render(); persist(); return;
+function boxOf(r,c){return Math.floor(r/size.h)+'_'+Math.floor(c/size.w)}
+function input(v){
+  if(sel<0||doneFlag||paused)return;if(given[sel])return;
+  if(noteMode){var a=notes[sel]||(notes[sel]=[]),k=a.indexOf(v);if(k>=0)a.splice(k,1);else a.push(v);render();return}
+  notes[sel]=[];grid[sel]=v;
+  var okAll=true;for(var i=0;i<size.n*size.n;i++)if(grid[i]&&grid[i]!==solution[i]){okAll=false;break}
+  if(okAll&&grid.every(function(x){return x>0})){
+    doneFlag=true;clearInterval(timer);
+    var t=elapsed();S.runs++;S.wins++;if(daily)S.daily=today();
+    if(!S.best[size.key]||t<S.best[size.key])S.best[size.key]=t;save();
+    $('done-info').innerHTML=size.n+'×'+size.n+' 用时 <b style="color:var(--ac)">'+fmt(t)+'</b><br>'+(daily?'每日题已完成 ✓':'新纪录已保存');
+    $('done').hidden=false;render();return;
   }
-  grid[sel] = v; notes = clearPeerNotes(notes, sel, v, diff);
-  if (isWrong(grid, sel, solution, diff)) {
-    errors++; wrongTimer.set(sel, Date.now());
-    setTimeout(() => { wrongTimer.delete(sel); render(); }, 3000);
-    $('msg').className = 'msg'; $('msg').textContent = '填错了，3 秒后消除标红（不判负）';
-  }
-  if (isSolved(grid, solution)) { finish(); return; }
-  render(); persist();
+  render();
 }
-function finish() {
-  doneFlag = true; stopTimer(); clearSave();
-  const t = curElapsed(); S.runs++; S.wins++;
-  if (!S.best[diff.key] || t < S.best[diff.key]) S.best[diff.key] = t;
-  const avgList = S.avg[diff.key] || (S.avg[diff.key] = []); avgList.push(t); if (avgList.length > 20) avgList.shift();
-  if (isDaily) S.daily = today(); save();
-  const avg = avgList.reduce((a, b) => a + b, 0) / avgList.length;
-  $('done-info').innerHTML = diff.label + ' 用时 <b style="color:var(--ac)">' + fmt(t) + '</b><br>错误 ' + errors + ' 次 · 提示 ' + hintsUsed + ' 次<br>平均用时 ' + fmt(avg) + (isDaily ? '<br>每日题 ✓' : '');
-  $('done').hidden = false; render();
-}
-function setPause(p) {
-  if (doneFlag) return;
-  if (p) { paused = true; pauseAt = Date.now(); stopTimer(); $('veil').hidden = false; }
-  else { paused = false; $('veil').hidden = true; start = Date.now(); running = true; clearInterval(timerId); timerId = setInterval(() => { if (!paused && !doneFlag) $('time').textContent = fmt(curElapsed()); }, 250); }
-  $('btn-pause').textContent = p ? '继续' : '暂停'; $('btn-pause').classList.toggle('on', p);
-  persist();
-}
-$('btn-new').addEventListener('click', () => { clearSave(); makeGame(diff, false); });
-$('btn-daily').addEventListener('click', () => { clearSave(); makeGame(diff, true); });
-$('btn-notes').addEventListener('click', function () { noteMode = !noteMode; this.classList.toggle('on', noteMode); $('msg').textContent = noteMode ? '笔记模式 · 点数字标候选，填正式数会清除同行同列同宫候选' : '笔记已关闭'; render(); });
-$('btn-hint').addEventListener('click', () => {
-  if (sel < 0 || doneFlag || paused || given[sel] || hintsLeft <= 0) return;
-  notes[sel] = []; grid[sel] = solution[sel]; hintsLeft--; hintsUsed++;
-  $('msg').className = 'msg win'; $('msg').textContent = '已填入提示（剩余 ' + hintsLeft + '）';
-  if (isSolved(grid, solution)) { finish(); return; }
-  render(); persist();
-});
-$('btn-erase').addEventListener('click', () => { if (sel < 0 || given[sel] || doneFlag || paused) return; grid[sel] = 0; notes[sel] = []; render(); persist(); });
-$('btn-pause').addEventListener('click', () => setPause(!paused));
-$('veil-resume').addEventListener('click', () => setPause(false));
-$('done-again').addEventListener('click', () => { $('done').hidden = true; clearSave(); makeGame(diff, false); });
-$('btn-info').addEventListener('click', () => {
-  $('info-body').textContent = '9×9 数独，四级难度（简单45空/中等52空/困难56空/专家58空）。生成器带解题器校验，每题解数恰好为 1。\n\n真·铅笔笔记：笔记模式下点数字在 3×3 候选位标记小字；填入正式数字后自动清除同行同列同宫的该候选；笔记随存档保存。\n\n计时：暂停会隐藏题面并停止计时，恢复续计；填错标红 3 秒并计错误数（不判负）；今日最佳/平均用时/错误数按难度记录。\n\n提示限次（简单5/中等4/困难3/专家2），提示与擦除不暂停计时、不重置错误数。米白底 #fffcf4 + 墨色 #1f1b16，宫线 1.5px 深墨。\n\n刷新可续局：题面/填写/笔记/计时/错误/提示剩余全部存档，重进自动恢复。';
-  $('info').hidden = false;
-});
-$('info-close').addEventListener('click', () => { $('info').hidden = true; });
-document.addEventListener('keydown', (e) => {
-  if (paused || doneFlag) return;
-  if (noteMode && /^[1-9]$/.test(e.key) && +e.key <= 9) input(+e.key);
-  else if (/^[1-9]$/.test(e.key) && +e.key <= 9) input(+e.key);
-  else if (e.key === 'Backspace' || e.key === 'Delete') { if (sel >= 0 && !given[sel]) { grid[sel] = 0; notes[sel] = []; render(); persist(); } }
-});
-
-if (!resume()) makeGame(DIFFICULTY.easy, false);
-window.__SUDOKU__ = {
-  get state() { return { diff: diff.key, blanks: puzzle.filter((v) => !v).length, unique: true, errors, hintsLeft, done: doneFlag, notes: notes.map((a) => a.slice()) }; },
-  checkUnique: () => generate(seed, diff).unique,
-  forceSolve: () => { grid = solution.slice(); finish(); },
-};
+$('btn-new').addEventListener('click',function(){newGame(false)});
+$('btn-daily').addEventListener('click',function(){newGame(true)});
+$('btn-notes').addEventListener('click',function(){noteMode=!noteMode;this.classList.toggle('on',noteMode);$('msg').textContent=noteMode?'笔记模式 · 点击数字标记候选':'笔记已关闭'});
+$('btn-pause').addEventListener('click',function(){if(doneFlag)return;if(!paused){paused=true;pauseAt=Date.now();this.textContent='继续';this.classList.add('on');$('msg').textContent='已暂停 · 计时停止'}else{pauseTotal+=Date.now()-pauseAt;paused=false;this.textContent='暂停';this.classList.remove('on');$('msg').textContent='继续中'}});
+$('btn-hint').addEventListener('click',function(){if(sel<0||doneFlag||paused)return;notes[sel]=[];grid[sel]=solution[sel];render()});
+$('btn-erase').addEventListener('click',function(){if(sel<0||given[sel]||doneFlag||paused)return;grid[sel]=0;notes[sel]=[];render()});
+$('done-again').addEventListener('click',function(){$('done').hidden=true;newGame(false)});
+$('btn-info').addEventListener('click',function(){$('info-body').textContent='在空格填入 1~'+size.n+'，使每行、每列、每个粗线宫内的数字都不重复。点击格子选中，再点下方数字填入。「✎笔记」开启后，点数字会在格内标记小字候选数，再点一次取消；填入正式数字会自动清除该格笔记。「提示」填入正确答案，「擦除」清空当前格。「暂停」可停止计时。每日题按日期固定盘面，同一天所有人题目一致。';$('info').hidden=false});
+$('info-close').addEventListener('click',function(){$('info').hidden=true});
+document.addEventListener('keydown',function(e){if(noteMode&&/^[1-9]$/.test(e.key)&&+e.key<=size.n)input(+e.key);else if(e.key==='Backspace'||e.key==='Delete'){if(sel>=0&&!given[sel]){grid[sel]=0;notes[sel]=[];render()}}});
+newGame(false);render();
+})();
 </script>
-<script>window.MG_SCREEN_FIT={"title":"数独速递","tagline":"SUDOKU · 唯一解 · 计时挑战","accent":"#4f9dff","bg":"#f6f1e6","mainWidth":"560px","cover":"../covers/sudoku-v2.png","tip":"每行、每列、每宫填入 1-9 不重复，先写笔记再落子更稳。","light":false,"left":[{"title":"难度","body":"四档难度，全部唯一解生成。每日题固定，可与朋友比拼用时。"},{"title":"工具","body":"✎ 笔记：真铅笔标记\n提示：揭示一格\n擦除：清除笔记与填入\n暂停：隐藏题面并停表"}],"right":[{"title":"观感","body":"米白纸张底色，深色墨迹数字。笔记与错误分色显示，长时间解题更轻松。"},{"title":"存档","body":"每步自动写入本机，刷新后可续玩；最佳用时按难度分别记录。"}]};window.MG_SCREEN_FIT_FRIENDS=["metro-runner","tap","sudoku","slide","territory","trio","liar","doudizhu","wuyouk","tongxin"];</script>
-<script src="../shared/screen-fit.js"></script>
 </body>
 </html>

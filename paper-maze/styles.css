@@ -575,3 +575,80 @@ body{touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit
     min-width: 44px;
   }
 }
+
+/* ── 2026-11-27 首屏补强 ───────────────────────────────────────────────
+ * 原首屏在 430×932 下只有约 340px 高的内容，上下各 300px 纯黑。
+ * 这里补两块：规模数字（四格）+ 玩法要点（三条），并把间距按视口高度分配，
+ * 让内容自然铺满而不靠"拉大 gap"硬撑。 */
+.boot { justify-content: center; gap: 0; padding: 24px 22px; }
+
+.boot-lamp { width: 62px; height: 62px; margin-bottom: 18px; }
+.boot-lamp > i { inset: 18px; }
+.boot h1 { margin: 0; font-size: clamp(26px, 8vw, 34px); }
+.boot-sub { margin-top: 10px; }
+.boot-stats { margin: 14px 0 0; }
+
+.boot-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  width: min(100%, 420px);
+  margin: 22px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--line);
+}
+.boot-facts div {
+  background: rgba(28, 23, 19, 0.92);
+  padding: 11px 4px 9px;
+  display: flex; flex-direction: column; gap: 3px; align-items: center;
+}
+.boot-facts b {
+  font-size: clamp(18px, 5.4vw, 22px);
+  color: var(--lamp);
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.boot-facts span { font-size: 10.5px; color: var(--paper-faint, #8a8175); letter-spacing: 0.06em; }
+
+.boot-how {
+  width: min(100%, 420px);
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex; flex-direction: column; gap: 9px;
+  text-align: left;
+}
+.boot-how li {
+  display: flex; gap: 9px;
+  font-size: 12.5px; line-height: 1.6;
+  color: var(--paper-dim);
+}
+.boot-how b {
+  flex: none;
+  width: 19px; height: 19px;
+  display: grid; place-items: center;
+  border: 1px solid rgba(232, 176, 100, 0.4);
+  border-radius: 5px;
+  color: var(--lamp);
+  font-size: 11px; font-weight: 500; line-height: 1;
+}
+
+.boot .btn.primary.big {
+  width: min(100%, 260px);
+  margin-top: 24px;
+  padding: 14px 20px;
+  font-size: 15px;
+  letter-spacing: 0.14em;
+  box-shadow: 0 10px 30px rgba(232, 176, 100, 0.22);
+}
+.boot-tip { margin-top: 14px; max-width: 24em; line-height: 1.6; }
+
+/* 极矮屏（横屏手机 / 小窗）：把装饰性最强的两块收掉，先保证能点开始 */
+@media (max-height: 640px) {
+  .boot-how { display: none; }
+  .boot-facts { margin-top: 14px; }
+  .boot-lamp { width: 44px; height: 44px; margin-bottom: 10px; }
+}

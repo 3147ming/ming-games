@@ -522,3 +522,34 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .pw-rare { animation: none; }
 }
+
+/* ── 2026-11-27 首屏补强 ─────────────────────────────────────────────
+ * 主菜单原来贴顶排列，430×932 下内容只到 46% 高度，下半屏全是空的。
+ * 做法：主菜单整组在可视高度里居中，底部钉一块"操作速查"。
+ * 只作用于 #screen-menu —— 结算/成就页需要从顶部开始滚，不能居中。 */
+#screen-menu { justify-content: center; padding-bottom: calc(118px + var(--safe-b)); }
+
+.ctrl-hint {
+  position: absolute;
+  left: calc(20px + var(--safe-l));
+  right: calc(20px + var(--safe-r));
+  bottom: calc(18px + var(--safe-b));
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--line);
+}
+.ctrl-hint div {
+  background: rgba(10, 15, 30, .92);
+  padding: 9px 8px;
+  display: flex; flex-direction: column; gap: 3px; align-items: center;
+  text-align: center;
+}
+.ctrl-hint b { font-size: 11.5px; color: var(--cyan, #6ff); letter-spacing: .04em; font-weight: 600 }
+.ctrl-hint span { font-size: 10.5px; color: var(--dim, #8d97b8); line-height: 1.4 }
+
+/* 矮屏（横屏手机 / 小窗）：先保主按钮，速查条收起 */
+@media (max-height: 680px) { .ctrl-hint { display: none } #screen-menu { padding-bottom: calc(20px + var(--safe-b)) } }

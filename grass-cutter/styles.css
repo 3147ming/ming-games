@@ -168,21 +168,39 @@ body.locked #stage { cursor: none; }
 }
 
 /* ───────────────────────── 启动失败 */
+/* 2026-11-27 复检：原样式是一块半透明红框浮在游戏画面上（背后 HUD 还透出来），
+   读起来像"游戏崩了"。改成整屏遮罩 + 中间一张卡：
+   ① 遮罩用 inset:0 + 100vw/100vh 显式铺满 —— 只靠 box-shadow 铺底会被祖先的
+      overflow/transform 裁掉，只剩中间一条暗带（踩过）；
+   ② 语义从"启动失败"改成"这台设备跑不起来" —— 环境限制不是 bug。 */
 .fatal {
   position: fixed;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  max-width: min(720px, 86vw);
-  padding: 18px 22px;
-  border: 1px solid var(--danger);
-  border-radius: var(--mg-r-md);
-  background: rgba(38, 12, 10, 0.94);
-  color: #ffd9d5;
+  left: 0; top: 0;
+  width: 100vw; height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px; box-sizing: border-box;
+  background: rgba(8, 6, 5, 0.93);
+  color: #ffe2de;
   font-size: 14px;
-  white-space: pre-wrap;
-  z-index: 40;
+  line-height: 1.75;
+  text-align: center;
+  z-index: 60;
 }
+.fatal-card {
+  max-width: min(440px, 100%);
+  padding: 26px 24px;
+  border: 1px solid rgba(224, 106, 96, 0.38);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #1b1210, #120b0a);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  white-space: normal;
+}
+.fatal b { display: block; font-size: 17px; letter-spacing: 0.04em; margin-bottom: 10px; color: #fff }
+.fatal i {
+  display: block; font-style: normal; font-size: 30px; line-height: 1;
+  margin-bottom: 14px; opacity: 0.9;
+}
+.fatal small { display: block; margin-top: 12px; font-size: 12px; opacity: 0.55 }
 
 /* ───────────── 触屏层（第 3 批 P0-1）：只在 pointer:coarse 设备上显示 */
 .touch { position: fixed; inset: 0; z-index: 12; pointer-events: none; }

@@ -822,7 +822,9 @@ export function boot(root = document) {
   const p = progress(state);
   el.bootStats.textContent = save.runs
     ? `已有进度：${p.roomsVisited}/${p.roomsTotal} 房间 · 线索 ${p.clues} · 结局图鉴 ${st.unlocked}/${st.total} · 开局 ${save.runs} 次`
-    : '第 1 局 · 12 个房间 · 40 件物品 · 12 条配方 · 7 个谜题 · 4 个结局';
+    /* 首次进入：规模数字已经在上面的四格里了（房间/物品/谜题/结局），这里再说一遍是重复。
+       改成一句"从哪儿开始"，把注意力留给按钮。 */
+    : '第 1 局 · 首次点灯';
   el.bootStart.textContent = save.runs ? '继续' : '点亮纸灯';
   el.meterFill.parentElement.setAttribute('aria-label', '收集度');
 
