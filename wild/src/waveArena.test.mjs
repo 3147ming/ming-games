@@ -192,6 +192,43 @@ test('gainXp 走排队路径，不再直接调用 openUpgrade', () => {
     'gainXp 未把升级改为排队');
 });
 
+test('同类武器合成升阶写入 fusionFlash 高光提示（纯展示，不碰数值）', () => {
+  // 收割者起始是毒雾而非投射物，才能干净地测「首把=新槽 / 第二把=合成」。
+  const core = new ArenaCore({ rng: new Rng('wave-fusion'), wave: { mode: '20', char: 'harvester' } });
+  const d = core.wd;
+  d.phase = 'shop';
+  d.materials = 9999;
+  const mkGood = (rarity) => ({
+    kind: 'weapon', id: 'projectile', label: '投射物', desc: '', tag: 'ranged',
+    rarity, cost: 1, locked: false, sold: false,
+  });
+  // 第一次买：新槽，不应触发合成高光
+  d.shop = [mkGood('common')];
+  assert.equal(d.fusionFlash, null, '首把武器不是合成');
+  assert.equal(d.buy(0), true);
+  assert.equal(d.fusionFlash, null, '新槽不算合成');
+  const slotsBefore = d.slots.length;
+  // 第二次买同类同稀有度：合成升阶，应写入 fusionFlash
+  d.shop = [mkGood('common')];
+  assert.equal(d.buy(0), true);
+  assert.equal(d.slots.length, slotsBefore, '合成不占新槽');
+  const fused = d.slots.find((s) => s.id === 'projectile');
+  assert.equal(fused.rarity, 1, '稀有度应升一阶');
+  assert.ok(d.fusionFlash && d.fusionFlash.label === '投射物', '合成应写入高光提示');
+  assert.equal(d.fusionFlash.rarityLabel, '精良');
+  assert.equal(d.fusionFlash.stars, '★★');
+  assert.ok(d.fusionFlash.color, '应带稀有度颜色');
+});
+
+test('商店 UI 渲染合成高光并在读取后清空，避免跨波残留', () => {
+  const uiSrc = fs.readFileSync(path.join(here, 'wave-ui.js'), 'utf8');
+  assert.match(uiSrc, /class="ws-fusion"/, '商店面板未渲染合成高光条');
+  assert.match(uiSrc, /d\.fusionFlash = null/, 'UI 读取后未清空，提示会跨波残留');
+  const cssSrc = fs.readFileSync(path.join(here, '..', 'styles.css'), 'utf8');
+  assert.match(cssSrc, /\.ws-fusion\s*\{/, '缺少合成高光样式');
+  assert.match(cssSrc, /prefers-reduced-motion/, '合成动画未尊重减少动态偏好');
+});
+
 test('精英波奖励选完继续打，不消耗待升级次数也不误开商店', () => {
   const core = new ArenaCore({ rng: new Rng('wave-elite'), wave: { mode: '20' } });
   const d = core.wd;

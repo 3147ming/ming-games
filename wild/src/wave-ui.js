@@ -71,9 +71,17 @@ function renderWaveShop(a, d, el) {
     .sort((x, y) => y[1] - x[1]).slice(0, 4)
     .map(([k, v]) => `${esc(k)} ${v}`).join(' · ');
 
+  // 合成升阶高光：买武器触发同类合成时 director 写入，这里读一次后清空。
+  const fusion = d.fusionFlash;
+  d.fusionFlash = null;
+  const fusionRow = fusion
+    ? `<div class="ws-fusion">⚗ 合成升阶！${esc(fusion.label)} → <b style="color:${fusion.color}">${esc(fusion.rarityLabel)} ${fusion.stars}</b></div>`
+    : '';
+
   el.innerHTML = `
     <div class="ws-panel">
       <div class="ws-head">第 ${d.wave} 波结束 · 波间商店</div>
+      ${fusionRow}
       <div class="ws-mat">材料 <b>${d.materials}</b>　·　${d.danger.label}　·　武器槽 ${d.slots.length}/${d.char.maxWeapons}　·　${esc(d.char.label)}</div>
       <div class="ws-sub">武器槽（点击卖出，同类同稀有度自动合成升阶）</div>
       <div class="ws-weapons">${slotRows || '<span class="ws-empty">暂无武器</span>'}</div>

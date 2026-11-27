@@ -55,6 +55,9 @@ export class WaveDirector {
     this.purchases = 0;
     this.rerolls = 0;
     this.sells = 0;
+    // 合成升阶的即时正反馈：买武器触发同类合成时写入，UI 读一次后清空。
+    // 纯展示字段，不参与任何玩法/数值计算。
+    this.fusionFlash = null;
 
     this.wavesCleared = 0;
     this.bossWaves = [];
@@ -256,7 +259,17 @@ export class WaveDirector {
       const ri = rarityIndex(g.rarity);
       // 同类同稀有度 → 合成升一阶（不占新槽）；4 阶封顶。
       const same = this.slots.find((s) => s.id === g.id && s.rarity === ri && ri < RARITIES.length - 1);
-      if (same) same.rarity += 1;
+      if (same) {
+        same.rarity += 1;
+        // 合成高光：把「谁合成了什么」记下来，波间面板立刻高亮提示。
+        const name = weaponGoodById(g.id);
+        this.fusionFlash = {
+          label: name ? name.label : g.id,
+          rarityLabel: RARITIES[same.rarity].label,
+          stars: '★'.repeat(same.rarity + 1),
+          color: RARITIES[same.rarity].color,
+        };
+      }
       else {
         this.slots.push({ id: g.id, rarity: ri });
         // ★ 进阶型号（smg/sniper/…）没有独立底层机制，统一映射回 base 开火；
